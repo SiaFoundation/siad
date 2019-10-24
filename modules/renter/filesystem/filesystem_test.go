@@ -1179,10 +1179,9 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are 2 files in memory. The partialsSiafile and the regular
-	// file.
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 files in memory, got:", len(sfs.files))
+	// Confirm there is 1 file in memory.
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 files in memory, got:", len(sfs.files))
 	}
 	// Close File
 	entry.Close()
@@ -1198,33 +1197,33 @@ func TestFilesInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is 2 file in memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 files in memory, got:", len(sfs.files))
+	// Confirm there is 1 file in memory
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	// Access the file again
 	entry2, err := sfs.OpenSiaFile(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 2 files in memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 files in memory, got:", len(sfs.files))
+	// Confirm there is still only has 1 file in memory
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	// Close one of the file instances
 	entry1.Close()
-	// Confirm there is still only has 2 files in memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 files in memory, got:", len(sfs.files))
+	// Confirm there is still only has 1 file in memory
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 
 	// Confirm closing out remaining files removes all files from memory
 	//
 	// Close last instance of the first file
 	entry2.Close()
-	// Confirm there is one file in memory
-	if len(sfs.files) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
+	// Confirm there is no file in memory
+	if len(sfs.files) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.files))
 	}
 }
 
