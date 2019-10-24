@@ -158,6 +158,11 @@ func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, di
 // close calls the common close method.
 func (n *DNode) close() {
 	n.node._close()
+	// If no more threads use the directory we delete the SiaDir to invalidate
+	// the cache.
+	if len(n.threads) == 0 {
+		*n.lazySiaDir = nil
+	}
 }
 
 // managedClose calls close while holding the node's lock.
