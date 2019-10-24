@@ -97,6 +97,9 @@ func (fs *fuseFS) GetAttr(name string, _ *fuse.Context) (*fuse.Attr, fuse.Status
 
 // OpenDir implements pathfs.FileSystem.
 func (fs *fuseFS) OpenDir(name string, _ *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
+	if name == "" {
+		name = fs.root.String()
+	}
 	sp, err := modules.NewSiaPath(name)
 	if err != nil {
 		fs.renter.log.Printf("Error calling NewSiaPath on %v: %v", name, err)
