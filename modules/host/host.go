@@ -73,7 +73,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/accountmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
@@ -113,12 +112,6 @@ var (
 	}
 )
 
-// An account manager keeps track of all ephemeral accounts on the host
-type accountManager interface {
-	// Close closes the account manager.
-	Close() error
-}
-
 // A Host contains all the fields necessary for storing files for clients and
 // performing the storage proofs on the received files.
 type Host struct {
@@ -143,13 +136,14 @@ type Host struct {
 	atomicNormalErrors        uint64
 
 	// Dependencies.
-	cs           modules.ConsensusSet
-	g            modules.Gateway
-	tpool        modules.TransactionPool
-	wallet       modules.Wallet
-	dependencies modules.Dependencies
-	am           accountManager
+	cs     modules.ConsensusSet
+	g      modules.Gateway
+	tpool  modules.TransactionPool
+	wallet modules.Wallet
 	modules.StorageManager
+
+	// Subsystems
+	staticAccountManager *accountManager
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -175,14 +169,20 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// Utilities.
+	// Misc state.
 	db         *persist.BoltDatabase
 	listener   net.Listener
-	log        *persist.Logger
 	mu         sync.RWMutex
 	persistDir string
 	port       string
-	tg         siasync.ThreadGroup
+
+	*hostUtils
+}
+
+type hostUtils struct {
+	dependencies modules.Dependencies
+	log          *persist.Logger
+	tg           siasync.ThreadGroup
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -241,16 +241,16 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 	// Create the host object.
 	h := &Host{
-		cs:           cs,
-		g:            g,
-		tpool:        tpool,
-		wallet:       wallet,
-		dependencies: dependencies,
+		cs:     cs,
+		g:      g,
+		tpool:  tpool,
+		wallet: wallet,
 
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
 		persistDir: persistDir,
 	}
+	h.dependencies = dependencies
 
 	// Call stop in the event of a partial startup.
 	var err error
@@ -281,22 +281,8 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 		}
 	})
 
-	// Add the account manager to the host, and set up the stop call that will
-	// close the account manager
-	h.am, err = accountmanager.New(filepath.Join(persistDir, accountmanager.DefaultPersistDir))
-	if err != nil {
-		h.log.Println("Could not create the account manager:", err)
-		return nil, err
-	}
-	h.tg.AfterStop(func() {
-		err = h.am.Close()
-		if err != nil {
-			h.log.Println("Could not close the account manager:", err)
-		}
-	})
-
-	// TODO: reload account manager's persisted state, and configure the host to
-	// save before shutting down
+	// Add the account manager subsystem
+	h.staticAccountManager = h.newAccountManager(persistDir)
 
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.
