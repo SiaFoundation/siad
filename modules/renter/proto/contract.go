@@ -521,8 +521,13 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 	decodeMaxSize := int(stat.Size() * 3)
 	err = encoding.NewDecoder(f, decodeMaxSize).Decode(&header)
 	if err != nil {
-		// Unable to decode the old header, try a new decode.
+		// Unable to decode the old header, try a new decode. Seek the file back
+		// to the beginning.
 		var v1412DecodeErr error
+		_, seekErr := f.Seek(0, 0)
+		if seekErr != nil {
+			return errors.AddContext(errors.Compose(err, seekErr), "unable to reset file when attempting legacy decode")
+		}
 		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1413(f, decodeMaxSize)
 		if v1412DecodeErr != nil {
 			return errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode contract header")
