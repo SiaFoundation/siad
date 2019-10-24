@@ -564,7 +564,7 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 		return subNode, nil
 	}
 	// Otherwise open the next dir.
-	defer subNode.managedClose()
+	defer subNode.Close()
 	return subNode.managedOpenDir(filepath.Join(pathList...))
 }
 

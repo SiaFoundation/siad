@@ -1742,3 +1742,41 @@ func TestOpenCloseRoot(t *testing.T) {
 	}
 	rootNode.Close()
 }
+
+// TestFailedOpenFileFolder makes sure that a failed call to OpenSiaFile or
+// OpensiaDir doesn't leave any nodes dangling in memory.
+func TestFailedOpenFileFolder(t *testing.T) {
+	if testing.Short() && !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	fs := newTestFileSystem(root)
+	// Create dir /sub1/sub2
+	sp := newSiaPath("sub1/sub2")
+	if err := fs.NewSiaDir(sp); err != nil {
+		t.Fatal(err)
+	}
+	// Prepare a path to "foo"
+	foo, err := sp.Join("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Open "foo" as a dir.
+	_, err = fs.OpenSiaDir(foo)
+	if err != ErrNotExist {
+		t.Fatal("err should be ErrNotExist but was", err)
+	}
+	if len(fs.files) != 0 || len(fs.directories) != 0 {
+		t.Fatal("Expected 0 files and folders but got", len(fs.files), len(fs.directories))
+	}
+	// Open "foo" as a file.
+	_, err = fs.OpenSiaDir(foo)
+	if err != ErrNotExist {
+		t.Fatal("err should be ErrNotExist but was", err)
+	}
+	if len(fs.files) != 0 || len(fs.directories) != 0 {
+		t.Fatal("Expected 0 files and folders but got", len(fs.files), len(fs.directories))
+	}
+}
