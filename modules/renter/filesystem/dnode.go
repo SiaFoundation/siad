@@ -386,10 +386,10 @@ func (n *DNode) managedDelete() error {
 // managedDeleteFile deletes the file with the given name from the directory.
 func (n *DNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
+	defer n.mu.Unlock()
 	// Check if the file is open in memory. If it is delete it.
 	sf, exists := n.files[fileName]
 	if exists {
-		n.mu.Unlock()
 		err := sf.managedDelete()
 		if err != nil {
 			return err
@@ -536,16 +536,23 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 	return dir.managedCopy(), nil
 }
 
+// copy copies the node, adds a new thread to the threads map and returns the
+// new instance.
+func (n *DNode) copy() *DNode {
+	// Copy the dNode and change the uid to a unique one.
+	newNode := *n
+	newNode.threadUID = newThreadUID()
+	newNode.threads[newNode.threadUID] = newThreadType()
+	return &newNode
+}
+
 // managedCopy copies the node, adds a new thread to the threads map and returns the
 // new instance.
 func (n *DNode) managedCopy() *DNode {
 	// Copy the dNode and change the uid to a unique one.
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	newNode := *n
-	newNode.threadUID = newThreadUID()
-	newNode.threads[newNode.threadUID] = newThreadType()
-	return &newNode
+	return n.copy()
 }
 
 // managedOpenDir opens a SiaDir.
