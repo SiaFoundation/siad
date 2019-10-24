@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	// accountExpiryTimeout dictates after what time stale accounts get pruned
+	// from the account manager
 	accountExpiryTimeout = 7 * 86400
 )
 
@@ -28,7 +30,7 @@ var (
 	}
 
 	// accountMaxBalance is the maximum balance an ephemeral account is allowed
-	// to hold
+	// to contain
 	accountMaxBalance = types.NewCurrency64(10 ^ 28)
 
 	// blockedCallTimeout is the maximum amount of time we wait for an account
@@ -178,7 +180,7 @@ func (am *accountManager) managedSpend(id string, amount types.Currency, receipt
 	if exists {
 		am.hostUtils.log.Printf("ERROR: receipt %v was already spent", receipt)
 		am.mu.Unlock()
-		return errors.New("spend was already executed")
+		return errors.New("receipt was already spent")
 	}
 
 	// Ensure deposit sig channel
