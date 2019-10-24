@@ -4,18 +4,13 @@ that a user has uploaded to Sia. This includes the location and health of these
 files. The Renter, via the HostDB and the Contractor, is also responsible for
 picking hosts and maintaining the relationship with them.
 
-*TODO*
-  - Should assumptions for each section be put in a specific **assumptions**
-    section at the end of each section?
-  - Update list of submodules to be links to README files was submodule READMEs
-    are ready
-  - If we like this format for the README we should document it and make it
-    standard for consistency between module READMEs. Things to consider:
-     - What gets `highlighted` - code only
-     - What gets linked
-     - What Sections to have and order
-  - Confirm all assumptions have tests
-  - Create subsystemconsts.go files and add them to the **Key Files** 
+The renter is unique for having two different logs. The first is a general
+renter activity log, and the second is a repair log. The repair log is intended
+to be a high-signal log that tells users what files are being repaired, and
+whether the repair jobs have been successful. Where there are failures, the
+repair log should try and document what those failures were. Every message of
+the repair log should be interesting and useful to a power user, there should be
+no logspam and no messages that would only make sense to siad developers.
 
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
@@ -95,8 +90,27 @@ responsibilities.
 **Key Files**
  - [memory.go](./memory.go)
 
-*TODO* 
-  - fill out subsystem explanation
+The memory subsystem acts as a limiter on the total amount of memory that the
+renter can use. The memory subsystem does not manage actual memory, it's really
+just a counter. When some process in the renter wants to allocate memory, it
+uses the 'Request' method of the memory manager. The memory manager will block
+until enough memory has been returned to allow the request to be granted. The
+process is then responsible for calling 'Return' on the memory manager when it
+is done using the memory.
+
+The memory manager is initialized with a base amount of memory. If a request is
+made for more than the base memory, the memory manager will block until all
+memory has been returned, at which point the memory manager will unblock the
+request. No other memory requests will be unblocked until the large memory
+sufficiently returned.
+
+Because 'Request' and 'Return' are just counters, they can be called as many
+times as necessary in whatever sizes are convenient.
+
+When calling 'Request', a process should be sure to request all necessary memory
+at once, because if a single process calls 'Request' multiple times before
+returning any memory, this can cause a deadlock between multiple processes that
+are stuck waiting for more memory before they release memory.
 
 ### Worker Subsystem
 **Key Files**

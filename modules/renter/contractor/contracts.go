@@ -3,6 +3,8 @@ package contractor
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // contractEndHeight returns the height at which the Contractor's contracts
@@ -78,6 +80,26 @@ func (c *Contractor) ContractUtility(pk types.SiaPublicKey) (modules.ContractUti
 		return modules.ContractUtility{}, false
 	}
 	return c.managedContractUtility(id)
+}
+
+// MarkContractBad will mark a specific contract as bad.
+func (c *Contractor) MarkContractBad(id types.FileContractID) error {
+	if err := c.tg.Add(); err != nil {
+		return err
+	}
+	defer c.tg.Done()
+
+	sc, exists := c.staticContracts.Acquire(id)
+	if !exists {
+		return errors.New("contract not found")
+	}
+	u := sc.Utility()
+	u.GoodForUpload = false
+	u.GoodForRenew = false
+	u.BadContract = true
+	err := sc.UpdateUtility(u)
+	c.staticContracts.Return(sc)
+	return errors.AddContext(err, "unable to mark contract as bad")
 }
 
 // OldContracts returns the contracts formed by the contractor that have

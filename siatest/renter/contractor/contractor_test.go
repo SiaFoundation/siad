@@ -1150,3 +1150,78 @@ func TestLowAllowanceAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRenterBadContracts tests that the renter will discard bad contracts.
+func TestRenterBadContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+
+	// Create a second host, but perform a dependency injection that will cause
+	// the host to reject the contract when the renter tries to grab a session
+	// lock.
+	secondHostParams := node.HostTemplate
+	secondHostParams.HostDeps = &dependencies.HostRejectAllSessionLocks{}
+	_, err = tg.AddNodes(secondHostParams)
+	if err != nil {
+		t.Fatal("Failed to add node to group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Upload a file, we will need to download this file later.
+	r := tg.Renters()[0]
+	// Check the number of active contracts in the renter. Should be 2.
+	rcg, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rcg.ActiveContracts) != 2 {
+		t.Fatal("expecting 2 active contracts formed with the 2 hosts", len(rcg.ActiveContracts))
+	}
+
+	// Upload a file, which will cause the renter to open a session with all of
+	// the hosts, including the host that is explicitly rejecting session locks
+	// on a contract.
+	_, _, err = r.UploadNewFile(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the renter dropped an active contract. This will have
+	// happened because the injected host rejected the session lock due to the
+	// contract not being recognized, which will have resulted in the contract
+	// being marked bad.
+	err = build.Retry(100, 250*time.Millisecond, func() error {
+		rcg, err = r.RenterAllContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != 1 {
+			return errors.New("expected 1 active contracts")
+		}
+		if len(rcg.DisabledContracts) != 1 {
+			return errors.New("expected 1 disabled contract")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
