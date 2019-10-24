@@ -71,16 +71,12 @@ type (
 		accounts map[string]types.Currency
 		receipts map[string]string
 		updated  map[string]int64
-		deposits map[string]chan bool
 
-		mu sync.Mutex
+		totalExpired types.Currency // Keep track of total expired funds
+		blockedCalls []blockedCall
+		persistDir   string
 
-		persistSig chan bool
-		persistDir string
-
-		// Keep track of total expired funds
-		totalExpired types.Currency
-
+		mu           sync.Mutex
 		dependencies modules.Dependencies
 		hostUtils
 	}
@@ -90,6 +86,15 @@ type (
 		Accounts     map[string]types.Currency
 		TotalExpired types.Currency
 	}
+
+	// blockedCall represents a waiting thread due to insufficient balance
+	// upon deposit these calls get unblocked if the amount deposited was
+	// sufficient
+	blockedCall struct {
+		id       string
+		unblock  chan struct{}
+		required types.Currency
+	}
 )
 
 // newAccountManager returns a new account manager ready for use by the host
@@ -98,10 +103,9 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies, persistDir s
 		accounts: make(map[string]types.Currency),
 		receipts: make(map[string]string),
 		updated:  make(map[string]int64),
-		deposits: make(map[string]chan bool),
 
-		persistSig: make(chan bool),
-		persistDir: persistDir,
+		blockedCalls: make([]blockedCall, 0),
+		persistDir:   persistDir,
 
 		dependencies: dependencies,
 
@@ -123,9 +127,8 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies, persistDir s
 	go am.threadedPruneExpiredAccounts()
 
 	am.tg.OnStop(func() {
-		close(am.persistSig)
-		for _, d := range am.deposits {
-			close(d)
+		for _, d := range am.blockedCalls {
+			close(d.unblock)
 		}
 	})
 
@@ -152,16 +155,23 @@ func (am *accountManager) managedDeposit(id string, amount types.Currency) error
 	am.accounts[id] = uB
 	am.updated[id] = time.Now().Unix()
 
-	// Notify blocking threads of this deposit, we send the balance through the
-	// channel to avoid having to acquire a lock to check if its sufficient
-	_, exists := am.deposits[id]
-	if !exists {
-		am.deposits[id] = make(chan bool)
+	// Loop over all blocking calls and unblock the ones which are awaiting
+	// deposit for the account we just deposited into
+	remaining := am.accounts[id]
+	j := 0
+	for i := 0; i < len(am.blockedCalls); i++ {
+		blocked := am.blockedCalls[i]
+		if blocked.id != id || remaining.Cmp(blocked.required) < 0 {
+			am.blockedCalls[j] = blocked
+			j++
+		} else {
+			remaining = remaining.Sub(blocked.required)
+			close(blocked.unblock)
+		}
 	}
-	go func() { am.deposits[id] <- true }()
+	am.blockedCalls = am.blockedCalls[:j]
 
-	// Trigger a persist
-	go func() { am.persistSig <- true }()
+	go func() { am.save() }()
 
 	return nil
 }
@@ -190,27 +200,24 @@ func (am *accountManager) managedSpend(id string, amount types.Currency, receipt
 		return errors.New("receipt was already spent")
 	}
 
-	// Ensure deposit sig channel
-	_, exists = am.deposits[id]
-	if !exists {
-		am.deposits[id] = make(chan bool)
-	}
-
 	// If current account balance is insufficient, we block until either the
 	// blockCallTimeout expires, the account receives sufficient deposits or we
 	// receive a message on the thread group's stop channel
 	if am.accounts[id].Cmp(amount) < 0 {
+		bc := blockedCall{
+			id:       id,
+			unblock:  make(chan struct{}),
+			required: amount,
+		}
+		am.blockedCalls = append(am.blockedCalls, bc)
 		am.mu.Unlock()
+
 		for {
 			select {
 			case <-am.tg.StopChan():
 				return errors.New("ERROR: spend cancelled, stop received")
-			case <-am.deposits[id]:
+			case <-bc.unblock:
 				am.mu.Lock()
-				if am.accounts[id].Cmp(amount) < 0 {
-					am.mu.Unlock()
-					continue
-				}
 				break
 			case <-time.After(blockedCallTimeout):
 				return errors.New("ERROR: spend timeout, insufficient balance")
@@ -218,32 +225,16 @@ func (am *accountManager) managedSpend(id string, amount types.Currency, receipt
 		}
 	}
 
+	if am.accounts[id].Cmp(amount) < 0 {
+		am.mu.Unlock()
+		return errors.New("ERROR: insufficient balance")
+	}
+
 	am.accounts[id] = am.accounts[id].Sub(amount)
 	am.updated[id] = time.Now().Unix()
 	am.mu.Unlock()
 
 	return nil
-}
-
-// threadedPruneExpiredAccounts will expire accounts which have been inactive
-func (am *accountManager) threadedPersistLoop() {
-	err := am.tg.Add()
-	if err != nil {
-		return
-	}
-	defer am.tg.Done()
-
-	for {
-		select {
-		case <-am.tg.StopChan():
-			return
-		case <-am.persistSig:
-			am.mu.Lock()
-			am.save()
-			am.mu.Unlock()
-			continue
-		}
-	}
 }
 
 // save will persist the account manager persistence object to disk
@@ -286,7 +277,6 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 				am.mu.Lock()
 				am.totalExpired = am.totalExpired.Add(balance)
 				delete(am.accounts, id)
-				delete(am.deposits, id)
 				am.save()
 				am.mu.Unlock()
 			}
