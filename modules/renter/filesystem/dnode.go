@@ -182,16 +182,19 @@ func (n *DNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) e
 	suffix := 0
 	currentPath := path
 	for {
-		_, errStat := os.Stat(currentPath)
-		oldFile, inMemory := n.files[fileName]
-		if inMemory && oldFile.UID() == sf.UID() {
+		fileName := strings.TrimSuffix(filepath.Base(currentPath), modules.SiaFileExtension)
+		oldFile, err := n.managedOpenFile(fileName)
+		exists := err == nil
+		if exists && oldFile.UID() == sf.UID() {
+			oldFile.Close()
 			return nil // skip file since it already exists
-		} else if !os.IsNotExist(errStat) || inMemory {
+		} else if exists {
 			// Exists: update currentPath and fileName
 			suffix++
 			currentPath = strings.TrimSuffix(path, modules.SiaFileExtension)
 			currentPath = fmt.Sprintf("%v_%v%v", currentPath, suffix, modules.SiaFileExtension)
 			fileName = filepath.Base(currentPath)
+			oldFile.Close()
 			continue
 		}
 		break

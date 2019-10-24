@@ -30,6 +30,7 @@ func newTestFileSystemWithFile(name string) (*FNode, *FileSystem, error) {
 	dir := testDir(name)
 	fs := newTestFileSystem(dir)
 	sp := modules.RandomSiaPath()
+	fs.AddTestSiaFile(sp)
 	sf, err := fs.OpenSiaFile(sp)
 	return sf, fs, err
 }
@@ -984,12 +985,22 @@ func TestAddSiaFileFromReader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Remove file at temporary location after reading it.
+	if err := os.Remove(newSF.SiaFilePath()); err != nil {
+		t.Fatal(err)
+	}
 	reader = bytes.NewReader(b)
 	var newSFSiaPath modules.SiaPath
 	if err := newSFSiaPath.FromSysPath(sf.SiaFilePath(), sfs.Root()); err != nil {
 		t.Fatal(err)
 	}
 	if err := sfs.AddSiaFileFromReader(reader, newSFSiaPath); err != nil {
+		t.Fatal(err)
+	}
+	// Reload newSF with the new expected path.
+	newSFPath := filepath.Join(filepath.Dir(sf.SiaFilePath()), newSFSiaPath.String()+"_1"+modules.SiaFileExtension)
+	newSF, err = siafile.LoadSiaFile(newSFPath, sfs.staticWal)
+	if err != nil {
 		t.Fatal(err)
 	}
 	// sf and newSF should have the same pieces.
