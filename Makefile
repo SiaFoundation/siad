@@ -12,6 +12,7 @@ all: release
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 run = .
+cpkg = ./modules/renter
 pkgs = ./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer  \
        ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor        \
        ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir             \
@@ -58,7 +59,7 @@ release-race:
 # clean removes all directories that get automatically created during
 # development.
 clean:
-	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf release 
+	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release 
 
 test:
 	GO111MODULE=on go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run)
@@ -79,11 +80,29 @@ bench: clean fmt
 cover: clean
 	@mkdir -p cover
 	@for package in $(pkgs); do                                                                                                          \
-		mkdir -p `dirname cover/$$package`                                                                                        \
+		mkdir -p `dirname cover/$$package`                                                                                               \
 		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=cover/$$package.out ./$$package -run=$(run) \
 		&& go tool cover -html=cover/$$package.out -o=cover/$$package.html                                                               \
 		&& rm cover/$$package.out ;                                                                                                      \
 	done
+
+# fullcover is a commnd that will give the full coverage statistics for a
+# package. Unlike the 'cover' command, full cover will include the testing
+# coverage that is provided by all tests in all packages on the target package.
+# Only one package can be targeted at a time. Use 'cpkg' as the variable for the
+# target package, 'pkgs' as the variable for the packages running the tests.
+fullcover: clean
+	mkdir -p fullcover
+	@echo "mode: atomic" >> fullcover/fullcover.out
+	@for package in $(pkgs); do                                                                                                                                                  \
+		mkdir -p `dirname fullcover/$$package`                                                                                                                                   \
+		&& GO111MODULE=on go test -v -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=fullcover/$$package.out -coverpkg $(cpkg) ./$$package -run=$(run) \
+		&& tail -n +2 fullcover/$$package.out >> fullcover/fullcover.out                                                                                                         \
+		&& rm fullcover/$$package.out ;                                                                                                                                          \
+	done
+	@go tool cover -html=fullcover/fullcover.out -o fullcover/fullcover.html
+	@printf 'Full coverage on $(cpkg):'
+	@go tool cover -func fullcover/fullcover.out | tail -n -1 | awk '{$$1=""; $$2=""; sub(" ", " "); print}'
 
 # whitepaper builds the whitepaper from whitepaper.tex. pdflatex has to be
 # called twice because references will not update correctly the first time.
