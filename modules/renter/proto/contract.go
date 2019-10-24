@@ -2,6 +2,7 @@ package proto
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -496,6 +497,31 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 	return sc.Metadata(), nil
 }
 
+// loadSafeContractHeader will load a contract from disk, checking for legacy
+// encodings if initial attempts fail.
+func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader, error) {
+	var header contractHeader
+	err := encoding.NewDecoder(f, decodeMaxSize).Decode(&header)
+	if err != nil {
+		// Unable to decode the old header, try a new decode. Seek the file back
+		// to the beginning.
+		var v1412DecodeErr error
+		_, seekErr := f.Seek(0, 0)
+		if seekErr != nil {
+			return contractHeader{}, errors.AddContext(errors.Compose(err, seekErr), "unable to reset file when attempting legacy decode")
+		}
+		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1413(f, decodeMaxSize)
+		if v1412DecodeErr != nil {
+			return contractHeader{}, errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode contract header")
+		}
+	}
+	if err := header.validate(); err != nil {
+		return contractHeader{}, errors.AddContext(err, "unable to validate contract header")
+	}
+
+	return header, nil
+}
+
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
 func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlog.Transaction) (err error) {
@@ -512,29 +538,14 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 	if err != nil {
 		return err
 	}
+	decodeMaxSize := int(stat.Size() * 3)
 
 	headerSection := newFileSection(f, 0, contractHeaderSize)
 	rootsSection := newFileSection(f, contractHeaderSize, remainingFile)
 
-	// read header
-	var header contractHeader
-	decodeMaxSize := int(stat.Size() * 3)
-	err = encoding.NewDecoder(f, decodeMaxSize).Decode(&header)
+	header, err := loadSafeContractHeader(f, decodeMaxSize)
 	if err != nil {
-		// Unable to decode the old header, try a new decode. Seek the file back
-		// to the beginning.
-		var v1412DecodeErr error
-		_, seekErr := f.Seek(0, 0)
-		if seekErr != nil {
-			return errors.AddContext(errors.Compose(err, seekErr), "unable to reset file when attempting legacy decode")
-		}
-		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1413(f, decodeMaxSize)
-		if v1412DecodeErr != nil {
-			return errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode contract header")
-		}
-	}
-	if err := header.validate(); err != nil {
-		return errors.AddContext(err, "unable to validate contract header")
+		return errors.AddContext(err, "unable to load contract header")
 	}
 
 	// read merkleRoots

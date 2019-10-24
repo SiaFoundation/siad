@@ -1,7 +1,7 @@
 package proto
 
 import (
-	"os"
+	"io"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -71,7 +71,7 @@ type v1412ContractHeader struct {
 // contractHeaderDecodeV1412ToV1413 attempts to decode a contract header using
 // the persist struct as of v1.4.1.2, returning a header that has been converted
 // to the v1.4.1.3 version of the header.
-func contractHeaderDecodeV1412ToV1413(f *os.File, decodeMaxSize int) (contractHeader, error) {
+func contractHeaderDecodeV1412ToV1413(f io.ReadSeeker, decodeMaxSize int) (contractHeader, error) {
 	var v1412Header v1412ContractHeader
 	err := encoding.NewDecoder(f, decodeMaxSize).Decode(&v1412Header)
 	if err != nil {
