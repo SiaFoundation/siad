@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -18,6 +19,10 @@ const (
 )
 
 var (
+	// errMaxBalanceExceeded is returned whenever a deposit is done that would
+	// exceed the maximum account balance
+	errMaxBalanceExceeded = errors.New("deposit exceeds maximum account balance")
+
 	// amPersistFilename defines the name of the file that holds the account
 	// manager's persistence
 	amPersistFilename = "accountmanager.json"
@@ -31,7 +36,7 @@ var (
 
 	// accountMaxBalance is the maximum balance an ephemeral account is allowed
 	// to contain
-	accountMaxBalance = types.NewCurrency64(10 ^ 28)
+	accountMaxBalance = types.SiacoinPrecision.Mul64(1e3)
 
 	// blockedCallTimeout is the maximum amount of time we wait for an account
 	// to have a certain balance
@@ -76,7 +81,8 @@ type (
 		// Keep track of total expired funds
 		totalExpired types.Currency
 
-		*hostUtils
+		dependencies modules.Dependencies
+		hostUtils
 	}
 
 	// amPersist contains all account manager data we want to persist
@@ -87,7 +93,7 @@ type (
 )
 
 // newAccountManager returns a new account manager ready for use by the host
-func (h *Host) newAccountManager(persistDir string) *accountManager {
+func (h *Host) newAccountManager(dependencies modules.Dependencies, persistDir string) (*accountManager, error) {
 	am := &accountManager{
 		accounts: make(map[string]types.Currency),
 		receipts: make(map[string]string),
@@ -97,14 +103,21 @@ func (h *Host) newAccountManager(persistDir string) *accountManager {
 		persistSig: make(chan bool),
 		persistDir: persistDir,
 
-		totalExpired: types.ZeroCurrency,
+		dependencies: dependencies,
 
+		// TODO: fix warning for copying the lock in the tg mutex
 		hostUtils: h.hostUtils,
 	}
 
-	err := am.load()
+	// Create the perist directory if it does not yet exist.
+	err := am.dependencies.MkdirAll(h.persistDir, 0700)
 	if err != nil {
-		am.log.Severe("Unable to load account manager state:", err)
+		return nil, err
+	}
+
+	err = am.load()
+	if err != nil {
+		am.log.Println("Unable to load account manager state:", err)
 	}
 
 	go am.threadedPruneExpiredAccounts()
@@ -116,7 +129,7 @@ func (h *Host) newAccountManager(persistDir string) *accountManager {
 		}
 	})
 
-	return am
+	return am, nil
 }
 
 // managedDeposit will credit the amount to the account's balance
@@ -130,30 +143,25 @@ func (am *accountManager) managedDeposit(id string, amount types.Currency) error
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	balance, exists := am.accounts[id]
-	if !exists {
-		balance = types.ZeroCurrency
-	}
-
 	// Verify the updated balance does not exceed the max account balance
-	uBalance := balance.Add(amount)
-	if accountMaxBalance.Cmp(uBalance) < 0 {
+	uB := am.accounts[id].Add(amount)
+	if accountMaxBalance.Cmp(uB) < 0 {
 		am.hostUtils.log.Printf("ERROR: deposit of %v exceeded max balance for account %v", amount, id)
-		return errors.New("deposit exceeds max account balance")
+		return errMaxBalanceExceeded
 	}
-	am.accounts[id] = uBalance
+	am.accounts[id] = uB
 	am.updated[id] = time.Now().Unix()
 
 	// Notify blocking threads of this deposit, we send the balance through the
 	// channel to avoid having to acquire a lock to check if its sufficient
-	_, exists = am.deposits[id]
+	_, exists := am.deposits[id]
 	if !exists {
 		am.deposits[id] = make(chan bool)
 	}
-	am.deposits[id] <- true
+	go func() { am.deposits[id] <- true }()
 
 	// Trigger a persist
-	am.persistSig <- true
+	go func() { am.persistSig <- true }()
 
 	return nil
 }

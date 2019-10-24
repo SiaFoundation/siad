@@ -136,10 +136,11 @@ type Host struct {
 	atomicNormalErrors        uint64
 
 	// Dependencies.
-	cs     modules.ConsensusSet
-	g      modules.Gateway
-	tpool  modules.TransactionPool
-	wallet modules.Wallet
+	cs           modules.ConsensusSet
+	g            modules.Gateway
+	tpool        modules.TransactionPool
+	dependencies modules.Dependencies
+	wallet       modules.Wallet
 	modules.StorageManager
 
 	// Subsystems
@@ -176,13 +177,12 @@ type Host struct {
 	persistDir string
 	port       string
 
-	*hostUtils
+	hostUtils
 }
 
 type hostUtils struct {
-	dependencies modules.Dependencies
-	log          *persist.Logger
-	tg           siasync.ThreadGroup
+	log *persist.Logger
+	tg  siasync.ThreadGroup
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -241,16 +241,15 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 	// Create the host object.
 	h := &Host{
-		cs:     cs,
-		g:      g,
-		tpool:  tpool,
-		wallet: wallet,
-
+		cs:                       cs,
+		g:                        g,
+		tpool:                    tpool,
+		wallet:                   wallet,
+		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
 		persistDir: persistDir,
 	}
-	h.dependencies = dependencies
 
 	// Call stop in the event of a partial startup.
 	var err error
@@ -272,6 +271,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	if err != nil {
 		return nil, err
 	}
+
 	h.tg.AfterStop(func() {
 		err = h.log.Close()
 		if err != nil {
@@ -282,7 +282,10 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	})
 
 	// Add the account manager subsystem
-	h.staticAccountManager = h.newAccountManager(persistDir)
+	h.staticAccountManager, err = h.newAccountManager(h.dependencies, persistDir)
+	if err != nil {
+		return nil, err
+	}
 
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.
