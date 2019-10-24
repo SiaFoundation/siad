@@ -637,8 +637,8 @@ func TestDeleteFile(t *testing.T) {
 	if _, err := fs.OpenSiaFile(sp); err != ErrNotExist {
 		t.Fatal("err should be ErrNotExist but was:", err)
 	}
-	if err := fs.AddTestSiaFileWithErr(sp); err != ErrExists {
-		t.Fatal("err should be ErrExists but was:", err)
+	if err := fs.AddTestSiaFileWithErr(sp); err != nil {
+		t.Fatal("err should be nil but was:", err)
 	}
 }
 
@@ -1249,9 +1249,9 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm there are 2 files in memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected  file in memory, got:", len(sfs.files))
+	// Confirm there are 1 file in memory
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 
 	// Test renaming an instance of a file
@@ -1262,8 +1262,8 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm that renter still only has 2 files in memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 file in memory, got:", len(sfs.files))
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	_, err = os.Stat(entry.SiaFilePath())
 	if err != nil {
@@ -1275,22 +1275,22 @@ func TestRenameFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are still only 2 files in memory as renaming doesn't add
+	// Confirm there are still only 1 file in memory as renaming doesn't add
 	// the new name to memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 files in memory, got:", len(sfs.files))
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	// Close instance of renamed file
 	entry2.Close()
-	// Confirm there are still only 2 files in memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 files in memory, got:", len(sfs.files))
+	// Confirm there are still only 1 file in memory
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	// Close other instance of second file
 	entry.Close()
-	// Confirm there is only 1 file in memory
-	if len(sfs.files) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
+	// Confirm there is no file in memory
+	if len(sfs.files) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.files))
 	}
 }
 
@@ -1316,8 +1316,8 @@ func TestDeleteFileInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm there are 2 files in memory
-	if len(sfs.files) != 2 {
+	// Confirm there is 1 file in memory
+	if len(sfs.files) != 1 {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 
@@ -1328,18 +1328,18 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is still only has 2 files in memory
-	if len(sfs.files) != 2 {
-		t.Fatal("Expected 2 files in memory, got:", len(sfs.files))
+	// Confirm there is still only has 1 file in memory
+	if len(sfs.files) != 1 {
+		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	// delete and close instance of file
 	if err := sfs.DeleteFile(siaPath); err != nil {
 		t.Fatal(err)
 	}
 	entry2.Close()
-	// There should be one file in the set after deleting it.
-	if len(sfs.files) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
+	// There should be no file in the set after deleting it.
+	if len(sfs.files) != 0 {
+		t.Fatal("Expected 0 files in memory, got:", len(sfs.files))
 	}
 	// confirm other instance is still in memory by calling methods on it
 	if !entry.Deleted() {
@@ -1351,8 +1351,8 @@ func TestDeleteFileInMemory(t *testing.T) {
 	// Close last instance of the first file
 	entry.Close()
 	// Confirm renter has one file in memory
-	if len(sfs.files) != 1 {
-		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
+	if len(sfs.files) != 0 {
+		t.Fatal("Expected 0 file in memory, got:", len(sfs.files))
 	}
 }
 

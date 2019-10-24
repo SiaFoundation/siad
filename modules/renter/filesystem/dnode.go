@@ -386,28 +386,23 @@ func (n *DNode) managedDelete() error {
 // managedDeleteFile deletes the file with the given name from the directory.
 func (n *DNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
-	// Open the file.
-	sf, err := n.openFile(fileName)
-	if err == ErrNotExist {
+	// Check if the file is open in memory. If it is delete it.
+	sf, exists := n.files[fileName]
+	if exists {
 		n.mu.Unlock()
-		return err
+		err := sf.managedDelete()
+		if err != nil {
+			return err
+		}
+		n.removeFile(sf)
+		return nil
 	}
-	if err != nil {
-		n.mu.Unlock()
-		sf.Close()
-		return errors.AddContext(err, "failed to open file for deletion")
+	// Otherwise simply delete the file.
+	err := os.Remove(filepath.Join(n.absPath(), fileName+modules.SiaFileExtension))
+	if os.IsNotExist(err) {
+		return ErrNotExist
 	}
-	// Delete it.
-	if err := sf.managedDelete(); err != nil {
-		n.mu.Unlock()
-		sf.Close()
-		return err
-	}
-	// Remove it from the parent.
-	n.removeFile(sf)
-	n.mu.Unlock()
-	sf.Close()
-	return nil
+	return err
 }
 
 // managedInfo builds and returns the DirectoryInfo of a SiaDir.
