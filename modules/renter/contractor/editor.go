@@ -148,7 +148,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	// sanity checks to see that the host is not swindling us.
 	contract, haveContract := c.staticContracts.View(id)
 	if !haveContract {
-		return nil, errors.New("no record of that contract")
+		return nil, errors.New("contract was not found in the renter's contract set")
 	}
 	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
