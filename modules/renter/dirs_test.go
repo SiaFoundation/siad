@@ -261,7 +261,7 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	if di.AggregateMaxHealth != aggregateMaxHealth {
 		return fmt.Errorf("AggregateMaxHealths not equal %v and %v", di.AggregateMaxHealth, aggregateMaxHealth)
 	}
-	aggregateMaxHealthPercentage := siadir.HealthPercentage(aggregateMaxHealth)
+	aggregateMaxHealthPercentage := filesystem.HealthPercentage(aggregateMaxHealth)
 	if di.AggregateMaxHealthPercentage != aggregateMaxHealthPercentage {
 		return fmt.Errorf("AggregateMaxHealthPercentage not equal %v and %v", di.AggregateMaxHealthPercentage, aggregateMaxHealthPercentage)
 	}
@@ -297,7 +297,7 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	if di.MaxHealth != maxHealth {
 		return fmt.Errorf("MaxHealths not equal %v and %v", di.MaxHealth, maxHealth)
 	}
-	maxHealthPercentage := siadir.HealthPercentage(maxHealth)
+	maxHealthPercentage := filesystem.HealthPercentage(maxHealth)
 	if di.MaxHealthPercentage != maxHealthPercentage {
 		return fmt.Errorf("MaxHealthPercentage not equal %v and %v", di.MaxHealthPercentage, maxHealthPercentage)
 	}

@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -130,7 +129,7 @@ func (n *FNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool
 		Health:           health,
 		LocalPath:        localPath,
 		MaxHealth:        maxHealth,
-		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
+		MaxHealthPercent: HealthPercentage(maxHealth),
 		ModTime:          n.ModTime(),
 		NumStuckChunks:   numStuckChunks,
 		OnDisk:           onDisk,
@@ -210,7 +209,7 @@ func (n *FNode) staticCachedInfo(siaPath modules.SiaPath, offline map[string]boo
 		Health:           md.CachedHealth,
 		LocalPath:        localPath,
 		MaxHealth:        maxHealth,
-		MaxHealthPercent: siadir.HealthPercentage(maxHealth),
+		MaxHealthPercent: HealthPercentage(maxHealth),
 		ModTime:          md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,

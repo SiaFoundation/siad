@@ -924,10 +924,7 @@ func TestStuckChunks(t *testing.T) {
 	t.Parallel()
 
 	// Create siafile
-	sf, sfs, err := newTestSiaFileSetWithFile()
-	if err != nil {
-		t.Fatal(err)
-	}
+	sf := newTestFile()
 
 	// Mark every other chunk as stuck
 	expectedStuckChunks := 0
@@ -950,20 +947,8 @@ func TestStuckChunks(t *testing.T) {
 		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", numStuckChunks, expectedStuckChunks)
 	}
 
-	// Close file and confirm it and its partialsSiaFile are out of memory
-	siaPath := sfs.SiaPath(sf)
-	if err = sf.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("File not removed from memory")
-	}
-	if len(sfs.siapathToUID) != 0 {
-		t.Fatal("File not removed from uid map")
-	}
-
 	// Load siafile from disk
-	sf, err = sfs.Open(siaPath)
+	sf, err := LoadSiaFile(sf.SiaFilePath(), sf.wal)
 	if err != nil {
 		t.Fatal(err)
 	}

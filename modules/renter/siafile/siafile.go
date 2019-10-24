@@ -63,7 +63,7 @@ type (
 		// this siafile. Since we don't know if a file is going to have a partial
 		// chunk we simply keep the megafiles always open and assign them to SiaFiles
 		// with matching redundancy.
-		partialsSiaFile *SiaFileSetEntry
+		partialsSiaFile *SiaFile
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -166,7 +166,7 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFileSetEntry, disablePartialUpload bool) (*SiaFile, error) {
+func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFile, disablePartialUpload bool) (*SiaFile, error) {
 	// TODO remove this
 	disablePartialUpload = true
 
