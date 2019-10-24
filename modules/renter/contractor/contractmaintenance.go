@@ -288,6 +288,13 @@ func (c *Contractor) managedMarkContractsUtility() error {
 				return u, nil
 			}
 
+			// Contract has no utility if the contract has been marked bad.
+			if u.BadContract {
+				u.GoodForUpload = false
+				u.GoodForRenew = false
+				return u, nil
+			}
+
 			host, exists, err := c.hdb.Host(contract.HostPublicKey)
 			// Contract has no utility if the host is not in the database. Or is
 			// filtered by the blacklist or whitelist. Or if there was an error
