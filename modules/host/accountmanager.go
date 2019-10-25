@@ -135,7 +135,8 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies, persistDir s
 	return am, nil
 }
 
-// managedDeposit will credit the amount to the account's balance
+// managedDeposit will credit the amount to the account's balance, it will
+// then scroll through all blocked calls and unblock where possible
 func (am *accountManager) managedDeposit(id string, amount types.Currency) error {
 	err := am.tg.Add()
 	if err != nil {
@@ -155,8 +156,8 @@ func (am *accountManager) managedDeposit(id string, amount types.Currency) error
 	am.accounts[id] = uB
 	am.updated[id] = time.Now().Unix()
 
-	// Loop over all blocking calls and unblock the ones which are awaiting
-	// deposit for the account we just deposited into
+	// Loop over blocked calls and unblock where possible, keep track of the
+	// remaining balance to allow unblocking multiple calls at the same time
 	remaining := am.accounts[id]
 	j := 0
 	for i := 0; i < len(am.blockedCalls); i++ {
@@ -167,6 +168,10 @@ func (am *accountManager) managedDeposit(id string, amount types.Currency) error
 		} else {
 			remaining = remaining.Sub(blocked.required)
 			close(blocked.unblock)
+		}
+
+		if remaining.Equals(types.ZeroCurrency) {
+			break
 		}
 	}
 	am.blockedCalls = am.blockedCalls[:j]
