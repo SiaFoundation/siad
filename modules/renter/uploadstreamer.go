@@ -92,14 +92,14 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
-func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FNode, error) {
+func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
 	// Prepend the provided siapath with the /home/siafiles or /snapshots.
 	var err error
 	sp := up.SiaPath // remember original path
 	if backup {
 		up.SiaPath, err = modules.SnapshotsSiaPath().Join(up.SiaPath.String())
 	} else {
-		up.SiaPath, err = modules.SiaFilesSiaPath().Join(up.SiaPath.String())
+		up.SiaPath, err = modules.UserSiaPath().Join(up.SiaPath.String())
 	}
 	if err != nil {
 		return nil, err

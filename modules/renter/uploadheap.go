@@ -265,7 +265,7 @@ func (uh *uploadHeap) managedReset() error {
 }
 
 // managedBuildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FNode, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool, offline, goodForRenew map[string]bool) (*unfinishedUploadChunk, error) {
+func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool, offline, goodForRenew map[string]bool) (*unfinishedUploadChunk, error) {
 	// Copy entry
 	entryCopy := entry.Copy()
 	stuck, err := entry.StuckChunkByIndex(chunkIndex)
@@ -370,7 +370,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FNode, chunkIndex
 // they are done and so cannot share a SiaFileSetEntry as the first chunk to
 // finish would then close the Entry and consequentially impact the remaining
 // chunks.
-func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
+func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
 	r.staticWorkerPool.mu.RLock()
@@ -615,7 +615,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath modules.SiaPath, hosts m
 //
 // NOTE: the files submitted to this function should all be from the same
 // directory
-func (r *Renter) callBuildAndPushChunks(files []*filesystem.FNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
+func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
 	// Sanity check that at least one file was provided
 	if len(files) == 0 {
 		build.Critical("callBuildAndPushChunks called without providing any files")
@@ -784,7 +784,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 		return
 	}
 	// Build files from fileinfos
-	var files []*filesystem.FNode
+	var files []*filesystem.FileNode
 	for _, fi := range fileinfos {
 		// skip sub directories and non siafiles
 		ext := filepath.Ext(fi.Name())

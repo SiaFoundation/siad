@@ -26,7 +26,7 @@ import (
 
 // newTestFileSystemWithFile creates a new FileSystem and SiaFile and makes sure
 // that they are linked
-func newTestFileSystemWithFile(name string) (*FNode, *FileSystem, error) {
+func newTestFileSystemWithFile(name string) (*FileNode, *FileSystem, error) {
 	dir := testDir(name)
 	fs := newTestFileSystem(dir)
 	sp := modules.RandomSiaPath()
@@ -351,7 +351,7 @@ func TestOpenSiaFile(t *testing.T) {
 	if *sf.path != filepath.Join(root, (*sf.name)+modules.SiaFileExtension) {
 		t.Fatal("file has wrong path", *sf.path)
 	}
-	if sf.parent != &fs.DNode {
+	if sf.parent != &fs.DirNode {
 		t.Fatalf("parent of file should be %v but was %v", &fs.node, sf.parent)
 	}
 	if sf.threadUID == 0 {
@@ -839,7 +839,7 @@ func TestSiaDirRename(t *testing.T) {
 	// to disk.
 	stop := make(chan struct{})
 	wg := new(sync.WaitGroup)
-	f := func(entry *DNode) {
+	f := func(entry *DirNode) {
 		defer wg.Done()
 		defer entry.Close()
 		for {
@@ -1064,7 +1064,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	// Repeatedly create a SiaFile and delete it while still keeping the entry
 	// around. That should only be possible without errors if the correctly
 	// delete the entry from the set.
-	var entries []*FNode
+	var entries []*FileNode
 	for i := 0; i < 10; i++ {
 		// Create SiaFile
 		up := modules.FileUploadParams{
@@ -1430,7 +1430,7 @@ func TestSiaDirDelete(t *testing.T) {
 	// file to disk.
 	stop := make(chan struct{})
 	wg := new(sync.WaitGroup)
-	f := func(entry *FNode) {
+	f := func(entry *FileNode) {
 		defer wg.Done()
 		defer entry.Close()
 		for {
@@ -1563,7 +1563,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	// file to disk.
 	stop := make(chan struct{})
 	wg := new(sync.WaitGroup)
-	f := func(entry *FNode) {
+	f := func(entry *FileNode) {
 		defer wg.Done()
 		defer entry.Close()
 		for {

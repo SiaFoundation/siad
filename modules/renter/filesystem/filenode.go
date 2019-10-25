@@ -12,8 +12,8 @@ import (
 )
 
 type (
-	// FNode is a node which references a SiaFile.
-	FNode struct {
+	// FileNode is a node which references a SiaFile.
+	FileNode struct {
 		node
 
 		*siafile.SiaFile
@@ -21,12 +21,12 @@ type (
 )
 
 // close calls the common close method.
-func (n *FNode) close() {
+func (n *FileNode) close() {
 	n.node._close()
 }
 
 // managedClose calls close while holding the node's lock.
-func (n *FNode) managedClose() {
+func (n *FileNode) managedClose() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.close()
@@ -34,7 +34,7 @@ func (n *FNode) managedClose() {
 
 // Close calls close on the underlying node and also removes the fNode from its
 // parent.
-func (n *FNode) Close() {
+func (n *FileNode) Close() {
 	// If a parent exists, we need to lock it while closing a child.
 	n.mu.Lock()
 	parent := n.parent
@@ -78,29 +78,29 @@ func (n *FNode) Close() {
 }
 
 // Copy copies a file node and returns the copy.
-func (n *FNode) Copy() *FNode {
+func (n *FileNode) Copy() *FileNode {
 	return n.managedCopy()
 }
 
 // managedCopy copies a file node and returns the copy.
-func (n *FNode) managedCopy() *FNode {
+func (n *FileNode) managedCopy() *FileNode {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	newNode := *n
 	newNode.threadUID = newThreadUID()
-	newNode.threads[newNode.threadUID] = newThreadType()
+	newNode.threads[newNode.threadUID] = newThreadInfo()
 	return &newNode
 }
 
 // Delete deletes the fNode's underlying file from disk.
-func (n *FNode) managedDelete() error {
+func (n *FileNode) managedDelete() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.SiaFile.Delete()
 }
 
 // managedFileInfo returns the FileInfo of the file node.
-func (n *FNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Build the FileInfo
 	var onDisk bool
 	localPath := n.LocalPath()
@@ -146,7 +146,7 @@ func (n *FNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool
 }
 
 // managedRename renames the fNode's underlying file.
-func (n *FNode) managedRename(newName string, oldParent, newParent *DNode) error {
+func (n *FileNode) managedRename(newName string, oldParent, newParent *DirNode) error {
 	// Lock the parents. If they are the same, only lock one.
 	if oldParent.staticUID == newParent.staticUID {
 		oldParent.mu.Lock()
@@ -187,7 +187,7 @@ func (n *FNode) managedRename(newName string, oldParent, newParent *DNode) error
 // cachedFileInfo returns information on a siafile. As a performance
 // optimization, the fileInfo takes the maps returned by
 // renter.managedContractUtilityMaps for many files at once.
-func (n *FNode) staticCachedInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	md := n.Metadata()
 
 	// Build the FileInfo

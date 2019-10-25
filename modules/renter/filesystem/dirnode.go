@@ -18,19 +18,22 @@ import (
 )
 
 type (
-	// DNode is a node which references a SiaDir.
-	DNode struct {
+	// DirNode is a node which references a SiaDir.
+	DirNode struct {
 		node
 
-		directories map[string]*DNode
-		files       map[string]*FNode
+		directories map[string]*DirNode
+		files       map[string]*FileNode
 
+		// lazySiaDir is the SiaDir of the DirNode. 'lazy' means that it will
+		// only be loaded on demand and destroyed as soon as the length of
+		// 'threads' reaches 0.
 		lazySiaDir **siadir.SiaDir
 	}
 )
 
 // Delete is a wrapper for SiaDir.Delete.
-func (n *DNode) Delete() error {
+func (n *DirNode) Delete() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	sd, err := n.siaDir()
@@ -41,7 +44,7 @@ func (n *DNode) Delete() error {
 }
 
 // DirReader is a wrapper for SiaDir.DirReader.
-func (n *DNode) DirReader() (*siadir.DirReader, error) {
+func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	sd, err := n.siaDir()
@@ -70,7 +73,7 @@ func HealthPercentage(health float64) float64 {
 }
 
 // Metadata is a wrapper for SiaDir.Metadata.
-func (n *DNode) Metadata() (siadir.Metadata, error) {
+func (n *DirNode) Metadata() (siadir.Metadata, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	sd, err := n.siaDir()
@@ -84,7 +87,7 @@ func (n *DNode) Metadata() (siadir.Metadata, error) {
 }
 
 // Path is a wrapper for SiaDir.Path.
-func (n *DNode) Path() (string, error) {
+func (n *DirNode) Path() (string, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	sd, err := n.siaDir()
@@ -95,7 +98,7 @@ func (n *DNode) Path() (string, error) {
 }
 
 // UpdateMetadata is a wrapper for SiaDir.Path.
-func (n *DNode) UpdateMetadata(md siadir.Metadata) error {
+func (n *DirNode) UpdateMetadata(md siadir.Metadata) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	sd, err := n.siaDir()
@@ -106,7 +109,7 @@ func (n *DNode) UpdateMetadata(md siadir.Metadata) error {
 }
 
 // managedList returns the files and dirs within the SiaDir.
-func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, dirLoadChan chan *DNode) error {
+func (n *DirNode) managedList(recursive, cached bool, fileLoadChan chan *FileNode, dirLoadChan chan *DirNode) error {
 	// Get DirectoryInfo of dir itself.
 	dirLoadChan <- n.managedCopy()
 	// Read dir.
@@ -156,7 +159,7 @@ func (n *DNode) managedList(recursive, cached bool, fileLoadChan chan *FNode, di
 }
 
 // close calls the common close method.
-func (n *DNode) close() {
+func (n *DirNode) close() {
 	n.node._close()
 	// If no more threads use the directory we delete the SiaDir to invalidate
 	// the cache.
@@ -166,7 +169,7 @@ func (n *DNode) close() {
 }
 
 // managedClose calls close while holding the node's lock.
-func (n *DNode) managedClose() {
+func (n *DirNode) managedClose() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.close()
@@ -175,7 +178,7 @@ func (n *DNode) managedClose() {
 // managedNewSiaFileFromReader will read a siafile and its chunks from the given
 // reader and add it to the directory. This will always load the file from the
 // given reader.
-func (n *DNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) error {
+func (n *DirNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) error {
 	// Load the file.
 	path := filepath.Join(n.managedAbsPath(), fileName+modules.SiaFileExtension)
 	sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(rs, path, n.staticWal)
@@ -213,7 +216,7 @@ func (n *DNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) e
 		return err
 	}
 	// Add the node to the dir.
-	fn := &FNode{
+	fn := &FileNode{
 		node:    newNode(n, currentPath, fileName, 0, n.staticWal),
 		SiaFile: sf,
 	}
@@ -223,7 +226,7 @@ func (n *DNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) e
 
 // managedNewSiaFileFromLegacyData adds an existing SiaFile to the filesystem
 // using the provided siafile.FileData object.
-func (n *DNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.FileData) (*FNode, error) {
+func (n *DirNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.FileData) (*FileNode, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Check if the path is taken.
@@ -242,7 +245,7 @@ func (n *DNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.File
 		return nil, err
 	}
 	// Add it to the node.
-	fn := &FNode{
+	fn := &FileNode{
 		node:    newNode(n, path, key, 0, n.staticWal),
 		SiaFile: sf,
 	}
@@ -251,14 +254,14 @@ func (n *DNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.File
 }
 
 // managedSiaDir calls siaDir while holding the node's lock.
-func (n *DNode) managedSiaDir() (*siadir.SiaDir, error) {
+func (n *DirNode) managedSiaDir() (*siadir.SiaDir, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.siaDir()
 }
 
 // siaDir is a wrapper for the lazySiaDir field.
-func (n *DNode) siaDir() (*siadir.SiaDir, error) {
+func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 	if *n.lazySiaDir != nil {
 		return *n.lazySiaDir, nil
 	}
@@ -276,7 +279,7 @@ func (n *DNode) siaDir() (*siadir.SiaDir, error) {
 // Close calls close on the dNode and also removes the dNode from its parent if
 // it's no longer being used and if it doesn't have any children which are
 // currently in use.
-func (n *DNode) Close() {
+func (n *DirNode) Close() {
 	// If a parent exists, we need to lock it while closing a child.
 	n.mu.Lock()
 	parent := n.parent
@@ -322,7 +325,7 @@ func (n *DNode) Close() {
 }
 
 // Delete recursively deletes a dNode from disk.
-func (n *DNode) managedDelete() error {
+func (n *DirNode) managedDelete() error {
 	// If there is a parent lock it.
 	if n.parent != nil {
 		n.parent.mu.Lock()
@@ -332,7 +335,7 @@ func (n *DNode) managedDelete() error {
 	defer n.mu.Unlock()
 	// Get contents of dir.
 	dirsToLock := n.childDirs()
-	var filesToDelete []*FNode
+	var filesToDelete []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
 		file.mu.Lock()
@@ -389,7 +392,7 @@ func (n *DNode) managedDelete() error {
 }
 
 // managedDeleteFile deletes the file with the given name from the directory.
-func (n *DNode) managedDeleteFile(fileName string) error {
+func (n *DirNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Check if the file is open in memory. If it is delete it.
@@ -411,7 +414,7 @@ func (n *DNode) managedDeleteFile(fileName string) error {
 }
 
 // managedInfo builds and returns the DirectoryInfo of a SiaDir.
-func (n *DNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
+func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
 	// Grab the siadir metadata
 	metadata, err := n.Metadata()
 	if err != nil {
@@ -451,8 +454,8 @@ func (n *DNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, err
 
 // childDirs is a convenience method to return the directories field of a DNode
 // as a slice.
-func (n *DNode) childDirs() []*DNode {
-	dirs := make([]*DNode, 0, len(n.directories))
+func (n *DirNode) childDirs() []*DirNode {
+	dirs := make([]*DirNode, 0, len(n.directories))
 	for _, dir := range n.directories {
 		dirs = append(dirs, dir)
 	}
@@ -461,8 +464,8 @@ func (n *DNode) childDirs() []*DNode {
 
 // childFiles is a convenience method to return the files field of a DNode as a
 // slice.
-func (n *DNode) childFiles() []*FNode {
-	files := make([]*FNode, 0, len(n.files))
+func (n *DirNode) childFiles() []*FileNode {
+	files := make([]*FileNode, 0, len(n.files))
 	for _, file := range n.files {
 		files = append(files, file)
 	}
@@ -470,7 +473,7 @@ func (n *DNode) childFiles() []*FNode {
 }
 
 // managedNewSiaFile creates a new SiaFile in the directory.
-func (n *DNode) managedNewSiaFile(fileName string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Make sure we don't have a copy of that file in memory already.
@@ -483,7 +486,7 @@ func (n *DNode) managedNewSiaFile(fileName string, source string, ec modules.Era
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (n *DNode) managedOpenFile(fileName string) (*FNode, error) {
+func (n *DirNode) managedOpenFile(fileName string) (*FileNode, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.openFile(fileName)
@@ -491,7 +494,7 @@ func (n *DNode) managedOpenFile(fileName string) (*FNode, error) {
 
 // openFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (n *DNode) openFile(fileName string) (*FNode, error) {
+func (n *DirNode) openFile(fileName string) (*FileNode, error) {
 	fn, exists := n.files[fileName]
 	if !exists {
 		// Load file from disk.
@@ -503,7 +506,7 @@ func (n *DNode) openFile(fileName string) (*FNode, error) {
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to load SiaFile from disk")
 		}
-		fn = &FNode{
+		fn = &FileNode{
 			node:    newNode(n, filePath, fileName, 0, n.staticWal),
 			SiaFile: sf,
 		}
@@ -516,7 +519,7 @@ func (n *DNode) openFile(fileName string) (*FNode, error) {
 }
 
 // openDir opens the dir with the specified name within the current dir.
-func (n *DNode) openDir(dirName string) (*DNode, error) {
+func (n *DirNode) openDir(dirName string) (*DirNode, error) {
 	// Check if dir was already loaded. Then just copy it.
 	dir, exists := n.directories[dirName]
 	if exists {
@@ -531,10 +534,10 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	dir = &DNode{
+	dir = &DirNode{
 		node:        newNode(n, dirPath, dirName, 0, n.staticWal),
-		directories: make(map[string]*DNode),
-		files:       make(map[string]*FNode),
+		directories: make(map[string]*DirNode),
+		files:       make(map[string]*FileNode),
 		lazySiaDir:  new(*siadir.SiaDir),
 	}
 	n.directories[*dir.name] = dir
@@ -543,17 +546,17 @@ func (n *DNode) openDir(dirName string) (*DNode, error) {
 
 // copy copies the node, adds a new thread to the threads map and returns the
 // new instance.
-func (n *DNode) copy() *DNode {
+func (n *DirNode) copy() *DirNode {
 	// Copy the dNode and change the uid to a unique one.
 	newNode := *n
 	newNode.threadUID = newThreadUID()
-	newNode.threads[newNode.threadUID] = newThreadType()
+	newNode.threads[newNode.threadUID] = newThreadInfo()
 	return &newNode
 }
 
 // managedCopy copies the node, adds a new thread to the threads map and returns the
 // new instance.
-func (n *DNode) managedCopy() *DNode {
+func (n *DirNode) managedCopy() *DirNode {
 	// Copy the dNode and change the uid to a unique one.
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -561,7 +564,7 @@ func (n *DNode) managedCopy() *DNode {
 }
 
 // managedOpenDir opens a SiaDir.
-func (n *DNode) managedOpenDir(path string) (*DNode, error) {
+func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
 	// Get the name of the next sub directory.
 	pathList := strings.Split(path, string(filepath.Separator))
 	n.mu.Lock()
@@ -584,7 +587,7 @@ func (n *DNode) managedOpenDir(path string) (*DNode, error) {
 // without children and if the threads map of the dNode is empty, the dNode will
 // remove itself from its parent.
 // NOTE: child.mu needs to be locked
-func (n *DNode) removeDir(child *DNode) {
+func (n *DirNode) removeDir(child *DirNode) {
 	// Remove the child node.
 	currentChild, exists := n.directories[*child.name]
 	if !exists || child.staticUID != currentChild.staticUID {
@@ -597,7 +600,7 @@ func (n *DNode) removeDir(child *DNode) {
 // ends up without children and if the threads map of the dNode is empty, the
 // dNode will remove itself from its parent.
 // NOTE: child.mu needs to be locked
-func (n *DNode) removeFile(child *FNode) {
+func (n *DirNode) removeFile(child *FileNode) {
 	// Remove the child node.
 	currentChild, exists := n.files[*child.name]
 	if !exists || child.SiaFile != currentChild.SiaFile {
@@ -607,7 +610,7 @@ func (n *DNode) removeFile(child *FNode) {
 }
 
 // managedRename renames the fNode's underlying file.
-func (n *DNode) managedRename(newName string, oldParent, newParent *DNode) error {
+func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) error {
 	// Lock the parents. If they are the same, only lock one.
 	if oldParent.staticUID == newParent.staticUID {
 		oldParent.mu.Lock()
@@ -625,8 +628,8 @@ func (n *DNode) managedRename(newName string, oldParent, newParent *DNode) error
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	dirsToLock := n.childDirs()
-	var dirsToRename []*DNode
-	var filesToRename []*FNode
+	var dirsToRename []*DirNode
+	var filesToRename []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
 		file.mu.Lock()

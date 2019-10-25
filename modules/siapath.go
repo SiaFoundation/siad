@@ -75,10 +75,10 @@ func HomeSiaPath() SiaPath {
 	return sp
 }
 
-// SiaFilesSiaPath returns a siapath to /home/siafiles
-func SiaFilesSiaPath() SiaPath {
+// UserSiaPath returns a siapath to /home/user
+func UserSiaPath() SiaPath {
 	sp := HomeSiaPath()
-	sp, err := sp.Join(SiaFilesRoot)
+	sp, err := sp.Join(UserRoot)
 	if err != nil {
 		build.Critical(err)
 	}

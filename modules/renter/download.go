@@ -241,7 +241,7 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
-	p.SiaPath, err = modules.SiaFilesSiaPath().Join(p.SiaPath.String())
+	p.SiaPath, err = modules.UserSiaPath().Join(p.SiaPath.String())
 	if err != nil {
 		return nil, err
 	}
@@ -535,7 +535,7 @@ func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bo
 		return modules.DownloadInfo{}, false
 	}
 	// Rebase the siapath.
-	sp, err := d.staticSiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+	sp, err := d.staticSiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 	if err != nil {
 		sp = d.staticSiaPath // should only happen during testing
 	}
@@ -583,7 +583,7 @@ func (r *Renter) DownloadHistory() []modules.DownloadInfo {
 		// Order from most recent to least recent.
 		d := downloadHistory[len(r.downloadHistory)-i-1]
 		// Rebase the siapath.
-		sp, err := d.staticSiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+		sp, err := d.staticSiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 		if err != nil {
 			// should only happen during testing.
 			sp = d.staticSiaPath

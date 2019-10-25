@@ -472,7 +472,7 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 	defer r.tg.Done()
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
-	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
 	if err != nil {
 		return "", nil, err
 	}

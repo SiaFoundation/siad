@@ -36,22 +36,22 @@ type (
 	// SiaFiles, SiaDirs and potentially other supported Sia types in the
 	// future.
 	FileSystem struct {
-		DNode
+		DirNode
 	}
 
 	// node is a struct that contains the commmon fields of every node.
 	node struct {
 		// fields that all copies of a node share.
 		path      *string
-		parent    *DNode
+		parent    *DirNode
 		name      *string
 		staticWal *writeaheadlog.WAL
-		threads   map[threadUID]threadInfo
+		threads   map[threadUID]threadInfo // tracks all the threadUIDs of evey copy of the node
 		staticUID threadUID
 		mu        *sync.Mutex
 
 		// fields that differ between copies of the same node.
-		threadUID threadUID
+		threadUID threadUID // unique ID of a copy of a node
 	}
 
 	// threadInfo contains useful information about the thread accessing the
@@ -66,7 +66,7 @@ type (
 )
 
 // newNode is a convenience function to initialize a node.
-func newNode(parent *DNode, path, name string, uid threadUID, wal *writeaheadlog.WAL) node {
+func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadlog.WAL) node {
 	return node{
 		path:      &path,
 		parent:    parent,
@@ -79,8 +79,8 @@ func newNode(parent *DNode, path, name string, uid threadUID, wal *writeaheadlog
 	}
 }
 
-// newThreadType created a threadInfo entry for the threadMap
-func newThreadType() threadInfo {
+// newThreadInfo created a threadInfo entry for the threadMap
+func newThreadInfo() threadInfo {
 	tt := threadInfo{
 		callingFiles: make([]string, threadDepth+1),
 		callingLines: make([]int, threadDepth+1),
@@ -126,11 +126,11 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 		return nil, errors.AddContext(err, "failed to create root dir")
 	}
 	return &FileSystem{
-		DNode: DNode{
+		DirNode: DirNode{
 			// The root doesn't require a parent, a name or uid.
 			node:        newNode(nil, root, "", 0, wal),
-			directories: make(map[string]*DNode),
-			files:       make(map[string]*FNode),
+			directories: make(map[string]*DirNode),
+			files:       make(map[string]*FileNode),
 			lazySiaDir:  new(*siadir.SiaDir),
 		},
 	}, nil
@@ -255,12 +255,12 @@ func (fs *FileSystem) Root() string {
 }
 
 // FileSiaPath returns the SiaPath of a file node.
-func (fs *FileSystem) FileSiaPath(n *FNode) (sp modules.SiaPath) {
+func (fs *FileSystem) FileSiaPath(n *FileNode) (sp modules.SiaPath) {
 	return fs.managedSiaPath(&n.node)
 }
 
 // DirSiaPath returns the SiaPath of a dir node.
-func (fs *FileSystem) DirSiaPath(n *DNode) (sp modules.SiaPath) {
+func (fs *FileSystem) DirSiaPath(n *DirNode) (sp modules.SiaPath) {
 	return fs.managedSiaPath(&n.node)
 }
 
@@ -305,9 +305,9 @@ func (fs *FileSystem) WriteFile(siaPath modules.SiaPath, data []byte, perm os.Fi
 
 // NewSiaFileFromLegacyData creates a new SiaFile from data that was previously loaded
 // from a legacy file.
-func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, error) {
+func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FileNode, error) {
 	// Get file's SiaPath.
-	sp, err := modules.SiaFilesSiaPath().Join(fd.Name)
+	sp, err := modules.UserSiaPath().Join(fd.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -332,13 +332,13 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FNode, err
 
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
+func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
 	return fs.managedOpenSiaDir(siaPath)
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FNode, error) {
+func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FileNode, error) {
 	sf, err := fs.managedOpenFile(siaPath.String())
 	if err != nil {
 		return nil, err
@@ -438,9 +438,9 @@ func (fs *FileSystem) RenameDir(oldSiaPath, newSiaPath modules.SiaPath) error {
 func (fs *FileSystem) managedDeleteFile(path string) error {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(path)
-	var dir *DNode
+	var dir *DirNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
-		dir = &fs.DNode // file is in the root dir
+		dir = &fs.DirNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(path))
@@ -458,9 +458,9 @@ func (fs *FileSystem) managedDeleteFile(path string) error {
 // managedDelete on it.
 func (fs *FileSystem) managedDeleteDir(path string) error {
 	// Open the dir.
-	var dir *DNode
+	var dir *DirNode
 	if path == "" {
-		dir = &fs.DNode // file is in the root dir
+		dir = &fs.DirNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(path)
@@ -495,8 +495,8 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	defer dir.Close()
 	// Prepare a pool of workers.
 	numThreads := 20
-	dirLoadChan := make(chan *DNode, numThreads)
-	fileLoadChan := make(chan *FNode, numThreads)
+	dirLoadChan := make(chan *DirNode, numThreads)
+	fileLoadChan := make(chan *FileNode, numThreads)
 	var fisMu, disMu sync.Mutex
 	dirWorker := func() {
 		for sd := range dirLoadChan {
@@ -583,12 +583,12 @@ func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath) error {
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) managedOpenFile(path string) (*FNode, error) {
+func (fs *FileSystem) managedOpenFile(path string) (*FileNode, error) {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(path)
-	var dir *DNode
+	var dir *DirNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
-		dir = &fs.DNode // file is in the root dir
+		dir = &fs.DirNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(path))
@@ -607,9 +607,9 @@ func (fs *FileSystem) managedOpenFile(path string) (*FNode, error) {
 func (fs *FileSystem) managedNewSiaFile(path string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(path)
-	var dir *DNode
+	var dir *DirNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
-		dir = &fs.DNode // file is in the root dir
+		dir = &fs.DirNode // file is in the root dir
 	} else {
 		var err error
 		dir, err = fs.managedOpenDir(filepath.Dir(path))
@@ -623,11 +623,11 @@ func (fs *FileSystem) managedNewSiaFile(path string, source string, ec modules.E
 
 // managedOpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) managedOpenSiaDir(siaPath modules.SiaPath) (*DNode, error) {
+func (fs *FileSystem) managedOpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
 	if siaPath.IsRoot() {
-		return fs.DNode.managedCopy(), nil
+		return fs.DirNode.managedCopy(), nil
 	}
-	dir, err := fs.DNode.managedOpenDir(siaPath.String())
+	dir, err := fs.DirNode.managedOpenDir(siaPath.String())
 	if err != nil {
 		return nil, err
 	}

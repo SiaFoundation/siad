@@ -26,7 +26,7 @@ type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
 	id        uploadChunkID
-	fileEntry *filesystem.FNode
+	fileEntry *filesystem.FileNode
 	threadUID int
 
 	// Information about the chunk, namely where it exists within the file.

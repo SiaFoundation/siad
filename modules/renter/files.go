@@ -10,7 +10,7 @@ import (
 // /home/siafiles and not relative to root.
 func trimSiaFileFolder(fis ...modules.FileInfo) (_ []modules.FileInfo, err error) {
 	for i := range fis {
-		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 		if err != nil {
 			return nil, err
 		}
@@ -28,7 +28,7 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
-	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
 	if err != nil {
 		return err
 	}
@@ -56,9 +56,9 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
 	if siaPath.IsRoot() {
-		siaPath = modules.SiaFilesSiaPath()
+		siaPath = modules.UserSiaPath()
 	} else {
-		siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+		siaPath, err = modules.UserSiaPath().Join(siaPath.String())
 	}
 	if err != nil {
 		return []modules.FileInfo{}, err
@@ -81,7 +81,7 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	defer r.tg.Done()
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
-	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
@@ -107,11 +107,11 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	defer r.tg.Done()
 	// Prepend the provided siapaths with the /home/siafiles dir.
 	var err error
-	currentName, err = modules.SiaFilesSiaPath().Join(currentName.String())
+	currentName, err = modules.UserSiaPath().Join(currentName.String())
 	if err != nil {
 		return err
 	}
-	newName, err = modules.SiaFilesSiaPath().Join(newName.String())
+	newName, err = modules.UserSiaPath().Join(newName.String())
 	if err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
 	defer r.tg.Done()
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
-	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
 	if err != nil {
 		return err
 	}

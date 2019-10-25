@@ -122,7 +122,7 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The .siadir file should also be recovered.
-	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.SiaFilesRoot, "subDir", modules.SiaDirExtension)
+	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, "subDir", modules.SiaDirExtension)
 	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
 		t.Fatal(".siadir file doesn't exist:", dirMDPath)
 	}

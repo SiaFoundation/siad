@@ -37,7 +37,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	// Prepend siapath user provided with /home/siafiles.
 	var err error
 	sp := up.SiaPath // Remember the original path.
-	up.SiaPath, err = modules.SiaFilesSiaPath().Join(up.SiaPath.String())
+	up.SiaPath, err = modules.UserSiaPath().Join(up.SiaPath.String())
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	nilMap := make(map[string]bool)
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
-	r.callBuildAndPushChunks([]*filesystem.FNode{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
+	r.callBuildAndPushChunks([]*filesystem.FileNode{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
 	select {
 	case r.uploadHeap.newUploads <- struct{}{}:
 	default:

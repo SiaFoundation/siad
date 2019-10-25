@@ -3103,7 +3103,7 @@ func TestSiafileCompatCode(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
-	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.SiaFilesRoot, "sub1", "sub2", "testfile.sia")
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, "sub1", "sub2", "testfile.sia")
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}

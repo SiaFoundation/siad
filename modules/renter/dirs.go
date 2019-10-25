@@ -9,9 +9,9 @@ import (
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	if siaPath.IsRoot() {
-		return modules.SiaFilesSiaPath(), nil
+		return modules.UserSiaPath(), nil
 	}
-	return modules.SiaFilesSiaPath().Join(siaPath.String())
+	return modules.UserSiaPath().Join(siaPath.String())
 }
 
 // trimSiaDirFolder is a helper method to trim /home/siafiles off of the
@@ -19,7 +19,7 @@ func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 // /home/siafiles and not relative to root.
 func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, err error) {
 	for i := range dis {
-		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 		if err != nil {
 			return nil, err
 		}

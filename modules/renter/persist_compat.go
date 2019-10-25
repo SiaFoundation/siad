@@ -286,7 +286,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 
 // v137FileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*filesystem.FNode, error) {
+func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*filesystem.FileNode, error) {
 	// Create a mapping of contract ids to host keys.
 	contracts := r.hostContractor.Contracts()
 	idToPk := make(map[types.FileContractID]types.SiaPublicKey)

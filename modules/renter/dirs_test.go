@@ -69,7 +69,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	// Since we are using the filesystem here directly we need to rebase the
 	// path first.
-	siaPath, err := siaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath, err := siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func TestDirInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Rebase siaPath.
-	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,11 +218,11 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.SiaFilesSiaPath())
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestRenterListDirectory(t *testing.T) {
 
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
-func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesystem.DNode) error {
+func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesystem.DirNode) error {
 	md, err := siaDir.Metadata()
 	if err != nil {
 		return err

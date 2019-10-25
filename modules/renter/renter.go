@@ -489,7 +489,7 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 // Additionally a map of host pubkeys to renter contract is returned.  The
 // offline and goodforrenew maps are needed for calculating redundancy and other
 // file metrics.
-func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FNode) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FileNode) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
 	// Save host keys in map.
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew = make(map[string]bool)
@@ -605,7 +605,7 @@ func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) er
 	defer r.tg.Done()
 	// Prepend the provided siapath with the /home/siafiles dir.
 	var err error
-	siaPath, err = modules.SiaFilesSiaPath().Join(siaPath.String())
+	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
 	if err != nil {
 		return err
 	}

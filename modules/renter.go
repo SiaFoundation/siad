@@ -112,9 +112,9 @@ const (
 	// the user accessible data.
 	HomeFolderRoot = "home"
 
-	// SiaFilesRoot is the name of the directory that is used to store the
+	// UserRoot is the name of the directory that is used to store the
 	// renter's siafiles.
-	SiaFilesRoot = "siafiles"
+	UserRoot = "user"
 
 	// BackupRoot is the name of the directory that is used to store the renter's
 	// snapshot siafiles.

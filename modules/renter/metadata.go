@@ -225,7 +225,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	defer sf.Close()
 
 	// Get offline and goodforrenew maps
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*filesystem.FNode{sf})
+	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*filesystem.FileNode{sf})
 
 	// Calculate file health
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)

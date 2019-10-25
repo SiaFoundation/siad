@@ -13,7 +13,7 @@ import (
 func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) error {
 	// Since we are using the filesystem here directly we need to rebase the
 	// path first.
-	siaPath, err := siaPath.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath, err := siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		return err
 	}
@@ -226,7 +226,7 @@ func TestPushSubDirectories(t *testing.T) {
 
 	// Add siafiles sub directories
 	d := &directory{
-		siaPath: modules.SiaFilesSiaPath(),
+		siaPath: modules.UserSiaPath(),
 	}
 	err = rt.renter.managedPushSubDirectories(d)
 	if err != nil {
@@ -239,11 +239,11 @@ func TestPushSubDirectories(t *testing.T) {
 	}
 
 	// Rebase paths.
-	siaPath1, err = siaPath1.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath1, err = siaPath1.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath2, err = siaPath2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath2, err = siaPath2.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	// Make sure we are starting with an empty heap, this helps with ndfs and
 	// tests proper handling of empty heaps
 	rt.renter.directoryHeap.managedReset()
-	err = rt.renter.managedPushUnexploredDirectory(modules.SiaFilesSiaPath())
+	err = rt.renter.managedPushUnexploredDirectory(modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	}
 
 	// Directory should be root/home/siafiles/SubDir2/SubDir2
-	siaPath2_2, err = siaPath2_2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath2_2, err = siaPath2_2.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	}
 
 	// Directory should be root/homes/siafiles/SubDir1/SubDir2
-	siaPath1_2, err = siaPath1_2.Rebase(modules.RootSiaPath(), modules.SiaFilesSiaPath())
+	siaPath1_2, err = siaPath1_2.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
