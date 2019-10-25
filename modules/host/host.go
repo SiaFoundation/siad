@@ -144,7 +144,8 @@ type Host struct {
 	modules.StorageManager
 
 	// Subsystems
-	staticAccountManager *accountManager
+	staticAccountManager   *accountManager
+	staticAccountPersister *accountsPersister
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -181,8 +182,8 @@ type Host struct {
 }
 
 type hostUtils struct {
-	log *persist.Logger
 	tg  siasync.ThreadGroup
+	log *persist.Logger
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -282,10 +283,11 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	})
 
 	// Add the account manager subsystem
-	h.staticAccountManager, err = h.newAccountManager(h.dependencies, persistDir)
+	h.staticAccountPersister, err = h.newAccountsPersister(h.dependencies)
 	if err != nil {
 		return nil, err
 	}
+	h.staticAccountManager, _ = h.newAccountManager(h.dependencies)
 
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.

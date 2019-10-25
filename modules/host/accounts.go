@@ -1,13 +1,12 @@
 package host
 
 import (
-	"path/filepath"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -19,27 +18,15 @@ const (
 )
 
 var (
-	// errMaxBalanceExceeded is returned whenever a deposit is done that would
-	// exceed the maximum account balance
-	errMaxBalanceExceeded = errors.New("deposit exceeds maximum account balance")
+	errBlockedCallTimeout  = errors.New("blocked call timeout")
+	errInsufficientBalance = errors.New("insufficient balance")
+	errMaxBalanceExceeded  = errors.New("maximum account balance exceeded")
+	errReceiptSpent        = errors.New("receipt spent")
 
-	// amPersistFilename defines the name of the file that holds the account
-	// manager's persistence
-	amPersistFilename = "accountmanager.json"
-
-	// amPersistMetadata is the header that is used when writing the account
-	// manager's state to disk.
-	amPersistMetadata = persist.Metadata{
-		Header:  "Account Manager Persistence",
-		Version: "1.4.1.3",
-	}
-
-	// accountMaxBalance is the maximum balance an ephemeral account is allowed
-	// to contain
+	// accountMaxBalance is the maximum allowed balance
 	accountMaxBalance = types.SiacoinPrecision.Mul64(1e3)
 
-	// blockedCallTimeout is the maximum amount of time we wait for an account
-	// to have a certain balance
+	// blockedCallTimeout is the maximum amount of time a call is blocked
 	blockedCallTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      15 * time.Second,
@@ -51,13 +38,12 @@ var (
 	pruneExpiredAccountsFrequency = build.Select(build.Var{
 		Standard: 1 * time.Hour,
 		Dev:      15 * time.Second,
-		Testing:  3 * time.Second,
+		Testing:  1 * time.Second,
 	}).(time.Duration)
 )
 
 type (
-	// accountManager is a subsystem responsible for managing ephemeral
-	// accounts.
+	// accountManager is a subsystem that manages all ephemeral accounts.
 	//
 	// These accounts are a pubkey with a balance associated to it. They are
 	// kept completely off-chain and serve as a method of payment.
@@ -68,23 +54,16 @@ type (
 	//
 	// All operations on the account have ACID properties.
 	accountManager struct {
-		accounts map[string]types.Currency
-		receipts map[string]string
-		updated  map[string]int64
-
-		totalExpired types.Currency // Keep track of total expired funds
+		accounts     map[string]types.Currency
+		receipts     map[crypto.Hash]struct{}
+		updated      map[string]int64
 		blockedCalls []blockedCall
-		persistDir   string
+		totalExpired types.Currency
 
 		mu           sync.Mutex
+		persister    *accountsPersister
 		dependencies modules.Dependencies
 		hostUtils
-	}
-
-	// amPersist contains all account manager data we want to persist
-	amPersist struct {
-		Accounts     map[string]types.Currency
-		TotalExpired types.Currency
 	}
 
 	// blockedCall represents a waiting thread due to insufficient balance
@@ -98,31 +77,21 @@ type (
 )
 
 // newAccountManager returns a new account manager ready for use by the host
-func (h *Host) newAccountManager(dependencies modules.Dependencies, persistDir string) (*accountManager, error) {
+func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountManager, error) {
 	am := &accountManager{
-		accounts: make(map[string]types.Currency),
-		receipts: make(map[string]string),
-		updated:  make(map[string]int64),
-
+		accounts:     make(map[string]types.Currency),
+		receipts:     make(map[crypto.Hash]struct{}),
+		updated:      make(map[string]int64),
 		blockedCalls: make([]blockedCall, 0),
-		persistDir:   persistDir,
-
 		dependencies: dependencies,
-
-		// TODO: fix warning for copying the lock in the tg mutex
-		hostUtils: h.hostUtils,
+		persister:    h.staticAccountPersister,
+		hostUtils:    h.hostUtils, // TODO fix lock copy
 	}
 
-	// Create the perist directory if it does not yet exist.
-	err := am.dependencies.MkdirAll(h.persistDir, 0700)
-	if err != nil {
-		return nil, err
-	}
-
-	err = am.load()
-	if err != nil {
-		am.log.Println("Unable to load account manager state:", err)
-	}
+	// Load account data
+	data := am.persister.callLoadAccountData()
+	am.accounts = data.Accounts
+	am.totalExpired = data.TotalExpired
 
 	go am.threadedPruneExpiredAccounts()
 
@@ -135,15 +104,16 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies, persistDir s
 	return am, nil
 }
 
-// managedDeposit will credit the amount to the account's balance, it will
-// then scroll through all blocked calls and unblock where possible
-func (am *accountManager) managedDeposit(id string, amount types.Currency) error {
-	err := am.tg.Add()
-	if err != nil {
-		return err
-	}
-	defer am.tg.Done()
+// balanceOf will return the balance for given account
+func (am *accountManager) balanceOf(id string) types.Currency {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	return am.accounts[id]
+}
 
+// callDeposit will credit the amount to the account's balance, it will
+// then scroll through all blocked calls and unblock where possible
+func (am *accountManager) callDeposit(id string, amount types.Currency) (*string, error) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -151,7 +121,7 @@ func (am *accountManager) managedDeposit(id string, amount types.Currency) error
 	uB := am.accounts[id].Add(amount)
 	if accountMaxBalance.Cmp(uB) < 0 {
 		am.hostUtils.log.Printf("ERROR: deposit of %v exceeded max balance for account %v", amount, id)
-		return errMaxBalanceExceeded
+		return nil, errMaxBalanceExceeded
 	}
 	am.accounts[id] = uB
 	am.updated[id] = time.Now().Unix()
@@ -176,18 +146,15 @@ func (am *accountManager) managedDeposit(id string, amount types.Currency) error
 	}
 	am.blockedCalls = am.blockedCalls[:j]
 
-	go func() { am.save() }()
+	am.persister.callSaveAccountsData(am.accountsData())
 
-	return nil
+	receipt := "TODO"
+	return &receipt, nil
 }
 
-func (am *accountManager) managedSpend(id string, amount types.Currency, receipt string) error {
-	err := am.tg.Add()
-	if err != nil {
-		return err
-	}
-	defer am.tg.Done()
-
+// callSpend will try to spend from an account, it blocks if the account balance
+// is insufficient
+func (am *accountManager) callSpend(id string, amount types.Currency, receipt crypto.Hash) error {
 	am.mu.Lock()
 
 	// Verify receipt
@@ -195,7 +162,7 @@ func (am *accountManager) managedSpend(id string, amount types.Currency, receipt
 	if exists {
 		am.hostUtils.log.Printf("ERROR: receipt %v was already spent", receipt)
 		am.mu.Unlock()
-		return errors.New("receipt was already spent")
+		return errReceiptSpent
 	}
 
 	// If current account balance is insufficient, we block until either the
@@ -210,24 +177,26 @@ func (am *accountManager) managedSpend(id string, amount types.Currency, receipt
 		am.blockedCalls = append(am.blockedCalls, bc)
 		am.mu.Unlock()
 
+	BlockLoop:
 		for {
 			select {
 			case <-am.tg.StopChan():
 				return errors.New("ERROR: spend cancelled, stop received")
 			case <-bc.unblock:
 				am.mu.Lock()
-				break
+				break BlockLoop
 			case <-time.After(blockedCallTimeout):
-				return errors.New("ERROR: spend timeout, insufficient balance")
+				return errBlockedCallTimeout
 			}
 		}
 	}
 
 	if am.accounts[id].Cmp(amount) < 0 {
 		am.mu.Unlock()
-		return errors.New("ERROR: insufficient balance")
+		return errInsufficientBalance
 	}
 
+	// TODO save receipt
 	am.accounts[id] = am.accounts[id].Sub(amount)
 	am.updated[id] = time.Now().Unix()
 	am.mu.Unlock()
@@ -235,49 +204,25 @@ func (am *accountManager) managedSpend(id string, amount types.Currency, receipt
 	return nil
 }
 
-// save will persist the account manager persistence object to disk
-func (am *accountManager) save() error {
-	data := amPersist{am.accounts, am.totalExpired}
-	return am.dependencies.SaveFileSync(amPersistMetadata, data, filepath.Join(am.persistDir, amPersistFilename))
-}
-
-// load reinstates the saved persistence object from disk
-func (am *accountManager) load() error {
-	var data amPersist
-	data.Accounts = make(map[string]types.Currency)
-	data.TotalExpired = types.ZeroCurrency
-
-	path := filepath.Join(am.persistDir, amPersistFilename)
-	err := am.dependencies.LoadFile(amPersistMetadata, &data, path)
-	if err != nil {
-		return errors.AddContext(err, "filepath: "+path)
-	}
-
-	am.accounts = data.Accounts
-	am.totalExpired = data.TotalExpired
-
-	return nil
-}
-
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
 func (am *accountManager) threadedPruneExpiredAccounts() {
-	err := am.tg.Add()
-	if err != nil {
-		return
-	}
-	defer am.tg.Done()
-
 	for {
+		var save bool
+
+		am.mu.Lock()
 		now := time.Now().Unix()
 		for id, balance := range am.accounts {
 			last, exists := am.updated[id]
 			if !exists || now-last > 0 {
-				am.mu.Lock()
 				am.totalExpired = am.totalExpired.Add(balance)
 				delete(am.accounts, id)
-				am.save()
-				am.mu.Unlock()
+				save = true
 			}
+		}
+		am.mu.Unlock()
+
+		if save {
+			am.persister.callSaveAccountsData(am.accountsData())
 		}
 
 		// Block until next cycle.
@@ -288,4 +233,9 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 			continue
 		}
 	}
+}
+
+// accountsData returns a struct containing all persisted account data
+func (am *accountManager) accountsData() *accountsData {
+	return &accountsData{am.accounts, am.totalExpired}
 }
