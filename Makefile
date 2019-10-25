@@ -85,7 +85,7 @@ cover: clean
 		&& go tool cover -html=cover/$$package.out -o=cover/$$package.html ;                                                                                    \
 	done
 
-# fullcover is a commnd that will give the full coverage statistics for a
+# fullcover is a command that will give the full coverage statistics for a
 # package. Unlike the 'cover' command, full cover will include the testing
 # coverage that is provided by all tests in all packages on the target package.
 # Only one package can be targeted at a time. Use 'cpkg' as the variable for the
@@ -103,11 +103,11 @@ fullcover: clean
 	@mkdir -p fullcover
 	@mkdir -p fullcover/tests
 	@echo "mode: atomic" >> fullcover/fullcover.out
-	@for package in $(pkgs); do                                                                                                                                                                \
-		mkdir -p `dirname fullcover/tests/$$package`                                                                                                                                           \
-		&& GO111MODULE=on go test -v -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=fullcover/tests/$$package.out -coverpkg $(cpkg) ./$$package -run=$(run) || true \
-		&& go tool cover -html=fullcover/tests/$$package.out -o=fullcover/tests/$$package.html                                                                                                 \
-		&& tail -n +2 fullcover/tests/$$package.out >> fullcover/fullcover.out ;                                                                                                               \
+	@for package in $(pkgs); do                                                                                                                                                             \
+		mkdir -p `dirname fullcover/tests/$$package`                                                                                                                                        \
+		&& GO111MODULE=on go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=fullcover/tests/$$package.out -coverpkg $(cpkg) ./$$package -run=$(run) || true \
+		&& go tool cover -html=fullcover/tests/$$package.out -o=fullcover/tests/$$package.html                                                                                              \
+		&& tail -n +2 fullcover/tests/$$package.out >> fullcover/fullcover.out ;                                                                                                            \
 	done
 	@go tool cover -html=fullcover/fullcover.out -o fullcover/fullcover.html
 	@printf 'Full coverage on $(cpkg):'
