@@ -1956,7 +1956,8 @@ Returns the current settings along with metrics on the renter's spending.
     "uploadspending":   "5678", // hastings
     "unspent":          "1234"  // hastings
   },
-  "currentperiod": 200  // blockheight
+  "currentperiod":  6000  // blockheight
+  "nextperiod":    12248  // blockheight
 }
 ```
 #### settings  
@@ -2088,6 +2089,9 @@ Amount of money in the allowance that has not been spent.
 
 **currentperiod** | blockheight  
 Height at which the current allowance period began.  
+
+**nextperiod** | blockheight  
+Height at which the next allowance period began.  
 
 ## /renter [POST]
 > curl example  
