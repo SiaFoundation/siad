@@ -2383,7 +2383,7 @@ ID of the file contract
 }
 ```
 
-**formationsweepheght** | block height
+**formationsweepheight** | block height
 The block height at which the renter's watchdog will try to sweep inputs from
 the formation transaction set if it hasn't been confirmed on chain yet.
 
