@@ -85,7 +85,7 @@ cover: clean
 		&& go tool cover -html=cover/$$package.out -o=cover/$$package.html ;                                                                                    \
 	done
 
-# fullcover is a commnd that will give the full coverage statistics for a
+# fullcover is a command that will give the full coverage statistics for a
 # package. Unlike the 'cover' command, full cover will include the testing
 # coverage that is provided by all tests in all packages on the target package.
 # Only one package can be targeted at a time. Use 'cpkg' as the variable for the
