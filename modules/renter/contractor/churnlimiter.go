@@ -1,5 +1,9 @@
 package contractor
 
+import (
+	"gitlab.com/NebulousLabs/errors"
+)
+
 // managedMarkContractsUtility checks every active contract in the contractor and
 // figures out whether the contract is useful for uploading, and whether the
 // contract should be renewed.
@@ -22,7 +26,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		host, u, needsUpdate := c.hostInHostDBCheck(contract)
 		if needsUpdate {
 			if err = c.managedUpdateContractUtility(contract.ID, u); err != nil {
-				return err
+				return errors.AddContext(err, "unable to update utility after hostdb check")
 			}
 			continue
 		}
@@ -32,7 +36,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		if needsUpdate {
 			err = c.managedUpdateContractUtility(contract.ID, u)
 			if err != nil {
-				return err
+				return errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
 			}
 			continue
 		}
@@ -53,7 +57,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			// Apply changes.
 			err = c.managedUpdateContractUtility(contract.ID, u)
 			if err != nil {
-				return err
+				return errors.AddContext(err, "unable to update utility after checkHostScore")
 			}
 			continue
 
@@ -61,7 +65,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			c.log.Critical("Undefined checkHostScore utilityUpdateStatus", utilityUpdateStatus, contract.ID)
 		}
 
-		// No check failed, marking contract as GFU and GFR.
+		// All checks passed, marking contract as GFU and GFR.
 		if !u.GoodForUpload || !u.GoodForRenew {
 			c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
 		}
@@ -70,7 +74,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		// Apply changes.
 		err = c.managedUpdateContractUtility(contract.ID, u)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to update utility after all checks passed.")
 		}
 	}
 	return nil
