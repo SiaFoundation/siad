@@ -1075,9 +1075,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	var registerLowFundsAlert bool
 	defer func() {
 		if registerLowFundsAlert {
-			c.staticAlerter.RegisterAlert(modules.AlertIDAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
 		} else {
-			c.staticAlerter.UnregisterAlert(modules.AlertIDAllowanceLowFunds)
+			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterAllowanceLowFunds)
 		}
 	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
