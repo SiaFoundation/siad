@@ -528,13 +528,18 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			// locate corresponding entry
 			id = r.mu.RLock()
 			var meta modules.UploadedBackup
+			found := false
 			for _, meta = range r.persist.UploadedBackups {
-				if meta.Name == info.SiaPath.String() {
+				sp, _ := info.SiaPath.Rebase(modules.SnapshotsSiaPath(), modules.RootSiaPath())
+				if meta.Name == sp.String() {
+					found = true
 					break
+				} else {
+					println("!=", meta.Name, sp.String())
 				}
 			}
 			r.mu.RUnlock(id)
-			if meta.Name == "" {
+			if !found {
 				r.log.Println("Could not locate entry for file in backup set")
 				continue
 			}
@@ -581,10 +586,6 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Need to work around the snapshot reader lock issue as well.
 				dotSia, err := ioutil.ReadAll(sr)
 				if err := sr.Close(); err != nil {
-					entry.Close()
-					return err
-				}
-				if err != nil {
 					entry.Close()
 					return err
 				}

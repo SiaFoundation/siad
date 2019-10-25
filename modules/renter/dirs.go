@@ -14,6 +14,19 @@ func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 	return modules.SiaFilesSiaPath().Join(siaPath.String())
 }
 
+// trimSiaDirFolder is a helper method to trim /home/siafiles off of the
+// siapaths of the fileinfos since the user expects a path relative to
+// /home/siafiles and not relative to root.
+func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, err error) {
+	for i := range dis {
+		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.SiaFilesSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return dis, nil
+}
+
 // CreateDir creates a directory for the renter
 func (r *Renter) CreateDir(siaPath modules.SiaPath) error {
 	err := r.tg.Add()
@@ -53,8 +66,9 @@ func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, erro
 		return nil, err
 	}
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	_, di, err := r.staticFileSystem.List(siaPath, false, false, offlineMap, goodForRenewMap, contractsMap)
-	return di, err
+	_, dis, err := r.staticFileSystem.List(siaPath, false, false, offlineMap, goodForRenewMap, contractsMap)
+	dis, err = trimSiaDirFolder(dis...)
+	return dis, err
 }
 
 // RenameDir takes an existing directory and changes the path. The original
