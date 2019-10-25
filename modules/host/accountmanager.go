@@ -190,15 +190,8 @@ func (am *accountManager) managedSpend(id string, amount types.Currency, receipt
 
 	am.mu.Lock()
 
-	// Verify account
-	_, exists := am.accounts[id]
-	if !exists {
-		am.mu.Unlock()
-		return errors.New("ERROR: unknown account")
-	}
-
 	// Verify receipt
-	_, exists = am.receipts[receipt]
+	_, exists := am.receipts[receipt]
 	if exists {
 		am.hostUtils.log.Printf("ERROR: receipt %v was already spent", receipt)
 		am.mu.Unlock()
