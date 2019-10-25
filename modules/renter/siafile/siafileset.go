@@ -375,11 +375,6 @@ func (sfs *SiaFileSet) newSiaFileSetEntry(sf *SiaFile) (*siaFileSetEntry, error)
 
 // open will return the siaFileSetEntry in memory or load it from disk
 func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
-	if strings.HasPrefix(siaPath.String(), ".") {
-		err := errors.New("never open a hidden siafile with 'open'")
-		build.Critical(err)
-		return nil, err
-	}
 	var entry *siaFileSetEntry
 	var exists bool
 	entry, _, exists = sfs.siaPathToEntryAndUID(siaPath)

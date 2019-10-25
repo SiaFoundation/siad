@@ -69,12 +69,9 @@ func (fs *fuseFS) stat(path modules.SiaPath) (os.FileInfo, error) {
 
 // GetAttr implements pathfs.FileSystem.
 func (fs *fuseFS) GetAttr(name string, _ *fuse.Context) (*fuse.Attr, fuse.Status) {
-	if name == "" {
-		name = fs.root.String()
-	}
-	sp, err := modules.NewSiaPath(name)
+	sp, err := fs.root.Join(name)
 	if err != nil {
-		fs.renter.log.Printf("Error calling NewSiaPath on %v: %v", name, err)
+		fs.renter.log.Printf("Error calling Join on %v and %v: %v", fs.root, name, err)
 		return nil, errToStatus(err)
 	}
 	stat, err := fs.stat(sp)
@@ -97,12 +94,9 @@ func (fs *fuseFS) GetAttr(name string, _ *fuse.Context) (*fuse.Attr, fuse.Status
 
 // OpenDir implements pathfs.FileSystem.
 func (fs *fuseFS) OpenDir(name string, _ *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
-	if name == "" {
-		name = fs.root.String()
-	}
-	sp, err := modules.NewSiaPath(name)
+	sp, err := fs.root.Join(name)
 	if err != nil {
-		fs.renter.log.Printf("Error calling NewSiaPath on %v: %v", name, err)
+		fs.renter.log.Printf("Error calling Join on %v and %v: %v", fs.root, name, err)
 		return nil, errToStatus(err)
 	}
 	fis, err := fs.renter.FileList(sp, false, true)
