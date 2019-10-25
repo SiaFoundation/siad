@@ -77,7 +77,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	allowance := rg.Settings.Allowance
 	// Reset allowance.
-	if err := r.RenterCancelAllowance(); err != nil {
+	if err := r.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
 	// Recover the backup into the same renter. No new files should appear but the
