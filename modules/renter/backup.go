@@ -222,6 +222,10 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 			return errors.AddContext(err, "unable to set allowance from backup")
 		}
 	}
+	// Back was successfully loaded, call Threaded Bubble to make sure that the
+	// Renter's filesystem gets updated
+	go r.callThreadedBubbleMetadata(modules.RootSiaPath())
+
 	return nil
 }
 
