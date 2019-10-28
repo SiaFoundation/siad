@@ -253,7 +253,7 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal("watchdog not restored properly", contract)
 	}
 
-	aggregateChurn := c.staticChurnLimiter.callGetAggregateChurn()
+	aggregateChurn := c.staticChurnLimiter.callAggregateChurn()
 	if aggregateChurn != 123456 {
 		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
 	}

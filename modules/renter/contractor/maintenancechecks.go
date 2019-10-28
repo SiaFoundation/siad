@@ -72,6 +72,7 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = true
+		return u, necessaryUtilityUpdate
 	}
 
 	return u, noUpdate

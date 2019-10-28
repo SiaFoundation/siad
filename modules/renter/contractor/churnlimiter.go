@@ -20,14 +20,14 @@ type contractScoreAndUtil struct {
 }
 
 // churnLimiter keeps track of the aggregate number of bytes stored in contracts
-// marked !GFR (AKA churned contracts) in the current period. It also
+// marked !GFR (AKA churned contracts) in the current period.
 type churnLimiter struct {
+	// aggregateChurnThisPeriod is the aggregate size of files stored in contracts
+	// churned in the current period.
+	aggregateChurnThisPeriod uint64
+
 	mu         sync.Mutex
 	contractor *Contractor
-
-	// aggregateChurnThisPeriod is the aggregate size of files stored under
-	// contract churned in the current period.
-	aggregateChurnThisPeriod uint64
 }
 
 // churnLimiterPersist is the persisted state of a churnLimiter.
@@ -36,7 +36,7 @@ type churnLimiterPersist struct {
 }
 
 // persistData returns the churnLimiterPersist corresponding to this
-// churnLimtiter's state
+// churnLimiter's state
 func (cl *churnLimiter) persistData() churnLimiterPersist {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
@@ -56,17 +56,17 @@ func newChurnLimiter(contractor *Contractor) *churnLimiter {
 	return &churnLimiter{contractor: contractor}
 }
 
-// callResetAggregateChurn resets the aggregate churn for this period. Should be
-// called at the beginning of every new period.
+// callResetAggregateChurn resets the aggregate churn for this period. This
+// method must be called at the beginning of every new period.
 func (cl *churnLimiter) callResetAggregateChurn() {
 	cl.mu.Lock()
-	cl.contractor.log.Println("Aggregate Churn for last period: ", cl.aggregateChurnThisPeriod)
+	cl.contractor.log.Println("Resetting churn. Aggregate Churn for last period: ", cl.aggregateChurnThisPeriod)
 	cl.aggregateChurnThisPeriod = 0
 	cl.mu.Unlock()
 }
 
 // callNotifyChurnedContract adds the size of this contract's files to the aggregate
-// churn in this period. Should be called when contracts are marked !GFR.
+// churn in this period. Must be called when contracts are marked !GFR.
 func (cl *churnLimiter) callNotifyChurnedContract(contract modules.RenterContract) {
 	size := contract.Transaction.FileContractRevisions[0].NewFileSize
 	cl.mu.Lock()
@@ -83,7 +83,8 @@ func (cl *churnLimiter) callReachedChurnLimit() bool {
 	return cl.aggregateChurnThisPeriod >= maxStorageChurnPerPeriod
 }
 
-func (cl *churnLimiter) callGetAggregateChurn() uint64 {
+// callAggregateChurn returns the aggregate churn for the current period.
+func (cl *churnLimiter) callAggregateChurn() uint64 {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 	return cl.aggregateChurnThisPeriod
