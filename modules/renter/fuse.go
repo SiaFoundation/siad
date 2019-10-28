@@ -23,6 +23,9 @@ package renter
 // issue as multiple concurrent reads may be happening on the streamer at once,
 // a 'Seek then Read' approach is not necessarily safe with fuse.
 
+// TODO: Need to figure out why it's necessary to manually add the S_IFREG flag
+// to file modes, shouldn't the file modes already have that set?
+
 import (
 	"context"
 	"io"
