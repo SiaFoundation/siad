@@ -242,8 +242,8 @@ type (
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
 	}
 
-	// RenterFUSEInfo contains information about mounted FUSE filesystems.
-	RenterFUSEInfo struct {
+	// RenterFuseInfo contains information about mounted fuse filesystems.
+	RenterFuseInfo struct {
 		MountPoints []modules.MountInfo `json:"mountPoints"`
 	}
 )
@@ -1070,15 +1070,15 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 	})
 }
 
-// renterFUSEHandlerGET handles the API call to /renter/fuse.
-func (api *API) renterFUSEHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	WriteJSON(w, RenterFUSEInfo{
+// renterFuseHandlerGET handles the API call to /renter/fuse.
+func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	WriteJSON(w, RenterFuseInfo{
 		MountPoints: api.renter.MountInfo(),
 	})
 }
 
-// renterFUSEMountHandlerPOST handles the API call to /renter/fuse/mount.
-func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterFuseMountHandlerPOST handles the API call to /renter/fuse/mount.
+func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var sp modules.SiaPath
 	spfv := req.FormValue("siapath")
 	// Check the form value for root path before attempting to call
@@ -1110,8 +1110,8 @@ func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 	WriteSuccess(w)
 }
 
-// renterFUSEUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
-func (api *API) renterFUSEUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterFuseUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
+func (api *API) renterFuseUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if err := api.renter.Unmount(req.FormValue("mount")); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

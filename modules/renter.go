@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -273,13 +274,15 @@ type DirectoryInfo struct {
 }
 
 // Name implements os.FileInfo.
-func (d DirectoryInfo) Name() string { return d.SiaPath.String() }
+func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
 
 // Size implements os.FileInfo.
 func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
 
 // Mode implements os.FileInfo.
-func (d DirectoryInfo) Mode() os.FileMode { return 0700 }
+//
+// TODO: get the real mode
+func (d DirectoryInfo) Mode() os.FileMode { return 0755 | syscall.S_IFDIR }
 
 // ModTime implements os.FileInfo.
 func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
@@ -332,6 +335,7 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
+	FileMode         os.FileMode       `json:"mode"` // name chaned to avoid conflict with Mode()
 	ModificationTime time.Time         `json:"modtime"` // name changed to avoid conflict with ModTime() method
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
@@ -346,13 +350,15 @@ type FileInfo struct {
 }
 
 // Name implements os.FileInfo.
-func (f FileInfo) Name() string { return f.SiaPath.String() }
+func (f FileInfo) Name() string { return f.SiaPath.Name() }
 
 // Size implements os.FileInfo.
 func (f FileInfo) Size() int64 { return int64(f.Filesize) }
 
 // Mode implements os.FileInfo.
-func (f FileInfo) Mode() os.FileMode { return 0666 }
+//
+// TODO: get the real mode
+func (f FileInfo) Mode() os.FileMode { return f.FileMode }
 
 // ModTime implements os.FileInfo.
 func (f FileInfo) ModTime() time.Time { return f.ModificationTime }

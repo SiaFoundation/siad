@@ -48,6 +48,16 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	return r.staticFileSet.FileInfo(siaPath, offline, goodForRenew, contracts)
 }
 
+// FileCached returns file from siaPath queried by user, using cached values for
+// health and redundancy.
+func (r *Renter) FileCached(siaPath modules.SiaPath) (modules.FileInfo, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer r.tg.Done()
+	return r.staticFileSet.CachedFileInfo(siaPath)
+}
+
 // RenameFile takes an existing file and changes the nickname. The original
 // file must exist, and there must not be any file that already has the
 // replacement nickname.

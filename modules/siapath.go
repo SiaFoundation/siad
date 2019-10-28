@@ -220,7 +220,8 @@ func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
 // prevent directory traversal, and paths must not begin with / or be empty.
 func (sp SiaPath) Validate(isRoot bool) error {
 	if sp.Path == "" && !isRoot {
-		return ErrEmptySiaPath
+		// TODO: Figure out what to do with this.
+		// return ErrEmptySiaPath
 	}
 	if sp.Path == ".." {
 		return errors.New("siapath cannot be '..'")
