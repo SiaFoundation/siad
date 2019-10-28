@@ -298,6 +298,7 @@ func TestRenterFour(t *testing.T) {
 	subTests := []test{
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
+		{"TestNextPeriod", testNextPeriod},
 	}
 
 	// Run tests
@@ -3838,5 +3839,38 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testNextPeriod confirms that the value for NextPeriod in RenterGET is valid
+func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the renter
+	r := tg.Renters()[0]
+
+	// Request RenterGET
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(rg.Settings.Allowance, modules.Allowance{}) {
+		t.Fatal("test only is valid if the allowance is set")
+	}
+
+	// Check Next Period
+	currentPeriod, err := r.RenterCurrentPeriod()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := r.RenterSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	period := settings.Allowance.Period
+	nextPeriod := rg.NextPeriod
+	if nextPeriod == 0 {
+		t.Fatal("NextPeriod should not be zero for a renter with an allowance and contracts")
+	}
+	if nextPeriod != currentPeriod+period {
+		t.Fatalf("expected next period to be %v but got %v", currentPeriod+period, nextPeriod)
 	}
 }

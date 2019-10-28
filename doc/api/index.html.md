@@ -871,6 +871,10 @@ fetches status information about the host.
 
   "connectabilitystatus": "checking", // string
   "workingstatus":        "checking"  // string
+  "publickey": {
+    "algorithm": "ed25519", // string
+    "key":       "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // string
+  },
 }
 ```
 #### externalsettings  
@@ -1062,6 +1066,9 @@ connectabilitystatus is one of "checking", "connectable", or "not connectable", 
 
 **workingstatus** | string  
 workingstatus is one of "checking", "working", or "not working" and indicates if the host is being actively used by renters.  
+
+**publickey** | SiaPublicKey  
+Public key used to identify the host.  
 
 ## /host [POST]
 > curl example  
@@ -1616,7 +1623,7 @@ List of IP subnet masks used by the host. For IPv4 the /24 and for IPv6 the /54 
 **lastipnetchange** | date  
 The last time the list of IP subnet masks was updated. When equal subnet masks are found for different hosts, the host that occupies the subnet mask for a longer time is preferred.  
 
-**publickey**  
+**publickey** | SiaPublicKey  
 Public key used to identify and verify hosts.  
 
 **algorithm** | string  
@@ -1949,7 +1956,8 @@ Returns the current settings along with metrics on the renter's spending.
     "uploadspending":   "5678", // hastings
     "unspent":          "1234"  // hastings
   },
-  "currentperiod": 200  // blockheight
+  "currentperiod":  6000  // blockheight
+  "nextperiod":    12248  // blockheight
 }
 ```
 #### settings  
@@ -2081,6 +2089,9 @@ Amount of money in the allowance that has not been spent.
 
 **currentperiod** | blockheight  
 Height at which the current allowance period began.  
+
+**nextperiod** | blockheight  
+Height at which the next allowance period began.  
 
 ## /renter [POST]
 > curl example  
@@ -2303,7 +2314,7 @@ Block height that the file contract ends on.
 **fees** | hastings  
 Fees paid in order to form the file contract.  
 
-**hostpublickey** 
+**hostpublickey** | SiaPublicKey  
 Public key of the host that the file contract is formed with.  
        
 **hostversion** | string  
@@ -4175,7 +4186,7 @@ The minimum blockheight required.
 **signaturesrequired**  
 The number of signatures required.  
 
-**publickeys**  
+**publickeys** | SiaPublicKey  
 The set of keys whose signatures count towards signaturesrequired.  
 
 ## /wallet/unspent [GET]

@@ -2,6 +2,7 @@ package proto
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -28,14 +29,6 @@ const (
 type updateSetHeader struct {
 	ID     types.FileContractID
 	Header contractHeader
-}
-
-// v132UpdateHeader was introduced due to backwards compatibility reasons after
-// changing the format of the contractHeader. It contains the legacy
-// v132ContractHeader.
-type v132UpdateSetHeader struct {
-	ID     types.FileContractID
-	Header v132ContractHeader
 }
 
 type updateSetRoot struct {
@@ -65,36 +58,18 @@ type contractHeader struct {
 	Utility          modules.ContractUtility
 }
 
-// v132ContractHeader is a contractHeader without the Utility field. This field
-// was added after v132 to be able to persist contract utilities.
-type v132ContractHeader struct {
-	// transaction is the signed transaction containing the most recent
-	// revision of the file contract.
-	Transaction types.Transaction
-
-	// secretKey is the key used by the renter to sign the file contract
-	// transaction.
-	SecretKey crypto.SecretKey
-
-	// Same as modules.RenterContract.
-	StartHeight      types.BlockHeight
-	DownloadSpending types.Currency
-	StorageSpending  types.Currency
-	UploadSpending   types.Currency
-	TotalCost        types.Currency
-	ContractFee      types.Currency
-	TxnFee           types.Currency
-	SiafundFee       types.Currency
-}
-
 // validate returns an error if the contractHeader is invalid.
 func (h *contractHeader) validate() error {
-	if len(h.Transaction.FileContractRevisions) > 0 &&
-		len(h.Transaction.FileContractRevisions[0].NewValidProofOutputs) > 0 &&
-		len(h.Transaction.FileContractRevisions[0].UnlockConditions.PublicKeys) == 2 {
-		return nil
+	if len(h.Transaction.FileContractRevisions) == 0 {
+		return errors.New("no file contract revisions")
 	}
-	return errors.New("invalid contract")
+	if len(h.Transaction.FileContractRevisions[0].NewValidProofOutputs) == 0 {
+		return errors.New("not enough valid proof outputs")
+	}
+	if len(h.Transaction.FileContractRevisions[0].UnlockConditions.PublicKeys) != 2 {
+		return errors.New("wrong number of pubkeys")
+	}
+	return nil
 }
 
 func (h *contractHeader) copyTransaction() (txn types.Transaction) {
@@ -522,6 +497,31 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 	return sc.Metadata(), nil
 }
 
+// loadSafeContractHeader will load a contract from disk, checking for legacy
+// encodings if initial attempts fail.
+func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader, error) {
+	var header contractHeader
+	err := encoding.NewDecoder(f, decodeMaxSize).Decode(&header)
+	if err != nil {
+		// Unable to decode the old header, try a new decode. Seek the file back
+		// to the beginning.
+		var v1412DecodeErr error
+		_, seekErr := f.Seek(0, 0)
+		if seekErr != nil {
+			return contractHeader{}, errors.AddContext(errors.Compose(err, seekErr), "unable to reset file when attempting legacy decode")
+		}
+		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1413(f, decodeMaxSize)
+		if v1412DecodeErr != nil {
+			return contractHeader{}, errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode contract header")
+		}
+	}
+	if err := header.validate(); err != nil {
+		return contractHeader{}, errors.AddContext(err, "unable to validate contract header")
+	}
+
+	return header, nil
+}
+
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
 func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlog.Transaction) (err error) {
@@ -538,22 +538,20 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 	if err != nil {
 		return err
 	}
+	decodeMaxSize := int(stat.Size() * 3)
 
 	headerSection := newFileSection(f, 0, contractHeaderSize)
 	rootsSection := newFileSection(f, contractHeaderSize, remainingFile)
 
-	// read header
-	var header contractHeader
-	if err := encoding.NewDecoder(f, int(stat.Size()*3)).Decode(&header); err != nil {
-		return err
-	} else if err := header.validate(); err != nil {
-		return err
+	header, err := loadSafeContractHeader(f, decodeMaxSize)
+	if err != nil {
+		return errors.AddContext(err, "unable to load contract header")
 	}
 
 	// read merkleRoots
 	merkleRoots, applyTxns, err := loadExistingMerkleRoots(rootsSection)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to load the merkle roots of the contract")
 	}
 	// add relevant unapplied transactions
 	var unappliedTxns []*writeaheadlog.Transaction
@@ -568,13 +566,13 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 		case updateNameSetHeader:
 			var u updateSetHeader
 			if err := unmarshalHeader(update.Instructions, &u); err != nil {
-				return err
+				return errors.AddContext(err, "unable to unmarshal the contract header during wal txn recovery")
 			}
 			id = u.ID
 		case updateNameSetRoot:
 			var u updateSetRoot
 			if err := encoding.Unmarshal(update.Instructions, &u); err != nil {
-				return err
+				return errors.AddContext(err, "unable to unmarshal the update root set during wal txn recovery")
 			}
 			id = u.ID
 		}
@@ -594,7 +592,7 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 	// apply the wal txns if necessary.
 	if applyTxns {
 		if err := sc.managedCommitTxns(); err != nil {
-			return err
+			return errors.AddContext(err, "unable to commit the wal transactions during contractset recovery")
 		}
 	}
 	cs.contracts[sc.header.ID()] = sc
@@ -717,29 +715,18 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// unmarshalHeader loads the header of a file contract. The load processes
+// starts by attempting to load the contract assuming it is the most recent
+// version of the contract. If that fails, it'll try increasingly older versions
+// of the contract until it either succeeds or it runs out of decoding
+// strategies to try.
 func unmarshalHeader(b []byte, u *updateSetHeader) error {
 	// Try unmarshaling the header.
 	if err := encoding.Unmarshal(b, u); err != nil {
-		// COMPATv132 try unmarshaling the header the old way.
-		var oldHeader v132UpdateSetHeader
-		if err2 := encoding.Unmarshal(b, &oldHeader); err2 != nil {
-			// If unmarshaling the header the old way also doesn't work we
-			// return the original error.
-			return err
-		}
-		// If unmarshaling it the old way was successful we convert it to a new
-		// header.
-		u.Header = contractHeader{
-			Transaction:      oldHeader.Header.Transaction,
-			SecretKey:        oldHeader.Header.SecretKey,
-			StartHeight:      oldHeader.Header.StartHeight,
-			DownloadSpending: oldHeader.Header.DownloadSpending,
-			StorageSpending:  oldHeader.Header.StorageSpending,
-			UploadSpending:   oldHeader.Header.UploadSpending,
-			TotalCost:        oldHeader.Header.TotalCost,
-			ContractFee:      oldHeader.Header.ContractFee,
-			TxnFee:           oldHeader.Header.TxnFee,
-			SiafundFee:       oldHeader.Header.SiafundFee,
+		// Try unmarshalling the update
+		v132Err := updateSetHeaderUnmarshalV132ToV1413(b, u)
+		if v132Err != nil {
+			return errors.AddContext(errors.Compose(err, v132Err), "unable to unmarshal update set header")
 		}
 	}
 	return nil
