@@ -161,7 +161,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	dirInfo, dirErr := fdn.filesystem.renter.staticDirSet.DirInfo(fdn.siapath)
 	if dirErr != nil {
 		fdn.filesystem.renter.log.Printf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v", name, fdn.siapath, fileErr, dirErr)
-		return nil, errToStatus(dirErr)
+		return nil, syscall.ENOENT
 	}
 
 	// We found the directory we want, convert to an inode.

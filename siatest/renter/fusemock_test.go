@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -29,34 +30,92 @@ import (
 // fuseNode is a node to help build out a fuse system.
 type fuseNode struct {
 	fs.Inode
+
+	name string
 }
 
 var _ = (fs.NodeLookuper)((*fuseNode)(nil))
 var _ = (fs.NodeReaddirer)((*fuseNode)(nil))
+var _ = (fs.NodeReader)((*fuseNode)(nil))
+var _ = (fs.NodeOpener)((*fuseNode)(nil))
+var _ = (fs.NodeGetattrer)((*fuseNode)(nil))
+
+// Getattr will return the mode of the node, and the size if the node is a file.
+func (fn *fuseNode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	if strings.Contains(fn.name, "file") {
+		out.Mode = fuse.S_IFREG
+		out.Size = 26
+	} else {
+		out.Mode = fuse.S_IFDIR
+	}
+	return syscall.F_OK
+}
 
 // Lookup finds a dir.
 func (fn *fuseNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	if name != "one" {
+	// Return ENOENT if the name doesn't match the pattern for dir names. Could
+	// make this check a regex.
+	if !strings.Contains(name, "file") && len(name) > 1 {
 		return nil, syscall.ENOENT
 	}
 
-	stable := fs.StableAttr{
-		Mode: fuse.S_IFDIR,
+	// Set the stable attributes of the file based on the name.
+	var stable fs.StableAttr
+	if strings.Contains(name, "file") {
+		stable.Mode = fuse.S_IFREG
+		out.Mode = fuse.S_IFREG
+		out.Size = 26
+	} else {
+		stable.Mode = fuse.S_IFDIR
+		out.Mode = fuse.S_IFDIR
 	}
-	childFN := &fuseNode{}
+
+	childFN := &fuseNode{
+		name: name,
+	}
 	child := fn.NewInode(ctx, childFN, stable)
 	return child, syscall.F_OK
 }
 
 // Readdir will always return one child dir.
 func (fn *fuseNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	// Add a directory.
 	entries := []fuse.DirEntry{
 		{
 			Name: "one",
 			Mode: fuse.S_IFDIR,
 		},
 	}
+
+	// Add 20 more directories.
+	for i := 0; i < 20; i++ {
+		entries = append(entries, fuse.DirEntry{
+			Name: string([]byte{byte(i + 48)}),
+			Mode: fuse.S_IFDIR,
+		})
+	}
+
+	// Add 50 files.
+	for i := 0; i < 50; i++ {
+		entries = append(entries, fuse.DirEntry{
+			Name: "file" + string([]byte{byte(i + 48)}),
+			Mode: fuse.S_IFREG,
+		})
+	}
+
 	return fs.NewListDirStream(entries), syscall.F_OK
+}
+
+// Open will no-op and return an "opened" file.
+func (fn *fuseNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+	return fn, 0, syscall.F_OK
+}
+
+// Read will return generated data for a file.
+func (fn *fuseNode) Read(ctx context.Context, f fs.FileHandle, dest []byte, offset int64) (fuse.ReadResult, syscall.Errno) {
+	output := []byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b'}
+	copy(dest, output)
+	return fuse.ReadResultData(dest), syscall.F_OK
 }
 
 // TestGeneratedFuse tests a fuse implementation where all folders and files are
@@ -88,7 +147,7 @@ func TestGeneratedFuse(t *testing.T) {
 	root := &fuseNode{}
 	server, err := fs.Mount(mountpoint, root, &fs.Options{
 		MountOptions: fuse.MountOptions{
-			Debug: true,
+			// Debug: true,
 		},
 	})
 	if err != nil {
@@ -106,7 +165,7 @@ func TestGeneratedFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err, "error early lets go", fuseRoot.Close())
 	}
-	if len(names) != 1 {
+	if len(names) != 71 {
 		t.Error("child dir is not appearing", len(names))
 	}
 	println("readdir")
