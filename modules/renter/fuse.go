@@ -144,14 +144,14 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 			filesystem:     fdn.filesystem,
 		}
 		attrs := fs.StableAttr{
-			Mode: uint32(fileInfo.Mode()),
+			Mode: uint32(fileInfo.Mode()) | syscall.S_IFREG,
 		}
 
 		// Set the crticial entry out values.
 		//
 		// TODO: Set more of these, there are like 20 of them.
 		out.Size = fileInfo.Filesize
-		out.Mode = uint32(fileInfo.Mode())
+		out.Mode = attrs.Mode
 
 		inode := fdn.NewInode(ctx, filenode, attrs)
 		return inode, errToStatus(nil)
@@ -193,7 +193,7 @@ func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse
 // possible.
 func (ffn *fuseFilenode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	out.Size = ffn.staticFileInfo.Filesize
-	out.Mode = uint32(ffn.staticFileInfo.Mode())
+	out.Mode = uint32(ffn.staticFileInfo.Mode()) | syscall.S_IFREG
 	return errToStatus(nil)
 }
 
@@ -258,7 +258,7 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 	dirEntries := make([]fuse.DirEntry, 0, len(fileinfos)+len(dirinfos))
 	for _, fi := range fileinfos {
 		dirEntries = append(dirEntries, fuse.DirEntry{
-			Mode: uint32(fi.Mode()),
+			Mode: uint32(fi.Mode()) | syscall.S_IFREG,
 			Name: fi.Name(),
 		})
 	}

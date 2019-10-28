@@ -155,12 +155,10 @@ func TestGeneratedFuse(t *testing.T) {
 	}
 
 	// Try reading the directory to see its subdir.
-	println("calling open on mountpoint")
 	fuseRoot, err := os.Open(mountpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	println("readdirnames")
 	names, err := fuseRoot.Readdirnames(0)
 	if err != nil {
 		t.Fatal(err, "error early lets go", fuseRoot.Close())
@@ -168,7 +166,6 @@ func TestGeneratedFuse(t *testing.T) {
 	if len(names) != 71 {
 		t.Error("child dir is not appearing", len(names))
 	}
-	println("readdir")
 	infos, err := fuseRoot.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +173,6 @@ func TestGeneratedFuse(t *testing.T) {
 	if len(infos) != 1 {
 		t.Error("the number of infos returned is not 1", len(infos))
 	}
-	println("calling close on mountpoint")
 	err = fuseRoot.Close()
 	if err != nil {
 		t.Fatal(err)
