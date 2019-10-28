@@ -73,6 +73,9 @@ func TestSaveLoad(t *testing.T) {
 	}
 	close(c.synced)
 
+	c.staticChurnLimiter = newChurnLimiter(c)
+	c.staticChurnLimiter.aggregateChurnThisPeriod = 123456
+
 	// save, clear, and reload
 	err := c.save()
 	if err != nil {
@@ -248,6 +251,11 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if contract.windowEnd != expectedFileContractStatus.windowEnd {
 		t.Fatal("watchdog not restored properly", contract)
+	}
+
+	aggregateChurn := c.staticChurnLimiter.callGetAggregateChurn()
+	if aggregateChurn != 123456 {
+		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
 	}
 }
 

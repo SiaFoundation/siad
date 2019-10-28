@@ -27,7 +27,9 @@ type contractorPersist struct {
 	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
 	Synced               bool                            `json:"synced"`
 
-	WatchdogData watchdogPersist `json:"watchdogdata"`
+	// Subsystem persistence:
+	ChurnLimiter churnLimiterPersist `json:"churnlimiter"`
+	WatchdogData watchdogPersist     `json:"watchdogdata"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
@@ -64,6 +66,7 @@ func (c *Contractor) persistData() contractorPersist {
 	for _, contract := range c.recoverableContracts {
 		data.RecoverableContracts = append(data.RecoverableContracts, contract)
 	}
+	data.ChurnLimiter = c.staticChurnLimiter.persistData()
 	data.WatchdogData = c.staticWatchdog.persistData()
 	return data
 }
@@ -124,10 +127,15 @@ func (c *Contractor) load() error {
 		c.recoverableContracts[contract.ID] = contract
 	}
 
+	c.staticChurnLimiter = newChurnLimiterFromPersist(c, data.ChurnLimiter)
+
 	c.staticWatchdog, err = newWatchdogFromPersist(c, data.WatchdogData)
+	if err != nil {
+		return err
+	}
 	c.staticWatchdog.renewWindow = data.Allowance.RenewWindow
 	c.staticWatchdog.blockHeight = data.BlockHeight
-	return err
+	return nil
 }
 
 // save saves the Contractor persistence data to disk.

@@ -30,9 +30,30 @@ type churnLimiter struct {
 	aggregateChurnThisPeriod uint64
 }
 
+// churnLimiterPersist is the persisted state of a churnLimiter.
+type churnLimiterPersist struct {
+	AggregateChurnThisPeriod uint64 `json:"aggregatechurnthisperiod"`
+}
+
+// persistData returns the churnLimiterPersist corresponding to this
+// churnLimtiter's state
+func (cl *churnLimiter) persistData() churnLimiterPersist {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return churnLimiterPersist{cl.aggregateChurnThisPeriod}
+}
+
+// newChurnLimiterFromPersist creates a new churnLimiter using persisted state.
+func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiterPersist) *churnLimiter {
+	return &churnLimiter{
+		contractor:               contractor,
+		aggregateChurnThisPeriod: persistData.AggregateChurnThisPeriod,
+	}
+}
+
 // newChurnLimiter returns a new churnLimiter.
-func newChurnLimiter() *churnLimiter {
-	return &churnLimiter{}
+func newChurnLimiter(contractor *Contractor) *churnLimiter {
+	return &churnLimiter{contractor: contractor}
 }
 
 // callResetAggregateChurn resets the aggregate churn for this period. Should be
@@ -60,6 +81,12 @@ func (cl *churnLimiter) callReachedChurnLimit() bool {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 	return cl.aggregateChurnThisPeriod >= maxStorageChurnPerPeriod
+}
+
+func (cl *churnLimiter) callGetAggregateChurn() uint64 {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.aggregateChurnThisPeriod
 }
 
 // callProcessSuggestedUpdates processes suggested utility updates. It prevents
