@@ -67,7 +67,7 @@ type fuseFilenode struct {
 	staticFileInfo modules.FileInfo
 	staticSiapath  modules.SiaPath
 
-	stream   modules.Streamer
+	stream modules.Streamer
 
 	filesystem *fuseFS
 	mu         sync.Mutex
@@ -139,9 +139,9 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	if fileErr == nil {
 		// Convert the file to an inode.
 		filenode := &fuseFilenode{
-			staticFileInfo:   fileInfo,
-			staticSiapath:    lookupPath,
-			filesystem: fdn.filesystem,
+			staticFileInfo: fileInfo,
+			staticSiapath:  lookupPath,
+			filesystem:     fdn.filesystem,
 		}
 		attrs := fs.StableAttr{
 			Mode: uint32(fileInfo.Mode()),
