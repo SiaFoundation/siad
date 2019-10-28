@@ -39,7 +39,15 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = false
-		return u, necessaryUtilityUpdate
+
+		// Only force utility updates if the score is the min possible score.
+		// Otherwise defer update decision for low-score contracts to the
+		// churnLimiter.
+		if sb.Score.Cmp(types.ZeroCurrency) <= 0 {
+			return u, necessaryUtilityUpdate
+		}
+		c.log.Println("Adding contract utility update to churnLimiter queue")
+		return u, suggestedUtilityUpdate
 	}
 
 	// Contract should not be used for uplodaing if the score is poor.
@@ -64,7 +72,6 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = true
-		return u, necessaryUtilityUpdate
 	}
 
 	return u, noUpdate
