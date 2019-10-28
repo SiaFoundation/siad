@@ -209,6 +209,7 @@ func (c *Contractor) managedCancelAllowance() error {
 		if err != nil {
 			return err
 		}
+		c.staticChurnLimiter.callNotifyChurnedContract(contract.Metadata())
 	}
 	return nil
 }
