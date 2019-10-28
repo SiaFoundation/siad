@@ -3118,7 +3118,7 @@ The number of data pieces to use when erasure coding the file.
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file.
 
-## /renter/validate/*siapath* [POST]
+## /renter/*validatesiapath* [POST]
 > curl example  
 
 ```go
