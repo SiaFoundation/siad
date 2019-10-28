@@ -15,16 +15,20 @@ package renter
 // that also happens to allocate memory. I've been unable to replicate this
 // without using fuse, however that may just be because fuse is the only system
 // we have that allows us to really slam the sia filesystem.
+//
+// Now called SOOMS for SuddenOutOfMemorySyndrome
+
+// TODO: Need to add printlns and error messages
 
 import (
 	"context"
 	"io"
-	"os"
 	"sync"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -102,7 +106,7 @@ type fuseFS struct {
 func errToStatus(err error) syscall.Errno {
 	if err == nil {
 		return syscall.F_OK
-	} else if os.IsNotExist(err) {
+	} else if errors.IsOSNotExist(err) {
 		return syscall.ENOENT
 	}
 	return syscall.EIO
@@ -246,12 +250,12 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 	fileinfos, err := fdn.filesystem.renter.FileList(fdn.siapath, false, false)
 	if err != nil {
 		fdn.filesystem.renter.log.Printf("Unable to get file list for fuse directory %v: %v", fdn.siapath, err)
-		return nil, errToStatus(err)
+		return nil, syscall.ENOENT
 	}
 	dirinfos, err := fdn.filesystem.renter.DirList(fdn.siapath)
 	if err != nil {
 		fdn.filesystem.renter.log.Printf("Error fetching dir list for fuse dir %v: %v", fdn.siapath, err)
-		return nil, errToStatus(err)
+		return nil, syscall.ENOENT
 	}
 
 	// Convert the fileinfos to []fuse.DirEntry
