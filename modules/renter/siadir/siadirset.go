@@ -267,8 +267,7 @@ func (sds *SiaDirSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error
 		return entry.Metadata(), nil
 	}
 	// Load metadat from disk.
-	md, err := loadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(sds.staticRootDir), modules.ProdDependencies)
-	return md, err
+	return loadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(sds.staticRootDir), modules.ProdDependencies)
 }
 
 // readLockDirInfo returns the Directory Information of the siadir. NOTE: The 'readLock'

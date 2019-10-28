@@ -18,7 +18,10 @@ package renter
 //
 // Now called SOOMS for SuddenOutOfMemorySyndrome
 
-// TODO: Need to add printlns and error messages
+// TODO: Need to create a single 'ReadAt' endpoint for the streamer, that will
+// seek the streamer and read from it at the same time, this is a concurrency
+// issue as multiple concurrent reads may be happening on the streamer at once,
+// a 'Seek then Read' approach is not necessarily safe with fuse.
 
 import (
 	"context"
@@ -71,6 +74,7 @@ type fuseFilenode struct {
 	staticFileInfo modules.FileInfo
 	staticSiapath  modules.SiaPath
 
+	// Not static - the stream is created separately from the node.
 	stream modules.Streamer
 
 	filesystem *fuseFS
@@ -162,10 +166,10 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	}
 
 	// Unable to look up a file, might be a dir instead.
-	dirInfo, dirErr := fdn.filesystem.renter.staticDirSet.DirInfo(fdn.siapath)
+	dirInfo, dirErr := fdn.filesystem.renter.staticDirSet.DirInfo(lookupPath)
 	if dirErr != nil {
 		fdn.filesystem.renter.log.Printf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v", name, fdn.siapath, fileErr, dirErr)
-		return nil, syscall.ENOENT
+		return nil, errToStatus(dirErr)
 	}
 
 	// We found the directory we want, convert to an inode.
@@ -250,12 +254,12 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 	fileinfos, err := fdn.filesystem.renter.FileList(fdn.siapath, false, false)
 	if err != nil {
 		fdn.filesystem.renter.log.Printf("Unable to get file list for fuse directory %v: %v", fdn.siapath, err)
-		return nil, syscall.ENOENT
+		return nil, errToStatus(err)
 	}
 	dirinfos, err := fdn.filesystem.renter.DirList(fdn.siapath)
 	if err != nil {
 		fdn.filesystem.renter.log.Printf("Error fetching dir list for fuse dir %v: %v", fdn.siapath, err)
-		return nil, syscall.ENOENT
+		return nil, errToStatus(err)
 	}
 
 	// Convert the fileinfos to []fuse.DirEntry
