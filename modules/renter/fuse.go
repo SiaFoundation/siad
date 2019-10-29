@@ -34,8 +34,8 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // fuseDirnode is a fuse node for the fs package that covers a siadir.
