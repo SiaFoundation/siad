@@ -600,7 +600,7 @@ number of SiaFiles that have had stuck chunks successfully repaired in a LIFO
 stack. If the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when
 a new SiaFile is pushed onto the stack the oldest SiaFile is dropped from the
 stack so the new SiaFile can be added. Additionally, if SiaFile is being added
-that is already being tracked, then the originally reference is removed and the
+that is already being tracked, then the original reference is removed and the
 SiaFile is added to the top of the Stack. If there have been successful stuck
 chunk repairs, the stuck loop will try and add additional stuck chunks from
 these files first before trying to add a random stuck chunk. The idea being that
