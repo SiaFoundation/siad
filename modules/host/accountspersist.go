@@ -24,8 +24,7 @@ var (
 type (
 	// accountsData contains all account manager data we want to persist
 	accountsData struct {
-		Accounts     map[string]types.Currency
-		TotalExpired types.Currency
+		Accounts map[string]types.Currency
 	}
 
 	// accountsPersister is a subsystem that will persist all account data
@@ -33,7 +32,7 @@ type (
 		location     string
 		mu           sync.Mutex
 		dependencies modules.Dependencies
-		hostUtils
+		*hostUtils
 	}
 )
 
@@ -42,7 +41,7 @@ func (h *Host) newAccountsPersister(dependencies modules.Dependencies) (*account
 	ap := &accountsPersister{
 		location:     filepath.Join(h.persistDir, accountsFilename),
 		dependencies: dependencies,
-		hostUtils:    h.hostUtils,
+		hostUtils:    &h.hostUtils,
 	}
 
 	// Create the perist directory if it does not yet exist.
@@ -67,7 +66,6 @@ func (ap *accountsPersister) callLoadAccountData() *accountsData {
 	defer ap.mu.Unlock()
 	var data accountsData
 	data.Accounts = make(map[string]types.Currency)
-	data.TotalExpired = types.ZeroCurrency
 
 	err := ap.dependencies.LoadFile(accountsMetadata, &data, ap.location)
 	if err != nil {

@@ -18,3 +18,15 @@ func (d *HostRejectAllSessionLocks) Disrupt(s string) bool {
 	}
 	return false
 }
+
+// HostExpireEphemeralAccounts is a dependency injection for the host that will
+// expire ephemeral accounts as soon as they get pruned
+type HostExpireEphemeralAccounts struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will interpret a signal from the host and tell the host to pretend it
+// has no record of the contract.
+func (d *HostExpireEphemeralAccounts) Disrupt(s string) bool {
+	return s == "expireEphemeralAccounts"
+}

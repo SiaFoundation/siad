@@ -1,14 +1,17 @@
 package host
 
 import (
+	"crypto/rand"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 const (
-	accountID = "8e8ed34..."
+	accountID = "8e8ed34"
 )
 
 // TestAccountCallDeposit verifies we can properly deposit money into an
@@ -65,7 +68,7 @@ func TestAccountCallSpend(t *testing.T) {
 	}
 
 	// Spend half of it and verify account balance
-	err = am.callSpend(accountID, types.NewCurrency64(5), crypto.Hash{})
+	err = am.callSpend(accountID, types.NewCurrency64(5), randomHash())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,8 +77,11 @@ func TestAccountCallSpend(t *testing.T) {
 	}
 
 	// Spend more than the account holds, have it block and then fund it to
-	go am.callDeposit(accountID, types.NewCurrency64(3))
-	err = am.callSpend(accountID, types.NewCurrency64(7), crypto.Hash{})
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_, _ = am.callDeposit(accountID, types.NewCurrency64(3))
+	}()
+	err = am.callSpend(accountID, types.NewCurrency64(7), randomHash())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,8 +91,45 @@ func TestAccountCallSpend(t *testing.T) {
 	}
 
 	// Spend from an unknown account and verify it timed out
-	err = am.callSpend(accountID+"unknown", types.NewCurrency64(5), crypto.Hash{})
+	err = am.callSpend(accountID+"unknown", types.NewCurrency64(5), randomHash())
 	if err != errBlockedCallTimeout {
 		t.Fatal(err)
 	}
+}
+
+// TestAccountExpiry verifies accounts expire and get pruned after a period of
+// time
+func TestAccountExpiry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	ht, err := blankMockHostTester(&dependencies.HostExpireEphemeralAccounts{}, "TestAccountExpiry")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Deposit some money into the account
+	am := ht.host.staticAccountManager
+	_, err = am.callDeposit(accountID, types.NewCurrency64(10))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the balance, sleep a bit and verify it is gone
+	if !am.balanceOf(accountID).Equals(types.NewCurrency64(10)) {
+		t.Fatal("Account balance was incorrect after deposit")
+	}
+	time.Sleep(pruneExpiredAccountsFrequency)
+	if !am.balanceOf(accountID).Equals(types.NewCurrency64(0)) {
+		t.Fatal("Account balance was incorrect after expiry")
+	}
+}
+
+// randomHash will return a randomly generated hash
+func randomHash() crypto.Hash {
+	bytes := make([]byte, 4)
+	_, _ = rand.Read(bytes)
+	return crypto.HashBytes(bytes)
 }

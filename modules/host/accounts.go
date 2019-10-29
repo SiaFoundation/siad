@@ -21,7 +21,7 @@ var (
 	errBlockedCallTimeout  = errors.New("blocked call timeout")
 	errInsufficientBalance = errors.New("insufficient balance")
 	errMaxBalanceExceeded  = errors.New("maximum account balance exceeded")
-	errReceiptSpent        = errors.New("receipt spent")
+	errKnownFingerprint    = errors.New("known fingerprint")
 
 	// accountMaxBalance is the maximum allowed balance
 	accountMaxBalance = types.SiacoinPrecision.Mul64(1e3)
@@ -38,7 +38,7 @@ var (
 	pruneExpiredAccountsFrequency = build.Select(build.Var{
 		Standard: 1 * time.Hour,
 		Dev:      15 * time.Second,
-		Testing:  1 * time.Second,
+		Testing:  2 * time.Second,
 	}).(time.Duration)
 )
 
@@ -55,15 +55,15 @@ type (
 	// All operations on the account have ACID properties.
 	accountManager struct {
 		accounts     map[string]types.Currency
-		receipts     map[crypto.Hash]struct{}
 		updated      map[string]int64
+		fingerprints map[crypto.Hash]struct{}
+		receipts     map[crypto.Signature]*receipt
 		blockedCalls []blockedCall
-		totalExpired types.Currency
 
 		mu           sync.Mutex
 		persister    *accountsPersister
 		dependencies modules.Dependencies
-		hostUtils
+		*hostUtils
 	}
 
 	// blockedCall represents a waiting thread due to insufficient balance
@@ -74,24 +74,32 @@ type (
 		unblock  chan struct{}
 		required types.Currency
 	}
+
+	// receipt holds information about a deposit and can be used as proof of
+	// payment
+	receipt struct {
+		receiver  string
+		timestamp int64
+		signature crypto.Signature
+	}
 )
 
 // newAccountManager returns a new account manager ready for use by the host
 func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountManager, error) {
 	am := &accountManager{
 		accounts:     make(map[string]types.Currency),
-		receipts:     make(map[crypto.Hash]struct{}),
 		updated:      make(map[string]int64),
+		fingerprints: make(map[crypto.Hash]struct{}),
+		receipts:     make(map[crypto.Signature]*receipt),
 		blockedCalls: make([]blockedCall, 0),
 		dependencies: dependencies,
 		persister:    h.staticAccountPersister,
-		hostUtils:    h.hostUtils, // TODO fix lock copy
+		hostUtils:    &h.hostUtils,
 	}
 
 	// Load account data
 	data := am.persister.callLoadAccountData()
 	am.accounts = data.Accounts
-	am.totalExpired = data.TotalExpired
 
 	go am.threadedPruneExpiredAccounts()
 
@@ -111,58 +119,77 @@ func (am *accountManager) balanceOf(id string) types.Currency {
 	return am.accounts[id]
 }
 
-// callDeposit will credit the amount to the account's balance, it will
-// then scroll through all blocked calls and unblock where possible
-func (am *accountManager) callDeposit(id string, amount types.Currency) (*string, error) {
+// callDeposit will credit the amount to the account's balance
+func (am *accountManager) callDeposit(id string, amount types.Currency) (*receipt, error) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	// Verify the updated balance does not exceed the max account balance
+	now := time.Now().Unix()
+	r := &receipt{
+		receiver:  id,
+		timestamp: now,
+		signature: crypto.Signature{}, // TODO
+	}
+	defer func() {
+		am.receipts[r.signature] = r
+	}()
+
+	// Verify max balance
 	uB := am.accounts[id].Add(amount)
 	if accountMaxBalance.Cmp(uB) < 0 {
 		am.hostUtils.log.Printf("ERROR: deposit of %v exceeded max balance for account %v", amount, id)
 		return nil, errMaxBalanceExceeded
 	}
+
+	// Update account balance
 	am.accounts[id] = uB
-	am.updated[id] = time.Now().Unix()
+	am.updated[id] = now
 
 	// Loop over blocked calls and unblock where possible, keep track of the
 	// remaining balance to allow unblocking multiple calls at the same time
 	remaining := am.accounts[id]
 	j := 0
 	for i := 0; i < len(am.blockedCalls); i++ {
-		blocked := am.blockedCalls[i]
-		if blocked.id != id || remaining.Cmp(blocked.required) < 0 {
-			am.blockedCalls[j] = blocked
+		b := am.blockedCalls[i]
+		if b.id != id {
+			continue
+		}
+		if remaining.Cmp(b.required) < 0 {
+			am.blockedCalls[j] = b
 			j++
 		} else {
-			remaining = remaining.Sub(blocked.required)
-			close(blocked.unblock)
-		}
-
-		if remaining.Equals(types.ZeroCurrency) {
-			break
+			close(b.unblock)
+			remaining = remaining.Sub(b.required)
+			if remaining.Equals(types.ZeroCurrency) {
+				break
+			}
 		}
 	}
 	am.blockedCalls = am.blockedCalls[:j]
 
-	am.persister.callSaveAccountsData(am.accountsData())
+	err := am.persister.callSaveAccountsData(am.managedAccountsData())
+	if err != nil {
+		am.hostUtils.log.Println("ERROR: could not save accounts:", err)
+	}
 
-	receipt := "TODO"
-	return &receipt, nil
+	return r, nil
 }
 
 // callSpend will try to spend from an account, it blocks if the account balance
 // is insufficient
-func (am *accountManager) callSpend(id string, amount types.Currency, receipt crypto.Hash) error {
+func (am *accountManager) callSpend(id string, amount types.Currency, fp crypto.Hash) error {
 	am.mu.Lock()
 
-	// Verify receipt
-	_, exists := am.receipts[receipt]
-	if exists {
-		am.hostUtils.log.Printf("ERROR: receipt %v was already spent", receipt)
+	defer func() {
+		var s struct{}
+		am.fingerprints[fp] = s
+	}()
+
+	// Verify unique fingerprint
+	if _, exists := am.fingerprints[fp]; exists {
+		am.hostUtils.log.Printf("ERROR: fingerprint seen %v", fp)
 		am.mu.Unlock()
-		return errReceiptSpent
+		return errKnownFingerprint
 	}
 
 	// If current account balance is insufficient, we block until either the
@@ -196,7 +223,6 @@ func (am *accountManager) callSpend(id string, amount types.Currency, receipt cr
 		return errInsufficientBalance
 	}
 
-	// TODO save receipt
 	am.accounts[id] = am.accounts[id].Sub(amount)
 	am.updated[id] = time.Now().Unix()
 	am.mu.Unlock()
@@ -206,15 +232,20 @@ func (am *accountManager) callSpend(id string, amount types.Currency, receipt cr
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
 func (am *accountManager) threadedPruneExpiredAccounts() {
+	var force bool
+	if am.dependencies.Disrupt("expireEphemeralAccounts") {
+		force = true
+	}
+
 	for {
 		var save bool
 
 		am.mu.Lock()
 		now := time.Now().Unix()
-		for id, balance := range am.accounts {
-			last, exists := am.updated[id]
-			if !exists || now-last > 0 {
-				am.totalExpired = am.totalExpired.Add(balance)
+		for id := range am.accounts {
+			last := am.updated[id]
+			if force || now-last > accountExpiryTimeout {
+				am.log.Debugf("DEBUG: expiring account %v at %v", id, now)
 				delete(am.accounts, id)
 				save = true
 			}
@@ -222,7 +253,10 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 		am.mu.Unlock()
 
 		if save {
-			am.persister.callSaveAccountsData(am.accountsData())
+			err := am.persister.callSaveAccountsData(am.managedAccountsData())
+			if err != nil {
+				am.hostUtils.log.Println("ERROR: could not save accounts:", err)
+			}
 		}
 
 		// Block until next cycle.
@@ -235,7 +269,8 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 	}
 }
 
-// accountsData returns a struct containing all persisted account data
-func (am *accountManager) accountsData() *accountsData {
-	return &accountsData{am.accounts, am.totalExpired}
+// managedAccountsData returns a struct containing all persisted account data
+func (am *accountManager) managedAccountsData() *accountsData {
+	data := &accountsData{am.accounts}
+	return data
 }
