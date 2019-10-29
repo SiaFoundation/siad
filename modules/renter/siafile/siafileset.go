@@ -342,6 +342,7 @@ func (sfs *SiaFileSet) readLockCachedFileInfo(siaPath modules.SiaPath) (modules.
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
 		StuckHealth:      md.CachedStuckHealth,
+		UID:              string(md.UniqueID),
 		UploadedBytes:    md.CachedUploadedBytes,
 		UploadProgress:   md.CachedUploadProgress,
 	}
@@ -602,6 +603,7 @@ func (sfs *SiaFileSet) FileInfo(siaPath modules.SiaPath, offline map[string]bool
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
+		UID:              string(entry.UID()),
 		UploadedBytes:    uploadedBytes,
 		UploadProgress:   uploadProgress,
 	}

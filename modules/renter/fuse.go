@@ -28,14 +28,16 @@ package renter
 
 import (
 	"context"
+	"encoding/binary"
+	"fmt"
 	"io"
 	"sync"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // fuseDirnode is a fuse node for the fs package that covers a siadir.
@@ -136,6 +138,14 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 	return errToStatus(nil)
 }
 
+func uidToIno(uid string) (uint64, error) {
+	byteUID := []byte(uid)
+	if len(byteUID) < 8 {
+		return 0, fmt.Errorf("expected uid to be at least 8 bytes long but was %v", len(byteUID))
+	}
+	return binary.LittleEndian.Uint64(byteUID), nil
+}
+
 // Lookup is a directory call that returns the file in the directory associated
 // with the provided name. When a file browser is opening folders with lots of
 // files, this method can be called thousands of times concurrently in a single
@@ -154,8 +164,13 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 			staticSiapath:  lookupPath,
 			filesystem:     fdn.filesystem,
 		}
+		ino, err := uidToIno(fileInfo.UID)
+		if err != nil {
+			return nil, errToStatus(err)
+		}
 		attrs := fs.StableAttr{
 			Mode: uint32(fileInfo.Mode()) | syscall.S_IFREG,
+			Ino:  ino,
 		}
 
 		// Set the crticial entry out values.

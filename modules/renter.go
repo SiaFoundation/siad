@@ -345,6 +345,7 @@ type FileInfo struct {
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
+	UID              string            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
 	UploadProgress   float64           `json:"uploadprogress"`
 }
