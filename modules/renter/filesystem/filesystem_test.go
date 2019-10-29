@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -56,7 +57,7 @@ func newSiaPath(path string) modules.SiaPath {
 // newTestFileSystem creates a new filesystem for testing.
 func newTestFileSystem(root string) *FileSystem {
 	wal, _ := newTestWAL()
-	fs, err := New(root, wal)
+	fs, err := New(root, persist.NewLogger(ioutil.Discard), wal)
 	if err != nil {
 		panic(err.Error())
 	}

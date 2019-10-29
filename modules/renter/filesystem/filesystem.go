@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -37,6 +38,7 @@ type (
 	// future.
 	FileSystem struct {
 		DirNode
+		staticLog *persist.Logger
 	}
 
 	// node is a struct that contains the commmon fields of every node.
@@ -121,7 +123,7 @@ func (n *node) managedAbsPath() string {
 
 // New creates a new FileSystem at the specified root path. The folder will be
 // created if it doesn't exist already.
-func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
+func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem, error) {
 	if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
 		return nil, errors.AddContext(err, "failed to create root dir")
 	}
@@ -133,6 +135,7 @@ func New(root string, wal *writeaheadlog.WAL) (*FileSystem, error) {
 			files:       make(map[string]*FileNode),
 			lazySiaDir:  new(*siadir.SiaDir),
 		},
+		staticLog: log,
 	}, nil
 }
 
@@ -512,7 +515,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 				continue
 			}
 			if err != nil {
-				// TODO: Add logging
+				fs.staticLog.Debugf("Failed to get DirectoryInfo of '%v': %v", sd.managedAbsPath(), err)
 				continue
 			}
 			disMu.Lock()
@@ -534,7 +537,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 				continue
 			}
 			if err != nil {
-				// TODO: Add logging
+				fs.staticLog.Debugf("Failed to get FileInfo of '%v': %v", sf.managedAbsPath(), err)
 				continue
 			}
 			fisMu.Lock()

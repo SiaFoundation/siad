@@ -188,7 +188,7 @@ func (r *Renter) managedInitPersist() error {
 	}
 
 	// Prepare the filesystem and create the essential dirs.
-	fs, err := filesystem.New(fsRoot, wal)
+	fs, err := filesystem.New(fsRoot, r.log, wal)
 	if err != nil {
 		return err
 	}
