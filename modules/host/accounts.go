@@ -57,7 +57,6 @@ type (
 		accounts     map[string]types.Currency
 		updated      map[string]int64
 		fingerprints map[crypto.Hash]struct{}
-		receipts     map[crypto.Signature]*receipt
 		blockedCalls []blockedCall
 
 		mu           sync.Mutex
@@ -74,14 +73,6 @@ type (
 		unblock  chan struct{}
 		required types.Currency
 	}
-
-	// receipt holds information about a deposit and can be used as proof of
-	// payment
-	receipt struct {
-		receiver  string
-		timestamp int64
-		signature crypto.Signature
-	}
 )
 
 // newAccountManager returns a new account manager ready for use by the host
@@ -90,7 +81,6 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 		accounts:     make(map[string]types.Currency),
 		updated:      make(map[string]int64),
 		fingerprints: make(map[crypto.Hash]struct{}),
-		receipts:     make(map[crypto.Signature]*receipt),
 		blockedCalls: make([]blockedCall, 0),
 		dependencies: dependencies,
 		persister:    h.staticAccountPersister,
@@ -120,30 +110,20 @@ func (am *accountManager) balanceOf(id string) types.Currency {
 }
 
 // callDeposit will credit the amount to the account's balance
-func (am *accountManager) callDeposit(id string, amount types.Currency) (*receipt, error) {
+func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-
-	now := time.Now().Unix()
-	r := &receipt{
-		receiver:  id,
-		timestamp: now,
-		signature: crypto.Signature{}, // TODO
-	}
-	defer func() {
-		am.receipts[r.signature] = r
-	}()
 
 	// Verify max balance
 	uB := am.accounts[id].Add(amount)
 	if accountMaxBalance.Cmp(uB) < 0 {
 		am.hostUtils.log.Printf("ERROR: deposit of %v exceeded max balance for account %v", amount, id)
-		return nil, errMaxBalanceExceeded
+		return errMaxBalanceExceeded
 	}
 
 	// Update account balance
 	am.accounts[id] = uB
-	am.updated[id] = now
+	am.updated[id] = time.Now().Unix()
 
 	// Loop over blocked calls and unblock where possible, keep track of the
 	// remaining balance to allow unblocking multiple calls at the same time
@@ -172,7 +152,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) (*receip
 		am.hostUtils.log.Println("ERROR: could not save accounts:", err)
 	}
 
-	return r, nil
+	return nil
 }
 
 // callSpend will try to spend from an account, it blocks if the account balance

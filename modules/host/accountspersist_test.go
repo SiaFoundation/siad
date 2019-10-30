@@ -21,7 +21,7 @@ func TestAccountsPersist(t *testing.T) {
 	}
 
 	am := ht.host.staticAccountManager
-	_, err = am.callDeposit(accountID, types.NewCurrency64(100))
+	err = am.callDeposit(accountID, types.NewCurrency64(100))
 	if err != nil {
 		t.Fatal(err)
 	}

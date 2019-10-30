@@ -31,7 +31,7 @@ func TestAccountCallDeposit(t *testing.T) {
 	diff := types.NewCurrency64(100)
 	before := am.accounts[accountID]
 
-	_, err = am.callDeposit(accountID, diff)
+	err = am.callDeposit(accountID, diff)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestAccountCallDeposit(t *testing.T) {
 		t.Fatal("Deposit was not credited")
 	}
 
-	_, err = am.callDeposit(accountID, accountMaxBalance)
+	err = am.callDeposit(accountID, accountMaxBalance)
 	if err != errMaxBalanceExceeded {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestAccountCallSpend(t *testing.T) {
 
 	// Fund the account
 	am := ht.host.staticAccountManager
-	_, err = am.callDeposit(accountID, types.NewCurrency64(10))
+	err = am.callDeposit(accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestAccountCallSpend(t *testing.T) {
 	// Spend more than the account holds, have it block and then fund it to
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		_, _ = am.callDeposit(accountID, types.NewCurrency64(3))
+		_ = am.callDeposit(accountID, types.NewCurrency64(3))
 	}()
 	err = am.callSpend(accountID, types.NewCurrency64(7), randomHash())
 	if err != nil {
@@ -112,7 +112,7 @@ func TestAccountExpiry(t *testing.T) {
 
 	// Deposit some money into the account
 	am := ht.host.staticAccountManager
-	_, err = am.callDeposit(accountID, types.NewCurrency64(10))
+	err = am.callDeposit(accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
