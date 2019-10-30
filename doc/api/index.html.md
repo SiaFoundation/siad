@@ -2722,7 +2722,10 @@ lists the status of all files.
 indicates the last time the siafile was accessed
 
 **available** | boolean  
-true if the file is available for download. Files may be available before they are completely uploaded.  
+true if the file is available for download. A file is available to download once
+it has reached at least 1x redundancy. Files may be available before they have
+reached 100% upload progress as upload progress includes the full expected
+redundancy of the file.  
 
 **changetime** | timestamp  
 indicates the last time the siafile metadata was updated
@@ -2761,10 +2764,17 @@ indicates the number of stuck chunks in a file. A chunk is stuck if it cannot re
 indicates if the source file is found on disk
 
 **recoverable** | boolean  
-indicates if the siafile is recoverable
+indicates if the siafile is recoverable. A file is recoverable if it has at
+least 1x redundancy or if it knows the location of the local copy of the file. 
 
 **redundancy** | float64  
-Average redundancy of the file on the network. Redundancy is calculated by dividing the amount of data uploaded in the file's open contracts by the size of the file. Redundancy does not necessarily correspond to availability. Specifically, a redundancy >= 1 does not indicate the file is available as there could be a chunk of the file with 0 redundancy.  
+redundancy is calculated on a chunk basis and is the total number of unique
+pieces uploaded divided by the number of data pieces set in the erasure coding
+of the chunk. So if there are 20 unique pieces of a chunk uploaded and the chunk
+needs 10 data pieces then the chunk has a redundancy of 2. The redundancy of the
+file is the redundancy of the worst chunk in the file. So if 9 out of 10 chunks
+in a file have a redundancy of 3 but one chunk as a redundancy of 1 then the
+file has a redundancy of 1.
 
 **renewing** | boolean  
 true if the file's contracts will be automatically renewed by the renter.  
@@ -3046,7 +3056,9 @@ standard success or error response. See [standard responses](#standard-responses
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
 ```
 
-uploads a file to the network using a stream.
+uploads a file to the network using a stream. If the upload stream POST call
+fails or quits before the file is fully uploaded, the file can be repaired by a
+subsequent call to the upload stream endpoint.
 
 ### Path Parameters
 #### REQUIRED
