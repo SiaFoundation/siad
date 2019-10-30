@@ -16,6 +16,9 @@ const (
 )
 
 const (
+	// AlertMSGRepairAndUploadsStopped indicates that the renter's repairs and
+	// uploads have been stopped
+	AlertMSGRepairAndUploadsStopped = "The Renter's repairs and uploads have been stopped"
 	// AlertMSGSiafileLowRedundancy indicates that a file is below 75% redundancy.
 	AlertMSGSiafileLowRedundancy = "The SiaFile mentioned in the 'Cause' is below 75% redundancy"
 	// AlertSiafileLowRedundancyThreshold is the health threshold at which we start

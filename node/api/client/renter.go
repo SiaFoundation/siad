@@ -576,6 +576,20 @@ func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, er
 	return
 }
 
+// RenterUploadsStartPost uses the /renter/uploads/start endpoint to start the
+// renter's uploads and repairs
+func (c *Client) RenterUploadsStartPost() (err error) {
+	err = c.post("/renter/uploads/start", "", nil)
+	return
+}
+
+// RenterUploadsStopPost uses the /renter/uploads/stop endpoint to stop the
+// renter's uploads and repairs
+func (c *Client) RenterUploadsStopPost() (err error) {
+	err = c.post("/renter/uploads/stop", "", nil)
+	return
+}
+
 // RenterPost uses the /renter POST endpoint to set fields of the renter. Values
 // are encoded as a query string in the body
 func (c *Client) RenterPost(values url.Values) (err error) {

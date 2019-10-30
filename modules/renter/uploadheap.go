@@ -136,11 +136,15 @@ type uploadHeap struct {
 	stuckHeapChunks   map[uploadChunkID]*unfinishedUploadChunk
 	unstuckHeapChunks map[uploadChunkID]*unfinishedUploadChunk
 
-	// Control channels
+	// Internal control channels
 	newUploads        chan struct{}
 	repairNeeded      chan struct{}
 	stuckChunkFound   chan struct{}
 	stuckChunkSuccess chan struct{}
+
+	// External control channels
+	startRepair chan struct{}
+	stopRepair  bool
 
 	mu sync.Mutex
 }
@@ -154,6 +158,14 @@ func (uh *uploadHeap) managedExists(id uploadChunkID) bool {
 	_, existsRepairing := uh.repairingChunks[id]
 	_, existsStuckHeap := uh.stuckHeapChunks[id]
 	return existsUnstuckHeap || existsRepairing || existsStuckHeap
+}
+
+// managedIsRepairStopped returns the boolean indicating whether or not the user
+// has set the stopRepair field
+func (uh *uploadHeap) managedIsRepairStopped() bool {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	return uh.stopRepair
 }
 
 // managedLen will return the length of the heap
@@ -263,6 +275,58 @@ func (uh *uploadHeap) managedReset() error {
 	uh.unstuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	uh.stuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	return uh.heap.reset()
+}
+
+// managedStart sets the stopRepair field to false and triggers the startRepair
+// channel
+func (uh *uploadHeap) managedStart() {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	uh.stopRepair = false
+	select {
+	case uh.startRepair <- struct{}{}:
+	default:
+	}
+}
+
+// managedStop sets the stopRepair field to true and makes sure the startRepair
+// channel is empty
+func (uh *uploadHeap) managedStop() {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	select {
+	case <-uh.startRepair:
+	default:
+	}
+	uh.stopRepair = true
+}
+
+// StartRepairAndUploadLoop starts the renter's repair and upload loop by
+// starting the renter's uploadheap
+func (r *Renter) StartRepairAndUploadLoop() error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	r.uploadHeap.managedStart()
+	r.staticAlerter.UnregisterAlert(modules.AlertIDRenterRepairsAndUploadsStopped)
+	return nil
+}
+
+// StopRepairAndUploadLoop stops the renter's repair and upload loop by stopping
+// the renter's uploadheap
+func (r *Renter) StopRepairAndUploadLoop() error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	r.uploadHeap.managedStop()
+
+	// Register an Alert Warning to remind the users to restart the repair loop
+	r.staticAlerter.RegisterAlert(modules.AlertIDRenterRepairsAndUploadsStopped,
+		AlertMSGRepairAndUploadsStopped, "repair and uploads have been stopped externally",
+		modules.SeverityWarning)
+	return nil
 }
 
 // managedBuildUnfinishedChunk will pull out a single unfinished chunk of a file.
@@ -1014,6 +1078,15 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			return errors.New("repair loop returned early due to the renter been offline")
 		}
 
+		// Check if the repair has been stopped
+		if r.uploadHeap.managedIsRepairStopped() {
+			// If stopped we reset the upload heap and return so that when the
+			// repair is restarted the upload heap can be built fresh.
+			errStopped := errors.New("could not finish repairing upload heap because repair was stopped")
+			err := r.uploadHeap.managedReset()
+			return errors.Compose(err, errStopped)
+		}
+
 		// Check if there is work by trying to pop off the next chunk from the
 		// heap.
 		nextChunk := r.uploadHeap.managedPop()
@@ -1128,6 +1201,38 @@ func (r *Renter) threadedUploadAndRepair() {
 		if !r.managedBlockUntilOnline() {
 			return
 		}
+
+		// Check if repair process has been stopped
+		if r.uploadHeap.managedIsRepairStopped() {
+			r.repairLog.Println("Repairs and Uploads have been stopped")
+			// Block until the repair process is restarted
+			select {
+			case <-r.tg.StopChan():
+				return
+			case <-r.uploadHeap.startRepair:
+				r.repairLog.Println("Repairs and Uploads have been started")
+			}
+			// Reset the upload heap and the directory heap now that has been
+			// restarted
+			err := r.uploadHeap.managedReset()
+			if err != nil {
+				r.repairLog.Println("WARN: there was an error resetting the upload heap:", err)
+			}
+			r.directoryHeap.managedReset()
+			err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+			if err != nil {
+				r.repairLog.Println("WARN: there was an error pushing an unexplored root directory onto the directory heap:", err)
+			}
+			if err != nil {
+				select {
+				case <-time.After(uploadAndRepairErrorSleepDuration):
+				case <-r.tg.StopChan():
+					return
+				}
+			}
+			continue
+		}
+
 		// Refresh the worker set.
 		hosts := r.managedRefreshHostsAndWorkers()
 

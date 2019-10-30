@@ -1507,6 +1507,28 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 	})
 }
 
+// renterUploadsStartHandler handles the api call to start the renter's uploads,
+// this includes repairs
+func (api *API) renterUploadsStartHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	err := api.renter.StartRepairAndUploadLoop()
+	if err != nil {
+		WriteError(w, Error{"failed to start uploads:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterUploadsStopHandler handles the api call to stop the renter's uploads,
+// this includes repairs
+func (api *API) renterUploadsStopHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	err := api.renter.StopRepairAndUploadLoop()
+	if err != nil {
+		WriteError(w, Error{"failed to stop uploads:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterUploadStreamHandler handles the API call to upload a file using a
 // stream.
 func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
