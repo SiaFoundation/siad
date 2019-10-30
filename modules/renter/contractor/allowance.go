@@ -117,7 +117,7 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 			}
 			utility := contract.Utility()
 			utility.Locked = false
-			err := contract.UpdateUtility(utility)
+			err := c.callUpdateUtility(contract, utility)
 			c.staticContracts.Return(contract)
 			if err != nil {
 				return err
@@ -204,12 +204,11 @@ func (c *Contractor) managedCancelAllowance() error {
 		utility.GoodForRenew = false
 		utility.GoodForUpload = false
 		utility.Locked = true
-		err := contract.UpdateUtility(utility)
+		err := c.callUpdateUtility(contract, utility)
 		c.staticContracts.Return(contract)
 		if err != nil {
 			return err
 		}
-		c.staticChurnLimiter.callNotifyChurnedContract(contract.Metadata())
 	}
 	return nil
 }

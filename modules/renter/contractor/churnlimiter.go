@@ -14,9 +14,9 @@ const maxStorageChurnPerPeriod = 2 << 10
 // contractScoreAndUtil combines a contract with its host's score and an updated
 // utility.
 type contractScoreAndUtil struct {
-	modules.RenterContract
-	sb   modules.HostScoreBreakdown
-	util modules.ContractUtility
+	contract modules.RenterContract
+	sb       modules.HostScoreBreakdown
+	util     modules.ContractUtility
 }
 
 // churnLimiter keeps track of the aggregate number of bytes stored in contracts
@@ -102,25 +102,23 @@ func (cl *churnLimiter) callProcessSuggestedUpdates(queue []contractScoreAndUtil
 		return queue[i].sb.Score.Cmp(queue[i].sb.Score) < 0
 	})
 
-	var contract contractScoreAndUtil
+	var queuedContract contractScoreAndUtil
 	for len(queue) > 0 {
-		contract, queue = queue[0], queue[1:]
+		queuedContract, queue = queue[0], queue[1:]
 
-		// Mark contracts as GFR if the churn limit has been reached, and if it was
-		// queued as !GFR
-		churningThisContract := !contract.util.GoodForRenew && !cl.callReachedChurnLimit()
-		if !churningThisContract {
-			cl.contractor.log.Debugln("Avoiding churn on contract: ", contract.ID, cl.callReachedChurnLimit())
-			contract.util.GoodForRenew = true
+		// Churn a contract if it went from GFR to !GFR, and the churnLimit has not
+		// been reached.
+		turnedNotGFR := queuedContract.contract.Utility.GoodForRenew && !queuedContract.util.GoodForRenew
+		churningThisContract := turnedNotGFR && !cl.callReachedChurnLimit()
+		if turnedNotGFR && !churningThisContract {
+			cl.contractor.log.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID, cl.callReachedChurnLimit())
+			queuedContract.util.GoodForRenew = true
 		}
 
 		// Apply changes.
-		err := cl.contractor.managedUpdateContractUtility(contract.ID, contract.util)
+		err := cl.contractor.managedAcquireAndUpdateContractUtility(queuedContract.contract.ID, queuedContract.util)
 		if err != nil {
 			return err
-		}
-		if churningThisContract {
-			cl.callNotifyChurnedContract(contract.RenterContract)
 		}
 	}
 	return nil
@@ -151,7 +149,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		// Get host from hostdb and check that it's not filtered.
 		host, u, needsUpdate := c.hostInHostDBCheck(contract)
 		if needsUpdate {
-			if err = c.managedUpdateContractUtility(contract.ID, u); err != nil {
+			if err = c.managedAcquireAndUpdateContractUtility(contract.ID, u); err != nil {
 				return errors.AddContext(err, "unable to update utility after hostdb check")
 			}
 			continue
@@ -160,7 +158,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		// Do critical contract checks and update the utility if any checks fail.
 		u, needsUpdate = c.criticalUtilityChecks(contract, host)
 		if needsUpdate {
-			err = c.managedUpdateContractUtility(contract.ID, u)
+			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 			if err != nil {
 				return errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
 			}
@@ -186,7 +184,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 		case necessaryUtilityUpdate:
 			// Apply changes.
-			err = c.managedUpdateContractUtility(contract.ID, u)
+			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 			if err != nil {
 				return errors.AddContext(err, "unable to update utility after checkHostScore")
 			}
@@ -203,7 +201,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		u.GoodForUpload = true
 		u.GoodForRenew = true
 		// Apply changes.
-		err = c.managedUpdateContractUtility(contract.ID, u)
+		err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 		if err != nil {
 			return errors.AddContext(err, "unable to update utility after all checks passed.")
 		}

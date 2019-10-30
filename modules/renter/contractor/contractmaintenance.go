@@ -648,7 +648,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 			oldUtility.GoodForRenew = false
 			oldUtility.GoodForUpload = false
 			oldUtility.Locked = true
-			err := oldContract.UpdateUtility(oldUtility)
+			err := c.callUpdateUtility(oldContract, oldUtility)
 			if err != nil {
 				c.log.Println("WARN: failed to mark contract as !goodForRenew:", err)
 			}
@@ -673,7 +673,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		GoodForUpload: true,
 		GoodForRenew:  true,
 	}
-	if err := c.managedUpdateContractUtility(newContract.ID, newUtility); err != nil {
+	if err := c.managedAcquireAndUpdateContractUtility(newContract.ID, newUtility); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
 		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
@@ -681,7 +681,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	oldUtility.GoodForRenew = false
 	oldUtility.GoodForUpload = false
 	oldUtility.Locked = true
-	if err := oldContract.UpdateUtility(oldUtility); err != nil {
+	if err := c.callUpdateUtility(oldContract, oldUtility); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
 		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
@@ -730,14 +730,30 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	}
 }
 
-// managedUpdateContractUtility is a helper function that acquires a contract, updates
+// managedAcquireAndUpdateContractUtility is a helper function that acquires a contract, updates
 // its ContractUtility and returns the contract again.
-func (c *Contractor) managedUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
+func (c *Contractor) managedAcquireAndUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
 	safeContract, ok := c.staticContracts.Acquire(id)
 	if !ok {
 		return errors.New("failed to acquire contract for update")
 	}
 	defer c.staticContracts.Return(safeContract)
+	return c.callUpdateUtility(safeContract, utility)
+}
+
+// callUpdateUtility updates the utility of a contract and notifies the
+// churnLimiter of churn if necessary. This method should *always* be used as
+// opposed to calling UpdateUtility directly on a safe contract from the
+// contractor.
+func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, utility modules.ContractUtility) error {
+	contract := safeContract.Metadata()
+
+	// If the contract is going from GFR to !GFR, notify the churn limiter.
+	if contract.Utility.GoodForRenew && !utility.GoodForRenew {
+		c.staticChurnLimiter.callNotifyChurnedContract(contract)
+	}
+
+	c.staticChurnLimiter.callNotifyChurnedContract(contract)
 	return safeContract.UpdateUtility(utility)
 }
 
@@ -1145,7 +1161,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Add this contract to the contractor and save.
-		err = c.managedUpdateContractUtility(newContract.ID, modules.ContractUtility{
+		err = c.managedAcquireAndUpdateContractUtility(newContract.ID, modules.ContractUtility{
 			GoodForUpload: true,
 			GoodForRenew:  true,
 		})
