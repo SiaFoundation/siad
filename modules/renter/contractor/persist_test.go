@@ -259,7 +259,7 @@ func TestSaveLoad(t *testing.T) {
 	if aggregateChurn != 123456 {
 		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
 	}
-	remainingChurnBudget, periodBudget := c.staticChurnLimiter.callChurnBudget()
+	remainingChurnBudget, periodBudget := c.staticChurnLimiter.managedChurnBudget()
 	if remainingChurnBudget != -789 {
 		t.Fatal("Expected -789 remainingChurnBudget", remainingChurnBudget)
 	}

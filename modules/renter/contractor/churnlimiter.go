@@ -79,6 +79,39 @@ func newChurnLimiter(contractor *Contractor) *churnLimiter {
 	return &churnLimiter{contractor: contractor, maxChurnPerPeriod: DefaultMaxChurnPerPeriod}
 }
 
+// managedChurnBudget returns the current remaining churn budget, and the remaining
+// budget for the period.
+func (cl *churnLimiter) managedChurnBudget() (int, int) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.remainingChurnBudget, int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod)
+}
+
+// callMaxChurnPerPeriod returns the current max churn per period.
+func (cl *churnLimiter) callMaxChurnPerPeriod() uint64 {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.maxChurnPerPeriod
+}
+
+// ChurnStatus returns the current period's aggregate churn and the max churn
+// per period.
+func (c *Contractor) ChurnStatus() modules.ContractorChurnStatus {
+	c.staticChurnLimiter.mu.Lock()
+	defer c.staticChurnLimiter.mu.Unlock()
+	return modules.ContractorChurnStatus{
+		AggregateChurnThisPeriod: c.staticChurnLimiter.aggregateChurnThisPeriod,
+		MaxChurnPerPeriod:        c.staticChurnLimiter.maxChurnPerPeriod,
+	}
+}
+
+// callAggregateChurnInPeriod returns the aggregate churn for the current period.
+func (cl *churnLimiter) callAggregateChurnInPeriod() uint64 {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.aggregateChurnThisPeriod
+}
+
 // callResetAggregateChurn resets the aggregate churn for this period. This
 // method must be called at the beginning of every new period.
 func (cl *churnLimiter) callResetAggregateChurn() {
@@ -108,22 +141,15 @@ func (cl *churnLimiter) callCanChurnContract(contract modules.RenterContract) bo
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
-	// Allow any size contract to be churned if the budget is the max budget. This
-	// allows large contracts to be churned periodically.
-	if cl.remainingChurnBudget == maxChurnBudget {
-		return true
-	}
-
 	fitsInCurrentBudget := (cl.remainingChurnBudget - int(size)) >= 0
 	fitsInPeriodBudget := (int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod) - int(size)) >= 0
-	return fitsInPeriodBudget && fitsInCurrentBudget
-}
 
-// callAggregateChurnInPeriod returns the aggregate churn for the current period.
-func (cl *churnLimiter) callAggregateChurnInPeriod() uint64 {
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
-	return cl.aggregateChurnThisPeriod
+	// Allow any size contract to be churned if the budget is the max budget. This
+	// allows large contracts to be churned periodically.
+	if fitsInPeriodBudget && cl.remainingChurnBudget == maxChurnBudget {
+		return true
+	}
+	return fitsInPeriodBudget && fitsInCurrentBudget
 }
 
 // callAdjustChurnBudget adjusts the churn budget. Used when new blocks are
@@ -139,13 +165,14 @@ func (cl *churnLimiter) callAdjustChurnBudget(adjustment int) {
 	cl.contractor.log.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
 }
 
-// callChurnBudget returns the current remaining churn budget, and the remaining
-// budget for the period.
-func (cl *churnLimiter) callChurnBudget() (int, int) {
+// callSetMaxChurnPerPeriod sets the current max churn per period.
+func (cl *churnLimiter) callSetMaxChurnPerPeriod(newMax uint64) {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
-	return cl.remainingChurnBudget, int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod)
+	cl.maxChurnPerPeriod = newMax
 }
+
+// callSetMaxChurnPerPeriod sets the current max churn per period.
 
 // callProcessSuggestedUpdates processes suggested utility updates. It prevents
 // contracts from being marked as !GFR if the churn limit has been reached. The
@@ -169,7 +196,7 @@ func (cl *churnLimiter) callProcessSuggestedUpdates(queue []contractScoreAndUtil
 		churningThisContract := turnedNotGFR && !cl.callCanChurnContract(queuedContract.contract)
 		if turnedNotGFR && !churningThisContract {
 			cl.contractor.log.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID)
-			currentBudget, periodBudget := cl.callChurnBudget()
+			currentBudget, periodBudget := cl.managedChurnBudget()
 			cl.contractor.log.Debugf("Remaining Churn Budget: %d. Remaining Period Budget: %d", currentBudget, periodBudget)
 			queuedContract.util.GoodForRenew = true
 		}

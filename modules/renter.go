@@ -568,6 +568,16 @@ type ContractorSpending struct {
 	PreviousSpending types.Currency `json:"previousspending"`
 }
 
+// ContractorChurnStatus contains the current churn budgets for the Contractor's
+// churnLimiter and the aggregate churn for the current period.
+type ContractorChurnStatus struct {
+	// AggregateChurnThisPeriod is the total size of files from churned contracts in this
+	// period.
+	AggregateChurnThisPeriod uint64 `json:"aggregatechurnthisperiod"`
+	// MaxChurnPerPeriod is the (adjustable) maximum churn allowed per period.
+	MaxChurnPerPeriod uint64 `json:"maxchurnperperiod"`
+}
+
 // UploadedBackup contains metadata about an uploaded backup.
 type UploadedBackup struct {
 	Name           string
