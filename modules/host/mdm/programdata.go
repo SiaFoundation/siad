@@ -15,7 +15,7 @@ type ProgramData struct {
 // NewProgramData creates a new ProgramData object from the specified reader. It
 // will read from the reader until io.EOF is reached or until the maximum number
 // of packets are read.
-func NewProgramData(r io.Reader) {
+func NewProgramData(r io.Reader) *ProgramData {
 	pd := &ProgramData{
 		r: r,
 	}

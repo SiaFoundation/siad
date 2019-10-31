@@ -3,6 +3,7 @@ package mdm
 import (
 	"context"
 	"io"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -19,17 +20,21 @@ type Program struct {
 	// contract id field will be ignored.
 	staticFCID types.FileContractID
 
-	staticInstructions []instruction.Instruction
-	staticData         ProgramData
+	instructions []Instruction
+	staticData   *ProgramData
+
+	finalContractSize uint64 // contract size after executing all instructions
+
+	mu sync.Mutex
 }
 
 // NewProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data.
-func NewProgram(fcid types.FileContractID, instructions []Instruction, data io.Reader) *Program {
+func NewProgram(fcid types.FileContractID, initialContractSize uint64, data io.Reader) *Program {
 	return &Program{
-		staticFCID:         fcid,
-		staticData:         NewProgramData(data),
-		staticInstructions: instructions,
+		finalContractSize: initialContractSize,
+		staticFCID:        fcid,
+		staticData:        NewProgramData(data),
 	}
 }
 
@@ -38,16 +43,36 @@ func NewProgram(fcid types.FileContractID, instructions []Instruction, data io.R
 // be used to issue an interrupt which will stop the execution of the program as
 // soon as the current instruction is done executing.
 func (p *Program) Execute(ctx context.Context) error {
-	if !p.managedReadonly() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.readOnly() {
 		// TODO: Lock contract
+		panic("not implemented yet")
+	}
+	// Execute all the instructions.
+	for _, i := range p.instructions {
+		i.Execute()
 	}
 	panic("not implemented yet")
 }
 
+// managedCost returns the amount of money that the execution of the program
+// costs. It is the cost of all of the instructions.
+func (p *Program) managedCost() (cost Cost) {
+	p.mu.Lock()
+	defer p.mu.Lock()
+	// TODO: This is actually not quite true. We fetch the program's data in the
+	// background so we don't know how much data is transmitted in total.
+	for _, i := range p.instructions {
+		cost = cost.Add(i.Cost())
+	}
+	return
+}
+
 // readOnly returns 'true' if all of the instructions executed by a program are
 // readonly.
-func (p *Program) managedReadOnly() bool {
-	for _, i := range staticInstructions {
+func (p *Program) readOnly() bool {
+	for _, i := range p.instructions {
 		if !i.ReadOnly() {
 			return false
 		}

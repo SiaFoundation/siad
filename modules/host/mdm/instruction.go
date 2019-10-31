@@ -9,6 +9,7 @@ import (
 // Instruction is the interface an instruction needs to implement to be part of
 // a program.
 type Instruction interface {
+	Cost() Cost
 	Execute() Output
 	ReadOnly() bool
 }
@@ -45,8 +46,9 @@ type Output struct {
 
 // commonInstruction contains all the fields shared by every instruction.
 type commonInstruction struct {
-	staticFCID types.FileContractID
-	staticData ProgramData
+	staticContractSize uint64 // contract size before executing instruction
+	staticFCID         types.FileContractID
+	staticData         *ProgramData
 }
 
 // outputFromError is a convenience function to wrap an error in an Output.
@@ -71,15 +73,21 @@ type instructionRead struct {
 
 // NewReadInstruction creates a new read instructions from the provided
 // operands.
-func (p *Program) NewReadInstruction(offsetOff, lengthOff uint64) {
+func (p *Program) NewReadInstruction(offsetOff, lengthOff uint64) Instruction {
 	return &instructionRead{
 		commonInstruction: commonInstruction{
-			fcid: p.staticContractID,
-			data: p.staticData,
+			staticContractSize: p.finalContractSize,
+			staticFCID:         p.staticFCID,
+			staticData:         p.staticData,
 		},
-		lengthOff:  lengthOff,
-		offsetOfft: offsetOff,
+		lengthOff: lengthOff,
+		offsetOff: offsetOff,
 	}
+}
+
+// Cost returns the cost of executing this instruction.
+func (i *instructionRead) Cost() Cost {
+	return ReadCost(i.staticContractSize)
 }
 
 // Execute execute the 'Read' instruction.
@@ -93,6 +101,7 @@ func (i *instructionRead) Execute() Output {
 	if err != nil {
 		return outputFromError(err)
 	}
+	println("length/offset", length, offset)
 	panic("not implemented yet")
 }
 
