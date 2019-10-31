@@ -90,6 +90,13 @@ func (cl *churnLimiter) callCanChurnContract(contract modules.RenterContract) bo
 	size := contract.Transaction.FileContractRevisions[0].NewFileSize
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
+
+	// Allow any size contract to be churned if the budget is the max budget. This
+	// allows large contracts to be churned periodically.
+	if cl.remainingChurnBudget == maxChurnBudget {
+		return true
+	}
+
 	return (cl.remainingChurnBudget - int(size)) >= 0
 }
 
