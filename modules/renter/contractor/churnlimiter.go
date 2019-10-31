@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -25,7 +26,7 @@ const (
 // utility.
 type contractScoreAndUtil struct {
 	contract modules.RenterContract
-	sb       modules.HostScoreBreakdown
+	score    types.Currency
 	util     modules.ContractUtility
 }
 
@@ -155,7 +156,7 @@ func (cl *churnLimiter) callProcessSuggestedUpdates(queue []contractScoreAndUtil
 		return nil
 	}
 	sort.Slice(queue, func(i, j int) bool {
-		return queue[i].sb.Score.Cmp(queue[i].sb.Score) < 0
+		return queue[i].score.Cmp(queue[i].score) < 0
 	})
 
 	var queuedContract contractScoreAndUtil
@@ -237,7 +238,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		// These are contracts with acceptable, but not very good host scores.
 		case suggestedUtilityUpdate:
 			c.log.Debugln("Queueing utility update", contract.ID, sb.Score)
-			suggestedUpdateQueue = append(suggestedUpdateQueue, contractScoreAndUtil{contract, sb, u})
+			suggestedUpdateQueue = append(suggestedUpdateQueue, contractScoreAndUtil{contract, sb.Score, u})
 			continue
 
 		case necessaryUtilityUpdate:
