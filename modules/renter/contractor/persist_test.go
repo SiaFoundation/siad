@@ -76,6 +76,7 @@ func TestSaveLoad(t *testing.T) {
 	c.staticChurnLimiter = newChurnLimiter(c)
 	c.staticChurnLimiter.aggregateChurnThisPeriod = 123456
 	c.staticChurnLimiter.remainingChurnBudget = -789
+	c.staticChurnLimiter.maxChurnPerPeriod = 1357
 
 	// save, clear, and reload
 	err := c.save()
@@ -258,9 +259,13 @@ func TestSaveLoad(t *testing.T) {
 	if aggregateChurn != 123456 {
 		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
 	}
-	remainingChurnBudget := c.staticChurnLimiter.callRemainingChurnBudget()
+	remainingChurnBudget, periodBudget := c.staticChurnLimiter.callChurnBudget()
 	if remainingChurnBudget != -789 {
 		t.Fatal("Expected -789 remainingChurnBudget", remainingChurnBudget)
+	}
+	expectedPeriodBudget := 1357 - 123456
+	if periodBudget != expectedPeriodBudget {
+		t.Fatal("Expected remainingChurnBudget", periodBudget)
 	}
 }
 
