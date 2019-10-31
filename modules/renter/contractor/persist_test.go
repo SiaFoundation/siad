@@ -75,6 +75,7 @@ func TestSaveLoad(t *testing.T) {
 
 	c.staticChurnLimiter = newChurnLimiter(c)
 	c.staticChurnLimiter.aggregateChurnThisPeriod = 123456
+	c.staticChurnLimiter.remainingChurnBudget = -789
 
 	// save, clear, and reload
 	err := c.save()
@@ -253,9 +254,13 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal("watchdog not restored properly", contract)
 	}
 
-	aggregateChurn := c.staticChurnLimiter.callAggregateChurn()
+	aggregateChurn := c.staticChurnLimiter.callAggregateChurnInPeriod()
 	if aggregateChurn != 123456 {
 		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
+	}
+	remainingChurnBudget := c.staticChurnLimiter.callRemainingChurnBudget()
+	if remainingChurnBudget != -789 {
+		t.Fatal("Expected -789 remainingChurnBudget", remainingChurnBudget)
 	}
 }
 

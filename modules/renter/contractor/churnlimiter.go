@@ -9,7 +9,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const maxStorageChurnPerPeriod = 2 << 10
+const maxChurnBudget = 10000000000           // 10 billion
+const churnBudgetEarnedPerBlock = 2000000000 // 2 billion
 
 // contractScoreAndUtil combines a contract with its host's score and an updated
 // utility.
@@ -22,6 +23,10 @@ type contractScoreAndUtil struct {
 // churnLimiter keeps track of the aggregate number of bytes stored in contracts
 // marked !GFR (AKA churned contracts) in the current period.
 type churnLimiter struct {
+	// remainingChurnBudget is the number of bytes that the churnLimiter will
+	// allow to be churned in contracts at the present moment.
+	remainingChurnBudget int
+
 	// aggregateChurnThisPeriod is the aggregate size of files stored in contracts
 	// churned in the current period.
 	aggregateChurnThisPeriod uint64
@@ -33,6 +38,7 @@ type churnLimiter struct {
 // churnLimiterPersist is the persisted state of a churnLimiter.
 type churnLimiterPersist struct {
 	AggregateChurnThisPeriod uint64 `json:"aggregatechurnthisperiod"`
+	RemainingChurnBudget     int    `json:"RemainingChurnBudget"`
 }
 
 // persistData returns the churnLimiterPersist corresponding to this
@@ -40,7 +46,7 @@ type churnLimiterPersist struct {
 func (cl *churnLimiter) persistData() churnLimiterPersist {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
-	return churnLimiterPersist{cl.aggregateChurnThisPeriod}
+	return churnLimiterPersist{cl.aggregateChurnThisPeriod, cl.remainingChurnBudget}
 }
 
 // newChurnLimiterFromPersist creates a new churnLimiter using persisted state.
@@ -48,6 +54,7 @@ func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiter
 	return &churnLimiter{
 		contractor:               contractor,
 		aggregateChurnThisPeriod: persistData.AggregateChurnThisPeriod,
+		remainingChurnBudget:     persistData.RemainingChurnBudget,
 	}
 }
 
@@ -60,7 +67,7 @@ func newChurnLimiter(contractor *Contractor) *churnLimiter {
 // method must be called at the beginning of every new period.
 func (cl *churnLimiter) callResetAggregateChurn() {
 	cl.mu.Lock()
-	cl.contractor.log.Println("Resetting churn. Aggregate Churn for last period: ", cl.aggregateChurnThisPeriod)
+	cl.contractor.log.Println("Aggregate Churn for last period: ", cl.aggregateChurnThisPeriod)
 	cl.aggregateChurnThisPeriod = 0
 	cl.mu.Unlock()
 }
@@ -71,23 +78,46 @@ func (cl *churnLimiter) callNotifyChurnedContract(contract modules.RenterContrac
 	size := contract.Transaction.FileContractRevisions[0].NewFileSize
 	cl.mu.Lock()
 	cl.aggregateChurnThisPeriod += size
+	cl.remainingChurnBudget -= int(size)
 	cl.contractor.log.Debugf("Increasing aggregate churn by %d to %d", size, cl.aggregateChurnThisPeriod)
+	cl.contractor.log.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
 	cl.mu.Unlock()
 }
 
-// callReachedChurnLimit returns true if and only if the aggregate churn for
-// this period exceeds the maximum allowed churn.
-func (cl *churnLimiter) callReachedChurnLimit() bool {
+// callCanChurnAmount returns true if and only if the churnLimiter can allow the
+// the churn of `amount` bytes right now.
+func (cl *churnLimiter) callCanChurnContract(contract modules.RenterContract) bool {
+	size := contract.Transaction.FileContractRevisions[0].NewFileSize
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
-	return cl.aggregateChurnThisPeriod >= maxStorageChurnPerPeriod
+	return (cl.remainingChurnBudget - int(size)) >= 0
 }
 
-// callAggregateChurn returns the aggregate churn for the current period.
-func (cl *churnLimiter) callAggregateChurn() uint64 {
+// callAggregateChurnInPeriod returns the aggregate churn for the current period.
+func (cl *churnLimiter) callAggregateChurnInPeriod() uint64 {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 	return cl.aggregateChurnThisPeriod
+}
+
+// callAdjustChurnBudget adjusts the churn budget. Used when new blocks are
+// processed.
+func (cl *churnLimiter) callAdjustChurnBudget(adjustment int) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+
+	cl.remainingChurnBudget += adjustment
+	if cl.remainingChurnBudget > maxChurnBudget {
+		cl.remainingChurnBudget = maxChurnBudget
+	}
+	cl.contractor.log.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
+}
+
+// callAggregateChurnInPeriod returns the curren churn budget.
+func (cl *churnLimiter) callRemainingChurnBudget() int {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.remainingChurnBudget
 }
 
 // callProcessSuggestedUpdates processes suggested utility updates. It prevents
@@ -109,9 +139,10 @@ func (cl *churnLimiter) callProcessSuggestedUpdates(queue []contractScoreAndUtil
 		// Churn a contract if it went from GFR to !GFR, and the churnLimit has not
 		// been reached.
 		turnedNotGFR := queuedContract.contract.Utility.GoodForRenew && !queuedContract.util.GoodForRenew
-		churningThisContract := turnedNotGFR && !cl.callReachedChurnLimit()
+		churningThisContract := turnedNotGFR && !cl.callCanChurnContract(queuedContract.contract)
 		if turnedNotGFR && !churningThisContract {
-			cl.contractor.log.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID, cl.callReachedChurnLimit())
+			cl.contractor.log.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID)
+			cl.contractor.log.Debugln("Remaining Churn Budget: ", cl.callRemainingChurnBudget())
 			queuedContract.util.GoodForRenew = true
 		}
 
