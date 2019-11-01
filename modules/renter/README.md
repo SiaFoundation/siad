@@ -4,18 +4,13 @@ that a user has uploaded to Sia. This includes the location and health of these
 files. The Renter, via the HostDB and the Contractor, is also responsible for
 picking hosts and maintaining the relationship with them.
 
-*TODO*
-  - Should assumptions for each section be put in a specific **assumptions**
-    section at the end of each section?
-  - Update list of submodules to be links to README files was submodule READMEs
-    are ready
-  - If we like this format for the README we should document it and make it
-    standard for consistency between module READMEs. Things to consider:
-     - What gets `highlighted` - code only
-     - What gets linked
-     - What Sections to have and order
-  - Confirm all assumptions have tests
-  - Create subsystemconsts.go files and add them to the **Key Files** 
+The renter is unique for having two different logs. The first is a general
+renter activity log, and the second is a repair log. The repair log is intended
+to be a high-signal log that tells users what files are being repaired, and
+whether the repair jobs have been successful. Where there are failures, the
+repair log should try and document what those failures were. Every message of
+the repair log should be interesting and useful to a power user, there should be
+no logspam and no messages that would only make sense to siad developers.
 
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
@@ -95,8 +90,27 @@ responsibilities.
 **Key Files**
  - [memory.go](./memory.go)
 
-*TODO* 
-  - fill out subsystem explanation
+The memory subsystem acts as a limiter on the total amount of memory that the
+renter can use. The memory subsystem does not manage actual memory, it's really
+just a counter. When some process in the renter wants to allocate memory, it
+uses the 'Request' method of the memory manager. The memory manager will block
+until enough memory has been returned to allow the request to be granted. The
+process is then responsible for calling 'Return' on the memory manager when it
+is done using the memory.
+
+The memory manager is initialized with a base amount of memory. If a request is
+made for more than the base memory, the memory manager will block until all
+memory has been returned, at which point the memory manager will unblock the
+request. No other memory requests will be unblocked until the large memory
+sufficiently returned.
+
+Because 'Request' and 'Return' are just counters, they can be called as many
+times as necessary in whatever sizes are convenient.
+
+When calling 'Request', a process should be sure to request all necessary memory
+at once, because if a single process calls 'Request' multiple times before
+returning any memory, this can cause a deadlock between multiple processes that
+are stuck waiting for more memory before they release memory.
 
 ### Worker Subsystem
 **Key Files**
@@ -566,26 +580,31 @@ the stuck chunks in the filesystem. The stuck loop does this by first selecting
 a directory containing stuck chunks by calling `managedStuckDirectory`. Then
 `managedBuildAndPushRandomChunk` is called to select a file with stuck chunks to
 then add one stuck chunk from that file to the heap. The stuck loop repeats this
-process of finding a stuck chunk until there are `MaxStuckChunksInHeap` stuck
-chunks in the upload heap. Stuck chunks are priority in the heap, so limiting it
-to `MaxStuckChunksInHeap` at a time prevents the heap from being saturated with
-stuck chunks that potentially cannot be repaired which would cause no other
-files to be repaired. 
+process of finding a stuck chunk until there are `maxRandomStuckChunksInHeap`
+stuck chunks in the upload heap or it has added `maxRandomStuckChunksAddToHeap`
+stuck chunks to the upload heap. Stuck chunks are priority in the heap, so
+limiting it to `maxStuckChunksInHeap` at a time prevents the heap from being
+saturated with stuck chunks that potentially cannot be repaired which would
+cause no other files to be repaired. 
 
 For the stuck loop to begin using the `stuckStack` there needs to have been
 successful stuck chunk repairs. If the repair of a stuck chunk is successful,
 the SiaPath of the SiaFile it came from is added to the Renter's `stuckStack`
 and a signal is sent to the stuck loop so that another stuck chunk can added to
-the heap. The `stuckStack` tracks `maxSuccessfulStuckRepairFiles` number of
-SiaFiles that have had stuck chunks successfully repaired in a LIFO stack. If
-the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when a new
-SiaFile is pushed onto the stack the oldest SiaFile is dropped from the stack so
-the new SiaFile can be added. Additionally, if SiaFile is being added that is
-already being tracked, then the originally reference is removed and the SiaFile
-is added to the top of the Stack. If there have been successful stuck chunk
-repairs, the stuck loop will try and add additional stuck chunks from these
-files first before trying to add a random stuck chunk. The idea being that since
-all the chunks in a SiaFile have the same redundancy settings and were
+the heap. The repair loop with continue to add stuck chunks from the
+`stuckStack` until there are `maxStuckChunksInHeap` stuck chunks in the upload
+heap. Stuck chunks added from the `stuckStack` will have priority over random
+stuck chunks, this is determined by setting the `fileRecentlySuccessful` field
+to true for the chunk. The `stuckStack` tracks `maxSuccessfulStuckRepairFiles`
+number of SiaFiles that have had stuck chunks successfully repaired in a LIFO
+stack. If the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when
+a new SiaFile is pushed onto the stack the oldest SiaFile is dropped from the
+stack so the new SiaFile can be added. Additionally, if SiaFile is being added
+that is already being tracked, then the original reference is removed and the
+SiaFile is added to the top of the Stack. If there have been successful stuck
+chunk repairs, the stuck loop will try and add additional stuck chunks from
+these files first before trying to add a random stuck chunk. The idea being that
+since all the chunks in a SiaFile have the same redundancy settings and were
 presumably uploaded around the same time, if one chunk was able to be repaired,
 the other chunks should be able to be repaired as well. Additionally, the reason
 a LIFO stack is used is because the more recent a success was the higher

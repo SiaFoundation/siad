@@ -393,7 +393,8 @@ func (sfs *SiaFileSet) open(siaPath modules.SiaPath) (*SiaFileSetEntry, error) {
 			return nil, err
 		}
 		// Check for duplicate uid.
-		if conflictingEntry, exists := sfs.siaFileMap[sf.UID()]; exists {
+		conflictingEntry, exists := sfs.siaFileMap[sf.UID()]
+		if exists {
 			err := fmt.Errorf("%v and %v share the same UID '%v'", sfs.siaPath(conflictingEntry), siaPath, sf.UID())
 			build.Critical(err)
 			return nil, err

@@ -96,7 +96,7 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	return c.managedInitRecoveryScan(modules.ConsensusChangeBeginning)
+	return c.callInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -204,14 +204,14 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	// contract was renewed
 	newFCID, renewed := c.renewedTo[fcid]
 	if !renewed {
-		return renewed
+		return false
 	}
 
 	// Grab the contract to check its end height
 	contract, ok := c.oldContracts[fcid]
 	if !ok {
-		build.Critical("contract not found in oldContracts, this should never happen")
-		return renewed
+		c.log.Debugln("Contract not found in oldContracts, despite there being a renewal to the contract")
+		return false
 	}
 
 	// Grab the contract it was renewed to to check its end height
@@ -219,8 +219,8 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	if !ok {
 		newContract, ok = c.oldContracts[newFCID]
 		if !ok {
-			build.Critical("contract not tracked in staticContracts of old contracts, this should never happen")
-			return renewed
+			c.log.Debugln("Contract was not found in the database, despite their being another contract that claims to have renewed to it.")
+			return false
 		}
 	}
 
@@ -420,9 +420,9 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	return c, errChan
 }
 
-// managedInitRecoveryScan starts scanning the whole blockchain at a certain
+// callInitRecoveryScan starts scanning the whole blockchain at a certain
 // ChangeID for recoverable contracts within a separate thread.
-func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
+func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
 	// Check if we are already scanning the blockchain.
 	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")
