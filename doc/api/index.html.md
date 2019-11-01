@@ -3125,7 +3125,7 @@ The number of parity pieces to use when erasure coding the file.
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/validatesiapath/isthis-aval_idsiapath"
 ```
 
-validates whether or not the provided siapaht is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
+validates whether or not the provided siapath is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
 
 $, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
 
