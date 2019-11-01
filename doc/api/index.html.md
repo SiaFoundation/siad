@@ -2765,16 +2765,14 @@ indicates if the source file is found on disk
 
 **recoverable** | boolean  
 indicates if the siafile is recoverable. A file is recoverable if it has at
-least 1x redundancy or if it knows the location of the local copy of the file. 
+least 1x redundancy or if `siad` knows the location of the local copy of the
+file.
 
 **redundancy** | float64  
-redundancy is calculated on a chunk basis and is the total number of unique
-pieces uploaded divided by the number of data pieces set in the erasure coding
-of the chunk. So if there are 20 unique pieces of a chunk uploaded and the chunk
-needs 10 data pieces then the chunk has a redundancy of 2. The redundancy of the
-file is the redundancy of the worst chunk in the file. So if 9 out of 10 chunks
-in a file have a redundancy of 3 but one chunk as a redundancy of 1 then the
-file has a redundancy of 1.
+When a file is uploaded, it is first broken into a series of chunks. Each chunk
+goes on a different set of hosts, and therefore different chunks of the file can
+have different redundancies. The redundancy of a file as reported from the API
+will be equal to the lowest redundancy of any of  the file's chunks.
 
 **renewing** | boolean  
 true if the file's contracts will be automatically renewed by the renter.  
@@ -3054,16 +3052,20 @@ standard success or error response. See [standard responses](#standard-responses
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
+
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?repair=true" --data-binary @myfile.dat
 ```
 
 uploads a file to the network using a stream. If the upload stream POST call
 fails or quits before the file is fully uploaded, the file can be repaired by a
-subsequent call to the upload stream endpoint.
+subsequent call to the upload stream endpoint using the `repair` flag.
 
 ### Path Parameters
 #### REQUIRED
 **siapath** | string  
-Location where the file will reside in the renter on the network. The path must be non-empty, may not include any path traversal strings ("./", "../"), and may not begin with a forward-slash character.  
+Location where the file will reside in the renter on the network. The path must
+be non-empty, may not include any path traversal strings ("./", "../"), and may
+not begin with a forward-slash character.  
 
 ### Query String Parameters
 #### OPTIONAL
@@ -3071,13 +3073,15 @@ Location where the file will reside in the renter on the network. The path must 
 The number of data pieces to use when erasure coding the file.  
 
 **paritypieces** | int  
-The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
+The number of parity pieces to use when erasure coding the file. Total
+redundancy of the file is (datapieces+paritypieces)/datapieces.  
 
-**force**
+**force** | boolean  
 Delete potential existing file at siapath.
 
-**repair**
-Repair existing file from stream. Can't be specified together with datapieces, paritypieces and force.
+**repair** | boolean  
+Repair existing file from stream. Can't be specified together with datapieces,
+paritypieces and force.
 
 ### Response
 
