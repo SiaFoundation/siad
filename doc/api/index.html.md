@@ -4268,7 +4268,8 @@ valid indicates if the address supplied to :addr is a valid UnlockHash.
 curl -A "Sia-Agent" "localhost:9980/wallet/verifypassword?password=<password>"
 ```
 
-Takes a password and verifies if it is the valid password used to encrypt the wallet.
+Takes a password and verifies if it is the valid password used to encrypt the
+wallet.
 
 ### Path Parameters
 #### REQUIRED
@@ -4280,11 +4281,16 @@ Password being checked.
 
 ```go
 {
-	"valid": true
+  "valid": true,
+  "error": "provided encryption key is incorrect"
 }
 ```
-**valid**  
-valid indicates if the password supplied is the password used to encrypte the wallet.  
+**valid** | boolean  
+valid indicates if the password supplied is the password used to encrypte the
+wallet.  
+
+**error** | string  
+error message indicating why the password is not valid
 
 ## /wallet/watch [GET]
 > curl example  

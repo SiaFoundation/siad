@@ -510,16 +510,23 @@ func (w *Wallet) ChangeKeyWithSeed(seed modules.Seed, newKey crypto.CipherKey) e
 	return w.managedChangeKey(mk, newKey)
 }
 
-// CheckMasterKey verifies that the masterKey is the key used to encrypt the
+// IsMasterKey verifies that the masterKey is the key used to encrypt the
 // wallet.
-func (w *Wallet) CheckMasterKey(masterKey crypto.CipherKey) error {
+func (w *Wallet) IsMasterKey(masterKey crypto.CipherKey) (bool, error) {
 	if err := w.tg.Add(); err != nil {
-		return err
+		return false, err
 	}
 	defer w.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return checkMasterKey(w.dbTx, masterKey)
+	err := checkMasterKey(w.dbTx, masterKey)
+	if err == modules.ErrBadEncryptionKey {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Unlock will decrypt the wallet seed and load all of the addresses into

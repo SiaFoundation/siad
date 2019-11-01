@@ -747,13 +747,13 @@ func (api *API) walletVerifyPasswordHandler(w http.ResponseWriter, req *http.Req
 	}
 	key := crypto.NewWalletKey(crypto.HashObject(password))
 
-	err := api.wallet.CheckMasterKey(key)
+	valid, err := api.wallet.IsMasterKey(key)
 	var errMsg string
 	if err != nil {
 		errMsg = err.Error()
 	}
 	WriteJSON(w, WalletVerifyPasswordGET{
-		Valid: err == nil,
+		Valid: valid,
 		Error: errMsg,
 	})
 }

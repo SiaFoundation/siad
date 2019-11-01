@@ -690,8 +690,8 @@ func TestWalletForceInit(t *testing.T) {
 	}
 }
 
-// TestWalletVerifyPassword initializes a wallet with a custom password
-// and verifies it through the API.
+// TestWalletVerifyPassword initializes a wallet with a custom password and
+// verifies it through the API.
 func TestWalletVerifyPassword(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -735,6 +735,9 @@ func TestWalletVerifyPassword(t *testing.T) {
 	}
 	if !wvpg.Valid {
 		t.Fatal("Password is not valid")
+	}
+	if wvpg.Error != "" {
+		t.Fatal("Password is valid but there was an error:", err)
 	}
 
 	// Try and verify an incorrect password
