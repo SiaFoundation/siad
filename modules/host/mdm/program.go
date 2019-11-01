@@ -7,18 +7,20 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/mdm/storageobligation"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// hostState captures some fields
-type hostState struct {
+// programState contains some fields needed for the execution of instructions.
+// The program's state is captured when the program is created and remains the
+// same during the execution of the program.
+type programState struct {
 	blockHeight     types.BlockHeight
 	secretKey       crypto.SecretKey
 	settings        modules.HostExternalSettings
 	currentRevision types.FileContractRevision
+	host            Host
 }
 
 // Program is a collection of instructions. Within a program, each instruction
@@ -31,27 +33,32 @@ type Program struct {
 	// program will execute in readonly mode which means that it will not lock
 	// the contract before executing the instructions. This means that the
 	// contract id field will be ignored.
-	staticFCID      types.FileContractID
-	so              storageobligation.StorageObligation
-	instructions    []Instruction
-	staticData      *ProgramData
-	staticHostState *hostState
+	staticFCID         types.FileContractID
+	so                 StorageObligation
+	instructions       []instruction
+	staticData         *ProgramData
+	staticProgramState *programState
 
 	finalContractSize uint64 // contract size after executing all instructions
+
+	staticNewValidProofValues  []types.SiacoinOutput
+	staticNewMissedProofValues []types.SiacoinOutput
 
 	mu sync.Mutex
 }
 
 // NewProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data.
-func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, initialContractSize uint64, data io.Reader, newValidProofValues, newMissedProofValues types.Currency) *Program {
+func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, initialContractSize, programDataLen uint64, data io.Reader, newValidProofValues, newMissedProofValues []types.SiacoinOutput) *Program {
 	// TODO: capture hostState
 	return &Program{
-		finalContractSize: initialContractSize,
-		staticHostState:   nil,
-		staticFCID:        fcid,
-		staticData:        NewProgramData(data),
-		so:                so,
+		finalContractSize:          initialContractSize,
+		staticProgramState:         nil,
+		staticFCID:                 fcid,
+		staticData:                 NewProgramData(data, programDataLen),
+		staticNewValidProofValues:  newValidProofValues,
+		staticNewMissedProofValues: newMissedProofValues,
+		so:                         so,
 	}
 }
 
@@ -59,26 +66,50 @@ func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, init
 // contract revision to be signed by the host and renter at the end. The ctx can
 // be used to issue an interrupt which will stop the execution of the program as
 // soon as the current instruction is done executing.
-func (p *Program) Execute(ctx context.Context) error {
+func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	// Make sure that the contract is locked unless the program we're executing
 	// is a readonly program.
-	if !p.readOnly() && len(s.so.OriginTransactionSet) == 0 {
-		return errors.New("contract needs to be locked for a program with one or more write instructions")
+	if !p.readOnly() && !p.so.Locked() {
+		return nil, errors.New("contract needs to be locked for a program with one or more write instructions")
 	}
 	// Sanity check the new values for valid and missed proofs.
-	if len(p.NewValidProofValues) != len(p.staticHostState.currentRevision.NewValidProofOutputs) {
-		return errors.New("wrong number of valid proof values")
-	} else if len(p.NewMissedProofValues) != len(p.staticHostState.currentRevision.NewMissedProofOutputs) {
-		return errors.New("wrong number of missed proof values")
+	if len(p.staticNewValidProofValues) != len(p.staticProgramState.currentRevision.NewValidProofOutputs) {
+		return nil, errors.New("wrong number of valid proof values")
+	} else if len(p.staticNewMissedProofValues) != len(p.staticProgramState.currentRevision.NewMissedProofOutputs) {
+		return nil, errors.New("wrong number of missed proof values")
 	}
 	// Execute all the instructions.
-	for _, i := range p.instructions {
-		i.Execute()
-	}
-	// TODO: Update the storage obligation.
-	// TODO: Construct the new revision.
+	outChan := make(chan Output)
+	go func() {
+		defer close(outChan)
+		fcRoot := p.staticProgramState.currentRevision.NewFileMerkleRoot
+		for _, i := range p.instructions {
+			select {
+			case <-ctx.Done(): // Check for interrupt
+				break
+			default:
+			}
+			// Execute next instruction.
+			output := i.Execute(fcRoot)
+			if output.Error != nil {
+				// TODO: If the error was the host's fault refund the renter.
+				break // Interrupt on execution error
+			}
+			fcRoot = output.NewMerkleRoot
+			outChan <- output
+		}
+		// TODO: Update the storage obligation.
+		// TODO: Construct the new revision.
+		panic("not implemented yet")
+	}()
+	return outChan, nil
+}
+
+// Result returns the new contract revision after the execution of the program.
+// It should only be called after the channel returned by Execute is closed.
+func (p *Program) Result() error {
 	panic("not implemented yet")
 }
 

@@ -1,6 +1,10 @@
 package mdm
 
-import "io"
+import (
+	"io"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
+)
 
 // ProgramData is a buffer for the program data. It will read packets from r and
 // append them to data.
@@ -38,5 +42,12 @@ func (pd *ProgramData) threadedFetchData() {
 // data as an uint64. This call will block if the data at the specified offset
 // hasn't been fetched yet.
 func (pd *ProgramData) Uint64(offset uint64) (uint64, error) {
+	panic("not implemented yet")
+}
+
+// Hash returns the next crypto.HashSize bytes at the specified offset within
+// the program data as a crypto.Hash. This call will block if the data at the
+// specified offset hasn't been fetched yet.
+func (pd *ProgramData) Hash(offset uint64) (crypto.Hash, error) {
 	panic("not implemented yet")
 }

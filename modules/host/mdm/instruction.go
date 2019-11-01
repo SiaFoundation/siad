@@ -1,18 +1,18 @@
 package mdm
 
 import (
-	"crypto"
 	"errors"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // Instruction is the interface an instruction needs to implement to be part of
 // a program.
-type Instruction interface {
+type instruction interface {
 	Cost() Cost
-	Execute() Output
+	Execute(fcRoot crypto.Hash) Output
 	ReadOnly() bool
 }
 
@@ -52,6 +52,7 @@ type commonInstruction struct {
 	staticContractSize uint64 // contract size before executing instruction
 	staticFCID         types.FileContractID
 	staticData         *ProgramData
+	staticState        *programState
 }
 
 // outputFromError is a convenience function to wrap an error in an Output.
@@ -67,41 +68,48 @@ func outputFromError(err error) Output {
 //
 // ****************************************************************************
 
-type instructionRead struct {
+type instructionReadSector struct {
 	commonInstruction
 
-	lengthOff uint64
-	offsetOff uint64
+	lengthOff     uint64
+	offsetOff     uint64
+	merkleRootOff uint64
 }
 
-// NewReadInstruction creates a new read instructions from the provided
-// operands.
-func (p *Program) NewReadInstruction(offsetOff, lengthOff uint64, merkleProof bool) Instruction {
-	return &instructionRead{
+// NewReadSectorInstruction creates a new 'ReadSector' instructions from the
+// provided operands.
+func (p *Program) NewReadSectorInstruction(rootOff, offsetOff, lengthOff uint64, merkleProof bool) instruction {
+	return &instructionReadSector{
 		commonInstruction: commonInstruction{
 			staticContractSize: p.finalContractSize,
 			staticFCID:         p.staticFCID,
 			staticData:         p.staticData,
 			staticMerkleProof:  merkleProof,
+			staticState:        p.staticProgramState,
 		},
-		lengthOff: lengthOff,
-		offsetOff: offsetOff,
+		lengthOff:     lengthOff,
+		merkleRootOff: rootOff,
+		offsetOff:     offsetOff,
 	}
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionRead) Cost() Cost {
-	return ReadCost(i.staticContractSize)
+func (i *instructionReadSector) Cost() Cost {
+	return ReadSectorCost()
 }
 
 // Execute execute the 'Read' instruction.
-func (i *instructionRead) Execute() Output {
+func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOff)
 	if err != nil {
 		return outputFromError(err)
 	}
 	offset, err := i.staticData.Uint64(i.offsetOff)
+	if err != nil {
+		return outputFromError(err)
+	}
+	sectorRoot, err := i.staticData.Hash(i.merkleRootOff)
 	if err != nil {
 		return outputFromError(err)
 	}
@@ -115,57 +123,35 @@ func (i *instructionRead) Execute() Output {
 		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	}
 	if err != nil {
-		s.writeError(err)
-		return err
+		return outputFromError(err)
 	}
 
-	// enter response loop
-	for i, sec := range req.Sections {
-		// Fetch the requested data.
-		sectorData, err := h.ReadSector(sec.MerkleRoot)
-		if err != nil {
-			s.writeError(err)
-			return err
-		}
-		data := sectorData[sec.Offset : sec.Offset+sec.Length]
-
-		// Construct the Merkle proof, if requested.
-		var proof []crypto.Hash
-		if req.MerkleProof {
-			proofStart := int(sec.Offset) / crypto.SegmentSize
-			proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
-			proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
-		}
-
-		// Send the response. If the renter sent a stop signal, or this is the
-		// final response, include our signature in the response.
-		resp := modules.LoopReadResponse{
-			Signature:   nil,
-			Data:        data,
-			MerkleProof: proof,
-		}
-		select {
-		case err := <-stopSignal:
-			if err != nil {
-				return err
-			}
-			resp.Signature = hostSig
-			return s.writeResponse(resp)
-		default:
-		}
-		if i == len(req.Sections)-1 {
-			resp.Signature = hostSig
-		}
-		if err := s.writeResponse(resp); err != nil {
-			return err
-		}
+	// Fetch the requested data.
+	sectorData, err := i.staticState.host.ReadSector(sectorRoot)
+	if err != nil {
+		return outputFromError(err)
 	}
-	// The stop signal must arrive before RPC is complete.
-	return <-stopSignal
+	data := sectorData[offset : offset+length]
+
+	// Construct the Merkle proof, if requested.
+	var proof []crypto.Hash
+	if i.staticMerkleProof {
+		proofStart := int(offset) / crypto.SegmentSize
+		proofEnd := int(offset+length) / crypto.SegmentSize
+		proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+	}
+
+	// Return the output.
+	return Output{
+		NewSize:       i.staticContractSize, // size stays the same
+		NewMerkleRoot: fcRoot,               // root stays the same
+		Output:        data,
+		Proof:         proof,
+	}
 }
 
 // ReadOnly for the 'Read' instruction is 'true'.
-func (i *instructionRead) ReadOnly() bool {
+func (i *instructionReadSector) ReadOnly() bool {
 	return true
 }
 
