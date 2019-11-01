@@ -2,7 +2,9 @@ package mdm
 
 import (
 	"crypto"
+	"errors"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -46,6 +48,7 @@ type Output struct {
 
 // commonInstruction contains all the fields shared by every instruction.
 type commonInstruction struct {
+	staticMerkleProof  bool
 	staticContractSize uint64 // contract size before executing instruction
 	staticFCID         types.FileContractID
 	staticData         *ProgramData
@@ -73,12 +76,13 @@ type instructionRead struct {
 
 // NewReadInstruction creates a new read instructions from the provided
 // operands.
-func (p *Program) NewReadInstruction(offsetOff, lengthOff uint64) Instruction {
+func (p *Program) NewReadInstruction(offsetOff, lengthOff uint64, merkleProof bool) Instruction {
 	return &instructionRead{
 		commonInstruction: commonInstruction{
 			staticContractSize: p.finalContractSize,
 			staticFCID:         p.staticFCID,
 			staticData:         p.staticData,
+			staticMerkleProof:  merkleProof,
 		},
 		lengthOff: lengthOff,
 		offsetOff: offsetOff,
@@ -101,8 +105,63 @@ func (i *instructionRead) Execute() Output {
 	if err != nil {
 		return outputFromError(err)
 	}
-	println("length/offset", length, offset)
-	panic("not implemented yet")
+	// Validate the request.
+	switch {
+	case offset+length > modules.SectorSize:
+		err = errors.New("request is out of bounds")
+	case length == 0:
+		err = errors.New("length cannot be zero")
+	case i.staticMerkleProof && (offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0):
+		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
+	}
+	if err != nil {
+		s.writeError(err)
+		return err
+	}
+
+	// enter response loop
+	for i, sec := range req.Sections {
+		// Fetch the requested data.
+		sectorData, err := h.ReadSector(sec.MerkleRoot)
+		if err != nil {
+			s.writeError(err)
+			return err
+		}
+		data := sectorData[sec.Offset : sec.Offset+sec.Length]
+
+		// Construct the Merkle proof, if requested.
+		var proof []crypto.Hash
+		if req.MerkleProof {
+			proofStart := int(sec.Offset) / crypto.SegmentSize
+			proofEnd := int(sec.Offset+sec.Length) / crypto.SegmentSize
+			proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+		}
+
+		// Send the response. If the renter sent a stop signal, or this is the
+		// final response, include our signature in the response.
+		resp := modules.LoopReadResponse{
+			Signature:   nil,
+			Data:        data,
+			MerkleProof: proof,
+		}
+		select {
+		case err := <-stopSignal:
+			if err != nil {
+				return err
+			}
+			resp.Signature = hostSig
+			return s.writeResponse(resp)
+		default:
+		}
+		if i == len(req.Sections)-1 {
+			resp.Signature = hostSig
+		}
+		if err := s.writeResponse(resp); err != nil {
+			return err
+		}
+	}
+	// The stop signal must arrive before RPC is complete.
+	return <-stopSignal
 }
 
 // ReadOnly for the 'Read' instruction is 'true'.

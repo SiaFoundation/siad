@@ -8,14 +8,18 @@ type ProgramData struct {
 	// data contains the already received data.
 	data []byte
 
+	// length is the expected length of the program data. This is the amount of
+	// data that was paid for and not more than that will be read from the
+	// reader. Less data will be considered an unexpected EOF.
+	length uint64
+
 	// r is the reader used to fetch more data.
 	r io.Reader
 }
 
 // NewProgramData creates a new ProgramData object from the specified reader. It
-// will read from the reader until io.EOF is reached or until the maximum number
-// of packets are read.
-func NewProgramData(r io.Reader) *ProgramData {
+// will read from the reader until dataLength is reached.
+func NewProgramData(r io.Reader, dataLength uint64) *ProgramData {
 	pd := &ProgramData{
 		r: r,
 	}
