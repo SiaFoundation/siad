@@ -48,7 +48,7 @@ func TestAccountCallDeposit(t *testing.T) {
 }
 
 // TestAccountCallSpend verifies we can spend from an account, but also that
-// spending has a blocking behaviour with a timeout
+// spending has a blocking behavior with a timeout
 func TestAccountCallSpend(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -92,13 +92,12 @@ func TestAccountCallSpend(t *testing.T) {
 
 	// Spend from an unknown account and verify it timed out
 	err = am.callSpend(accountID+"unknown", types.NewCurrency64(5), randomHash())
-	if err != errBlockedCallTimeout {
+	if err != errInsufficientBalance {
 		t.Fatal(err)
 	}
 }
 
-// TestAccountExpiry verifies accounts expire and get pruned after a period of
-// time
+// TestAccountExpiry verifies accounts expire and get pruned
 func TestAccountExpiry(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -124,6 +123,12 @@ func TestAccountExpiry(t *testing.T) {
 	time.Sleep(pruneExpiredAccountsFrequency)
 	if !am.balanceOf(accountID).Equals(types.NewCurrency64(0)) {
 		t.Fatal("Account balance was incorrect after expiry")
+	}
+
+	// Verify it got pruned from the index list
+	_, exists := am.accountIndices[accountID]
+	if exists {
+		t.Fatal("Account index of pruned account was not removed")
 	}
 }
 
