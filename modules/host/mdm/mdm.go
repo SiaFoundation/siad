@@ -1,6 +1,9 @@
 package mdm
 
-import "gitlab.com/NebulousLabs/Sia/crypto"
+import (
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/threadgroup"
+)
 
 // StorageObligation defines the minimal interface a StorageObligation needs to
 // implement to be used by the mdm.
@@ -24,4 +27,11 @@ type Host interface {
 // or are not applied at all.
 type MDM struct {
 	host Host
+	tg   threadgroup.ThreadGroup
+}
+
+// Stop will stop the MDM and wait for all of the spawned programs to stop
+// executing while also preventing new programs from being started.
+func (mdm *MDM) Stop() error {
+	return mdm.tg.Stop()
 }

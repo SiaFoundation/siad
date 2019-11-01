@@ -6,6 +6,9 @@ import (
 	"io"
 	"sync"
 
+	"gitlab.com/NebulousLabs/threadgroup"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -44,7 +47,11 @@ type Program struct {
 	staticNewValidProofValues  []types.SiacoinOutput
 	staticNewMissedProofValues []types.SiacoinOutput
 
+	executing  bool
+	outputChan chan Output
+
 	mu sync.Mutex
+	tg threadgroup.ThreadGroup
 }
 
 // NewProgram initializes a new program from a set of instructions and a reader
@@ -53,12 +60,14 @@ func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, init
 	// TODO: capture hostState
 	return &Program{
 		finalContractSize:          initialContractSize,
+		outputChan:                 make(chan Output),
 		staticProgramState:         nil,
 		staticFCID:                 fcid,
 		staticData:                 NewProgramData(data, programDataLen),
 		staticNewValidProofValues:  newValidProofValues,
 		staticNewMissedProofValues: newMissedProofValues,
 		so:                         so,
+		tg:                         mdm.tg,
 	}
 }
 
@@ -69,6 +78,12 @@ func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, init
 func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.executing {
+		err := errors.New("can't call 'Execute' more than once")
+		build.Critical(err)
+		return nil, err
+	}
+	p.executing = true
 	// Make sure that the contract is locked unless the program we're executing
 	// is a readonly program.
 	if !p.readOnly() && !p.so.Locked() {
@@ -81,9 +96,12 @@ func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 		return nil, errors.New("wrong number of missed proof values")
 	}
 	// Execute all the instructions.
-	outChan := make(chan Output)
+	if err := p.tg.Add(); err != nil {
+		return nil, err
+	}
 	go func() {
-		defer close(outChan)
+		defer p.tg.Done()
+		defer close(p.outputChan)
 		fcRoot := p.staticProgramState.currentRevision.NewFileMerkleRoot
 		for _, i := range p.instructions {
 			select {
@@ -98,18 +116,24 @@ func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 				break // Interrupt on execution error
 			}
 			fcRoot = output.NewMerkleRoot
-			outChan <- output
+			p.outputChan <- output
 		}
-		// TODO: Update the storage obligation.
-		// TODO: Construct the new revision.
-		panic("not implemented yet")
 	}()
-	return outChan, nil
+	return p.outputChan, nil
 }
 
 // Result returns the new contract revision after the execution of the program.
 // It should only be called after the channel returned by Execute is closed.
 func (p *Program) Result() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.executing {
+		err := errors.New("can't call 'Result' before 'Execute'")
+		build.Critical(err)
+		return err
+	}
+	// TODO: Update the storage obligation.
+	// TODO: Construct the new revision.
 	panic("not implemented yet")
 }
 
