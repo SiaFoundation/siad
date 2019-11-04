@@ -127,7 +127,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 	// Fetch the contract and host.
 	contract, haveContract := c.staticContracts.View(id)
 	if !haveContract {
-		return nil, errors.New("no record of that contract")
+		return nil, errors.New("contract not found in renter's contract set")
 	}
 	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {

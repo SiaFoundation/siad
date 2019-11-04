@@ -323,6 +323,11 @@ func New(cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPo
 	return newHost(modules.ProdDependencies, cs, g, tpool, wallet, address, persistDir)
 }
 
+// NewCustomHost returns an initialized Host using the provided dependencies.
+func NewCustomHost(deps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
+	return newHost(deps, cs, g, tpool, wallet, address, persistDir)
+}
+
 // Close shuts down the host.
 func (h *Host) Close() error {
 	return h.tg.Stop()

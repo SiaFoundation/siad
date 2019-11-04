@@ -52,7 +52,7 @@ func walletPasswordEncryptionKey(seed modules.Seed, salt walletSalt) (key crypto
 func verifyEncryption(key crypto.CipherKey, encrypted crypto.Ciphertext) error {
 	verification, err := key.DecryptBytes(encrypted)
 	if err != nil {
-		return modules.ErrBadEncryptionKey
+		return errors.AddContext(err, "failed to decrypt key")
 	}
 	if !bytes.Equal(verificationPlaintext, verification) {
 		return modules.ErrBadEncryptionKey
@@ -557,7 +557,7 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 		// verify masterKey
 		err := checkMasterKey(w.dbTx, masterKey)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to verify master key")
 		}
 
 		wb := w.dbTx.Bucket(bucketWallet)
@@ -565,19 +565,19 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 		// primarySeedFile
 		err = encoding.Unmarshal(wb.Get(keyPrimarySeedFile), &primarySeedFile)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decode primary seed file")
 		}
 
 		// auxiliarySeedFiles
 		err = encoding.Unmarshal(wb.Get(keyAuxiliarySeedFiles), &auxiliarySeedFiles)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decode auxiliary seed file")
 		}
 
 		// unseededKeyFiles
 		err = encoding.Unmarshal(wb.Get(keySpendableKeyFiles), &unseededKeyFiles)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decode unseeded key file")
 		}
 
 		return nil
@@ -593,19 +593,19 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 
 	primarySeed, err = decryptSeedFile(masterKey, primarySeedFile)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to decrypt primary seed file")
 	}
 	for _, sf := range auxiliarySeedFiles {
 		auxSeed, err := decryptSeedFile(masterKey, sf)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decrypt auxiliary seed file")
 		}
 		auxiliarySeeds = append(auxiliarySeeds, auxSeed)
 	}
 	for _, uk := range unseededKeyFiles {
 		sk, err := decryptSpendableKeyFile(masterKey, uk)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decrypt unseed key file")
 		}
 		spendableKeys = append(spendableKeys, sk)
 	}
@@ -640,21 +640,21 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 
 		err = wb.Put(keyPrimarySeedFile, encoding.Marshal(newPrimarySeedFile))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put primary key into db")
 		}
 		err = wb.Put(keyAuxiliarySeedFiles, encoding.Marshal(newAuxiliarySeedFiles))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put auxiliary key into db")
 		}
 		err = wb.Put(keySpendableKeyFiles, encoding.Marshal(newUnseededKeyFiles))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put unseeded key into db")
 		}
 
 		uk := saltedEncryptionKey(newKey, dbGetWalletSalt(w.dbTx))
 		err = wb.Put(keyEncryptionVerification, uk.EncryptBytes(verificationPlaintext))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put key encryption verification into db")
 		}
 
 		wpk := walletPasswordEncryptionKey(primarySeed, dbGetWalletSalt(w.dbTx))
@@ -662,7 +662,7 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 		mke := newKey.Key()
 		err = wb.Put(keyWalletPassword, wpk.EncryptBytes(append(mkt[:], mke...)))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put wallet password into db")
 		}
 
 		return nil

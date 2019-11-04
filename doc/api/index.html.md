@@ -1956,7 +1956,8 @@ Returns the current settings along with metrics on the renter's spending.
     "uploadspending":   "5678", // hastings
     "unspent":          "1234"  // hastings
   },
-  "currentperiod": 200  // blockheight
+  "currentperiod":  6000  // blockheight
+  "nextperiod":    12248  // blockheight
 }
 ```
 #### settings  
@@ -2088,6 +2089,9 @@ Amount of money in the allowance that has not been spent.
 
 **currentperiod** | blockheight  
 Height at which the current allowance period began.  
+
+**nextperiod** | blockheight  
+Height at which the next allowance period began.  
 
 ## /renter [POST]
 > curl example  
@@ -3114,14 +3118,14 @@ The number of data pieces to use when erasure coding the file.
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file.
 
-## /renter/validate/*siapath* [POST]
+## /renter/validatesiapath/*siapath* [POST]
 > curl example  
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/validatesiapath/isthis-aval_idsiapath"
 ```
 
-validates whether or not the provided siapaht is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
+validates whether or not the provided siapath is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
 
 $, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
 
