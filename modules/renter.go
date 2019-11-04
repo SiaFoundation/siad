@@ -632,6 +632,12 @@ type Renter interface {
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []RenterContract
 
+	// ContractorChurnStatus returns contract churn stats for the current period.
+	ContractorChurnStatus() ContractorChurnStatus
+
+	// SetMaxChurnPerPeriod sets the max contract churn per period.
+	SetMaxChurnPerPeriod(newMax uint64)
+
 	// ContractUtility provides the contract utility for a given host key.
 	ContractUtility(pk types.SiaPublicKey) (ContractUtility, bool)
 

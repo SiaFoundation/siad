@@ -164,14 +164,17 @@ func (cl *churnLimiter) callAdjustChurnBudget(adjustment int) {
 	cl.contractor.log.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
 }
 
-// callSetMaxChurnPerPeriod sets the current max churn per period.
+// callSetMaxChurnPerPeriod sets the max churn per period.
 func (cl *churnLimiter) callSetMaxChurnPerPeriod(newMax uint64) {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 	cl.maxChurnPerPeriod = newMax
 }
 
-// callSetMaxChurnPerPeriod sets the current max churn per period.
+// SetMaxChurnPerPeriod sets the max churn per period.
+func (c *Contractor) SetMaxChurnPerPeriod(newMax uint64) {
+	c.staticChurnLimiter.callSetMaxChurnPerPeriod(newMax)
+}
 
 // callProcessSuggestedUpdates processes suggested utility updates. It prevents
 // contracts from being marked as !GFR if the churn limit has been reached. The

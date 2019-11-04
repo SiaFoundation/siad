@@ -137,6 +137,12 @@ type hostContractor interface {
 	// ContractByPublicKey returns the contract associated with the host key.
 	ContractByPublicKey(types.SiaPublicKey) (modules.RenterContract, bool)
 
+	// ChurnStatus returns contract churn stats for the current period.
+	ChurnStatus() modules.ContractorChurnStatus
+
+	// SetMaxChurnPerPeriod sets the max contract churn per period.
+	SetMaxChurnPerPeriod(newMax uint64)
+
 	// ContractUtility returns the utility field for a given contract, along
 	// with a bool indicating if it exists.
 	ContractUtility(types.SiaPublicKey) (modules.ContractUtility, bool)
@@ -732,6 +738,16 @@ func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility
 // and a bool indicating whether or not it is being monitored.
 func (r *Renter) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
 	return r.hostContractor.ContractStatus(fcID)
+}
+
+// ContractorChurnStatus returns contract churn stats for the current period.
+func (r *Renter) ContractorChurnStatus() modules.ContractorChurnStatus {
+	return r.hostContractor.ChurnStatus()
+}
+
+// SetMaxChurnPerPeriod sets the max contract churn per period.
+func (r *Renter) SetMaxChurnPerPeriod(newMax uint64) {
+	r.hostContractor.SetMaxChurnPerPeriod(newMax)
 }
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
