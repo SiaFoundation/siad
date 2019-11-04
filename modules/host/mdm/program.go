@@ -51,7 +51,7 @@ type Program struct {
 	outputChan chan Output
 
 	mu sync.Mutex
-	tg threadgroup.ThreadGroup
+	tg *threadgroup.ThreadGroup
 }
 
 // NewProgram initializes a new program from a set of instructions and a reader
@@ -67,7 +67,7 @@ func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, init
 		staticNewValidProofValues:  newValidProofValues,
 		staticNewMissedProofValues: newMissedProofValues,
 		so:                         so,
-		tg:                         mdm.tg,
+		tg:                         &mdm.tg,
 	}
 }
 
