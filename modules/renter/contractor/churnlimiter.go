@@ -141,14 +141,13 @@ func (cl *churnLimiter) callCanChurnContract(contract modules.RenterContract) bo
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
-	fitsInCurrentBudget := (cl.remainingChurnBudget - int(size)) >= 0
+	// Allow any size contract to be churned if the current budget is the max
+	// budget. This allows large contracts to be churned if there is enough budget
+	// remaining for the period, even if the contract is larger than the
+	// maxChurnBudget.
+	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == maxChurnBudget)
 	fitsInPeriodBudget := (int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod) - int(size)) >= 0
 
-	// Allow any size contract to be churned if the budget is the max budget. This
-	// allows large contracts to be churned periodically.
-	if fitsInPeriodBudget && cl.remainingChurnBudget == maxChurnBudget {
-		return true
-	}
 	return fitsInPeriodBudget && fitsInCurrentBudget
 }
 
