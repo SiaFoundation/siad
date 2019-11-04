@@ -753,7 +753,6 @@ func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, utility
 		c.staticChurnLimiter.callNotifyChurnedContract(contract)
 	}
 
-	c.staticChurnLimiter.callNotifyChurnedContract(contract)
 	return safeContract.UpdateUtility(utility)
 }
 
