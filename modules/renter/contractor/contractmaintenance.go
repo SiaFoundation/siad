@@ -47,21 +47,9 @@ func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeigh
 	c.doubleSpentContracts[fcID] = blockHeight
 	c.mu.Unlock()
 
-	// Acquire the contract from the contract set to get its metadata, and to
-	// mark it as !GoodForUpload.
-	sc, ok := c.staticContracts.Acquire(fcID)
-	if !ok {
-		c.log.Debugln("unable to acquire contract marked for invalidation")
-		return
-	}
-	defer c.staticContracts.Return(sc)
-
-	utility := sc.Metadata().Utility
-	utility.GoodForUpload = false
-	utility.GoodForRenew = false
-	err := sc.UpdateUtility(utility)
+	err := c.MarkContractBad(fcID)
 	if err != nil {
-		c.log.Debugln("Error updating contract utility", err)
+		c.log.Println("callNotifyDoubleSpend error in MarkContractBad", err)
 	}
 }
 
