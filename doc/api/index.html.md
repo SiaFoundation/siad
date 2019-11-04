@@ -55,6 +55,7 @@ production.
 ## Documentation Standards
 
 The following details the documentation standards for the API endpoints.
+
  - Endpoints should follow the structure of:
     - Parameters
     - Response
@@ -267,7 +268,7 @@ curl -A "Sia-Agent" "localhost:9980/consensus/blocks?id=00000000000033b9eb57fa63
 Returns the block for a given id or height.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 One of the following parameters must be specified.
 
 **id** | blockID  
@@ -361,7 +362,7 @@ Height of the block
 **id** | hash  
 ID of the block
 
-**minerpayouts** |  []SiacoinOutput  
+**minerpayouts** |  SiacoinOutput  
 Siacoin output that holds the amount of siacoins spent on the miner payout
 
 **nonce** | bytes  
@@ -376,7 +377,7 @@ Historic difficulty at height of the block
 **timestamp** | timestamp  
 Block timestamp
 
-**transactions** | []ConsensusBlocksGetTxn  
+**transactions** | ConsensusBlocksGetTxn  
 Transactions contained within the block
 
 ## /consensus/validate/transactionset [POST]
@@ -616,7 +617,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "maxdownloadspeed=1000000&maxuplo
 Modify settings that control the daemon's behavior.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **maxdownloadspeed** | bytes per second  
 Max download speed permitted in bytes per second  
 
@@ -776,7 +777,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "maxdownloadspeed=1000000&maxuplo
 Modify settings that control the gateway's behavior.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **maxdownloadspeed** | bytes per second  
 Max download speed permitted in bytes per second  
 
@@ -800,7 +801,7 @@ already present. The node list is the list of all nodes the gateway knows about,
 but is not necessarily connected to.  
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 netaddress is the address of the peer to connect to. It should be a reachable ip
 address and port number, of the form `IP:port`. IPV6 addresses must be enclosed
 in square brackets.  
@@ -825,7 +826,7 @@ Disconnecting from a peer does not prevent the gateway from automatically
 connecting to the peer in the future.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 netaddress is the address of the peer to connect to. It should be a reachable ip
 address and port number, of the form `IP:port`. IPV6 addresses must be enclosed
 in square brackets.  
@@ -880,7 +881,7 @@ will become the Gateway's blacklist, replacing any blacklist that was currently
 in place. To clear the Gateway's blacklist, submit an empty list with `set`.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **action** | string  
 this is the action to be performed on the blacklist. Allowed inputs are
 `append`, `remove`, and `set`.
@@ -996,7 +997,7 @@ fetches status information about the host.
   },
 }
 ```
-#### externalsettings  
+**externalsettings**    
 The settings that get displayed to untrusted nodes querying the host's status.  
   
 **acceptingcontracts** | boolean  
@@ -1071,16 +1072,17 @@ The price that a renter has to pay to store files with the host.
 **uploadbandwidthprice** | hastings / byte  
 The price that a renter has to pay when uploading data to the host.  
 
-**revisionnumber** | int The revision number indicates to the renter what
-iteration of settings the host is currently at. Settings are generally signed.
-If the renter has multiple conflicting copies of settings from the host, the
-renter can expect the one with the higher revision number to be more recent.  
+**revisionnumber** | int  
+The revision number indicates to the renter what iteration of settings the host
+is currently at. Settings are generally signed. If the renter has multiple
+conflicting copies of settings from the host, the renter can expect the one with
+the higher revision number to be more recent.  
 
 **version** | string  
 The version of external settings being used. This field helps coordinate updates
 while preserving compatibility with older nodes.  
 
-#### financialmetrics  
+**financialmetrics**    
 The financial status of the host.  
   
 **contractcount** | int  
@@ -1148,7 +1150,7 @@ storage proofs for the related file contracts.
 The amount of money that the host has made from renters uploading their files.
 This money has been locked in by successful storage proofs.  
 
-#### internalsettings  
+**internalsettings**    
 The settings of the host. Most interactions between the user and the host occur
 by changing the internal settings.  
 
@@ -1235,12 +1237,13 @@ The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
 
-#### networkmetrics  
+**networkmetrics**    
 Information about the network, specifically various ways in which renters have
 contacted the host.  
 
-**downloadcalls** | int The number of times that a renter has attempted to
-download something from the host.  
+**downloadcalls** | int  
+The number of times that a renter has attempted to download something from the
+host.  
 
 **errorcalls** | int  
 The number of calls that have resulted in errors. A small number of errors are
@@ -1288,7 +1291,7 @@ Configures hosting parameters. All parameters are optional; unspecified
 parameters will be left unchanged.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **acceptingcontracts** | boolean  
 When set to true, the host will accept new file contracts if the terms are
 reasonable. When set to false, the host will not accept new file contracts at
@@ -1392,7 +1395,7 @@ contracts unless configured to do so. To configure the host to accept contracts,
 see [/host](## /host [POST]).
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **netaddress string** | string  
 The address to be announced. If no address is provided, the automatically
 discovered address will be used instead.  
@@ -1581,7 +1584,7 @@ A host can only have 65536 storage folders in total which have to be between 256
 MiB and 16 PiB in size
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **path** | string  
 Local path on disk to the storage folder to add.  
 
@@ -1608,11 +1611,11 @@ manager is unable to save data, an error will be returned and the operation will
 be stopped.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **path** | string  
 Local path on disk to the storage folder to removed.  
 
-#### OPTIONAL
+### OPTIONAL
 **force** | boolean  
 If `force` is true, the storage folder will be removed even if the data in the
 storage folder cannot be moved to other storage folders, typically because they
@@ -1642,7 +1645,7 @@ migrate the data, an error will be returned and the operation will be stopped.
 See [/host/storage/folders/add](#host-storage-folders-add-post)
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **path** | string  
 Local path on disk to the storage folder to resize.  
 
@@ -1669,7 +1672,7 @@ all heights. The primary purpose is to comply with legal requests to remove
 data.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **merkleroot** | merkleroot  
 Merkleroot of the sector to delete.  
 
@@ -1689,7 +1692,7 @@ Returns the estimated HostDB score of the host using its current settings,
 combined with the provided settings.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 See [host internal settings](#internalsettings)
  - acceptingcontracts   
  - maxdownloadbatchsize 
@@ -1757,7 +1760,7 @@ curl -A "Sia-Agent" "localhost:9980/hostdb/active"
 lists all of the active hosts known to the renter, sorted by preference.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **numhosts** | int  
 Number of hosts to return. The actual number of hosts returned may be less if
 there are insufficient active hosts. Optional, the default is all active hosts.
@@ -1826,7 +1829,7 @@ there are insufficient active hosts. Optional, the default is all active hosts.
 }
 ```
 
-#### hosts
+**hosts**  
 **acceptingcontracts** | boolean  
 true if the host is accepting new contracts.  
 
@@ -1989,7 +1992,7 @@ overall.
 ```go
 curl -A "Sia-Agent" "localhost:9980/hostdb/hosts/<pubkey>"
 ```
-#### REQUIRED
+### REQUIRED
 **pubkey**  
 The public key of the host. Each public key identifies a single host.  
 
@@ -2144,7 +2147,7 @@ are better scoring hosts in your hostdb that were previously being filtered out.
 
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **filtermode** | string  
 Can be either whitelist, blacklist, or disable.  
 
@@ -2369,10 +2372,10 @@ Returns the current settings along with metrics on the renter's spending.
   "nextperiod":    12248  // blockheight
 }
 ```
-#### settings  
+**settings**    
 Settings that control the behavior of the renter.  
 
-#### allowance 
+**allowance**   
 Allowance dictates how much the renter is allowed to spend in a given period.
 Note that funds are spent on both storage and bandwidth.  
 
@@ -2477,7 +2480,7 @@ bandwidth.
 The StreamCacheSize is the number of data chunks that will be cached during
 streaming.  
 
-#### financialmetrics  
+**financialmetrics**    
 Metrics about how much the Renter has spent on storage, uploads, and downloads.
 
 
@@ -2520,12 +2523,12 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "period=12096&renewwindow=4032&fu
 Modify settings that control the renter's behavior.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 When setting the allowance the Funds and Period are required. Since these are
 the two required fields, the allowance can be canceled by submitting the zero
 values for these fields.
 
-#### OPTIONAL
+### OPTIONAL
 Any of the renter settings can be set, see fields [here](#settings)
 
 **checkforipviolation** | boolean  
@@ -2563,7 +2566,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "id=bd7ef21b13fb85eda933a9ff2874e
 cancels a specific contract of the Renter.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **id** | hash  
 ID of the file contract
 
@@ -2582,11 +2585,11 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "destination=/home/backups/01-01-
 Creates a backup of all siafiles in the renter at the specified path.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **destination** | string  
 The path on disk where the backup will be created. Needs to be an absolute path.
 
-#### OPTIONAL
+### OPTIONAL
 **remote** | boolean  
 flag indicating if the backup should be stored on hosts. If true,
 **destination** is interpreted as the backup's name, not its path.
@@ -2608,12 +2611,12 @@ contained within it to the renter. Should a siafile for a certain path already
 exist, a number will be added as a suffix. e.g. 'myfile_1.sia'
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **source** | string  
 The path on disk where the backup will be recovered from. Needs to be an
 absolute path.
 
-#### OPTIONAL
+### OPTIONAL
 **remote** | boolean  
 flag indicating if the backup is stored on hosts. If true, **source** is
 interpreted as the backup's name, not its path.
@@ -2696,7 +2699,7 @@ should be counted. For data totals, the data in active and passive contracts is
 the total uploaded while the data in disabled contracts is wasted uploaded data.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **disabled** | boolean  
 flag indicating if disabled contracts should be returned.
 
@@ -2766,8 +2769,8 @@ Key used to verify signed host messages.
 **id** | hash  
 ID of the file contract.  
 
-**lasttransaction** | transaction A signed transaction containing the most
-recent contract revision.  
+**lasttransaction** | transaction  
+A signed transaction containing the most recent contract revision.  
 
 **netaddress** | string  
 Address of the host the file contract was formed with.  
@@ -2814,7 +2817,7 @@ curl -A "Sia-Agent" "localhost:9980/renter/dir/mydir"
 retrieves the contents of a directory on the sia network
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Path to the directory on the sia netork  
 
@@ -2894,14 +2897,14 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "action=delete" "localhost:9980/r
 performs various functions on the renter's directories
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Location where the directory will reside in the renter on the network. The path
 must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **action** | string  
 Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
@@ -2926,7 +2929,7 @@ curl -A "Sia-Agent" "localhost:9980/renter/downloadinfo/9d8dd0d5b306f5bb412230bd
 Lists a file in the download history by UID.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **uid** | string  
 UID returned by the /renter/download/*siapath* endpoint. It is set in the http
 header's 'ID' field.
@@ -3091,7 +3094,7 @@ all downloads older than the timestamp. Conversely, providing only the after
 parameter will clear all downloads newer than the timestamp.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **before** | unix timestamp  
 unix timestamp found in the download history
 
@@ -3119,7 +3122,7 @@ are required. The allowance used to create the estimate is returned with the
 estimate.
 
 ### Query String Parameters
-##### REQUIRED or OPTIONAL
+### REQUIRED or OPTIONAL
 Allowance settings, see the fields [here](#allowance)
 
 ### JSON Response
@@ -3163,7 +3166,7 @@ curl -A "Sia-Agent" "localhost:9980/renter/files?cached=false"
 ```
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **cached** | boolean  
 determines whether cached values should be returned or if the latest values
 should be computed. Cached values speed the endpoint up significantly. The
@@ -3204,7 +3207,7 @@ lists the status of all files.
   ]
 }
 ```
-#### files
+**files**  
 
 **accesstime** | timestamp  
 indicates the last time the siafile was accessed
@@ -3297,7 +3300,7 @@ curl -A "Sia-Agent" "localhost:9980/renter/file/myfile"
 Lists the status of specified file.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
 
@@ -3314,14 +3317,14 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "trackingpath=/home/myfile" "loca
 endpoint for changing file metadata.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 SiaPath of the file on the network. The path must be non-empty, may not include
 any path traversal strings ("./", "../"), and may not begin with a forward-slash
 character.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **trackingpath** | string  
 If provided, this parameter changes the tracking path of a file to the
 specified path. Useful if moving the file to a different location on disk.
@@ -3342,7 +3345,7 @@ deletes a renter file entry. Does not delete any downloads or original files,
 only the entry in the renter.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
 
@@ -3362,19 +3365,19 @@ downloads a file to the local filesystem. The call will block until the file has
 been downloaded.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
 
 ### Query String Parameters
-#### REQUIRED (Either one or the other)
+### REQUIRED (Either one or the other)
 **destination** | string  
 Location on disk that the file will be downloaded to.  
 
 **httpresp** | boolean  
 If httresp is true, the data will be written to the http response.
 
-#### OPTIONAL
+### OPTIONAL
 **async** | boolean  
 If async is true, the http request will be non blocking. Can't be used with
 httpresp.
@@ -3424,12 +3427,12 @@ curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/downloadasync/myf
 downloads a file to the local filesystem. The call will return immediately.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **destination** | string  
 Location on disk that the file will be downloaded to.  
 
@@ -3487,13 +3490,14 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2" "localhost:9
 ```
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
 
 ### Query String Parameters
-#### REQUIRED
-**newsiapath** | string New location of the file in the renter on the network.  
+### REQUIRED
+**newsiapath** | string  
+New location of the file in the renter on the network.  
 
 ### Response
 
@@ -3526,7 +3530,7 @@ should increase the size of the Renter's `streamcachesize` to at least 2x the
 number of files you are steaming.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
 
@@ -3545,18 +3549,18 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "source=/home/myfile" "localhost:
 uploads a file to the network from the local filesystem.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Location where the file will reside in the renter on the network. The path must
 be non-empty, may not include any path traversal strings ("./", "../"), and may
 not begin with a forward-slash character.  
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **source** | string  
 Location on disk of the file being uploaded.  
 
-#### OPTIONAL
+### OPTIONAL
 **datapieces** | int  
 The number of data pieces to use when erasure coding the file.  
 
@@ -3582,14 +3586,14 @@ curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfi
 uploads a file to the network using a stream.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 Location where the file will reside in the renter on the network. The path must
 be non-empty, may not include any path traversal strings ("./", "../"), and may
 not begin with a forward-slash character.  
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **datapieces** | int  
 The number of data pieces to use when erasure coding the file.  
 
@@ -3617,7 +3621,7 @@ curl -A "Sia-Agent" "localhost:9980/renter/uploadready?datapieces=10&paritypiece
 Returns the whether or not the renter is ready for upload.
 
 ### Path Parameters
-#### OPTIONAL
+### OPTIONAL
 datapieces and paritypieces are both optional, however if one is supplied then
 the other needs to be supplied. If neither are supplied then the deafult values
 for the erasure coding will be used 
@@ -3668,7 +3672,7 @@ cannot contain traversal strings or be empty. Valid characters are:
 $, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **siapath** | string  
 siapath to test.
 
@@ -3690,7 +3694,7 @@ however, that the block containing the transaction may later be invalidated by a
 reorg.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **id** | hash  
 id of the transaction being queried
 
@@ -3740,7 +3744,7 @@ returns the ID for the requested transaction and its raw encoded parents and
 transaction data.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **id** | hash  
 id of the transaction being queried
 
@@ -3774,7 +3778,7 @@ submits a raw transaction to the transaction pool, broadcasting it to the
 transaction pool's peers.  
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **parents** | string  
 JSON- or base64-encoded transaction parents
 
@@ -3948,7 +3952,7 @@ keys. All spendable addresses in the loaded wallet will become spendable from
 the current wallet.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **source**  
 Path on disk to the v0.3.3.x wallet to be loaded.  
 
@@ -4006,7 +4010,7 @@ is locked again.
   ]
 }
 ```
-**addresses** | []hash  
+**addresses** | hashes  
 Array of wallet addresses owned by the wallet.  
 
 ## /wallet/seedaddrs [GET]
@@ -4022,7 +4026,7 @@ addresses which weren't generated using the wallet's seed can't be retrieved
 with this endpoint.
 
 ### Query String Parameters
-#### OPTIONAL
+### OPTIONAL
 **count**  
 Number of addresses that should be returned. If count is not specified or if
 count is bigger than the number of addresses generated by the wallet, all
@@ -4040,7 +4044,7 @@ addresses will be returned.
   ]
 }
 ```
-**addresses** | []hash  
+**addresses** | hashes  
 Array of wallet addresses previously generated by the wallet.
 
 ## /wallet/backup [GET]
@@ -4056,7 +4060,7 @@ location. The /wallet/backup call can spare users the trouble of needing to find
 their wallet file.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **destination**  
 Path to the location on disk where the backup file will be saved.  
 
@@ -4075,7 +4079,7 @@ curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/wallet/changepas
 Changes the wallet's encryption key.  
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **encryptionpassword** | string  
 encryptionpassword is the wallet's current encryption password or primary seed.
 
@@ -4101,7 +4105,7 @@ error. The encryption password is provided by the api call. If the password is
 blank, then the password will be set to the same as the seed.
 
 ### Query String Parameters
-#### OPTIONAL WALLET PARAMETERS
+### OPTIONAL WALLET PARAMETERS
 **encryptionpassword** | string  
 Password that will be used to encrypt the wallet. All subsequent calls should
 use this password. If left blank, the seed that gets returned will also be the
@@ -4142,12 +4146,12 @@ blockchain to determine how many keys have been generated from the seed. For
 this reason, /wallet/init/seed can only be called if the blockchain is synced.
 
 ### Query String Parameters
-#### REQUIRED WALLET PARAMETERS
+### REQUIRED WALLET PARAMETERS
 **seed** | string  
 Dictionary-encoded phrase that corresponds to the seed being used to initialize
 the wallet.  
 
-#### OPTIONAL
+### OPTIONAL
 [Optional Wallet Parameters](#optional-wallet-parameters)
 
 ### Response
@@ -4168,10 +4172,10 @@ The seed is added as an auxiliary seed, and does not replace the primary seed.
 Only the primary seed will be used for generating new addresses.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 [Required Wallet Parameters](#required-wallet-parameters)
 
-#### OPTIONAL | string
+### OPTIONAL | string
 [Optional Wallet Parameters](#optional-wallet-parameters)
 
 ### Response
@@ -4191,9 +4195,10 @@ seed that gets used to generate new addresses. This call is unavailable when the
 wallet is locked.
 
 ### Query String Parameters
-#### REQUIRED
-**dictionary** | string Name of the dictionary that should be used when encoding
-the seed. 'english' is the most common choice when picking a dictionary.  
+### REQUIRED
+**dictionary** | string  
+Name of the dictionary that should be used when encoding the seed. 'english' is
+the most common choice when picking a dictionary.  
 
 ### JSON Response
 > JSON Response Example
@@ -4234,7 +4239,7 @@ selected from addresses in the wallet. If 'outputs' is supplied, 'amount' and
 'destination' must be empty.  
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 Amount and Destination or Outputs are required
 
 **amount** | hastings  
@@ -4336,7 +4341,7 @@ siafunds to an address in your control (this will give you all the siacoins,
 while still letting you control the siafunds).
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **amount** | siafunds  
 Number of siafunds being sent.  
 
@@ -4425,7 +4430,7 @@ Loads a key into the wallet that was generated by siag. Most siafunds are
 currently in addresses created by siag.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **encryptionpassword**  
 Key that is used to encrypt the siag key when it is imported to the wallet.  
 
@@ -4548,12 +4553,12 @@ Scans the blockchain for outputs belonging to a seed and send them to an address
 owned by the wallet.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **seed** | string  
 Dictionary-encoded phrase that corresponds to the seed being added to the
 wallet.  
 
-#### OPTIONAL
+### OPTIONAL
 **dictionary** | string  
 Name of the dictionary that should be used when decoding the seed. 'english' is
 the most common choice when picking a dictionary.  
@@ -4600,7 +4605,7 @@ curl -A "Sia-Agent" "localhost:9980/wallet/transaction/22e8d5428abc184302697929f
 Gets the transaction associated with a specific transaction id.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **id** | hash  
 ID of the transaction being requested.  
 
@@ -4724,9 +4729,9 @@ curl -A "Sia-Agent" "localhost:9980/wallet/transactions"
 Returns a list of transactions related to the wallet in chronological order.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **startheight** | block height  
-// Height of the block where transaction history should begin.
+Height of the block where transaction history should begin.
 
 **endheight** | block height  
 Height of of the block where the transaction history should end. If 'endheight'
@@ -4771,7 +4776,7 @@ curl -A "Sia-Agent" "localhost:9980/wallet/transactions/abf1ba4ad65820ce2bd5d634
 Returns all of the transactions related to a specific address.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **addr** | hash  
 Unlock hash (i.e. wallet address) whose transactions are being requested.  
 
@@ -4803,7 +4808,7 @@ Unlocks the wallet. The wallet is capable of knowing whether the correct
 password was provided.
 
 ### Query String Parameters
-#### REQUIRED
+### REQUIRED
 **encryptionpassword** | string  
 Password that gets used to decrypt the file. Most frequently, the encryption
 password is the same as the primary wallet seed.  
@@ -4823,7 +4828,7 @@ curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/wallet/unlockconditions/
 Returns the unlock conditions of :addr, if they are known to the wallet.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **addr** | hash  
 Unlock hash (i.e. wallet address) whose transactions are being requested.  
 
@@ -4911,7 +4916,7 @@ Takes the address specified by :addr and returns a JSON response indicating if
 the address is valid.
 
 ### Path Parameters
-#### REQUIRED
+### REQUIRED
 **addr** | hash  
 Unlock hash (i.e. wallet address) whose transactions are being requested.  
 
@@ -4948,7 +4953,7 @@ generated automatically by the wallet, or by /wallet/address, are not included.
   ]
 }
 ```
-**addresses** | []hash  
+**addresses** | hashes  
 The addresses currently watched by the wallet.  
 
 ## /wallet/watch [POST]
@@ -4973,7 +4978,7 @@ Update the set of addresses for the wallet to watch.
   "unused": true,   // boolean
 ```
 
-**addresses** | []hash  
+**addresses** | hashes  
 The addresses to add or remove from the current set.
 
 **remove** | boolean  
