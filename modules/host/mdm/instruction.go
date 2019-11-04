@@ -64,7 +64,7 @@ func outputFromError(err error) Output {
 
 // ****************************************************************************
 //
-// The folowing sections contain the supportd transactions of the MDM.
+// The following sections contain the supportd transactions of the MDM.
 //
 // ****************************************************************************
 

@@ -19,11 +19,17 @@ import (
 // The program's state is captured when the program is created and remains the
 // same during the execution of the program.
 type programState struct {
-	blockHeight     types.BlockHeight
-	secretKey       crypto.SecretKey
-	settings        modules.HostExternalSettings
+	// host related fields
+	blockHeight types.BlockHeight
+	secretKey   crypto.SecretKey
+	settings    modules.HostExternalSettings
+	host        Host
+	// revision related fields
 	currentRevision types.FileContractRevision
-	host            Host
+	// storage obligation related fields
+	sectorsRemoved   []crypto.Hash
+	sectorsGained    []crypto.Hash
+	gainedSectorData [][]byte
 }
 
 // Program is a collection of instructions. Within a program, each instruction
@@ -44,19 +50,22 @@ type Program struct {
 
 	finalContractSize uint64 // contract size after executing all instructions
 
-	staticNewValidProofValues  []types.SiacoinOutput
-	staticNewMissedProofValues []types.SiacoinOutput
+	staticNewValidProofValues  []types.Currency
+	staticNewMissedProofValues []types.Currency
+	staticNewRevisionNumber    uint64
 
-	executing  bool
-	outputChan chan Output
+	executing   bool
+	finalOutput Output
+	renterSig   types.TransactionSignature
+	outputChan  chan Output
 
 	mu sync.Mutex
-	tg threadgroup.ThreadGroup
+	tg *threadgroup.ThreadGroup
 }
 
 // NewProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data.
-func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, initialContractSize, programDataLen uint64, data io.Reader, newValidProofValues, newMissedProofValues []types.SiacoinOutput) *Program {
+func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, initialContractSize, programDataLen uint64, data io.Reader, newValidProofValues, newMissedProofValues []types.Currency, NewRevisionNumber uint64) *Program {
 	// TODO: capture hostState
 	return &Program{
 		finalContractSize:          initialContractSize,
@@ -67,7 +76,7 @@ func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, init
 		staticNewValidProofValues:  newValidProofValues,
 		staticNewMissedProofValues: newMissedProofValues,
 		so:                         so,
-		tg:                         mdm.tg,
+		tg:                         &mdm.tg,
 	}
 }
 
@@ -117,24 +126,55 @@ func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 			}
 			fcRoot = output.NewMerkleRoot
 			p.outputChan <- output
+			p.finalOutput = output
 		}
 	}()
 	return p.outputChan, nil
 }
 
-// Result returns the new contract revision after the execution of the program.
-// It should only be called after the channel returned by Execute is closed.
-func (p *Program) Result() error {
+// Result returns the signed txn with the new contract revision after the
+// execution of the program. It should only be called after the channel returned
+// by Execute is closed.
+func (p *Program) Result() (types.Transaction, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.executing {
 		err := errors.New("can't call 'Result' before 'Execute'")
 		build.Critical(err)
-		return err
+		return types.Transaction{}, err
 	}
-	// TODO: Update the storage obligation.
-	// TODO: Construct the new revision.
-	panic("not implemented yet")
+	// Construct the new revision.
+	currentRevision := p.staticProgramState.currentRevision
+	newRevision := p.staticProgramState.currentRevision
+	newRevision.NewRevisionNumber = p.staticNewRevisionNumber
+	newRevision.NewFileSize = p.finalOutput.NewSize
+	newRevision.NewFileMerkleRoot = p.finalOutput.NewMerkleRoot
+	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
+			Value:      p.staticNewValidProofValues[i],
+			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
+			Value:      p.staticNewMissedProofValues[i],
+			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+	// Sign the revision.
+	txn, err := createRevisionSignature(newRevision, p.renterSig, p.staticProgramState.secretKey, p.staticProgramState.blockHeight)
+	if err != nil {
+		return types.Transaction{}, err
+	}
+	// If everything went well, commit the changes to the storage obligation.
+	ps := p.staticProgramState
+	err = p.so.Update(ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	if err != nil {
+		return types.Transaction{}, err
+	}
+	return txn, nil
 }
 
 // managedCost returns the amount of money that the execution of the program
@@ -159,4 +199,30 @@ func (p *Program) readOnly() bool {
 		}
 	}
 	return true
+}
+
+// createRevisionSignature creates a signature for a file contract revision
+// that signs on the file contract revision. The renter should have already
+// provided the signature. createRevisionSignature will check to make sure that
+// the renter's signature is valid.
+func createRevisionSignature(fcr types.FileContractRevision, renterSig types.TransactionSignature, secretKey crypto.SecretKey, blockHeight types.BlockHeight) (types.Transaction, error) {
+	hostSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(fcr.ParentID),
+		PublicKeyIndex: 1,
+		CoveredFields: types.CoveredFields{
+			FileContractRevisions: []uint64{0},
+		},
+	}
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{fcr},
+		TransactionSignatures: []types.TransactionSignature{renterSig, hostSig},
+	}
+	sigHash := txn.SigHash(1, blockHeight)
+	encodedSig := crypto.SignHash(sigHash, secretKey)
+	txn.TransactionSignatures[1].Signature = encodedSig[:]
+	err := modules.VerifyFileContractRevisionTransactionSignatures(fcr, txn.TransactionSignatures, blockHeight)
+	if err != nil {
+		return types.Transaction{}, err
+	}
+	return txn, nil
 }
