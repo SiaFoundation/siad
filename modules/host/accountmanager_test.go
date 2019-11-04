@@ -14,15 +14,14 @@ const (
 	accountID = "8e8ed34"
 )
 
-// TestAccountCallDeposit verifies we can properly deposit money into an
-// ephemeral account
+// TestAccountCallDeposit verifies we can deposit into an ephemeral account
 func TestAccountCallDeposit(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	ht, err := blankHostTester("TestEphemeralAccountDeposit")
+	ht, err := blankHostTester("TestAccountCallDeposit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,15 +46,14 @@ func TestAccountCallDeposit(t *testing.T) {
 	}
 }
 
-// TestAccountCallSpend verifies we can spend from an account, but also that
-// spending has a blocking behavior with a timeout
+// TestAccountCallSpend verifies we can spend from an ephemeral account
 func TestAccountCallSpend(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	ht, err := blankHostTester("TestEphemeralAccountSpend")
+	ht, err := blankHostTester("TestAccountCallSpend")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +66,7 @@ func TestAccountCallSpend(t *testing.T) {
 	}
 
 	// Spend half of it and verify account balance
-	err = am.callSpend(accountID, types.NewCurrency64(5), randomHash())
+	err = am.callSpend(accountID, types.NewCurrency64(5), randomFingerprint(ht.host, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +79,7 @@ func TestAccountCallSpend(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		_ = am.callDeposit(accountID, types.NewCurrency64(3))
 	}()
-	err = am.callSpend(accountID, types.NewCurrency64(7), randomHash())
+	err = am.callSpend(accountID, types.NewCurrency64(7), randomFingerprint(ht.host, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +89,7 @@ func TestAccountCallSpend(t *testing.T) {
 	}
 
 	// Spend from an unknown account and verify it timed out
-	err = am.callSpend(accountID+"unknown", types.NewCurrency64(5), randomHash())
+	err = am.callSpend(accountID+"unknown", types.NewCurrency64(5), randomFingerprint(ht.host, 10))
 	if err != errInsufficientBalance {
 		t.Fatal(err)
 	}
@@ -129,6 +127,14 @@ func TestAccountExpiry(t *testing.T) {
 	_, exists := am.accountIndices[accountID]
 	if exists {
 		t.Fatal("Account index of pruned account was not removed")
+	}
+}
+
+// randomFingerprint return a random fingerprint that expires in the future
+func randomFingerprint(h *Host, inFuture uint64) *fingerprint {
+	return &fingerprint{
+		Expiry: h.blockHeight + types.BlockHeight(inFuture),
+		Hash:   randomHash(),
 	}
 }
 

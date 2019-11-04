@@ -124,6 +124,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// terminated. This function should not block while these threads wait to
 	// terminate.
 	h.mu.Lock()
+	defer func() { go h.staticAccountManager.callConsensusChanged() }()
 	defer h.mu.Unlock()
 
 	// Wrap the whole parsing into a single large database tx to keep things

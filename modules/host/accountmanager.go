@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -18,27 +17,27 @@ const (
 )
 
 var (
+	errInsufficientBalance = errors.New("insufficient account balance")
+	errMaxBalanceExceeded  = errors.New("maximum account balance exceeded")
+
 	// accountMaxBalance defines how many coins an account can hold at most
 	// TODO make host setting or change to max unsaved delta (?)
 	accountMaxBalance = types.SiacoinPrecision
 
-	errInsufficientBalance = errors.New("insufficient account balance")
-	errMaxBalanceExceeded  = errors.New("maximum account balance exceeded")
-	errKnownFingerprint    = errors.New("cannot re-use an ephemeral account withdrawal transaction")
-
-	// blockedCallTimeout is the maximum amount of time a call is blocked
-	blockedCallTimeout = build.Select(build.Var{
-		Standard: 15 * time.Minute,
-		Dev:      15 * time.Second,
-		Testing:  3 * time.Second,
-	}).(time.Duration)
-
-	// pruneExpiredAccountsFrequency is the frequency at which the hosts prunes
-	// accounts which have been stale
+	// pruneExpiredAccountsFrequency is the frequency at which the host prunes
+	// accounts which have been inactive
 	pruneExpiredAccountsFrequency = build.Select(build.Var{
 		Standard: 1 * time.Hour,
 		Dev:      15 * time.Second,
 		Testing:  2 * time.Second,
+	}).(time.Duration)
+
+	// blockedCallTimeout is the maximum amount of time a call is blocked before
+	// it times out
+	blockedCallTimeout = build.Select(build.Var{
+		Standard: 15 * time.Minute,
+		Dev:      15 * time.Second,
+		Testing:  3 * time.Second,
 	}).(time.Duration)
 )
 
@@ -57,8 +56,8 @@ type (
 		accountUpdated    map[string]int64
 		accountMaxBalance types.Currency
 
-		fingerprints map[crypto.Hash]struct{}
-		blockedCalls []blockedCall
+		blockedCalls map[string][]blockedCall
+		fingerprints *memoryBucket
 
 		mu           sync.Mutex
 		persister    *accountsPersister
@@ -84,8 +83,8 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 		accountUpdated:    make(map[string]int64),
 		accountMaxBalance: accountMaxBalance,
 
-		fingerprints: make(map[crypto.Hash]struct{}),
-		blockedCalls: make([]blockedCall, 0),
+		fingerprints: newMemoryBucket(bucketSize, h.blockHeight),
+		blockedCalls: make(map[string][]blockedCall, 0),
 
 		dependencies: dependencies,
 		persister:    h.staticAccountPersister,
@@ -93,24 +92,34 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 	}
 
 	// Load data
-	data := am.persister.callLoadAccountsData()
-	am.accounts = data.Accounts
-	am.accountIndices = data.AccountIndices
-	am.accountUpdated = data.AccountUpdated
-	am.fingerprints = data.Fingerprints
+	am.managedLoad()
 
 	am.h.tg.OnStop(func() {
 		// Close all open unblock channels
-		for _, d := range am.blockedCalls {
-			close(d.unblock)
+		for _, bcs := range am.blockedCalls {
+			for _, bc := range bcs {
+				close(bc.unblock)
+			}
 		}
 		am.persister.Close()
 	})
 
-	// Start prune expired accounts background loop
+	// Prune expired accounts and fingerprints in a background loop
 	go am.threadedPruneExpiredAccounts()
 
 	return am, nil
+}
+
+// managedLoad will load the accounts data
+func (am *accountManager) managedLoad() {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	data := am.persister.callLoadAccountsData()
+	am.accounts = data.Accounts
+	am.accountIndices = data.AccountIndices
+	am.accountUpdated = data.AccountUpdated
+	(*am.fingerprints.current) = data.Fingerprints
 }
 
 // callDeposit will credit the amount to the account's balance
@@ -118,7 +127,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	// Verify max balance
+	// Verify the updated balance does not exceed the max balance
 	uB := am.accounts[id].Add(amount)
 	if am.accountMaxBalance.Cmp(uB) < 0 {
 		am.h.log.Printf("ERROR: deposit of %v exceeded max balance for account %v\n", amount, id)
@@ -140,13 +149,13 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	// remaining balance to allow unblocking multiple calls at the same time
 	remaining := am.accounts[id]
 	j := 0
-	for i := 0; i < len(am.blockedCalls); i++ {
-		b := am.blockedCalls[i]
+	for i := 0; i < len(am.blockedCalls[id]); i++ {
+		b := am.blockedCalls[id][i]
 		if b.id != id {
 			continue
 		}
 		if remaining.Cmp(b.required) < 0 {
-			am.blockedCalls[j] = b
+			am.blockedCalls[id][j] = b
 			j++
 		} else {
 			close(b.unblock)
@@ -156,7 +165,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 			}
 		}
 	}
-	am.blockedCalls = am.blockedCalls[:j]
+	am.blockedCalls[id] = am.blockedCalls[id][:j]
 
 	err := am.persister.callSaveAccount(index, am.account(id))
 	if err != nil {
@@ -168,14 +177,20 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 
 // callSpend will try to spend from an account, it blocks if the account balance
 // is insufficient
-func (am *accountManager) callSpend(id string, amount types.Currency, fp crypto.Hash) error {
+func (am *accountManager) callSpend(id string, amount types.Currency, fp *fingerprint) error {
 	am.mu.Lock()
 
-	// Verify unique fingerprint
-	if _, exists := am.fingerprints[fp]; exists {
-		am.h.log.Printf("ERROR: fingerprint seen %v", fp)
+	// Lookup fingerprint
+	if exists := am.fingerprints.has(fp); exists {
 		am.mu.Unlock()
 		return errKnownFingerprint
+	}
+
+	// Validate fingerprint
+	if err := fp.validate(am.h.blockHeight); err != nil {
+		am.h.log.Printf("ERROR: invalid fingerprint, current blockheight %v, error: %v", am.h.blockHeight, err)
+		am.mu.Unlock()
+		return err
 	}
 
 	// If current account balance is insufficient, we block until either the
@@ -187,7 +202,7 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp crypto.
 			unblock:  make(chan struct{}),
 			required: amount,
 		}
-		am.blockedCalls = append(am.blockedCalls, bc)
+		am.blockedCalls[id] = append(am.blockedCalls[id], bc)
 		am.mu.Unlock()
 
 	BlockLoop:
@@ -211,16 +226,41 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp crypto.
 
 	am.accounts[id] = am.accounts[id].Sub(amount)
 	am.accountUpdated[id] = time.Now().Unix()
-	am.fingerprints[fp] = struct{}{}
-
-	err := am.persister.callSaveAccount(am.accountIndices[id], am.account(id))
-	if err != nil {
-		am.h.log.Println("ERROR: could not save account:", id, err)
-	}
-
+	am.fingerprints.save(fp)
 	am.mu.Unlock()
 
+	// Persist data
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		if err := am.persister.callSaveAccount(am.accountIndices[id], am.account(id)); err != nil {
+			am.h.log.Println("ERROR: could not save account", id, err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if err := am.persister.callSaveFingerprint(fp); err != nil {
+			am.h.log.Println("ERROR: could not save fingerprint", fp.Hash, err)
+		}
+	}()
+	wg.Wait()
+
 	return nil
+}
+
+// callConsensusChanged is called by the host whenever it processed a
+// change to the consensus, we use it to rotate the fingerprints as they are
+// blockheight based
+func (am *accountManager) callConsensusChanged() {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	am.fingerprints.tryRotate(am.h.blockHeight)
+	err := am.persister.fingerprints.tryRotate(am.h.blockHeight)
+	if err != nil {
+		am.h.log.Println("ERROR: could not rotate fingerprint buckets")
+	}
 }
 
 // balanceOf will return the balance for given account
@@ -233,10 +273,10 @@ func (am *accountManager) balanceOf(id string) types.Currency {
 // balanceOf will return the balance for given account
 func (am *accountManager) account(id string) *account {
 	a := &account{
-		balance: am.accounts[id],
-		updated: am.accountUpdated[id],
+		Balance: am.accounts[id],
+		Updated: am.accountUpdated[id],
 	}
-	a.id.LoadString(id)
+	a.Id.LoadString(id)
 	return a
 }
 
@@ -267,13 +307,14 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 		force = true
 	}
 
-	for {
-		var accountExpiryTimeoutAsInt64 = int64(accountExpiryTimeout)
+	var accountExpiryTimeoutAsInt64 = int64(accountExpiryTimeout)
 
+	for {
 		am.mu.Lock()
 		now := time.Now().Unix()
 		for id := range am.accounts {
 			if force {
+				am.h.log.Debugf("DEBUG: force expiring account %v", id)
 				am.accounts[id] = types.ZeroCurrency
 				delete(am.accountIndices, id)
 				continue
