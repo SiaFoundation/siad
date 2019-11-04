@@ -2975,12 +2975,15 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			// Calculate the renter seed given the WindowStart of the contract.
 			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			// Check if the identifier is valid.
-			spk, valid := csi.IsValid(rs, txn, encryptedHostKey)
+			spk, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !valid {
 				t.Fatal("identifier is invalid")
 			}
 			// Check that the host's key is a valid key from the hostb.
-			_, err := r.HostDbHostsGet(spk)
+			_, err = r.HostDbHostsGet(spk)
 			if err != nil {
 				t.Fatal("hostKey is invalid", err)
 			}

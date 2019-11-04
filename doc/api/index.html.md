@@ -2765,8 +2765,7 @@ indicates if the source file is found on disk
 
 **recoverable** | boolean  
 indicates if the siafile is recoverable. A file is recoverable if it has at
-least 1x redundancy or if `siad` knows the location of the local copy of the
-file.
+least 1x redundancy or if `siad` knows the location of a local copy of the file.
 
 **redundancy** | float64  
 When a file is uploaded, it is first broken into a series of chunks. Each chunk
@@ -3134,14 +3133,14 @@ The number of data pieces to use when erasure coding the file.
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file.
 
-## /renter/validate/*siapath* [POST]
+## /renter/validatesiapath/*siapath* [POST]
 > curl example  
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/validatesiapath/isthis-aval_idsiapath"
 ```
 
-validates whether or not the provided siapaht is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
+validates whether or not the provided siapath is a valid siapath. SiaPaths cannot contain traversal strings or be empty. Valid characters are:
 
 $, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
 

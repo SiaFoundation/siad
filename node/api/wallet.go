@@ -11,6 +11,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -685,18 +686,16 @@ func (api *API) walletTransactionsAddrHandler(w http.ResponseWriter, req *http.R
 // walletUnlockHandler handles API calls to /wallet/unlock.
 func (api *API) walletUnlockHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
+	var err error
 	for _, key := range potentialKeys {
-		err := api.wallet.Unlock(key)
-		if err == nil {
+		unlockErr := api.wallet.Unlock(key)
+		if unlockErr == nil {
 			WriteSuccess(w)
 			return
 		}
-		if err != modules.ErrBadEncryptionKey {
-			WriteError(w, Error{"error when calling /wallet/unlock: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+		err = errors.Compose(err, unlockErr)
 	}
-	WriteError(w, Error{"error when calling /wallet/unlock: " + modules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
+	WriteError(w, Error{"error when calling /wallet/unlock: " + err.Error()}, http.StatusBadRequest)
 }
 
 // walletChangePasswordHandler handles API calls to /wallet/changepassword
@@ -710,29 +709,25 @@ func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Req
 	newKey = crypto.NewWalletKey(crypto.HashObject(newPassword))
 
 	originalKeys, seeds := encryptionKeys(req.FormValue("encryptionpassword"))
+	var err error
 	for _, key := range originalKeys {
-		err := api.wallet.ChangeKey(key, newKey)
-		if err == nil {
+		keyErr := api.wallet.ChangeKey(key, newKey)
+		if keyErr == nil {
 			WriteSuccess(w)
 			return
 		}
-		if err != modules.ErrBadEncryptionKey {
-			WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+		err = errors.Compose(err, keyErr)
 	}
 	for _, seed := range seeds {
-		err := api.wallet.ChangeKeyWithSeed(seed, newKey)
-		if err == nil {
+		seedErr := api.wallet.ChangeKeyWithSeed(seed, newKey)
+		if seedErr == nil {
 			WriteSuccess(w)
 			return
 		}
-		if err != modules.ErrBadEncryptionKey {
-			WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+		err = errors.Compose(err, seedErr)
 	}
-	WriteError(w, Error{"error when calling /wallet/changepassword: " + modules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
+	WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
+	return
 }
 
 // walletVerifyAddressHandler handles API calls to /wallet/verify/address/:addr.
