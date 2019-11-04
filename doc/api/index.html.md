@@ -2402,6 +2402,51 @@ chain.
 The height at which a double-spend for this transactions formation transaction
 was found on chain.
 
+## /renter/contractorchurnstatus [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/renter/contractorchurnstatus"
+```
+
+Returns the churn status for the renter's contractor.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "aggregatechurnthisperiod": 500000, uint64
+  "maxchurnperperiod": 50000000,      uint64
+}
+```
+
+**aggregatechurnthisperiod** | uint64
+Aggregate size of files stored in file contracts that were churned (i.e. not
+marked for renewal) in the current period.
+
+
+**maxchurnperperiod** | uint64
+Maximum allowed aggregate churn per period.
+
+## /renter/setmaxchurnperperiod [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/setmaxchurnperperiod?newmax=<newmax>"
+```
+
+sets the new max churn per period.
+
+### Query String Parameters
+**newmax** | uint64
+New maximum churn per period.
+
+### Response
+
+standard success or error response. See [standard responses](#standard-responses).
+
+
 ## /renter/dir/*siapath [GET]
 > curl example  
 

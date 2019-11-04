@@ -1017,6 +1017,30 @@ func (api *API) renterClearDownloadsHandler(w http.ResponseWriter, req *http.Req
 	WriteSuccess(w)
 }
 
+// renterContractorChurnStatus handles the API call to request the churn status
+// from the renter's contractor.
+func (api *API) renterContractorChurnStatus(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	WriteJSON(w, api.renter.ContractorChurnStatus())
+}
+
+// renterContractorChurnStatus handles the API call to set the max churn per
+// period.
+func (api *API) renterSetMaxChurnPerPeriod(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	val := req.FormValue("newmax")
+	if val == "" {
+		WriteError(w, Error{"newmax not specified"}, http.StatusBadRequest)
+		return
+	}
+
+	var newMaxChurnPerPeriod uint64
+	if _, err := fmt.Sscan(val, &newMaxChurnPerPeriod); err != nil {
+		WriteError(w, Error{"unable to parse new max churn per period: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	api.renter.SetMaxChurnPerPeriod(newMaxChurnPerPeriod)
+	WriteSuccess(w)
+}
+
 // renterDownloadsHandler handles the API call to request the download queue.
 func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	var downloads []DownloadInfo
