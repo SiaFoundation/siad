@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/sync"
@@ -1489,6 +1490,162 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		}
 		if !status.ContractFound {
 			return errors.New("contract not marked as found)")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestContractorChurnLimiter tests that the churnLimiter limits churn in a
+// given period.
+func TestContractorChurnLimiter(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+
+	r := tg.Renters()[0]
+	// The renter should have one contract with each host.
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) != len(tg.Hosts()) {
+		t.Fatal("Insufficient active contracts")
+	}
+
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := 1000
+	_, _, err = r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Mine to the beginning of the next period.
+	miner := tg.Miners()[0]
+	cg, err := miner.ConsensusGet()
+	for i := cg.Height; i <= siatest.DefaultAllowance.Period; i++ {
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Get the size of each contract.
+	rc, err = r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := rc.ActiveContracts[0].Size
+
+	// Set the maxChurnPerPeriod to 3 * size and check that the change is visible
+	// over the API.
+	maxChurnPerPeriod := uint64(3 * size)
+	err = r.RenterSetMaxChurnPerPeriod(maxChurnPerPeriod)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var i int
+	err = build.Retry(50, 250*time.Millisecond, func() error {
+		if i%3 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		churnStatus, apiErr := r.RenterContractorChurnStatus()
+		if apiErr != nil {
+			return errors.AddContext(apiErr, "ContractorChurnStatus err")
+		}
+		if churnStatus.AggregateChurnThisPeriod != 0 {
+			return errors.New("Expected no churn for this period")
+		}
+		if churnStatus.MaxChurnPerPeriod != maxChurnPerPeriod {
+			return errors.New("Expected max churn change to show")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Shutdown a some hosts to cause churn.
+	hosts := tg.Hosts()
+	numHostsShutdown := 2
+	for i := 0; i < numHostsShutdown; i++ {
+		err = hosts[i].StopNode()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that churn is observable through API.
+	expectedChurn := uint64(numHostsShutdown) * size
+	i = 0
+	err = build.Retry(50, 500*time.Millisecond, func() error {
+		if i%5 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		churnStatus, apiErr := r.RenterContractorChurnStatus()
+		if apiErr != nil {
+			return errors.AddContext(apiErr, "ContractorChurnStatus err")
+		}
+		if churnStatus.AggregateChurnThisPeriod != expectedChurn {
+			fmt.Println(churnStatus)
+			return errors.New("Expected more churn for this period")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Raise prices of 2 of the hosts to cause further churn.
+	for i = numHostsShutdown; i < numHostsShutdown+2; i++ {
+		err = hosts[i].HostModifySettingPost(client.HostParamMinContractPrice, types.SiacoinPrecision.Mul64(9999999999999999))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that 1 of the hosts was churned, but that the churn limiter prevented
+	// the second bad scoring host from getting churned.
+	err = build.Retry(50, 500*time.Millisecond, func() error {
+		if i%5 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		churnStatus, apiErr := r.RenterContractorChurnStatus()
+		if apiErr != nil {
+			return errors.AddContext(apiErr, "ContractorChurnStatus err")
+		}
+		if churnStatus.AggregateChurnThisPeriod != maxChurnPerPeriod {
+			fmt.Println(churnStatus, maxChurnPerPeriod)
+			return errors.New("Expected more churn for this period")
 		}
 		return nil
 	})

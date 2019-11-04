@@ -103,6 +103,22 @@ func escapeSiaPath(siaPath modules.SiaPath) string {
 	return strings.Join(escapedSegments, "/")
 }
 
+// RenterContractorChurnStatus uses the /renter/contractorchurnstatus endpoint
+// to get the current contractor churn status.
+func (c *Client) RenterContractorChurnStatus() (churnStatus modules.ContractorChurnStatus, err error) {
+	err = c.get("/renter/contractorchurnstatus", &churnStatus)
+	return
+}
+
+// RenterSetMaxChurnPerPeriod uses the /renter/setmaxchurnperperiod endpoint
+// to set the max churn per period.
+func (c *Client) RenterSetMaxChurnPerPeriod(val uint64) (err error) {
+	values := url.Values{}
+	values.Set("newmax", fmt.Sprint(val))
+	err = c.post("/renter/setmaxchurnperperiod", values.Encode(), nil)
+	return
+}
+
 // RenterContractCancelPost uses the /renter/contract/cancel endpoint to cancel
 // a contract
 func (c *Client) RenterContractCancelPost(id types.FileContractID) (err error) {
