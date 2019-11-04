@@ -29,8 +29,6 @@ import (
 //
 // - When creating sweep transaction, add parent transactions if the renter's
 //   own dependencies are causing this to be triggered.
-//
-// - Check if formation transaction re-broadcast fails.
 
 type watchdog struct {
 	// contracts stores all contract metadata used by the watchdog for any

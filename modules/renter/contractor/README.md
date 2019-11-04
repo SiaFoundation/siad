@@ -49,7 +49,6 @@ renew or form contracts.
 ## TODOs
 * [ ] (watchdog) Perform action when storage proof is found and when missing at the end of the window.
 * [ ] (watchdog) Add renter dependencies in `sweepContractInputs` if necessary.
-* [ ] (watchdog) Check if the formation transaction re-broadcast fails.
 
 ## Subsystems
 The Contractor is split up into the following subsystems:
