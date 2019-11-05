@@ -54,6 +54,7 @@ renew or form contracts.
 The Contractor is split up into the following subsystems:
 - [Allowance](#allowance-subsystem)
 - [Contract Maintenance Subsystem](#contract-maintenance-subsystem)
+- [Churn Limiter Subsystem](#churn-limiter-subsystem)
 - [Recovery Subsystem](#recovery-subsystem)
 - [Session Subsystem](#session-subsystem)
 - [Persistence Subsystem](#persistence-subsystem)
@@ -137,6 +138,27 @@ that allowance modifications only take effect upon the next "contract cycle".
   is updated during maintenance.
 - Funds established by the [Allowance subsystem](#allowance-subsystem) are used
   and deducted appropriately during maintenance to form and renew contracts.
+
+## Churn Limiter Subsystem
+**Key Files**
+- [churnlimiter.go](./churnlimiter.go)
+
+The Churn Limiter is responsible for decreasing contract churn. It keeps track
+of the aggregate size of all contracts churned in the current period. Churn is
+limited by keeping contracts with low-scoring hosts around if the maximum
+aggregate for the period has been reached.
+
+### Exports
+- `SetMaxChurnPerPeriod` is exported by the `Contractor` and allows the caller
+   to set the maximum allowed churn in bytes per period.
+
+### Inbound Complexities
+- `callNotifyChurnedContract` is used when contracts are marked GFR after
+   previously being !GFR.
+- `callProcessSuggestedUpdates` is used when marking contract utilities to
+   handle suggested changes through the Churn Limiter.
+- `callBumpChurnBudget` is used to increase the churn budget when new blocks
+   are processed.
 
 
 ## Recovery Subsystem
