@@ -2416,8 +2416,8 @@ Returns the churn status for the renter's contractor.
 
 ```go
 {
-  "aggregatechurnthisperiod": 500000, uint64
-  "maxchurnperperiod": 50000000,      uint64
+  "aggregatechurnthisperiod": 500000,   // uint64
+  "maxchurnperperiod":        50000000, // uint64
 }
 ```
 

@@ -745,15 +745,15 @@ func (c *Contractor) managedAcquireAndUpdateContractUtility(id types.FileContrac
 // churnLimiter of churn if necessary. This method should *always* be used as
 // opposed to calling UpdateUtility directly on a safe contract from the
 // contractor.
-func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, utility modules.ContractUtility) error {
+func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtility modules.ContractUtility) error {
 	contract := safeContract.Metadata()
 
 	// If the contract is going from GFR to !GFR, notify the churn limiter.
-	if contract.Utility.GoodForRenew && !utility.GoodForRenew {
+	if contract.Utility.GoodForRenew && !newUtility.GoodForRenew {
 		c.staticChurnLimiter.callNotifyChurnedContract(contract)
 	}
 
-	return safeContract.UpdateUtility(utility)
+	return safeContract.UpdateUtility(newUtility)
 }
 
 // threadedContractMaintenance checks the set of contracts that the contractor

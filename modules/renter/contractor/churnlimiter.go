@@ -34,7 +34,8 @@ type contractScoreAndUtil struct {
 // marked !GFR (AKA churned contracts) in the current period.
 type churnLimiter struct {
 	// remainingChurnBudget is the number of bytes that the churnLimiter will
-	// allow to be churned in contracts at the present moment.
+	// allow to be churned in contracts at the present moment. Note that this
+	// value may be negative.
 	remainingChurnBudget int
 
 	// aggregateChurnThisPeriod is the aggregate size of files stored in contracts
@@ -79,14 +80,6 @@ func newChurnLimiter(contractor *Contractor) *churnLimiter {
 	return &churnLimiter{contractor: contractor, maxChurnPerPeriod: DefaultMaxChurnPerPeriod}
 }
 
-// managedChurnBudget returns the current remaining churn budget, and the remaining
-// budget for the period.
-func (cl *churnLimiter) managedChurnBudget() (int, int) {
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
-	return cl.remainingChurnBudget, int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod)
-}
-
 // ChurnStatus returns the current period's aggregate churn and the max churn
 // per period.
 func (c *Contractor) ChurnStatus() modules.ContractorChurnStatus {
@@ -97,12 +90,9 @@ func (c *Contractor) ChurnStatus() modules.ContractorChurnStatus {
 	}
 }
 
-// managedAggregateAndMaxChurn returns the aggregate churn for the current period,
-// and the maximum churn allowed per period.
-func (cl *churnLimiter) managedAggregateAndMaxChurn() (uint64, uint64) {
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
-	return cl.aggregateChurnThisPeriod, cl.maxChurnPerPeriod
+// SetMaxChurnPerPeriod sets the max churn per period.
+func (c *Contractor) SetMaxChurnPerPeriod(newMax uint64) {
+	c.staticChurnLimiter.callSetMaxChurnPerPeriod(newMax)
 }
 
 // callResetAggregateChurn resets the aggregate churn for this period. This
@@ -131,27 +121,6 @@ func (cl *churnLimiter) callNotifyChurnedContract(contract modules.RenterContrac
 	cl.contractor.log.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
 }
 
-// callCanChurnAmount returns true if and only if the churnLimiter can allow the
-// the churn of `amount` bytes right now.
-func (cl *churnLimiter) callCanChurnContract(contract modules.RenterContract) bool {
-	size := contract.Transaction.FileContractRevisions[0].NewFileSize
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
-
-	// Allow any size contract to be churned if the current budget is the max
-	// budget. This allows large contracts to be churned if there is enough budget
-	// remaining for the period, even if the contract is larger than the
-	// maxChurnBudget.
-	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == maxChurnBudget)
-	fitsInPeriodBudget := (int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod) - int(size)) >= 0
-
-	// If there has been no churn in this period, allow any size contract to be
-	// churned.
-	fitsInPeriodBudget = fitsInPeriodBudget || (cl.aggregateChurnThisPeriod == 0)
-
-	return fitsInPeriodBudget && fitsInCurrentBudget
-}
-
 // callAdjustChurnBudget adjusts the churn budget. Used when new blocks are
 // processed.
 func (cl *churnLimiter) callAdjustChurnBudget(adjustment int) {
@@ -172,11 +141,6 @@ func (cl *churnLimiter) callSetMaxChurnPerPeriod(newMax uint64) {
 	cl.maxChurnPerPeriod = newMax
 }
 
-// SetMaxChurnPerPeriod sets the max churn per period.
-func (c *Contractor) SetMaxChurnPerPeriod(newMax uint64) {
-	c.staticChurnLimiter.callSetMaxChurnPerPeriod(newMax)
-}
-
 // callProcessSuggestedUpdates processes suggested utility updates. It prevents
 // contracts from being marked as !GFR if the churn limit has been reached. The
 // inputs are assumed to be contracts that have passed all critical utility
@@ -187,17 +151,18 @@ func (cl *churnLimiter) callProcessSuggestedUpdates(queue []contractScoreAndUtil
 	}
 
 	sort.Slice(queue, func(i, j int) bool {
-		return queue[i].score.Cmp(queue[i].score) < 0
+		return queue[i].score.Cmp(queue[j].score) < 0
 	})
 
 	var queuedContract contractScoreAndUtil
 	for len(queue) > 0 {
 		queuedContract, queue = queue[0], queue[1:]
 
-		// Churn a contract if it went from GFR to !GFR, and the churnLimit has not
-		// been reached.
+		// Churn a contract if it went from GFR in the previous util
+		// (queuedContract.contract.Utility) to !GFR in the suggested util
+		// (queuedContract.util) and the churnLimit has not been reached.
 		turnedNotGFR := queuedContract.contract.Utility.GoodForRenew && !queuedContract.util.GoodForRenew
-		churningThisContract := turnedNotGFR && cl.callCanChurnContract(queuedContract.contract)
+		churningThisContract := turnedNotGFR && cl.managedCanChurnContract(queuedContract.contract)
 		if turnedNotGFR && !churningThisContract {
 			cl.contractor.log.Debugln("Avoiding churn on contract: ", queuedContract.contract.ID)
 			currentBudget, periodBudget := cl.managedChurnBudget()
@@ -216,6 +181,43 @@ func (cl *churnLimiter) callProcessSuggestedUpdates(queue []contractScoreAndUtil
 		}
 	}
 	return nil
+}
+
+// managedChurnBudget returns the current remaining churn budget, and the remaining
+// budget for the period.
+func (cl *churnLimiter) managedChurnBudget() (int, int) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.remainingChurnBudget, int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod)
+}
+
+// managedAggregateAndMaxChurn returns the aggregate churn for the current period,
+// and the maximum churn allowed per period.
+func (cl *churnLimiter) managedAggregateAndMaxChurn() (uint64, uint64) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	return cl.aggregateChurnThisPeriod, cl.maxChurnPerPeriod
+}
+
+// managedCanChurnAmount returns true if and only if the churnLimiter can allow the
+// the churn of `amount` bytes right now.
+func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract) bool {
+	size := contract.Transaction.FileContractRevisions[0].NewFileSize
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+
+	// Allow any size contract to be churned if the current budget is the max
+	// budget. This allows large contracts to be churned if there is enough budget
+	// remaining for the period, even if the contract is larger than the
+	// maxChurnBudget.
+	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == maxChurnBudget)
+	fitsInPeriodBudget := (int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod) - int(size)) >= 0
+
+	// If there has been no churn in this period, allow any size contract to be
+	// churned.
+	fitsInPeriodBudget = fitsInPeriodBudget || (cl.aggregateChurnThisPeriod == 0)
+
+	return fitsInPeriodBudget && fitsInCurrentBudget
 }
 
 // managedMarkContractsUtility checks every active contract in the contractor and
