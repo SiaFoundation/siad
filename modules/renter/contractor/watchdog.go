@@ -96,6 +96,20 @@ type fileContractStatus struct {
 	windowEnd   types.BlockHeight
 }
 
+// monitorContractArgs defines the arguments passed to callMonitorContract.
+type monitorContractArgs struct {
+	// recovered indicates that the contract has been recovered, and that it
+	// doesn't need to be monitored for formation.
+	recovered bool
+
+	fcID            types.FileContractID
+	revisionTxn     types.Transaction
+	formationTxnSet []types.Transaction
+	sweepTxn        types.Transaction
+	sweepParents    []types.Transaction
+	blockHeight     types.BlockHeight
+}
+
 // newWatchdog creates a new watchdog.
 func newWatchdog(contractor *Contractor) *watchdog {
 	renewWindow := contractor.Allowance().RenewWindow
@@ -112,69 +126,32 @@ func newWatchdog(contractor *Contractor) *watchdog {
 	}
 }
 
-// deleteContract removes all data about this contract from the watchdog.
-func (w *watchdog) deleteContract(fcID types.FileContractID) {
-	w.contractor.log.Debugln("Deleting contract: ", fcID)
-	contractData, ok := w.contracts[fcID]
-	if ok {
-		for oid := range contractData.parentOutputs {
-			w.removeOutputDependency(oid, fcID)
-		}
+// ContractStatus returns the status of a contract in the watchdog. If the
+// contract has been double-spent, the fields other than DoubleSpendHeight are
+// not up-to-date.
+func (c *Contractor) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
+	c.mu.RLock()
+	height, doubleSpent := c.doubleSpentContracts[fcID]
+	c.mu.RUnlock()
+
+	// double-spent contracts are no longer accounted for in the watchdog's
+	// internal state so the only meaningful information we can give is that it
+	// was double-spent.
+	if doubleSpent {
+		return modules.ContractWatchStatus{
+			DoubleSpendHeight: height,
+		}, true
 	}
-	delete(w.contracts, fcID)
+	return c.staticWatchdog.managedContractStatus(fcID)
 }
 
-// addOutputDependency marks the contract with fcID as dependent on this Siacoin
-// output.
-func (w *watchdog) addOutputDependency(outputID types.SiacoinOutputID, fcID types.FileContractID) {
-	dependentFCs, ok := w.outputDependencies[outputID]
-	if !ok {
-		dependentFCs = make(map[types.FileContractID]struct{})
-	}
-	dependentFCs[fcID] = struct{}{}
-	w.outputDependencies[outputID] = dependentFCs
+// callAllowanceUpdated informs the watchdog of an allowance change.
+func (w *watchdog) callAllowanceUpdated(a modules.Allowance) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-	// Add the dependencies into the contract metadata also.
-	contractData := w.contracts[fcID]
-	contractData.parentOutputs[outputID] = struct{}{}
-}
-
-// removeOutputDependency removes the given SiacoinOutput from the dependencies
-// of this file contract.
-func (w *watchdog) removeOutputDependency(outputID types.SiacoinOutputID, fcID types.FileContractID) {
-	dependentFCs, ok := w.outputDependencies[outputID]
-	if !ok {
-		w.contractor.log.Debugf("unable to remove output dependency: outputID not found in outputDependencies: outputID: %s", crypto.Hash(outputID).String())
-		return
-	}
-
-	_, foundContract := dependentFCs[fcID]
-	if !foundContract {
-		w.contractor.log.Debugf("unable to remove output dependency: FileContract not marked in outputDependencies: fcID: %s, outputID: %s", crypto.Hash(fcID).String(), crypto.Hash(outputID).String())
-		return
-	}
-
-	if len(dependentFCs) == 1 {
-		// If this is the only file contract dependent on that output, delete the
-		// whole set.
-		delete(w.outputDependencies, outputID)
-	} else {
-		delete(dependentFCs, fcID)
-	}
-}
-
-// monitorContractArgs defines the arguments passed to callMonitorContract.
-type monitorContractArgs struct {
-	// recovered indicates that the contract has been recovered, and that it
-	// doesn't need to be monitored for formation.
-	recovered bool
-
-	fcID            types.FileContractID
-	revisionTxn     types.Transaction
-	formationTxnSet []types.Transaction
-	sweepTxn        types.Transaction
-	sweepParents    []types.Transaction
-	blockHeight     types.BlockHeight
+	// Set the new renewWindow.
+	w.renewWindow = a.RenewWindow
 }
 
 // callMonitorContract tells the watchdog to monitor the blockchain for data
@@ -229,6 +206,17 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 	return nil
 }
 
+// callSendMostRecentRevision sends the most recent revision transaction out.
+// Should be called whenever a contract is no longer going to be used.
+func (w *watchdog) callSendMostRecentRevision(metadata modules.RenterContract) {
+	fcID := metadata.ID
+	lastRevisionTxn := metadata.Transaction
+	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
+
+	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
+	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
+}
+
 // callScanConsensusChange scans applied and reverted blocks, updating the
 // watchdog's state with all information relevant to monitored contracts.
 func (w *watchdog) callScanConsensusChange(cc modules.ConsensusChange) {
@@ -241,6 +229,128 @@ func (w *watchdog) callScanConsensusChange(cc modules.ConsensusChange) {
 		w.blockHeight++
 		w.managedScanAppliedBlock(block)
 	}
+}
+
+// sendTxnSet broadcasts a transaction set and logs errors that are not
+// duplicate transaction errors. (This is because the watchdog may be
+// overzealous in sending out transactions).
+func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
+	w.contractor.log.Debugln("Sending txn set to tpool", reason)
+	if w.staticDeps.Disrupt("DisableWatchdogBroadcast") {
+		w.contractor.log.Debugln("(Watchdog Broadcast Disrupted)")
+		return
+	}
+
+	// Send the transaction set in a go-routine to avoid deadlock when this
+	// sendTxnSet is called within ProcessConsensusChange.
+	go func() {
+		err := w.tpool.AcceptTransactionSet(txnSet)
+		if err != nil && err != modules.ErrDuplicateTransactionSet {
+			w.contractor.log.Println("watchdog send transaction error: "+reason, err)
+		}
+	}()
+}
+
+// deleteContract removes all data about this contract from the watchdog.
+func (w *watchdog) deleteContract(fcID types.FileContractID) {
+	w.contractor.log.Debugln("Deleting contract: ", fcID)
+	contractData, ok := w.contracts[fcID]
+	if ok {
+		for oid := range contractData.parentOutputs {
+			w.removeOutputDependency(oid, fcID)
+		}
+	}
+	delete(w.contracts, fcID)
+}
+
+// addOutputDependency marks the contract with fcID as dependent on this Siacoin
+// output.
+func (w *watchdog) addOutputDependency(outputID types.SiacoinOutputID, fcID types.FileContractID) {
+	dependentFCs, ok := w.outputDependencies[outputID]
+	if !ok {
+		dependentFCs = make(map[types.FileContractID]struct{})
+	}
+	dependentFCs[fcID] = struct{}{}
+	w.outputDependencies[outputID] = dependentFCs
+
+	// Add the dependencies into the contract metadata also.
+	contractData := w.contracts[fcID]
+	contractData.parentOutputs[outputID] = struct{}{}
+}
+
+// removeOutputDependency removes the given SiacoinOutput from the dependencies
+// of this file contract.
+func (w *watchdog) removeOutputDependency(outputID types.SiacoinOutputID, fcID types.FileContractID) {
+	dependentFCs, ok := w.outputDependencies[outputID]
+	if !ok {
+		w.contractor.log.Debugf("unable to remove output dependency: outputID not found in outputDependencies: outputID: %s", crypto.Hash(outputID).String())
+		return
+	}
+
+	_, foundContract := dependentFCs[fcID]
+	if !foundContract {
+		w.contractor.log.Debugf("unable to remove output dependency: FileContract not marked in outputDependencies: fcID: %s, outputID: %s", crypto.Hash(fcID).String(), crypto.Hash(outputID).String())
+		return
+	}
+
+	if len(dependentFCs) == 1 {
+		// If this is the only file contract dependent on that output, delete the
+		// whole set.
+		delete(w.outputDependencies, outputID)
+	} else {
+		delete(dependentFCs, fcID)
+	}
+}
+
+// getParentOutputIDs returns the IDs of the parent SiacoinOutputs used in the
+// transaction set. That is, it returns the SiacoinOutputs that this transaction
+// set is dependent on.
+func getParentOutputIDs(txnSet []types.Transaction) []types.SiacoinOutputID {
+	// Create a map of created and spent outputs. The parent outputs are those
+	// that are spent but not created in this set.
+	createdOutputs := make(map[types.SiacoinOutputID]bool)
+	spentOutputs := make(map[types.SiacoinOutputID]bool)
+	for _, txn := range txnSet {
+		for _, scInput := range txn.SiacoinInputs {
+			spentOutputs[scInput.ParentID] = true
+		}
+		for i := range txn.SiacoinOutputs {
+			createdOutputs[txn.SiacoinOutputID(uint64(i))] = true
+		}
+	}
+
+	// Remove all intermediary outputs that were created in the set from the set
+	// of spentOutputs.
+	parentOutputs := make([]types.SiacoinOutputID, 0)
+	for id := range spentOutputs {
+		if !createdOutputs[id] {
+			parentOutputs = append(parentOutputs, id)
+		}
+	}
+
+	return parentOutputs
+}
+
+// removeTxnFromSet is a helper function used to create a standalone-valid
+// transaction set by removing confirmed transactions from a transaction set. If
+// the transaction meant to be removed is not present in the set and error is
+// returned, otherwise a new transaction set is returned that no longer contains
+// that transaction.
+func removeTxnFromSet(txn types.Transaction, txnSet []types.Transaction) ([]types.Transaction, error) {
+	txnID := txn.ID()
+
+	for i, txnFromSet := range txnSet {
+		if txnFromSet.ID() == txnID {
+			// Create the new set without the txn.
+			newSet := append(txnSet[:i], txnSet[i+1:]...)
+			return newSet, nil
+		}
+	}
+
+	// Since this function is called when some parent inputs of the txnSet are
+	// spent, this error indicates that the txn given double-spends a txn from
+	// the set.
+	return nil, errTxnNotInSet
 }
 
 // managedScanAppliedBlock updates the watchdog's state with data from a newly
@@ -580,8 +690,6 @@ func (w *watchdog) checkUnconfirmedContract(fcID types.FileContractID, contractD
 		// Try to broadcast the transaction set again.
 		debugStr := fmt.Sprintf("sending formation txn for contract with id: %s at h=%d wh=%d", fcID.String(), w.blockHeight, contractData.formationSweepHeight)
 		w.contractor.log.Debugln(debugStr)
-		// TODO: sweep inputs if the broadcast fails (not because of duplicate
-		// transactions)
 		w.sendTxnSet(contractData.formationTxnSet, debugStr)
 	}
 }
@@ -686,88 +794,6 @@ func (w *watchdog) sweepContractInputs(fcID types.FileContractID, contractData *
 	w.sendTxnSet(signedTxnSet, debugStr)
 }
 
-// Sends the most recent revision transaction out. Should be called whenever a
-// contract is no longer going to be used.
-func (w *watchdog) callSendMostRecentRevision(metadata modules.RenterContract) {
-	fcID := metadata.ID
-	lastRevisionTxn := metadata.Transaction
-	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
-
-	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
-	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
-}
-
-// sendTxnSet broadcasts a transaction set and logs errors that are not
-// duplicate transaction errors. (This is because the watchdog may be
-// overzealous in sending out transactions).
-func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
-	w.contractor.log.Debugln("Sending txn set to tpool", reason)
-	if w.staticDeps.Disrupt("DisableWatchdogBroadcast") {
-		w.contractor.log.Debugln("(Watchdog Broadcast Disrupted)")
-		return
-	}
-
-	// Send the transaction set in a go-routine to avoid deadlock when this
-	// sendTxnSet is called within ProcessConsensusChange.
-	go func() {
-		err := w.tpool.AcceptTransactionSet(txnSet)
-		if err != nil && err != modules.ErrDuplicateTransactionSet {
-			w.contractor.log.Println("watchdog send transaction error: "+reason, err)
-		}
-	}()
-}
-
-// getParentOutputIDs returns the IDs of the parent SiacoinOutputs used in the
-// transaction set. That is, it returns the SiacoinOutputs that this transaction
-// set is dependent on.
-func getParentOutputIDs(txnSet []types.Transaction) []types.SiacoinOutputID {
-	// Create a map of created and spent outputs. The parent outputs are those
-	// that are spent but not created in this set.
-	createdOutputs := make(map[types.SiacoinOutputID]bool)
-	spentOutputs := make(map[types.SiacoinOutputID]bool)
-	for _, txn := range txnSet {
-		for _, scInput := range txn.SiacoinInputs {
-			spentOutputs[scInput.ParentID] = true
-		}
-		for i := range txn.SiacoinOutputs {
-			createdOutputs[txn.SiacoinOutputID(uint64(i))] = true
-		}
-	}
-
-	// Remove all intermediary outputs that were created in the set from the set
-	// of spentOutputs.
-	parentOutputs := make([]types.SiacoinOutputID, 0)
-	for id := range spentOutputs {
-		if !createdOutputs[id] {
-			parentOutputs = append(parentOutputs, id)
-		}
-	}
-
-	return parentOutputs
-}
-
-// removeTxnFromSet is a helper function used to create a standalone-valid
-// transaction set by removing confirmed transactions from a transaction set. If
-// the transaction meant to be removed is not present in the set and error is
-// returned, otherwise a new transaction set is returned that no longer contains
-// that transaction.
-func removeTxnFromSet(txn types.Transaction, txnSet []types.Transaction) ([]types.Transaction, error) {
-	txnID := txn.ID()
-
-	for i, txnFromSet := range txnSet {
-		if txnFromSet.ID() == txnID {
-			// Create the new set without the txn.
-			newSet := append(txnSet[:i], txnSet[i+1:]...)
-			return newSet, nil
-		}
-	}
-
-	// Since this function is called when some parent inputs of the txnSet are
-	// spent, this error indicates that the txn given double-spends a txn from
-	// the set.
-	return nil, errTxnNotInSet
-}
-
 // managedContractStatus returns the status of a contract in the watchdog if it
 // exists.
 func (w *watchdog) managedContractStatus(fcID types.FileContractID) (contractStatus modules.ContractWatchStatus, ok bool) {
@@ -785,32 +811,4 @@ func (w *watchdog) managedContractStatus(fcID types.FileContractID) (contractSta
 	contractStatus.StorageProofFoundAtHeight = contractData.storageProofFound
 
 	return contractStatus, true
-}
-
-// ContractStatus returns the status of a contract in the watchdog. If the
-// contract has been double-spent, the fields other than DoubleSpendHeight are
-// not up-to-date.
-func (c *Contractor) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
-	c.mu.RLock()
-	height, doubleSpent := c.doubleSpentContracts[fcID]
-	c.mu.RUnlock()
-
-	// double-spent contracts are no longer accounted for in the watchdog's
-	// internal state so the only meaningful information we can give is that it
-	// was double-spent.
-	if doubleSpent {
-		return modules.ContractWatchStatus{
-			DoubleSpendHeight: height,
-		}, true
-	}
-	return c.staticWatchdog.managedContractStatus(fcID)
-}
-
-// callAllowanceUpdated informs the watchdog of an allowance change.
-func (w *watchdog) callAllowanceUpdated(a modules.Allowance) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	// Set the new renewWindow.
-	w.renewWindow = a.RenewWindow
 }
