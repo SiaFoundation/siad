@@ -19,9 +19,34 @@ const (
 
 	// accountsFilename is the filename of the file that holds the accounts
 	accountsFilename = "accounts.txt"
+
+	// headerOffset is the size of the header in bytes
+	headerOffset = 32
+)
+
+var (
+	// accountMetadata contains the header and version strings that identify the
+	// accounts persist file.
+	accountMetadata = fixedMetadata{
+		Header:  types.Specifier{'A', 'c', 'c', 'o', 'u', 'n', 't', 's'},
+		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '1'},
+	}
+
+	// fingerprintsMetadata contains the header and version strings that
+	// identify the fingerprints persist file.
+	fingerprintsMetadata = fixedMetadata{
+		Header:  types.Specifier{'F', 'i', 'n', 'g', 'e', 'r', 'P', 'r', 'i', 'n', 't', 's'},
+		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '1'},
+	}
 )
 
 type (
+	// fixedMetadata contains the persist metadata
+	fixedMetadata struct {
+		Header  types.Specifier
+		Version types.Specifier
+	}
+
 	// account contains all data associated with a single ephemeral account,
 	// this data is what gets persisted to disk
 	account struct {
@@ -65,17 +90,29 @@ func (h *Host) newAccountsPersister(deps modules.Dependencies) (ap *accountsPers
 		h:             h,
 	}
 
-	// Open the accounts file, create file if it doesn't exist yet
-	ap.accounts, err = ap.deps.OpenFile(filepath.Join(h.persistDir, accountsFilename), os.O_RDWR|os.O_CREATE, 0600)
+	// Open the accounts file
+	path := filepath.Join(h.persistDir, accountsFilename)
+	ap.accounts, err = ap.openFileWithMetadata(path, os.O_RDWR|os.O_CREATE, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
 
-	// Open the fingerprint buckets
-	ap.fingerprints, err = newFileBucket(h.persistDir, h.blockHeight)
+	// Open the 'current' fingerprints file
+	path = filepath.Join(h.persistDir, currentBucketFilename)
+	fileA, err := ap.openFileWithMetadata(path, bucketFlag, fingerprintsMetadata)
 	if err != nil {
 		return nil, err
 	}
+
+	// Open the 'next' fingerprints file
+	path = filepath.Join(h.persistDir, nextBucketFilename)
+	fileB, err := ap.openFileWithMetadata(path, bucketFlag, fingerprintsMetadata)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new file bucket for the fingerprint files
+	ap.fingerprints = newFileBucket(h.persistDir, fileA, fileB, h.blockHeight)
 
 	return ap, nil
 }
@@ -107,7 +144,7 @@ func (ap *accountsPersister) callSaveAccount(index uint32, a *account) error {
 
 	accBytes := make([]byte, accountSize)
 	copy(accBytes, encoding.Marshal(*a))
-	_, err := ap.accounts.WriteAt(accBytes, int64(uint64(index)*accountSize))
+	_, err := ap.accounts.WriteAt(accBytes, headerOffset+int64(uint64(index)*accountSize))
 	if err != nil {
 		return err
 	}
@@ -148,7 +185,7 @@ func (ap *accountsPersister) callLoadAccountsData() accountsData {
 		return data
 	}
 
-	var index uint32 = 0
+	var index uint32 = headerOffset
 	for i := 0; i < len(bytes); i += accountSize {
 		a := account{}
 		if err := encoding.Unmarshal(bytes[i:i+accountSize], a); err != nil {
@@ -213,4 +250,26 @@ func (ap *accountsPersister) managedUnlockIndex(index uint32) {
 	if il.waiting == 0 {
 		delete(ap.lockedIndices, index)
 	}
+}
+
+// openFileWithMetadata will open the file at given path and write the metadata
+// header to it if the file did not exist prior to calling this method
+func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metadata fixedMetadata) (modules.File, error) {
+	_, statErr := os.Stat(path)
+
+	// Open the file, create it if it does not exist yet
+	file, err := ap.deps.OpenFile(path, flags, 0600)
+	if err != nil {
+		return nil, err
+	}
+
+	// If it did not exist prior to calling this method, write header metadata
+	if os.IsNotExist(statErr) {
+		_, err = file.Write(encoding.Marshal(metadata))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return file, nil
 }

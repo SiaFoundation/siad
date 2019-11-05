@@ -84,7 +84,7 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 		accountMaxBalance: accountMaxBalance,
 
 		fingerprints: newMemoryBucket(bucketSize, h.blockHeight),
-		blockedCalls: make(map[string][]blockedCall, 0),
+		blockedCalls: make(map[string][]blockedCall),
 
 		dependencies: dependencies,
 		persister:    h.staticAccountPersister,

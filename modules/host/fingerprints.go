@@ -132,22 +132,13 @@ type (
 )
 
 // newFileBucket will create a new bucket for given size and blockheight
-func newFileBucket(path string, height types.BlockHeight) (fp *fileBucket, err error) {
-	fb := &fileBucket{
-		bucketHeight: height + (bucketSize - (height % bucketSize)),
+func newFileBucket(path string, fileA modules.File, fileB modules.File, cbh types.BlockHeight) *fileBucket {
+	return &fileBucket{
+		path:         path,
+		current:      fileA,
+		next:         fileB,
+		bucketHeight: cbh + (bucketSize - (cbh % bucketSize)),
 	}
-
-	fb.current, err = os.OpenFile(filepath.Join(path, currentBucketFilename), bucketFlag, 0600)
-	if err != nil {
-		return nil, err
-	}
-
-	fb.next, err = os.OpenFile(filepath.Join(path, nextBucketFilename), bucketFlag, 0600)
-	if err != nil {
-		return nil, err
-	}
-
-	return fb, err
 }
 
 // save will add the given fingerprint to the appropriate bucket
@@ -179,7 +170,7 @@ func (fb *fileBucket) all() ([]fingerprint, error) {
 
 	fps := make([]fingerprint, 0)
 	buf := append(bc, bn...)
-	for i := 0; i < len(buf); i += fingerprintSize {
+	for i := headerOffset; i < len(buf); i += fingerprintSize {
 		fp := fingerprint{}
 		_ = encoding.Unmarshal(buf[i:i+fingerprintSize], &fp)
 		fps = append(fps, fp)
