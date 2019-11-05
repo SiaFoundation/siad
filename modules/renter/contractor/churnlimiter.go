@@ -115,6 +115,11 @@ func (cl *churnLimiter) callNotifyChurnedContract(contract modules.RenterContrac
 // callBumpChurnBudget increases the churn budget by a fraction of the max churn
 // budget per period. Used when new blocks are processed.
 func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.BlockHeight) {
+	// Don't add to churn budget when there is no period, since no allowance is
+	// set yet.
+	if period == types.BlockHeight(0) {
+		return
+	}
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
@@ -204,6 +209,7 @@ func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract)
 	// budget. This allows large contracts to be churned if there is enough budget
 	// remaining for the period, even if the contract is larger than the
 	// maxChurnBudget.
+	maxChurnBudget := int(cl.maxChurnPerPeriod / 2)
 	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == maxChurnBudget)
 	fitsInPeriodBudget := (int(cl.maxChurnPerPeriod) - int(cl.aggregateChurnThisPeriod) - int(size)) >= 0
 
