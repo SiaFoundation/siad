@@ -10,17 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const (
-	// DefaultMaxChurnPerPeriod is the default max churn allowed in a periood
-	DefaultMaxChurnPerPeriod = 1 << 39 // 256 GiB
-
-	// maxChurnBudget is the largest allowed churn budget.
-	maxChurnBudget = 1 << 36 // 32 GiB
-
-	// churnBudgetEarnedPerBlock is the amount of churn budget earned for each new
-	// connected block.
-	churnBudgetEarnedPerBlock = 1 << 33 // 4 GiB
-)
+// DefaultMaxChurnPerPeriod is the default max churn allowed in a period.
+const DefaultMaxChurnPerPeriod = 1 << 38 // 256 GiB
 
 // contractScoreAndUtil combines a contract with its host's score and an updated
 // utility.
@@ -121,13 +112,16 @@ func (cl *churnLimiter) callNotifyChurnedContract(contract modules.RenterContrac
 	cl.contractor.log.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
 }
 
-// callAdjustChurnBudget adjusts the churn budget. Used when new blocks are
-// processed.
-func (cl *churnLimiter) callAdjustChurnBudget(adjustment int) {
+// callBumpChurnBudget increases the churn budget by a fraction of the max churn
+// budget per period. Used when new blocks are processed.
+func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.BlockHeight) {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
-	cl.remainingChurnBudget += adjustment
+	maxChurnBudget := int(cl.maxChurnPerPeriod / 2)
+	budgetIncrease := numBlocksAdded * int(cl.maxChurnPerPeriod/uint64(period))
+
+	cl.remainingChurnBudget += budgetIncrease
 	if cl.remainingChurnBudget > maxChurnBudget {
 		cl.remainingChurnBudget = maxChurnBudget
 	}

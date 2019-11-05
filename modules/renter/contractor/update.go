@@ -117,7 +117,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	// Add to churnLimiter budget.
 	numBlocksAdded := len(cc.AppliedBlocks) - len(cc.RevertedBlocks)
-	c.staticChurnLimiter.callAdjustChurnBudget(numBlocksAdded * churnBudgetEarnedPerBlock)
+	c.staticChurnLimiter.callBumpChurnBudget(numBlocksAdded, c.allowance.Period)
 
 	// If we have entered the next period, update currentPeriod
 	if c.blockHeight >= c.currentPeriod+c.allowance.Period {
