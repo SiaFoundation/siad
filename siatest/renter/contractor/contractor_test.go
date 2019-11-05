@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
-	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/sync"
@@ -1509,7 +1508,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
 		Hosts:   5,
-		Renters: 1,
+		Renters: 0,
 		Miners:  1,
 	}
 	testDir := contractorTestDir(t.Name())
@@ -1518,14 +1517,29 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal("Failed to create group:", err)
 	}
 
-	r := tg.Renters()[0]
-	// The renter should have one contract with each host.
-	rc, err := r.RenterContractsGet()
+	newRenterDir := filepath.Join(testDir, "renter")
+	renterParams := node.Renter(newRenterDir)
+	minScoreDep := &dependencies.DependencyHighMinHostScore{}
+	renterParams.ContractorDeps = minScoreDep
+	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rc.ActiveContracts) != len(tg.Hosts()) {
-		t.Fatal("Insufficient active contracts")
+	r := nodes[0]
+
+	err = build.Retry(50, 250*time.Millisecond, func() error {
+		// The renter should have one contract with each host.
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return errors.New("RenterContractsGet err")
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return errors.New("Insufficient active contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Upload a file to the renter.
@@ -1547,7 +1561,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 	}
 
 	// Get the size of each contract.
-	rc, err = r.RenterContractsGet()
+	rc, err := r.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1555,7 +1569,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 
 	// Set the maxChurnPerPeriod to 3 * size and check that the change is visible
 	// over the API.
-	maxChurnPerPeriod := uint64(3 * size)
+	maxChurnPerPeriod := uint64(2 * size)
 	err = r.RenterSetMaxChurnPerPeriod(maxChurnPerPeriod)
 	if err != nil {
 		t.Fatal(err)
@@ -1563,7 +1577,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 
 	var i int
 	err = build.Retry(50, 250*time.Millisecond, func() error {
-		if i%3 == 0 {
+		if i%5 == 0 {
 			if err := miner.MineBlock(); err != nil {
 				t.Fatal(err)
 			}
@@ -1586,14 +1600,12 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Shutdown a some hosts to cause churn.
+	// Shutdown a hosts to cause churn.
 	hosts := tg.Hosts()
-	numHostsShutdown := 2
-	for i := 0; i < numHostsShutdown; i++ {
-		err = hosts[i].StopNode()
-		if err != nil {
-			t.Fatal(err)
-		}
+	numHostsShutdown := 1
+	err = hosts[0].StopNode()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Check that churn is observable through API.
@@ -1612,7 +1624,6 @@ func TestContractorChurnLimiter(t *testing.T) {
 			return errors.AddContext(apiErr, "ContractorChurnStatus err")
 		}
 		if churnStatus.AggregateChurnThisPeriod != expectedChurn {
-			fmt.Println(churnStatus)
 			return errors.New("Expected more churn for this period")
 		}
 		return nil
@@ -1621,13 +1632,10 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Raise prices of 2 of the hosts to cause further churn.
-	for i = numHostsShutdown; i < numHostsShutdown+2; i++ {
-		err = hosts[i].HostModifySettingPost(client.HostParamMinContractPrice, types.SiacoinPrecision.Mul64(9999999999999999))
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+	// Turn on the renter dependency to simulate more churn. This forces the
+	// minimum allowed score to be very high and causes all hosts to be queue to
+	// the churnLimiter.
+	minScoreDep.ForceHighMinHostScore(true)
 
 	// Check that 1 of the hosts was churned, but that the churn limiter prevented
 	// the second bad scoring host from getting churned.
@@ -1644,8 +1652,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 			return errors.AddContext(apiErr, "ContractorChurnStatus err")
 		}
 		if churnStatus.AggregateChurnThisPeriod != maxChurnPerPeriod {
-			fmt.Println(churnStatus, maxChurnPerPeriod)
-			return errors.New("Expected more churn for this period")
+			return errors.New("Expected max churn for this period")
 		}
 		return nil
 	})

@@ -124,7 +124,7 @@ func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.Blo
 	defer cl.mu.Unlock()
 
 	maxChurnBudget := int(cl.maxChurnPerPeriod / 2)
-	budgetIncrease := numBlocksAdded * int(cl.maxChurnPerPeriod/uint64(period))
+	budgetIncrease := 3 * numBlocksAdded * int(cl.maxChurnPerPeriod/uint64(period))
 
 	cl.remainingChurnBudget += budgetIncrease
 	if cl.remainingChurnBudget > maxChurnBudget {

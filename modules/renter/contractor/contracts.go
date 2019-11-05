@@ -97,7 +97,7 @@ func (c *Contractor) MarkContractBad(id types.FileContractID) error {
 	u.GoodForUpload = false
 	u.GoodForRenew = false
 	u.BadContract = true
-	err := c.callUpdateUtility(sc, u)
+	err := c.callUpdateUtility(sc, u, false)
 	c.staticContracts.Return(sc)
 	return errors.AddContext(err, "unable to mark contract as bad")
 }

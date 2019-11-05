@@ -20,6 +20,7 @@ const (
 // forceUpdate is true if the utility change must be taken.
 func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (modules.ContractUtility, utilityUpdateStatus) {
 	u := contract.Utility
+
 	// Contract has no utility if the score is poor.
 	if !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0 {
 		// Log if the utility has changed.
@@ -43,7 +44,7 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 		// Only force utility updates if the score is the min possible score.
 		// Otherwise defer update decision for low-score contracts to the
 		// churnLimiter.
-		if sb.Score.Cmp(types.ZeroCurrency) <= 0 {
+		if sb.Score.Cmp(types.NewCurrency64(1)) <= 0 {
 			return u, necessaryUtilityUpdate
 		}
 		c.log.Println("Adding contract utility update to churnLimiter queue")

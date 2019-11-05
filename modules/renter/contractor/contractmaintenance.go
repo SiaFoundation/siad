@@ -296,6 +296,15 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
 	minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
 
+	if c.staticDeps.Disrupt("HighMinHostScore") {
+		minScoreGFR = types.NewCurrency64(1 << 63)
+		bignum, ok := new(big.Int).SetString("99999999999999999999999999999999999999999999999999999999999999999", 0)
+		if !ok {
+			c.log.Critical("Disrupt failed in making big num")
+		}
+		minScoreGFR = types.NewCurrency(bignum)
+	}
+
 	return nil, minScoreGFR, minScoreGFU
 }
 
@@ -648,7 +657,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 			oldUtility.GoodForRenew = false
 			oldUtility.GoodForUpload = false
 			oldUtility.Locked = true
-			err := c.callUpdateUtility(oldContract, oldUtility)
+			err := c.callUpdateUtility(oldContract, oldUtility, true)
 			if err != nil {
 				c.log.Println("WARN: failed to mark contract as !goodForRenew:", err)
 			}
@@ -681,7 +690,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	oldUtility.GoodForRenew = false
 	oldUtility.GoodForUpload = false
 	oldUtility.Locked = true
-	if err := c.callUpdateUtility(oldContract, oldUtility); err != nil {
+	if err := c.callUpdateUtility(oldContract, oldUtility, true); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
 		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
@@ -738,18 +747,19 @@ func (c *Contractor) managedAcquireAndUpdateContractUtility(id types.FileContrac
 		return errors.New("failed to acquire contract for update")
 	}
 	defer c.staticContracts.Return(safeContract)
-	return c.callUpdateUtility(safeContract, utility)
+	return c.callUpdateUtility(safeContract, utility, false)
 }
 
 // callUpdateUtility updates the utility of a contract and notifies the
 // churnLimiter of churn if necessary. This method should *always* be used as
 // opposed to calling UpdateUtility directly on a safe contract from the
-// contractor.
-func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtility modules.ContractUtility) error {
+// contractor. Pass in renewed as true if the contract has been renewed and is
+// not churn.
+func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtility modules.ContractUtility, renewed bool) error {
 	contract := safeContract.Metadata()
 
 	// If the contract is going from GFR to !GFR, notify the churn limiter.
-	if contract.Utility.GoodForRenew && !newUtility.GoodForRenew {
+	if !renewed && contract.Utility.GoodForRenew && !newUtility.GoodForRenew {
 		c.staticChurnLimiter.callNotifyChurnedContract(contract)
 	}
 

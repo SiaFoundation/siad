@@ -117,7 +117,7 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 			}
 			utility := contract.Utility()
 			utility.Locked = false
-			err := c.callUpdateUtility(contract, utility)
+			err := c.callUpdateUtility(contract, utility, false)
 			c.staticContracts.Return(contract)
 			if err != nil {
 				return err
@@ -204,7 +204,7 @@ func (c *Contractor) managedCancelAllowance() error {
 		utility.GoodForRenew = false
 		utility.GoodForUpload = false
 		utility.Locked = true
-		err := c.callUpdateUtility(contract, utility)
+		err := c.callUpdateUtility(contract, utility, false)
 		c.staticContracts.Return(contract)
 		if err != nil {
 			return err
