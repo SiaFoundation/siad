@@ -2722,7 +2722,10 @@ lists the status of all files.
 indicates the last time the siafile was accessed
 
 **available** | boolean  
-true if the file is available for download. Files may be available before they are completely uploaded.  
+true if the file is available for download. A file is available to download once
+it has reached at least 1x redundancy. Files may be available before they have
+reached 100% upload progress as upload progress includes the full expected
+redundancy of the file.  
 
 **changetime** | timestamp  
 indicates the last time the siafile metadata was updated
@@ -2761,10 +2764,14 @@ indicates the number of stuck chunks in a file. A chunk is stuck if it cannot re
 indicates if the source file is found on disk
 
 **recoverable** | boolean  
-indicates if the siafile is recoverable
+indicates if the siafile is recoverable. A file is recoverable if it has at
+least 1x redundancy or if `siad` knows the location of a local copy of the file.
 
 **redundancy** | float64  
-Average redundancy of the file on the network. Redundancy is calculated by dividing the amount of data uploaded in the file's open contracts by the size of the file. Redundancy does not necessarily correspond to availability. Specifically, a redundancy >= 1 does not indicate the file is available as there could be a chunk of the file with 0 redundancy.  
+When a file is uploaded, it is first broken into a series of chunks. Each chunk
+goes on a different set of hosts, and therefore different chunks of the file can
+have different redundancies. The redundancy of a file as reported from the API
+will be equal to the lowest redundancy of any of  the file's chunks.
 
 **renewing** | boolean  
 true if the file's contracts will be automatically renewed by the renter.  
@@ -3044,14 +3051,20 @@ standard success or error response. See [standard responses](#standard-responses
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?datapieces=10&paritypieces=20" --data-binary @myfile.dat
+
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploadstream/myfile?repair=true" --data-binary @myfile.dat
 ```
 
-uploads a file to the network using a stream.
+uploads a file to the network using a stream. If the upload stream POST call
+fails or quits before the file is fully uploaded, the file can be repaired by a
+subsequent call to the upload stream endpoint using the `repair` flag.
 
 ### Path Parameters
 #### REQUIRED
 **siapath** | string  
-Location where the file will reside in the renter on the network. The path must be non-empty, may not include any path traversal strings ("./", "../"), and may not begin with a forward-slash character.  
+Location where the file will reside in the renter on the network. The path must
+be non-empty, may not include any path traversal strings ("./", "../"), and may
+not begin with a forward-slash character.  
 
 ### Query String Parameters
 #### OPTIONAL
@@ -3059,13 +3072,15 @@ Location where the file will reside in the renter on the network. The path must 
 The number of data pieces to use when erasure coding the file.  
 
 **paritypieces** | int  
-The number of parity pieces to use when erasure coding the file. Total redundancy of the file is (datapieces+paritypieces)/datapieces.  
+The number of parity pieces to use when erasure coding the file. Total
+redundancy of the file is (datapieces+paritypieces)/datapieces.  
 
-**force**
+**force** | boolean  
 Delete potential existing file at siapath.
 
-**repair**
-Repair existing file from stream. Can't be specified together with datapieces, paritypieces and force.
+**repair** | boolean  
+Repair existing file from stream. Can't be specified together with datapieces,
+paritypieces and force.
 
 ### Response
 
