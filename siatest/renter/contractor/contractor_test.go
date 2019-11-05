@@ -1567,10 +1567,10 @@ func TestContractorChurnLimiter(t *testing.T) {
 	}
 	size := rc.ActiveContracts[0].Size
 
-	// Set the maxChurnPerPeriod to 3 * size and check that the change is visible
+	// Set the maxPeriodChurn to 3 * size and check that the change is visible
 	// over the API.
-	maxChurnPerPeriod := uint64(2 * size)
-	err = r.RenterSetMaxChurnPerPeriod(maxChurnPerPeriod)
+	maxPeriodChurn := uint64(2 * size)
+	err = r.RenterSetMaxPeriodChurn(maxPeriodChurn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1588,10 +1588,10 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if apiErr != nil {
 			return errors.AddContext(apiErr, "ContractorChurnStatus err")
 		}
-		if churnStatus.AggregateChurnThisPeriod != 0 {
+		if churnStatus.AggregateCurrentPeriodChurn != 0 {
 			return errors.New("Expected no churn for this period")
 		}
-		if churnStatus.MaxChurnPerPeriod != maxChurnPerPeriod {
+		if churnStatus.MaxPeriodChurn != maxPeriodChurn {
 			return errors.New("Expected max churn change to show")
 		}
 		return nil
@@ -1623,7 +1623,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if apiErr != nil {
 			return errors.AddContext(apiErr, "ContractorChurnStatus err")
 		}
-		if churnStatus.AggregateChurnThisPeriod != expectedChurn {
+		if churnStatus.AggregateCurrentPeriodChurn != expectedChurn {
 			return errors.New("Expected more churn for this period")
 		}
 		return nil
@@ -1651,7 +1651,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if apiErr != nil {
 			return errors.AddContext(apiErr, "ContractorChurnStatus err")
 		}
-		if churnStatus.AggregateChurnThisPeriod != maxChurnPerPeriod {
+		if churnStatus.AggregateCurrentPeriodChurn != maxPeriodChurn {
 			return errors.New("Expected max churn for this period")
 		}
 		return nil

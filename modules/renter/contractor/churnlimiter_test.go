@@ -19,11 +19,11 @@ func contractWithSize(size uint64) modules.RenterContract {
 func TestCanChurnContract(t *testing.T) {
 	// This method doesn't use the contractor so this is safe.
 	cl := newChurnLimiter(nil)
-	cl.maxChurnPerPeriod = 1000
+	cl.maxPeriodChurn = 1000
 
 	// Test: Not enough remainingChurnBudget
 	cl.remainingChurnBudget = 499
-	cl.aggregateChurnThisPeriod = 0
+	cl.aggregateCurrentPeriodChurn = 0
 	ok := cl.managedCanChurnContract(contractWithSize(500))
 	if ok {
 		t.Fatal("Expected not to be able to churn contract")
@@ -31,7 +31,7 @@ func TestCanChurnContract(t *testing.T) {
 
 	// Test: just enough remainingChurnBudget.
 	cl.remainingChurnBudget = 500
-	cl.aggregateChurnThisPeriod = 0
+	cl.aggregateCurrentPeriodChurn = 0
 	ok = cl.managedCanChurnContract(contractWithSize(500))
 	if !ok {
 		t.Fatal("Expected to be able to churn contract")
@@ -39,7 +39,7 @@ func TestCanChurnContract(t *testing.T) {
 
 	// Test: not enough period budget.
 	cl.remainingChurnBudget = 500
-	cl.aggregateChurnThisPeriod = 501
+	cl.aggregateCurrentPeriodChurn = 501
 	ok = cl.managedCanChurnContract(contractWithSize(500))
 	if ok {
 		t.Fatal("Expected not to be able to churn contract")
@@ -47,7 +47,7 @@ func TestCanChurnContract(t *testing.T) {
 
 	// Test: just enough period budget.
 	cl.remainingChurnBudget = 500
-	cl.aggregateChurnThisPeriod = 500
+	cl.aggregateCurrentPeriodChurn = 500
 	ok = cl.managedCanChurnContract(contractWithSize(500))
 	if !ok {
 		t.Fatal("Expected to be able to churn contract")
@@ -56,7 +56,7 @@ func TestCanChurnContract(t *testing.T) {
 	// Test: can churn contract bigger than remainingChurnBudget as long as
 	// remainingChurnBudget is max and churn fits in period budget.
 	cl.remainingChurnBudget = 500
-	cl.aggregateChurnThisPeriod = 1
+	cl.aggregateCurrentPeriodChurn = 1
 	ok = cl.managedCanChurnContract(contractWithSize(999))
 	if !ok {
 		t.Fatal("Expected to be able to churn contract")
@@ -64,7 +64,7 @@ func TestCanChurnContract(t *testing.T) {
 
 	// Test: can churn any size contract if no aggregateChurn in period and max remainingChurnBudget.
 	cl.remainingChurnBudget = 500
-	cl.aggregateChurnThisPeriod = 0
+	cl.aggregateCurrentPeriodChurn = 0
 	ok = cl.managedCanChurnContract(contractWithSize(999999999999999999))
 	if !ok {
 		t.Fatal("Expected to be able to churn contract")
@@ -72,7 +72,7 @@ func TestCanChurnContract(t *testing.T) {
 
 	// Test: avoid churning big contracts if any aggregate churn in the period was found
 	cl.remainingChurnBudget = 1000
-	cl.aggregateChurnThisPeriod = 1
+	cl.aggregateCurrentPeriodChurn = 1
 	ok = cl.managedCanChurnContract(contractWithSize(999999999999999999))
 	if ok {
 		t.Fatal("Expected not to be able to churn contract")

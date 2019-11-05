@@ -296,13 +296,19 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
 	minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
 
+	// Set min score to the max score seen times 2.
 	if c.staticDeps.Disrupt("HighMinHostScore") {
-		minScoreGFR = types.NewCurrency64(1 << 63)
-		bignum, ok := new(big.Int).SetString("99999999999999999999999999999999999999999999999999999999999999999", 0)
-		if !ok {
-			c.log.Critical("Disrupt failed in making big num")
+		var maxScore types.Currency
+		for i := 1; i < len(hosts); i++ {
+			score, err := c.hdb.ScoreBreakdown(hosts[i])
+			if err != nil {
+				return err, types.Currency{}, types.Currency{}
+			}
+			if score.Score.Cmp(maxScore) > 0 {
+				maxScore = score.Score
+			}
 		}
-		minScoreGFR = types.NewCurrency(bignum)
+		minScoreGFR = maxScore.Mul64(2)
 	}
 
 	return nil, minScoreGFR, minScoreGFU

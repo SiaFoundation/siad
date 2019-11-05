@@ -571,11 +571,11 @@ type ContractorSpending struct {
 // ContractorChurnStatus contains the current churn budgets for the Contractor's
 // churnLimiter and the aggregate churn for the current period.
 type ContractorChurnStatus struct {
-	// AggregateChurnThisPeriod is the total size of files from churned contracts in this
+	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
 	// period.
-	AggregateChurnThisPeriod uint64 `json:"aggregatechurnthisperiod"`
-	// MaxChurnPerPeriod is the (adjustable) maximum churn allowed per period.
-	MaxChurnPerPeriod uint64 `json:"maxchurnperperiod"`
+	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
+	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
 }
 
 // UploadedBackup contains metadata about an uploaded backup.
@@ -635,8 +635,8 @@ type Renter interface {
 	// ContractorChurnStatus returns contract churn stats for the current period.
 	ContractorChurnStatus() ContractorChurnStatus
 
-	// SetMaxChurnPerPeriod sets the max contract churn per period.
-	SetMaxChurnPerPeriod(newMax uint64)
+	// SetMaxPeriodChurn sets the max contract churn per period.
+	SetMaxPeriodChurn(newMax uint64)
 
 	// ContractUtility provides the contract utility for a given host key.
 	ContractUtility(pk types.SiaPublicKey) (ContractUtility, bool)

@@ -2416,30 +2416,30 @@ Returns the churn status for the renter's contractor.
 
 ```go
 {
-  "aggregatechurnthisperiod": 500000,   // uint64
-  "maxchurnperperiod":        50000000, // uint64
+  "aggregatecurrentperiodchurn": 500000,   // uint64
+  "maxperiodchurn":           50000000, // uint64
 }
 ```
 
-**aggregatechurnthisperiod** | uint64
+**aggregatecurrentperiodchurn** | uint64  
 Aggregate size of files stored in file contracts that were churned (i.e. not
 marked for renewal) in the current period.
 
 
-**maxchurnperperiod** | uint64
+**maxperiodchurn** | uint64  
 Maximum allowed aggregate churn per period.
 
-## /renter/setmaxchurnperperiod [POST]
+## /renter/setmaxperiodchurn [POST]
 > curl example
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/setmaxchurnperperiod?newmax=<newmax>"
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/setmaxperiodchurn?newmax=<newmax>"
 ```
 
 sets the new max churn per period.
 
 ### Query String Parameters
-**newmax** | uint64
+**newmax** | uint64  
 New maximum churn per period.
 
 ### Response

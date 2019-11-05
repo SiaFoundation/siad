@@ -110,12 +110,12 @@ func (c *Client) RenterContractorChurnStatus() (churnStatus modules.ContractorCh
 	return
 }
 
-// RenterSetMaxChurnPerPeriod uses the /renter/setmaxchurnperperiod endpoint
+// RenterSetMaxPeriodChurn uses the /renter/setmaxperiodchurn endpoint
 // to set the max churn per period.
-func (c *Client) RenterSetMaxChurnPerPeriod(val uint64) (err error) {
+func (c *Client) RenterSetMaxPeriodChurn(val uint64) (err error) {
 	values := url.Values{}
 	values.Set("newmax", fmt.Sprint(val))
-	err = c.post("/renter/setmaxchurnperperiod", values.Encode(), nil)
+	err = c.post("/renter/setmaxperiodchurn", values.Encode(), nil)
 	return
 }
 

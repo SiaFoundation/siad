@@ -1023,21 +1023,21 @@ func (api *API) renterContractorChurnStatus(w http.ResponseWriter, req *http.Req
 	WriteJSON(w, api.renter.ContractorChurnStatus())
 }
 
-// renterContractorChurnStatus handles the API call to set the max churn per
+// renterSetMaxPeriodChurn handles the API call to set the max churn per
 // period.
-func (api *API) renterSetMaxChurnPerPeriod(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) renterSetMaxPeriodChurn(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	val := req.FormValue("newmax")
 	if val == "" {
 		WriteError(w, Error{"newmax not specified"}, http.StatusBadRequest)
 		return
 	}
 
-	var newMaxChurnPerPeriod uint64
-	if _, err := fmt.Sscan(val, &newMaxChurnPerPeriod); err != nil {
+	var newMaxPeriodChurn uint64
+	if _, err := fmt.Sscan(val, &newMaxPeriodChurn); err != nil {
 		WriteError(w, Error{"unable to parse new max churn per period: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	api.renter.SetMaxChurnPerPeriod(newMaxChurnPerPeriod)
+	api.renter.SetMaxPeriodChurn(newMaxPeriodChurn)
 	WriteSuccess(w)
 }
 

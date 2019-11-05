@@ -50,6 +50,7 @@ renew or form contracts.
 * [ ] (watchdog) Perform action when storage proof is found and when missing at the end of the window.
 * [ ] (watchdog) Add renter dependencies in `sweepContractInputs` if necessary.
 
+
 ## Subsystems
 The Contractor is split up into the following subsystems:
 - [Allowance](#allowance-subsystem)
@@ -59,6 +60,7 @@ The Contractor is split up into the following subsystems:
 - [Session Subsystem](#session-subsystem)
 - [Persistence Subsystem](#persistence-subsystem)
 - [Watchdog Subsystem](#watchdog-subsystem)
+
 
 ## Allowance Subsystem
 **Key Files**
@@ -138,6 +140,9 @@ that allowance modifications only take effect upon the next "contract cycle".
   is updated during maintenance.
 - Funds established by the [Allowance subsystem](#allowance-subsystem) are used
   and deducted appropriately during maintenance to form and renew contracts.
+- `callNotifyChurnedContract` is used when a contract utility changes from GFR
+  to !GFR.
+
 
 ## Churn Limiter Subsystem
 **Key Files**
@@ -149,14 +154,12 @@ limited by keeping contracts with low-scoring hosts around if the maximum
 aggregate for the period has been reached.
 
 ### Exports
-- `SetMaxChurnPerPeriod` is exported by the `Contractor` and allows the caller
+- `SetMaxPeriodChurn` is exported by the `Contractor` and allows the caller
    to set the maximum allowed churn in bytes per period.
 
 ### Inbound Complexities
 - `callNotifyChurnedContract` is used when contracts are marked GFR after
    previously being !GFR.
-- `callProcessSuggestedUpdates` is used when marking contract utilities to
-   handle suggested changes through the Churn Limiter.
 - `callBumpChurnBudget` is used to increase the churn budget when new blocks
    are processed.
 

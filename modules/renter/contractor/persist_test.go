@@ -74,9 +74,9 @@ func TestSaveLoad(t *testing.T) {
 	close(c.synced)
 
 	c.staticChurnLimiter = newChurnLimiter(c)
-	c.staticChurnLimiter.aggregateChurnThisPeriod = 123456
+	c.staticChurnLimiter.aggregateCurrentPeriodChurn = 123456
 	c.staticChurnLimiter.remainingChurnBudget = -789
-	c.staticChurnLimiter.maxChurnPerPeriod = 1357
+	c.staticChurnLimiter.maxPeriodChurn = 1357
 
 	// save, clear, and reload
 	err := c.save()

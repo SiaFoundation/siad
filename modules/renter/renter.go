@@ -140,8 +140,8 @@ type hostContractor interface {
 	// ChurnStatus returns contract churn stats for the current period.
 	ChurnStatus() modules.ContractorChurnStatus
 
-	// SetMaxChurnPerPeriod sets the max contract churn per period.
-	SetMaxChurnPerPeriod(newMax uint64)
+	// SetMaxPeriodChurn sets the max contract churn per period.
+	SetMaxPeriodChurn(newMax uint64)
 
 	// ContractUtility returns the utility field for a given contract, along
 	// with a bool indicating if it exists.
@@ -745,9 +745,9 @@ func (r *Renter) ContractorChurnStatus() modules.ContractorChurnStatus {
 	return r.hostContractor.ChurnStatus()
 }
 
-// SetMaxChurnPerPeriod sets the max contract churn per period.
-func (r *Renter) SetMaxChurnPerPeriod(newMax uint64) {
-	r.hostContractor.SetMaxChurnPerPeriod(newMax)
+// SetMaxPeriodChurn sets the max contract churn per period.
+func (r *Renter) SetMaxPeriodChurn(newMax uint64) {
+	r.hostContractor.SetMaxPeriodChurn(newMax)
 }
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
