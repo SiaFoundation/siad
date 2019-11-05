@@ -240,7 +240,7 @@ notifies the Contractor. The Contractor returns the contract's funds to the
 allowance, and marks the contract as `!GoodForUpload` and `!GoodForRenew`,
 
 The watchdog will also check if any monitored contracts revisions or storage
-proofswere removed in a reverted blocks and marks them as such. Note that once a
+proofs were removed in a reverted blocks and marks them as such. Note that once a
 the storage proof window for a file contract elapses for the first time, the
 watchdog will no longer monitor that contract. This is acceptable because even
 if the storage proof is reorged out, the host has at least proven they fulfilled
