@@ -21,6 +21,12 @@ type (
 		MaxUploadSpeed   int64 `json:"maxuploadspeed"`
 	}
 
+	// GatewayBandwidthGET contains the bandwidth usage of the gateway
+	GatewayBandwidthGET struct {
+		Download uint64 `json:"download"`
+		Upload   uint64 `json:"upload"`
+	}
+
 	// GatewayBlacklistPOST contains the information needed to set the Blacklist
 	// of the gateway
 	GatewayBlacklistPOST struct {
@@ -75,6 +81,21 @@ func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ h
 		return
 	}
 	WriteSuccess(w)
+}
+
+// gatewayBandwidthHandlerGET handles the API call asking for the gatway's
+// bandwidth usage.
+func (api *API) gatewayBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	upload, download, err := api.gateway.BandwidthCounters()
+	if err != nil {
+		WriteError(w, Error{"failed to get gateway's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, GatewayBandwidthGET{
+		Download: download,
+		Upload:   upload,
+	})
 }
 
 // gatewayConnectHandler handles the API call to add a peer to the gateway.

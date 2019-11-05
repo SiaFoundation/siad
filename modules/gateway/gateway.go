@@ -104,6 +104,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 
+	"gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -118,6 +119,7 @@ var (
 // Gateway implements the modules.Gateway interface.
 type Gateway struct {
 	listener net.Listener
+	m        *connmonitor.Monitor
 	myAddr   modules.NetAddress
 	port     string
 	rl       *ratelimit.RateLimit
@@ -228,6 +230,16 @@ func (g *Gateway) AddToBlacklist(addresses []modules.NetAddress) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.addToBlacklist(addresses)
+}
+
+// BandwidthCounters returns the Gateway's upload and download bandwidth
+func (g *Gateway) BandwidthCounters() (uint64, uint64, error) {
+	if err := g.threads.Add(); err != nil {
+		return 0, 0, err
+	}
+	defer g.threads.Done()
+	writeBytes, readBytes := g.m.Counts()
+	return writeBytes, readBytes, nil
 }
 
 // Blacklist returns the Gateway's blacklist
@@ -409,6 +421,8 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	if err := setRateLimits(g.rl, g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
 		return nil, err
 	}
+	// Create a Bandwidth monitor
+	g.m = connmonitor.NewMonitor()
 	// Spawn the thread to periodically save the gateway.
 	go g.threadedSaveLoop()
 	// Make sure that the gateway saves after shutdown.

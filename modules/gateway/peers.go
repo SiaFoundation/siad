@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 
@@ -38,6 +39,7 @@ func (s invalidVersionError) Error() string {
 
 type peer struct {
 	modules.Peer
+	m    *connmonitor.Monitor
 	rl   *ratelimit.RateLimit
 	sess streamSession
 }
@@ -56,6 +58,8 @@ func (p *peer) open() (modules.PeerConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Monitor bandwidth on conn
+	conn = connmonitor.NewMonitoredConn(conn, p.m)
 	// Apply the local ratelimit.
 	conn = ratelimit.NewRLConn(conn, p.rl, nil)
 	// Apply the global ratelimit.
@@ -63,11 +67,14 @@ func (p *peer) open() (modules.PeerConn, error) {
 	return &peerConn{conn, p.NetAddress}, nil
 }
 
+// TODO - why is this conn not rate limited?
 func (p *peer) accept() (modules.PeerConn, error) {
 	conn, err := p.sess.Accept()
 	if err != nil {
 		return nil, err
 	}
+	// Monitor bandwidth on conn
+	conn = connmonitor.NewMonitoredConn(conn, p.m)
 	return &peerConn{conn, p.NetAddress}, nil
 }
 
@@ -126,6 +133,8 @@ func (g *Gateway) permanentListen(closeChan chan struct{}) {
 			g.log.Debugln("[PL] Closing permanentListen:", err)
 			return
 		}
+		// Monitor bandwidth on conn
+		conn = connmonitor.NewMonitoredConn(conn, g.m)
 
 		go g.threadedAcceptConn(conn)
 
@@ -241,6 +250,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 			NetAddress: remoteAddr,
 			Version:    remoteVersion,
 		},
+		m:    g.m,
 		rl:   rl,
 		sess: newServerStream(conn, remoteVersion),
 	}
@@ -495,6 +505,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 			NetAddress: addr,
 			Version:    remoteVersion,
 		},
+		m:    g.m,
 		rl:   g.rl,
 		sess: newClientStream(conn, remoteVersion),
 	})

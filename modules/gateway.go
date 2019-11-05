@@ -132,6 +132,9 @@ type (
 	Gateway interface {
 		Alerter
 
+		// BandwidthCounters returns the Gateway's upload and download bandwidth
+		BandwidthCounters() (uint64, uint64, error)
+
 		// Connect establishes a persistent connection to a peer.
 		Connect(NetAddress) error
 
