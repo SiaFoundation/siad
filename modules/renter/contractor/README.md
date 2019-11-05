@@ -126,6 +126,9 @@ that allowance modifications only take effect upon the next "contract cycle".
   subsystem](#allowance-subsystem) when setting the allowance to
   stop and restart contract maintenance with the new allowance settings in
   place.
+- `callNotifyDoubleSpend` is a Contract Maintenance call used by the watchdog to
+  indicate that a contract is double-spent and triggers actions from the
+  Contractor.
 
 ### Outbound Complexities
 - `callInitRecoveryScan` in the [Recovery subsystem](#recovery-subsystem) is
@@ -240,12 +243,12 @@ notifies the Contractor. The Contractor returns the contract's funds to the
 allowance, and marks the contract as `!GoodForUpload` and `!GoodForRenew`,
 
 The watchdog will also check if any monitored contracts revisions or storage
-proofs were removed in a reverted blocks and marks them as such. Note that once a
-the storage proof window for a file contract elapses for the first time, the
+proofs were removed in a reverted blocks and marks them as such. Note that once
+a the storage proof window for a file contract elapses for the first time, the
 watchdog will no longer monitor that contract. This is acceptable because even
 if the storage proof is reorged out, the host has at least proven they fulfilled
-  their storage obligation once. It is up to the host to re-post storage proofs
-  if they are reorged out, if they want to claim valid proof outputs afterwards.
+their storage obligation once. It is up to the host to re-post storage proofs
+if they are reorged out, if they want to claim valid proof outputs afterwards.
 
 When the watchdog is synced to the `consensusset` it will do all of its checks
 on monitored contracts in `managedCheckContracts`. It waits until being synced,
@@ -268,10 +271,13 @@ The watchdog does the following checks on monitored contracts.
 ## Inbound Complexities
 - `callMonitorcontract` is called from the Contract Maintenance and Recovery
   subsystems whenever contracts are formed, renewed, or recovered.
-- `callScanConsensusChange`is used in the `ProcessConsensusChange` method of the contractor to let the watchdog scan blocks.
+- `callScanConsensusChange`is used in the `ProcessConsensusChange` method of the
+  contractor to let the watchdog scan blocks.
 
 ## Outbound Complexities
-- `callNotifyDoubleSpend` is a Contract Maintenance call used by the watchdog to indicate that a contract is double-spent and triggers actions from the Contractor.
+- `callNotifyDoubleSpend` is a Contract Maintenance call used by the watchdog to
+  indicate that a contract is double-spent and triggers actions from the
+  Contractor.
 
 ## State Complexities
 All state updates from the watchdog are driven by changes observed in

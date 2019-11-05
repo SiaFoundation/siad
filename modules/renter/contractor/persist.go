@@ -27,7 +27,7 @@ type contractorPersist struct {
 	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
 	Synced               bool                            `json:"synced"`
 
-	WatchdogData watchdogPersist `json:"watchdog"`
+	WatchdogData watchdogPersist `json:"watchdogdata"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
