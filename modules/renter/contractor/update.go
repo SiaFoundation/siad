@@ -144,7 +144,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// storage proof was missed and marks down a host for that. Other watchdog
 	// actions are innocuous.
 	if cc.Synced {
-		c.staticWatchdog.managedCheckContracts()
+		c.staticWatchdog.callCheckContracts()
 	}
 
 	c.lastChange = cc.ID

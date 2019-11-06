@@ -269,7 +269,7 @@ The watchdog does the following checks on monitored contracts.
   window
 
 ## Inbound Complexities
-- `callMonitorcontract` is called from the Contract Maintenance and Recovery
+- `callMonitorContract` is called from the Contract Maintenance and Recovery
   subsystems whenever contracts are formed, renewed, or recovered.
 - `callScanConsensusChange`is used in the `ProcessConsensusChange` method of the
   contractor to let the watchdog scan blocks.
