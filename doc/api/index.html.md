@@ -3118,35 +3118,33 @@ The number of data pieces to use when erasure coding the file.
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file.
 
-## /renter/uploads/start [POST]
+## /renter/uploads/pause [POST]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploads/start"
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploads/pause"
 ```
 
-This endpoint will restart uploads and repairs, and clear the `Alert` that the
-uploads and repairs are stopped.
-
-### Response
-standard success or error response, a successful response means a valid siapath.
-See [standard responses](#standard-responses).
-
-## /renter/uploads/stop [POST]
-> curl example  
-
-```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploads/stop"
-```
-
-This endpoint will stop any future uploads or repairs. Any in progress chunks
+This endpoint will pause any future uploads or repairs. Any in progress chunks
 will finish. This can be used to free up the workers to exlcusively focus on
-downloads. Using this endpoint will trigger an `Alert` that the repairs and
-uploads have been stopped so that there is a reminder to restart the process.
+downloads.
 
 ### Response
-standard success or error response, a successful response means a valid siapath.
-See [standard responses](#standard-responses).
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /renter/uploads/resume [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploads/resume"
+```
+
+This endpoint will resume uploads and repairs.
+
+### Response
+standard success or error response. See [standard
+responses](#standard-responses).
 
 ## /renter/validatesiapath/*siapath* [POST]
 > curl example  

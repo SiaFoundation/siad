@@ -35,9 +35,6 @@ const (
 	// AlertIDRenterAllowanceLowFunds is the id of the alert that is registered if at least one
 	// contract failed to renew/form due to low allowance.
 	AlertIDRenterAllowanceLowFunds = "low-funds"
-	// AlertIDRenterRepairsAndUploadsStopped is the id of the alert that is
-	// registered if the repairs and uploads are stopped
-	AlertIDRenterRepairsAndUploadsStopped = "repairs-and-uploads-stopped"
 	// AlertIDGatewayOffline is the id of the alert that is registered upon a
 	// call to 'gateway.Offline' if the value returned is 'false' and
 	// unregistered when it returns 'true'.

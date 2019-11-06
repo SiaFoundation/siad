@@ -828,7 +828,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			stuckChunkFound:   make(chan struct{}, 1),
 			stuckChunkSuccess: make(chan struct{}, 1),
 
-			startRepair: make(chan struct{}, 1),
+			pauseChan:     make(chan struct{}),
+			pauseDuration: defaultPauseDuration,
 		},
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
@@ -850,6 +851,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:               siasync.New(modules.SafeMutexDelay, 1),
 		tpool:            tpool,
 	}
+	close(r.uploadHeap.pauseChan)
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 	r.stuckStack = callNewStuckStack()
 

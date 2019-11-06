@@ -576,17 +576,17 @@ func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, er
 	return
 }
 
-// RenterUploadsStartPost uses the /renter/uploads/start endpoint to start the
+// RenterUploadsPausePost uses the /renter/uploads/pause endpoint to pause the
 // renter's uploads and repairs
-func (c *Client) RenterUploadsStartPost() (err error) {
-	err = c.post("/renter/uploads/start", "", nil)
+func (c *Client) RenterUploadsPausePost() (err error) {
+	err = c.post("/renter/uploads/pause", "", nil)
 	return
 }
 
-// RenterUploadsStopPost uses the /renter/uploads/stop endpoint to stop the
-// renter's uploads and repairs
-func (c *Client) RenterUploadsStopPost() (err error) {
-	err = c.post("/renter/uploads/stop", "", nil)
+// RenterUploadsResumePost uses the /renter/uploads/resume endpoint to resume
+// the renter's uploads and repairs
+func (c *Client) RenterUploadsResumePost() (err error) {
+	err = c.post("/renter/uploads/resume", "", nil)
 	return
 }
 

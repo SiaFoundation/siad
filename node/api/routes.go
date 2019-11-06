@@ -117,8 +117,8 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
 		router.GET("/renter/uploadready", api.renterUploadReadyHandler)
-		router.POST("/renter/uploads/start", RequirePassword(api.renterUploadsStartHandler, requiredPassword))
-		router.POST("/renter/uploads/stop", RequirePassword(api.renterUploadsStopHandler, requiredPassword))
+		router.POST("/renter/uploads/pause", RequirePassword(api.renterUploadsPauseHandler, requiredPassword))
+		router.POST("/renter/uploads/resume", RequirePassword(api.renterUploadsResumeHandler, requiredPassword))
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 

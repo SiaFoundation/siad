@@ -299,7 +299,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
-		{"TestStartStopRepairAndUploads", testStartStopRepairAndUploads},
+		{"TestPauseAndResumeRepairAndUploads", testPauseAndResumeRepairAndUploads},
 	}
 
 	// Run tests
@@ -3879,42 +3879,23 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testStartStopRepairAndUploads tests that the Renter's API endpoint to start
-// and stop the repair and uploads works as intended
-func testStartStopRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
+// testPauseAndResumeRepairAndUploads tests that the Renter's API endpoint to
+// pause and resume the repair and uploads works as intended
+func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	// Grab Renter
 	r := tg.Renters()[0]
 	numHost := len(tg.Hosts())
 	hostToAdd := 2
 
-	// Stop Repairs And Uploads
-	err := r.RenterUploadsStopPost()
+	// Pause Repairs And Uploads
+	err := r.RenterUploadsPausePost()
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// Confirm Alert
-	dag, err := r.DaemonAlertsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(dag.Alerts) == 0 {
-		t.Fatal("expected repair and uploads alert but no alerts are registered")
-	}
-	alertFound := false
-	for _, alert := range dag.Alerts {
-		if alert.Msg == renter.AlertMSGRepairAndUploadsStopped {
-			alertFound = true
-			break
-		}
-	}
-	if !alertFound {
-		t.Fatal("Couldn't find alert in Alerts")
 	}
 
 	// Try and Upload a file, the upload post should succeed but the upload
 	// progress of the file should never increase because the uploads are
-	// stopped
+	// paused
 	_, rf, err := r.UploadNewFile(100, 1, uint64(numHost+hostToAdd-1), false)
 	if err != nil {
 		t.Fatal(err)
@@ -3930,29 +3911,13 @@ func testStartStopRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// Start Repair
-	err = r.RenterUploadsStartPost()
+	// Resume Repair
+	err = r.RenterUploadsResumePost()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm Alert is unregistered
-	dag, err = r.DaemonAlertsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	alertFound = false
-	for _, alert := range dag.Alerts {
-		if alert.Msg == renter.AlertMSGRepairAndUploadsStopped {
-			alertFound = true
-			break
-		}
-	}
-	if alertFound {
-		t.Fatal("Found alert in Alerts, should have been unregistered")
-	}
-
-	// Confirm Upload starts and gets to the expected redundancy. There aren't
+	// Confirm Upload resumes and gets to the expected redundancy. There aren't
 	// enough hosts yet to get to the fullRedundancy
 	fullRedundancy := float64(numHost + hostToAdd)
 	expectedRedundancy := float64(numHost)
@@ -3970,8 +3935,8 @@ func testStartStopRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Stop the repairs and uploads again
-	err = r.RenterUploadsStopPost()
+	// Pause the repairs and uploads again
+	err = r.RenterUploadsPausePost()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3995,7 +3960,7 @@ func testStartStopRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Confirm upload still hasn't reach full redundancy because repairs are
-	// stopped
+	// pause
 	for i := 0; i < 5; i++ {
 		file, err := r.File(rf)
 		if err != nil {
@@ -4007,8 +3972,8 @@ func testStartStopRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// Start Repair and Upload
-	err = r.RenterUploadsStartPost()
+	// Resume Repair and Upload
+	err = r.RenterUploadsResumePost()
 	if err != nil {
 		t.Fatal(err)
 	}

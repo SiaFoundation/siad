@@ -1507,23 +1507,23 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 	})
 }
 
-// renterUploadsStartHandler handles the api call to start the renter's uploads,
+// renterUploadsPauseHandler handles the api call to pause the renter's uploads,
 // this includes repairs
-func (api *API) renterUploadsStartHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	err := api.renter.StartRepairAndUploadLoop()
+func (api *API) renterUploadsPauseHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	err := api.renter.PauseRepairsAndUploads()
 	if err != nil {
-		WriteError(w, Error{"failed to start uploads:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to pause uploads:" + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
 }
 
-// renterUploadsStopHandler handles the api call to stop the renter's uploads,
-// this includes repairs
-func (api *API) renterUploadsStopHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	err := api.renter.StopRepairAndUploadLoop()
+// renterUploadsResumeHandler handles the api call to resume the renter's
+// uploads, this includes repairs
+func (api *API) renterUploadsResumeHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	err := api.renter.ResumeRepairsAndUploads()
 	if err != nil {
-		WriteError(w, Error{"failed to stop uploads:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to resume uploads:" + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)

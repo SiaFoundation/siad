@@ -40,6 +40,16 @@ const (
 	targetBackupChunks
 )
 
+var (
+	// defaultPauseDuration is the default duration that the repairs and uploads
+	// will be paused
+	defaultPauseDuration = build.Select(build.Var{
+		Standard: 10 * time.Minute,
+		Dev:      1 * time.Minute,
+		Testing:  100 * time.Millisecond,
+	}).(time.Duration)
+)
+
 // uploadChunkHeap is a bunch of priority-sorted chunks that need to be either
 // uploaded or repaired.
 type uploadChunkHeap []*unfinishedUploadChunk
@@ -143,8 +153,9 @@ type uploadHeap struct {
 	stuckChunkSuccess chan struct{}
 
 	// External control channels
-	startRepair chan struct{}
-	stopRepair  bool
+	pauseChan     chan struct{}
+	pauseDuration time.Duration
+	pauseTimer    *time.Timer
 
 	mu sync.Mutex
 }
@@ -160,12 +171,17 @@ func (uh *uploadHeap) managedExists(id uploadChunkID) bool {
 	return existsUnstuckHeap || existsRepairing || existsStuckHeap
 }
 
-// managedIsRepairStopped returns the boolean indicating whether or not the user
-// has set the stopRepair field
-func (uh *uploadHeap) managedIsRepairStopped() bool {
+// managedIsPaused returns the boolean indicating whether or not the user
+// has paused the repairs and uploads
+func (uh *uploadHeap) managedIsPaused() bool {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	return uh.stopRepair
+	select {
+	case <-uh.pauseChan:
+		return false
+	default:
+		return true
+	}
 }
 
 // managedLen will return the length of the heap
@@ -194,6 +210,16 @@ func (uh *uploadHeap) managedNumStuckChunks() int {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
 	return len(uh.stuckHeapChunks)
+}
+
+// managedPause creates the pauseChan and initiates the pauseTimer
+func (uh *uploadHeap) managedPause() {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	uh.pauseChan = make(chan struct{})
+	uh.pauseTimer = time.AfterFunc(uh.pauseDuration, func() {
+		close(uh.pauseChan)
+	})
 }
 
 // managedPush will try and add a chunk to the upload heap. If the chunk is
@@ -277,55 +303,44 @@ func (uh *uploadHeap) managedReset() error {
 	return uh.heap.reset()
 }
 
-// managedStart sets the stopRepair field to false and triggers the startRepair
-// channel
-func (uh *uploadHeap) managedStart() {
-	uh.mu.Lock()
-	defer uh.mu.Unlock()
-	uh.stopRepair = false
-	select {
-	case uh.startRepair <- struct{}{}:
-	default:
-	}
-}
-
-// managedStop sets the stopRepair field to true and makes sure the startRepair
-// channel is empty
-func (uh *uploadHeap) managedStop() {
+// managedResume will close the pauseChan and stop the pauseTimer
+func (uh *uploadHeap) managedResume() {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
 	select {
-	case <-uh.startRepair:
+	case <-uh.pauseChan:
+		// uploadHeap isn't paused, nothing to do
+		return
 	default:
 	}
-	uh.stopRepair = true
+
+	// Stop the timer
+	stopped := uh.pauseTimer.Stop()
+
+	// We only want to close the channel if we were able to stop the timer,
+	// otherwise the channel is already closed
+	if stopped {
+		close(uh.pauseChan)
+	}
 }
 
-// StartRepairAndUploadLoop starts the renter's repair and upload loop by
-// starting the renter's uploadheap
-func (r *Renter) StartRepairAndUploadLoop() error {
+// PauseRepairsAndUploads pauses the renter's repairs and uploads
+func (r *Renter) PauseRepairsAndUploads() error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	r.uploadHeap.managedStart()
-	r.staticAlerter.UnregisterAlert(modules.AlertIDRenterRepairsAndUploadsStopped)
+	r.uploadHeap.managedPause()
 	return nil
 }
 
-// StopRepairAndUploadLoop stops the renter's repair and upload loop by stopping
-// the renter's uploadheap
-func (r *Renter) StopRepairAndUploadLoop() error {
+// ResumeRepairsAndUploads resumes the renter's repairs and uploads
+func (r *Renter) ResumeRepairsAndUploads() error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	r.uploadHeap.managedStop()
-
-	// Register an Alert Warning to remind the users to restart the repair loop
-	r.staticAlerter.RegisterAlert(modules.AlertIDRenterRepairsAndUploadsStopped,
-		AlertMSGRepairAndUploadsStopped, "repair and uploads have been stopped externally",
-		modules.SeverityWarning)
+	r.uploadHeap.managedResume()
 	return nil
 }
 
@@ -1078,13 +1093,13 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			return errors.New("repair loop returned early due to the renter been offline")
 		}
 
-		// Check if the repair has been stopped
-		if r.uploadHeap.managedIsRepairStopped() {
-			// If stopped we reset the upload heap and return so that when the
-			// repair is restarted the upload heap can be built fresh.
-			errStopped := errors.New("could not finish repairing upload heap because repair was stopped")
+		// Check if the repair has been paused
+		if r.uploadHeap.managedIsPaused() {
+			// If paused we reset the upload heap and return so that when the
+			// repair is resumes the upload heap can be built fresh.
+			errPaused := errors.New("could not finish repairing upload heap because repair was paused")
 			err := r.uploadHeap.managedReset()
-			return errors.Compose(err, errStopped)
+			return errors.Compose(err, errPaused)
 		}
 
 		// Check if there is work by trying to pop off the next chunk from the
@@ -1202,15 +1217,15 @@ func (r *Renter) threadedUploadAndRepair() {
 			return
 		}
 
-		// Check if repair process has been stopped
-		if r.uploadHeap.managedIsRepairStopped() {
-			r.repairLog.Println("Repairs and Uploads have been stopped")
+		// Check if repair process has been paused
+		if r.uploadHeap.managedIsPaused() {
+			r.repairLog.Println("Repairs and Uploads have been paused")
 			// Block until the repair process is restarted
 			select {
 			case <-r.tg.StopChan():
 				return
-			case <-r.uploadHeap.startRepair:
-				r.repairLog.Println("Repairs and Uploads have been started")
+			case <-r.uploadHeap.pauseChan:
+				r.repairLog.Println("Repairs and Uploads have been resumed")
 			}
 			// Reset the upload heap and the directory heap now that has been
 			// restarted

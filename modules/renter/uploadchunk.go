@@ -540,24 +540,24 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 
 	// If the repair was unsuccessful and there was a renter error then return
 	if !successfulRepair && renterError {
-		r.repairLog.Debugln("WARN: repair unsuccessful for chunk", uc.id, "due to an error with the renter")
+		r.log.Debugln("WARN: repair unsuccessful for chunk", uc.id, "due to an error with the renter")
 		return
 	}
 	// Log if the repair was unsuccessful
 	if !successfulRepair {
-		r.repairLog.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck", float64(piecesCompleted)/float64(piecesNeeded))
+		r.log.Debugln("WARN: repair unsuccessful, marking chunk", uc.id, "as stuck", float64(piecesCompleted)/float64(piecesNeeded))
 	} else {
-		r.repairLog.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
+		r.log.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status
 	if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
-		r.repairLog.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
+		r.log.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 	}
 
 	// Check to see if the chunk was stuck and now is successfully repaired by
 	// the stuck loop
 	if stuck && successfulRepair && stuckRepair {
-		r.repairLog.Debugln("Stuck chunk", uc.id, "successfully repaired")
+		r.log.Debugln("Stuck chunk", uc.id, "successfully repaired")
 		// Add file to the successful stuck repair stack if there are still
 		// stuck chunks to repair
 		if uc.fileEntry.NumStuckChunks() > 0 {
@@ -566,7 +566,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		// Signal the stuck loop that the chunk was successfully repaired
 		select {
 		case <-r.tg.StopChan():
-			r.repairLog.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
+			r.log.Debugln("WARN: renter shut down before the stuck loop was signalled that the stuck repair was successful")
 			return
 		case r.uploadHeap.stuckChunkSuccess <- struct{}{}:
 		default:
