@@ -1,13 +1,16 @@
 package host
 
 import (
+	"math/bits"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
@@ -20,9 +23,9 @@ var (
 	errInsufficientBalance = errors.New("insufficient account balance")
 	errMaxBalanceExceeded  = errors.New("maximum account balance exceeded")
 
-	// accountMaxBalance defines how many coins an account can hold at most
-	// TODO make host setting or change to max unsaved delta (?)
-	accountMaxBalance = types.SiacoinPrecision
+	// TODO make host setting
+	maxAccountBalance = types.SiacoinPrecision
+	maxUnsavedDelta   = types.SiacoinPrecision
 
 	// pruneExpiredAccountsFrequency is the frequency at which the host prunes
 	// accounts which have been inactive
@@ -51,18 +54,29 @@ type (
 	// recourse at all if the host decides to steal the funds. Because of that,
 	// the total amount of money an account can hold is capped.
 	accountManager struct {
-		accounts          map[string]types.Currency
-		accountIndices    map[string]uint32
-		accountUpdated    map[string]int64
-		accountMaxBalance types.Currency
-
-		blockedCalls map[string][]blockedCall
+		accounts     map[string]*account
 		fingerprints *memoryBucket
+
+		indexBitfields []uint64
+
+		maxAccountBalance  types.Currency
+		maxUnsavedDelta    uint64
+		atomicUnsavedDelta uint64
 
 		mu           sync.Mutex
 		persister    *accountsPersister
 		dependencies modules.Dependencies
 		h            *Host
+	}
+
+	// account contains the account identifier
+	account struct {
+		id      string
+		balance types.Currency
+		lastTxn int64
+
+		index        uint32
+		blockedCalls []blockedCall
 	}
 
 	// blockedCall represents a waiting thread, it is waiting due to
@@ -77,14 +91,13 @@ type (
 
 // newAccountManager returns a new account manager ready for use by the host
 func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountManager, error) {
+	maxUnsavedDelta, _ := maxUnsavedDelta.Uint64()
 	am := &accountManager{
-		accounts:          make(map[string]types.Currency),
-		accountIndices:    make(map[string]uint32),
-		accountUpdated:    make(map[string]int64),
-		accountMaxBalance: accountMaxBalance,
-
+		accounts:     make(map[string]*account),
 		fingerprints: newMemoryBucket(bucketSize, h.blockHeight),
-		blockedCalls: make(map[string][]blockedCall),
+
+		maxAccountBalance: maxAccountBalance,
+		maxUnsavedDelta:   maxUnsavedDelta,
 
 		dependencies: dependencies,
 		persister:    h.staticAccountPersister,
@@ -92,70 +105,67 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 	}
 
 	// Load data
-	am.managedLoad()
+	am.managedLoadData()
 
 	am.h.tg.OnStop(func() {
 		// Close all open unblock channels
-		for _, bcs := range am.blockedCalls {
-			for _, bc := range bcs {
+		for _, acc := range am.accounts {
+			for _, bc := range acc.blockedCalls {
 				close(bc.unblock)
 			}
 		}
+		// Close all open file handles
 		am.persister.Close()
 	})
 
-	// Prune expired accounts and fingerprints in a background loop
 	go am.threadedPruneExpiredAccounts()
 
 	return am, nil
 }
 
 // managedLoad will load the accounts data
-func (am *accountManager) managedLoad() {
+func (am *accountManager) managedLoadData() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
 	data := am.persister.callLoadAccountsData()
 	am.accounts = data.Accounts
-	am.accountIndices = data.AccountIndices
-	am.accountUpdated = data.AccountUpdated
 	(*am.fingerprints.current) = data.Fingerprints
+	am.buildAccountIndex()
 }
 
-// callDeposit will credit the amount to the account's balance
+// callDeposit will deposit the given amount into the account
 func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	// Verify the updated balance does not exceed the max balance
-	uB := am.accounts[id].Add(amount)
-	if am.accountMaxBalance.Cmp(uB) < 0 {
-		am.h.log.Printf("ERROR: deposit of %v exceeded max balance for account %v\n", amount, id)
+	// Ensure the account exists
+	acc, exists := am.accounts[id]
+	if !exists {
+		acc = am.newAccount(id)
+	}
+
+	// Verify maxbalance
+	updatedBalance := acc.balance.Add(amount)
+	if am.maxAccountBalance.Cmp(updatedBalance) < 0 {
 		return errMaxBalanceExceeded
 	}
 
-	// Ensure the account has an index associated to it
-	index, exists := am.accountIndices[id]
-	if !exists {
-		am.accountIndices[id] = am.freeAccountIndex()
-		index = am.accountIndices[id]
-	}
-
-	// Update account balance
-	am.accounts[id] = uB
-	am.accountUpdated[id] = time.Now().Unix()
+	// Update account details
+	acc.balance = updatedBalance
+	acc.lastTxn = time.Now().Unix()
 
 	// Loop over blocked calls and unblock where possible, keep track of the
 	// remaining balance to allow unblocking multiple calls at the same time
-	remaining := am.accounts[id]
+	remaining := acc.balance
 	j := 0
-	for i := 0; i < len(am.blockedCalls[id]); i++ {
-		b := am.blockedCalls[id][i]
+	for i := 0; i < len(acc.blockedCalls); i++ {
+		b := acc.blockedCalls[i]
 		if b.id != id {
 			continue
 		}
 		if remaining.Cmp(b.required) < 0 {
-			am.blockedCalls[id][j] = b
+			acc.blockedCalls[j] = b
 			j++
 		} else {
 			close(b.unblock)
@@ -165,9 +175,9 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 			}
 		}
 	}
-	am.blockedCalls[id] = am.blockedCalls[id][:j]
+	acc.blockedCalls = acc.blockedCalls[:j]
 
-	err := am.persister.callSaveAccount(index, am.account(id))
+	err := am.persister.callSaveAccount(acc)
 	if err != nil {
 		am.h.log.Println("ERROR: could not save account:", id, err)
 	}
@@ -193,16 +203,22 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 		return err
 	}
 
+	// Ensure the account exists
+	acc, exists := am.accounts[id]
+	if !exists {
+		acc = am.newAccount(id)
+	}
+
 	// If current account balance is insufficient, we block until either the
 	// blockCallTimeout expires, the account receives sufficient deposits or we
 	// receive a message on the thread group's stop channel
-	if am.accounts[id].Cmp(amount) < 0 {
+	if acc.balance.Cmp(amount) < 0 {
 		bc := blockedCall{
 			id:       id,
 			unblock:  make(chan struct{}),
 			required: amount,
 		}
-		am.blockedCalls[id] = append(am.blockedCalls[id], bc)
+		acc.blockedCalls = append(acc.blockedCalls, bc)
 		am.mu.Unlock()
 
 	BlockLoop:
@@ -219,33 +235,43 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 		}
 	}
 
-	if am.accounts[id].Cmp(amount) < 0 {
+	// Sanity check to avoid the negative currency panic possible by subtracting
+	if acc.balance.Cmp(amount) < 0 {
 		am.mu.Unlock()
 		return errInsufficientBalance
 	}
-
-	am.accounts[id] = am.accounts[id].Sub(amount)
-	am.accountUpdated[id] = time.Now().Unix()
+	acc.balance = acc.balance.Sub(amount)
+	acc.lastTxn = time.Now().Unix()
 	am.fingerprints.save(fp)
-	am.mu.Unlock()
 
-	// Persist data
-	var wg sync.WaitGroup
-	wg.Add(2)
+	// Track the unsaved delta by adding the amount we are withrdrawing
+	unsaved, _ := amount.Uint64()
+	atomic.AddUint64(&am.atomicUnsavedDelta, unsaved)
+
+	// Persist the account data and fingerprint data asynchronously
+	blockChan := make(chan struct{})
 	go func() {
-		defer wg.Done()
-		if err := am.persister.callSaveAccount(am.accountIndices[id], am.account(id)); err != nil {
+		if err := am.persister.callSaveAccount(acc); err != nil {
 			am.h.log.Println("ERROR: could not save account", id, err)
 		}
-	}()
-	go func() {
-		defer wg.Done()
+
 		if err := am.persister.callSaveFingerprint(fp); err != nil {
 			am.h.log.Println("ERROR: could not save fingerprint", fp.Hash, err)
 		}
-	}()
-	wg.Wait()
 
+		// Track the unsaved delta, decrement the unsaved delta with the amount
+		// we just persisted to disk
+		atomic.AddUint64(&am.atomicUnsavedDelta, ^uint64(unsaved-1))
+		close(blockChan)
+	}()
+
+	if atomic.LoadUint64(&am.atomicUnsavedDelta) <= am.maxUnsavedDelta {
+		am.mu.Unlock()
+		return nil
+	}
+
+	<-blockChan
+	am.mu.Unlock()
 	return nil
 }
 
@@ -263,39 +289,70 @@ func (am *accountManager) callConsensusChanged() {
 	}
 }
 
-// balanceOf will return the balance for given account
-func (am *accountManager) balanceOf(id string) types.Currency {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	return am.accounts[id]
+// newAccount will create a new account and add it to the list of accounts
+// managed by the account manager, note it is important an account has a valid
+// account index at all times so it gets persisted properly
+func (am *accountManager) newAccount(id string) *account {
+	acc := &account{
+		id:           id,
+		index:        am.getFreeIndex(),
+		blockedCalls: make([]blockedCall, 0),
+	}
+	am.accounts[id] = acc
+	return acc
 }
 
-// balanceOf will return the balance for given account
-func (am *accountManager) account(id string) *account {
-	a := &account{
-		Balance: am.accounts[id],
-		Updated: am.accountUpdated[id],
+// buildAccountIndex is called on load and will initialize all bitfields with a
+// uint that has a bit set representing an account at index
+func (am *accountManager) buildAccountIndex() {
+	n := len(am.accounts) / 64
+	for i := 0; i < n; i++ {
+		am.indexBitfields = append(am.indexBitfields, ^uint64(0))
 	}
-	a.Id.LoadString(id)
-	return a
+
+	r := len(am.accounts) % 64
+	if r > 0 {
+		am.indexBitfields = append(am.indexBitfields, (1<<uint(r))-1)
+	}
 }
 
-// freeAccountIndex will return the next available account index
-func (am *accountManager) freeAccountIndex() uint32 {
-	var max uint32 = 0
-	if len(am.accounts) == 0 {
-		return max
+// setIndex will set the bit corresponding to given index
+func (am *accountManager) setIndex(index uint32) {
+	i := index / 64
+	p := index % 64
+	am.indexBitfields[i] = am.indexBitfields[i] << p
+}
+
+// unsetIndex will unset the bit corresponding to given index
+func (am *accountManager) unsetIndex(index uint32) {
+	i := index / 64
+	pos := index % 64
+	var mask uint64 = ^(1 << pos)
+	am.indexBitfields[i] &= mask
+}
+
+// getFreeIndex will return the next available account index
+func (am *accountManager) getFreeIndex() uint32 {
+	var i, pos int = 0, -1
+
+	// Go through all bitmaps in random order to find a free index
+	full := ^uint64(0)
+	for i := range fastrand.Perm(len(am.indexBitfields)) {
+		if am.indexBitfields[i] != full {
+			pos = bits.TrailingZeros(uint(^am.indexBitfields[i]))
+			break
+		}
 	}
 
-	for id := range am.accounts {
-		if am.accounts[id].IsZero() {
-			return am.accountIndices[id]
-		}
-		if am.accountIndices[id] > max {
-			max = am.accountIndices[id]
-		}
+	// Add a new bitfield if all account indices are taken
+	if pos == -1 {
+		pos = 0
+		am.indexBitfields = append(am.indexBitfields, 1<<uint(pos))
 	}
-	return max + 1
+
+	index := uint32((i * 64) + pos)
+	am.setIndex(index)
+	return index
 }
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
@@ -312,20 +369,20 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 	for {
 		am.mu.Lock()
 		now := time.Now().Unix()
-		for id := range am.accounts {
+		for id, acc := range am.accounts {
 			if force {
 				am.h.log.Debugf("DEBUG: force expiring account %v", id)
-				am.accounts[id] = types.ZeroCurrency
-				delete(am.accountIndices, id)
+				acc.balance = types.ZeroCurrency
+				am.unsetIndex(acc.index)
 				continue
 			}
 
-			if am.accounts[id].Cmp(types.ZeroCurrency) != 0 {
-				last := am.accountUpdated[id]
+			if acc.balance.Cmp(types.ZeroCurrency) != 0 {
+				last := acc.lastTxn
 				if now-last > accountExpiryTimeoutAsInt64 {
 					am.h.log.Debugf("DEBUG: expiring account %v at %v", id, now)
-					am.accounts[id] = types.ZeroCurrency
-					delete(am.accountIndices, id)
+					acc.balance = types.ZeroCurrency
+					am.unsetIndex(acc.index)
 				}
 			}
 		}

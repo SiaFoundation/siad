@@ -28,19 +28,19 @@ func TestAccountCallDeposit(t *testing.T) {
 
 	am := ht.host.staticAccountManager
 	diff := types.NewCurrency64(100)
-	before := am.accounts[accountID]
+	before := getAccountBalance(am, accountID)
 
 	err = am.callDeposit(accountID, diff)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	after := am.accounts[accountID]
+	after := getAccountBalance(am, accountID)
 	if !after.Sub(before).Equals(diff) {
 		t.Fatal("Deposit was not credited")
 	}
 
-	err = am.callDeposit(accountID, accountMaxBalance)
+	err = am.callDeposit(accountID, maxAccountBalance)
 	if err != errMaxBalanceExceeded {
 		t.Fatal(err)
 	}
@@ -70,7 +70,9 @@ func TestAccountCallSpend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !am.balanceOf(accountID).Equals(types.NewCurrency64(5)) {
+
+	balance := getAccountBalance(am, accountID)
+	if !balance.Equals(types.NewCurrency64(5)) {
 		t.Fatal("Account balance was incorrect after spend")
 	}
 
@@ -84,7 +86,8 @@ func TestAccountCallSpend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !am.balanceOf(accountID).Equals(types.NewCurrency64(1)) {
+	balance = getAccountBalance(am, accountID)
+	if !balance.Equals(types.NewCurrency64(1)) {
 		t.Fatal("Account balance was incorrect after spend")
 	}
 
@@ -115,18 +118,15 @@ func TestAccountExpiry(t *testing.T) {
 	}
 
 	// Verify the balance, sleep a bit and verify it is gone
-	if !am.balanceOf(accountID).Equals(types.NewCurrency64(10)) {
+	balance := getAccountBalance(am, accountID)
+	if !balance.Equals(types.NewCurrency64(10)) {
 		t.Fatal("Account balance was incorrect after deposit")
 	}
-	time.Sleep(pruneExpiredAccountsFrequency)
-	if !am.balanceOf(accountID).Equals(types.NewCurrency64(0)) {
-		t.Fatal("Account balance was incorrect after expiry")
-	}
 
-	// Verify it got pruned from the index list
-	_, exists := am.accountIndices[accountID]
-	if exists {
-		t.Fatal("Account index of pruned account was not removed")
+	time.Sleep(pruneExpiredAccountsFrequency)
+	balance = getAccountBalance(am, accountID)
+	if !balance.Equals(types.NewCurrency64(0)) {
+		t.Fatal("Account balance was incorrect after expiry")
 	}
 }
 

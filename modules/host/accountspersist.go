@@ -41,28 +41,6 @@ var (
 )
 
 type (
-	// fixedMetadata contains the persist metadata
-	fixedMetadata struct {
-		Header  types.Specifier
-		Version types.Specifier
-	}
-
-	// account contains all data associated with a single ephemeral account,
-	// this data is what gets persisted to disk
-	account struct {
-		Id      types.SiaPublicKey
-		Balance types.Currency
-		Updated int64
-	}
-
-	// accountsData contains all account manager data we want to persist
-	accountsData struct {
-		Accounts       map[string]types.Currency
-		AccountIndices map[string]uint32
-		AccountUpdated map[string]int64
-		Fingerprints   map[crypto.Hash]struct{}
-	}
-
 	// accountsPersister is a subsystem that will persist all account data
 	accountsPersister struct {
 		accounts      modules.File
@@ -72,6 +50,25 @@ type (
 		mu   sync.Mutex
 		deps modules.Dependencies
 		h    *Host
+	}
+
+	// fixedMetadata contains the persist metadata
+	fixedMetadata struct {
+		Header  types.Specifier
+		Version types.Specifier
+	}
+
+	// accountsData contains all data related to the ephemeral accounts
+	accountsData struct {
+		Accounts     map[string]*account
+		Fingerprints map[crypto.Hash]struct{}
+	}
+
+	// accountData contains all data persisted for a single account
+	accountData struct {
+		Id      types.SiaPublicKey
+		Balance types.Currency
+		LastTxn int64
 	}
 
 	// indexLock contains a lock plus a count of the number of threads currently
@@ -138,13 +135,13 @@ func (ap *accountsPersister) Close() error {
 }
 
 // callSaveAccount writes away the data for a single ephemeral account to disk
-func (ap *accountsPersister) callSaveAccount(index uint32, a *account) error {
-	ap.managedLockIndex(index)
-	defer ap.managedUnlockIndex(index)
+func (ap *accountsPersister) callSaveAccount(a *account) error {
+	ap.managedLockIndex(a.index)
+	defer ap.managedUnlockIndex(a.index)
 
 	accBytes := make([]byte, accountSize)
-	copy(accBytes, encoding.Marshal(*a))
-	_, err := ap.accounts.WriteAt(accBytes, headerOffset+int64(uint64(index)*accountSize))
+	copy(accBytes, encoding.Marshal(a.transformToAccountData()))
+	_, err := ap.accounts.WriteAt(accBytes, headerOffset+int64(uint64(a.index)*accountSize))
 	if err != nil {
 		return err
 	}
@@ -172,10 +169,8 @@ func (ap *accountsPersister) callLoadAccountsData() accountsData {
 	defer ap.mu.Unlock()
 
 	data := accountsData{
-		Accounts:       make(map[string]types.Currency),
-		AccountIndices: make(map[string]uint32),
-		AccountUpdated: make(map[string]int64),
-		Fingerprints:   make(map[crypto.Hash]struct{}),
+		Accounts:     make(map[string]*account),
+		Fingerprints: make(map[crypto.Hash]struct{}),
 	}
 
 	// Read account data
@@ -187,17 +182,14 @@ func (ap *accountsPersister) callLoadAccountsData() accountsData {
 
 	var index uint32 = headerOffset
 	for i := 0; i < len(bytes); i += accountSize {
-		a := account{}
-		if err := encoding.Unmarshal(bytes[i:i+accountSize], a); err != nil {
+		aD := accountData{}
+		if err := encoding.Unmarshal(bytes[i:i+accountSize], aD); err != nil {
 			ap.h.log.Println("ERROR: could not properly unmarshal account", err)
 			index++
 			continue
 		}
-
-		id := a.Id.String()
-		data.Accounts[id] = a.Balance
-		data.AccountIndices[id] = index
-		data.AccountUpdated[id] = a.Updated
+		acc := aD.transformToAccount(index)
+		data.Accounts[acc.id] = acc
 		index++
 	}
 
@@ -272,4 +264,28 @@ func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metada
 	}
 
 	return file, nil
+}
+
+// transformToAccountData transforms the account into an accountData struct
+// which will contain all data we persist to disk
+func (a *account) transformToAccountData() accountData {
+	spk := types.SiaPublicKey{}
+	spk.LoadString(a.id)
+
+	return accountData{
+		Id:      spk,
+		Balance: a.balance,
+		LastTxn: a.lastTxn,
+	}
+}
+
+// transformToAccount transforms the accountData we loaded from disk into an
+// account we keep in memory
+func (a *accountData) transformToAccount(index uint32) *account {
+	return &account{
+		id:      a.Id.String(),
+		balance: a.Balance,
+		index:   index,
+		lastTxn: a.LastTxn,
+	}
 }

@@ -39,7 +39,7 @@ func TestAccountsReload(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual := am.balanceOf(id.String())
+		actual := getAccountBalance(am, id.String())
 		if !expected.Equals(actual) {
 			t.Log("Expected:", expected.String())
 			t.Log("Actual:", actual.String())
@@ -60,7 +60,7 @@ func TestAccountsReload(t *testing.T) {
 
 	// Verify the account balances were reloaded properly
 	for id, expected := range accounts {
-		reloaded := am.balanceOf(id)
+		reloaded := getAccountBalance(am, id)
 		if !reloaded.Equals(expected) {
 			t.Log("Expected:", expected.String())
 			t.Log("Reloaded:", reloaded.String())
@@ -164,7 +164,7 @@ func TestMarshalUnmarshalFingerprint(t *testing.T) {
 }
 
 // TestMarshalUnmarshalAccount
-func TestMarshalUnmarshalAccount(t *testing.T) {
+func TestMarshalUnmarshalAccountData(t *testing.T) {
 	t.Parallel()
 
 	// Generate SiaPublicKey
@@ -175,16 +175,16 @@ func TestMarshalUnmarshalAccount(t *testing.T) {
 	}
 
 	// Marshal a dummy account
-	expected := account{
+	expected := accountData{
 		Id:      spk,
 		Balance: types.SiacoinPrecision,
-		Updated: time.Now().Unix(),
+		LastTxn: time.Now().Unix(),
 	}
 	accBytes := make([]byte, accountSize)
 	copy(accBytes, encoding.Marshal(expected))
 
 	// Unmarshal the account bytes back into a struct
-	actual := &account{}
+	actual := &accountData{}
 	if err := encoding.Unmarshal(accBytes, actual); err != nil {
 		t.Fatal(err)
 	}
@@ -204,9 +204,22 @@ func TestMarshalUnmarshalAccount(t *testing.T) {
 	}
 
 	// Verify unmarshal of the updated timestamp
-	if expected.Updated != actual.Updated {
-		t.Error("Incorrect updated timestamp after unmarshal")
-		t.Log("Expected: ", expected.Updated)
-		t.Log("Actual: ", actual.Updated)
+	if expected.LastTxn != actual.LastTxn {
+		t.Error("Incorrect lastTxn timestamp after unmarshal")
+		t.Log("Expected: ", expected.LastTxn)
+		t.Log("Actual: ", actual.LastTxn)
 	}
+}
+
+// balanceOf will return the balance for given account
+func getAccountBalance(am *accountManager, id string) types.Currency {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	acc, exists := am.accounts[id]
+	if !exists {
+		return types.ZeroCurrency
+	}
+
+	return acc.balance
 }
