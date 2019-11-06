@@ -132,6 +132,9 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/hostdb/filtermode", api.hostdbFilterModeHandlerGET)
 		router.POST("/hostdb/filtermode", RequirePassword(api.hostdbFilterModeHandlerPOST, requiredPassword))
 
+		// Renter watchdog endpoints.
+		router.GET("/renter/contractstatus", api.renterContractStatusHandler)
+
 		// Deprecated endpoints.
 		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))
 		router.POST("/renter/recoverbackup", RequirePassword(api.renterLoadBackupHandlerPOST, requiredPassword))

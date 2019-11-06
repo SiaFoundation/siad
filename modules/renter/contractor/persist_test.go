@@ -28,6 +28,37 @@ func TestSaveLoad(t *testing.T) {
 		synced:  make(chan struct{}),
 	}
 
+	c.staticWatchdog = newWatchdog(c)
+	expectedFileContractStatus := &fileContractStatus{
+		formationSweepHeight: 543210,
+		contractFound:        true,
+		revisionFound:        400,
+		storageProofFound:    987123,
+
+		formationTxnSet: []types.Transaction{
+			{
+				ArbitraryData: [][]byte{{1, 2, 3, 4, 5}},
+			},
+		},
+		parentOutputs: map[types.SiacoinOutputID]struct{}{
+			{4}: {},
+		},
+
+		sweepTxn: types.Transaction{
+			ArbitraryData: [][]byte{{1, 2, 3}},
+		},
+
+		sweepParents: []types.Transaction{{
+			ArbitraryData: [][]byte{{4, 5, 63}},
+		}},
+
+		windowStart: 5,
+		windowEnd:   10,
+	}
+	c.staticWatchdog.contracts = map[types.FileContractID]*fileContractStatus{
+		{1}: expectedFileContractStatus,
+	}
+
 	c.oldContracts = map[types.FileContractID]modules.RenterContract{
 		{0}: {ID: types.FileContractID{0}, HostPublicKey: types.SiaPublicKey{Key: []byte("foo")}},
 		{1}: {ID: types.FileContractID{1}, HostPublicKey: types.SiaPublicKey{Key: []byte("bar")}},
@@ -169,6 +200,54 @@ func TestSaveLoad(t *testing.T) {
 	if c.allowance.ExpectedRedundancy != a.ExpectedRedundancy {
 		t.Errorf("ExpectedRedundancy was %v but should be %v",
 			c.allowance.ExpectedRedundancy, a.ExpectedRedundancy)
+	}
+
+	// Check the watchdog settings.
+	if c.staticWatchdog == nil {
+		t.Fatal("Watchdog not restored")
+	}
+	contract, ok := c.staticWatchdog.contracts[types.FileContractID{1}]
+	if !ok {
+		t.Fatal("Contract not found", len(c.staticWatchdog.contracts))
+	}
+	if contract.formationSweepHeight != expectedFileContractStatus.formationSweepHeight {
+		t.Fatal("watchdog not restored properly", contract.formationSweepHeight)
+	}
+	if contract.contractFound != expectedFileContractStatus.contractFound {
+		t.Fatal("watchdog not restored properly")
+	}
+	if contract.revisionFound != expectedFileContractStatus.revisionFound {
+		t.Fatal("watchdog not restored properly", contract.revisionFound)
+	}
+	if contract.storageProofFound != expectedFileContractStatus.storageProofFound {
+		t.Fatal("watchdog not restored properly", contract.storageProofFound)
+	}
+	if len(contract.formationTxnSet) != 1 {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.formationTxnSet[0].ID() != expectedFileContractStatus.formationTxnSet[0].ID() {
+		t.Fatal("watchdog not restored properly", contract.formationTxnSet)
+	}
+	if len(contract.parentOutputs) != 1 {
+		t.Fatal("watchdog not restored properly", contract.parentOutputs)
+	}
+	if _, foundOutput := contract.parentOutputs[types.SiacoinOutputID{4}]; !foundOutput {
+		t.Fatal("watchdog not restored properly", contract.parentOutputs)
+	}
+	if contract.sweepTxn.ID() != expectedFileContractStatus.sweepTxn.ID() {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if len(contract.sweepParents) != len(expectedFileContractStatus.sweepParents) {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.sweepParents[0].ID() != expectedFileContractStatus.sweepParents[0].ID() {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.windowStart != expectedFileContractStatus.windowStart {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.windowEnd != expectedFileContractStatus.windowEnd {
+		t.Fatal("watchdog not restored properly", contract)
 	}
 }
 

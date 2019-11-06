@@ -75,11 +75,16 @@ type Contractor struct {
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
+	// doubleSpentContracts keep track of all contracts that were double spent by
+	// either the renter or host.
 	staticContracts      *proto.ContractSet
 	oldContracts         map[types.FileContractID]modules.RenterContract
+	doubleSpentContracts map[types.FileContractID]types.BlockHeight
 	recoverableContracts map[types.FileContractID]modules.RecoverableContract
 	renewedFrom          map[types.FileContractID]types.FileContractID
 	renewedTo            map[types.FileContractID]types.FileContractID
+
+	staticWatchdog *watchdog
 }
 
 // Allowance returns the current allowance.
@@ -108,6 +113,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 
 	var spending modules.ContractorSpending
 	for _, contract := range allContracts {
+		// Don't count double-spent contracts.
+		if _, doubleSpent := c.doubleSpentContracts[contract.ID]; doubleSpent {
+			continue
+		}
+
 		// Calculate ContractFees
 		spending.ContractFees = spending.ContractFees.Add(contract.ContractFee)
 		spending.ContractFees = spending.ContractFees.Add(contract.TxnFee)
@@ -123,6 +133,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 
 	// Calculate needed spending to be reported from old contracts
 	for _, contract := range c.oldContracts {
+		// Don't count double-spent contracts.
+		if _, doubleSpent := c.doubleSpentContracts[contract.ID]; doubleSpent {
+			continue
+		}
+
 		host, exist, err := c.hdb.Host(contract.HostPublicKey)
 		if contract.StartHeight >= c.currentPeriod {
 			// Calculate spending from contracts that were renewed during the current period
@@ -316,12 +331,14 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 		editors:              make(map[types.FileContractID]*hostEditor),
 		sessions:             make(map[types.FileContractID]*hostSession),
 		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
+		doubleSpentContracts: make(map[types.FileContractID]types.BlockHeight),
 		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
 		pubKeysToContractID:  make(map[string]types.FileContractID),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
 	}
+	c.staticWatchdog = newWatchdog(c)
 
 	// Close the contract set and logger upon shutdown.
 	c.tg.AfterStop(func() {

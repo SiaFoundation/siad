@@ -108,6 +108,8 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 			missedRecovery = true
 		}
 	}
+	c.staticWatchdog.callScanConsensusChange(cc)
+
 	// If we didn't miss the recover, we update the recentRecoverChange
 	if !missedRecovery && c.recentRecoveryChange == c.lastChange {
 		c.recentRecoveryChange = cc.ID
@@ -136,6 +138,15 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	} else if synced && !cc.Synced {
 		c.synced = make(chan struct{})
 	}
+	// Let the watchdog take any necessary actions and update its state. We do
+	// this before persisting the contractor so that the watchdog is up-to-date on
+	// reboot. Otherwise it is possible that e.g. that the watchdog thinks a
+	// storage proof was missed and marks down a host for that. Other watchdog
+	// actions are innocuous.
+	if cc.Synced {
+		c.staticWatchdog.managedCheckContracts()
+	}
+
 	c.lastChange = cc.ID
 	err = c.save()
 	if err != nil {
