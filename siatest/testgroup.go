@@ -141,7 +141,7 @@ func NewGroupFromTemplate(groupDir string, groupParams GroupParams) (*TestGroup,
 	}
 	// Create miner params
 	for i := 0; i < groupParams.Miners; i++ {
-		params = append(params, MinerTemplate)
+		params = append(params, node.MinerTemplate)
 		randomNodeDir(groupDir, &params[len(params)-1])
 	}
 	return NewGroup(groupDir, params...)
@@ -220,8 +220,8 @@ func fullyConnectNodes(nodes []*TestNode) error {
 	return nil
 }
 
-// fundNodes uses the funds of a miner node to fund all the nodes of the group
-func fundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
+// FundNodes uses the funds of a miner node to fund all the nodes of the group
+func FundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
 	// Get the miner's balance
 	wg, err := miner.WalletGet()
 	if err != nil {
@@ -561,7 +561,7 @@ func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]str
 		return build.ExtendErr("synchronization check 1 failed", err)
 	}
 	// Fund nodes.
-	if err := fundNodes(miner, setNodes); err != nil {
+	if err := FundNodes(miner, setNodes); err != nil {
 		return build.ExtendErr("failed to fund new hosts", err)
 	}
 	// Add storage to host

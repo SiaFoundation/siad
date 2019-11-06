@@ -2801,6 +2801,49 @@ Signals if contract is good for uploading data.
 **goodforrenew** | boolean  
 Signals if contract is good for a renewal.  
 
+## /renter/contractstatus [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/renter/contractstatus?id=<filecontractid>"
+```
+
+### Query String Parameters
+**id** | hash
+ID of the file contract
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "formationsweepheight":      1234, // block height,
+  "contractfound":             true,  // boolean
+  "latestrevisionfound",       55,    // uint64
+  "storageprooffoundatheight": 0, // block height,
+  "doublespendheight":         0, // block height,
+}
+```
+
+**formationsweepheight** | block height
+The block height at which the renter's watchdog will try to sweep inputs from
+the formation transaction set if it hasn't been confirmed on chain yet.
+
+**contractfound** | boolean
+Indicates whether or not the renter watchdog found the formation transaction set
+on chain.
+
+**latestrevisionfound** | uint64
+The highest revision number found by the watchdog for this contract on chain.
+
+**storageprooffoundatheight** | block height
+The height at which the watchdog found a storage proof for this contract on
+chain.
+
+**doublespendheight** | block height
+The height at which a double-spend for this transactions formation transaction
+was found on chain.
+
 ## /renter/dir/*siapath [GET]
 > curl example  
 
@@ -4998,9 +5041,4 @@ addresses have never appeared in the blockchain.
 
 ### Response
 
-standard success or error response. See [standard
-responses](#standard-responses).
-
-# Version
-<a href='https://sia.tech/docs/v141'>**v141** <a
-href='https://sia.tech/docs/v140'>**v140**
+standard success or error response. See [standard responses](#standard-responses).

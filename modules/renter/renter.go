@@ -141,6 +141,10 @@ type hostContractor interface {
 	// with a bool indicating if it exists.
 	ContractUtility(types.SiaPublicKey) (modules.ContractUtility, bool)
 
+	// ContractStatus returns the status of the given contract within the
+	// watchdog.
+	ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool)
+
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
@@ -722,6 +726,12 @@ func (r *Renter) CurrentPeriod() types.BlockHeight { return r.hostContractor.Cur
 // with a bool indicating if it exists.
 func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility, bool) {
 	return r.hostContractor.ContractUtility(pk)
+}
+
+// ContractStatus returns the status of the given contract within the watchdog,
+// and a bool indicating whether or not it is being monitored.
+func (r *Renter) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
+	return r.hostContractor.ContractStatus(fcID)
 }
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
