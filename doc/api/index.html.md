@@ -4333,7 +4333,3 @@ If true, the wallet will not rescan the blockchain. Only set this flag if the ad
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
-
-# Version
-<a href='https://sia.tech/docs/v141'>**v141**
-<a href='https://sia.tech/docs/v140'>**v140**
