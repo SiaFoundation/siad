@@ -34,14 +34,6 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 	defer r.tg.Done()
 
-	// Prepend siapath user provided with /home/siafiles.
-	var err error
-	sp := up.SiaPath // Remember the original path.
-	up.SiaPath, err = modules.UserSiaPath().Join(up.SiaPath.String())
-	if err != nil {
-		return err
-	}
-
 	// Check if the file is a directory.
 	sourceInfo, err := os.Stat(up.Source)
 	if err != nil {
@@ -60,7 +52,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {
-		if err := r.DeleteFile(sp); err != nil && err != siafile.ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
 			return errors.AddContext(err, "unable to delete existing file")
 		}
 	}

@@ -93,19 +93,9 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
-	// Prepend the provided siapath with the /home/siafiles or /snapshots.
-	var err error
-	sp := up.SiaPath // remember original path
-	if backup {
-		up.SiaPath, err = modules.SnapshotsSiaPath().Join(up.SiaPath.String())
-	} else {
-		up.SiaPath, err = modules.UserSiaPath().Join(up.SiaPath.String())
-	}
-	if err != nil {
-		return nil, err
-	}
 	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
 	// Check if ec was set. If not use defaults.
+	var err error
 	if ec == nil && !repair {
 		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
 		if err != nil {
@@ -123,7 +113,7 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if force {
-		if err := r.DeleteFile(sp); err != nil && err != siafile.ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
 			return nil, err
 		}
 	}

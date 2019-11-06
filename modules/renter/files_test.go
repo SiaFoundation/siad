@@ -127,10 +127,6 @@ func TestRenterDeleteFile(t *testing.T) {
 	}
 	// Delete the file.
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
-	siapath, err = siapath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	entry.Close()
 	err = rt.renter.DeleteFile(siapath)
@@ -160,17 +156,8 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	siapath2 := rt.renter.staticFileSystem.FileSiaPath(entry2)
-	siapath2, err = siapath2.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
-	err = rt.renter.RenameFile(siapath2, siaPath1) // set name to "1"
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
 	entry2.Close()
 	siapath2 = rt.renter.staticFileSystem.FileSiaPath(entry2)
-	siapath2, err = siapath2.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 	err = rt.renter.RenameFile(siapath2, siaPathOne)
 	if err != nil {
 		t.Fatal(err)
@@ -232,10 +219,6 @@ func TestRenterFileList(t *testing.T) {
 		t.Fatal("FileList is not returning the only file in the renter")
 	}
 	entry1SP := rt.renter.staticFileSystem.FileSiaPath(entry1)
-	entry1SP, err = entry1SP.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
 	if !files[0].SiaPath.Equals(entry1SP) {
 		t.Error("FileList is not returning the correct filename for the only file")
 	}

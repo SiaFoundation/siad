@@ -67,12 +67,6 @@ func TestRenterCreateDirectories(t *testing.T) {
 // initialized correctly and the metadata file exist and contain the correct
 // information
 func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
-	// Since we are using the filesystem here directly we need to rebase the
-	// path first.
-	siaPath, err := siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
-	if err != nil {
-		return err
-	}
 	siaDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to load directory %v metadata: %v", siaPath, err)
@@ -141,11 +135,6 @@ func TestDirInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.CreateDir(siaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Rebase siaPath.
-	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,10 +207,6 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
 	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
