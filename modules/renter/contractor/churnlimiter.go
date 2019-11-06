@@ -129,9 +129,13 @@ func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.Blo
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
+	// Do not let churn budget to build up to maxPeriodChurn to avoid using entire
+	// period budget at once (except in special circumstances).
 	maxChurnBudget := int(cl.maxPeriodChurn / 2)
-	budgetIncrease := 3 * numBlocksAdded * int(cl.maxPeriodChurn/uint64(period))
 
+	// Increase churn budget as a multiple of the period budget per block. This
+	// let's the remainingChurnBudget increase more quickly.
+	budgetIncrease := 3 * numBlocksAdded * int(cl.maxPeriodChurn/uint64(period))
 	cl.remainingChurnBudget += budgetIncrease
 	if cl.remainingChurnBudget > maxChurnBudget {
 		cl.remainingChurnBudget = maxChurnBudget
@@ -151,10 +155,6 @@ func (cl *churnLimiter) callSetMaxPeriodChurn(newMax uint64) {
 // inputs are assumed to be contracts that have passed all critical utility
 // checks.
 func (cl *churnLimiter) managedProcessSuggestedUpdates(queue []contractScoreAndUtil) error {
-	if len(queue) == 0 {
-		return nil
-	}
-
 	sort.Slice(queue, func(i, j int) bool {
 		return queue[i].score.Cmp(queue[j].score) < 0
 	})
@@ -204,8 +204,8 @@ func (cl *churnLimiter) managedAggregateAndMaxChurn() (uint64, uint64) {
 	return cl.aggregateCurrentPeriodChurn, cl.maxPeriodChurn
 }
 
-// managedCanChurnAmount returns true if and only if the churnLimiter can allow the
-// the churn of `amount` bytes right now.
+// managedCanChurnContract returns true if and only if the churnLimiter can
+// churn the contract right now, given its current budget.
 func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract) bool {
 	size := contract.Transaction.FileContractRevisions[0].NewFileSize
 	cl.mu.Lock()

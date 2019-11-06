@@ -2417,7 +2417,7 @@ Returns the churn status for the renter's contractor.
 ```go
 {
   "aggregatecurrentperiodchurn": 500000,   // uint64
-  "maxperiodchurn":           50000000, // uint64
+  "maxperiodchurn":              50000000, // uint64
 }
 ```
 
@@ -2433,7 +2433,7 @@ Maximum allowed aggregate churn per period.
 > curl example
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/setmaxperiodchurn?newmax=<newmax>"
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/setmaxperiodchurn?newmax=123456789"
 ```
 
 sets the new max churn per period.
