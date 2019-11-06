@@ -388,7 +388,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 				return err
 			}
 			// Metadata was updated so add to list of directories to be updated
-			dirsToUpdate[siaPath] = struct{}{}
+			addUniqueBubblePath(siaPath, dirsToUpdate)
 			// Close Directory
 			if err := dirEntry.Close(); err != nil {
 				return err
@@ -407,7 +407,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			}
 			// Add directory that siafile resides in to the list of directories
 			// to be updated
-			dirsToUpdate[siaPath] = struct{}{}
+			addUniqueBubblePath(siaPath, dirsToUpdate)
 		}
 	}
 	return nil
