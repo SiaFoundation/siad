@@ -578,8 +578,10 @@ func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, er
 
 // RenterUploadsPausePost uses the /renter/uploads/pause endpoint to pause the
 // renter's uploads and repairs
-func (c *Client) RenterUploadsPausePost() (err error) {
-	err = c.post("/renter/uploads/pause", "", nil)
+func (c *Client) RenterUploadsPausePost(duration time.Duration) (err error) {
+	values := url.Values{}
+	values.Set("duration", duration.String())
+	err = c.post("/renter/uploads/pause", values.Encode(), nil)
 	return
 }
 

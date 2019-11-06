@@ -828,8 +828,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			stuckChunkFound:   make(chan struct{}, 1),
 			stuckChunkSuccess: make(chan struct{}, 1),
 
-			pauseChan:     make(chan struct{}),
-			pauseDuration: defaultPauseDuration,
+			pauseChan: make(chan struct{}),
 		},
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),

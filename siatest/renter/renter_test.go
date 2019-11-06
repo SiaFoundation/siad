@@ -3887,8 +3887,9 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	numHost := len(tg.Hosts())
 	hostToAdd := 2
 
-	// Pause Repairs And Uploads
-	err := r.RenterUploadsPausePost()
+	// Pause Repairs And Uploads with a high duration to ensure that the uploads
+	// and repairs don't start before we want them to
+	err := r.RenterUploadsPausePost(time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3936,7 +3937,7 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Pause the repairs and uploads again
-	err = r.RenterUploadsPausePost()
+	err = r.RenterUploadsPausePost(time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3960,7 +3961,7 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Confirm upload still hasn't reach full redundancy because repairs are
-	// pause
+	// paused
 	for i := 0; i < 5; i++ {
 		file, err := r.File(rf)
 		if err != nil {
@@ -3972,8 +3973,9 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// Resume Repair and Upload
-	err = r.RenterUploadsResumePost()
+	// Resume Repair and Upload by calling pause again with a very should time
+	// duration so the repairs and uploads restart on their own
+	err = r.RenterUploadsPausePost(time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}

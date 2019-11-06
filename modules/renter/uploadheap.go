@@ -41,9 +41,9 @@ const (
 )
 
 var (
-	// defaultPauseDuration is the default duration that the repairs and uploads
+	// DefaultPauseDuration is the default duration that the repairs and uploads
 	// will be paused
-	defaultPauseDuration = build.Select(build.Var{
+	DefaultPauseDuration = build.Select(build.Var{
 		Standard: 10 * time.Minute,
 		Dev:      1 * time.Minute,
 		Testing:  100 * time.Millisecond,
@@ -153,9 +153,8 @@ type uploadHeap struct {
 	stuckChunkSuccess chan struct{}
 
 	// External control channels
-	pauseChan     chan struct{}
-	pauseDuration time.Duration
-	pauseTimer    *time.Timer
+	pauseChan  chan struct{}
+	pauseTimer *time.Timer
 
 	mu sync.Mutex
 }
@@ -212,14 +211,22 @@ func (uh *uploadHeap) managedNumStuckChunks() int {
 	return len(uh.stuckHeapChunks)
 }
 
-// managedPause creates the pauseChan and initiates the pauseTimer
-func (uh *uploadHeap) managedPause() {
+// managedPause creates the pauseChan and initiates the pauseTimer for the
+// duration requested
+func (uh *uploadHeap) managedPause(duration time.Duration) {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	uh.pauseChan = make(chan struct{})
-	uh.pauseTimer = time.AfterFunc(uh.pauseDuration, func() {
-		close(uh.pauseChan)
-	})
+	select {
+	case <-uh.pauseChan:
+		// Repairs and Uploads are not currently paused so pause them
+		uh.pauseChan = make(chan struct{})
+		uh.pauseTimer = time.AfterFunc(duration, func() {
+			close(uh.pauseChan)
+		})
+	default:
+		// Repairs and Uploads are paused so reset the timer duration
+		uh.pauseTimer.Reset(duration)
+	}
 }
 
 // managedPush will try and add a chunk to the upload heap. If the chunk is
@@ -318,19 +325,21 @@ func (uh *uploadHeap) managedResume() {
 	stopped := uh.pauseTimer.Stop()
 
 	// We only want to close the channel if we were able to stop the timer,
-	// otherwise the channel is already closed
+	// otherwise the channel is already closed because the timer reached its
+	// duration
 	if stopped {
 		close(uh.pauseChan)
 	}
 }
 
-// PauseRepairsAndUploads pauses the renter's repairs and uploads
-func (r *Renter) PauseRepairsAndUploads() error {
+// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
+// duration
+func (r *Renter) PauseRepairsAndUploads(duration time.Duration) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	r.uploadHeap.managedPause()
+	r.uploadHeap.managedPause(duration)
 	return nil
 }
 
@@ -1228,7 +1237,7 @@ func (r *Renter) threadedUploadAndRepair() {
 				r.repairLog.Println("Repairs and Uploads have been resumed")
 			}
 			// Reset the upload heap and the directory heap now that has been
-			// restarted
+			// resumed
 			err := r.uploadHeap.managedReset()
 			if err != nil {
 				r.repairLog.Println("WARN: there was an error resetting the upload heap:", err)

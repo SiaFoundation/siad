@@ -722,8 +722,9 @@ type Renter interface {
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
 
-	// PauseRepairsAndUploads pauses the renter's repairs and uploads
-	PauseRepairsAndUploads() error
+	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
+	// duration
+	PauseRepairsAndUploads(duration time.Duration) error
 
 	// ResumeRepairsAndUploads resumes the renter's repairs and uploads
 	ResumeRepairsAndUploads() error

@@ -1509,8 +1509,19 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 
 // renterUploadsPauseHandler handles the api call to pause the renter's uploads,
 // this includes repairs
-func (api *API) renterUploadsPauseHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	err := api.renter.PauseRepairsAndUploads()
+func (api *API) renterUploadsPauseHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	durationStr := req.FormValue("duration")
+	duration := renter.DefaultPauseDuration
+	var err error
+	if durationStr != "" {
+		duration, err = time.ParseDuration(durationStr)
+		if err != nil {
+			WriteError(w, Error{"failed to parse duration:" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	err = api.renter.PauseRepairsAndUploads(duration)
 	if err != nil {
 		WriteError(w, Error{"failed to pause uploads:" + err.Error()}, http.StatusBadRequest)
 		return
