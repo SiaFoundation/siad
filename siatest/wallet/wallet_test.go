@@ -715,6 +715,9 @@ func TestWalletVerifyPassword(t *testing.T) {
 	if wvpg.Valid {
 		t.Fatal("Wrong Password is valid, expected password to not be valid as no password is set")
 	}
+	if !strings.Contains(wvpg.Error, modules.ErrBadEncryptionKey.Error()) {
+		t.Fatalf("Expected error to contain %v but got %v", modules.ErrBadEncryptionKey, wvpg.Error)
+	}
 
 	// Reinit the wallet by using a specific password.
 	seed := modules.Seed{}
@@ -747,5 +750,8 @@ func TestWalletVerifyPassword(t *testing.T) {
 	}
 	if wvpg.Valid {
 		t.Fatal("Wrong Password is valid")
+	}
+	if !strings.Contains(wvpg.Error, modules.ErrBadEncryptionKey.Error()) {
+		t.Fatalf("Expected error to contain %v but got %v", modules.ErrBadEncryptionKey, wvpg.Error)
 	}
 }

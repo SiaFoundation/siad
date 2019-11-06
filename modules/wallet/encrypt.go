@@ -52,7 +52,8 @@ func walletPasswordEncryptionKey(seed modules.Seed, salt walletSalt) (key crypto
 func verifyEncryption(key crypto.CipherKey, encrypted crypto.Ciphertext) error {
 	verification, err := key.DecryptBytes(encrypted)
 	if err != nil {
-		return errors.AddContext(err, "failed to decrypt key")
+		contextErr := errors.AddContext(modules.ErrBadEncryptionKey, "failed to decrpt key")
+		return errors.Compose(err, contextErr)
 	}
 	if !bytes.Equal(verificationPlaintext, verification) {
 		return modules.ErrBadEncryptionKey
@@ -519,14 +520,11 @@ func (w *Wallet) IsMasterKey(masterKey crypto.CipherKey) (bool, error) {
 	defer w.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	// The only errors returned by checkMasterKey are decryption errors or
+	// ErrBadEncryptionKey so it is safe to just check for an error to determine
+	// if the key is valid
 	err := checkMasterKey(w.dbTx, masterKey)
-	if err == modules.ErrBadEncryptionKey {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	return err == nil, err
 }
 
 // Unlock will decrypt the wallet seed and load all of the addresses into

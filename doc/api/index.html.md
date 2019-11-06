@@ -4281,7 +4281,7 @@ Password being checked.
 
 ```go
 {
-  "valid": true,
+  "valid": false,
   "error": "provided encryption key is incorrect"
 }
 ```
