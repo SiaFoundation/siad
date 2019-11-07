@@ -340,12 +340,13 @@ func (c *Client) RenterDownloadsGet() (rdq api.RenterDownloadQueue, err error) {
 
 // RenterDownloadHTTPResponseGet uses the /renter/download endpoint to download
 // a file and return its data.
-func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64) (modules.DownloadID, []byte, error) {
+func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64, disableDiskFetch bool) (modules.DownloadID, []byte, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("httpresp", fmt.Sprint(true))
+	values.Set("disablediskfetch", fmt.Sprint(disableDiskFetch))
 	h, resp, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
 	if err != nil {
 		return "", nil, err
@@ -440,17 +441,21 @@ func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
 
 // RenterStreamGet uses the /renter/stream endpoint to download data as a
 // stream.
-func (c *Client) RenterStreamGet(siaPath modules.SiaPath) (resp []byte, err error) {
+func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableDiskFetch bool) (resp []byte, err error) {
+	values := url.Values{}
+	values.Set("disablediskfetch", fmt.Sprint(disableDiskFetch))
 	sp := escapeSiaPath(siaPath)
-	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s", sp))
+	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s?%s", sp, values.Encode()))
 	return
 }
 
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part
 // of data as a stream.
-func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64) (resp []byte, err error) {
+func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64, disableDiskFetch bool) (resp []byte, err error) {
+	values := url.Values{}
+	values.Set("disablediskfetch", fmt.Sprint(disableDiskFetch))
 	sp := escapeSiaPath(siaPath)
-	resp, err = c.getRawPartialResponse(fmt.Sprintf("/renter/stream/%s", sp), start, end)
+	resp, err = c.getRawPartialResponse(fmt.Sprintf("/renter/stream/%s?%s", sp), start, end)
 	return
 }
 

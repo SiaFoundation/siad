@@ -311,6 +311,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		destination:       dw,
 		destinationType:   destinationType,
 		destinationString: p.Destination,
+		disableDiskFetch:  p.DisableDiskFetch,
 		file:              snap,
 
 		latencyTarget: 25e3 * time.Millisecond, // TODO: high default until full latency support is added.

@@ -1368,6 +1368,10 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	// If httprespparam is present, this parameter is ignored.
 	asyncparam := req.FormValue("async")
 
+	// disablediskfetchparam determines whether downloads will be fetched from
+	// disk if available.
+	disablediskfetchparam := req.FormValue("disablediskfetch")
+
 	// Parse the offset and length parameters.
 	var offset, length uint64
 	if len(offsetparam) > 0 {
@@ -1401,8 +1405,8 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	var disableDiskFetch bool
-	if ddf := ps.ByName("disablediskfetch"); ddf != "" {
-		disableDiskFetch, err = scanBool(ddf)
+	if disablediskfetchparam != "" {
+		disableDiskFetch, err = scanBool(disablediskfetchparam)
 		if err != nil {
 			return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablediskfetch flag")
 		}
@@ -1430,7 +1434,17 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	fileName, streamer, err := api.renter.Streamer(siaPath)
+	disablediskfetchparam := req.FormValue("disablediskfetch")
+	var disableDiskFetch bool
+	if disablediskfetchparam != "" {
+		disableDiskFetch, err = scanBool(disablediskfetchparam)
+		if err != nil {
+			err = errors.AddContext(err, "error parsing the disablediskfetch flag")
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	fileName, streamer, err := api.renter.Streamer(siaPath, disableDiskFetch)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
 			http.StatusInternalServerError)

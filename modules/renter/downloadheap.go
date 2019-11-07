@@ -285,6 +285,12 @@ LOOP:
 					r.log.Debugln("localpath is set but couldn't serve file from disk", err)
 				}
 			}
+			// Disrupt for tests which expect the download to be served from disk.
+			println("here we go")
+			if r.deps.Disrupt("ForceServeDownloadFromDisk") {
+				nextChunk.download.managedFail(errors.New("expected download to be served from disk"))
+				continue
+			}
 			// Distribute the chunk to workers.
 			r.managedDistributeDownloadChunkToWorkers(nextChunk)
 		}

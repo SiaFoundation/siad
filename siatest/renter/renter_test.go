@@ -299,6 +299,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
+		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
 	}
 
 	// Run tests
@@ -671,7 +672,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Try downloading the renamed file.
-	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size)); err != nil {
+	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3875,5 +3876,38 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if nextPeriod != currentPeriod+period {
 		t.Fatalf("expected next period to be %v but got %v", currentPeriod+period, nextPeriod)
+	}
+}
+
+// testDownloadServedFromDisk tests whether downloads will actually be served
+// from disk.
+func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
+	// Create renter, skip setting the allowance so that we can properly test
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyForceServeDownloadFromDisk{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+	defer tg.RemoveNode(r)
+	// Upload a file.
+	_, rf, err := r.UploadNewFileBlocking(int(1000), 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download it in all ways possible. The download will only succeed if
+	// served from disk.
+	_, _, err = r.DownloadByStreamWithDiskFetch(rf, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = r.DownloadToDiskWithDiskFetch(rf, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.StreamWithDiskFetch(rf, false)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
