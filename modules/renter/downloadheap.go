@@ -286,7 +286,6 @@ LOOP:
 				}
 			}
 			// Disrupt for tests which expect the download to be served from disk.
-			println("here we go")
 			if r.deps.Disrupt("ForceServeDownloadFromDisk") {
 				nextChunk.download.managedFail(errors.New("expected download to be served from disk"))
 				continue
