@@ -93,7 +93,6 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/contract/cancel", RequirePassword(api.renterContractCancelHandler, requiredPassword))
 		router.GET("/renter/contracts", api.renterContractsHandler)
 		router.GET("/renter/contractorchurnstatus", api.renterContractorChurnStatus)
-		router.POST("/renter/setmaxperiodchurn", RequirePassword(api.renterSetMaxPeriodChurn, requiredPassword))
 
 		router.GET("/renter/downloadinfo/*uid", api.renterDownloadByUIDHandlerGET)
 		router.GET("/renter/downloads", api.renterDownloadsHandler)

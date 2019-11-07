@@ -87,11 +87,6 @@ func (c *Contractor) ChurnStatus() modules.ContractorChurnStatus {
 	}
 }
 
-// SetMaxPeriodChurn sets the max churn per period.
-func (c *Contractor) SetMaxPeriodChurn(newMax uint64) {
-	c.staticChurnLimiter.callSetMaxPeriodChurn(newMax)
-}
-
 // callResetAggregateChurn resets the aggregate churn for this period. This
 // method must be called at the beginning of every new period.
 func (cl *churnLimiter) callResetAggregateChurn() {

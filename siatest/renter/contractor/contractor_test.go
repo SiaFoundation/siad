@@ -1517,10 +1517,13 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal("Failed to create group:", err)
 	}
 
+	maxPeriodChurn := uint64(modules.SectorSize * 2)
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
 	minScoreDep := &dependencies.DependencyHighMinHostScore{}
 	renterParams.ContractorDeps = minScoreDep
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.MaxPeriodChurn = maxPeriodChurn
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1545,7 +1548,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
-	fileSize := 1000
+	fileSize := 1000 // doesn't matter as long as it's at most sector size.
 	_, _, err = r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
@@ -1566,14 +1569,6 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 	size := rc.ActiveContracts[0].Size
-
-	// Set the maxPeriodChurn to 3 * size and check that the change is visible
-	// over the API.
-	maxPeriodChurn := uint64(2 * size)
-	err = r.RenterSetMaxPeriodChurn(maxPeriodChurn)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	var i int
 	err = build.Retry(50, 250*time.Millisecond, func() error {

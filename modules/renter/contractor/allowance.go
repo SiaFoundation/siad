@@ -36,6 +36,9 @@ var (
 	// ErrAllowanceZeroExpectedRedundancy is returned if the allowance expected
 	// redundancy is being set to zero when not cancelling the allowance
 	ErrAllowanceZeroExpectedRedundancy = errors.New("expected redundancy must be non-zero")
+	// ErrAllowanceZeroMaxPeriodChurn is returned if the allowance max period
+	// churn is being set to zero when not cancelling the allowance
+	ErrAllowanceZeroMaxPeriodChurn = errors.New("max period churn must be non-zero")
 )
 
 // SetAllowance sets the amount of money the Contractor is allowed to spend on
@@ -82,6 +85,8 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 		return ErrAllowanceZeroExpectedDownload
 	} else if a.ExpectedRedundancy == 0 {
 		return ErrAllowanceZeroExpectedRedundancy
+	} else if a.MaxPeriodChurn == 0 {
+		return ErrAllowanceZeroMaxPeriodChurn
 	} else if !c.cs.Synced() {
 		return errAllowanceNotSynced
 	}
@@ -127,6 +132,9 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	// Inform the watchdog about the allowance change.
 	c.staticWatchdog.callAllowanceUpdated(a)
+
+	// Update the churnLimiter with the MaxPeriodChurn of the allowance.
+	c.staticChurnLimiter.callSetMaxPeriodChurn(a.MaxPeriodChurn)
 
 	// We changed the allowance successfully. Update the hostdb.
 	err = c.hdb.SetAllowance(a)

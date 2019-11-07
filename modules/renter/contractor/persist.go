@@ -89,6 +89,7 @@ func (c *Contractor) load() error {
 			data.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 			data.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 			data.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+			data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 		}
 	}
 

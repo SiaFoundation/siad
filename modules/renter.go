@@ -26,6 +26,7 @@ var (
 		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
 		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
+		MaxPeriodChurn:     uint64(200e9),                                // 200 GB
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
@@ -218,6 +219,10 @@ type Allowance struct {
 
 	// ExpectedRedundancy is the average redundancy of files being uploaded.
 	ExpectedRedundancy float64 `json:"expectedredundancy"`
+
+	// MaxPeriodChurn is maximum amount of contract churn allowed in a single
+	// period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the
@@ -634,9 +639,6 @@ type Renter interface {
 
 	// ContractorChurnStatus returns contract churn stats for the current period.
 	ContractorChurnStatus() ContractorChurnStatus
-
-	// SetMaxPeriodChurn sets the max contract churn per period.
-	SetMaxPeriodChurn(newMax uint64)
 
 	// ContractUtility provides the contract utility for a given host key.
 	ContractUtility(pk types.SiaPublicKey) (ContractUtility, bool)

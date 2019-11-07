@@ -79,6 +79,12 @@ func (a *AllowanceRequestPost) WithExpectedRedundancy(expectedRedundancy float64
 	return a
 }
 
+// WithExpectedRedundancy adds the expected redundancy field to the request.
+func (a *AllowanceRequestPost) WithMaxPeriodChurn(maxPeriodChurn uint64) *AllowanceRequestPost {
+	a.values.Set("maxperiodchurn", fmt.Sprint(maxPeriodChurn))
+	return a
+}
+
 // Send finalizes and sends the request.
 func (a *AllowanceRequestPost) Send() (err error) {
 	if a.sent {
@@ -107,15 +113,6 @@ func escapeSiaPath(siaPath modules.SiaPath) string {
 // to get the current contractor churn status.
 func (c *Client) RenterContractorChurnStatus() (churnStatus modules.ContractorChurnStatus, err error) {
 	err = c.get("/renter/contractorchurnstatus", &churnStatus)
-	return
-}
-
-// RenterSetMaxPeriodChurn uses the /renter/setmaxperiodchurn endpoint
-// to set the max churn per period.
-func (c *Client) RenterSetMaxPeriodChurn(val uint64) (err error) {
-	values := url.Values{}
-	values.Set("newmax", fmt.Sprint(val))
-	err = c.post("/renter/setmaxperiodchurn", values.Encode(), nil)
 	return
 }
 
@@ -398,6 +395,7 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	a = a.WithExpectedUpload(allowance.ExpectedUpload)
 	a = a.WithExpectedDownload(allowance.ExpectedDownload)
 	a = a.WithExpectedRedundancy(allowance.ExpectedRedundancy)
+	a = a.WithMaxPeriodChurn(allowance.MaxPeriodChurn)
 	return a.Send()
 }
 
