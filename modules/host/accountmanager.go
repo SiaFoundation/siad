@@ -35,9 +35,9 @@ var (
 		Testing:  2 * time.Second,
 	}).(time.Duration)
 
-	// blockedCallTimeout is the maximum amount of time a call is blocked before
-	// it times out
-	blockedCallTimeout = build.Select(build.Var{
+	// blockedTxnTimeout is the amount of time after which a blocked transaction
+	// times out
+	blockedTxnTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      15 * time.Second,
 		Testing:  3 * time.Second,
@@ -47,12 +47,16 @@ var (
 type (
 	// accountManager is a subsystem that manages all ephemeral accounts.
 	//
-	// These accounts are a pubkey with a balance associated to it. They are
-	// kept completely off-chain and serve as a method of payment.
+	// Ephemeral accounts are a service offered by hosts that allow users to
+	// connect a balance to a pubkey. Users can deposit funds into an ephemeral
+	// account with a host and then later use the funds to transact with the
+	// host.
 	//
 	// The account owner fully entrusts the money with the host, he has no
-	// recourse at all if the host decides to steal the funds. Because of that,
-	// the total amount of money an account can hold is capped.
+	// recourse at all if the host decides to steal the funds. For this reason,
+	// users should only keep tiny balances in ephemeral accounts and users
+	// should refill the ephemeral accounts frequently, even on the order of
+	// multiple times per minute.
 	accountManager struct {
 		accounts     map[string]*account
 		fingerprints *memoryBucket
@@ -69,20 +73,20 @@ type (
 		h            *Host
 	}
 
-	// account contains the account identifier
+	// account contains all data related to an ephemeral account
 	account struct {
 		id      string
 		balance types.Currency
 		lastTxn int64
 
-		index        uint32
-		blockedCalls []blockedCall
+		index       uint32
+		blockedTxns []blockedTxn
 	}
 
-	// blockedCall represents a waiting thread, it is waiting due to
-	// an insufficient balance in the account to perform the withdrawal and can
-	// be unblocked by a deposit
-	blockedCall struct {
+	// blockedTx represents a pending spend transaction, it is blocked due to
+	// insufficient account balance and is unblocked by either a deposit or
+	// timeout
+	blockedTxn struct {
 		id       string
 		unblock  chan struct{}
 		required types.Currency
@@ -108,10 +112,10 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 	am.managedLoadData()
 
 	am.h.tg.OnStop(func() {
-		// Close all open unblock channels
+		// Unblock all pending transactions
 		for _, acc := range am.accounts {
-			for _, bc := range acc.blockedCalls {
-				close(bc.unblock)
+			for _, txn := range acc.blockedTxns {
+				close(txn.unblock)
 			}
 		}
 		// Close all open file handles
@@ -123,7 +127,7 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 	return am, nil
 }
 
-// managedLoad will load the accounts data
+// managedLoadData will load the accounts data
 func (am *accountManager) managedLoadData() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -155,17 +159,17 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	acc.balance = updatedBalance
 	acc.lastTxn = time.Now().Unix()
 
-	// Loop over blocked calls and unblock where possible, keep track of the
-	// remaining balance to allow unblocking multiple calls at the same time
+	// Loop over blocked transactions and unblock where possible, keep track of
+	// the remaining balance to allow unblocking multiple at the same time
 	remaining := acc.balance
 	j := 0
-	for i := 0; i < len(acc.blockedCalls); i++ {
-		b := acc.blockedCalls[i]
+	for i := 0; i < len(acc.blockedTxns); i++ {
+		b := acc.blockedTxns[i]
 		if b.id != id {
 			continue
 		}
 		if remaining.Cmp(b.required) < 0 {
-			acc.blockedCalls[j] = b
+			acc.blockedTxns[j] = b
 			j++
 		} else {
 			close(b.unblock)
@@ -175,7 +179,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 			}
 		}
 	}
-	acc.blockedCalls = acc.blockedCalls[:j]
+	acc.blockedTxns = acc.blockedTxns[:j]
 
 	err := am.persister.callSaveAccount(acc)
 	if err != nil {
@@ -213,12 +217,12 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 	// blockCallTimeout expires, the account receives sufficient deposits or we
 	// receive a message on the thread group's stop channel
 	if acc.balance.Cmp(amount) < 0 {
-		bc := blockedCall{
+		tx := blockedTxn{
 			id:       id,
 			unblock:  make(chan struct{}),
 			required: amount,
 		}
-		acc.blockedCalls = append(acc.blockedCalls, bc)
+		acc.blockedTxns = append(acc.blockedTxns, tx)
 		am.mu.Unlock()
 
 	BlockLoop:
@@ -226,10 +230,10 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 			select {
 			case <-am.h.tg.StopChan():
 				return errors.New("ERROR: spend cancelled, stop received")
-			case <-bc.unblock:
+			case <-tx.unblock:
 				am.mu.Lock()
 				break BlockLoop
-			case <-time.After(blockedCallTimeout):
+			case <-time.After(blockedTxnTimeout):
 				return errInsufficientBalance
 			}
 		}
@@ -244,12 +248,12 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 	acc.lastTxn = time.Now().Unix()
 	am.fingerprints.save(fp)
 
-	// Track the unsaved delta by adding the amount we are withrdrawing
+	// Track the unsaved delta by adding the amount we are spending
 	unsaved, _ := amount.Uint64()
 	atomic.AddUint64(&am.atomicUnsavedDelta, unsaved)
 
 	// Persist the account data and fingerprint data asynchronously
-	blockChan := make(chan struct{})
+	awaitPersist := make(chan struct{})
 	go func() {
 		if err := am.persister.callSaveAccount(acc); err != nil {
 			am.h.log.Println("ERROR: could not save account", id, err)
@@ -262,22 +266,23 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 		// Track the unsaved delta, decrement the unsaved delta with the amount
 		// we just persisted to disk
 		atomic.AddUint64(&am.atomicUnsavedDelta, ^uint64(unsaved-1))
-		close(blockChan)
+		close(awaitPersist)
 	}()
 
-	if atomic.LoadUint64(&am.atomicUnsavedDelta) <= am.maxUnsavedDelta {
+	// If the unsaved delta exceeds the maximum, block until we persisted
+	if atomic.LoadUint64(&am.atomicUnsavedDelta) > am.maxUnsavedDelta {
+		<-awaitPersist
 		am.mu.Unlock()
 		return nil
 	}
 
-	<-blockChan
 	am.mu.Unlock()
 	return nil
 }
 
 // callConsensusChanged is called by the host whenever it processed a
-// change to the consensus, we use it to rotate the fingerprints as they are
-// blockheight based
+// change to the consensus, we use it to rotate the fingerprints as we do so
+// based on the current blockheight
 func (am *accountManager) callConsensusChanged() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -294,16 +299,16 @@ func (am *accountManager) callConsensusChanged() {
 // account index at all times so it gets persisted properly
 func (am *accountManager) newAccount(id string) *account {
 	acc := &account{
-		id:           id,
-		index:        am.getFreeIndex(),
-		blockedCalls: make([]blockedCall, 0),
+		id:          id,
+		index:       am.getFreeIndex(),
+		blockedTxns: make([]blockedTxn, 0),
 	}
 	am.accounts[id] = acc
 	return acc
 }
 
-// buildAccountIndex is called on load and will initialize all bitfields with a
-// uint that has a bit set representing an account at index
+// buildAccountIndex will initialize bitfields representing all ephemeral
+// accounts, the index is used to recycle account indices 
 func (am *accountManager) buildAccountIndex() {
 	n := len(am.accounts) / 64
 	for i := 0; i < n; i++ {
