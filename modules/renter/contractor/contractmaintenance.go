@@ -39,7 +39,7 @@ type (
 // marks down the host score, and marks the contract as !GoodForRenew and
 // !GoodForUpload.
 func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeight types.BlockHeight) {
-	c.log.Debugln("Watchdog found  a double-spend: ", fcID, blockHeight)
+	c.log.Debugln("Watchdog found a double-spend: ", fcID, blockHeight)
 
 	// Mark the contract as double-spent. This will cause the contract to be
 	// excluded in period spending.
@@ -73,7 +73,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			} else {
 				newContract, oldContract = contract, rc
 			}
-			c.log.Printf("Duplicate contract found. New conract is %x and old contract is %v", newContract.ID, oldContract.ID)
+			c.log.Printf("Duplicate contract found. New contract is %x and old contract is %v", newContract.ID, oldContract.ID)
 
 			// Get SafeContract
 			oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
@@ -443,7 +443,7 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	// hosts.
 	badHosts, err := c.hdb.CheckForIPViolations(pks)
 	if err != nil {
-		c.log.Println("WARN: errror checking for IP violations:", err)
+		c.log.Println("WARN: error checking for IP violations:", err)
 		return
 	}
 	for _, host := range badHosts {
@@ -960,7 +960,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
-	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
+	c.log.Debugln("Remaining funds in allowance:", fundsRemaining)
 
 	// Register the AllowanceLowFunds alert if necessary.
 	var registerLowFundsAlert bool
