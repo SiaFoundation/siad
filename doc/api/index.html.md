@@ -3427,6 +3427,10 @@ If httresp is true, the data will be written to the http response.
 If async is true, the http request will be non blocking. Can't be used with
 httpresp.
 
+**disablediskfetch** | boolean  
+If disablediskfetch is true, downloads won't be served from disk even if the
+file is available locally.
+
 **length** | bytes  
 Length of the requested data. Has to be <= filesize-offset.  
 
@@ -3608,6 +3612,10 @@ Location on disk of the file being uploaded.
 ### OPTIONAL
 **datapieces** | int  
 The number of data pieces to use when erasure coding the file.  
+
+**disablediskfetch** | boolean  
+If disablediskfetch is true, downloads won't be served from disk even if the
+file is available locally.
 
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file. Total

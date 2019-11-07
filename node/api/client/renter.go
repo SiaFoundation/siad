@@ -455,7 +455,7 @@ func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint
 	values := url.Values{}
 	values.Set("disablediskfetch", fmt.Sprint(disableDiskFetch))
 	sp := escapeSiaPath(siaPath)
-	resp, err = c.getRawPartialResponse(fmt.Sprintf("/renter/stream/%s?%s", sp), start, end)
+	resp, err = c.getRawPartialResponse(fmt.Sprintf("/renter/stream/%s?%s", sp, values.Encode()), start, end)
 	return
 }
 
