@@ -122,6 +122,7 @@ func TestSaveLoad(t *testing.T) {
 	c.allowance.ExpectedUpload = 0
 	c.allowance.ExpectedDownload = 0
 	c.allowance.ExpectedRedundancy = 0
+	c.allowance.MaxPeriodChurn = 0
 
 	// save, clear, and reload
 	err = c.save()

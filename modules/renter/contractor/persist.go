@@ -83,7 +83,8 @@ func (c *Contractor) load() error {
 	// fields are not set, set them to the default values.
 	if !reflect.DeepEqual(data.Allowance, modules.Allowance{}) {
 		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUpload == 0 &&
-			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 {
+			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 &&
+			data.Allowance.MaxPeriodChurn == 0 {
 			// Set the fields to the defaults.
 			data.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 			data.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
@@ -91,6 +92,11 @@ func (c *Contractor) load() error {
 			data.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 			data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 		}
+	}
+
+	// COMPATv141 if the MaxPeriodChurn is 0, set it to the default value.
+	if data.Allowance.MaxPeriodChurn == 0 {
+		data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 	}
 
 	c.allowance = data.Allowance
