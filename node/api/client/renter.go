@@ -207,10 +207,11 @@ func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a
 // destination on disk.
-func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (modules.DownloadID, error) {
+func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool, disableDiskFetch bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
+	values.Set("disablediskfetch", fmt.Sprint(disableDiskFetch))
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))

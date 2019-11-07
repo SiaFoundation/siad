@@ -769,10 +769,11 @@ type Streamer interface {
 // RenterDownloadParameters defines the parameters passed to the Renter's
 // Download method.
 type RenterDownloadParameters struct {
-	Async       bool
-	Httpwriter  io.Writer
-	Length      uint64
-	Offset      uint64
-	SiaPath     SiaPath
-	Destination string
+	Async            bool
+	Httpwriter       io.Writer
+	Length           uint64
+	Offset           uint64
+	SiaPath          SiaPath
+	Destination      string
+	DisableDiskFetch bool
 }

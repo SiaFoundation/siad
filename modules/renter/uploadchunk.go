@@ -133,23 +133,32 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	return false
 }
 
+// readDataPieces reads dataPieces from a io.Reader and stores them in a
+// [][]byte ready to be encoded using an ErasureCoder.
+func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][]byte, uint64, error) {
+	dataPieces := make([][]byte, ec.MinPieces())
+	var total uint64
+	for i := range dataPieces {
+		dataPieces[i] = make([]byte, pieceSize)
+		n, err := io.ReadFull(r, dataPieces[i])
+		total += uint64(n)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return nil, 0, errors.AddContext(err, "failed to read chunk from source reader")
+		}
+	}
+	return dataPieces, total, nil
+}
+
 // readLogicalData initializes the chunk's logicalChunkData using data read from
 // r, returning the number of bytes read.
 func (uc *unfinishedUploadChunk) readLogicalData(r io.Reader) (uint64, error) {
 	// Allocate data pieces and fill them with data from r.
-	ec := uc.fileEntry.ErasureCode()
-	dataPieces := make([][]byte, ec.MinPieces())
-	var total uint64
-	for i := range dataPieces {
-		dataPieces[i] = make([]byte, uc.fileEntry.PieceSize())
-		n, err := io.ReadFull(r, dataPieces[i])
-		total += uint64(n)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return total, errors.AddContext(err, "failed to read chunk from source reader")
-		}
+	dataPieces, total, err := readDataPieces(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
+	if err != nil {
+		return 0, err
 	}
 	// Encode the data pieces, forming the chunk's logical data.
-	uc.logicalChunkData, _ = ec.EncodeShards(dataPieces)
+	uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
 	return total, nil
 }
 
@@ -392,10 +401,26 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 	// Try to read the data from disk. If that fails, fallback to downloading.
 	err := func() error {
 		osFile, err := os.Open(chunk.fileEntry.LocalPath())
+		if os.IsNotExist(err) {
+			// If the file doesn't exist we set the path to an empty string.
+			// This is an additional protection in case the user creates a
+			// different file at the same path later which would cause a
+			// corruption.
+			err = errors.Compose(err, chunk.fileEntry.SetLocalPath(""))
+		}
 		if err != nil {
 			return err
 		}
 		defer osFile.Close()
+		// If the file on disk doesn't have the right size we don't use it
+		// for repairing. This protects in case the user creates a different
+		// file at the same location.
+		fi, err := osFile.Stat()
+		if err == nil && uint64(fi.Size()) != chunk.fileEntry.Size() {
+			failedRepairErr := fmt.Errorf("failed to repair from disk due to filesize not matching %v != %v",
+				fi.Size(), chunk.fileEntry.Size())
+			return errors.Compose(failedRepairErr, chunk.fileEntry.SetLocalPath(""))
+		}
 		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
 		_, err = chunk.readLogicalData(sr)
 		return err

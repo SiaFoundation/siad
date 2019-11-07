@@ -1400,12 +1400,21 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 		return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
 	}
 
+	var disableDiskFetch bool
+	if ddf := ps.ByName("disablediskfetch"); ddf != "" {
+		disableDiskFetch, err = scanBool(ddf)
+		if err != nil {
+			return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablediskfetch flag")
+		}
+	}
+
 	dp := modules.RenterDownloadParameters{
-		Destination: destination,
-		Async:       async,
-		Length:      length,
-		Offset:      offset,
-		SiaPath:     siaPath,
+		Destination:      destination,
+		DisableDiskFetch: disableDiskFetch,
+		Async:            async,
+		Length:           length,
+		Offset:           offset,
+		SiaPath:          siaPath,
 	}
 	if httpresp {
 		dp.Httpwriter = w

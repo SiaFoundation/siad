@@ -426,7 +426,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 		// Download files to build download history
 		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
-			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false)
+			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false)
 			if err != nil {
 				t.Fatal("Could not Download file:", err)
 			}
@@ -1020,7 +1020,7 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	}()
 	// Download the file asynchronously.
 	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
-	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true)
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
