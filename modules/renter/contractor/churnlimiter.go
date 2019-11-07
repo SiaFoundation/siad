@@ -129,16 +129,12 @@ func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.Blo
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
-	// Do not let churn budget to build up to maxPeriodChurn to avoid using entire
-	// period budget at once (except in special circumstances).
-	maxChurnBudget := int(cl.maxPeriodChurn / 2)
-
 	// Increase churn budget as a multiple of the period budget per block. This
 	// let's the remainingChurnBudget increase more quickly.
 	budgetIncrease := 3 * numBlocksAdded * int(cl.maxPeriodChurn/uint64(period))
 	cl.remainingChurnBudget += budgetIncrease
-	if cl.remainingChurnBudget > maxChurnBudget {
-		cl.remainingChurnBudget = maxChurnBudget
+	if cl.remainingChurnBudget > cl.maxChurnBudget() {
+		cl.remainingChurnBudget = cl.maxChurnBudget()
 	}
 	cl.contractor.log.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
 }
@@ -148,6 +144,13 @@ func (cl *churnLimiter) callSetMaxPeriodChurn(newMax uint64) {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 	cl.maxPeriodChurn = newMax
+}
+
+// maxChurnBudget returns the max allowed value for remainingChurnBudget.
+func (cl *churnLimiter) maxChurnBudget() int {
+	// Do not let churn budget to build up to maxPeriodChurn to avoid using entire
+	// period budget at once (except in special circumstances).
+	return int(cl.maxPeriodChurn / 2)
 }
 
 // managedProcessSuggestedUpdates processes suggested utility updates. It prevents
@@ -215,8 +218,7 @@ func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract)
 	// budget. This allows large contracts to be churned if there is enough budget
 	// remaining for the period, even if the contract is larger than the
 	// maxChurnBudget.
-	maxChurnBudget := int(cl.maxPeriodChurn / 2)
-	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == maxChurnBudget)
+	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == cl.maxChurnBudget())
 	fitsInPeriodBudget := (int(cl.maxPeriodChurn) - int(cl.aggregateCurrentPeriodChurn) - int(size)) >= 0
 
 	// If there has been no churn in this period, allow any size contract to be
