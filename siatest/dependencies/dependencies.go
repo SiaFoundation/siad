@@ -8,11 +8,6 @@ import (
 )
 
 type (
-	// DependencyForceServeDownloadFromDisk enforces that a download will fail
-	// unless served from disk.
-	DependencyForceServeDownloadFromDisk struct {
-		modules.ProductionDependencies
-	}
 	// DependencyLowFundsFormationFail will cause contract formation to fail due to
 	// low funds in the allowance.
 	DependencyLowFundsFormationFail struct {
@@ -150,11 +145,6 @@ func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
 // Disrupt causes contract formation to fail due to low allowance funds.
 func (d *DependencyLowFundsFormationFail) Disrupt(s string) bool {
 	return s == "LowFundsFormation"
-}
-
-// Disrupt causes downloads to fail unless served from disk.
-func (d *DependencyForceServeDownloadFromDisk) Disrupt(s string) bool {
-	return s == "ForceServeDownloadFromDisk"
 }
 
 // Disrupt causes contract renewal to fail due to low allowance funds.

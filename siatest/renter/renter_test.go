@@ -3882,17 +3882,19 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 // testDownloadServedFromDisk tests whether downloads will actually be served
 // from disk.
 func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
-	// Create renter, skip setting the allowance so that we can properly test
-	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
-	renterParams.RenterDeps = &dependencies.DependencyForceServeDownloadFromDisk{}
-	nodes, err := tg.AddNodes(renterParams)
-	if err != nil {
-		t.Fatal(err)
+	// Make sure a renter is available for testing.
+	if len(tg.Renters()) == 0 {
+		renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+		_, err := tg.AddNodes(renterParams)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	r := nodes[0]
-	defer tg.RemoveNode(r)
-	// Upload a file.
-	_, rf, err := r.UploadNewFileBlocking(int(1000), 1, 1, false)
+	r := tg.Renters()[0]
+	// Upload a file. Choose more datapieces than hosts available to prevent the
+	// file from reaching 1x redundancy. That way it will only be downloadable
+	// from disk.
+	_, rf, err := r.UploadNewFile(int(1000), uint64(len(tg.Hosts())+1), 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}

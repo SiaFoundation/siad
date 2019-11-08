@@ -417,6 +417,9 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		// for repairing. This protects in case the user creates a different
 		// file at the same location.
 		fi, err := osFile.Stat()
+		if err != nil {
+			return err
+		}
 		if err == nil && uint64(fi.Size()) != chunk.fileEntry.Size() {
 			failedRepairErr := fmt.Errorf("failed to repair from disk due to filesize not matching %v != %v",
 				fi.Size(), chunk.fileEntry.Size())

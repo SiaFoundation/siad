@@ -3583,6 +3583,11 @@ number of files you are steaming.
 **siapath** | string  
 Path to the file in the renter on the network.
 
+### OPTIONAL
+**disablediskfetch** | boolean  
+If disablediskfetch is true, downloads won't be served from disk even if the
+file is available locally.
+
 ### Response
 
 standard success or error response. See [standard
@@ -3612,10 +3617,6 @@ Location on disk of the file being uploaded.
 ### OPTIONAL
 **datapieces** | int  
 The number of data pieces to use when erasure coding the file.  
-
-**disablediskfetch** | boolean  
-If disablediskfetch is true, downloads won't be served from disk even if the
-file is available locally.
 
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file. Total

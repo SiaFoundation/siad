@@ -177,7 +177,7 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// Open the file.
 	file, err := os.Open(localPath)
 	if err != nil {
-		r.log.Debugln(err)
+		r.log.Debugln(errors.AddContext(err, "managedTryServeChunkFromDisk failed to open file"), localPath)
 		return false
 	}
 	defer file.Close()
@@ -185,8 +185,12 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// for repairing. This protects in case the user creates a different
 	// file at the same location.
 	fi, err := file.Stat()
+	if err != nil {
+		r.log.Debugln(err)
+		return false
+	}
 	if err == nil && uint64(fi.Size()) != chunk.renterFile.Size() {
-		err = fmt.Errorf("failed to repair from disk due to filesize not matching %v != %v",
+		err = fmt.Errorf("failed to serve chunk from disk due to filesize not matching %v != %v",
 			fi.Size(), chunk.renterFile.Size())
 		r.log.Debugln(err)
 		return false
@@ -200,12 +204,12 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	}
 	shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
 	if err != nil {
-		r.log.Debugln(err)
+		r.log.Debugln(errors.AddContext(err, "managedTryServeChunkFromDisk failed to encode shards"))
 		return false
 	}
 	err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
 	if err != nil {
-		r.log.Debugln(err)
+		r.log.Debugln(errors.AddContext(err, "managedTryServeChunkFromDisk failed to WritePieces"))
 		return false
 	}
 	// Return all the memory.
@@ -284,11 +288,6 @@ LOOP:
 				if err != nil {
 					r.log.Debugln("localpath is set but couldn't serve file from disk", err)
 				}
-			}
-			// Disrupt for tests which expect the download to be served from disk.
-			if r.deps.Disrupt("ForceServeDownloadFromDisk") {
-				nextChunk.download.managedFail(errors.New("expected download to be served from disk"))
-				continue
 			}
 			// Distribute the chunk to workers.
 			r.managedDistributeDownloadChunkToWorkers(nextChunk)
