@@ -302,6 +302,8 @@ The watchdog does the following checks on monitored contracts.
   subsystems whenever contracts are formed, renewed, or recovered.
 - `callScanConsensusChange`is used in the `ProcessConsensusChange` method of the
   contractor to let the watchdog scan blocks.
+- `callPersistData` is called whenever the contractor's `persistData` is
+  called.
 
 ## Outbound Complexities
 - `callNotifyDoubleSpend` is a Contract Maintenance call used by the watchdog to
