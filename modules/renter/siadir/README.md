@@ -50,7 +50,7 @@ a new siadir is created.
  - `callDelete` deletes a SiaDir from disk
     - The SiaDirSet `Delete` method uses `callDelete`
  - `LoadSiaDir` loads a SiaDir from disk
-    - The SiaDirSet `open` method uses `LoadSiaDir`
+    - `SiaDirSet.open` uses `LoadSiaDir`
 
 ### File Format Subsystem
  **Key Files**
