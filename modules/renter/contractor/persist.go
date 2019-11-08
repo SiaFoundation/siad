@@ -92,11 +92,12 @@ func (c *Contractor) load() error {
 			data.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
 			data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 		}
-	}
 
-	// COMPATv141 if the MaxPeriodChurn is 0, set it to the default value.
-	if data.Allowance.MaxPeriodChurn == 0 {
-		data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
+		// COMPATv1412 if the allowance is not the empty allowance and
+		// MaxPeriodChurn is 0, set it to the default value.
+		if data.Allowance.MaxPeriodChurn == 0 {
+			data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
+		}
 	}
 
 	c.allowance = data.Allowance
