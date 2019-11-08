@@ -55,7 +55,6 @@ func (cl *churnLimiter) managedPersistData() churnLimiterPersist {
 
 // newChurnLimiterFromPersist creates a new churnLimiter using persisted state.
 func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiterPersist) *churnLimiter {
-	// If given an empty persist, initialize with the default max churn.
 	return &churnLimiter{
 		contractor:                  contractor,
 		aggregateCurrentPeriodChurn: persistData.AggregateCurrentPeriodChurn,
