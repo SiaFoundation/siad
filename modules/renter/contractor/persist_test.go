@@ -22,6 +22,10 @@ func (m memPersist) load(data *contractorPersist) error { *data = contractorPers
 
 // TestSaveLoad tests that the contractor can save and load itself.
 func TestSaveLoad(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
 	// create contractor with mocked persist dependency
 	c := &Contractor{
 		persist: new(memPersist),
@@ -176,6 +180,7 @@ func TestSaveLoad(t *testing.T) {
 	c.allowance.ExpectedUpload = uint64(fastrand.Intn(100))
 	c.allowance.ExpectedDownload = uint64(fastrand.Intn(100))
 	c.allowance.ExpectedRedundancy = float64(fastrand.Intn(100))
+	c.allowance.MaxPeriodChurn = 1357
 	a := c.allowance
 	// Save
 	err = c.save()
@@ -205,6 +210,10 @@ func TestSaveLoad(t *testing.T) {
 	if c.allowance.ExpectedRedundancy != a.ExpectedRedundancy {
 		t.Errorf("ExpectedRedundancy was %v but should be %v",
 			c.allowance.ExpectedRedundancy, a.ExpectedRedundancy)
+	}
+	if c.allowance.MaxPeriodChurn != a.MaxPeriodChurn {
+		t.Errorf("MaxPeriodChurn was %v but should be %v",
+			c.allowance.MaxPeriodChurn, a.MaxPeriodChurn)
 	}
 
 	// Check the watchdog settings.
@@ -260,7 +269,7 @@ func TestSaveLoad(t *testing.T) {
 	if aggregateChurn != 123456 {
 		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
 	}
-	if maxChurn != 1357 {
+	if maxChurn != a.MaxPeriodChurn {
 		t.Fatal("Expected 1357 max churn", maxChurn)
 	}
 	remainingChurnBudget, periodBudget := c.staticChurnLimiter.managedChurnBudget()
