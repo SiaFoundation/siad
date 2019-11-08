@@ -1516,6 +1516,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
+	miner := tg.Miners()[0]
 
 	maxPeriodChurn := uint64(modules.SectorSize)
 	newRenterDir := filepath.Join(testDir, "renter")
@@ -1537,15 +1538,6 @@ func TestContractorChurnLimiter(t *testing.T) {
 	_, _, err = r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-
-	// Mine to the beginning of the next period.
-	miner := tg.Miners()[0]
-	cg, err := miner.ConsensusGet()
-	for i := cg.Height; i <= siatest.DefaultAllowance.Period; i++ {
-		if err := miner.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
 	}
 
 	// Get the size of each contract.
@@ -1632,18 +1624,26 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Mine to the beginning of the next period, to reset churn for the period and
+	// to build up remainingChurnBudget.
+	for i := 0; i <= int(siatest.DefaultAllowance.Period); i++ {
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// Turn on the renter dependency to simulate more churn. This forces the
 	// minimum allowed score to be very high and causes all hosts to be queue to
 	// the churnLimiter.
 	minScoreDep.ForceHighMinHostScore(true)
 
 	// Check that 1 of the hosts was churned, but that the churn limiter prevented
-	// the second bad scoring host from getting churned.
+	// the other bad scoring hosts from getting churned, because the period limit
+	// was reached.
 	err = build.Retry(50, 500*time.Millisecond, func() error {
-		if i%5 == 0 {
-			if err := miner.MineBlock(); err != nil {
-				t.Fatal(err)
-			}
+		// Mine blocks to increase remainingChurnBudget.
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
 		}
 		i++
 
