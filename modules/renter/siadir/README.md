@@ -1,6 +1,6 @@
 # SiaDir
 The SiaDir module is responsible for creating and maintaining the directory
-metadata information store in the `.siadir` files on disk. This includes all
+metadata information stored in the `.siadir` files on disk. This includes all
 disk interaction and metadata definition. These siadirs represent directories on
 the Sia network.
 
