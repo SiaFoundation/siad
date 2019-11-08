@@ -74,7 +74,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	extendDeadline(s.conn, modules.NegotiateSettingsTime+timeoutDur)
 	var resp modules.LoopLockResponse
 	if err := s.call(modules.RPCLoopLock, req, &resp, modules.RPCMinLen); err != nil {
-		return types.FileContractRevision{}, nil, err
+		return types.FileContractRevision{}, nil, errors.AddContext(err, "lock request on host session has failed")
 	}
 	// Unconditionally update the challenge.
 	s.challenge = resp.NewChallenge
@@ -97,7 +97,7 @@ func (s *Session) Lock(id types.FileContractID, secretKey crypto.SecretKey) (typ
 	}
 	// Verify the claimed signatures.
 	if err := modules.VerifyFileContractRevisionTransactionSignatures(resp.Revision, resp.Signatures, s.height); err != nil {
-		return resp.Revision, resp.Signatures, err
+		return resp.Revision, resp.Signatures, errors.AddContext(err, "unable to verify signatures on contract revision")
 	}
 	return resp.Revision, resp.Signatures, nil
 }
@@ -801,21 +801,21 @@ func (s *Session) Close() error {
 func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
-		return nil, errors.New("invalid contract")
+		return nil, errors.New("could not locate contract to create session")
 	}
 	defer cs.Return(sc)
 	s, err := cs.managedNewSession(host, currentHeight, hdb, cancel)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create a new session with the host")
 	}
 	// Lock the contract and resynchronize if necessary
 	rev, sigs, err := s.Lock(id, sc.header.SecretKey)
 	if err != nil {
 		s.Close()
-		return nil, err
+		return nil, errors.AddContext(err, "unable to get a session lock")
 	} else if err := sc.managedSyncRevision(rev, sigs); err != nil {
 		s.Close()
-		return nil, err
+		return nil, errors.AddContext(err, "unable to sync revisions when creating session")
 	}
 	return s, nil
 }
@@ -842,7 +842,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		Timeout: 45 * time.Second, // TODO: Constant
 	}).Dial("tcp", string(host.NetAddress))
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unsucessful dial when creating a new session")
 	}
 	conn := ratelimit.NewRLConn(c, cs.rl, cancel)
 

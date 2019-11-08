@@ -32,9 +32,9 @@ const (
 	// AlertIDWalletLockedDuringMaintenance is the id of the alert that is
 	// registered if the wallet is locked during a contract renewal or formation.
 	AlertIDWalletLockedDuringMaintenance = "wallet-locked"
-	// AlertIDAllowanceLowFunds is the id of the alert that is registered if at least one
+	// AlertIDRenterAllowanceLowFunds is the id of the alert that is registered if at least one
 	// contract failed to renew/form due to low allowance.
-	AlertIDAllowanceLowFunds = "low-funds"
+	AlertIDRenterAllowanceLowFunds = "low-funds"
 	// AlertIDGatewayOffline is the id of the alert that is registered upon a
 	// call to 'gateway.Offline' if the value returned is 'false' and
 	// unregistered when it returns 'true'.

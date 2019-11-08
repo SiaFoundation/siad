@@ -118,7 +118,11 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			defer fastrand.Read(rs[:])
 			// Validate the identifier.
-			hostKey, valid := csi.IsValid(rs, txn, encryptedHostKey)
+			hostKey, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
+			if err != nil {
+				c.log.Println("WARN: error validating the identifier:", err)
+				continue
+			}
 			if !valid {
 				continue
 			}
@@ -218,11 +222,24 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		return errors.New("can't recover contract with a host that we already have a contract with")
 	}
 	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	return nil
+
+	// Tell the watchdog to watch this transaction for revisions and storage
+	// proofs.
+	monitorContractArgs := monitorContractArgs{
+		recovered:   true,
+		fcID:        contract.ID,
+		revisionTxn: contract.Transaction,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err == errAlreadyWatchingContract {
+		c.log.Debugln("Watchdog already aware of recovered contract")
+		err = nil
+	}
+	return err
 }
 
-// managedRecoverContracts recovers known recoverable contracts.
-func (c *Contractor) managedRecoverContracts() {
+// callRecoverContracts recovers known recoverable contracts.
+func (c *Contractor) callRecoverContracts() {
 	if c.staticDeps.Disrupt("DisableContractRecovery") {
 		return
 	}

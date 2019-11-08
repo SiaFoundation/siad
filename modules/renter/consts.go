@@ -63,9 +63,9 @@ var (
 	// not perfect due to GC overhead and other places where we don't count all
 	// of the memory usage accurately.
 	defaultMemory = build.Select(build.Var{
-		Dev:      uint64(1 << 28),     // 256 MiB
-		Standard: uint64(3 * 1 << 28), // 768 MiB
-		Testing:  uint64(1 << 17),     // 128 KiB - 4 KiB sector size, need to test memory exhaustion
+		Dev:      uint64(1 << 28), // 256 MiB
+		Standard: uint64(1 << 30), // 1 GiB
+		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
@@ -126,9 +126,21 @@ const (
 
 // Constants that tune the health and repair processes.
 const (
-	// maxStuckChunksInHeap is the maximum number of stuck chunks that the
-	// repair code will add to the heap at a time
-	maxStuckChunksInHeap = 5
+	// maxRandomStuckChunksAddToHeap is the maximum number of random stuck
+	// chunks that the stuck loop will add to the uploadHeap at a time. Random
+	// stuck chunks are the stuck chunks chosen at random from the file system
+	// as opposed to stuck chunks chosen from a previously successful file
+	maxRandomStuckChunksAddToHeap = 5
+
+	// maxRandomStuckChunksInHeap is the maximum number of random stuck chunks
+	// that the stuck loop will try to keep in the uploadHeap. Random stuck
+	// chunks are the stuck chunks chosen at random from the file system as
+	// opposed to stuck chunks chosen from previously successful file
+	maxRandomStuckChunksInHeap = 10
+
+	// maxStuckChunksInHeap is the maximum number of stuck chunks that the stuck
+	// loop will try to keep in the uploadHeap
+	maxStuckChunksInHeap = 25
 )
 
 var (

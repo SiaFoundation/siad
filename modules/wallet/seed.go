@@ -88,7 +88,7 @@ func decryptSeedFile(masterKey crypto.CipherKey, sf seedFile) (seed modules.Seed
 	// Decrypt and return the seed.
 	plainSeed, err := decryptionKey.DecryptBytes(sf.Seed)
 	if err != nil {
-		return modules.Seed{}, err
+		return modules.Seed{}, errors.AddContext(err, "failed to decrypt seed")
 	}
 	copy(seed[:], plainSeed)
 	return seed, nil
@@ -154,6 +154,11 @@ func (w *Wallet) nextPrimarySeedAddress(tx *bolt.Tx) (types.UnlockConditions, er
 
 // AllSeeds returns a list of all seeds known to and used by the wallet.
 func (w *Wallet) AllSeeds() ([]modules.Seed, error) {
+	if err := w.tg.Add(); err != nil {
+		return nil, modules.ErrWalletShutdown
+	}
+	defer w.tg.Done()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.unlocked {
@@ -165,6 +170,11 @@ func (w *Wallet) AllSeeds() ([]modules.Seed, error) {
 // PrimarySeed returns the decrypted primary seed of the wallet, as well as
 // the number of addresses that the seed can be safely used to generate.
 func (w *Wallet) PrimarySeed() (modules.Seed, uint64, error) {
+	if err := w.tg.Add(); err != nil {
+		return modules.Seed{}, 0, modules.ErrWalletShutdown
+	}
+	defer w.tg.Done()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.unlocked {
@@ -193,7 +203,7 @@ func (w *Wallet) PrimarySeed() (modules.Seed, uint64, error) {
 // keep up and multiple wallets with the same seed might desync.
 func (w *Wallet) NextAddresses(n uint64) ([]types.UnlockConditions, error) {
 	if err := w.tg.Add(); err != nil {
-		return []types.UnlockConditions{}, err
+		return nil, modules.ErrWalletShutdown
 	}
 	defer w.tg.Done()
 
@@ -204,7 +214,7 @@ func (w *Wallet) NextAddresses(n uint64) ([]types.UnlockConditions, error) {
 	err = errors.Compose(err, w.syncDB())
 	w.mu.Unlock()
 	if err != nil {
-		return []types.UnlockConditions{}, err
+		return nil, err
 	}
 
 	return ucs, err
@@ -213,6 +223,11 @@ func (w *Wallet) NextAddresses(n uint64) ([]types.UnlockConditions, error) {
 // NextAddress returns an unlock hash that is ready to receive siacoins or
 // siafunds. The address is generated using the primary address seed.
 func (w *Wallet) NextAddress() (types.UnlockConditions, error) {
+	if err := w.tg.Add(); err != nil {
+		return types.UnlockConditions{}, modules.ErrWalletShutdown
+	}
+	defer w.tg.Done()
+
 	ucs, err := w.NextAddresses(1)
 	if err != nil {
 		return types.UnlockConditions{}, err
@@ -226,7 +241,7 @@ func (w *Wallet) NextAddress() (types.UnlockConditions, error) {
 // the wallet.
 func (w *Wallet) LoadSeed(masterKey crypto.CipherKey, seed modules.Seed) error {
 	if err := w.tg.Add(); err != nil {
-		return err
+		return modules.ErrWalletShutdown
 	}
 	defer w.tg.Done()
 
@@ -336,7 +351,7 @@ func (w *Wallet) LoadSeed(masterKey crypto.CipherKey, seed modules.Seed) error {
 // If only siafunds were found, the fee is deducted from the wallet.
 func (w *Wallet) SweepSeed(seed modules.Seed) (coins, funds types.Currency, err error) {
 	if err = w.tg.Add(); err != nil {
-		return
+		return types.Currency{}, types.Currency{}, modules.ErrWalletShutdown
 	}
 	defer w.tg.Done()
 

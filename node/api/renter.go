@@ -86,6 +86,7 @@ type (
 		Settings         modules.RenterSettings     `json:"settings"`
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
+		NextPeriod       types.BlockHeight          `json:"Nextperiod"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -517,10 +518,13 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 		WriteError(w, Error{"unable to get Period Spending: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	currentPeriod := api.renter.CurrentPeriod()
+	nextPeriod := currentPeriod + settings.Allowance.Period
 	WriteJSON(w, RenterGET{
 		Settings:         settings,
 		FinancialMetrics: spending,
-		CurrentPeriod:    api.renter.CurrentPeriod(),
+		CurrentPeriod:    currentPeriod,
+		NextPeriod:       nextPeriod,
 	})
 }
 
@@ -1654,4 +1658,22 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	// Report that no calls were made
 	WriteError(w, Error{"no calls were made, please check your submission and try again"}, http.StatusInternalServerError)
 	return
+}
+
+// renterContractStatusHandler  handles the API call to check the status of a
+// contract monitored by the renter.
+func (api *API) renterContractStatusHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	var fcID types.FileContractID
+	if err := fcID.LoadString(req.FormValue("id")); err != nil {
+		WriteError(w, Error{"unable to parse id:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	contractStatus, monitoringContract := api.renter.ContractStatus(fcID)
+	if !monitoringContract {
+		WriteError(w, Error{"renter unaware of contract"}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, contractStatus)
 }

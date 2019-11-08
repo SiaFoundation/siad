@@ -51,6 +51,8 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/gateway", api.gatewayHandlerPOST)
 		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
 		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
+		router.GET("/gateway/blacklist", api.gatewayBlacklistHandlerGET)
+		router.POST("/gateway/blacklist", RequirePassword(api.gatewayBlacklistHandlerPOST, requiredPassword))
 	}
 
 	// Host API Calls
@@ -129,6 +131,9 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/hostdb/hosts/:pubkey", api.hostdbHostsHandler)
 		router.GET("/hostdb/filtermode", api.hostdbFilterModeHandlerGET)
 		router.POST("/hostdb/filtermode", RequirePassword(api.hostdbFilterModeHandlerPOST, requiredPassword))
+
+		// Renter watchdog endpoints.
+		router.GET("/renter/contractstatus", api.renterContractStatusHandler)
 
 		// Deprecated endpoints.
 		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))

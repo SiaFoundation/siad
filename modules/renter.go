@@ -225,8 +225,28 @@ type Allowance struct {
 type ContractUtility struct {
 	GoodForUpload bool
 	GoodForRenew  bool
-	LastOOSErr    types.BlockHeight // OOS means Out Of Storage
-	Locked        bool              // Locked utilities can only be set to false.
+
+	// BadContract will be set to true if there's good reason to believe that
+	// the contract is unusuable and will continue to be unusuable. For example,
+	// if the host is claiming that the contract does not exist, the contract
+	// should be marked as bad.
+	BadContract bool
+	LastOOSErr  types.BlockHeight // OOS means Out Of Storage
+
+	// If a contract is locked, the utility should not be updated. 'Locked' is a
+	// value that gets persisted.
+	Locked bool
+}
+
+// ContractWatchStatus provides information about the status of a contract in
+// the renter's watchdog. If the contract has been double-spent, the fields
+// other than DoubleSpendHeight are not up-to-date.
+type ContractWatchStatus struct {
+	FormationSweepHeight      types.BlockHeight `json:"formationsweepheight"`
+	ContractFound             bool              `json:"contractfound"`
+	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
+	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
+	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
 }
 
 // DirectoryInfo provides information about a siadir
@@ -577,6 +597,10 @@ type Renter interface {
 
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
+
+	// ContractStatus returns the status of the contract with the given ID in the
+	// watchdog, and a bool indicating whether or not the watchdog is aware of it.
+	ContractStatus(fcID types.FileContractID) (ContractWatchStatus, bool)
 
 	// CreateBackup creates a backup of the renter's siafiles. If a secret is not
 	// nil, the backup will be encrypted using the provided secret.

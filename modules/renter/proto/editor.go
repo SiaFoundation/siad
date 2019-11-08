@@ -181,7 +181,7 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Editor, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
-		return nil, errors.New("invalid contract")
+		return nil, errors.New("new editor unable to find contract in contract set")
 	}
 	defer cs.Return(sc)
 	contract := sc.header
@@ -256,7 +256,7 @@ func initiateRevisionLoop(host modules.HostDBEntry, contract *SafeContract, rpc 
 	if err := verifyRecentRevision(conn, contract, host.Version); err != nil {
 		conn.Close() // TODO: close gracefully if host has entered revision loop
 		close(closeChan)
-		return nil, closeChan, err
+		return nil, closeChan, errors.AddContext(err, "verifyRecentRevision failed")
 	}
 	return conn, closeChan, nil
 }

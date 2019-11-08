@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 )
 
@@ -83,7 +84,7 @@ func TestNodeBlacklistConnections(t *testing.T) {
 	}
 
 	// Have the host Blacklist the renter, confirm they are no longer peers
-	err = host.GatewayDisconnectPost(renter.GatewayAddress())
+	err = host.GatewaySetBlacklistPost([]modules.NetAddress{renter.GatewayAddress()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +138,17 @@ func TestNodeBlacklistConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = connectNodes(renterTwo, miner)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reset the Host blacklist, now renterTwo should be able to connect to the
+	// host
+	err = host.GatewaySetBlacklistPost([]modules.NetAddress{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = connectNodes(renterTwo, host)
 	if err != nil {
 		t.Fatal(err)
 	}

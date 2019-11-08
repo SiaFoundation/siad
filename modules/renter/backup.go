@@ -10,13 +10,13 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -103,8 +103,20 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 		gzwErr := gzw.Close()
 		return errors.Compose(err, twErr, gzwErr)
 	}
-	// Close writers to flush them before computing the hash.
+	// Close tar writer to flush it before writing the allowance.
 	twErr := tw.Close()
+	// Write the allowance.
+	allowanceBytes, err := json.Marshal(r.hostContractor.Allowance())
+	if err != nil {
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
+	_, err = gzw.Write(allowanceBytes)
+	if err != nil {
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
+	// Close the gzip writer to flush it.
 	gzwErr := gzw.Close()
 	// Write the hash to the beginning of the file.
 	_, err = f.WriteAt(h.Sum(nil), 0)
@@ -147,30 +159,25 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err := dec.Decode(&bh); err != nil {
 		return err
 	}
-	// Seek back by the amount of data left in the decoder's buffer. That gives
-	// us the offset of the body.
-	var off int64
-	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
-		off, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-	} else {
-		build.Critical("Buffered should return a bytes.Reader")
-	}
 	// Check the version number.
 	if bh.Version != encryptionVersion {
 		return errors.New("unknown version")
 	}
-	// Wrap the file in the correct streamcipher.
-	archive, err = wrapReaderInCipher(f, bh, secret)
+	// Wrap the file in the correct streamcipher. Consider the data remaining in
+	// the decoder's buffer by using a multireader.
+	archive = io.MultiReader(dec.Buffered(), archive)
+	_, err = archive.Read(make([]byte, 1)) // Ignore first byte of buffer to get to the body of the backup
+	if err != nil {
+		return err
+	}
+	archive, err = wrapReaderInCipher(io.MultiReader(archive, f), bh, secret)
 	if err != nil {
 		return err
 	}
 	// Pipe the remaining file into the hasher to verify that the hash is
 	// correct.
 	h := crypto.NewHash()
-	_, err = io.Copy(h, archive)
+	n, err := io.Copy(h, archive)
 	if err != nil {
 		return err
 	}
@@ -179,7 +186,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 		return errors.New("checksum doesn't match")
 	}
 	// Seek back to the beginning of the body.
-	if _, err := f.Seek(off, io.SeekStart); err != nil {
+	if _, err := f.Seek(-n, io.SeekCurrent); err != nil {
 		return err
 	}
 	// Wrap the file again.
@@ -196,7 +203,26 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	// Wrap the gzip reader in a tar reader.
 	tr := tar.NewReader(gzr)
 	// Untar the files.
-	return r.managedUntarDir(tr)
+	if err := r.managedUntarDir(tr); err != nil {
+		return errors.AddContext(err, "failed to untar dir")
+	}
+	// Unmarshal the allowance if available. This needs to happen after adding
+	// decryption and confirming the hash but before adding decompression.
+	dec = json.NewDecoder(gzr)
+	var allowance modules.Allowance
+	if err := dec.Decode(&allowance); err != nil {
+		// legacy backup without allowance
+		r.log.Println("WARN: Decoding the backup's allowance failed: ", err)
+	}
+	// If the backup contained a valid allowance and we currently don't have an
+	// allowance set, import it.
+	if !reflect.DeepEqual(allowance, modules.Allowance{}) &&
+		reflect.DeepEqual(r.hostContractor.Allowance(), modules.Allowance{}) {
+		if err := r.hostContractor.SetAllowance(allowance); err != nil {
+			return errors.AddContext(err, "unable to set allowance from backup")
+		}
+	}
+	return nil
 }
 
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
@@ -270,7 +296,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 				return err
 			}
 			defer entry.Close()
-			// Get a reader to read from the siafile.
+			// Get a reader to read from the siadir.
 			dr, err := entry.DirReader()
 			if err != nil {
 				return err
