@@ -1584,10 +1584,10 @@ func TestContractorChurnLimiter(t *testing.T) {
 			return errors.AddContext(apiErr, "ContractorChurnStatus err")
 		}
 		if churnStatus.AggregateCurrentPeriodChurn != 0 {
-			return errors.New("Expected no churn for this period")
+			return fmt.Errorf("Expected no churn for this period but got %v", churnStatus.AggregateCurrentPeriodChurn)
 		}
 		if churnStatus.MaxPeriodChurn != maxPeriodChurn {
-			return errors.New("Expected max churn change to show")
+			return fmt.Errorf("Expected max churn change to show: %v %v", churnStatus.MaxPeriodChurn, maxPeriodChurn)
 		}
 		return nil
 	})
@@ -1647,7 +1647,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 			return errors.AddContext(apiErr, "ContractorChurnStatus err")
 		}
 		if churnStatus.AggregateCurrentPeriodChurn != maxPeriodChurn {
-			return errors.New("Expected max churn for this period")
+			return fmt.Errorf("Expected max churn for this period: %v %v", churnStatus.AggregateCurrentPeriodChurn, maxPeriodChurn)
 		}
 		return nil
 	})
