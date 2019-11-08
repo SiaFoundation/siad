@@ -1517,7 +1517,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal("Failed to create group:", err)
 	}
 
-	maxPeriodChurn := uint64(modules.SectorSize * 2)
+	maxPeriodChurn := uint64(modules.SectorSize)
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
 	minScoreDep := &dependencies.DependencyHighMinHostScore{}
