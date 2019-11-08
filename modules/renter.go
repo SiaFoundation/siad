@@ -223,6 +223,9 @@ type Allowance struct {
 	// MaxPeriodChurn is maximum amount of contract churn allowed in a single
 	// period.
 	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
+
+	// NOTE: If you are changing the allowance struct, you must change or
+	// add compatibility code for the contractor's persistence.
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the

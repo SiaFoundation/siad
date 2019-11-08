@@ -79,9 +79,10 @@ func (c *Contractor) load() error {
 		return err
 	}
 
-	// COMPATv136 if the allowance is not the empty allowance and "Expected"
-	// fields are not set, set them to the default values.
+	// Compatibility code for allowance definition changes.
 	if !reflect.DeepEqual(data.Allowance, modules.Allowance{}) {
+		// COMPATv136 if the allowance is not the empty allowance and "Expected"
+		// fields are not set, set them to the default values.
 		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUpload == 0 &&
 			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 &&
 			data.Allowance.MaxPeriodChurn == 0 {
