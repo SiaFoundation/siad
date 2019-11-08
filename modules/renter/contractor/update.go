@@ -115,10 +115,6 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		c.recentRecoveryChange = cc.ID
 	}
 
-	// Add to churnLimiter budget.
-	numBlocksAdded := len(cc.AppliedBlocks) - len(cc.RevertedBlocks)
-	c.staticChurnLimiter.callBumpChurnBudget(numBlocksAdded, c.allowance.Period)
-
 	// If we have entered the next period, update currentPeriod
 	if c.blockHeight >= c.currentPeriod+c.allowance.Period {
 		c.currentPeriod += c.allowance.Period
@@ -158,6 +154,10 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		c.log.Println("Unable to save while processing a consensus change:", err)
 	}
 	c.mu.Unlock()
+
+	// Add to churnLimiter budget.
+	numBlocksAdded := len(cc.AppliedBlocks) - len(cc.RevertedBlocks)
+	c.staticChurnLimiter.callBumpChurnBudget(numBlocksAdded, c.allowance.Period)
 
 	// Perform contract maintenance if our blockchain is synced. Use a separate
 	// goroutine so that the rest of the contractor is not blocked during
