@@ -48,7 +48,7 @@ a new siadir is created.
  - `callLoadSiaDirMetadata` is used to load the directory metadata from disk
     - `SiaDirSet.readLockMetadata` will use this method to load the metadata from disk
  - `callDelete` deletes a SiaDir from disk
-    - The SiaDirSet `Delete` method uses `callDelete`
+    - `SiaDirSet.Delete` uses `callDelete`
  - `LoadSiaDir` loads a SiaDir from disk
     - `SiaDirSet.open` uses `LoadSiaDir`
 
