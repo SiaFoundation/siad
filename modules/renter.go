@@ -26,7 +26,7 @@ var (
 		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
 		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
-		MaxPeriodChurn:     uint64(200e9),                                // 200 GB
+		MaxPeriodChurn:     uint64(250e9),                                // 250 GB
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")

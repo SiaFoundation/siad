@@ -30,10 +30,6 @@ type churnLimiter struct {
 	// churned in the current period.
 	aggregateCurrentPeriodChurn uint64
 
-	// maxPeriodChurn is the maximum amount of churn allowed in a single
-	// period.
-	maxPeriodChurn uint64
-
 	mu         sync.Mutex
 	contractor *Contractor
 }
@@ -42,36 +38,34 @@ type churnLimiter struct {
 type churnLimiterPersist struct {
 	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
 	RemainingChurnBudget        int    `json:"remainingchurnbudget"`
-	MaxPeriodChurn              uint64 `json:"maxperiodchurn"`
 }
 
-// persistData returns the churnLimiterPersist corresponding to this
+// managedMaxPeriodChurn returns the MaxPeriodChurn of the churnLimiter.
+func (cl *churnLimiter) managedMaxPeriodChurn() uint64 {
+	return cl.contractor.Allowance().MaxPeriodChurn
+}
+
+// managedPersistData returns the churnLimiterPersist corresponding to this
 // churnLimiter's state
-func (cl *churnLimiter) persistData() churnLimiterPersist {
+func (cl *churnLimiter) managedPersistData() churnLimiterPersist {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
-	return churnLimiterPersist{cl.aggregateCurrentPeriodChurn, cl.remainingChurnBudget, cl.maxPeriodChurn}
+	return churnLimiterPersist{cl.aggregateCurrentPeriodChurn, cl.remainingChurnBudget}
 }
 
 // newChurnLimiterFromPersist creates a new churnLimiter using persisted state.
 func newChurnLimiterFromPersist(contractor *Contractor, persistData churnLimiterPersist) *churnLimiter {
-	// If given an empty persist, initialize with the deafult max churn.
-	maxChurn := persistData.MaxPeriodChurn
-	if maxChurn == 0 {
-		maxChurn = modules.DefaultAllowance.MaxPeriodChurn
-	}
-
+	// If given an empty persist, initialize with the default max churn.
 	return &churnLimiter{
 		contractor:                  contractor,
 		aggregateCurrentPeriodChurn: persistData.AggregateCurrentPeriodChurn,
 		remainingChurnBudget:        persistData.RemainingChurnBudget,
-		maxPeriodChurn:              maxChurn,
 	}
 }
 
 // newChurnLimiter returns a new churnLimiter.
 func newChurnLimiter(contractor *Contractor) *churnLimiter {
-	return &churnLimiter{contractor: contractor, maxPeriodChurn: modules.DefaultAllowance.MaxPeriodChurn}
+	return &churnLimiter{contractor: contractor}
 }
 
 // ChurnStatus returns the current period's aggregate churn and the max churn
@@ -100,13 +94,14 @@ func (cl *churnLimiter) callNotifyChurnedContract(contract modules.RenterContrac
 	if size == 0 {
 		return
 	}
+	maxPeriodChurn := cl.managedMaxPeriodChurn()
 
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
 	cl.aggregateCurrentPeriodChurn += size
 	cl.remainingChurnBudget -= int(size)
-	cl.contractor.log.Debugf("Increasing aggregate churn by %d to %d (MaxPeriodChurn: %d)", size, cl.aggregateCurrentPeriodChurn, cl.maxPeriodChurn)
+	cl.contractor.log.Debugf("Increasing aggregate churn by %d to %d (MaxPeriodChurn: %d)", size, cl.aggregateCurrentPeriodChurn, maxPeriodChurn)
 	cl.contractor.log.Debugf("Remaining churn budget: %d", cl.remainingChurnBudget)
 }
 
@@ -118,31 +113,26 @@ func (cl *churnLimiter) callBumpChurnBudget(numBlocksAdded int, period types.Blo
 	if period == types.BlockHeight(0) {
 		return
 	}
+	maxPeriodChurn := cl.managedMaxPeriodChurn()
+	maxChurnBudget := cl.managedMaxChurnBudget()
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
 	// Increase churn budget as a multiple of the period budget per block. This
 	// let's the remainingChurnBudget increase more quickly.
-	budgetIncrease := numBlocksAdded * int(cl.maxPeriodChurn/uint64(period))
+	budgetIncrease := numBlocksAdded * int(maxPeriodChurn/uint64(period))
 	cl.remainingChurnBudget += budgetIncrease
-	if cl.remainingChurnBudget > cl.maxChurnBudget() {
-		cl.remainingChurnBudget = cl.maxChurnBudget()
+	if cl.remainingChurnBudget > maxChurnBudget {
+		cl.remainingChurnBudget = maxChurnBudget
 	}
 	cl.contractor.log.Debugf("Updated churn budget: %d", cl.remainingChurnBudget)
 }
 
-// callSetMaxPeriodChurn sets the max churn per period.
-func (cl *churnLimiter) callSetMaxPeriodChurn(newMax uint64) {
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
-	cl.maxPeriodChurn = newMax
-}
-
-// maxChurnBudget returns the max allowed value for remainingChurnBudget.
-func (cl *churnLimiter) maxChurnBudget() int {
+// managedMaxChurnBudget returns the max allowed value for remainingChurnBudget.
+func (cl *churnLimiter) managedMaxChurnBudget() int {
 	// Do not let churn budget to build up to maxPeriodChurn to avoid using entire
 	// period budget at once (except in special circumstances).
-	return int(cl.maxPeriodChurn / 2)
+	return int(cl.managedMaxPeriodChurn() / 2)
 }
 
 // managedProcessSuggestedUpdates processes suggested utility updates. It prevents
@@ -186,23 +176,27 @@ func (cl *churnLimiter) managedProcessSuggestedUpdates(queue []contractScoreAndU
 // managedChurnBudget returns the current remaining churn budget, and the remaining
 // budget for the period.
 func (cl *churnLimiter) managedChurnBudget() (int, int) {
+	maxPeriodChurn := cl.managedMaxPeriodChurn()
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
-	return cl.remainingChurnBudget, int(cl.maxPeriodChurn) - int(cl.aggregateCurrentPeriodChurn)
+	return cl.remainingChurnBudget, int(maxPeriodChurn) - int(cl.aggregateCurrentPeriodChurn)
 }
 
 // managedAggregateAndMaxChurn returns the aggregate churn for the current period,
 // and the maximum churn allowed per period.
 func (cl *churnLimiter) managedAggregateAndMaxChurn() (uint64, uint64) {
+	maxPeriodChurn := cl.managedMaxPeriodChurn()
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
-	return cl.aggregateCurrentPeriodChurn, cl.maxPeriodChurn
+	return cl.aggregateCurrentPeriodChurn, maxPeriodChurn
 }
 
 // managedCanChurnContract returns true if and only if the churnLimiter can
 // churn the contract right now, given its current budget.
 func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract) bool {
 	size := contract.Transaction.FileContractRevisions[0].NewFileSize
+	maxPeriodChurn := cl.managedMaxPeriodChurn()
+	maxChurnBudget := cl.managedMaxChurnBudget()
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 
@@ -210,8 +204,8 @@ func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract)
 	// budget. This allows large contracts to be churned if there is enough budget
 	// remaining for the period, even if the contract is larger than the
 	// maxChurnBudget.
-	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == cl.maxChurnBudget())
-	fitsInPeriodBudget := (int(cl.maxPeriodChurn) - int(cl.aggregateCurrentPeriodChurn) - int(size)) >= 0
+	fitsInCurrentBudget := (cl.remainingChurnBudget-int(size) >= 0) || (cl.remainingChurnBudget == maxChurnBudget)
+	fitsInPeriodBudget := (int(maxPeriodChurn) - int(cl.aggregateCurrentPeriodChurn) - int(size)) >= 0
 
 	// If there has been no churn in this period, allow any size contract to be
 	// churned.

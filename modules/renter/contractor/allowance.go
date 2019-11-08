@@ -133,9 +133,6 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	// Inform the watchdog about the allowance change.
 	c.staticWatchdog.callAllowanceUpdated(a)
 
-	// Update the churnLimiter with the MaxPeriodChurn of the allowance.
-	c.staticChurnLimiter.callSetMaxPeriodChurn(a.MaxPeriodChurn)
-
 	// We changed the allowance successfully. Update the hostdb.
 	err = c.hdb.SetAllowance(a)
 	if err != nil {

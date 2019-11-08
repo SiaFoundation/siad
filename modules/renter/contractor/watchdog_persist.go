@@ -48,8 +48,8 @@ func (d *fileContractStatus) persistData() fileContractStatusPersist {
 	}
 }
 
-// persistData returns the data in the watchdog that will be saved to disk.
-func (w *watchdog) persistData() watchdogPersist {
+// managedPersistData returns the data in the watchdog that will be saved to disk.
+func (w *watchdog) managedPersistData() watchdogPersist {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

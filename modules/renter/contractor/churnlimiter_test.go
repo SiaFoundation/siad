@@ -17,9 +17,12 @@ func contractWithSize(size uint64) modules.RenterContract {
 
 // TestCanChurnContract tests the functionality of managedCanChurnContract
 func TestCanChurnContract(t *testing.T) {
-	// This method doesn't use the contractor so this is safe.
-	cl := newChurnLimiter(nil)
-	cl.maxPeriodChurn = 1000
+	// Use a dummy Contractor.
+	allowance := modules.DefaultAllowance
+	allowance.MaxPeriodChurn = 1000
+	cl := newChurnLimiter(&Contractor{
+		allowance: allowance,
+	})
 
 	// Test: Not enough remainingChurnBudget
 	cl.remainingChurnBudget = 499
