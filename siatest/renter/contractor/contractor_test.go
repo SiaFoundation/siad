@@ -1530,21 +1530,6 @@ func TestContractorChurnLimiter(t *testing.T) {
 	}
 	r := nodes[0]
 
-	err = build.Retry(50, 250*time.Millisecond, func() error {
-		// The renter should have one contract with each host.
-		rc, err := r.RenterContractsGet()
-		if err != nil {
-			return errors.New("RenterContractsGet err")
-		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return errors.New("Insufficient active contracts")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Upload a file to the renter.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
@@ -1589,6 +1574,16 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if churnStatus.MaxPeriodChurn != maxPeriodChurn {
 			return fmt.Errorf("Expected max churn change to show: %v %v", churnStatus.MaxPeriodChurn, maxPeriodChurn)
 		}
+		rc, err = r.RenterDisabledContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active contracts but got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		}
+		if len(rc.DisabledContracts) != 0 {
+			return fmt.Errorf("expected %v disabled contracts but got %v", 0, len(rc.DisabledContracts))
+		}
 		return nil
 	})
 	if err != nil {
@@ -1621,6 +1616,16 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if churnStatus.AggregateCurrentPeriodChurn != expectedChurn {
 			return errors.New("Expected more churn for this period")
 		}
+		rc, err = r.RenterDisabledContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("expected %v active contracts but got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		}
+		if len(rc.DisabledContracts) != 1 {
+			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
+		}
 		return nil
 	})
 	if err != nil {
@@ -1648,6 +1653,16 @@ func TestContractorChurnLimiter(t *testing.T) {
 		}
 		if churnStatus.AggregateCurrentPeriodChurn != maxPeriodChurn {
 			return fmt.Errorf("Expected max churn for this period: %v %v", churnStatus.AggregateCurrentPeriodChurn, maxPeriodChurn)
+		}
+		rc, err = r.RenterDisabledContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != 0 {
+			return fmt.Errorf("expected %v active contracts but got %v", 0, len(rc.ActiveContracts))
+		}
+		if len(rc.DisabledContracts) != 1 {
+			return fmt.Errorf("expected %v disabled contracts but got %v", 1, len(rc.DisabledContracts))
 		}
 		return nil
 	})
