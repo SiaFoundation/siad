@@ -1021,7 +1021,7 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	}()
 	// Download the file asynchronously.
 	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
-	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, false)
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
