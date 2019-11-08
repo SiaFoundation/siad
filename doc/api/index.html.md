@@ -3427,8 +3427,8 @@ If httresp is true, the data will be written to the http response.
 If async is true, the http request will be non blocking. Can't be used with
 httpresp.
 
-**disablediskfetch** | boolean  
-If disablediskfetch is true, downloads won't be served from disk even if the
+**disablelocalfetch** | boolean  
+If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
 
 **length** | bytes  
@@ -3584,8 +3584,8 @@ number of files you are steaming.
 Path to the file in the renter on the network.
 
 ### OPTIONAL
-**disablediskfetch** | boolean  
-If disablediskfetch is true, downloads won't be served from disk even if the
+**disablelocalfetch** | boolean  
+If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
 
 ### Response

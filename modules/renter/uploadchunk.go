@@ -204,10 +204,10 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// Create the download.
 	buf := NewDownloadDestinationBuffer()
 	d, err := r.managedNewDownload(downloadParams{
-		destination:      buf,
-		destinationType:  "buffer",
-		disableDiskFetch: true, // no need to try load it from disk.
-		file:             snap,
+		destination:       buf,
+		destinationType:   "buffer",
+		disableLocalFetch: true, // no need to try load it from disk.
+		file:              snap,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,

@@ -54,13 +54,13 @@ type (
 		// to ensure that only one instance of 'threadedFillCache' is running at
 		// a time. If another instance of 'threadedFillCache' is active, the new
 		// call will immediately return.
-		cache                  []byte
-		activateCache          chan struct{}
-		cacheOffset            int64
-		cacheReady             chan struct{}
-		staticDisableDiskFetch bool
-		readErr                error
-		targetCacheSize        int64
+		cache                   []byte
+		activateCache           chan struct{}
+		cacheOffset             int64
+		cacheReady              chan struct{}
+		staticDisableLocalFetch bool
+		readErr                 error
+		targetCacheSize         int64
 
 		// Mutex to protect the offset variable, and all of the cacheing
 		// variables.
@@ -175,7 +175,7 @@ func (s *streamer) managedFillCache() bool {
 		destination:       ddw,
 		destinationType:   destinationTypeSeekStream,
 		destinationString: "httpresponse",
-		disableDiskFetch:  s.staticDisableDiskFetch,
+		disableLocalFetch: s.staticDisableLocalFetch,
 		file:              s.staticFile,
 
 		latencyTarget: 50 * time.Millisecond, // TODO: low default until full latency support is added.
@@ -467,7 +467,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
-func (r *Renter) Streamer(siaPath modules.SiaPath, disableDiskFetch bool) (string, modules.Streamer, error) {
+func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (string, modules.Streamer, error) {
 	if err := r.tg.Add(); err != nil {
 		return "", nil, err
 	}
@@ -484,21 +484,21 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableDiskFetch bool) (strin
 	if err != nil {
 		return "", nil, err
 	}
-	s := r.managedStreamer(snap, disableDiskFetch)
+	s := r.managedStreamer(snap, disableLocalFetch)
 	return r.staticFileSet.SiaPath(entry).String(), s, nil
 }
 
 // managedStreamer creates a streamer from a siafile snapshot and starts filling
 // its cache.
-func (r *Renter) managedStreamer(snapshot *siafile.Snapshot, disableDiskFetch bool) modules.Streamer {
+func (r *Renter) managedStreamer(snapshot *siafile.Snapshot, disableLocalFetch bool) modules.Streamer {
 	s := &streamer{
 		staticFile: snapshot,
 		r:          r,
 
-		activateCache:          make(chan struct{}),
-		cacheReady:             make(chan struct{}),
-		staticDisableDiskFetch: disableDiskFetch,
-		targetCacheSize:        initialStreamerCacheSize,
+		activateCache:           make(chan struct{}),
+		cacheReady:              make(chan struct{}),
+		staticDisableLocalFetch: disableLocalFetch,
+		targetCacheSize:         initialStreamerCacheSize,
 	}
 	go s.threadedFillCache()
 	return s

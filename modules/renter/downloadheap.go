@@ -13,10 +13,8 @@ package renter
 
 import (
 	"container/heap"
-	"fmt"
 	"io"
 	"os"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -170,6 +168,7 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 // data that was uploaded.
 func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bool {
 	// Get path at which we expect to find the file.
+	fileName := chunk.renterFile.SiaPath().Name()
 	localPath := chunk.renterFile.LocalPath()
 	if localPath == "" {
 		return false
@@ -177,7 +176,7 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// Open the file.
 	file, err := os.Open(localPath)
 	if err != nil {
-		r.log.Debugln(errors.AddContext(err, "managedTryServeChunkFromDisk failed to open file"), localPath)
+		r.log.Debugf("managedTryServeChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
 	defer file.Close()
@@ -186,44 +185,36 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// file at the same location.
 	fi, err := file.Stat()
 	if err != nil {
-		r.log.Debugln(err)
+		r.log.Debugf("managedTryServeChunkFromDisk failed to stat file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
 	if err == nil && uint64(fi.Size()) != chunk.renterFile.Size() {
-		err = fmt.Errorf("failed to serve chunk from disk due to filesize not matching %v != %v",
-			fi.Size(), chunk.renterFile.Size())
-		r.log.Debugln(err)
+		r.log.Debugf("managedTryServeChunkFromDisk failed due to filesize not matching %v != %v between file at %v and %v",
+			fi.Size(), chunk.renterFile.Size(), localPath, fileName)
 		return false
 	}
 	// Fetch the chunk from disk.
 	sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
 	pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 	if err != nil {
-		r.log.Debugln("failed to readDataPieces to load chunk from disk", err)
+		r.log.Debugf("managedTryServeChunkFromDisk failed to read data pieces from %v for %v: %v",
+			localPath, fileName, err)
 		return false
 	}
 	shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
 	if err != nil {
-		r.log.Debugln(errors.AddContext(err, "managedTryServeChunkFromDisk failed to encode shards"))
+		r.log.Debugf("managedTryServeChunkFromDisk failed to encode data pieces from %v for %v: %v",
+			localPath, fileName, err)
 		return false
 	}
 	err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
 	if err != nil {
-		r.log.Debugln(errors.AddContext(err, "managedTryServeChunkFromDisk failed to WritePieces"))
+		r.log.Debugf("managedTryServeChunkFromDisk failed to write data pieces from %v for %v: %v",
+			localPath, fileName, err)
 		return false
 	}
-	// Return all the memory.
-	chunk.recoveryComplete = true
-	chunk.returnMemory()
-	// Update the download and signal completion of this chunk.
-	chunk.download.mu.Lock()
-	defer chunk.download.mu.Unlock()
-	chunk.download.chunksRemaining--
-	atomic.AddUint64(&chunk.download.atomicDataReceived, chunk.staticFetchLength)
-	if chunk.download.chunksRemaining == 0 {
-		// Download is complete, send out a notification.
-		chunk.download.markComplete()
-	}
+	// Finalize the recovery.
+	chunk.managedFinalizeRecovery()
 	return true
 }
 
@@ -286,7 +277,8 @@ LOOP:
 					entry.Close()
 				}
 				if err != nil {
-					r.log.Debugln("localpath is set but couldn't serve file from disk", err)
+					r.log.Debugf("localpath is set but couldn't serve file %v from %v: %v",
+						entry.LocalPath(), nextChunk.renterFile.SiaPath().Name(), err)
 				}
 			}
 			// Distribute the chunk to workers.

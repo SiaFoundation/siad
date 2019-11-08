@@ -740,7 +740,7 @@ type Renter interface {
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
-	Streamer(siapath SiaPath, disableDiskFetch bool) (string, Streamer, error)
+	Streamer(siapath SiaPath, disableLocalFetch bool) (string, Streamer, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error

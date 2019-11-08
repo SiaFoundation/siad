@@ -1368,9 +1368,9 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	// If httprespparam is present, this parameter is ignored.
 	asyncparam := req.FormValue("async")
 
-	// disablediskfetchparam determines whether downloads will be fetched from
+	// disablelocalfetchparam determines whether downloads will be fetched from
 	// disk if available.
-	disablediskfetchparam := req.FormValue("disablediskfetch")
+	disablelocalfetchparam := req.FormValue("disablelocalfetch")
 
 	// Parse the offset and length parameters.
 	var offset, length uint64
@@ -1404,17 +1404,17 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 		return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
 	}
 
-	var disableDiskFetch bool
-	if disablediskfetchparam != "" {
-		disableDiskFetch, err = scanBool(disablediskfetchparam)
+	var disableLocalFetch bool
+	if disablelocalfetchparam != "" {
+		disableLocalFetch, err = scanBool(disablelocalfetchparam)
 		if err != nil {
-			return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablediskfetch flag")
+			return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablelocalfetch flag")
 		}
 	}
 
 	dp := modules.RenterDownloadParameters{
 		Destination:      destination,
-		DisableDiskFetch: disableDiskFetch,
+		DisableDiskFetch: disableLocalFetch,
 		Async:            async,
 		Length:           length,
 		Offset:           offset,
@@ -1434,17 +1434,17 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	disablediskfetchparam := req.FormValue("disablediskfetch")
-	var disableDiskFetch bool
-	if disablediskfetchparam != "" {
-		disableDiskFetch, err = scanBool(disablediskfetchparam)
+	disablelocalfetchparam := req.FormValue("disablelocalfetch")
+	var disableLocalFetch bool
+	if disablelocalfetchparam != "" {
+		disableLocalFetch, err = scanBool(disablelocalfetchparam)
 		if err != nil {
-			err = errors.AddContext(err, "error parsing the disablediskfetch flag")
+			err = errors.AddContext(err, "error parsing the disablelocalfetch flag")
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
-	fileName, streamer, err := api.renter.Streamer(siaPath, disableDiskFetch)
+	fileName, streamer, err := api.renter.Streamer(siaPath, disableLocalFetch)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
 			http.StatusInternalServerError)

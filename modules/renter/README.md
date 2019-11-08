@@ -267,7 +267,7 @@ already had their memory allocated. These downloads get to skip the heap and
 go straight for the workers.
 
 Before we distribute a download to workers, we check the `localPath` of the
-file to see if it available on disk. If it is, and `disableDiskFetch` isn't
+file to see if it available on disk. If it is, and `disableLocalFetch` isn't
 set, we load the download from disk instead of distributing it to workers.
 
 When a download is distributed to workers, it is given to every single worker
