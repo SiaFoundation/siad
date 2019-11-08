@@ -66,8 +66,8 @@ func (c *Contractor) persistData() contractorPersist {
 	for _, contract := range c.recoverableContracts {
 		data.RecoverableContracts = append(data.RecoverableContracts, contract)
 	}
-	data.ChurnLimiter = c.staticChurnLimiter.managedPersistData()
-	data.WatchdogData = c.staticWatchdog.managedPersistData()
+	data.ChurnLimiter = c.staticChurnLimiter.callPersistData()
+	data.WatchdogData = c.staticWatchdog.callPersistData()
 	return data
 }
 

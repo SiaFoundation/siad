@@ -45,9 +45,9 @@ func (cl *churnLimiter) managedMaxPeriodChurn() uint64 {
 	return cl.contractor.Allowance().MaxPeriodChurn
 }
 
-// managedPersistData returns the churnLimiterPersist corresponding to this
+// callPersistData returns the churnLimiterPersist corresponding to this
 // churnLimiter's state
-func (cl *churnLimiter) managedPersistData() churnLimiterPersist {
+func (cl *churnLimiter) callPersistData() churnLimiterPersist {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
 	return churnLimiterPersist{cl.aggregateCurrentPeriodChurn, cl.remainingChurnBudget}
