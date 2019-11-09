@@ -130,6 +130,15 @@ func (c *Client) RenterContractsGet() (rc api.RenterContracts, err error) {
 	return
 }
 
+// RenterContractStatus requests the /watchdog/contractstatus resource and returns
+// the status of a contract.
+func (c *Client) RenterContractStatus(fcID types.FileContractID) (status modules.ContractWatchStatus, err error) {
+	values := url.Values{}
+	values.Set("id", fcID.String())
+	err = c.get("/renter/contractstatus?"+values.Encode(), &status)
+	return
+}
+
 // RenterDisabledContractsGet requests the /renter/contracts resource with the
 // disabled flag set to true
 func (c *Client) RenterDisabledContractsGet() (rc api.RenterContracts, err error) {

@@ -108,6 +108,9 @@ func (w *Wallet) loadSpendableKey(masterKey crypto.CipherKey, sk spendableKey) e
 	skf.SpendableKey = encryptionKey.EncryptBytes(encoding.Marshal(sk))
 
 	err := checkMasterKey(w.dbTx, masterKey)
+	if err != nil {
+		return err
+	}
 	var current []spendableKeyFile
 	err = encoding.Unmarshal(w.dbTx.Bucket(bucketWallet).Get(keySpendableKeyFiles), &current)
 	if err != nil {

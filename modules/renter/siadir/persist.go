@@ -2,16 +2,37 @@ package siadir
 
 import (
 	"encoding/json"
-	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+)
+
+const (
+	// SiaDirExtension is the name of the metadata file for the sia directory
+	SiaDirExtension = ".siadir"
+
+	// DefaultDirHealth is the default health for the directory and the fall
+	// back value when there is an error. This is to protect against falsely
+	// trying to repair directories that had a read error
+	DefaultDirHealth = float64(0)
+
+	// updateDeleteName is the name of a siaDir update that deletes the
+	// specified metadata file.
+	updateDeleteName = "SiaDirDelete"
+
+	// updateMetadataName is the name of a siaDir update that inserts new
+	// information into the metadata file
+	updateMetadataName = "SiaDirMetadata"
 )
 
 // ApplyUpdates  applies a number of writeaheadlog updates to the corresponding
@@ -29,74 +50,9 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 	return nil
 }
 
-// applyUpdate applies the wal update
-func applyUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
-	switch update.Name {
-	case updateDeleteName:
-		return readAndApplyDeleteUpdate(update)
-	case updateMetadataName:
-		return readAndApplyMetadataUpdate(deps, update)
-	default:
-		return fmt.Errorf("Update not recognized: %v", update.Name)
-	}
-}
-
-// readAndApplyDeleteUpdate reads the delete update and then applies it. This
-// helper assumes that the file is not currently open and so should only be
-// called on startup before any siadir is loaded from disk
-func readAndApplyDeleteUpdate(update writeaheadlog.Update) error {
-	// Delete from disk
-	err := os.RemoveAll(readDeleteUpdate(update))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
-// readAndApplyMetadataUpdate reads the metadata update and then applies it.
-// This helper assumes that the file is not currently open and so should only be
-// called on startup before any siadir is loaded from disk
-func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
-	// Decode update.
-	data, path, err := readMetadataUpdate(update)
-	if err != nil {
-		return err
-	}
-
-	// Write out the data to the real file, with a sync.
-	file, err := deps.OpenFile(path, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Compose(err, file.Close())
-	}()
-
-	// Write and sync.
-	n, err := file.Write(data)
-	if err != nil {
-		return err
-	}
-	if n < len(data) {
-		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
-	}
-	return file.Sync()
-}
-
-// readDeleteUpdate unmarshals the update's instructions and returns the
-// encoded path.
-func readDeleteUpdate(update writeaheadlog.Update) string {
-	if update.Name != updateDeleteName {
-		err := errors.New("readDeleteUpdate can't read non-delete updates")
-		build.Critical(err)
-		return ""
-	}
-	return string(update.Instructions)
-}
-
-// managedCreateAndApplyTransaction is a helper method that creates a writeaheadlog
+// CreateAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func managedCreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
+func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
 	// Create the writeaheadlog transaction.
 	txn, err := wal.NewTransaction(updates)
 	if err != nil {
@@ -115,6 +71,306 @@ func managedCreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeah
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
+}
+
+// IsSiaDirUpdate is a helper method that makes sure that a wal update belongs
+// to the SiaDir package.
+func IsSiaDirUpdate(update writeaheadlog.Update) bool {
+	switch update.Name {
+	case updateMetadataName, updateDeleteName:
+		return true
+	default:
+		return false
+	}
+}
+
+// New creates a new directory in the renter directory and makes sure there is a
+// metadata file in the directory and creates one as needed. This method will
+// also make sure that all the parent directories are created and have metadata
+// files as well and will return the SiaDir containing the information for the
+// directory that matches the siaPath provided
+func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
+	// Create path to directory and ensure path contains all metadata
+	updates, err := createDirMetadataAll(siaPath, rootDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create metadata for directory
+	md, update, err := createDirMetadata(siaPath, rootDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create SiaDir
+	sd := &SiaDir{
+		metadata: md,
+		deps:     modules.ProdDependencies,
+		siaPath:  siaPath,
+		rootDir:  rootDir,
+		wal:      wal,
+	}
+
+	return sd, CreateAndApplyTransaction(wal, append(updates, update)...)
+}
+
+// LoadSiaDir loads the directory metadata from disk
+func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
+	sd = &SiaDir{
+		deps:    deps,
+		siaPath: siaPath,
+		rootDir: rootDir,
+		wal:     wal,
+	}
+	sd.metadata, err = callLoadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(rootDir), modules.ProdDependencies)
+	return sd, err
+}
+
+// UpdateMetadata updates the SiaDir metadata on disk
+func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	sd.metadata.AggregateHealth = metadata.AggregateHealth
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
+	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
+	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
+	sd.metadata.AggregateSize = metadata.AggregateSize
+	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
+
+	sd.metadata.Health = metadata.Health
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	sd.metadata.MinRedundancy = metadata.MinRedundancy
+	sd.metadata.ModTime = metadata.ModTime
+	sd.metadata.NumFiles = metadata.NumFiles
+	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
+	sd.metadata.NumSubDirs = metadata.NumSubDirs
+	sd.metadata.Size = metadata.Size
+	sd.metadata.StuckHealth = metadata.StuckHealth
+	return sd.saveDir()
+}
+
+// Delete deletes the SiaDir that belongs to the siaPath
+func (sds *SiaDirSet) Delete(siaPath modules.SiaPath) error {
+	// Prevent new dirs from being opened.
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Lock loaded files to prevent persistence from happening and unlock them when
+	// we are done deleting the dir.
+	var lockedDirs []*siaDirSetEntry
+	defer func() {
+		for _, entry := range lockedDirs {
+			entry.mu.Unlock()
+		}
+	}()
+	for key, entry := range sds.siaDirMap {
+		if strings.HasPrefix(key.String(), siaPath.String()) {
+			entry.mu.Lock()
+			lockedDirs = append(lockedDirs, entry)
+		}
+	}
+	// Grab entry and delete it.
+	entry, err := sds.open(siaPath)
+	if err != nil && err != ErrUnknownPath {
+		return err
+	} else if err == ErrUnknownPath {
+		return nil // nothing to do
+	}
+	defer sds.closeEntry(entry)
+	if err := entry.callDelete(); err != nil {
+		return err
+	}
+	// Deleting the dir was successful. Delete the open dirs. It's sufficient to do
+	// so only in memory to avoid any persistence. They will be removed from the
+	// map by the last thread closing the entry.
+	for _, entry := range lockedDirs {
+		entry.deleted = true
+	}
+	return nil
+}
+
+// DirInfo returns the Directory Information of the siadir
+func (sds *SiaDirSet) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	return sds.readLockDirInfo(siaPath)
+}
+
+// DirList returns directories stored in the siadir as well as the DirectoryInfo
+// of the siadir
+func (sds *SiaDirSet) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+
+	// Get DirectoryInfo
+	di, err := sds.readLockDirInfo(siaPath)
+	if err != nil {
+		return nil, err
+	}
+	dirs := []modules.DirectoryInfo{di}
+	var dirsMu sync.Mutex
+	loadChan := make(chan string)
+	worker := func() {
+		for path := range loadChan {
+			// Load the dir info.
+			var siaPath modules.SiaPath
+			if err := siaPath.LoadSysPath(sds.staticRootDir, path); err != nil {
+				continue
+			}
+			var dir modules.DirectoryInfo
+			var err error
+			dir, err = sds.readLockDirInfo(siaPath)
+			if os.IsNotExist(err) || err == ErrUnknownPath {
+				continue
+			}
+			if err != nil {
+				continue
+			}
+			dirsMu.Lock()
+			dirs = append(dirs, dir)
+			dirsMu.Unlock()
+		}
+	}
+	// spin up some threads
+	var wg sync.WaitGroup
+	for i := 0; i < dirListRoutines; i++ {
+		wg.Add(1)
+		go func() {
+			worker()
+			wg.Done()
+		}()
+	}
+	// Read Directory
+	folder := siaPath.SiaDirSysPath(sds.staticRootDir)
+	fileInfos, err := ioutil.ReadDir(folder)
+	if err != nil {
+		return nil, err
+	}
+	for _, fi := range fileInfos {
+		// Check for directories
+		if fi.IsDir() {
+			loadChan <- filepath.Join(folder, fi.Name())
+		}
+	}
+	close(loadChan)
+	wg.Wait()
+	return dirs, nil
+}
+
+// NewSiaDir creates a new SiaDir and returns a SiaDirSetEntry
+func (sds *SiaDirSet) NewSiaDir(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Check is SiaDir already exists
+	exists, err := sds.exists(siaPath)
+	if exists {
+		return nil, ErrPathOverload
+	}
+	if !os.IsNotExist(err) && err != nil {
+		return nil, err
+	}
+	sd, err := New(siaPath, sds.staticRootDir, sds.wal)
+	if err != nil {
+		return nil, err
+	}
+	entry := sds.newSiaDirSetEntry(sd)
+	threadUID := randomThreadUID()
+	entry.threadMap[threadUID] = newThreadInfo()
+	sds.siaDirMap[siaPath] = entry
+	return &SiaDirSetEntry{
+		siaDirSetEntry: entry,
+		threadUID:      threadUID,
+	}, nil
+}
+
+// Open returns the siadir from the SiaDirSet for the corresponding key and
+// adds the thread to the entry's threadMap. If the siadir is not in memory it
+// will load it from disk
+func (sds *SiaDirSet) Open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	return sds.open(siaPath)
+}
+
+// Rename renames a SiaDir on disk atomically by locking all the already loaded,
+// affected dirs and renaming the root.
+// NOTE: This shouldn't be called directly but instead be passed to
+// siafileset.RenameDir as an argument.
+func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
+	if oldPath.Equals(modules.RootSiaPath()) {
+		return errors.New("can't rename root dir")
+	}
+	if oldPath.Equals(newPath) {
+		return nil // nothing to do
+	}
+	if strings.HasPrefix(newPath.String(), oldPath.String()) {
+		return errors.New("can't rename folder into itself")
+	}
+	// Prevent new dirs from being opened.
+	sds.mu.Lock()
+	defer sds.mu.Unlock()
+	// Lock loaded files to prevent persistence from happening and unlock them when
+	// we are done renaming the dir.
+	var lockedDirs []*siaDirSetEntry
+	defer func() {
+		for _, entry := range lockedDirs {
+			entry.mu.Unlock()
+		}
+	}()
+	for key, entry := range sds.siaDirMap {
+		if strings.HasPrefix(key.String(), oldPath.String()) {
+			entry.mu.Lock()
+			lockedDirs = append(lockedDirs, entry)
+		}
+	}
+	// Rename the target dir.
+	oldPathDisk := oldPath.SiaDirSysPath(sds.staticRootDir)
+	newPathDisk := newPath.SiaDirSysPath(sds.staticRootDir)
+	err := os.Rename(oldPathDisk, newPathDisk) // TODO: use wal
+	if err != nil {
+		return errors.AddContext(err, "failed to rename folder")
+	}
+	// Renaming the target dir was successful. Rename the open dirs.
+	for _, entry := range lockedDirs {
+		sp, err := entry.siaPath.Rebase(oldPath, newPath)
+		if err != nil {
+			build.Critical("Rebasing siapaths shouldn't fail", err)
+			continue
+		}
+		// Update the siapath of the entry and the siaDirMap.
+		delete(sds.siaDirMap, entry.siaPath)
+		entry.siaPath = sp
+		sds.siaDirMap[sp] = entry
+	}
+	return err
+}
+
+// createDirMetadata makes sure there is a metadata file in the directory and
+// creates one as needed
+func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, writeaheadlog.Update, error) {
+	// Check if metadata file exists
+	_, err := os.Stat(siaPath.SiaDirMetadataSysPath(rootDir))
+	if err == nil || !os.IsNotExist(err) {
+		return Metadata{}, writeaheadlog.Update{}, err
+	}
+
+	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
+	// empty directories won't be viewed as being the most in need. Initialize
+	// ModTimes.
+	md := Metadata{
+		AggregateHealth:      DefaultDirHealth,
+		AggregateModTime:     time.Now(),
+		AggregateStuckHealth: DefaultDirHealth,
+
+		Health:      DefaultDirHealth,
+		ModTime:     time.Now(),
+		StuckHealth: DefaultDirHealth,
+	}
+	path := siaPath.SiaDirMetadataSysPath(rootDir)
+	update, err := createMetadataUpdate(path, md)
+	return md, update, err
 }
 
 // createDirMetadataAll creates a path on disk to the provided siaPath and make
@@ -147,155 +403,34 @@ func createDirMetadataAll(siaPath modules.SiaPath, rootDir string) ([]writeahead
 	return updates, nil
 }
 
-// createMetadataUpdate is a helper method which creates a writeaheadlog update for
-// updating the siaDir metadata
-func createMetadataUpdate(path string, metadata Metadata) (writeaheadlog.Update, error) {
-	// Encode metadata
-	data, err := json.Marshal(metadata)
+// callLoadSiaDirMetadata loads the directory metadata from disk.
+func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
+	// Open the file.
+	file, err := deps.Open(path)
 	if err != nil {
-		return writeaheadlog.Update{}, err
+		return Metadata{}, err
+	}
+	defer file.Close()
+
+	// Read the file
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return Metadata{}, err
 	}
 
-	// Create update
-	return writeaheadlog.Update{
-		Name:         updateMetadataName,
-		Instructions: encoding.MarshalAll(data, path),
-	}, nil
-}
-
-// readMetadataUpdate unmarshals the update's instructions and returns the
-// metadata encoded in the instructions.
-func readMetadataUpdate(update writeaheadlog.Update) (data []byte, path string, err error) {
-	if update.Name != updateMetadataName {
-		err = errors.New("readMetadataUpdate can't read non-metadata updates")
-		build.Critical(err)
-		return
-	}
-	err = encoding.UnmarshalAll(update.Instructions, &data, &path)
+	// Parse the json object.
+	err = json.Unmarshal(bytes, &md)
 	return
 }
 
-// applyUpdates applies a number of writeaheadlog updates to the corresponding
-// SiaDir.
-func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
-	// If the set of updates contains a delete, all updates prior to that delete
-	// are irrelevant, so perform the last delete and then process the remaining
-	// updates. This also prevents a bug on Windows where we attempt to delete
-	// the file while holding a open file handle.
-	for i := len(updates) - 1; i >= 0; i-- {
-		u := updates[i]
-		switch u.Name {
-		case updateDeleteName:
-			if err := readAndApplyDeleteUpdate(u); err != nil {
-				return err
-			}
-			updates = updates[i+1:]
-			break
-		default:
-			continue
-		}
-	}
-	if len(updates) == 0 {
-		return nil
-	}
-
-	// Open the file
-	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-	file, err := sd.deps.OpenFile(siaDirPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err == nil {
-			// If no error occurred we sync and close the file.
-			err = errors.Compose(file.Sync(), file.Close())
-		} else {
-			// Otherwise we still need to close the file.
-			err = errors.Compose(err, file.Close())
-		}
-	}()
-
-	// Apply updates.
-	for _, u := range updates {
-		err := func() error {
-			switch u.Name {
-			case updateDeleteName:
-				build.Critical("Unexpected delete update")
-				return nil
-			case updateMetadataName:
-				return sd.readAndApplyMetadataUpdate(file, u)
-			default:
-				return fmt.Errorf("Update not recognized: %v", u.Name)
-			}
-		}()
-		if err != nil {
-			return errors.AddContext(err, "failed to apply update")
-		}
-	}
-	return nil
-}
-
-// createAndApplyTransaction is a helper method that creates a writeaheadlog
-// transaction and applies it.
-func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
-	// This should never be called on a deleted directory.
-	if sd.deleted {
-		return errors.New("shouldn't apply updates on deleted directory")
-	}
-	// Create the writeaheadlog transaction.
-	txn, err := sd.wal.NewTransaction(updates)
-	if err != nil {
-		return errors.AddContext(err, "failed to create wal txn")
-	}
-	// No extra setup is required. Signal that it is done.
-	if err := <-txn.SignalSetupComplete(); err != nil {
-		return errors.AddContext(err, "failed to signal setup completion")
-	}
-	// Apply the updates.
-	if err := sd.applyUpdates(updates...); err != nil {
-		return errors.AddContext(err, "failed to apply updates")
-	}
-	// Updates are applied. Let the writeaheadlog know.
-	if err := txn.SignalUpdatesApplied(); err != nil {
-		return errors.AddContext(err, "failed to signal that updates are applied")
-	}
-	return nil
-}
-
-// createDeleteUpdate is a helper method that creates a writeaheadlog for
-// deleting a directory.
-func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
-	return writeaheadlog.Update{
-		Name:         updateDeleteName,
-		Instructions: []byte(sd.siaPath.SiaDirSysPath(sd.rootDir)),
-	}
-}
-
-// readAndApplyMetadataUpdate reads the metadata update for a file and then
-// applies it.
-func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeaheadlog.Update) error {
-	// Decode update.
-	data, path, err := readMetadataUpdate(update)
-	if err != nil {
-		return err
-	}
-
-	// Sanity check path belongs to siadir
-	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-	if path != siaDirPath {
-		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
-		return nil
-	}
-
-	// Write and sync.
-	n, err := file.Write(data)
-	if err != nil {
-		return err
-	}
-	if n < len(data) {
-		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
-	}
-	return nil
+// callDelete removes the directory from disk and marks it as deleted. Once the
+// directory is deleted, attempting to access the directory will return an
+// error.
+func (sd *SiaDir) callDelete() error {
+	update := sd.createDeleteUpdate()
+	err := sd.createAndApplyTransaction(update)
+	sd.deleted = true
+	return err
 }
 
 // saveDir saves the whole SiaDir atomically.
@@ -307,8 +442,28 @@ func (sd *SiaDir) saveDir() error {
 	return sd.createAndApplyTransaction(metadataUpdate)
 }
 
-// saveMetadataUpdate saves the metadata of the SiaDir
-func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-	return createMetadataUpdate(path, sd.metadata)
+// open will return the siaDirSetEntry in memory or load it from disk
+func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
+	var entry *siaDirSetEntry
+	entry, exists := sds.siaDirMap[siaPath]
+	if !exists {
+		// Try and Load File from disk
+		sd, err := LoadSiaDir(sds.staticRootDir, siaPath, modules.ProdDependencies, sds.wal)
+		if os.IsNotExist(err) {
+			return nil, ErrUnknownPath
+		}
+		if err != nil {
+			return nil, err
+		}
+		entry = sds.newSiaDirSetEntry(sd)
+		sds.siaDirMap[siaPath] = entry
+	}
+	threadUID := randomThreadUID()
+	entry.threadMapMu.Lock()
+	defer entry.threadMapMu.Unlock()
+	entry.threadMap[threadUID] = newThreadInfo()
+	return &SiaDirSetEntry{
+		siaDirSetEntry: entry,
+		threadUID:      threadUID,
+	}, nil
 }

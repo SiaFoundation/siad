@@ -581,26 +581,31 @@ the stuck chunks in the filesystem. The stuck loop does this by first selecting
 a directory containing stuck chunks by calling `managedStuckDirectory`. Then
 `managedBuildAndPushRandomChunk` is called to select a file with stuck chunks to
 then add one stuck chunk from that file to the heap. The stuck loop repeats this
-process of finding a stuck chunk until there are `MaxStuckChunksInHeap` stuck
-chunks in the upload heap. Stuck chunks are priority in the heap, so limiting it
-to `MaxStuckChunksInHeap` at a time prevents the heap from being saturated with
-stuck chunks that potentially cannot be repaired which would cause no other
-files to be repaired. 
+process of finding a stuck chunk until there are `maxRandomStuckChunksInHeap`
+stuck chunks in the upload heap or it has added `maxRandomStuckChunksAddToHeap`
+stuck chunks to the upload heap. Stuck chunks are priority in the heap, so
+limiting it to `maxStuckChunksInHeap` at a time prevents the heap from being
+saturated with stuck chunks that potentially cannot be repaired which would
+cause no other files to be repaired. 
 
 For the stuck loop to begin using the `stuckStack` there needs to have been
 successful stuck chunk repairs. If the repair of a stuck chunk is successful,
 the SiaPath of the SiaFile it came from is added to the Renter's `stuckStack`
 and a signal is sent to the stuck loop so that another stuck chunk can added to
-the heap. The `stuckStack` tracks `maxSuccessfulStuckRepairFiles` number of
-SiaFiles that have had stuck chunks successfully repaired in a LIFO stack. If
-the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when a new
-SiaFile is pushed onto the stack the oldest SiaFile is dropped from the stack so
-the new SiaFile can be added. Additionally, if SiaFile is being added that is
-already being tracked, then the originally reference is removed and the SiaFile
-is added to the top of the Stack. If there have been successful stuck chunk
-repairs, the stuck loop will try and add additional stuck chunks from these
-files first before trying to add a random stuck chunk. The idea being that since
-all the chunks in a SiaFile have the same redundancy settings and were
+the heap. The repair loop with continue to add stuck chunks from the
+`stuckStack` until there are `maxStuckChunksInHeap` stuck chunks in the upload
+heap. Stuck chunks added from the `stuckStack` will have priority over random
+stuck chunks, this is determined by setting the `fileRecentlySuccessful` field
+to true for the chunk. The `stuckStack` tracks `maxSuccessfulStuckRepairFiles`
+number of SiaFiles that have had stuck chunks successfully repaired in a LIFO
+stack. If the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when
+a new SiaFile is pushed onto the stack the oldest SiaFile is dropped from the
+stack so the new SiaFile can be added. Additionally, if SiaFile is being added
+that is already being tracked, then the original reference is removed and the
+SiaFile is added to the top of the Stack. If there have been successful stuck
+chunk repairs, the stuck loop will try and add additional stuck chunks from
+these files first before trying to add a random stuck chunk. The idea being that
+since all the chunks in a SiaFile have the same redundancy settings and were
 presumably uploaded around the same time, if one chunk was able to be repaired,
 the other chunks should be able to be repaired as well. Additionally, the reason
 a LIFO stack is used is because the more recent a success was the higher

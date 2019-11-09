@@ -1713,3 +1713,21 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	WriteError(w, Error{"no calls were made, please check your submission and try again"}, http.StatusInternalServerError)
 	return
 }
+
+// renterContractStatusHandler  handles the API call to check the status of a
+// contract monitored by the renter.
+func (api *API) renterContractStatusHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	var fcID types.FileContractID
+	if err := fcID.LoadString(req.FormValue("id")); err != nil {
+		WriteError(w, Error{"unable to parse id:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	contractStatus, monitoringContract := api.renter.ContractStatus(fcID)
+	if !monitoringContract {
+		WriteError(w, Error{"renter unaware of contract"}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, contractStatus)
+}

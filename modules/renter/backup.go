@@ -296,7 +296,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 				return err
 			}
 			defer entry.Close()
-			// Get a reader to read from the siafile.
+			// Get a reader to read from the siadir.
 			dr, err := entry.DirReader()
 			if err != nil {
 				return err

@@ -34,6 +34,25 @@ type (
 	}
 )
 
+// callNotifyDoubleSpend is used by the watchdog to alert the contractor
+// whenever a monitored file contract input is double-spent. This function
+// marks down the host score, and marks the contract as !GoodForRenew and
+// !GoodForUpload.
+func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeight types.BlockHeight) {
+	c.log.Debugln("Watchdog found a double-spend: ", fcID, blockHeight)
+
+	// Mark the contract as double-spent. This will cause the contract to be
+	// excluded in period spending.
+	c.mu.Lock()
+	c.doubleSpentContracts[fcID] = blockHeight
+	c.mu.Unlock()
+
+	err := c.MarkContractBad(fcID)
+	if err != nil {
+		c.log.Println("callNotifyDoubleSpend error in MarkContractBad", err)
+	}
+}
+
 // managedCheckForDuplicates checks for static contracts that have the same host
 // key and moves the older one to old contracts.
 func (c *Contractor) managedCheckForDuplicates() {
@@ -54,7 +73,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			} else {
 				newContract, oldContract = contract, rc
 			}
-			c.log.Printf("Duplicate contract found. New conract is %x and old contract is %v", newContract.ID, oldContract.ID)
+			c.log.Printf("Duplicate contract found. New contract is %x and old contract is %v", newContract.ID, oldContract.ID)
 
 			// Get SafeContract
 			oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
@@ -262,6 +281,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	if err != nil {
 		return err, types.Currency{}, types.Currency{}
 	}
+
 	lowestScore := sb.Score
 	for i := 1; i < len(hosts); i++ {
 		score, err := c.hdb.ScoreBreakdown(hosts[i])
@@ -340,9 +360,24 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
-	contract, err := c.staticContracts.FormContract(params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+
+	contract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.FormContract(params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop()
+		return types.ZeroCurrency, modules.RenterContract{}, err
+	}
+
+	monitorContractArgs := monitorContractArgs{
+		false,
+		contract.ID,
+		contract.Transaction,
+		formationTxnSet,
+		sweepTxn,
+		sweepParents,
+		params.StartHeight,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
 
@@ -408,7 +443,7 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	// hosts.
 	badHosts, err := c.hdb.CheckForIPViolations(pks)
 	if err != nil {
-		c.log.Println("WARN: errror checking for IP violations:", err)
+		c.log.Println("WARN: error checking for IP violations:", err)
 		return
 	}
 	for _, host := range badHosts {
@@ -494,9 +529,23 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	newContract, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	newContract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
+		return modules.RenterContract{}, err
+	}
+
+	monitorContractArgs := monitorContractArgs{
+		false,
+		newContract.ID,
+		newContract.Transaction,
+		formationTxnSet,
+		sweepTxn,
+		sweepParents,
+		params.StartHeight,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -658,6 +707,10 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.mu.Unlock()
 	// Delete the old contract.
 	c.staticContracts.Delete(oldContract)
+
+	// Signal to the watchdog that it should immediately post the last
+	// revision for this contract.
+	go c.staticWatchdog.callSendMostRecentRevision(oldContract.Metadata())
 	return amount, nil
 }
 
@@ -907,7 +960,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
-	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
+	c.log.Debugln("Remaining funds in allowance:", fundsRemaining)
 
 	// Register the AllowanceLowFunds alert if necessary.
 	var registerLowFundsAlert bool
