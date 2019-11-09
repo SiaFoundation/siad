@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -293,7 +292,7 @@ func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
 // Mode implements os.FileInfo.
 //
 // TODO: get the real mode
-func (d DirectoryInfo) Mode() os.FileMode { return 0755 | syscall.S_IFDIR }
+func (d DirectoryInfo) Mode() os.FileMode { return 0755 }
 
 // ModTime implements os.FileInfo.
 func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
@@ -368,8 +367,6 @@ func (f FileInfo) Name() string { return f.SiaPath.Name() }
 func (f FileInfo) Size() int64 { return int64(f.Filesize) }
 
 // Mode implements os.FileInfo.
-//
-// TODO: get the real mode
 func (f FileInfo) Mode() os.FileMode { return f.FileMode }
 
 // ModTime implements os.FileInfo.

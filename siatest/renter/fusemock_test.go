@@ -106,7 +106,6 @@ func (fn *fuseNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 	var stable fs.StableAttr
 	stable.Ino = lookupIno
 	out.Ino = lookupIno
-	out.NodeId = lookupIno
 	if strings.Contains(name, "file") {
 		stable.Mode = fuse.S_IFREG
 		out.Mode = 0644
@@ -257,7 +256,7 @@ func TestGeneratedFuse(t *testing.T) {
 	// it as they switch between wanting the sleep and wanting the test to run
 	// fast.
 	//
-	time.Sleep(time.Second * 120)
+	// time.Sleep(time.Second * 120)
 	time.Sleep(time.Millisecond)
 
 	// Unmount fuse.

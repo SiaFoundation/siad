@@ -414,7 +414,7 @@ func TestFuse(t *testing.T) {
 	// it as they switch between wanting the sleep and wanting the test to run
 	// fast.
 	//
-	// time.Sleep(time.Second * 60)
+	time.Sleep(time.Second * 120)
 	time.Sleep(time.Millisecond * 60)
 
 	// Unmount the filesystem.

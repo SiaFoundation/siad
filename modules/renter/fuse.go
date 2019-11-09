@@ -5,19 +5,20 @@ package renter
 // issue as multiple concurrent reads may be happening on the streamer at once,
 // a 'Seek then Read' approach is not necessarily safe with fuse.
 
-// TODO: Need to figure out why it's necessary to manually add the S_IFREG flag
-// to file modes, shouldn't the file modes already have that set?
+// TODO: Chris's new filesystem actually has inodes and unique inode numbers. We
+// should integrate these instead of the UIDs?
 
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -35,6 +36,10 @@ type fuseDirnode struct {
 
 	dirInfo modules.DirectoryInfo
 	siapath modules.SiaPath
+
+	// TODO: This is a temporary variable, won't be needed once we've switched
+	// over to the new filesystem code which provides inodes for us.
+	ino uint64
 
 	filesystem *fuseFS
 }
@@ -93,6 +98,10 @@ var _ = (fs.NodeReader)((*fuseFilenode)(nil))
 
 // fuseRoot is the root directory for a mounted fuse filesystem.
 type fuseFS struct {
+	// TODO: Currently we have to manually do this, but the sia filesystem that
+	// Chris wrote actually handles this for us.
+	atomicDirInoCounter uint64
+
 	fuseDirnode
 	readOnly bool
 	root     *fuseDirnode
@@ -140,12 +149,14 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 	return errToStatus(nil)
 }
 
-func uidToIno(uid string) (uint64, error) {
+// uidToIno converts the uid of a file or a folder to an ino that can be used
+// for the fuse system.
+func uidToIno(uid string) uint64 {
 	byteUID := []byte(uid)
 	if len(byteUID) < 8 {
-		return 0, fmt.Errorf("expected uid to be at least 8 bytes long but was %v", len(byteUID))
+		build.Critical("empty uid passed in for ino conversion")
 	}
-	return binary.LittleEndian.Uint64(byteUID), nil
+	return binary.LittleEndian.Uint64(byteUID)
 }
 
 // Lookup is a directory call that returns the file in the directory associated
@@ -166,20 +177,18 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 			staticSiapath:  lookupPath,
 			filesystem:     fdn.filesystem,
 		}
-		ino, err := uidToIno(fileInfo.UID)
-		if err != nil {
-			return nil, errToStatus(err)
-		}
+		ino := uidToIno(fileInfo.UID)
 		attrs := fs.StableAttr{
-			Mode: uint32(fileInfo.Mode()) | syscall.S_IFREG,
 			Ino:  ino,
+			Mode: fuse.S_IFREG,
 		}
 
 		// Set the crticial entry out values.
 		//
 		// TODO: Set more of these, there are like 20 of them.
+		out.Ino = ino
 		out.Size = fileInfo.Filesize
-		out.Mode = attrs.Mode
+		out.Mode = uint32(fileInfo.Mode())
 
 		inode := fdn.NewInode(ctx, filenode, attrs)
 		return inode, errToStatus(nil)
@@ -197,20 +206,24 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 		dirInfo: dirInfo,
 		siapath: lookupPath,
 
+		ino: atomic.AddUint64(&fdn.filesystem.atomicDirInoCounter, 1),
+
 		filesystem: fdn.filesystem,
 	}
-	dirMode := dirInfo.Mode()
 	attrs := fs.StableAttr{
-		Mode: uint32(dirMode),
+		Ino: dirnode.ino,
+		Mode: fuse.S_IFDIR,
 	}
-	out.Mode = uint32(dirMode)
+	out.Ino = attrs.Ino
+	out.Mode = uint32(dirInfo.Mode())
 	inode := fdn.NewInode(ctx, dirnode, attrs)
 	return inode, errToStatus(nil)
 }
 
-// Getattr returns the attributes of a fuse file.
+// Getattr returns the attributes of a fuse dir.
 func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	out.Mode = uint32(fdn.dirInfo.Mode())
+	out.Ino = fdn.ino
 	return errToStatus(nil)
 }
 
@@ -222,6 +235,7 @@ func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse
 func (ffn *fuseFilenode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	out.Size = ffn.staticFileInfo.Filesize
 	out.Mode = uint32(ffn.staticFileInfo.Mode()) | syscall.S_IFREG
+	out.Ino = uidToIno(ffn.staticFileInfo.UID)
 	return errToStatus(nil)
 }
 
@@ -286,7 +300,7 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 	dirEntries := make([]fuse.DirEntry, 0, len(fileinfos)+len(dirinfos))
 	for _, fi := range fileinfos {
 		dirEntries = append(dirEntries, fuse.DirEntry{
-			Mode: uint32(fi.Mode()) | syscall.S_IFREG,
+			Mode: uint32(fi.Mode()) | fuse.S_IFREG,
 			Name: fi.Name(),
 		})
 	}
@@ -298,7 +312,7 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 			continue
 		}
 		dirEntries = append(dirEntries, fuse.DirEntry{
-			Mode: uint32(di.Mode()),
+			Mode: uint32(di.Mode()) | fuse.S_IFDIR,
 			Name: di.Name(),
 		})
 	}
