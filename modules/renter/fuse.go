@@ -1,23 +1,5 @@
 package renter
 
-// TODO: All fuse systems seem to suffer from sudden memory death syndrome.
-// Sudden memory death syndrome is an issue where everything runs fine for a
-// short period of time, and then suddenly memory spikes (5 GB/s until death)
-// and the process is killed.
-//
-// The memory spike so SO FAST that I've thus far been completely unable to get
-// a trace or memory profile that captures the spike. I have no idea what causes
-// the spike, however excessively browsing around the fuse directory in a file
-// browser seems to reliably trigger the issue. Perhaps something related to
-// Lookup?
-//
-// My best guess for the cause of SMDS is somewhere there's an infinite loop
-// that also happens to allocate memory. I've been unable to replicate this
-// without using fuse, however that may just be because fuse is the only system
-// we have that allows us to really slam the sia filesystem.
-//
-// Now called SOOMS for SuddenOutOfMemorySyndrome
-
 // TODO: Need to create a single 'ReadAt' endpoint for the streamer, that will
 // seek the streamer and read from it at the same time, this is a concurrency
 // issue as multiple concurrent reads may be happening on the streamer at once,

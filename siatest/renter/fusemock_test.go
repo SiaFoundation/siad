@@ -30,7 +30,7 @@ import (
 const (
 	generatedFSDepth = 2
 	foldersPerFolder = 2
-	filesPerFolder = 2
+	filesPerFolder   = 2
 )
 
 // fuseNode is a node to help build out a fuse system.
@@ -57,12 +57,12 @@ func (fn *fuseNode) Access(ctx context.Context, mask uint32) syscall.Errno {
 
 // Getattr will return the mode of the node, and the size if the node is a file.
 func (fn *fuseNode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	out.Ino = fn.ino
 	if strings.Contains(fn.name, "file") {
-		out.Ino = fn.ino
-		out.Mode = fuse.S_IFREG
+		out.Mode = 0644
 		out.Size = 26
 	} else {
-		out.Mode = fuse.S_IFDIR
+		out.Mode = 0666
 	}
 	return syscall.F_OK
 }
@@ -104,17 +104,17 @@ func (fn *fuseNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 
 	// Set the stable attributes of the file based on the name.
 	var stable fs.StableAttr
-	if strings.Contains(name, "file") {
-		stable.Mode = fuse.S_IFREG
-		out.Mode = fuse.S_IFREG
-		out.Size = 26
-	} else {
-		stable.Mode = fuse.S_IFDIR
-		out.Mode = fuse.S_IFDIR
-	}
 	stable.Ino = lookupIno
 	out.Ino = lookupIno
 	out.NodeId = lookupIno
+	if strings.Contains(name, "file") {
+		stable.Mode = fuse.S_IFREG
+		out.Mode = 0644
+		out.Size = 26
+	} else {
+		stable.Mode = fuse.S_IFDIR
+		out.Mode = 0666
+	}
 
 	childFN := &fuseNode{
 		name:  name,
@@ -137,7 +137,7 @@ func (fn *fuseNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	if fn.depth < generatedFSDepth {
 		entries = append(entries, fuse.DirEntry{
 			Name: "one",
-			Mode: fuse.S_IFDIR,
+			Mode: fuse.S_IFDIR | 0666,
 		})
 	}
 
@@ -146,7 +146,7 @@ func (fn *fuseNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 		for i := 1; i < foldersPerFolder; i++ {
 			entries = append(entries, fuse.DirEntry{
 				Name: string([]byte{byte(i + 48)}),
-				Mode: fuse.S_IFDIR,
+				Mode: fuse.S_IFDIR | 0666,
 			})
 		}
 	}
@@ -155,7 +155,7 @@ func (fn *fuseNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	for i := 0; i < filesPerFolder; i++ {
 		entries = append(entries, fuse.DirEntry{
 			Name: "file" + string([]byte{byte(i + 48)}),
-			Mode: fuse.S_IFREG,
+			Mode: fuse.S_IFREG | 0644,
 		})
 	}
 
@@ -231,7 +231,7 @@ func TestGeneratedFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err, "error early lets go", fuseRoot.Close())
 	}
-	if len(names) != foldersPerFolder + filesPerFolder {
+	if len(names) != foldersPerFolder+filesPerFolder {
 		t.Error("wrong number of names", len(names), foldersPerFolder, filesPerFolder)
 	}
 	_, err = fuseRoot.Seek(0, 0)
@@ -242,7 +242,7 @@ func TestGeneratedFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(infos) != foldersPerFolder + filesPerFolder {
+	if len(infos) != foldersPerFolder+filesPerFolder {
 		t.Error("wrong number of infos", len(infos), foldersPerFolder, filesPerFolder)
 	}
 	err = fuseRoot.Close()
@@ -257,7 +257,7 @@ func TestGeneratedFuse(t *testing.T) {
 	// it as they switch between wanting the sleep and wanting the test to run
 	// fast.
 	//
-	// time.Sleep(time.Second * 120)
+	time.Sleep(time.Second * 120)
 	time.Sleep(time.Millisecond)
 
 	// Unmount fuse.
