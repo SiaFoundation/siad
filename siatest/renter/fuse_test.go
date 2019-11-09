@@ -88,6 +88,10 @@ func TestFuse(t *testing.T) {
 	if len(names) != 0 {
 		t.Error("there should not be any files in the empty fuse filesystem")
 	}
+	_, err = fuseRoot.Seek(0, 0)
+	if err != nil {
+		t.Error("Unable to seek before readdir", err)
+	}
 	infos, err := fuseRoot.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
@@ -132,14 +136,16 @@ func TestFuse(t *testing.T) {
 	if len(names) != 1 {
 		t.Error("the uploaded file is not appearing as a file of the directory", len(names))
 	}
+	_, err = fuseRoot.Seek(0, 0)
+	if err != nil {
+		t.Error("Unable to seek before readdir", err)
+	}
 	infos, err = fuseRoot.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(infos) != 1 {
-		// TODO: Need to figure out what is preventing Readdir from returning
-		// actual entries, and need to fix that.
-		t.Log("the number of infos returned is not 1", len(infos))
+		t.Error("the number of infos returned is not 1", len(infos))
 	}
 	err = fuseRoot.Close()
 	if err != nil {
@@ -202,14 +208,16 @@ func TestFuse(t *testing.T) {
 	if len(names) != 2 {
 		t.Error("the uploaded dir is not appearing as a file of the directory", len(names))
 	}
+	_, err = fuseRoot.Seek(0, 0)
+	if err != nil {
+		t.Error("Unable to seek before readdir", err)
+	}
 	infos, err = fuseRoot.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(infos) != 2 {
-		// TODO: Need to figure out what is preventing Readdir from returning
-		// actual entries, and need to fix that.
-		t.Log("the number of infos returned is not 2", len(infos))
+		t.Error("the number of infos returned is not 2", len(infos))
 	}
 	err = fuseRoot.Close()
 	if err != nil {
@@ -228,14 +236,16 @@ func TestFuse(t *testing.T) {
 	if len(names) != 0 {
 		t.Error("files appearing in what's supposed to be an empty dir", len(names))
 	}
+	_, err = localfd1Fuse.Seek(0, 0)
+	if err != nil {
+		t.Error("Unable to seek before readdir", err)
+	}
 	infos, err = localfd1Fuse.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(infos) != 0 {
-		// TODO: Need to figure out what is preventing Readdir from returning
-		// actual entries, and need to fix that.
-		t.Log("infos appearing in what's supposed to be an empty dir", len(infos))
+		t.Error("infos appearing in what's supposed to be an empty dir", len(infos))
 	}
 	err = localfd1Fuse.Close()
 	if err != nil {
@@ -265,14 +275,16 @@ func TestFuse(t *testing.T) {
 	if len(names) != 1 {
 		t.Error("the file uploaded to subdir is not appearing", len(names))
 	}
+	_, err = localfd1Fuse.Seek(0, 0)
+	if err != nil {
+		t.Error("Unable to seek before readdir", err)
+	}
 	infos, err = localfd1Fuse.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(infos) != 1 {
-		// TODO: Need to figure out what is preventing Readdir from returning
-		// actual entries, and need to fix that.
-		t.Log("file uploaded to subdir not appearing as an info", len(infos))
+		t.Error("file uploaded to subdir not appearing as an info", len(infos))
 	}
 	err = localfd1Fuse.Close()
 	if err != nil {
@@ -327,14 +339,16 @@ func TestFuse(t *testing.T) {
 	if len(names) != 2 {
 		t.Error("the file uploaded to subdir is not appearing", len(names))
 	}
+	_, err = localfd1Fuse.Seek(0, 0)
+	if err != nil {
+		t.Error("Unable to seek before readdir", err)
+	}
 	infos, err = localfd1Fuse.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(infos) != 2 {
-		// TODO: Need to figure out what is preventing Readdir from returning
-		// actual entries, and need to fix that.
-		t.Log("files uploaded to subdir not appearing as an info", len(infos))
+		t.Error("files uploaded to subdir not appearing as an info", len(infos))
 	}
 	err = localfd1Fuse.Close()
 	if err != nil {

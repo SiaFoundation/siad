@@ -166,11 +166,15 @@ func TestGeneratedFuse(t *testing.T) {
 	if len(names) != 71 {
 		t.Error("child dir is not appearing", len(names))
 	}
+	_, err = fuseRoot.Seek(0, 0)
+	if err != nil {
+		t.Fatal("unable to reset dir seek")
+	}
 	infos, err := fuseRoot.Readdir(0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(infos) != 1 {
+	if len(infos) != 71 {
 		t.Error("the number of infos returned is not 1", len(infos))
 	}
 	err = fuseRoot.Close()
