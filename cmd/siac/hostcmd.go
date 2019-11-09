@@ -61,7 +61,10 @@ Available settings:
      mindownloadbandwidthprice: currency / TB
      minsectoraccessprice:      currency
      minstorageprice:           currency / TB / Month
-     minuploadbandwidthprice:   currency / TB
+	 minuploadbandwidthprice:   currency / TB
+
+	 maxephemeralaccountbalance: currency
+	 maxunsaveddelta: 			 currency
 
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 
@@ -218,6 +221,9 @@ Host Internal Settings:
 	minstorageprice:           %v / TB / Month
 	minuploadbandwidthprice:   %v / TB
 
+	maxephemeralaccountbalance: %v
+	maxunsaveddelta: 			%v
+
 Host Financials:
 	Contract Count:               %v
 	Transaction Fee Compensation: %v
@@ -261,6 +267,9 @@ RPC Stats:
 			currencyUnits(is.MinDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 			currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.MinUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
+
+			currencyUnits(is.MaxEphemeralAccountBalance),
+			currencyUnits(is.MaxUnsavedDelta),
 
 			fm.ContractCount, currencyUnits(fm.ContractCompensation),
 			currencyUnits(fm.PotentialContractCompensation),
@@ -340,7 +349,7 @@ func hostconfigcmd(param, value string) {
 	var err error
 	switch param {
 	// currency (convert to hastings)
-	case "collateralbudget", "maxcollateral", "minbaserpcprice", "mincontractprice", "minsectoraccessprice":
+	case "collateralbudget", "maxcollateral", "minbaserpcprice", "mincontractprice", "minsectoraccessprice", "maxephemeralaccountbalance", "maxunsaveddelta":
 		value, err = parseCurrency(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)

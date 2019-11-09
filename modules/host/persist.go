@@ -70,6 +70,9 @@ func (h *Host) establishDefaults() error {
 		MinSectorAccessPrice:      defaultSectorAccessPrice,
 		MinStoragePrice:           defaultStoragePrice,
 		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
+
+		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,
+		MaxUnsavedDelta: 			defaultMaxUnsavedDelta,
 	}
 
 	// Generate signing key, for revising contracts.

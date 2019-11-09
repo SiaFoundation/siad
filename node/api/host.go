@@ -227,6 +227,22 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		}
 		settings.MinUploadBandwidthPrice = x
 	}
+	if req.FormValue("maxephemeralaccountbalance") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountbalance"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MaxEphemeralAccountBalance = x
+	}
+	if req.FormValue("maxunsaveddelta") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("maxunsaveddelta"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MaxUnsavedDelta = x
+	}
 
 	return settings, nil
 }

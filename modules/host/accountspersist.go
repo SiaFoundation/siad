@@ -11,14 +11,19 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// TODO add peristence metadata headers for accounts and fingerprints
-
 const (
 	// accountSize is the fixed account size in bytes
 	accountSize = 1 << 7
 
 	// accountsFilename is the filename of the file that holds the accounts
 	accountsFilename = "accounts.txt"
+
+	// fingerprintSize is the fixed fingerprint size in bytes
+	fingerprintSize = 1 << 6
+
+	// filenames for fingerprint buckets
+	currentBucketFilename = "fingerprints_c.txt"
+	nextBucketFilename    = "fingerprints_n.txt"
 
 	// headerOffset is the size of the header in bytes
 	headerOffset = 32
@@ -29,14 +34,14 @@ var (
 	// accounts persist file.
 	accountMetadata = fixedMetadata{
 		Header:  types.Specifier{'A', 'c', 'c', 'o', 'u', 'n', 't', 's'},
-		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '1'},
+		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '3'},
 	}
 
 	// fingerprintsMetadata contains the header and version strings that
 	// identify the fingerprints persist file.
 	fingerprintsMetadata = fixedMetadata{
 		Header:  types.Specifier{'F', 'i', 'n', 'g', 'e', 'r', 'P', 'r', 'i', 'n', 't', 's'},
-		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '1'},
+		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '3'},
 	}
 )
 
@@ -150,11 +155,11 @@ func (ap *accountsPersister) callSaveAccount(a *account) error {
 }
 
 // callSaveFingerprint writes away the fingerprint to disk
-func (ap *accountsPersister) callSaveFingerprint(fp *fingerprint) error {
+func (ap *accountsPersister) callSaveFingerprint(fp *crypto.Hash, expiry types.BlockHeight) error {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 
-	if err := ap.fingerprints.save(fp); err != nil {
+	if err := ap.fingerprints.save(fp, expiry); err != nil {
 		ap.h.log.Println("could not save fingerprint:", err)
 		return err
 	}
@@ -200,7 +205,7 @@ func (ap *accountsPersister) callLoadAccountsData() accountsData {
 		return data
 	}
 	for _, fp := range fps {
-		data.Fingerprints[fp.Hash] = struct{}{}
+		data.Fingerprints[*fp] = struct{}{}
 	}
 
 	return data
@@ -271,7 +276,6 @@ func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metada
 func (a *account) transformToAccountData() accountData {
 	spk := types.SiaPublicKey{}
 	spk.LoadString(a.id)
-
 	return accountData{
 		Id:      spk,
 		Balance: a.balance,

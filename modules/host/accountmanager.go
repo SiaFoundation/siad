@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -20,12 +21,13 @@ const (
 )
 
 var (
-	errInsufficientBalance = errors.New("insufficient account balance")
-	errMaxBalanceExceeded  = errors.New("maximum account balance exceeded")
+	errBalanceInsufficient = errors.New("insufficient account balance")
+	errBalanceMaxExceeded  = errors.New("maximum account balance exceeded")
 
-	// TODO make host setting
-	maxAccountBalance = types.SiacoinPrecision
-	maxUnsavedDelta   = types.SiacoinPrecision
+	errWithdrawalSpent            = errors.New("ephemeral account withdrawal was already spent")
+	errWithdrawalExpired          = errors.New("ephemeral account withdrawal expired")
+	errWithdrawalExtremeFuture    = errors.New("ephemeral account withdrawal expires too far into the future")
+	errWithdrawalInvalidSignature = errors.New("ephemeral account withdrawal signature is invalid")
 
 	// pruneExpiredAccountsFrequency is the frequency at which the host prunes
 	// accounts which have been inactive
@@ -35,9 +37,9 @@ var (
 		Testing:  2 * time.Second,
 	}).(time.Duration)
 
-	// blockedTxnTimeout is the amount of time after which a blocked transaction
+	// blockedCallTimeout is the amount of time after which a blocked withdrawal
 	// times out
-	blockedTxnTimeout = build.Select(build.Var{
+	blockedCallTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      15 * time.Second,
 		Testing:  3 * time.Second,
@@ -45,6 +47,14 @@ var (
 )
 
 type (
+	// withdrawalMessage is a struct that contains all withdrawal details
+	withdrawalMessage struct {
+		account string
+		expiry  types.BlockHeight
+		amount  types.Currency
+		nonce   uint64
+	}
+
 	// accountManager is a subsystem that manages all ephemeral accounts.
 	//
 	// Ephemeral accounts are a service offered by hosts that allow users to
@@ -58,17 +68,13 @@ type (
 	// should refill the ephemeral accounts frequently, even on the order of
 	// multiple times per minute.
 	accountManager struct {
-		accounts     map[string]*account
-		fingerprints *memoryBucket
-
-		indexBitfields []uint64
-
-		maxAccountBalance  types.Currency
-		maxUnsavedDelta    uint64
-		atomicUnsavedDelta uint64
+		accounts               map[string]*account
+		fingerprints           *memoryBucket
+		indexBitfields         []uint64
+		atomicUnsavedDelta     uint64
+		staticAccountPersister *accountsPersister
 
 		mu           sync.Mutex
-		persister    *accountsPersister
 		dependencies modules.Dependencies
 		h            *Host
 	}
@@ -79,33 +85,31 @@ type (
 		balance types.Currency
 		lastTxn int64
 
-		index       uint32
-		blockedTxns []blockedTxn
+		index        uint32
+		blockedCalls blockedCallHeap
 	}
 
-	// blockedTx represents a pending spend transaction, it is blocked due to
-	// insufficient account balance and is unblocked by either a deposit or
-	// timeout
-	blockedTxn struct {
-		id       string
-		unblock  chan struct{}
-		required types.Currency
+	// blockedCall represents a pending withdraw
+	blockedCall struct {
+		id        string
+		unblock   chan struct{}
+		required  types.Currency
+		timestamp int64
 	}
+
+	// blockedCallHeap is a heap of blocking transactions; the heap is sorted in
+	// a FIFO fashion
+	blockedCallHeap []*blockedCall
 )
 
 // newAccountManager returns a new account manager ready for use by the host
-func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountManager, error) {
-	maxUnsavedDelta, _ := maxUnsavedDelta.Uint64()
+func (h *Host) newAccountManager(dependencies modules.Dependencies, ap *accountsPersister) (*accountManager, error) {
 	am := &accountManager{
-		accounts:     make(map[string]*account),
-		fingerprints: newMemoryBucket(bucketSize, h.blockHeight),
-
-		maxAccountBalance: maxAccountBalance,
-		maxUnsavedDelta:   maxUnsavedDelta,
-
-		dependencies: dependencies,
-		persister:    h.staticAccountPersister,
-		h:            h,
+		accounts:               make(map[string]*account),
+		fingerprints:           newMemoryBucket(bucketSize, h.blockHeight),
+		staticAccountPersister: ap,
+		dependencies:           dependencies,
+		h:                      h,
 	}
 
 	// Load data
@@ -114,12 +118,12 @@ func (h *Host) newAccountManager(dependencies modules.Dependencies) (*accountMan
 	am.h.tg.OnStop(func() {
 		// Unblock all pending transactions
 		for _, acc := range am.accounts {
-			for _, txn := range acc.blockedTxns {
+			for _, txn := range acc.blockedCalls {
 				close(txn.unblock)
 			}
 		}
 		// Close all open file handles
-		am.persister.Close()
+		am.staticAccountPersister.Close()
 	})
 
 	go am.threadedPruneExpiredAccounts()
@@ -132,7 +136,7 @@ func (am *accountManager) managedLoadData() {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	data := am.persister.callLoadAccountsData()
+	data := am.staticAccountPersister.callLoadAccountsData()
 	am.accounts = data.Accounts
 	(*am.fingerprints.current) = data.Fingerprints
 	am.buildAccountIndex()
@@ -151,37 +155,29 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 
 	// Verify maxbalance
 	updatedBalance := acc.balance.Add(amount)
-	if am.maxAccountBalance.Cmp(updatedBalance) < 0 {
-		return errMaxBalanceExceeded
+	maxBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
+	if maxBalance.Cmp(updatedBalance) < 0 {
+		return errBalanceMaxExceeded
 	}
 
 	// Update account details
 	acc.balance = updatedBalance
 	acc.lastTxn = time.Now().Unix()
 
-	// Loop over blocked transactions and unblock where possible, keep track of
-	// the remaining balance to allow unblocking multiple at the same time
+	// Try to unblock waiting txns by popping them off the heap one by one
 	remaining := acc.balance
-	j := 0
-	for i := 0; i < len(acc.blockedTxns); i++ {
-		b := acc.blockedTxns[i]
-		if b.id != id {
-			continue
-		}
-		if remaining.Cmp(b.required) < 0 {
-			acc.blockedTxns[j] = b
-			j++
+	for i := 0; i < acc.blockedCalls.Len(); i++ {
+		bTxn := acc.blockedCalls.Pop().(*blockedCall)
+		if remaining.Cmp(bTxn.required) >= 0 {
+			close(bTxn.unblock)
+			remaining = remaining.Sub(bTxn.required)
 		} else {
-			close(b.unblock)
-			remaining = remaining.Sub(b.required)
-			if remaining.Equals(types.ZeroCurrency) {
-				break
-			}
+			acc.blockedCalls.Push(bTxn)
+			break
 		}
 	}
-	acc.blockedTxns = acc.blockedTxns[:j]
 
-	err := am.persister.callSaveAccount(acc)
+	err := am.staticAccountPersister.callSaveAccount(acc)
 	if err != nil {
 		am.h.log.Println("ERROR: could not save account:", id, err)
 	}
@@ -189,20 +185,17 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	return nil
 }
 
-// callSpend will try to spend from an account, it blocks if the account balance
-// is insufficient
-func (am *accountManager) callSpend(id string, amount types.Currency, fp *fingerprint) error {
+// callWithdraw will try to spend from an account, this call will block if the
+// account balance is insufficient
+func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature) error {
 	am.mu.Lock()
 
-	// Lookup fingerprint
-	if exists := am.fingerprints.has(fp); exists {
-		am.mu.Unlock()
-		return errKnownFingerprint
-	}
+	id, amount, expiry := msg.account, msg.amount, msg.expiry
 
-	// Validate fingerprint
-	if err := fp.validate(am.h.blockHeight); err != nil {
-		am.h.log.Printf("ERROR: invalid fingerprint, current blockheight %v, error: %v", am.h.blockHeight, err)
+	// Validat the withdrawal
+	fp, err := am.validateWithdrawal(msg, sig)
+	if err != nil {
+		am.h.log.Printf("ERROR: invalid withdrawal %v", err)
 		am.mu.Unlock()
 		return err
 	}
@@ -217,24 +210,25 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 	// blockCallTimeout expires, the account receives sufficient deposits or we
 	// receive a message on the thread group's stop channel
 	if acc.balance.Cmp(amount) < 0 {
-		tx := blockedTxn{
-			id:       id,
-			unblock:  make(chan struct{}),
-			required: amount,
+		tx := blockedCall{
+			id:        id,
+			unblock:   make(chan struct{}),
+			required:  amount,
+			timestamp: time.Now().Unix(),
 		}
-		acc.blockedTxns = append(acc.blockedTxns, tx)
+		acc.blockedCalls.Push(tx)
 		am.mu.Unlock()
 
 	BlockLoop:
 		for {
 			select {
 			case <-am.h.tg.StopChan():
-				return errors.New("ERROR: spend cancelled, stop received")
+				return errors.New("ERROR: withdraw cancelled, stop received")
 			case <-tx.unblock:
 				am.mu.Lock()
 				break BlockLoop
-			case <-time.After(blockedTxnTimeout):
-				return errInsufficientBalance
+			case <-time.After(blockedCallTimeout):
+				return errBalanceInsufficient
 			}
 		}
 	}
@@ -242,11 +236,11 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 	// Sanity check to avoid the negative currency panic possible by subtracting
 	if acc.balance.Cmp(amount) < 0 {
 		am.mu.Unlock()
-		return errInsufficientBalance
+		return errBalanceInsufficient
 	}
 	acc.balance = acc.balance.Sub(amount)
 	acc.lastTxn = time.Now().Unix()
-	am.fingerprints.save(fp)
+	am.fingerprints.save(*fp, msg.expiry)
 
 	// Track the unsaved delta by adding the amount we are spending
 	unsaved, _ := amount.Uint64()
@@ -255,12 +249,12 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 	// Persist the account data and fingerprint data asynchronously
 	awaitPersist := make(chan struct{})
 	go func() {
-		if err := am.persister.callSaveAccount(acc); err != nil {
+		if err := am.staticAccountPersister.callSaveAccount(acc); err != nil {
 			am.h.log.Println("ERROR: could not save account", id, err)
 		}
 
-		if err := am.persister.callSaveFingerprint(fp); err != nil {
-			am.h.log.Println("ERROR: could not save fingerprint", fp.Hash, err)
+		if err := am.staticAccountPersister.callSaveFingerprint(fp, expiry); err != nil {
+			am.h.log.Println("ERROR: could not save fingerprint", fp, err)
 		}
 
 		// Track the unsaved delta, decrement the unsaved delta with the amount
@@ -270,7 +264,8 @@ func (am *accountManager) callSpend(id string, amount types.Currency, fp *finger
 	}()
 
 	// If the unsaved delta exceeds the maximum, block until we persisted
-	if atomic.LoadUint64(&am.atomicUnsavedDelta) > am.maxUnsavedDelta {
+	maxUnsavedDelta, _ := am.h.InternalSettings().MaxUnsavedDelta.Uint64()
+	if atomic.LoadUint64(&am.atomicUnsavedDelta) > maxUnsavedDelta {
 		<-awaitPersist
 		am.mu.Unlock()
 		return nil
@@ -288,7 +283,7 @@ func (am *accountManager) callConsensusChanged() {
 	defer am.mu.Unlock()
 
 	am.fingerprints.tryRotate(am.h.blockHeight)
-	err := am.persister.fingerprints.tryRotate(am.h.blockHeight)
+	err := am.staticAccountPersister.fingerprints.tryRotate(am.h.blockHeight)
 	if err != nil {
 		am.h.log.Println("ERROR: could not rotate fingerprint buckets")
 	}
@@ -299,16 +294,16 @@ func (am *accountManager) callConsensusChanged() {
 // account index at all times so it gets persisted properly
 func (am *accountManager) newAccount(id string) *account {
 	acc := &account{
-		id:          id,
-		index:       am.getFreeIndex(),
-		blockedTxns: make([]blockedTxn, 0),
+		id:           id,
+		index:        am.getFreeIndex(),
+		blockedCalls: make(blockedCallHeap, 0),
 	}
 	am.accounts[id] = acc
 	return acc
 }
 
 // buildAccountIndex will initialize bitfields representing all ephemeral
-// accounts, the index is used to recycle account indices 
+// accounts, the index is used to recycle account indices
 func (am *accountManager) buildAccountIndex() {
 	n := len(am.accounts) / 64
 	for i := 0; i < n; i++ {
@@ -401,4 +396,56 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 			continue
 		}
 	}
+}
+
+// validateWithdrawal returns an error if the withdrawal has already been
+// processed or if the withdrawal message is either expired or too far into the
+// future. If the signature is valid, it returns the fingerprint which is the
+// hash of the withdrawal message
+func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.Signature) (*crypto.Hash, error) {
+
+	// Verify we have not processed this withdrawal before
+	fp := crypto.HashAll(*msg)
+	if exists := am.fingerprints.has(fp); exists {
+		return nil, errWithdrawalSpent
+	}
+
+	// Verify the current blockheight does not exceed the expiry
+	currentBlockHeight := am.h.blockHeight
+	if msg.expiry < currentBlockHeight {
+		return nil, errWithdrawalExpired
+	}
+
+	// Verify the withdrawal is not too far into the future
+	if msg.expiry > currentBlockHeight+bucketSize {
+		return nil, errWithdrawalExtremeFuture
+	}
+
+	// Verify the signature
+	spk := types.SiaPublicKey{}
+	spk.LoadString(msg.account)
+	var pk crypto.PublicKey
+	copy(pk[:], spk.Key)
+	err := crypto.VerifyHash(fp, pk, sig)
+	if err != nil {
+		return nil, errWithdrawalInvalidSignature
+	}
+
+	return &fp, nil
+}
+
+// Implementation of heap.Interface for blockedCallHeap.
+func (bch blockedCallHeap) Len() int           { return len(bch) }
+func (bch blockedCallHeap) Less(i, j int) bool { return bch[i].timestamp < bch[j].timestamp }
+func (bch blockedCallHeap) Swap(i, j int)      { bch[i], bch[j] = bch[j], bch[i] }
+func (bch *blockedCallHeap) Push(x interface{}) {
+	bTxn := x.(blockedCall)
+	*bch = append(*bch, &bTxn)
+}
+func (bch *blockedCallHeap) Pop() interface{} {
+	old := *bch
+	n := len(old)
+	bTxn := old[n-1]
+	*bch = old[0 : n-1]
+	return bTxn
 }

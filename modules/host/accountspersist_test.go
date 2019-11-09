@@ -3,10 +3,8 @@ package host
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -82,26 +80,23 @@ func TestFingerprintsReload(t *testing.T) {
 	}
 	am := ht.host.staticAccountManager
 
-	// Create an account and deposit coins into it
-	_, pk := crypto.GenerateKeyPair()
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
+	// Prepare an account
+	sk, spk := prepareAccount()
 	id := spk.String()
 	err = am.callDeposit(id, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	a := types.NewCurrency64(1)
-	fp1 := randomFingerprint(ht.host, 5)
-	err = am.callSpend(id, a, fp1)
+	// Prepare a withdrawal message
+	amount := types.NewCurrency64(1)
+	msg1, sig1 := prepareWithdrawal(id, amount, am.h.blockHeight+10, sk)
+	err = am.callWithdraw(msg1, sig1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fp2 := randomFingerprint(ht.host, 10)
-	err = am.callSpend(id, a, fp2)
+	msg2, sig2 := prepareWithdrawal(id, amount, am.h.blockHeight+10, sk)
+	err = am.callWithdraw(msg2, sig2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,96 +113,17 @@ func TestFingerprintsReload(t *testing.T) {
 	am = ht.host.staticAccountManager
 
 	// Verify fingerprints got reloaded
+	fp1 := crypto.HashObject(msg1)
 	exists := am.fingerprints.has(fp1)
 	if !exists {
-		t.Log(fp1.Hash)
+		t.Log(fp1)
 		t.Error("Fingerprint 1 hash not found after reload")
 	}
+	fp2 := crypto.HashObject(msg2)
 	exists = am.fingerprints.has(fp2)
 	if !exists {
-		t.Log(fp2.Hash)
+		t.Log(fp2)
 		t.Error("Fingerprint 2 hash not found after reload")
-	}
-}
-
-// TestMarshalUnmarshalFingerprint
-func TestMarshalUnmarshalFingerprint(t *testing.T) {
-	t.Parallel()
-
-	ht, err := blankHostTester("TestMarshalUnmarshalFingerprint")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expected := randomFingerprint(ht.host, 5)
-	b := encoding.Marshal(*expected)
-
-	actual := &fingerprint{}
-	err = encoding.Unmarshal(b, actual)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify hash
-	if actual.Hash != expected.Hash {
-		t.Error("Incorrect hash after unmarshal")
-		t.Log("Expected: ", expected.Hash)
-		t.Log("Actual: ", actual.Hash)
-	}
-
-	// Verify blockheight
-	if actual.Expiry != expected.Expiry {
-		t.Error("Incorrect expiry after unmarshal")
-		t.Log("Expected: ", expected.Expiry)
-		t.Log("Actual: ", actual.Expiry)
-	}
-}
-
-// TestMarshalUnmarshalAccount
-func TestMarshalUnmarshalAccountData(t *testing.T) {
-	t.Parallel()
-
-	// Generate SiaPublicKey
-	_, pk := crypto.GenerateKeyPair()
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-
-	// Marshal a dummy account
-	expected := accountData{
-		Id:      spk,
-		Balance: types.SiacoinPrecision,
-		LastTxn: time.Now().Unix(),
-	}
-	accBytes := make([]byte, accountSize)
-	copy(accBytes, encoding.Marshal(expected))
-
-	// Unmarshal the account bytes back into a struct
-	actual := &accountData{}
-	if err := encoding.Unmarshal(accBytes, actual); err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify unmarshal of the account id
-	if expected.Id.String() != actual.Id.String() {
-		t.Error("Incorrect id after unmarshal")
-		t.Log("Expected: ", expected.Id.String())
-		t.Log("Actual: ", actual.Id.String())
-	}
-
-	// Verify unmarshal of the balance
-	if expected.Balance.Cmp(actual.Balance) != 0 {
-		t.Error("Incorrect balance after unmarshal")
-		t.Log("Expected: ", expected.Balance.String())
-		t.Log("Actual: ", actual.Balance.String())
-	}
-
-	// Verify unmarshal of the updated timestamp
-	if expected.LastTxn != actual.LastTxn {
-		t.Error("Incorrect lastTxn timestamp after unmarshal")
-		t.Log("Expected: ", expected.LastTxn)
-		t.Log("Actual: ", actual.LastTxn)
 	}
 }
 

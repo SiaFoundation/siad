@@ -150,6 +150,18 @@ var (
 	// data.
 	defaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
 
+	// defaultMaxEphemeralAccountBalance defines the default maximum amount of
+	// money that can be contained within an ephemeral account
+	defaultMaxEphemeralAccountBalance = types.SiacoinPrecision
+
+	// defaultMaxUnsavedDelta defines the maximum amount of unsaved delta the
+	// host can be on the hook for. The host will persist changes to ephemeral
+	// account balances in an asynchronous fashion, this can cause a temporary
+	// delta between the amount of money linked to an account in memory and what
+	// has been persisted to disk. MaxUnsavedDelta limits this total across all
+	// ephemeral accounts managed by the host
+	defaultMaxUnsavedDelta = types.SiacoinPrecision
+
 	// defaultWindowSize is the size of the proof of storage window requested
 	// by the host. The host will not delete any obligations until the window
 	// has closed and buried under several confirmations. For release builds,

@@ -857,6 +857,9 @@ fetches status information about the host.
     "minsectoraccessprice":      "123",                        //hastings
     "minstorageprice":           "231481481481",               // hastings / byte / block
     "minuploadbandwidthprice":   "100000000000000"             // hastings / byte
+
+    "maxephemeralaccountbalance": "2000000000000000000000000000000", // hastings
+    "maxunsaveddelta":            "2000000000000000000000000000000", // hastings
   },
 
   "networkmetrics": {
@@ -1037,6 +1040,16 @@ The minimum price that the host will demand when storing data for extended perio
 **minuploadbandwidthprice** | hastings / byte  
 The minimum price that the host will demand from a renter when the renter is uploading data. If the host is saturated, the host may increase the price from the minimum.  
 
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow to deposit in a single
+ephemeral account
+
+**maxunsaveddelta** | hastings  
+The maximum amount of unsaved delta across all ephemeral accounts the host is
+managing. Unsaved delta is the difference between what the host has in memory
+and hat it has persisted to disk. Such a difference can occcur because ephemeral
+account manager will persist changes to disk asynchronoulsy.
+
 #### networkmetrics  
 Information about the network, specifically various ways in which renters have contacted the host.  
 
@@ -1134,6 +1147,16 @@ The minimum price that the host will demand when storing data for extended perio
 
 **minuploadbandwidthprice** | hastings / byte  
 The minimum price that the host will demand from a renter when the renter is uploading data. If the host is saturated, the host may increase the price from the minimum.  
+
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow to deposit in a single
+ephemeral account
+
+**maxunsaveddelta** | hastings  
+The maximum amount of unsaved delta across all ephemeral accounts the host is
+managing. Unsaved delta is the difference between what the host has in memory
+and hat it has persisted to disk. Such a difference can occcur because ephemeral
+account manager will persist changes to disk asynchronoulsy.
 
 ### Response
 
@@ -1416,6 +1439,8 @@ See [host internal settings](#internalsettings)
  - mindownloadbandwidthprice  
  - minstorageprice            
  - minuploadbandwidthprice    
+ - maxephemeralaccountbalance
+ - maxunsaveddelta
 
 ### JSON Response
 > JSON Response Example

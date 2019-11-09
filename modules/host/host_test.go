@@ -378,6 +378,12 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
+	if !settings.MaxEphemeralAccountBalance.Equals(defaultMaxEphemeralAccountBalance) {
+		t.Error("settings retrieval did not return default value")
+	}
+	if !settings.MaxUnsavedDelta.Equals(defaultMaxUnsavedDelta) {
+		t.Error("settings retrieval did not return default value")
+	}
 
 	// Check that calling SetInternalSettings with valid settings updates the settings.
 	settings.AcceptingContracts = true

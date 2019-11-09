@@ -52,6 +52,11 @@ const (
 	HostParamMaxReviseBatchSize = HostParam("maxrevisebatchsize")
 	// HostParamNetAddress is the announced netaddress of the host.
 	HostParamNetAddress = HostParam("netaddress")
+	// HostParamMaxEphemeralAccountBalance is the maximum ephemeral account
+	// balance in hastings
+	HostParamMaxEphemeralAccountBalance = HostParam("maxephemeralaccountbalance")
+	// HostParamMaxUnsavedDelta is the maximum unsaved delta in hastings
+	HostParamMaxUnsavedDelta = HostParam("maxunsaveddelta")
 )
 
 // HostAnnouncePost uses the /host/announce endpoint to announce the host to

@@ -144,8 +144,7 @@ type Host struct {
 	modules.StorageManager
 
 	// Subsystems
-	staticAccountManager   *accountManager
-	staticAccountPersister *accountsPersister
+	staticAccountManager *accountManager
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -283,11 +282,14 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	})
 
 	// Add the account manager subsystem
-	h.staticAccountPersister, err = h.newAccountsPersister(h.dependencies)
+	ap, err := h.newAccountsPersister(h.dependencies)
 	if err != nil {
 		return nil, err
 	}
-	h.staticAccountManager, _ = h.newAccountManager(h.dependencies)
+	h.staticAccountManager, err = h.newAccountManager(h.dependencies, ap)
+	if err != nil {
+		return nil, err
+	}
 
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.

@@ -25,8 +25,8 @@ type HostExpireEphemeralAccounts struct {
 	modules.ProductionDependencies
 }
 
-// Disrupt will interpret a signal from the host and tell the host to pretend it
-// has no record of the contract.
+// Disrupt will interpret a signal from the host and tell the host to force
+// expire all ephemeral accounts on the next prune cycle
 func (d *HostExpireEphemeralAccounts) Disrupt(s string) bool {
 	return s == "expireEphemeralAccounts"
 }
