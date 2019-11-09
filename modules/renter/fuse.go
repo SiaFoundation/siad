@@ -13,7 +13,6 @@ import (
 	"encoding/binary"
 	"io"
 	"sync"
-	"sync/atomic"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -98,9 +97,17 @@ var _ = (fs.NodeReader)((*fuseFilenode)(nil))
 
 // fuseRoot is the root directory for a mounted fuse filesystem.
 type fuseFS struct {
-	// TODO: Currently we have to manually do this, but the sia filesystem that
-	// Chris wrote actually handles this for us.
-	atomicDirInoCounter uint64
+	// TODO: inoMap is a temporary hack to get directories to have consistent
+	// inodes between calls to open. We just store all of the directories and
+	// what inodes they got assigned forever.
+	//
+	// The inoMap is really only a safe strategy for RO filesystems, and even
+	// then it's assuming you aren't renaming things after they arrive in fuse.
+	// Really to be correct we need this support at the fs level, luckily
+	// support is on the way.
+	inoCounter uint64
+	inoMap map[string]uint64
+	inoMu sync.Mutex
 
 	fuseDirnode
 	readOnly bool
@@ -202,11 +209,19 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	}
 
 	// We found the directory we want, convert to an inode.
+	fdn.filesystem.inoMu.Lock()
+	ino, exists := fdn.filesystem.inoMap[lookupPath.String()]
+	if !exists {
+		fdn.filesystem.inoCounter++
+		ino = fdn.filesystem.inoCounter
+		fdn.filesystem.inoMap[lookupPath.String()] = ino
+	}
+	fdn.filesystem.inoMu.Unlock()
 	dirnode := &fuseDirnode{
 		dirInfo: dirInfo,
 		siapath: lookupPath,
 
-		ino: atomic.AddUint64(&fdn.filesystem.atomicDirInoCounter, 1),
+		ino: ino,
 
 		filesystem: fdn.filesystem,
 	}
@@ -214,7 +229,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 		Ino: dirnode.ino,
 		Mode: fuse.S_IFDIR,
 	}
-	out.Ino = attrs.Ino
+	out.Ino = dirnode.ino
 	out.Mode = uint32(dirInfo.Mode())
 	inode := fdn.NewInode(ctx, dirnode, attrs)
 	return inode, errToStatus(nil)

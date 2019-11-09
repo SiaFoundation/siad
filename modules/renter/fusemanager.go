@@ -11,7 +11,6 @@ package renter
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -98,9 +97,10 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	// Create the fuse filesystem object.
 	filesystem := &fuseFS{
 		// Start the counter at 2 because 0 and 1 are reserved values.
-		//
+
 		// TODO: This can one day be deleted.
-		atomicDirInoCounter: 2,
+		inoCounter: 2,
+		inoMap: make(map[string]uint64),
 
 		readOnly: opts.ReadOnly,
 
@@ -113,7 +113,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 
 		// TODO: This will one day need to be fetched using the root inode for
 		// the filesystem, instead of having our own counter.
-		ino: atomic.AddUint64(&filesystem.atomicDirInoCounter, 1),
+		ino: filesystem.inoCounter,
 	}
 	filesystem.root = root
 

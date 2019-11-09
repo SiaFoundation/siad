@@ -249,15 +249,18 @@ func TestGeneratedFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// This sleep is here to allow the developer to have time to open the fuse
-	// directory in a file browser to inspect everything. The millisecond long
-	// sleep that is not commented out exists so that the 'time' package is
-	// always used; the developer does not need to keep adding it and deleting
-	// it as they switch between wanting the sleep and wanting the test to run
-	// fast.
-	//
-	// time.Sleep(time.Second * 120)
-	time.Sleep(time.Millisecond)
+	// A call to Sleep() which can be uncommented that will allow the developer
+	// to browse around in the fuse directory on their own after the automated
+	// test has completed.
+	sleepForDev := func() {
+		println("Automated tests completed, dev can interact with FUSE now.")
+		time.Sleep(time.Second * 90)
+	}
+	// Hack to get the test to compile when sleepForDev is commented out.
+	if sleepForDev == nil {
+		t.Fatal("Sleep for dev func is not definied")
+	}
+	// sleepForDev()
 
 	// Unmount fuse.
 	err = server.Unmount()

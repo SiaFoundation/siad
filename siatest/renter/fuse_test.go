@@ -405,17 +405,71 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create another directory in the root dir.
+	localfd2Name := "fuse-dir-2"
+	localfd2Path := filepath.Join(mountpoint1, localfd2Name)
+	localfd2, err := r.FilesDir().CreateDir(localfd2Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.UploadDirectory(localfd2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a file in the new directory. The file in the new directory is
+	// sized to take multiple sectors.
+	localfd2f1, err := localfd2.NewFile(int(modules.SectorSize + 250))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.UploadBlocking(localfd2f1, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to open the second directory, see if the file is visible.
+	localfd2Fuse, err := os.Open(localfd2Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, err = localfd2Fuse.Readdirnames(0)
+	if err != nil {
+		t.Fatal(err, "error early lets go", localfd2Fuse.Close())
+	}
+	if len(names) != 1 {
+		t.Error("the file uploaded to subdir is not appearing", len(names))
+	}
+	_, err = localfd2Fuse.Seek(0, 0)
+	if err != nil {
+		t.Error("Unable to seek before readdir", err)
+	}
+	infos, err = localfd2Fuse.Readdir(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 1 {
+		t.Error("file uploaded to subdir not appearing as an info", len(infos))
+	}
+	err = localfd2Fuse.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// TODO: Need concurrency testing as well.
 
-	// This sleep is here to allow the developer to have time to open the fuse
-	// directory in a file browser to inspect everything. The millisecond long
-	// sleep that is not commented out exists so that the 'time' package is
-	// always used; the developer does not need to keep adding it and deleting
-	// it as they switch between wanting the sleep and wanting the test to run
-	// fast.
-	//
-	time.Sleep(time.Second * 120)
-	time.Sleep(time.Millisecond * 60)
+	// A call to Sleep() which can be uncommented that will allow the developer
+	// to browse around in the fuse directory on their own after the automated
+	// test has completed.
+	sleepForDev := func() {
+		println("Automated tests completed, dev can interact with FUSE now.")
+		time.Sleep(time.Second * 90)
+	}
+	// Hack to get the test to compile when sleepForDev is commented out.
+	if sleepForDev == nil {
+		t.Fatal("Sleep for dev func is not definied")
+	}
+	// sleepForDev()
 
 	// Unmount the filesystem.
 	err = r.RenterFuseUnmount(mountpoint1)
