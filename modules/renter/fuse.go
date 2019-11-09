@@ -41,12 +41,16 @@ type fuseDirnode struct {
 
 // Ensure the dir nodes satisfy the required interfaces.
 //
+// NodeAccesser is necessary for telling certain programs that it is okay to
+// access the file.
+//
 // NodeGetattrer provides details about the folder. This one may not be
 // strictly necessary, I'm not sure what exact value it adds.
 //
 // NodeLookuper is necessary to have files added to the filesystem tree.
 //
 // NodeReaddirer is necessary to list the files in a directory.
+var _ = (fs.NodeAccesser)((*fuseDirnode)(nil))
 var _ = (fs.NodeGetattrer)((*fuseDirnode)(nil))
 var _ = (fs.NodeLookuper)((*fuseDirnode)(nil))
 var _ = (fs.NodeReaddirer)((*fuseDirnode)(nil))
@@ -70,6 +74,9 @@ type fuseFilenode struct {
 
 // Ensure the file nodes satisfy the required interfaces.
 //
+// NodeAccesser is necessary for telling certain programs that it is okay to
+// access the file.
+//
 // NodeFlusher is necessary for cleaning up resources such as the download
 // streamer.
 //
@@ -78,6 +85,7 @@ type fuseFilenode struct {
 // NodeOpener is necessary for opening files to be read.
 //
 // NodeReader is necessary for reading files.
+var _ = (fs.NodeAccesser)((*fuseFilenode)(nil))
 var _ = (fs.NodeFlusher)((*fuseFilenode)(nil))
 var _ = (fs.NodeGetattrer)((*fuseFilenode)(nil))
 var _ = (fs.NodeOpener)((*fuseFilenode)(nil))
@@ -101,6 +109,18 @@ func errToStatus(err error) syscall.Errno {
 		return syscall.ENOENT
 	}
 	return syscall.EIO
+}
+
+// Access reports whether a file can be accessed by the caller.
+func (ffn *fuseFilenode) Access(ctx context.Context, mask uint32) syscall.Errno {
+	// Lazy option: always tell the program that it has access permission.
+	return syscall.F_OK
+}
+
+// Access reports whether a file can be accessed by the caller.
+func (fdn *fuseDirnode) Access(ctx context.Context, mask uint32) syscall.Errno {
+	// Lazy option: always tell the program that it has access permission.
+	return syscall.F_OK
 }
 
 // Flush is called when a file is being closed.
