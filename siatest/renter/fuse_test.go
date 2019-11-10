@@ -71,7 +71,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFuseMount(modules.RootSiaPath(), mountpoint1, true)
+	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestFuse(t *testing.T) {
 	// Mount fuse to the emtpy filesystem again, this time upload a file while
 	// the system is mounted, then try to read the filesystem from the
 	// directory.
-	err = r.RenterFuseMount(modules.RootSiaPath(), mountpoint1, true)
+	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
