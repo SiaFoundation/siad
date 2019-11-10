@@ -135,6 +135,27 @@ var (
 		Run:     wrap(renterfilesrenamecmd),
 	}
 
+	renterFuseCmd = &cobra.Command{
+		Use:     "fuse",
+		Short:   "Perform fuse actions.",
+		Long:    "Mount and unmount Sia directories using filesystem-in-userspace.",
+		Run:     wrap(renterfusecmd),
+	}
+
+	renterFuseMountCmd = &cobra.Command{
+		Use:     "mount [path] [siapath]",
+		Short:   "Mount a Sia folder to your disk",
+		Long:    "Mount a Sia folder to your disk. Applications will be able to see this folder as though it is a normal part of your filesystem. Currently experimental, and read-only. When Sia is ready to support read-write fuse mounting, siac will be updated to mount in read-write mode as the default. If you must guarantee that read-only mode is used, you must use the API.",
+		Run:     wrap(renterfusemountcmd),
+	}
+
+	renterFuseUnmountCmd = &cobra.Command{
+		Use:     "unmount [path]",
+		Short:   "Unmount a Sia folder",
+		Long:    "Unmount a Sia folder that has previously been mounted. Unmount by specifying the local path where the Sia folder is mounted.",
+		Run:     wrap(renterfuseunmountcmd),
+	}
+
 	renterSetLocalPathCmd = &cobra.Command{
 		Use:   "setlocalpath [siapath] [newlocalpath]",
 		Short: "Changes the local path of the file",
@@ -1989,6 +2010,67 @@ func renterfilesrenamecmd(path, newpath string) {
 		die("Could not rename file:", err)
 	}
 	fmt.Printf("Renamed %s to %s\n", path, newpath)
+}
+
+// renterfusecmd displays the list of directories that are currently mounted via
+// fuse.
+func renterfusecmd() {
+	// Get the list of mountpoints.
+	fuseInfo, err := httpClient.RenterFuse()
+	if err != nil {
+		die("Unable to fetch fuse information:", err)
+	}
+	mountPoints := fuseInfo.MountPoints
+
+	// Special message if nothing is mounted.
+	if len(mountPoints) == 0 {
+		fmt.Println("Nothing mounted.")
+		return
+	}
+
+	// Sort the mountpoints.
+	sort.Slice(mountPoints, func(i, j int) bool {
+		return strings.Compare(mountPoints[i].MountPoint, mountPoints[j].MountPoint) < 0
+	})
+
+	// Print out the sorted set of mountpoints.
+	fmt.Println("Mounted folders:")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "\t%s\t%s\n", "Mount Point", "SiaPath")
+	for _, mp := range mountPoints {
+		fmt.Fprintf(w, "\t%s\t%s\n", mp.MountPoint, mp.SiaPath)
+	}
+	w.Flush()
+	fmt.Println()
+
+}
+
+// renterfusemountcmd is the handler for the command `siac renter fuse mount [path] [siapath]`.
+func renterfusemountcmd(path, siaPathStr string) {
+	// TODO: Once read-write is supported on the backend, the 'true' flag can be
+	// set to 'false' - siac will support mounting read-write by default. Need
+	// to update the help string of the command to indicate that mounting will
+	// mount in read-write mode.
+	path = abs(path)
+	siaPath, err := modules.NewSiaPath(siaPathStr)
+	if err != nil {
+		die("Unable to parse the siapath that should be mounted:", err)
+	}
+	err = httpClient.RenterFuseMount(path, siaPath, true)
+	if err != nil {
+		die("Unable to mount the directory:", err)
+	}
+	fmt.Printf("mounted %s to %s\n", siaPathStr, path)
+}
+
+// renterfuseunmountcmd is the handler for the command `siac renter fuse unmount [path]`.
+func renterfuseunmountcmd(path string) {
+	path = abs(path)
+	err := httpClient.RenterFuseUnmount(path)
+	if err != nil {
+		die("Unable to unmount the given path:", err)
+	}
+	fmt.Printf("Unmounted %s successfully\n", path)
 }
 
 //rentersetlocalpathcmd is the handler for the command `siac renter setlocalpath [siapath] [newlocalpath]`
