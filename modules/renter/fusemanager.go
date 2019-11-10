@@ -97,7 +97,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	// Create the fuse filesystem object.
 	filesystem := &fuseFS{
 		// Start the counter at 2 because 0 and 1 are reserved values.
-
+		//
 		// TODO: This can one day be deleted.
 		inoCounter: 2,
 		inoMap:     make(map[string]uint64),

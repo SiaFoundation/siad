@@ -1087,7 +1087,7 @@ func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 	spfv := req.FormValue("siapath")
 	// Check the form value for root path before attempting to call
 	// modules.NewSiaPath, as RootSiaPath is considered an edge case at the moment.
-	if spfv == "/" {
+	if spfv == "/" || spfv == "" {
 		sp = modules.RootSiaPath()
 	} else {
 		s, err := modules.NewSiaPath(spfv)

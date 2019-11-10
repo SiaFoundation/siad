@@ -3,6 +3,7 @@ package renter
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // DeleteFile removes a file entry from the renter and deletes its data from
@@ -66,6 +67,12 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Special case: do not allow the user to rename to root.
+	if newName.IsRoot() {
+		return errors.New("cannot rename a file to the root directory")
+	}
+
 	// Rename file
 	err := r.staticFileSet.Rename(currentName, newName)
 	if err != nil {

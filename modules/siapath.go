@@ -114,11 +114,11 @@ func (sp SiaPath) IsRoot() bool {
 	return sp.Path == ""
 }
 
-// Join joins the string to the end of the SiaPath with a "/" and returns
-// the new SiaPath
+// Join joins the string to the end of the SiaPath with a "/" and returns the
+// new SiaPath. If 's' is the empty string, no changes are made.
 func (sp SiaPath) Join(s string) (SiaPath, error) {
 	if s == "" {
-		return sp, nil
+		return SiaPath{}, errors.New("cannot join an empty string to a siapath")
 	}
 	return newSiaPath(sp.Path + "/" + clean(s))
 }
@@ -220,8 +220,7 @@ func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
 // prevent directory traversal, and paths must not begin with / or be empty.
 func (sp SiaPath) Validate(isRoot bool) error {
 	if sp.Path == "" && !isRoot {
-		// TODO: Figure out what to do with this.
-		// return ErrEmptySiaPath
+		return ErrEmptySiaPath
 	}
 	if sp.Path == ".." {
 		return errors.New("siapath cannot be '..'")
