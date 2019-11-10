@@ -2038,7 +2038,12 @@ func renterfusecmd() {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "\t%s\t%s\n", "Mount Point", "SiaPath")
 	for _, mp := range mountPoints {
-		fmt.Fprintf(w, "\t%s\t%s\n", mp.MountPoint, mp.SiaPath)
+		siaPathStr := mp.SiaPath.String()
+		if siaPathStr == "" {
+			siaPathStr = "{root}"
+		}
+
+		fmt.Fprintf(w, "\t%s\t%s\n", mp.MountPoint, siaPathStr)
 	}
 	w.Flush()
 	fmt.Println()
@@ -2068,7 +2073,8 @@ func renterfuseunmountcmd(path string) {
 	path = abs(path)
 	err := httpClient.RenterFuseUnmount(path)
 	if err != nil {
-		die("Unable to unmount the given path:", err)
+		s := fmt.Sprintf("Unable to unmount %s:", path)
+		die(s, err)
 	}
 	fmt.Printf("Unmounted %s successfully\n", path)
 }
