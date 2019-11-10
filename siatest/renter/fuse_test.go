@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -521,6 +522,56 @@ func TestFuse(t *testing.T) {
 	// here and begin testing the write features. Extend the concurrency test to
 	// probe write features as well, probably by adding more phases.
 
+	// Inode check. Mount the root siafile to a special inode mountpoint then
+	// open several files and directoriesk. Grab their inodes. Keep the folder
+	// mounted and the files and dirs open while the rest of the tests are
+	// running to allow time to pass. At the end of the test, open all of the
+	// dirs and files again (so multiple copies are open at once) and check that
+	// the inodes all match.
+	inodeMount := filepath.Join(testDir, "inodeMount")
+	err = os.MkdirAll(inodeMount, 0777)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterFuseMount(inodeMount, modules.RootSiaPath(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inodeFile1Path, err := siaPathToFusePath(remoteFile.SiaPath(), modules.RootSiaPath(), inodeMount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inodeFile1a, err := os.Open(inodeFile1Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := inodeFile1a.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	infoStat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("unable to get system stat info on inode file 1")
+	}
+	inodeFile1aIno := infoStat.Ino
+	inodeDir1Path, err := siaPathToFusePath(remotefd1.SiaPath(), modules.RootSiaPath(), inodeMount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inodeDir1a, err := os.Open(inodeDir1Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err = inodeDir1a.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	infoStat, ok = info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("unable to get system stat info on inode file 1")
+	}
+	inodeDir1aIno := infoStat.Ino
+
 	// Spin up a large number of threads, each of which chose a home as either
 	// localfd1 or localfd2. Then the threads will create a folder for
 	// themselves inside of their home and fill the folder with a unique file
@@ -821,8 +872,60 @@ func TestFuse(t *testing.T) {
 		t.Fatal(groupErr)
 	}
 
-	// TODO: Need to check inodes stay consistent for as long as the file is
-	// open when other calls are made.
+	// Follow up on the inode check created earlier.
+	inodeFile1b, err := os.Open(inodeFile1Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err = inodeFile1b.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	infoStat, ok = info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("unable to get system stat info on inode file 1")
+	}
+	if infoStat.Ino != inodeFile1aIno {
+		t.Error("inodes do not match for the same file on the same mount")
+	}
+	err = inodeFile1b.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// check that the inodes still match for the dir.
+	inodeDir1b, err := os.Open(inodeDir1Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err = inodeDir1b.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	infoStat, ok = info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("unable to get system stat info on inode file 1")
+	}
+	if infoStat.Ino != inodeDir1aIno {
+		t.Error("inodes do not match for the same file on the same mount")
+	}
+	err = inodeDir1b.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close out the inode check files and mount.
+	err = inodeFile1a.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = inodeDir1a.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterFuseUnmount(inodeMount)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// A call to Sleep() which can be uncommented that will allow the developer
 	// to browse around in the fuse directory on their own after the automated
