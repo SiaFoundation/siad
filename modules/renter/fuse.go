@@ -106,8 +106,8 @@ type fuseFS struct {
 	// Really to be correct we need this support at the fs level, luckily
 	// support is on the way.
 	inoCounter uint64
-	inoMap map[string]uint64
-	inoMu sync.Mutex
+	inoMap     map[string]uint64
+	inoMu      sync.Mutex
 
 	fuseDirnode
 	readOnly bool
@@ -226,7 +226,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 		filesystem: fdn.filesystem,
 	}
 	attrs := fs.StableAttr{
-		Ino: dirnode.ino,
+		Ino:  dirnode.ino,
 		Mode: fuse.S_IFDIR,
 	}
 	out.Ino = dirnode.ino

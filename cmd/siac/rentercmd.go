@@ -136,24 +136,24 @@ var (
 	}
 
 	renterFuseCmd = &cobra.Command{
-		Use:     "fuse",
-		Short:   "Perform fuse actions.",
-		Long:    "Mount and unmount Sia directories using filesystem-in-userspace.",
-		Run:     wrap(renterfusecmd),
+		Use:   "fuse",
+		Short: "Perform fuse actions.",
+		Long:  "Mount and unmount Sia directories using filesystem-in-userspace.",
+		Run:   wrap(renterfusecmd),
 	}
 
 	renterFuseMountCmd = &cobra.Command{
-		Use:     "mount [path] [siapath]",
-		Short:   "Mount a Sia folder to your disk",
-		Long:    "Mount a Sia folder to your disk. Applications will be able to see this folder as though it is a normal part of your filesystem. Currently experimental, and read-only. When Sia is ready to support read-write fuse mounting, siac will be updated to mount in read-write mode as the default. If you must guarantee that read-only mode is used, you must use the API.",
-		Run:     wrap(renterfusemountcmd),
+		Use:   "mount [path] [siapath]",
+		Short: "Mount a Sia folder to your disk",
+		Long:  "Mount a Sia folder to your disk. Applications will be able to see this folder as though it is a normal part of your filesystem. Currently experimental, and read-only. When Sia is ready to support read-write fuse mounting, siac will be updated to mount in read-write mode as the default. If you must guarantee that read-only mode is used, you must use the API.",
+		Run:   wrap(renterfusemountcmd),
 	}
 
 	renterFuseUnmountCmd = &cobra.Command{
-		Use:     "unmount [path]",
-		Short:   "Unmount a Sia folder",
-		Long:    "Unmount a Sia folder that has previously been mounted. Unmount by specifying the local path where the Sia folder is mounted.",
-		Run:     wrap(renterfuseunmountcmd),
+		Use:   "unmount [path]",
+		Short: "Unmount a Sia folder",
+		Long:  "Unmount a Sia folder that has previously been mounted. Unmount by specifying the local path where the Sia folder is mounted.",
+		Run:   wrap(renterfuseunmountcmd),
 	}
 
 	renterSetLocalPathCmd = &cobra.Command{

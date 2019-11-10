@@ -94,7 +94,7 @@ func (s *streamer) managedFillCache() bool {
 	}
 	// If partial downloads are supported and more than half of the target cache
 	// size is remaining, then no fetching is required.
-	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < (cacheOffset + cacheLen - (targetCacheSize/2)) {
+	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < (cacheOffset+cacheLen-(targetCacheSize/2)) {
 		return false
 	}
 	// If partial downloads are not supported, the full chunk containing the
@@ -154,7 +154,7 @@ func (s *streamer) managedFillCache() bool {
 		// consumed, so that the cache remains the same size after we drop all
 		// of the consumed bytes and extend the cache with new data.
 		fetchOffset = cacheOffset + cacheLen
-		fetchLen = targetCacheSize - (cacheOffset+cacheLen-streamOffset)
+		fetchLen = targetCacheSize - (cacheOffset + cacheLen - streamOffset)
 	}
 
 	// Finally, check if the fetchOffset and fetchLen goes beyond the boundaries

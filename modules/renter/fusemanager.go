@@ -100,7 +100,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 
 		// TODO: This can one day be deleted.
 		inoCounter: 2,
-		inoMap: make(map[string]uint64),
+		inoMap:     make(map[string]uint64),
 
 		readOnly: opts.ReadOnly,
 
