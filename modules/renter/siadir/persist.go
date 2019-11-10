@@ -467,3 +467,62 @@ func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 		threadUID:      threadUID,
 	}, nil
 }
+
+// readLockMetadata returns the metadata of the SiaDir at siaPath. NOTE: The
+// 'readLock' prefix in this case is used to indicate that it's safe to call
+// this method with other 'readLock' methods without locking since is doesn't
+// write to any fields. This guarantee can be made by locking sfs.mu and then
+// spawning multiple threads which call 'readLock' methods in parallel.
+func (sds *SiaDirSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error) {
+	var entry *siaDirSetEntry
+	entry, exists := sds.siaDirMap[siaPath]
+	if exists {
+		// Get metadata from entry.
+		return entry.Metadata(), nil
+	}
+	// Load metadat from disk.
+	return callLoadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(sds.staticRootDir), modules.ProdDependencies)
+}
+
+// readLockDirInfo returns the Directory Information of the siadir. NOTE: The 'readLock'
+// prefix in this case is used to indicate that it's safe to call this method
+// with other 'readLock' methods without locking since is doesn't write to any
+// fields. This guarantee can be made by locking sfs.mu and then spawning
+// multiple threads which call 'readLock' methods in parallel.
+func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
+	// Grab the siadir metadata
+	metadata, err := sds.readLockMetadata(siaPath)
+	if err != nil {
+		return modules.DirectoryInfo{}, err
+	}
+	aggregateMaxHealth := math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth)
+	maxHealth := math.Max(metadata.Health, metadata.StuckHealth)
+	return modules.DirectoryInfo{
+		// Aggregate Fields
+		AggregateHealth:              metadata.AggregateHealth,
+		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
+		AggregateMaxHealth:           aggregateMaxHealth,
+		AggregateMaxHealthPercentage: HealthPercentage(aggregateMaxHealth),
+		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
+		AggregateMostRecentModTime:   metadata.AggregateModTime,
+		AggregateNumFiles:            metadata.AggregateNumFiles,
+		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
+		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
+		AggregateSize:                metadata.AggregateSize,
+		AggregateStuckHealth:         metadata.AggregateStuckHealth,
+
+		// SiaDir Fields
+		Health:              metadata.Health,
+		LastHealthCheckTime: metadata.LastHealthCheckTime,
+		MaxHealth:           maxHealth,
+		MaxHealthPercentage: HealthPercentage(maxHealth),
+		MinRedundancy:       metadata.MinRedundancy,
+		MostRecentModTime:   metadata.ModTime,
+		NumFiles:            metadata.NumFiles,
+		NumStuckChunks:      metadata.NumStuckChunks,
+		NumSubDirs:          metadata.NumSubDirs,
+		SiaPath:             siaPath,
+		DirSize:             metadata.Size,
+		StuckHealth:         metadata.StuckHealth,
+	}, nil
+}
