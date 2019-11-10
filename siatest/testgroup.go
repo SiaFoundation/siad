@@ -400,7 +400,6 @@ func synchronizationCheck(nodes map[*TestNode]struct{}) error {
 			// wait a bit longer for them to sync.
 			if lcg.Height != ncg.Height {
 				return fmt.Errorf("blockHeight doesn't match, %v vs %v", lcg.Height, ncg.Height)
-				return errors.New("blockHeight doesn't match")
 			}
 			// If the miner's height is smaller than the node's we need a
 			// bit longer for them to sync.
