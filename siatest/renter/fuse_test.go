@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -178,20 +180,37 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Stat the file in the fuse directory.
+	fuseStat, err := os.Stat(fusePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localStat, err := os.Stat(localFile.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fuseStat.IsDir() != localStat.IsDir() {
+		t.Error("IsDir mismatch")
+	}
+	if fuseStat.Size() != localStat.Size() {
+		t.Error("size mismatch")
+	}
+	if fuseStat.Name() != localStat.Name() {
+		t.Error("name mismatch")
+	}
+	if fuseStat.Mode() != localStat.Mode() {
+		t.Error("mode mismatch")
+	}
+
 	// Create a directory within the root directory and see if the directory
 	// appears in the fuse area.
-	//
-	// TODO: The r.RenterDirCreatePost call should probably be replaced by a
-	// call to r.Mkdir - where Mkdir is method on the testnode object, that way
-	// we can add blocking elements and such to the siatest package later on if
-	// the implementation or structure around uploading a directory changes.
 	localfd1Name := "fuse-dir-1"
 	localfd1Path := filepath.Join(mountpoint1, localfd1Name)
 	localfd1, err := r.FilesDir().CreateDir(localfd1Name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.UploadDirectory(localfd1)
+	remotefd1, err := r.UploadDirectory(localfd1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,8 +402,6 @@ func TestFuse(t *testing.T) {
 
 	// Open the file again, this time with random seeks and reads. Ensure the
 	// data still matches the local file.
-	//
-	// TODO: Finish this.
 	fuseFile, err = os.Open(fusePath)
 	if err != nil {
 		t.Fatal(err)
@@ -400,6 +417,21 @@ func TestFuse(t *testing.T) {
 	if bytes.Compare(data1, localFileData[0:245]) != 0 {
 		t.Error("data from the local file and data from the fuse file do not match", len(data), len(localFileData))
 	}
+	_, err = fuseFile.Seek(10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data2 := make([]byte, 124)
+	n, err = io.ReadFull(fuseFile, data2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(data2) {
+		t.Error("did not read all of the expected bytes")
+	}
+	if bytes.Compare(data2, localFileData[10:134]) != 0 {
+		t.Error("data from the local file and data from the fuse file do not match", len(data), len(localFileData))
+	}
 	err = fuseFile.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -412,7 +444,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.UploadDirectory(localfd2)
+	remotefd2, err := r.UploadDirectory(localfd2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +488,180 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// TODO: Need concurrency testing as well.
+	// Spin up a large number of threads, each of which chose a home as either
+	// localfd1 or localfd2. Then the threads will create a folder for
+	// themselves inside of their home and fill the folder with a unique file
+	// for themseleves. Finally, the thread will create a unique mountpoint for
+	// itself in the home directory.
+	//
+	// The threads will block until all 20 threads have completed their setup.
+	// Then each of the threads will begin again, this time repeatedly mounting
+	// either their home folder or their created folder and then unmounting it,
+	// testing the concurrency of the fusemanager.
+	//
+	// After all threads have completed phase two, the threads will enter a
+	// thrid phase where they all mount root to their mountpoint and then they
+	// all open, read, and close the files located in root, causing heavy
+	// concurrent access to a small number of files.
+	threads := 25
+	// One waitgroup per phase.
+	var wg1 sync.WaitGroup
+	var wg2 sync.WaitGroup
+	var wg3 sync.WaitGroup
+	wg1.Add(threads)
+	wg2.Add(threads)
+	wg3.Add(threads)
+	// A single error that all of the threads can coordinate through.
+	var groupErr error
+	var errMu sync.Mutex
+	for i := 0; i < threads; i++ {
+		go func(id int) {
+			// Choose a home folder. Use Fuzz(). If Fuzz() is 1, use fd2,
+			// otherwise use fd1.
+			var home *siatest.LocalDir
+			var homeSiaPath modules.SiaPath
+			if siatest.Fuzz() < 1 {
+				home = localfd1
+				homeSiaPath = remotefd1.SiaPath()
+			} else {
+				home = localfd2
+				homeSiaPath = remotefd2.SiaPath()
+			}
+
+			// Upload a file to the home directory, include the thread's unique
+			// id in the filesize to help with debugging.
+			_, err := home.NewFile(int(modules.SectorSize*3) + 100*id)
+			if err != nil {
+				err = errors.AddContext(err, "unable to create a file in thread home")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg1.Done()
+				wg2.Done()
+				wg3.Done()
+				return
+			}
+
+			// Upload a folder to the home directory. This creates a very rich
+			// fuse system overall between all of the threads.
+			threadDirName := "threadDir" + strconv.Itoa(id)
+			threadDir, err := r.FilesDir().CreateDir(threadDirName)
+			if err != nil {
+				err = errors.AddContext(err, "unable to create a folder in thread home")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg1.Done()
+				wg2.Done()
+				wg3.Done()
+				return
+			}
+			err = threadDir.PopulateDir(1, 1, 2)
+			if err != nil {
+				err = errors.AddContext(err, "unable to populate a folder in thread home")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg1.Done()
+				wg2.Done()
+				wg3.Done()
+				return
+			}
+			threadRemoteDir, err := r.UploadDirectory(threadDir)
+			if err != nil {
+				err = errors.AddContext(err, "unable to upload a folder in thread home")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg1.Done()
+				wg2.Done()
+				wg3.Done()
+				return
+			}
+
+			// Create a mountpoint specific to the thread.
+			threadMount := "threadmount" + strconv.Itoa(id)
+			err = os.MkdirAll(threadMount, 0777)
+			if err != nil {
+				err = errors.AddContext(err, "unable to create mountpoint")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg1.Done()
+				wg2.Done()
+				wg3.Done()
+				return
+			}
+
+			// Phase one complete, wait for all other threads to finish phase
+			// one.
+			wg1.Done()
+			wg1.Wait()
+
+			// Begin phase two by repeatedly mounting and unmounting either home
+			// or the
+			mountIters := 25
+			for i := 0; i < mountIters; i++ {
+				var err error
+				var siaPathToMount modules.SiaPath
+				if siatest.Fuzz() < 1 {
+					siaPathToMount = homeSiaPath
+				} else {
+					siaPathToMount = threadRemoteDir.SiaPath()
+				}
+				if err != nil {
+					err = errors.AddContext(err, "unable to create mountpoint")
+					errMu.Lock()
+					groupErr = errors.Compose(groupErr, err)
+					errMu.Unlock()
+					wg2.Done()
+					wg3.Done()
+					return
+				}
+				err = r.RenterFuseMount(threadMount, siaPathToMount, true)
+				if err != nil {
+					err = errors.AddContext(err, "unable to mount thread mount")
+					errMu.Lock()
+					groupErr = errors.Compose(groupErr, err)
+					errMu.Unlock()
+					wg2.Done()
+					wg3.Done()
+					return
+				}
+				err = r.RenterFuseUnmount(threadMount)
+				if err != nil {
+					err = errors.AddContext(err, "unable to unmount thread mount")
+					errMu.Lock()
+					groupErr = errors.Compose(groupErr, err)
+					errMu.Unlock()
+					wg2.Done()
+					wg3.Done()
+					return
+				}
+			}
+
+			// Phase two complete, wait for all other threads to finish phase
+			// two.
+			wg2.Done()
+			wg2.Wait()
+
+			// Phase three. Mount the root, and then repeatedly perform actions
+			// on the files and folders in root to verify the concurrency safety
+			// of the ro filesystem.
+			//
+			// TODO:
+
+			// Phase three complete.
+			wg3.Done()
+			wg3.Wait()
+		}(i)
+	}
+	wg3.Wait()
+
+	// TODO: Need to check inodes stay consistent for as long as the file is
+	// open when other calls are made.
+
+	// TODO: Need to check that the readonly flag is being respected.
 
 	// A call to Sleep() which can be uncommented that will allow the developer
 	// to browse around in the fuse directory on their own after the automated
@@ -476,87 +681,4 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	/*
-		// Create a subdir in the renter's files folder.
-		r := tg.Renters()[0]
-		subDir, err := r.FilesDir().CreateDir("subDir")
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Add a file to that dir.
-		lf, err := subDir.NewFile(100)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Upload the file.
-		dataPieces := uint64(len(tg.Hosts()) - 1)
-		parityPieces := uint64(1)
-		rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
-		if err != nil {
-			t.Fatal("Failed to upload a file for testing: ", err)
-		}
-
-		// We should be able to download the first file.
-		err = build.Retry(100, 100*time.Millisecond, func() error {
-			_, _, err = r.DownloadToDisk(rf, false)
-			return err
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Create a fuse mountpoint and mount subDir there.
-		mountpoint := filepath.Join(testDir, "mnt")
-		if err := os.MkdirAll(mountpoint, 0777); err != nil {
-			t.Fatal(err)
-		}
-		err = r.RenterFuseMount(r.SiaPath(subDir.Path()), mountpoint, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer r.RenterFuseUnmount()
-
-		// We should be able to see the siafile in the directory.
-		infos, err := ioutil.ReadDir(filepath.Join(mountpoint, "subDir"))
-		if err != nil {
-			t.Fatal(err)
-		} else if len(infos) != 1 || infos[0].Name() != lf.FileName() || infos[0].Size() != 100 {
-			t.Fatal("wrong dir info")
-		}
-
-		// Read the file and verify its contents
-		data, err := ioutil.ReadFile(filepath.Join(mountpoint, "subDir", lf.FileName()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := lf.Equal(data); err != nil {
-			t.Fatal(err)
-		}
-		// compare metadata
-		files, err := r.RenterFilesGet(false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fi := files.Files[0]
-		stat, err := os.Stat(filepath.Join(mountpoint, "subDir", lf.FileName()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if stat.IsDir() != fi.IsDir() {
-			t.Error("IsDir mismatch:", stat.IsDir(), fi.IsDir())
-		}
-		if stat.Size() != fi.Size() {
-			t.Error("Size mismatch:", stat.Size(), fi.Size())
-		}
-		if !stat.ModTime().Round(time.Minute).Equal(fi.ModTime().Round(time.Minute)) {
-			t.Error("ModTime mismatch:", stat.ModTime().Round(time.Minute), fi.ModTime().Round(time.Minute))
-		}
-		if filepath.Join("subDir", stat.Name()) != fi.Name() {
-			t.Error("Name mismatch:", filepath.Join("subDir", stat.Name()), fi.Name())
-		}
-		if stat.Mode() != fi.Mode() {
-			t.Error("Mode mismatch:", stat.Mode(), fi.Mode())
-		}
-	*/
 }

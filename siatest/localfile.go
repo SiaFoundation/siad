@@ -102,3 +102,8 @@ func (lf *LocalFile) Move() error {
 func (lf *LocalFile) Path() string {
 	return lf.path
 }
+
+// Size returns the size of the local file.
+func (lf *LocalFile) Size() int {
+	return lf.size
+}
