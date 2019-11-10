@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // siaPathToFusePath will return the location that a file should exist on disk
@@ -488,6 +489,38 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Check that the read-only flag is being respected.
+	newFuseFilePath := localfd2Path + "-new"
+	_, err = os.Create(newFuseFilePath)
+	if err == nil {
+		t.Fatal("should not be able to create a file in a read only fuse system")
+	}
+
+	// Try to open a file and then write to it.
+	localfd2Fuse, err = os.Open(localfd2Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeData := fastrand.Bytes(25)
+	n, err = localfd2Fuse.Write(writeData)
+	if err == nil || n > 0 {
+		t.Fatal("should not be able to write to a read only fuse system")
+	}
+	err = localfd2Fuse.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to create a directory in the read-only fuse system.
+	err = os.Mkdir(newFuseFilePath, 0777)
+	if err == nil {
+		t.Fatal("should not be able to make a directory in a read-only fuse system")
+	}
+
+	// TODO: When read-write fuse is supported, switch over to read-write mode
+	// here and begin testing the write features. Extend the concurrency test to
+	// probe write features as well, probably by adding more phases.
+
 	// Spin up a large number of threads, each of which chose a home as either
 	// localfd1 or localfd2. Then the threads will create a folder for
 	// themselves inside of their home and fill the folder with a unique file
@@ -514,6 +547,10 @@ func TestFuse(t *testing.T) {
 	// A single error that all of the threads can coordinate through.
 	var groupErr error
 	var errMu sync.Mutex
+	// A single list of directories that need to be unmounted after the test is
+	// fully completed.
+	var unmounts []string
+	var unmountMu sync.Mutex
 	for i := 0; i < threads; i++ {
 		go func(id int) {
 			// Choose a home folder. Use Fuzz(). If Fuzz() is 1, use fd2,
@@ -545,7 +582,7 @@ func TestFuse(t *testing.T) {
 			// Upload a folder to the home directory. This creates a very rich
 			// fuse system overall between all of the threads.
 			threadDirName := "threadDir" + strconv.Itoa(id)
-			threadDir, err := r.FilesDir().CreateDir(threadDirName)
+			threadDir, err := home.CreateDir(threadDirName)
 			if err != nil {
 				err = errors.AddContext(err, "unable to create a folder in thread home")
 				errMu.Lock()
@@ -580,7 +617,8 @@ func TestFuse(t *testing.T) {
 			}
 
 			// Create a mountpoint specific to the thread.
-			threadMount := "threadmount" + strconv.Itoa(id)
+			threadMountName := "threadmount" + strconv.Itoa(id)
+			threadMount := filepath.Join(testDir, threadMountName)
 			err = os.MkdirAll(threadMount, 0777)
 			if err != nil {
 				err = errors.AddContext(err, "unable to create mountpoint")
@@ -648,8 +686,129 @@ func TestFuse(t *testing.T) {
 			// Phase three. Mount the root, and then repeatedly perform actions
 			// on the files and folders in root to verify the concurrency safety
 			// of the ro filesystem.
-			//
-			// TODO:
+			err = r.RenterFuseMount(threadMount, modules.RootSiaPath(), true)
+			if err != nil {
+				err = errors.AddContext(err, "unable to mount thread mount")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg3.Done()
+				return
+			}
+			readIters := 20
+			for i := 0; i < readIters; i++ {
+				path := remoteFile.SiaPath()
+				fusePath, err := siaPathToFusePath(path, modules.RootSiaPath(), threadMount)
+				if err != nil {
+					err = errors.AddContext(err, "unable to convert remote file to a fuse path")
+					errMu.Lock()
+					groupErr = errors.Compose(groupErr, err)
+					errMu.Unlock()
+					wg3.Done()
+					return
+				}
+
+				// Sometimes stat the file.
+				if siatest.Fuzz() == 0 {
+					_, err = os.Stat(fusePath)
+					if err != nil {
+						err = errors.AddContext(err, "unable to stat a fuse path")
+						errMu.Lock()
+						groupErr = errors.Compose(groupErr, err)
+						errMu.Unlock()
+						wg3.Done()
+						return
+					}
+				}
+
+				// Sometimes stop here.
+				if siatest.Fuzz() == 0 {
+					continue
+				}
+
+				fuseFile, err := os.Open(fusePath)
+				if err != nil {
+					err = errors.AddContext(err, "unable to open fuse file")
+					errMu.Lock()
+					groupErr = errors.Compose(groupErr, err)
+					errMu.Unlock()
+					wg3.Done()
+					return
+				}
+				// Sometimes read the file.
+				if siatest.Fuzz() == 0 {
+					data, err := ioutil.ReadAll(fuseFile)
+					if err != nil {
+						err = errors.AddContext(err, "unable to read from fuse file")
+						errMu.Lock()
+						groupErr = errors.Compose(groupErr, err)
+						errMu.Unlock()
+						wg3.Done()
+						return
+					}
+					localFileData, err := localFile.Data()
+					if err != nil {
+						err = errors.AddContext(err, "unable to get local file data")
+						errMu.Lock()
+						groupErr = errors.Compose(groupErr, err)
+						errMu.Unlock()
+						wg3.Done()
+						return
+					}
+					if bytes.Compare(data, localFileData) != 0 {
+						err := errors.New("local file and remote file mismatch")
+						errMu.Lock()
+						groupErr = errors.Compose(groupErr, err)
+						errMu.Unlock()
+						wg3.Done()
+						return
+					}
+				}
+				err = fuseFile.Close()
+				if err != nil {
+					err = errors.AddContext(err, "unable to close fuseFile")
+					errMu.Lock()
+					groupErr = errors.Compose(groupErr, err)
+					errMu.Unlock()
+					wg3.Done()
+					return
+				}
+			}
+
+			// Read test done, unmount the root.
+			err = r.RenterFuseUnmount(threadMount)
+			if err != nil {
+				err = errors.AddContext(err, "unable to mount thread mount")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg3.Done()
+				return
+			}
+
+			// Leave either the home path, the thread remote dir, or the root
+			// mounted for the user to explore. Do this action before calling
+			// 'wg.Wait()' on the final phase.
+			var siaPathToMount modules.SiaPath
+			if siatest.Fuzz() == -1 {
+				siaPathToMount = homeSiaPath
+			} else if siatest.Fuzz() == 0 {
+				siaPathToMount = threadRemoteDir.SiaPath()
+			} else {
+				siaPathToMount = modules.RootSiaPath()
+			}
+			err = r.RenterFuseMount(threadMount, siaPathToMount, true)
+			if err != nil {
+				err = errors.AddContext(err, "unable to mount thread mount")
+				errMu.Lock()
+				groupErr = errors.Compose(groupErr, err)
+				errMu.Unlock()
+				wg3.Done()
+				return
+			}
+			unmountMu.Lock()
+			unmounts = append(unmounts, threadMount)
+			unmountMu.Unlock()
 
 			// Phase three complete.
 			wg3.Done()
@@ -657,18 +816,20 @@ func TestFuse(t *testing.T) {
 		}(i)
 	}
 	wg3.Wait()
+	// Check the groupErr.
+	if groupErr != nil {
+		t.Fatal(groupErr)
+	}
 
 	// TODO: Need to check inodes stay consistent for as long as the file is
 	// open when other calls are made.
-
-	// TODO: Need to check that the readonly flag is being respected.
 
 	// A call to Sleep() which can be uncommented that will allow the developer
 	// to browse around in the fuse directory on their own after the automated
 	// test has completed.
 	sleepForDev := func() {
 		println("Automated tests completed, dev can interact with FUSE now.")
-		time.Sleep(time.Second * 90)
+		time.Sleep(time.Second * 100)
 	}
 	// Hack to get the test to compile when sleepForDev is commented out.
 	if sleepForDev == nil {
@@ -676,9 +837,12 @@ func TestFuse(t *testing.T) {
 	}
 	// sleepForDev()
 
-	// Unmount the filesystem.
+	// Unmount the filesystems.
 	err = r.RenterFuseUnmount(mountpoint1)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, unmount := range unmounts {
+		err = r.RenterFuseUnmount(unmount)
 	}
 }

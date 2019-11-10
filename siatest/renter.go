@@ -3,6 +3,7 @@ package siatest
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"time"
@@ -258,16 +259,38 @@ func (tn *TestNode) Upload(lf *LocalFile, siapath modules.SiaPath, dataPieces, p
 
 // UploadDirectory uses the node to upload a directory
 func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
-	// Upload Directory
-	siapath := tn.SiaPath(ld.path)
-	err := tn.RenterDirCreatePost(siapath)
+	// Check for edge cases.
+	if ld == nil {
+		return nil, errors.New("cannot upload a nil localdir")
+	}
+	stat, err := os.Stat(ld.path)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to upload directory")
+		return nil, errors.AddContext(err, "unable to stat local dir path")
+	}
+	if !stat.IsDir() {
+		return nil, errors.AddContext(err, "cannot upload a directory if it's a file")
+	}
+
+	// Walk through the directory and create any dirs.
+	err = filepath.Walk(ld.path, func(path string, info os.FileInfo, err error) error {
+		// Upload the directory if it is a directory.
+		if info.IsDir() {
+			createErr := tn.RenterDirCreatePost(tn.SiaPath(path))
+			return errors.AddContext(createErr, "unable to upload a directory")
+		}
+
+		// Upload the file because it's a file.
+		siapath := tn.SiaPath(path)
+		uploadErr := tn.RenterUploadDefaultPost(path, siapath)
+		return errors.AddContext(uploadErr, "unable to upload a file")
+	})
+	if err != nil {
+		return nil, errors.AddContext(err, "ran into issues during filepath.Walk")
 	}
 
 	// Create remote directory object
 	rd := &RemoteDir{
-		siapath: siapath,
+		siapath: tn.SiaPath(ld.path),
 	}
 	return rd, nil
 }
