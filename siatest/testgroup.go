@@ -51,6 +51,7 @@ var (
 		ExpectedUpload:     modules.SectorSize * 5e3,
 		ExpectedDownload:   modules.SectorSize * 5e3,
 		ExpectedRedundancy: 5.0,
+		MaxPeriodChurn:     modules.SectorSize * 5e3,
 	}
 
 	// testGroupBuffer is a buffer channel to control the number of testgroups

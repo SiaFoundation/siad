@@ -220,6 +220,7 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -471,6 +472,7 @@ func TestWatchdogStorageProofCheck(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {

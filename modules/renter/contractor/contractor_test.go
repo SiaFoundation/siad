@@ -207,6 +207,7 @@ func TestAllowanceSpending(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(testAllowance)
 	if err != nil {
@@ -394,6 +395,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedRedundancy, err)
 	}
 	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+	a.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 
 	// reasonable values; should succeed
 	a.Funds = types.SiacoinPrecision.Mul64(100)
@@ -527,6 +529,7 @@ func TestHostMaxDuration(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -646,6 +649,7 @@ func TestLinkedContracts(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {

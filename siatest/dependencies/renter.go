@@ -52,3 +52,26 @@ func (d *DependencyToggleWatchdogBroadcast) Disrupt(s string) bool {
 
 	return disabled && (s == "DisableWatchdogBroadcast")
 }
+
+// DependencyHighMinHostScore returns high minimum-allowed host score for GFR to
+// help simulate churn related to low scoring hosts.
+type DependencyHighMinHostScore struct {
+	mu                  sync.Mutex
+	forcingHighMinScore bool
+	modules.ProductionDependencies
+}
+
+// Disrupt causes a high min-score for GFR to be returned.
+func (d *DependencyHighMinHostScore) Disrupt(s string) bool {
+	d.mu.Lock()
+	forcingHighMinScore := d.forcingHighMinScore
+	d.mu.Unlock()
+	return forcingHighMinScore && s == "HighMinHostScore"
+}
+
+// ForceHighMinHostScores causes the dependency disrupt to activate.
+func (d *DependencyHighMinHostScore) ForceHighMinHostScore(force bool) {
+	d.mu.Lock()
+	d.forcingHighMinScore = force
+	d.mu.Unlock()
+}
