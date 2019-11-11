@@ -278,12 +278,13 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 // callConsensusChanged is called by the host whenever it processed a
 // change to the consensus, we use it to rotate the fingerprints as we do so
 // based on the current blockheight
-func (am *accountManager) callConsensusChanged() {
+func (am *accountManager) callConsensusChanged(currentBlockHeight types.BlockHeight) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	am.fingerprints.tryRotate(am.h.blockHeight)
-	err := am.staticAccountPersister.fingerprints.tryRotate(am.h.blockHeight)
+	// Rotate fingerprints both in-memory and on disk
+	am.fingerprints.tryRotate(currentBlockHeight)
+	err := am.staticAccountPersister.fingerprints.tryRotate(currentBlockHeight)
 	if err != nil {
 		am.h.log.Println("ERROR: could not rotate fingerprint buckets")
 	}

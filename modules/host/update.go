@@ -124,7 +124,6 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// terminated. This function should not block while these threads wait to
 	// terminate.
 	h.mu.Lock()
-	defer func() { go h.staticAccountManager.callConsensusChanged() }()
 	defer h.mu.Unlock()
 
 	// Wrap the whole parsing into a single large database tx to keep things
@@ -310,4 +309,10 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if err != nil {
 		h.log.Println("ERROR: could not save during ProcessConsensusChange:", err)
 	}
+
+	go func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.staticAccountManager.callConsensusChanged(h.blockHeight)
+	}()
 }
