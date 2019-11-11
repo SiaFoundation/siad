@@ -113,13 +113,13 @@ func TestFingerprintsReload(t *testing.T) {
 	am = ht.host.staticAccountManager
 
 	// Verify fingerprints got reloaded
-	fp1 := crypto.HashObject(msg1)
+	fp1 := crypto.HashObject(*msg1)
 	exists := am.fingerprints.has(fp1)
 	if !exists {
 		t.Log(fp1)
 		t.Error("Fingerprint 1 hash not found after reload")
 	}
-	fp2 := crypto.HashObject(msg2)
+	fp2 := crypto.HashObject(*msg2)
 	exists = am.fingerprints.has(fp2)
 	if !exists {
 		t.Log(fp2)
