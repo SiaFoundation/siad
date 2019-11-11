@@ -66,7 +66,7 @@ siatest-renter-tests:
     when: always
   script:
     - apt-get update
-    - apt-get install fuse
+    - apt-get install -y fuse
     - make test-long run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
