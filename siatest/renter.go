@@ -298,7 +298,11 @@ func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
 // UploadNewDirectory uses the node to create and upload a directory with a
 // random name
 func (tn *TestNode) UploadNewDirectory() (*RemoteDir, error) {
-	return tn.UploadDirectory(tn.NewLocalDir())
+	ld, err := tn.NewLocalDir()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new directory for uploading")
+	}
+	return tn.UploadDirectory(ld)
 }
 
 // UploadNewFile initiates the upload of a filesize bytes large file with the option to overwrite if exists.
