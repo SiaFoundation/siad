@@ -9,10 +9,13 @@ ldflags= -X gitlab.com/NebulousLabs/Sia/build.GitRevision=${GIT_DIRTY}${GIT_REVI
 # all will build and install release binaries
 all: release
 
+# cpkg determines which package is the target when running 'make fullcover'.
+# 'make fullcover' can only provide full coverage statistics on a single package
+# at a time, unfortunately.
+cpkg = ./modules/renter
+
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
-run = .
-cpkg = ./modules/renter
 pkgs = ./build \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
@@ -59,6 +62,17 @@ pkgs = ./build \
 	./types \
 	./types/typesutil
 
+# release-pkgs determine which packages are built for release and distrubtion
+# when running a 'make release' command.
+release-pkgs = ./cmd/siac ./cmd/siad
+
+# run determines which tests run when running any variation of 'make test'.
+run = .
+
+# util-pkgs determine the set of packages that are built when running
+# 'make utils'
+util-pkgs = ./cmd/sia-node-scanner
+
 # fmt calls go fmt on all packages.
 fmt:
 	gofmt -s -l -w $(pkgs)
@@ -76,13 +90,13 @@ lint:
 spellcheck:
 	misspell -error .
 
-# debug builds and installs debug binaries.
+# debug builds and installs debug binaries. This will also install the utils.
 debug:
 	GO111MODULE=on go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 debug-race:
 	GO111MODULE=on go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
-# dev builds and installs developer binaries.
+# dev builds and installs developer binaries. This will also install the utils.
 dev:
 	GO111MODULE=on go install -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 dev-race:
@@ -90,9 +104,9 @@ dev-race:
 
 # release builds and installs release binaries.
 release:
-	GO111MODULE=on go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
+	GO111MODULE=on go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-race:
-	GO111MODULE=on go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(pkgs)
+	GO111MODULE=on go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 
 # clean removes all directories that get automatically created during
 # development.
