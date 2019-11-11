@@ -108,6 +108,8 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 			missedRecovery = true
 		}
 	}
+	c.staticWatchdog.callScanConsensusChange(cc)
+
 	// If we didn't miss the recover, we update the recentRecoverChange
 	if !missedRecovery && c.recentRecoveryChange == c.lastChange {
 		c.recentRecoveryChange = cc.ID
@@ -116,6 +118,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// If we have entered the next period, update currentPeriod
 	if c.blockHeight >= c.currentPeriod+c.allowance.Period {
 		c.currentPeriod += c.allowance.Period
+		c.staticChurnLimiter.callResetAggregateChurn()
 		// COMPATv1.0.4-lts
 		// if we were storing a special metrics contract, it will be invalid
 		// after we enter the next period.
@@ -136,12 +139,25 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 	} else if synced && !cc.Synced {
 		c.synced = make(chan struct{})
 	}
+	// Let the watchdog take any necessary actions and update its state. We do
+	// this before persisting the contractor so that the watchdog is up-to-date on
+	// reboot. Otherwise it is possible that e.g. that the watchdog thinks a
+	// storage proof was missed and marks down a host for that. Other watchdog
+	// actions are innocuous.
+	if cc.Synced {
+		c.staticWatchdog.callCheckContracts()
+	}
+
 	c.lastChange = cc.ID
 	err = c.save()
 	if err != nil {
 		c.log.Println("Unable to save while processing a consensus change:", err)
 	}
 	c.mu.Unlock()
+
+	// Add to churnLimiter budget.
+	numBlocksAdded := len(cc.AppliedBlocks) - len(cc.RevertedBlocks)
+	c.staticChurnLimiter.callBumpChurnBudget(numBlocksAdded, c.allowance.Period)
 
 	// Perform contract maintenance if our blockchain is synced. Use a separate
 	// goroutine so that the rest of the contractor is not blocked during

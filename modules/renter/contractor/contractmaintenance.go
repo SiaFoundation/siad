@@ -34,6 +34,25 @@ type (
 	}
 )
 
+// callNotifyDoubleSpend is used by the watchdog to alert the contractor
+// whenever a monitored file contract input is double-spent. This function
+// marks down the host score, and marks the contract as !GoodForRenew and
+// !GoodForUpload.
+func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeight types.BlockHeight) {
+	c.log.Debugln("Watchdog found a double-spend: ", fcID, blockHeight)
+
+	// Mark the contract as double-spent. This will cause the contract to be
+	// excluded in period spending.
+	c.mu.Lock()
+	c.doubleSpentContracts[fcID] = blockHeight
+	c.mu.Unlock()
+
+	err := c.MarkContractBad(fcID)
+	if err != nil {
+		c.log.Println("callNotifyDoubleSpend error in MarkContractBad", err)
+	}
+}
+
 // managedCheckForDuplicates checks for static contracts that have the same host
 // key and moves the older one to old contracts.
 func (c *Contractor) managedCheckForDuplicates() {
@@ -54,7 +73,7 @@ func (c *Contractor) managedCheckForDuplicates() {
 			} else {
 				newContract, oldContract = contract, rc
 			}
-			c.log.Printf("Duplicate contract found. New conract is %x and old contract is %v", newContract.ID, oldContract.ID)
+			c.log.Printf("Duplicate contract found. New contract is %x and old contract is %v", newContract.ID, oldContract.ID)
 
 			// Get SafeContract
 			oldSC, ok := c.staticContracts.Acquire(oldContract.ID)
@@ -262,6 +281,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	if err != nil {
 		return err, types.Currency{}, types.Currency{}
 	}
+
 	lowestScore := sb.Score
 	for i := 1; i < len(hosts); i++ {
 		score, err := c.hdb.ScoreBreakdown(hosts[i])
@@ -275,6 +295,21 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	// Set the minimum acceptable score to a factor of the lowest score.
 	minScoreGFR = lowestScore.Div(scoreLeewayGoodForRenew)
 	minScoreGFU = lowestScore.Div(scoreLeewayGoodForUpload)
+
+	// Set min score to the max score seen times 2.
+	if c.staticDeps.Disrupt("HighMinHostScore") {
+		var maxScore types.Currency
+		for i := 1; i < len(hosts); i++ {
+			score, err := c.hdb.ScoreBreakdown(hosts[i])
+			if err != nil {
+				return err, types.Currency{}, types.Currency{}
+			}
+			if score.Score.Cmp(maxScore) > 0 {
+				maxScore = score.Score
+			}
+		}
+		minScoreGFR = maxScore.Mul64(2)
+	}
 
 	return nil, minScoreGFR, minScoreGFU
 }
@@ -340,9 +375,24 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
-	contract, err := c.staticContracts.FormContract(params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+
+	contract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.FormContract(params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop()
+		return types.ZeroCurrency, modules.RenterContract{}, err
+	}
+
+	monitorContractArgs := monitorContractArgs{
+		false,
+		contract.ID,
+		contract.Transaction,
+		formationTxnSet,
+		sweepTxn,
+		sweepParents,
+		params.StartHeight,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
 
@@ -408,7 +458,7 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	// hosts.
 	badHosts, err := c.hdb.CheckForIPViolations(pks)
 	if err != nil {
-		c.log.Println("WARN: errror checking for IP violations:", err)
+		c.log.Println("WARN: error checking for IP violations:", err)
 		return
 	}
 	for _, host := range badHosts {
@@ -494,9 +544,23 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	newContract, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	newContract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
+		return modules.RenterContract{}, err
+	}
+
+	monitorContractArgs := monitorContractArgs{
+		false,
+		newContract.ID,
+		newContract.Transaction,
+		formationTxnSet,
+		sweepTxn,
+		sweepParents,
+		params.StartHeight,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err != nil {
 		return modules.RenterContract{}, err
 	}
 
@@ -599,7 +663,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 			oldUtility.GoodForRenew = false
 			oldUtility.GoodForUpload = false
 			oldUtility.Locked = true
-			err := oldContract.UpdateUtility(oldUtility)
+			err := c.callUpdateUtility(oldContract, oldUtility, true)
 			if err != nil {
 				c.log.Println("WARN: failed to mark contract as !goodForRenew:", err)
 			}
@@ -624,7 +688,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		GoodForUpload: true,
 		GoodForRenew:  true,
 	}
-	if err := c.managedUpdateContractUtility(newContract.ID, newUtility); err != nil {
+	if err := c.managedAcquireAndUpdateContractUtility(newContract.ID, newUtility); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
 		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
@@ -632,7 +696,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	oldUtility.GoodForRenew = false
 	oldUtility.GoodForUpload = false
 	oldUtility.Locked = true
-	if err := oldContract.UpdateUtility(oldUtility); err != nil {
+	if err := c.callUpdateUtility(oldContract, oldUtility, true); err != nil {
 		c.log.Println("Failed to update the contract utilities", err)
 		c.staticContracts.Return(oldContract)
 		return amount, nil // Error is not returned because the renew succeeded.
@@ -658,6 +722,10 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.mu.Unlock()
 	// Delete the old contract.
 	c.staticContracts.Delete(oldContract)
+
+	// Signal to the watchdog that it should immediately post the last
+	// revision for this contract.
+	go c.staticWatchdog.callSendMostRecentRevision(oldContract.Metadata())
 	return amount, nil
 }
 
@@ -677,15 +745,31 @@ func (c *Contractor) managedFindRecoverableContracts() {
 	}
 }
 
-// managedUpdateContractUtility is a helper function that acquires a contract, updates
+// managedAcquireAndUpdateContractUtility is a helper function that acquires a contract, updates
 // its ContractUtility and returns the contract again.
-func (c *Contractor) managedUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
+func (c *Contractor) managedAcquireAndUpdateContractUtility(id types.FileContractID, utility modules.ContractUtility) error {
 	safeContract, ok := c.staticContracts.Acquire(id)
 	if !ok {
 		return errors.New("failed to acquire contract for update")
 	}
 	defer c.staticContracts.Return(safeContract)
-	return safeContract.UpdateUtility(utility)
+	return c.callUpdateUtility(safeContract, utility, false)
+}
+
+// callUpdateUtility updates the utility of a contract and notifies the
+// churnLimiter of churn if necessary. This method should *always* be used as
+// opposed to calling UpdateUtility directly on a safe contract from the
+// contractor. Pass in renewed as true if the contract has been renewed and is
+// not churn.
+func (c *Contractor) callUpdateUtility(safeContract *proto.SafeContract, newUtility modules.ContractUtility, renewed bool) error {
+	contract := safeContract.Metadata()
+
+	// If the contract is going from GFR to !GFR, notify the churn limiter.
+	if !renewed && contract.Utility.GoodForRenew && !newUtility.GoodForRenew {
+		c.staticChurnLimiter.callNotifyChurnedContract(contract)
+	}
+
+	return safeContract.UpdateUtility(newUtility)
 }
 
 // threadedContractMaintenance checks the set of contracts that the contractor
@@ -907,7 +991,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
-	c.log.Debugln("The allowance has this many remaning funds:", fundsRemaining)
+	c.log.Debugln("Remaining funds in allowance:", fundsRemaining)
 
 	// Register the AllowanceLowFunds alert if necessary.
 	var registerLowFundsAlert bool
@@ -1092,7 +1176,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Add this contract to the contractor and save.
-		err = c.managedUpdateContractUtility(newContract.ID, modules.ContractUtility{
+		err = c.managedAcquireAndUpdateContractUtility(newContract.ID, modules.ContractUtility{
 			GoodForUpload: true,
 			GoodForRenew:  true,
 		})

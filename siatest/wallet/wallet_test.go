@@ -30,7 +30,7 @@ func TestTransactionReorg(t *testing.T) {
 	testdir := walletTestDir(t.Name())
 
 	// Create two miners
-	miner1, err := siatest.NewNode(siatest.Miner(filepath.Join(testdir, "miner1")))
+	miner1, err := siatest.NewNode(node.Miner(filepath.Join(testdir, "miner1")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestTransactionReorg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	miner2, err := siatest.NewNode(siatest.Miner(filepath.Join(testdir, "miner2")))
+	miner2, err := siatest.NewNode(node.Miner(filepath.Join(testdir, "miner2")))
 	if err != nil {
 		t.Fatal(err)
 	}

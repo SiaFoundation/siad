@@ -4,6 +4,7 @@
 
 # build artifacts
 cover
+fullcover
 release
 
 # pdflatex
