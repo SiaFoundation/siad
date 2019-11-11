@@ -69,7 +69,7 @@ vet:
 	GO111MODULE=on go vet $(pkgs)
 
 lint:
-	go get golang.org/x/lint/golint
+	GO111MODULE=on go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
 
 # spellcheck checks for misspelled words in comments or strings.
