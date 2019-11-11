@@ -547,7 +547,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 
 	// Scan for all allowance fields
 	var hostsSet, renewWindowSet, expectedStorageSet,
-		expectedUploadSet, expectedDownloadSet, expectedRedundancySet bool
+		expectedUploadSet, expectedDownloadSet, expectedRedundancySet, maxPeriodChurnSet bool
 	if f := req.FormValue("funds"); f != "" {
 		funds, ok := scanAmount(f)
 		if !ok {
@@ -623,6 +623,15 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.Allowance.ExpectedRedundancy = expectedRedundancy
 		expectedRedundancySet = true
+	}
+	if mpc := req.FormValue("maxperiodchurn"); mpc != "" {
+		var maxPeriodChurn uint64
+		if _, err := fmt.Sscan(mpc, &maxPeriodChurn); err != nil {
+			WriteError(w, Error{"unable to parse new max churn per period: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxPeriodChurn = maxPeriodChurn
+		maxPeriodChurnSet = true
 	}
 
 	// Validate any allowance changes. Funds and Period are the only required
@@ -708,6 +717,16 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		} else if settings.Allowance.ExpectedRedundancy == 0 {
 			settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+		}
+
+		// If the user set MaxPeriodChurn to 0 return an error, otherwise if
+		// MaxPeriodChurn was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.MaxPeriodChurn == 0 && maxPeriodChurnSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroMaxPeriodChurn.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.MaxPeriodChurn == 0 {
+			settings.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 		}
 	}
 
@@ -1020,6 +1039,12 @@ func (api *API) renterClearDownloadsHandler(w http.ResponseWriter, req *http.Req
 		return
 	}
 	WriteSuccess(w)
+}
+
+// renterContractorChurnStatus handles the API call to request the churn status
+// from the renter's contractor.
+func (api *API) renterContractorChurnStatus(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	WriteJSON(w, api.renter.ContractorChurnStatus())
 }
 
 // renterDownloadsHandler handles the API call to request the download queue.

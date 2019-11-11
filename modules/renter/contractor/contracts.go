@@ -17,7 +17,7 @@ func (c *Contractor) contractEndHeight() types.BlockHeight {
 // false and locking the utilities. The contract can still be used for
 // downloads after this but it won't be used for uploads or renewals.
 func (c *Contractor) managedCancelContract(cid types.FileContractID) error {
-	return c.managedUpdateContractUtility(cid, modules.ContractUtility{
+	return c.managedAcquireAndUpdateContractUtility(cid, modules.ContractUtility{
 		GoodForRenew:  false,
 		GoodForUpload: false,
 		Locked:        true,
@@ -97,7 +97,7 @@ func (c *Contractor) MarkContractBad(id types.FileContractID) error {
 	u.GoodForUpload = false
 	u.GoodForRenew = false
 	u.BadContract = true
-	err := sc.UpdateUtility(u)
+	err := c.callUpdateUtility(sc, u, false)
 	c.staticContracts.Return(sc)
 	return errors.AddContext(err, "unable to mark contract as bad")
 }

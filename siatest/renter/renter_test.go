@@ -1455,6 +1455,32 @@ func TestRenterAddNodes(t *testing.T) {
 		{"TestUploadReady", testUploadReady},
 		{"TestOverspendAllowance", testOverspendAllowance},
 		{"TestRenterAllowanceCancel", testRenterAllowanceCancel},
+	}
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterAddNodes2 runs a subset of tests that require adding their own
+// renter. TestRenterPostCancelAllowance was split into its own test to improve
+// reliability - it was flaking previously.
+func TestRenterAddNodes2(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+
+	// Specify subtests to run
+	subTests := []test{
 		{"TestRenterPostCancelAllowance", testRenterPostCancelAllowance},
 	}
 
