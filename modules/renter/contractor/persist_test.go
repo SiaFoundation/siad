@@ -22,6 +22,10 @@ func (m memPersist) load(data *contractorPersist) error { *data = contractorPers
 
 // TestSaveLoad tests that the contractor can save and load itself.
 func TestSaveLoad(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
 	// create contractor with mocked persist dependency
 	c := &Contractor{
 		persist: new(memPersist),
@@ -73,6 +77,10 @@ func TestSaveLoad(t *testing.T) {
 	}
 	close(c.synced)
 
+	c.staticChurnLimiter = newChurnLimiter(c)
+	c.staticChurnLimiter.aggregateCurrentPeriodChurn = 123456
+	c.staticChurnLimiter.remainingChurnBudget = -789
+
 	// save, clear, and reload
 	err := c.save()
 	if err != nil {
@@ -117,6 +125,7 @@ func TestSaveLoad(t *testing.T) {
 	c.allowance.ExpectedUpload = 0
 	c.allowance.ExpectedDownload = 0
 	c.allowance.ExpectedRedundancy = 0
+	c.allowance.MaxPeriodChurn = 0
 
 	// save, clear, and reload
 	err = c.save()
@@ -171,6 +180,7 @@ func TestSaveLoad(t *testing.T) {
 	c.allowance.ExpectedUpload = uint64(fastrand.Intn(100))
 	c.allowance.ExpectedDownload = uint64(fastrand.Intn(100))
 	c.allowance.ExpectedRedundancy = float64(fastrand.Intn(100))
+	c.allowance.MaxPeriodChurn = 1357
 	a := c.allowance
 	// Save
 	err = c.save()
@@ -200,6 +210,10 @@ func TestSaveLoad(t *testing.T) {
 	if c.allowance.ExpectedRedundancy != a.ExpectedRedundancy {
 		t.Errorf("ExpectedRedundancy was %v but should be %v",
 			c.allowance.ExpectedRedundancy, a.ExpectedRedundancy)
+	}
+	if c.allowance.MaxPeriodChurn != a.MaxPeriodChurn {
+		t.Errorf("MaxPeriodChurn was %v but should be %v",
+			c.allowance.MaxPeriodChurn, a.MaxPeriodChurn)
 	}
 
 	// Check the watchdog settings.
@@ -248,6 +262,23 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if contract.windowEnd != expectedFileContractStatus.windowEnd {
 		t.Fatal("watchdog not restored properly", contract)
+	}
+
+	// Check churnLimiter state.
+	aggregateChurn, maxChurn := c.staticChurnLimiter.managedAggregateAndMaxChurn()
+	if aggregateChurn != 123456 {
+		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
+	}
+	if maxChurn != a.MaxPeriodChurn {
+		t.Fatal("Expected 1357 max churn", maxChurn)
+	}
+	remainingChurnBudget, periodBudget := c.staticChurnLimiter.managedChurnBudget()
+	if remainingChurnBudget != -789 {
+		t.Fatal("Expected -789 remainingChurnBudget", remainingChurnBudget)
+	}
+	expectedPeriodBudget := 1357 - 123456
+	if periodBudget != expectedPeriodBudget {
+		t.Fatal("Expected remainingChurnBudget", periodBudget)
 	}
 }
 

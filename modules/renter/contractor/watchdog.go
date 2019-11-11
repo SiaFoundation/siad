@@ -621,7 +621,7 @@ func (w *watchdog) addDependencyToContractFormationSet(fcID types.FileContractID
 	}
 }
 
-// managedCheckContracts checks if the watchdog needs to take any actions for
+// callCheckContracts checks if the watchdog needs to take any actions for
 // any contracts its watching at this blockHeight.  For newly formed contracts,
 // it checks if a contract has been seen on-chain yet, if not the watchdog will
 // re-broadcast the initial transaction. If enough time has elapsed the watchdog
@@ -633,7 +633,7 @@ func (w *watchdog) addDependencyToContractFormationSet(fcID types.FileContractID
 // Finally, the watchdog checks if hosts' storage proofs made it on chain within
 // their expiration window, and notifies the contractor of the storage proof
 // status.
-func (w *watchdog) managedCheckContracts() {
+func (w *watchdog) callCheckContracts() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.contractor.log.Debugln("Checking contracts", w.blockHeight)

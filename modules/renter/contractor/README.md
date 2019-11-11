@@ -50,14 +50,17 @@ renew or form contracts.
 * [ ] (watchdog) Perform action when storage proof is found and when missing at the end of the window.
 * [ ] (watchdog) Add renter dependencies in `sweepContractInputs` if necessary.
 
+
 ## Subsystems
 The Contractor is split up into the following subsystems:
 - [Allowance](#allowance-subsystem)
 - [Contract Maintenance Subsystem](#contract-maintenance-subsystem)
+- [Churn Limiter Subsystem](#churn-limiter-subsystem)
 - [Recovery Subsystem](#recovery-subsystem)
 - [Session Subsystem](#session-subsystem)
 - [Persistence Subsystem](#persistence-subsystem)
 - [Watchdog Subsystem](#watchdog-subsystem)
+
 
 ## Allowance Subsystem
 **Key Files**
@@ -137,6 +140,32 @@ that allowance modifications only take effect upon the next "contract cycle".
   is updated during maintenance.
 - Funds established by the [Allowance subsystem](#allowance-subsystem) are used
   and deducted appropriately during maintenance to form and renew contracts.
+- `callNotifyChurnedContract` is used when a contract utility changes from GFR
+  to !GFR.
+
+
+## Churn Limiter Subsystem
+**Key Files**
+- [churnlimiter.go](./churnlimiter.go)
+
+The Churn Limiter is responsible for decreasing contract churn. It keeps track
+of the aggregate size of all contracts churned in the current period. Churn is
+limited by keeping contracts with low-scoring hosts around if the maximum
+aggregate for the period has been reached.
+
+### Exports
+- `SetMaxPeriodChurn` is exported by the `Contractor` and allows the caller
+   to set the maximum allowed churn in bytes per period.
+
+### Inbound Complexities
+- `callNotifyChurnedContract` is used when contracts are marked GFR after
+   previously being !GFR.
+- `callBumpChurnBudget` is used to increase the churn budget when new blocks
+   are processed.
+- `callResetAggregateChurn` resets the aggregate churn and is called every
+   time the contractor enters a new period.
+- `callPersistData` is called whenever the contractor's `persistData` is
+   called.
 
 
 ## Recovery Subsystem
@@ -269,10 +298,12 @@ The watchdog does the following checks on monitored contracts.
   window
 
 ## Inbound Complexities
-- `callMonitorcontract` is called from the Contract Maintenance and Recovery
+- `callMonitorContract` is called from the Contract Maintenance and Recovery
   subsystems whenever contracts are formed, renewed, or recovered.
 - `callScanConsensusChange`is used in the `ProcessConsensusChange` method of the
   contractor to let the watchdog scan blocks.
+- `callPersistData` is called whenever the contractor's `persistData` is
+  called.
 
 ## Outbound Complexities
 - `callNotifyDoubleSpend` is a Contract Maintenance call used by the watchdog to
