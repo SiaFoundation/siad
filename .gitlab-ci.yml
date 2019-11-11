@@ -9,7 +9,7 @@ lint:
   stage: lint
   script: 
     - go get github.com/golangci/golangci-lint/cmd/golangci-lint
-    - golangci-lint run --disable-all --enable=vet --enable=gofmt ./...
+    - golangci-lint run --disable-all --enable=vet --enable=gofmt --deadline=600s ./...
     - make test
 
 legacy-tests:
