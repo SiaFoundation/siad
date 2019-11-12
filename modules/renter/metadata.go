@@ -29,6 +29,33 @@ const (
 	bubblePending
 )
 
+// addUniqueBubblePath will only add a unique bubble path to a map. Since bubble
+// calls itself on the parent directory when it finishes with a directory, only
+// a call to the lowest level child directory is needed to properly update the
+// entire directory tree.
+func addUniqueBubblePath(newPath modules.SiaPath, paths map[modules.SiaPath]struct{}) {
+	// Check if path is already in the map
+	if _, ok := paths[newPath]; ok {
+		return
+	}
+	// Iterate through map
+	for path := range paths {
+		if strings.Contains(path.String(), newPath.String()) {
+			// There is already a child directory in the map so this path does
+			// not need to be added
+			return
+		}
+		if strings.Contains(newPath.String(), path.String()) {
+			// There is a path in the map that is a parent of the new directory.
+			// Delete the parent directory from the map
+			delete(paths, path)
+		}
+	}
+	// Add newPath to map
+	paths[newPath] = struct{}{}
+	return
+}
+
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
 // caller should proceed by calling bubble. If 'false' is returned, the caller
 // should not bubble, another thread will handle running the bubble.
