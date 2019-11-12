@@ -139,7 +139,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if fileMetadata.LastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
 				metadata.LastHealthCheckTime = fileMetadata.LastHealthCheckTime
 			}
-			metadata.MinRedundancy = math.Min(metadata.MinRedundancy, fileMetadata.Redundancy)
+			if fileMetadata.Redundancy != -1 {
+				metadata.MinRedundancy = math.Min(metadata.MinRedundancy, fileMetadata.Redundancy)
+			}
 			if fileMetadata.ModTime.After(metadata.ModTime) {
 				metadata.ModTime = fileMetadata.ModTime
 			}
@@ -181,7 +183,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
 		metadata.AggregateStuckHealth = math.Max(metadata.AggregateStuckHealth, aggregateStuckHealth)
 		// Track the min value for AggregateMinRedundancy
-		metadata.AggregateMinRedundancy = math.Min(metadata.AggregateMinRedundancy, aggregateMinRedundancy)
+		if aggregateMinRedundancy != -1 {
+			metadata.AggregateMinRedundancy = math.Min(metadata.AggregateMinRedundancy, aggregateMinRedundancy)
+		}
 		// Update LastHealthCheckTime
 		if aggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
 			metadata.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
@@ -200,14 +204,13 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	if metadata.ModTime.IsZero() {
 		metadata.ModTime = time.Now()
 	}
-
 	// Sanity check on Redundancy. If MinRedundancy is still math.MaxFloat64
-	// then set it to 0
+	// then set it to -1 to indicate an empty directory
 	if metadata.AggregateMinRedundancy == math.MaxFloat64 {
-		metadata.AggregateMinRedundancy = 0
+		metadata.AggregateMinRedundancy = -1
 	}
 	if metadata.MinRedundancy == math.MaxFloat64 {
-		metadata.MinRedundancy = 0
+		metadata.MinRedundancy = -1
 	}
 
 	return metadata, nil
