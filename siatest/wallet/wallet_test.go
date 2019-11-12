@@ -692,6 +692,11 @@ func TestWalletForceInit(t *testing.T) {
 
 // TestWalletVerifyPassword initializes a wallet with a custom password and
 // verifies it through the API.
+//
+// NOTE: This test does not check the case where WallVerifyPasswordGET.Valid is
+// false and err is nil because that only is possible if there is no error
+// returned from DecryptBytes and then the password is wrong. That case is
+// currently unreachable code
 func TestWalletVerifyPassword(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -709,14 +714,8 @@ func TestWalletVerifyPassword(t *testing.T) {
 
 	// Check that verifying a password when one is not set will fail
 	wvpg, err := wallet.WalletVerifyPasswordGet("wrong")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if wvpg.Valid {
-		t.Fatal("Wrong Password is valid, expected password to not be valid as no password is set")
-	}
-	if !strings.Contains(wvpg.Error, modules.ErrBadEncryptionKey.Error()) {
-		t.Fatalf("Expected error to contain %v but got %v", modules.ErrBadEncryptionKey, wvpg.Error)
+	if err == nil {
+		t.Fatal("expected decrypt error with wrong password")
 	}
 
 	// Reinit the wallet by using a specific password.
@@ -739,19 +738,10 @@ func TestWalletVerifyPassword(t *testing.T) {
 	if !wvpg.Valid {
 		t.Fatal("Password is not valid")
 	}
-	if wvpg.Error != "" {
-		t.Fatal("Password is valid but there was an error:", err)
-	}
 
 	// Try and verify an incorrect password
 	wvpg, err = wallet.WalletVerifyPasswordGet("wrong")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if wvpg.Valid {
-		t.Fatal("Wrong Password is valid")
-	}
-	if !strings.Contains(wvpg.Error, modules.ErrBadEncryptionKey.Error()) {
-		t.Fatalf("Expected error to contain %v but got %v", modules.ErrBadEncryptionKey, wvpg.Error)
+	if err == nil {
+		t.Fatal("expected decrypt error with wrong password")
 	}
 }

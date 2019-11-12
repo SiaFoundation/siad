@@ -142,8 +142,7 @@ type (
 	// to /wallet/verifypassword is the password being used to encrypt the
 	// wallet.
 	WalletVerifyPasswordGET struct {
-		Valid bool   `json:"valid"`
-		Error string `json:"error"`
+		Valid bool `json:"valid"`
 	}
 
 	// WalletWatchPOST contains the set of addresses to add or remove from the
@@ -741,20 +740,14 @@ func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Req
 // walletVerifyPasswordHandler handles API calls to /wallet/verifypassword
 func (api *API) walletVerifyPasswordHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	password := req.FormValue("password")
-	if password == "" {
-		WriteError(w, Error{"a password must be provided"}, http.StatusBadRequest)
-		return
-	}
 	key := crypto.NewWalletKey(crypto.HashObject(password))
-
 	valid, err := api.wallet.IsMasterKey(key)
-	var errMsg string
 	if err != nil {
-		errMsg = err.Error()
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 	WriteJSON(w, WalletVerifyPasswordGET{
 		Valid: valid,
-		Error: errMsg,
 	})
 }
 

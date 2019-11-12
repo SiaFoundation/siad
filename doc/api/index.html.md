@@ -5047,16 +5047,12 @@ Password being checked.
 
 ```go
 {
-  "valid": false,
-  "error": "provided encryption key is incorrect"
+  "valid": true,
 }
 ```
 **valid** | boolean  
 valid indicates if the password supplied is the password used to encrypte the
 wallet.  
-
-**error** | string  
-error message indicating why the password is not valid
 
 ## /wallet/watch [GET]
 > curl example  
