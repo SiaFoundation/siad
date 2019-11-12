@@ -22,10 +22,16 @@ func (newStub) ConsensusSetSubscribe(modules.ConsensusSetSubscriber, modules.Con
 }
 func (newStub) Synced() bool                               { return true }
 func (newStub) Unsubscribe(modules.ConsensusSetSubscriber) { return }
+func (newStub) TryTransactionSet([]types.Transaction) (modules.ConsensusChange, error) {
+	return modules.ConsensusChange{}, nil
+}
 
 // wallet stubs
-func (newStub) NextAddress() (uc types.UnlockConditions, err error)          { return }
-func (newStub) PrimarySeed() (modules.Seed, uint64, error)                   { return modules.Seed{}, 0, nil }
+func (newStub) NextAddress() (uc types.UnlockConditions, err error) { return }
+func (newStub) PrimarySeed() (modules.Seed, uint64, error)          { return modules.Seed{}, 0, nil }
+func (newStub) RegisterTransaction(types.Transaction, []types.Transaction) (modules.TransactionBuilder, error) {
+	return nil, nil
+}
 func (newStub) StartTransaction() (tb modules.TransactionBuilder, err error) { return }
 func (newStub) Unlocked() (bool, error)                                      { return true, nil }
 
@@ -46,6 +52,9 @@ func (newStub) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) 
 func (newStub) Host(types.SiaPublicKey) (settings modules.HostDBEntry, ok bool, err error) { return }
 func (newStub) IncrementSuccessfulInteractions(key types.SiaPublicKey) error               { return nil }
 func (newStub) IncrementFailedInteractions(key types.SiaPublicKey) error                   { return nil }
+func (newStub) InitialScanComplete() (complete bool, err error) {
+	return true, nil
+}
 func (newStub) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) ([]modules.HostDBEntry, error) {
 	return nil, nil
 }
@@ -130,6 +139,10 @@ func (stubHostDB) Host(types.SiaPublicKey) (h modules.HostDBEntry, ok bool, err 
 func (stubHostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error          { return nil }
 func (stubHostDB) IncrementFailedInteractions(key types.SiaPublicKey) error              { return nil }
 func (stubHostDB) PublicKey() (spk types.SiaPublicKey)                                   { return }
+
+func (stubHostDB) InitialScanComplete() (complete bool, err error) {
+	return true, nil
+}
 func (stubHostDB) RandomHosts(int, []types.SiaPublicKey, []types.SiaPublicKey) (hs []modules.HostDBEntry, _ error) {
 	return
 }
@@ -194,6 +207,7 @@ func TestAllowanceSpending(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(testAllowance)
 	if err != nil {
@@ -381,6 +395,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedRedundancy, err)
 	}
 	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+	a.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 
 	// reasonable values; should succeed
 	a.Funds = types.SiacoinPrecision.Mul64(100)
@@ -514,6 +529,7 @@ func TestHostMaxDuration(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -633,6 +649,7 @@ func TestLinkedContracts(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -737,6 +754,11 @@ func (ws *testWalletShim) StartTransaction() (modules.TransactionBuilder, error)
 	ws.startTxnCalled = true
 	return nil, nil
 }
+
+func (ws *testWalletShim) RegisterTransaction(types.Transaction, []types.Transaction) (modules.TransactionBuilder, error) {
+	return nil, nil
+}
+
 func (ws *testWalletShim) Unlocked() (bool, error) { return true, nil }
 
 // TestWalletBridge tests the walletBridge type.

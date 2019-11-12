@@ -22,8 +22,8 @@ func checkMetadataInit(md Metadata) error {
 	if !md.AggregateLastHealthCheckTime.IsZero() {
 		return fmt.Errorf("AggregateLastHealthCheckTime should be zero but was %v", md.AggregateLastHealthCheckTime)
 	}
-	if md.AggregateMinRedundancy != 0 {
-		return fmt.Errorf("SiaDir AggregateMinRedundancy not set properly: got %v expected 0", md.AggregateMinRedundancy)
+	if md.AggregateMinRedundancy != DefaultDirRedundancy {
+		return fmt.Errorf("SiaDir AggregateMinRedundancy not set properly: got %v expected %v", md.AggregateMinRedundancy, DefaultDirRedundancy)
 	}
 	if md.AggregateModTime.IsZero() {
 		return errors.New("AggregateModTime not initialized")
@@ -51,8 +51,8 @@ func checkMetadataInit(md Metadata) error {
 	if !md.LastHealthCheckTime.IsZero() {
 		return fmt.Errorf("LastHealthCheckTime should be zero but was %v", md.LastHealthCheckTime)
 	}
-	if md.MinRedundancy != 0 {
-		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected 0", md.MinRedundancy)
+	if md.MinRedundancy != DefaultDirRedundancy {
+		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected %v", md.MinRedundancy, DefaultDirRedundancy)
 	}
 	if md.ModTime.IsZero() {
 		return errors.New("ModTime not initialized")
@@ -281,32 +281,5 @@ func TestUpdateMetadata(t *testing.T) {
 	err = equalMetadatas(md, metadataUpdate)
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestDelete tests if deleting a siadir removes the siadir from disk and sets
-// the deleted flag correctly.
-func TestDelete(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create SiaFileSet with SiaDir
-	entry, _, err := newTestSiaDirSetWithDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Delete siadir.
-	if err := entry.Delete(); err != nil {
-		t.Fatal("Failed to delete siadir", err)
-	}
-	// Check if siadir was deleted and if deleted flag was set.
-	if !entry.Deleted() {
-		t.Fatal("Deleted flag was not set correctly")
-	}
-	siaDirPath := entry.siaPath.SiaDirSysPath(entry.rootDir)
-	if _, err := os.Open(siaDirPath); !os.IsNotExist(err) {
-		t.Fatal("Expected a siadir doesn't exist error but got", err)
 	}
 }

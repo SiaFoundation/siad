@@ -23,12 +23,14 @@ type (
 		NextAddress() (types.UnlockConditions, error)
 		PrimarySeed() (modules.Seed, uint64, error)
 		StartTransaction() (modules.TransactionBuilder, error)
+		RegisterTransaction(types.Transaction, []types.Transaction) (modules.TransactionBuilder, error)
 		Unlocked() (bool, error)
 	}
 	wallet interface {
 		NextAddress() (types.UnlockConditions, error)
 		PrimarySeed() (modules.Seed, uint64, error)
 		StartTransaction() (transactionBuilder, error)
+		RegisterTransaction(types.Transaction, []types.Transaction) (transactionBuilder, error)
 		Unlocked() (bool, error)
 	}
 	transactionBuilder interface {
@@ -38,9 +40,12 @@ type (
 		AddParents([]types.Transaction)
 		AddSiacoinInput(types.SiacoinInput) uint64
 		AddSiacoinOutput(types.SiacoinOutput) uint64
+		ReplaceSiacoinOutput(uint64, types.SiacoinOutput) error
 		AddTransactionSignature(types.TransactionSignature) uint64
+		Copy() modules.TransactionBuilder
 		Drop()
 		FundSiacoins(types.Currency) error
+		MarkWalletInputs() bool
 		Sign(bool) ([]types.Transaction, error)
 		UnconfirmedParents() ([]types.Transaction, error)
 		View() (types.Transaction, []types.Transaction)
@@ -60,6 +65,7 @@ type (
 		Host(types.SiaPublicKey) (modules.HostDBEntry, bool, error)
 		IncrementSuccessfulInteractions(key types.SiaPublicKey) error
 		IncrementFailedInteractions(key types.SiaPublicKey) error
+		InitialScanComplete() (complete bool, err error)
 		RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error)
 		UpdateContracts([]modules.RenterContract) error
 		ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
@@ -88,6 +94,11 @@ func (ws *WalletBridge) PrimarySeed() (modules.Seed, uint64, error) { return ws.
 // StartTransaction creates a new transactionBuilder that can be used to create
 // and sign a transaction.
 func (ws *WalletBridge) StartTransaction() (transactionBuilder, error) { return ws.W.StartTransaction() }
+
+// RegisterTransaction creates a new transactionBuilder from a transaction and parent transactions.
+func (ws *WalletBridge) RegisterTransaction(t types.Transaction, parents []types.Transaction) (transactionBuilder, error) {
+	return ws.W.RegisterTransaction(t, parents)
+}
 
 // Unlocked reports whether the wallet bridge is unlocked.
 func (ws *WalletBridge) Unlocked() (bool, error) { return ws.W.Unlocked() }
