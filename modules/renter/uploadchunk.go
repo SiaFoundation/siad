@@ -34,17 +34,18 @@ type unfinishedUploadChunk struct {
 	// to update these fields. Compatibility shouldn't be an issue because this
 	// struct is not persisted anywhere, it's always built from other
 	// structures.
-	health         float64
-	index          uint64
-	length         uint64
-	memoryNeeded   uint64 // memory needed in bytes
-	memoryReleased uint64 // memory that has been returned of memoryNeeded
-	minimumPieces  int    // number of pieces required to recover the file.
-	offset         int64  // Offset of the chunk within the file.
-	piecesNeeded   int    // number of pieces to achieve a 100% complete upload
-	stuck          bool   // indicates if the chunk was marked as stuck during last repair
-	stuckRepair    bool   // indicates if the chunk was identified for repair by the stuck loop
-	priority       bool   // indicates if the chunks is supposed to be repaired asap
+	fileRecentlySuccessful bool // indicates if the file the chunk is from had a recent successful repair
+	health                 float64
+	index                  uint64
+	length                 uint64
+	memoryNeeded           uint64 // memory needed in bytes
+	memoryReleased         uint64 // memory that has been returned of memoryNeeded
+	minimumPieces          int    // number of pieces required to recover the file.
+	offset                 int64  // Offset of the chunk within the file.
+	piecesNeeded           int    // number of pieces to achieve a 100% complete upload
+	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
+	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
+	priority               bool   // indicates if the chunks is supposed to be repaired asap
 
 	// Cache the siapath of the underlying file.
 	staticSiaPath string

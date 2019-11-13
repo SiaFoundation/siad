@@ -46,16 +46,21 @@ contractor is attempting to create contracts.
 `AllowanceLowFunds`  is registered if the contractor lacks the necessary fund to
 renew or form contracts.
 
+## TODOs
+* [ ] (watchdog) Perform action when storage proof is found and when missing at the end of the window.
+* [ ] (watchdog) Add renter dependencies in `sweepContractInputs` if necessary.
 
 
 ## Subsystems
 The Contractor is split up into the following subsystems:
 - [Allowance](#allowance-subsystem)
 - [Contract Maintenance Subsystem](#contract-maintenance-subsystem)
+- [Churn Limiter Subsystem](#churn-limiter-subsystem)
 - [Recovery Subsystem](#recovery-subsystem)
 - [Session Subsystem](#session-subsystem)
 - [Persistence Subsystem](#persistence-subsystem)
 - [Watchdog Subsystem](#watchdog-subsystem)
+
 
 ## Allowance Subsystem
 **Key Files**
@@ -124,6 +129,9 @@ that allowance modifications only take effect upon the next "contract cycle".
   subsystem](#allowance-subsystem) when setting the allowance to
   stop and restart contract maintenance with the new allowance settings in
   place.
+- `callNotifyDoubleSpend` is a Contract Maintenance call used by the watchdog to
+  indicate that a contract is double-spent and triggers actions from the
+  Contractor.
 
 ### Outbound Complexities
 - `callInitRecoveryScan` in the [Recovery subsystem](#recovery-subsystem) is
@@ -132,6 +140,32 @@ that allowance modifications only take effect upon the next "contract cycle".
   is updated during maintenance.
 - Funds established by the [Allowance subsystem](#allowance-subsystem) are used
   and deducted appropriately during maintenance to form and renew contracts.
+- `callNotifyChurnedContract` is used when a contract utility changes from GFR
+  to !GFR.
+
+
+## Churn Limiter Subsystem
+**Key Files**
+- [churnlimiter.go](./churnlimiter.go)
+
+The Churn Limiter is responsible for decreasing contract churn. It keeps track
+of the aggregate size of all contracts churned in the current period. Churn is
+limited by keeping contracts with low-scoring hosts around if the maximum
+aggregate for the period has been reached.
+
+### Exports
+- `SetMaxPeriodChurn` is exported by the `Contractor` and allows the caller
+   to set the maximum allowed churn in bytes per period.
+
+### Inbound Complexities
+- `callNotifyChurnedContract` is used when contracts are marked GFR after
+   previously being !GFR.
+- `callBumpChurnBudget` is used to increase the churn budget when new blocks
+   are processed.
+- `callResetAggregateChurn` resets the aggregate churn and is called every
+   time the contractor enters a new period.
+- `callPersistData` is called whenever the contractor's `persistData` is
+   called.
 
 
 ## Recovery Subsystem
@@ -167,9 +201,13 @@ Sessions are used to initiate uploads, downloads, and file modifications. This
 subsystem exports several methods used outside of the `Contractor` for this
 purpose.
 
+The session subsystem will watch out for certain host behaviors that indicate
+the host is permanently unusable. If this happens, the session subsystem will
+call 'MarkBadContract', which will prevent the contract from being considered a
+part of the usable contracts, and allow the repair process to happen.
+
 Pre-v1.4.0 contracts using an older version of the renter-host protocol use the
 Editor and Downloader interfaces to interact with hosts.
-
 
 ### Pre-v1.4.0 Contract Modification
 
@@ -215,14 +253,77 @@ subsystem](#watchdog-subsystem).
 ## Watchdog Subsystem
 **Key Files**
 - [watchdog.go](./watchdog.go)
+- [watchdog\_persist.go](./watchdog\_persist.go)
 
-The Contractor is also responsible for monitoring all unexpired contracts to make
-sure that they are finalized on-chain in the correct state. To do this, the
-Contractor watchdog always makes sure that the final revision for a contract is
-published onchain before the end of the contract window is reached. It also
-monitors new file contracts to make sure they are posted onchain, and notifies
-the contractor if inputs used to create a file contract are double-spent.
-Finally, the watchdog also monitors the Sia blockchain for storage proofs and
-takes actions against hosts that fail to submit proofs in time.
+The watchdog is responsible for monitoring the blockchain for file contracts,
+revisions, and storage proofs that are relevant to the contractor.
 
-This functionality is currently unimplemented.
+To scan for revisions, the watchdog is used during the Contractor's
+`ProcessConsensusChange` method and during the recovery subsystem's
+`ProcessConsensusChange` method. 
+
+When processing a newly added block the watchdog checks if any contracts,
+revision, or storage proofs for a monitored contract have appeared on-chain. For
+file contracts being monitored that haven't yet appeared on-chain, the watchdog
+also monitors all the parent Siacoin outputs used in the creation of the
+contract. It will update the dependency set of that contract as blocks are added
+and reverted. If a contract's inputs are ever double-spent, the  watchdog
+notifies the Contractor. The Contractor returns the contract's funds to the
+allowance, and marks the contract as `!GoodForUpload` and `!GoodForRenew`,
+
+The watchdog will also check if any monitored contracts revisions or storage
+proofs were removed in a reverted blocks and marks them as such. Note that once
+a the storage proof window for a file contract elapses for the first time, the
+watchdog will no longer monitor that contract. This is acceptable because even
+if the storage proof is reorged out, the host has at least proven they fulfilled
+their storage obligation once. It is up to the host to re-post storage proofs
+if they are reorged out, if they want to claim valid proof outputs afterwards.
+
+When the watchdog is synced to the `consensusset` it will do all of its checks
+on monitored contracts in `managedCheckContracts`. It waits until being synced,
+rather than taking action in the middle of a `ProcessConsensusChange` call to
+avoid taking actions that would be prevented if e.g. the next block in a
+`ConsensusChange` was checked. For example, a formation transaction may be
+reverted and re-applied in the same consensus change. In this case, the watchdog
+should not take any actions.
+
+The watchdog does the following checks on monitored contracts.
+- check that monitored file contract formation transaction sets appeared
+  on-chain in the expected number of blocks. 
+- re-send the transaction set if not, and double-spend the inputs used with the
+  set if much more time has elapsed.
+- check if any monitored contracts should have a more recent revision on-chain
+  already. If not, the watchdog will send the latest revision transaction out.
+- Check if storage proofs for a contract were found at the end of the expiration
+  window
+
+## Inbound Complexities
+- `callMonitorContract` is called from the Contract Maintenance and Recovery
+  subsystems whenever contracts are formed, renewed, or recovered.
+- `callScanConsensusChange`is used in the `ProcessConsensusChange` method of the
+  contractor to let the watchdog scan blocks.
+- `callPersistData` is called whenever the contractor's `persistData` is
+  called.
+
+## Outbound Complexities
+- `callNotifyDoubleSpend` is a Contract Maintenance call used by the watchdog to
+  indicate that a contract is double-spent and triggers actions from the
+  Contractor.
+
+## State Complexities
+All state updates from the watchdog are driven by changes observed in
+`ProcessConsensusChange` and from contract formation and renewal which cause a
+file contract to be monitored. Therefore, the watchdog persist needs to be
+synced with the most recent consensus change.
+
+## Why The Watchdog Should Sweep Renter Inputs
+
+If the watchdog fails to find a monitored file contract on-chain before its
+`formationSweepHeight` the watchdog will sweep the inputs used by the renter to
+create the file contract. This action must take place to prevent the renter from
+overspending its allowance.
+
+If the contractor were to simply create new contracts while other contracts were
+still unconfirmed, it would be possible to overspend the set allowance. When the
+watchdog sweeps its inputs succesfully, the contract will be marked as
+double-spent in which case the allowance funds are returned for further use.

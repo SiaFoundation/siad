@@ -79,6 +79,12 @@ func (a *AllowanceRequestPost) WithExpectedRedundancy(expectedRedundancy float64
 	return a
 }
 
+// WithMaxPeriodChurn adds the expected redundancy field to the request.
+func (a *AllowanceRequestPost) WithMaxPeriodChurn(maxPeriodChurn uint64) *AllowanceRequestPost {
+	a.values.Set("maxperiodchurn", fmt.Sprint(maxPeriodChurn))
+	return a
+}
+
 // Send finalizes and sends the request.
 func (a *AllowanceRequestPost) Send() (err error) {
 	if a.sent {
@@ -101,6 +107,13 @@ func escapeSiaPath(siaPath modules.SiaPath) string {
 		escapedSegments = append(escapedSegments, url.PathEscape(segment))
 	}
 	return strings.Join(escapedSegments, "/")
+}
+
+// RenterContractorChurnStatus uses the /renter/contractorchurnstatus endpoint
+// to get the current contractor churn status.
+func (c *Client) RenterContractorChurnStatus() (churnStatus modules.ContractorChurnStatus, err error) {
+	err = c.get("/renter/contractorchurnstatus", &churnStatus)
+	return
 }
 
 // RenterContractCancelPost uses the /renter/contract/cancel endpoint to cancel
@@ -127,6 +140,15 @@ func (c *Client) RenterAllContractsGet() (rc api.RenterContracts, err error) {
 // Contracts and ActiveContracts
 func (c *Client) RenterContractsGet() (rc api.RenterContracts, err error) {
 	err = c.get("/renter/contracts", &rc)
+	return
+}
+
+// RenterContractStatus requests the /watchdog/contractstatus resource and returns
+// the status of a contract.
+func (c *Client) RenterContractStatus(fcID types.FileContractID) (status modules.ContractWatchStatus, err error) {
+	values := url.Values{}
+	values.Set("id", fcID.String())
+	err = c.get("/renter/contractstatus?"+values.Encode(), &status)
 	return
 }
 
@@ -373,6 +395,7 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	a = a.WithExpectedUpload(allowance.ExpectedUpload)
 	a = a.WithExpectedDownload(allowance.ExpectedDownload)
 	a = a.WithExpectedRedundancy(allowance.ExpectedRedundancy)
+	a = a.WithMaxPeriodChurn(allowance.MaxPeriodChurn)
 	return a.Send()
 }
 

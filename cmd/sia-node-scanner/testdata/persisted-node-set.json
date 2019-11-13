@@ -1,0 +1,78 @@
+"SiaNodeScanner Persisted Node Set"
+"0.0.1"
+"manual"
+{
+	"StartTime": "2019-07-24T13:30:40.563052751-04:00",
+	"NodeStats": {
+		"127.0.0.1:44440": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:40:40.569227402-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44441": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44442": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:40:40.568648792-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44443": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44444": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:40:40.568116795-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44445": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100.0
+		},
+		"127.0.0.1:44446": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:40:40.569044333-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44447": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44448": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:40:40.568876457-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		},
+		"127.0.0.1:44449": {
+			"FirstConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"LastSuccessfulConnectionTime": "2019-07-24T13:30:40.563052751-04:00",
+			"RecentUptime": 1,
+			"TotalUptime": 1,
+			"UptimePercentage": 100
+		}
+	}
+}

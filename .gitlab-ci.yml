@@ -9,7 +9,7 @@ lint:
   stage: lint
   script: 
     - go get github.com/golangci/golangci-lint/cmd/golangci-lint
-    - golangci-lint run --disable-all --enable=vet --enable=gofmt ./...
+    - golangci-lint run --disable-all --enable=vet --enable=gofmt --deadline=600s ./...
     - make test
 
 legacy-tests:
@@ -51,7 +51,7 @@ siatest-tests:
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
   script:
-    - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
+    - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 siatest-renter-tests:
@@ -107,7 +107,7 @@ siatest-tests-nightly:
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
   script:
-    - make test-vlong run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
+    - make test-vlong run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 siatest-renter--tests-nightly:

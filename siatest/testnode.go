@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -73,8 +74,13 @@ func (ac *addressCounter) managedNextNodeAddress() (string, error) {
 			break
 		}
 	}
-	return ac.address.String(), nil
 
+	// If mac return 127.0.0.1
+	if runtime.GOOS == "darwin" {
+		return "127.0.0.1", nil
+	}
+
+	return ac.address.String(), nil
 }
 
 // PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the

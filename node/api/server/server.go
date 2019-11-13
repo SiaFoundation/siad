@@ -80,13 +80,31 @@ func (srv *Server) GatewayAddress() modules.NetAddress {
 	return srv.node.Gateway.Address()
 }
 
-// HostPublicKey returns the host's public key or an error if the node is no
+// HostPublicKey returns the host's public key or an error if the node has no
 // host.
 func (srv *Server) HostPublicKey() (types.SiaPublicKey, error) {
 	if srv.node.Host == nil {
 		return types.SiaPublicKey{}, errors.New("can't get public host key of a non-host node")
 	}
 	return srv.node.Host.PublicKey(), nil
+}
+
+// RenterCurrentPeriod returns the renter's current period or an error if the
+// node has no renter
+func (srv *Server) RenterCurrentPeriod() (types.BlockHeight, error) {
+	if srv.node.Renter == nil {
+		return 0, errors.New("can't get renter settings for a non-renter node")
+	}
+	return srv.node.Renter.CurrentPeriod(), nil
+}
+
+// RenterSettings returns the renter's settings or an error if the node has no
+// renter
+func (srv *Server) RenterSettings() (modules.RenterSettings, error) {
+	if srv.node.Renter == nil {
+		return modules.RenterSettings{}, errors.New("can't get renter settings for a non-renter node")
+	}
+	return srv.node.Renter.Settings()
 }
 
 // ServeErr is a blocking call that will return the result of srv.serve after

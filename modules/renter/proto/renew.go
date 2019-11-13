@@ -13,12 +13,12 @@ import (
 // Renew negotiates a new contract for data already stored with a host, and
 // submits the new contract transaction to tpool. The new contract is added to
 // the ContractSet and its metadata is returned.
-func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
+func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
 	// Check that the host version is high enough as belt-and-suspenders. This
 	// should never happen, because hosts with old versions should be blacklisted
 	// by the contractor.
 	if build.VersionCmp(params.Host.Version, "1.4.1") < 0 {
-		return modules.RenterContract{}, ErrBadHostVersion
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
 
 	// for convenience
@@ -28,6 +28,28 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	allowance, host, funding, startHeight, endHeight, refundAddress := params.Allowance, params.Host, params.Funding, params.StartHeight, params.EndHeight, params.RefundAddress
 	ourSK := contract.SecretKey
 	lastRev := contract.LastRevision()
+
+	// Create transaction builder for this renewal with the correct amount of
+	// funding.
+	err = txnBuilder.FundSiacoins(funding)
+	if err != nil {
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
+	}
+
+	// Make a copy of the transaction builder so far, to be used to by the watchdog
+	// to double spend these inputs in case the contract never appears on chain.
+	sweepBuilder := txnBuilder.Copy()
+	if err != nil {
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
+	}
+	// Add an output that sends all fund back to the refundAddress.
+	// Note that in order to send this transaction, a miner fee will have to be subtracted.
+	output := types.SiacoinOutput{
+		Value:      funding,
+		UnlockHash: refundAddress,
+	}
+	sweepBuilder.AddSiacoinOutput(output)
+	sweepTxn, sweepParents = sweepBuilder.View()
 
 	// Calculate additional basePrice and baseCollateral. If the contract height
 	// did not increase, basePrice and baseCollateral are zero.
@@ -46,7 +68,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	period := endHeight - startHeight
 	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, allowance.ExpectedStorage/allowance.Hosts)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	totalPayout := renterPayout.Add(hostPayout)
 
@@ -55,7 +77,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		baseCollateral = hostCollateral
 	}
 	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
-		return modules.RenterContract{}, errors.New("insufficient funds to pay both siafund fee and also host payout")
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.New("insufficient funds to pay both siafund fee and also host payout")
 	}
 
 	// create file contract
@@ -83,11 +105,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		},
 	}
 
-	// build transaction containing fc
-	err = txnBuilder.FundSiacoins(funding)
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
+	// Add fc.
 	txnBuilder.AddFileContract(fc)
 	// add miner fee
 	txnBuilder.AddMinerFee(txnFee)
@@ -104,7 +122,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	txn, parentTxns := txnBuilder.View()
 	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	txnSet := append(unconfirmedParents, parentTxns...)
 	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
@@ -123,15 +141,15 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	// Initiate protocol.
 	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	defer s.Close()
 	// Lock the contract and resynchronize if necessary
 	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	} else if err := oldContract.managedSyncRevision(rev, sigs); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Send the RenewContract request.
@@ -140,13 +158,13 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		RenterKey:    lastRev.UnlockConditions.PublicKeys[0],
 	}
 	if err := s.writeRequest(modules.RPCLoopRenewContract, req); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
 	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Incorporate host's modifications.
@@ -163,7 +181,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	if err != nil {
 		err = errors.New("failed to sign transaction: " + err.Error())
 		modules.WriteRPCResponse(s.conn, s.aead, nil, err)
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// calculate signatures added by the transaction builder
@@ -207,13 +225,13 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 	}
 	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Read the host acceptance and signatures.
 	var hostSigs modules.LoopContractSignatures
 	if err := s.readResponse(&hostSigs, modules.RPCMinLen); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {
 		txnBuilder.AddTransactionSignature(sig)
@@ -224,7 +242,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	txn, parentTxns = txnBuilder.View()
 	unconfirmedParents, err = txnBuilder.UnconfirmedParents()
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	txnSet = append(unconfirmedParents, parentTxns...)
 	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
@@ -236,7 +254,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		err = nil
 	}
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Construct contract header.
@@ -258,13 +276,13 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	// Get old roots
 	oldRoots, err := oldContract.merkleRoots.merkleRoots()
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Add contract to set.
 	meta, err := cs.managedInsertContract(header, oldRoots)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
-	return meta, nil
+	return meta, txnSet, sweepTxn, sweepParents, nil
 }

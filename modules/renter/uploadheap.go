@@ -47,6 +47,24 @@ type uploadChunkHeap []*unfinishedUploadChunk
 // Implementation of heap.Interface for uploadChunkHeap.
 func (uch uploadChunkHeap) Len() int { return len(uch) }
 func (uch uploadChunkHeap) Less(i, j int) bool {
+	// The chunks in the uploadHeap are prioritized in the following order:
+	//  1) Priority Chunks
+	//    - These are chunks added by a subsystem that are deemed more important
+	//      than all other chunks. An example would be if the upload of a single
+	//      chunk is a blocking task.
+	//
+	//  2) File Recently Successful Chunks
+	//    - These are stuck chunks that are from a file that recently had a
+	//      successful repair
+	//
+	//  3) Stuck Chunks
+	//    - These are chunks added by the stuck loop
+	//
+	//  4) Worst Health Chunk
+	//    - The base priority of chunks in the heap is by the worst health
+
+	// Check for Priority chunks
+	//
 	// If only chunk i is high priority, return true to prioritize it.
 	if uch[i].priority && !uch[j].priority {
 		return true
@@ -55,17 +73,33 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	if !uch[i].priority && uch[j].priority {
 		return false
 	}
-	// If the chunks have the same stuck status, check which chunk has the worse
-	// health. A higher health is a worse health
-	if uch[i].stuck == uch[j].stuck {
-		return uch[i].health > uch[j].health
-	}
-	// If chunk i is stuck, return true to prioritize it.
-	if uch[i].stuck {
+
+	// Check for File Recently Successful Chunks
+	//
+	// If only chunk i's file was recently successful, return true to prioritize
+	// it.
+	if uch[i].fileRecentlySuccessful && !uch[j].fileRecentlySuccessful {
 		return true
 	}
-	// Chunk j is stuck, return false to prioritize it.
-	return false
+	// If only chunk j's file was recently successful, return true to prioritize
+	// it.
+	if !uch[i].fileRecentlySuccessful && uch[j].fileRecentlySuccessful {
+		return false
+	}
+
+	// Check for Stuck Chunks
+	//
+	// If chunk i is stuck, return true to prioritize it.
+	if uch[i].stuck && !uch[j].stuck {
+		return true
+	}
+	// If chunk j is stuck, return true to prioritize it.
+	if !uch[i].stuck && uch[j].stuck {
+		return false
+	}
+
+	// Base case, Check for worst health
+	return uch[i].health > uch[j].health
 }
 func (uch uploadChunkHeap) Swap(i, j int)       { uch[i], uch[j] = uch[j], uch[i] }
 func (uch *uploadChunkHeap) Push(x interface{}) { *uch = append(*uch, x.(*unfinishedUploadChunk)) }
@@ -143,11 +177,19 @@ func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
 	delete(uh.repairingChunks, id)
 }
 
-// managedNumStuckChunks returns the number of stuck chunks in the heap
-func (uh *uploadHeap) managedNumStuckChunks() int {
+// managedNumStuckChunks returns total number of stuck chunks in the heap and
+// the number of stuck chunks that were added at random as opposed to being
+// added due to a recently succesful file repair
+func (uh *uploadHeap) managedNumStuckChunks() (total int, random int) {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	return len(uh.stuckHeapChunks)
+	for _, chunk := range uh.stuckHeapChunks {
+		if !chunk.fileRecentlySuccessful {
+			random++
+		}
+		total++
+	}
+	return total, random
 }
 
 // managedPush will try and add a chunk to the upload heap. If the chunk is
