@@ -213,8 +213,9 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 			localPath, fileName, err)
 		return false
 	}
-	// Finalize the recovery.
+	// Finalize the recovery and clean up memory.
 	chunk.managedFinalizeRecovery()
+	chunk.returnMemory()
 	return true
 }
 
