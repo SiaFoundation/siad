@@ -79,7 +79,7 @@ func (a *AllowanceRequestPost) WithExpectedRedundancy(expectedRedundancy float64
 	return a
 }
 
-// WithExpectedRedundancy adds the expected redundancy field to the request.
+// WithMaxPeriodChurn adds the expected redundancy field to the request.
 func (a *AllowanceRequestPost) WithMaxPeriodChurn(maxPeriodChurn uint64) *AllowanceRequestPost {
 	a.values.Set("maxperiodchurn", fmt.Sprint(maxPeriodChurn))
 	return a
