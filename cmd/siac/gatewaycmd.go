@@ -29,8 +29,8 @@ var (
 
 	gatewayBlacklistCmd = &cobra.Command{
 		Use:   "blacklist",
-		Short: "View a list of blacklisted peers",
-		Long:  "Display the peers currently on the gateway blacklist.",
+		Short: "View and manage the gateway's blacklisted peers",
+		Long:  "Display and manage the peers currently on the gateway blacklist.",
 		Run:   wrap(gatewayblacklistcmd),
 	}
 
