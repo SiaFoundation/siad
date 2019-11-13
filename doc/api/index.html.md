@@ -2907,7 +2907,7 @@ retrieves the contents of a directory on the sia network
 ### Path Parameters
 ### REQUIRED
 **siapath** | string  
-Path to the directory on the sia netork  
+Path to the directory on the sia network  
 
 ### JSON Response
 > JSON Response Example
@@ -2942,7 +2942,8 @@ the total number of files in the sub directory tree
 **aggregatenumstuckchunks** | uint64  
 the total number of stuck chunks in the sub directory tree
 
-**aggregatenumsize** | uint64  
+**aggregatesize** | uint64  
+the total size in bytes of files in the sub directory tree
 
 **health** | float64  
 This is the worst health of any of the files or subdirectories. Health is the
