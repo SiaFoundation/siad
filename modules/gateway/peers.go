@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -67,7 +67,6 @@ func (p *peer) open() (modules.PeerConn, error) {
 	return &peerConn{conn, p.NetAddress}, nil
 }
 
-// TODO - why is this conn not rate limited?
 func (p *peer) accept() (modules.PeerConn, error) {
 	conn, err := p.sess.Accept()
 	if err != nil {

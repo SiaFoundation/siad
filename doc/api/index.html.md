@@ -789,6 +789,28 @@ Max upload speed permitted in bytes per second
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /gateway/bandwidth [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/gateway/bandwidth"
+```
+
+returns the total upload and download bandwidth usage for the gateway
+
+### JSON Response
+```go
+{
+  "download": 12345 // bytes
+  "upload":   12345 // bytes
+}
+```
+
+**download** | bytes  
+the total number of bytes that have been downloaded by the gateway.
+
+**upload** | bytes  
+the total number of bytes that have been uploaded by the gateway.
+
 ## /gateway/connect/:*netaddress* [POST]
 > curl example  
 

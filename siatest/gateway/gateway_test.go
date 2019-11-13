@@ -325,6 +325,8 @@ func TestGatewayBandwidth(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// After connecting the gateways, both gateways should have used some upload
+	// and download bandwidth
 	gbg1, err = gateway1.GatewayBandwidthGet()
 	if err != nil {
 		t.Fatal(err)

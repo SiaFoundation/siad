@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/monitor"
-	
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )

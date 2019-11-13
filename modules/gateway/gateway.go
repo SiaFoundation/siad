@@ -104,9 +104,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 
-	"gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/monitor"
 
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
