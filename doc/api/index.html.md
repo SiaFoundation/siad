@@ -1254,16 +1254,16 @@ has spent money and the user will be able to spend that money again.
 
 maxunsaveddelta is the maximum amount of money that the host is willing to risk
 to a power loss. If a user's withdrawal would put the host over the
-maxunsaveddelat, the host will wait to complete the user's transaction until the
-host has persisted the widthdrawal, to prevent the host from having too much
-money at risk.
+maxunsaveddelta, the host will wait to complete the user's transaction until it
+has persisted the widthdrawal, to prevent the host from having too much money at
+risk.
 
-Note that money is only at risk if the host experiences an
-unclean shutdown while in the middle of a transaction with a user, and generally
-the amount at risk will be minuscule unless the host experiences an unclean
-shutdown while in the middle of many transactions with many users at once. This
-value should be larger than 'maxephemeralaccountbalance but does not need to be
-significantly larger.
+Note that money is only at risk if the host experiences an unclean shutdown
+while in the middle of a transaction with a user, and generally the amount at
+risk will be minuscule unless the host experiences an unclean shutdown while in
+the middle of many transactions with many users at once. This value should be
+larger than maxephemeralaccountbalance but does not need to be significantly
+larger.
 
 **networkmetrics**    
 Information about the network, specifically various ways in which renters have
@@ -1417,9 +1417,9 @@ has spent money and the user will be able to spend that money again.
 
 maxunsaveddelta is the maximum amount of money that the host is willing to risk
 to a power loss. If a user's withdrawal would put the host over the
-maxunsaveddelat, the host will wait to complete the user's transaction until the
-host has persisted the widthdrawal, to prevent the host from having too much
-money at risk.
+maxunsaveddelta, the host will wait to complete the user's transaction until it
+has persisted the widthdrawal, to prevent the host from having too much money at
+risk.
 
 Note that money is only at risk if the host experiences an
 unclean shutdown while in the middle of a transaction with a user, and generally

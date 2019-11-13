@@ -1,13 +1,15 @@
 # Host
 The host takes local disk storage and makes it available to the Sia network. He
-will do so by announcing himself, and his settings, on the network. Renters can
+will do so by announcing himself, and his settings, to the network. Renters
 transact with the host through a number of RPC calls.
 
-In order for data to be stored, the renter and host must agree on a file
-contract. Once they have negotiated the terms of the file contract, it is put on
-chain. Any further action related to the data is reflected in the file contract
-through contract revisions. The host is responsible for managing these
-contracts, and making sure the data is stored.
+In order for data to be uploaded and stored, the renter and host must agree on a
+file contract. Once they have negotiated the terms of the file contract, it is
+signed and put on chain. Any further action related to the data is reflected in
+the file contract by means contract revisions that get signed by both parties.
+The host is responsible for managing these contracts, and making sure the data
+is safely stored. The host proves that he is storing the data by providing a
+segment of the file and a list of hashes from the file's merkletree.
 
 Aside from storage, the host offers another service called ephemeral accounts.
 These accounts serve as an alternative payment method to file contracts. Users
@@ -52,23 +54,27 @@ all if the host decides to steal the funds. For this reason, users should only
 keep tiny balances in ephemeral accounts and users should refill the ephemeral
 accounts frequently, even on the order of multiple times per minute.
 
+To increase performance, the host will allow a user to withdraw from an
+ephemeral without requiring the user to wait until the host has persisted the
+withdrawal to complete a transaction. This allows the user to perform actions
+such as downloading with significantly less latency. This also means that if the
+host loses power at that exact moment, the host will forget that the user has
+spent money and the user will be able to spend that money again. The host can
+configure the amount of money he is willing to risk due to this asynchronous
+persist model through the `maxunsaveddelta` setting.
+
 ### AccountsPersister Subsystem
 
 **Key Files**
  - [accountspersist.go](./accountspersist.go)
 
-The AccountsPersister subsystem will persist all account data to disk. Ephemeral
-accounts data is divided into two parts, the account balance and the
-fingerprints.
+The AccountsPersister subsystem will persist all ephemeral account data to disk.
+This data consists of two parts, the account balance and the fingerprints.
+Fingerprints are derived from the withdrawal message the user used to perform a
+withdrawal.
 
-The account balances are persisted in a single accounts file.
-
-The fingerprints are persisted across two files on disk, the current and next
-fingerprints file. To increase performance, the host will allow a user to
-withdraw from an ephemeral without requiring the user to wait until the host has
-persisted the withdrawal to complete a transaction. This allows the user to
-perform actions such as downloading with significantly less latency. This also
-means that if the host loses power at that exact moment, the host will forget
-that the user has spent money and the user will be able to spend that money
-again. The host can configure the amount of money he is willing to risk due to
-this asynchronous persist model through the `maxunsaveddelta` setting.
+The account balances together with the corresponding publickey are persisted in
+a single accounts file. The fingerprints are persisted across two files, the
+current and the next fingerprint bucket. The expiry blockheight of the
+withdrawal message decide if the fingerprint belongs to either the current or
+the next bucket.

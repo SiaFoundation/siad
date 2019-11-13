@@ -64,7 +64,7 @@ Available settings:
      minuploadbandwidthprice:   currency / TB
 
      maxephemeralaccountbalance: currency
-     maxunsaveddelta: 			 currency
+     maxunsaveddelta:            currency
 
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 

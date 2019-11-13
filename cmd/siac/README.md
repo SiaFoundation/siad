@@ -101,7 +101,7 @@ seed into itself. This can be used for wallet recovery and merging.
 
 is used to configure hosting.
 
-In version `1.4.1.3`, sia hosting is configured as follows:
+In version `1.4.2`, sia hosting is configured as follows:
 
 | Setting                    | Value                                           |
 | ---------------------------|-------------------------------------------------|
