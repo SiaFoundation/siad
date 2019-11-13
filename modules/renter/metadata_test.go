@@ -11,6 +11,7 @@ import (
 func TestAddUniqueBubblePaths(t *testing.T) {
 	// Create some directory tree paths
 	paths := []modules.SiaPath{
+		modules.RootSiaPath(),
 		{Path: "root"},
 		{Path: "root/SubDir1"},
 		{Path: "root/SubDir1/SubDir1"},
@@ -23,16 +24,16 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 	}
 
 	// Create a map of directories to be bubbled
-	dirsToBubble := make(map[modules.SiaPath]struct{})
+	dirsToBubble := newUniqueBubblePaths()
 
 	// Add all paths to map
 	for _, path := range paths {
-		addUniqueBubblePath(path, dirsToBubble)
+		dirsToBubble.addPath(path)
 	}
 
 	// No randomly add more paths
 	for i := 0; i < 10; i++ {
-		addUniqueBubblePath(paths[fastrand.Intn(len(paths))], dirsToBubble)
+		dirsToBubble.addPath(paths[fastrand.Intn(len(paths))])
 	}
 
 	// There should only be the following paths in the map
@@ -42,11 +43,11 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		{Path: "root/SubDir2/SubDir1"},
 		{Path: "root/SubDir2/SubDir2/SubDir2"},
 	}
-	if len(dirsToBubble) != len(uniquePaths) {
-		t.Fatalf("Expected %v paths in map but got %v", len(uniquePaths), len(dirsToBubble))
+	if len(dirsToBubble.childDirs) != len(uniquePaths) {
+		t.Fatalf("Expected %v paths in map but got %v", len(uniquePaths), len(dirsToBubble.childDirs))
 	}
 	for _, path := range uniquePaths {
-		if _, ok := dirsToBubble[path]; !ok {
+		if _, ok := dirsToBubble.childDirs[path]; !ok {
 			t.Fatal("Did not find path in map", path)
 		}
 	}

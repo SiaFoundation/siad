@@ -29,31 +29,59 @@ const (
 	bubblePending
 )
 
-// addUniqueBubblePath will only add a unique bubble path to a map. Since bubble
-// calls itself on the parent directory when it finishes with a directory, only
-// a call to the lowest level child directory is needed to properly update the
-// entire directory tree.
-func addUniqueBubblePath(newPath modules.SiaPath, paths map[modules.SiaPath]struct{}) {
-	// Check if path is already in the map
-	if _, ok := paths[newPath]; ok {
-		return
+// uniqueBubblePaths is a helper struct for determining the minimum number of
+// directories that will need to have callThreadedBubbleMetadata called on in
+// order to properly update the affected directory tree. Since bubble calls
+// itself on the parent directory when it finishes with a directory, only a call
+// to the lowest level child directory is needed to properly update the entire
+// directory tree.
+type uniqueBubblePaths struct {
+	childDirs  map[modules.SiaPath]struct{}
+	parentDirs map[modules.SiaPath]struct{}
+}
+
+// newUniqueBubblePaths returns an initialized uniqueBubblePaths struct
+func newUniqueBubblePaths() uniqueBubblePaths {
+	return uniqueBubblePaths{
+		childDirs:  make(map[modules.SiaPath]struct{}),
+		parentDirs: make(map[modules.SiaPath]struct{}),
 	}
-	// Iterate through map
-	for path := range paths {
-		if strings.Contains(path.String(), newPath.String()) {
-			// There is already a child directory in the map so this path does
-			// not need to be added
-			return
-		}
-		if strings.Contains(newPath.String(), path.String()) {
-			// There is a path in the map that is a parent of the new directory.
-			// Delete the parent directory from the map
-			delete(paths, path)
-		}
+}
+
+// addPath adds a path to uniqueBubblePaths.
+func (ubp uniqueBubblePaths) addPath(path modules.SiaPath) error {
+	// Check if the path is in the parent directory map
+	if _, ok := ubp.parentDirs[path]; ok {
+		return nil
 	}
-	// Add newPath to map
-	paths[newPath] = struct{}{}
-	return
+
+	// Check if the path is in the child directory map
+	if _, ok := ubp.childDirs[path]; ok {
+		return nil
+	}
+
+	// Add path to the childDir map
+	ubp.childDirs[path] = struct{}{}
+
+	// Check all path elements to make sure any parent directories are removed
+	// from the child directory map and added to the parent directory map
+	for !path.IsRoot() {
+		// Get the parentDir of the path
+		parentDir, err := path.Dir()
+		if err != nil {
+			contextStr := fmt.Sprintf("unable to get parent directory of %v", path)
+			return errors.AddContext(err, contextStr)
+		}
+		// Check if the parentDir is in the childDirs map
+		if _, ok := ubp.childDirs[parentDir]; ok {
+			// Remove from childDir map and add to parentDir map
+			delete(ubp.childDirs, parentDir)
+			ubp.parentDirs[parentDir] = struct{}{}
+		}
+		// Set path equal to the parentDir
+		path = parentDir
+	}
+	return nil
 }
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
