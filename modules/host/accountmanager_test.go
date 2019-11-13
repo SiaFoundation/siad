@@ -17,7 +17,7 @@ func TestAccountCallDeposit(t *testing.T) {
 	}
 	t.Parallel()
 
-	ht, err := blankHostTester("TestAccountCallDeposit")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestAccountcallWithdraw(t *testing.T) {
 	}
 	t.Parallel()
 
-	ht, err := blankHostTester("TestAccountcallWithdraw")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestAccountExpiry(t *testing.T) {
 	}
 	t.Parallel()
 
-	ht, err := blankMockHostTester(&dependencies.HostExpireEphemeralAccounts{}, "TestAccountExpiry")
+	ht, err := blankMockHostTester(&dependencies.HostExpireEphemeralAccounts{}, t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	t.Parallel()
 
 	// Prepare a host
-	ht, err := blankHostTester("TestAccountWithdrawalSpent")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	t.Parallel()
 
 	// Prepare a host
-	ht, err := newHostTester("TestAccountWithdrawalExpired")
+	ht, err := newHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	t.Parallel()
 
 	// Prepare a host
-	ht, err := blankHostTester("TestAccountWithdrawalExtremeFuture")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 
 	// Prepare a withdrawal message
 	diff := types.NewCurrency64(5)
-	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+bucketSize+100, sk)
+	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+(2*bucketBlockRange)+1, sk)
 	err = am.callWithdraw(msg, sig)
 	if err != errWithdrawalExtremeFuture {
 		t.Fatal("Expected withdrawal extreme future error", err)
@@ -265,7 +265,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	t.Parallel()
 
 	// Prepare a host
-	ht, err := blankHostTester("TestAccountWithdrawalInvalidSignature")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

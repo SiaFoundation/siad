@@ -17,7 +17,7 @@ func TestAccountsReload(t *testing.T) {
 	}
 	t.Parallel()
 
-	ht, err := blankHostTester("TestAccountsReload")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestFingerprintsReload(t *testing.T) {
 	}
 	t.Parallel()
 
-	ht, err := blankHostTester("TestFingerprintsReload")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

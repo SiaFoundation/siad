@@ -61,10 +61,10 @@ Available settings:
      mindownloadbandwidthprice: currency / TB
      minsectoraccessprice:      currency
      minstorageprice:           currency / TB / Month
-	 minuploadbandwidthprice:   currency / TB
+     minuploadbandwidthprice:   currency / TB
 
-	 maxephemeralaccountbalance: currency
-	 maxunsaveddelta: 			 currency
+     maxephemeralaccountbalance: currency
+     maxunsaveddelta: 			 currency
 
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 
@@ -222,7 +222,7 @@ Host Internal Settings:
 	minuploadbandwidthprice:   %v / TB
 
 	maxephemeralaccountbalance: %v
-	maxunsaveddelta: 			%v
+	maxunsaveddelta:            %v
 
 Host Financials:
 	Contract Count:               %v

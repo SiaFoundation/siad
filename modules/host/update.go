@@ -312,7 +312,9 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	go func() {
 		h.mu.Lock()
-		defer h.mu.Unlock()
-		h.staticAccountManager.callConsensusChanged(h.blockHeight)
+		cbh := h.blockHeight
+		h.mu.Unlock()
+
+		h.staticAccountManager.callConsensusChanged(cbh)
 	}()
 }

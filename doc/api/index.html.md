@@ -1241,14 +1241,29 @@ uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
 
 **maxephemeralaccountbalance** | hastings  
-The maximum amount of money that the host will allow to deposit in a single
-ephemeral account
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
 
 **maxunsaveddelta** | hastings  
-The maximum amount of unsaved delta across all ephemeral accounts the host is
-managing. Unsaved delta is the difference between what the host has in memory
-and hat it has persisted to disk. Such a difference can occcur because ephemeral
-account manager will persist changes to disk asynchronoulsy.
+To increase performance, the host will allow a user to withdraw from an
+ephemeral without requiring the user to wait until the host has persisted the
+withdrawal to complete a transaction. This means that the user can perform
+actions such as downloads with significantly less latency. This also means that
+if the host loses power at that exact moment, the host will forget that the user
+has spent money and the user will be able to spend that money again.
+
+maxunsaveddelta is the maximum amount of money that the host is willing to risk
+to a power loss. If a user's withdrawal would put the host over the
+maxunsaveddelat, the host will wait to complete the user's transaction until the
+host has persisted the widthdrawal, to prevent the host from having too much
+money at risk.
+
+Note that money is only at risk if the host experiences an
+unclean shutdown while in the middle of a transaction with a user, and generally
+the amount at risk will be minuscule unless the host experiences an unclean
+shutdown while in the middle of many transactions with many users at once. This
+value should be larger than 'maxephemeralaccountbalance but does not need to be
+significantly larger.
 
 **networkmetrics**    
 Information about the network, specifically various ways in which renters have
@@ -1389,14 +1404,29 @@ uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
 
 **maxephemeralaccountbalance** | hastings  
-The maximum amount of money that the host will allow to deposit in a single
-ephemeral account
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
 
 **maxunsaveddelta** | hastings  
-The maximum amount of unsaved delta across all ephemeral accounts the host is
-managing. Unsaved delta is the difference between what the host has in memory
-and hat it has persisted to disk. Such a difference can occcur because ephemeral
-account manager will persist changes to disk asynchronoulsy.
+To increase performance, the host will allow a user to withdraw from an
+ephemeral without requiring the user to wait until the host has persisted the
+withdrawal to complete a transaction. This means that the user can perform
+actions such as downloads with significantly less latency. This also means that
+if the host loses power at that exact moment, the host will forget that the user
+has spent money and the user will be able to spend that money again.
+
+maxunsaveddelta is the maximum amount of money that the host is willing to risk
+to a power loss. If a user's withdrawal would put the host over the
+maxunsaveddelat, the host will wait to complete the user's transaction until the
+host has persisted the widthdrawal, to prevent the host from having too much
+money at risk.
+
+Note that money is only at risk if the host experiences an
+unclean shutdown while in the middle of a transaction with a user, and generally
+the amount at risk will be minuscule unless the host experiences an unclean
+shutdown while in the middle of many transactions with many users at once. This
+value should be larger than 'maxephemeralaccountbalance but does not need to be
+significantly larger.
 
 ### Response
 

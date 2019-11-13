@@ -173,16 +173,11 @@ type Host struct {
 	// Misc state.
 	db         *persist.BoltDatabase
 	listener   net.Listener
+	log        *persist.Logger
 	mu         sync.RWMutex
 	persistDir string
 	port       string
-
-	hostUtils
-}
-
-type hostUtils struct {
-	tg  siasync.ThreadGroup
-	log *persist.Logger
+	tg         siasync.ThreadGroup
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -282,11 +277,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	})
 
 	// Add the account manager subsystem
-	ap, err := h.newAccountsPersister(h.dependencies)
-	if err != nil {
-		return nil, err
-	}
-	h.staticAccountManager, err = h.newAccountManager(h.dependencies, ap)
+	h.staticAccountManager, err = h.newAccountManager()
 	if err != nil {
 		return nil, err
 	}
