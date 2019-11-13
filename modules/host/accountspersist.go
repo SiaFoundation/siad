@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -44,16 +45,16 @@ const (
 var (
 	// accountMetadata contains the header and version strings that identify the
 	// accounts persist file.
-	accountMetadata = fixedMetadata{
+	accountMetadata = persist.FixedMetadata{
 		Header:  types.Specifier{'A', 'c', 'c', 'o', 'u', 'n', 't', 's'},
-		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '3'},
+		Version: types.Specifier{'1', '.', '4', '.', '2'},
 	}
 
 	// fingerprintsMetadata contains the header and version strings that
 	// identify the fingerprints persist file.
-	fingerprintsMetadata = fixedMetadata{
+	fingerprintsMetadata = persist.FixedMetadata{
 		Header:  types.Specifier{'F', 'i', 'n', 'g', 'e', 'r', 'P', 'r', 'i', 'n', 't', 's'},
-		Version: types.Specifier{'1', '.', '4', '.', '1', '.', '3'},
+		Version: types.Specifier{'1', '.', '4', '.', '2'},
 	}
 )
 
@@ -68,12 +69,6 @@ type (
 
 		mu sync.Mutex
 		h  *Host
-	}
-
-	// fixedMetadata contains the persist metadata
-	fixedMetadata struct {
-		Header  types.Specifier
-		Version types.Specifier
 	}
 
 	// accountData contains all data persisted for a single account
@@ -317,7 +312,7 @@ func (ap *accountsPersister) buildAccountIndex(numAccounts int) {
 
 // openFileWithMetadata will open the file at given path and write the metadata
 // header to it if the file did not exist prior to calling this method
-func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metadata fixedMetadata) (modules.File, error) {
+func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metadata persist.FixedMetadata) (modules.File, error) {
 	_, statErr := os.Stat(path)
 
 	// Open the file, create it if it does not exist yet

@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -52,6 +53,12 @@ var (
 // Metadata contains the header and version of the data being stored.
 type Metadata struct {
 	Header, Version string
+}
+
+// FixedMetadata contains the header and version of the data being stored as a
+// fixed-length byte-array.
+type FixedMetadata struct {
+	Header, Version types.Specifier
 }
 
 // RandomSuffix returns a 20 character base32 suffix for a filename. There are
