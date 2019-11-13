@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -41,7 +40,7 @@ var (
 Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
 ipaddresses or domain names.
 
-For example: siac gateway blacklist append 123.456.789.000:9981,111.222.333.444,mysiahost.duckdns.org:9981`,
+For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
 		Run: wrap(gatewayblacklistappendcmd),
 	}
 
@@ -52,7 +51,7 @@ For example: siac gateway blacklist append 123.456.789.000:9981,111.222.333.444,
 Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
 ipaddresses or domain names.
 
-For example: siac gateway blacklist remove 123.456.789.000:9981,111.222.333.444,mysiahost.duckdns.org:9981`,
+For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
 		Run: wrap(gatewayblacklistremovecmd),
 	}
 
@@ -63,7 +62,7 @@ For example: siac gateway blacklist remove 123.456.789.000:9981,111.222.333.444,
 Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
 ipaddresses or domain names.
 
-For example: siac gateway blacklist set 123.456.789.000:9981,111.222.333.444,mysiahost.duckdns.org:9981`,
+For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
 		Run: wrap(gatewayblacklistsetcmd),
 	}
 
@@ -157,30 +156,15 @@ func gatewayblacklistcmd() {
 
 }
 
-// gatewayblacklistparsepeers is a helper function for sanitizing a string of
-// gateway peers and returning them as a []modules.NetAddress
-func gatewayblacklistparsepeers(addrString string) []modules.NetAddress {
-	if addrString == "" {
-		die("provide the peer address as an argument")
-	}
-	peers := strings.Split(addrString, ",")
-	var netAddrs []modules.NetAddress
-	for _, p := range peers {
-		// Append a port if one isn't provided.  A port is expected by the API but
-		// gets ignored by the daemon.
-		if len(strings.Split(p, ":")) == 1 {
-			p = p + ":9981"
-		}
-		netAddrs = append(netAddrs, modules.NetAddress(p))
-	}
-	return netAddrs
-}
-
 // gatewayblacklistappendcmd is the handler for the command
 // `siac gateway blacklist append`
 // Adds one or more new hosts to the gateway's blacklist
 func gatewayblacklistappendcmd(addrString string) {
-	err := httpClient.GatewayAppendBlacklistPost(gatewayblacklistparsepeers(addrString))
+	netAddrs, err := parseBlacklistNetAddresses(addrString)
+	if err != nil {
+		die("Could not append the peer to the gateway blacklist", err)
+	}
+	err = httpClient.GatewayAppendBlacklistPost(netAddrs)
 	if err != nil {
 		die("Could not append the peer to the gateway blacklist", err)
 	}
@@ -191,7 +175,11 @@ func gatewayblacklistappendcmd(addrString string) {
 // `siac gateway blacklist remove`
 // Removes one or more hosts from the gateway's blacklist
 func gatewayblacklistremovecmd(addrString string) {
-	err := httpClient.GatewayRemoveBlacklistPost(gatewayblacklistparsepeers(addrString))
+	netAddrs, err := parseBlacklistNetAddresses(addrString)
+	if err != nil {
+		die("Could not remove the peer from the gateway blacklist", err)
+	}
+	err = httpClient.GatewayRemoveBlacklistPost(netAddrs)
 	if err != nil {
 		die("Could not remove the peer from the gateway blacklist", err)
 	}
@@ -202,7 +190,11 @@ func gatewayblacklistremovecmd(addrString string) {
 // `siac gateway blacklist set`
 // Sets the gateway blacklist to the hosts passed in via a comma-separated list
 func gatewayblacklistsetcmd(addrString string) {
-	err := httpClient.GatewaySetBlacklistPost(gatewayblacklistparsepeers(addrString))
+	netAddrs, err := parseBlacklistNetAddresses(addrString)
+	if err != nil {
+		die("Could not set the gateway blacklist", err)
+	}
+	err = httpClient.GatewaySetBlacklistPost(netAddrs)
 	if err != nil {
 		die("Could not set the gateway blacklist", err)
 	}
