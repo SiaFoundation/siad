@@ -470,12 +470,6 @@ func (r *Renter) Streamer(siaPath modules.SiaPath) (string, modules.Streamer, er
 		return "", nil, err
 	}
 	defer r.tg.Done()
-	// Prepend the provided siapath with the /home/siafiles dir.
-	var err error
-	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
-	if err != nil {
-		return "", nil, err
-	}
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {

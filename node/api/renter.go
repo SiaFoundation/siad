@@ -255,7 +255,7 @@ func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 }
 
 // trimSiaDirFolder is a helper method to trim /home/siafiles off of the
-// siapaths of the fileinfos since the user expects a path relative to
+// siapaths of the dirinfos since the user expects a path relative to
 // /home/siafiles and not relative to root.
 func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, err error) {
 	for i := range dis {
@@ -265,6 +265,19 @@ func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, 
 		}
 	}
 	return dis, nil
+}
+
+// trimSiaDirFolderOnFiles is a helper method to trim /home/siafiles off of the
+// siapaths of the fileinfos since the user expects a path relative to
+// /home/siafiles and not relative to root.
+func trimSiaDirFolderOnFiles(fis ...modules.FileInfo) (_ []modules.FileInfo, err error) {
+	for i := range fis {
+		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return fis, nil
 }
 
 // trimSiaDirInfo is a helper method to trim /home/siafiles off of the
@@ -1238,6 +1251,11 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 	files, err := api.renter.FileList(modules.RootSiaPath(), true, c)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	files, err = trimSiaDirFolderOnFiles(files...)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteJSON(w, RenterFiles{

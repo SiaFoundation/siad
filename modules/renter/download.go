@@ -239,12 +239,6 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 // returns the download object and an error that indicates if the download
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
-	// Prepend the provided siapath with the /home/siafiles dir.
-	var err error
-	p.SiaPath, err = modules.UserSiaPath().Join(p.SiaPath.String())
-	if err != nil {
-		return nil, err
-	}
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSystem.OpenSiaFile(p.SiaPath)
 	if err != nil {

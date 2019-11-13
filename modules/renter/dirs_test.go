@@ -71,11 +71,11 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	if err != nil {
 		return fmt.Errorf("unable to load directory %v metadata: %v", siaPath, err)
 	}
+	defer siaDir.Close()
 	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root())
 	if _, err := os.Stat(fullpath); err != nil {
 		return err
 	}
-	defer siaDir.Close()
 
 	// Check that metadata is default value
 	metadata, err := siaDir.Metadata()
@@ -198,20 +198,29 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
-	if len(directories) != 2 {
-		t.Fatal("Expected 2 DirectoryInfos but got", len(directories))
+	if len(directories) != 4 {
+		t.Fatal("Expected 4 DirectoryInfos but got", len(directories))
 	}
+	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
 	if len(files) != 1 {
 		t.Fatal("Expected 1 FileInfos but got", len(files))
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.UserSiaPath())
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	rootDir.Close()
 	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.SnapshotsSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,10 +229,16 @@ func TestRenterListDirectory(t *testing.T) {
 		return strings.Compare(directories[i].SiaPath.String(), directories[j].SiaPath.String()) < 0
 	})
 	if err = compareDirectoryInfoAndMetadata(directories[0], rootDir); err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 	if err = compareDirectoryInfoAndMetadata(directories[1], fooDir); err != nil {
-		t.Fatal(err)
+		t.Error(err)
+	}
+	if err = compareDirectoryInfoAndMetadata(directories[2], homeDir); err != nil {
+		t.Error(err)
+	}
+	if err = compareDirectoryInfoAndMetadata(directories[3], snapshotsDir); err != nil {
+		t.Error(err)
 	}
 }
 

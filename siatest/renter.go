@@ -119,6 +119,9 @@ func (tn *TestNode) DownloadByStream(rf *RemoteFile) (uid modules.DownloadID, da
 	if err == nil && rf.Checksum() != crypto.HashBytes(data) {
 		err = fmt.Errorf("downloaded bytes don't match requested data (len %v)", len(data))
 	}
+	if err != nil {
+		return
+	}
 	// Make sure the download is in the history.
 	_, err = tn.RenterDownloadInfoGet(uid)
 	if err != nil {

@@ -184,9 +184,9 @@ func TestPushSubDirectories(t *testing.T) {
 
 	// Create a test directory with the following healths
 	//
-	// root/home/siafiles 1
-	// root/home/siafiles/SubDir1/ 2
-	// root/home/siafiles/SubDir2/ 3
+	// / 1
+	// /SubDir1/ 2
+	// /SubDir2/ 3
 
 	// Create directory tree
 	siaPath1, err := modules.NewSiaPath("SubDir1")
@@ -220,7 +220,7 @@ func TestPushSubDirectories(t *testing.T) {
 
 	// Add siafiles sub directories
 	d := &directory{
-		siaPath: modules.UserSiaPath(),
+		siaPath: modules.RootSiaPath(),
 	}
 	err = rt.renter.managedPushSubDirectories(d)
 	if err != nil {
@@ -228,7 +228,7 @@ func TestPushSubDirectories(t *testing.T) {
 	}
 
 	// Heap should have a length of 2
-	if rt.renter.directoryHeap.managedLen() != 2 {
+	if rt.renter.directoryHeap.managedLen() != 4 {
 		t.Fatal("Heap should have length of 2 but was", rt.renter.directoryHeap.managedLen())
 	}
 
@@ -278,13 +278,13 @@ func TestNextExploredDirectory(t *testing.T) {
 
 	// Create a test directory with the following healths/aggregateHealths
 	//
-	// root/home/siafiles 0/3
-	// root/homes/siafiles/SubDir1/ 1/2
-	// root/home/siafiles/SubDir1/SubDir1/ 1/1
-	// root/home/siafiles/SubDir1/SubDir2/ 2/2
-	// root/home/siafiles/SubDir2/ 1/3
-	// root/home/siafiles/SubDir2/SubDir1/ 1/1
-	// root/home/siafiles/SubDir2/SubDir2/ 3/3
+	// 0/3
+	// SubDir1/ 1/2
+	// SubDir1/SubDir1/ 1/1
+	// SubDir1/SubDir2/ 2/2
+	// SubDir2/ 1/3
+	// SubDir2/SubDir1/ 1/1
+	// SubDir2/SubDir2/ 3/3
 	//
 	// Overall we would expect to see root/SubDir2/SubDir2 popped first followed
 	// by root/SubDir1/SubDir2
@@ -361,7 +361,7 @@ func TestNextExploredDirectory(t *testing.T) {
 	// Make sure we are starting with an empty heap, this helps with ndfs and
 	// tests proper handling of empty heaps
 	rt.renter.directoryHeap.managedReset()
-	err = rt.renter.managedPushUnexploredDirectory(modules.UserSiaPath())
+	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}

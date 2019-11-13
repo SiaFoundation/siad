@@ -49,16 +49,11 @@ func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	// Prepend the path with the siafiles folder as the renter normally would.
-	sp, err := modules.UserSiaPath().Join(up.SiaPath.String())
+	err := r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777, false)
 	if err != nil {
 		return nil, err
 	}
-	err = r.staticFileSystem.NewSiaFile(sp, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, 0777, false)
-	if err != nil {
-		return nil, err
-	}
-	return r.staticFileSystem.OpenSiaFile(sp)
+	return r.staticFileSystem.OpenSiaFile(up.SiaPath)
 }
 
 // TestRenterFileListLocalPath verifies that FileList() returns the correct
