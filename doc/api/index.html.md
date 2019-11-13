@@ -1573,7 +1573,7 @@ Number of successful read & write operations.
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000" "localhost:9980/host/storage/add"
+curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000" "localhost:9980/host/storage/folders/add"
 ```
 
 adds a storage folder to the manager. The manager may not check that there is
@@ -1602,7 +1602,7 @@ responses](#standard-responses).
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&force=false" "localhost:9980/host/storage/remove"
+curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&force=false" "localhost:9980/host/storage/folders/remove"
 ```
 
 Remove a storage folder from the manager. All sotrage on the folder will be
@@ -1631,7 +1631,7 @@ responses](#standard-responses).
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=1000000000000" "localhost:9980/host/storage/resize"
+curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=1000000000000" "localhost:9980/host/storage/folders/resize"
 ```
 
 Grows or shrinks a storage file in the manager. The manager may not check that
