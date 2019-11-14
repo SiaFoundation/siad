@@ -121,20 +121,3 @@ func (ld *LocalDir) newDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", persist.RandomSuffix()))
 	return &LocalDir{path: path}, os.MkdirAll(path, 0777)
 }
-
-// subDirs returns a slice of the sub directories in the LocalDir
-func (ld *LocalDir) subDirs() ([]*LocalDir, error) {
-	var dirs []*LocalDir
-	fileInfos, err := ioutil.ReadDir(ld.path)
-	if err != nil {
-		return dirs, err
-	}
-	for _, f := range fileInfos {
-		if f.IsDir() {
-			dirs = append(dirs, &LocalDir{
-				path: filepath.Join(ld.path, f.Name()),
-			})
-		}
-	}
-	return dirs, nil
-}

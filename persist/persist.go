@@ -62,29 +62,6 @@ func RandomSuffix() string {
 	return str[:20]
 }
 
-// A safeFile is a file that is stored under a temporary filename. When Commit
-// is called, the file is renamed to its "final" filename. This allows for
-// atomic updating of files; otherwise, an unexpected shutdown could leave a
-// valuable file in a corrupted state. Callers must still Close the file handle
-// as usual.
-type safeFile struct {
-	*os.File
-	finalName string
-}
-
-// CommitSync syncs the file, closes it, and then renames it to the intended
-// final filename. CommitSync should not be called from a defer if the
-// function it is being called from can return an error.
-func (sf *safeFile) CommitSync() error {
-	if err := sf.Sync(); err != nil {
-		return err
-	}
-	if err := sf.Close(); err != nil {
-		return err
-	}
-	return os.Rename(sf.finalName+"_temp", sf.finalName)
-}
-
 // RemoveFile removes an atomic file from disk, along with any uncommitted
 // or temporary files.
 func RemoveFile(filename string) error {

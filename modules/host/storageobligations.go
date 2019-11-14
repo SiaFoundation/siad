@@ -54,45 +54,9 @@ const (
 )
 
 var (
-	// errDuplicateStorageObligation is returned when the storage obligation
-	// database already has a storage obligation with the provided file
-	// contract. This error should only happen in the event of a developer
-	// mistake.
-	errDuplicateStorageObligation = errors.New("storage obligation has a file contract which conflicts with an existing storage obligation")
-
-	// errInsaneFileContractOutputCounts is returned when a file contract has
-	// the wrong number of outputs for either the valid or missed payouts.
-	errInsaneFileContractOutputCounts = errors.New("file contract has incorrect number of outputs for the valid or missed payouts")
-
-	// errInsaneFileContractRevisionOutputCounts is returned when a file
-	// contract has the wrong number of outputs for either the valid or missed
-	// payouts.
-	errInsaneFileContractRevisionOutputCounts = errors.New("file contract revision has incorrect number of outputs for the valid or missed payouts")
-
-	// errInsaneOriginSetFileContract is returned is the final transaction of
-	// the origin transaction set of a storage obligation does not have a file
-	// contract in the final transaction - there should be a file contract
-	// associated with every storage obligation.
-	errInsaneOriginSetFileContract = errors.New("origin transaction set of storage obligation should have one file contract in the final transaction")
-
-	// errInsaneOriginSetSize is returned if the origin transaction set of a
-	// storage obligation is empty - there should be a file contract associated
-	// with every storage obligation.
-	errInsaneOriginSetSize = errors.New("origin transaction set of storage obligation is size zero")
-
-	// errInsaneRevisionSetRevisionCount is returned if the final transaction
-	// in the revision transaction set of a storage obligation has more or less
-	// than one file contract revision.
-	errInsaneRevisionSetRevisionCount = errors.New("revision transaction set of storage obligation should have one file contract revision in the final transaction")
-
 	// errInsaneStorageObligationRevision is returned if there is an attempted
 	// storage obligation revision which does not have sensical inputs.
 	errInsaneStorageObligationRevision = errors.New("revision to storage obligation does not make sense")
-
-	// errInsaneStorageObligationRevisionData is returned if there is an
-	// attempted storage obligation revision which does not have sensical
-	// inputs.
-	errInsaneStorageObligationRevisionData = errors.New("revision to storage obligation has insane data")
 
 	// errNoBuffer is returned if there is an attempted storage obligation that
 	// needs to have the storage proof submitted in less than
@@ -212,56 +176,6 @@ func (so storageObligation) fileSize() uint64 {
 // contract id of the file contract that governs the storage contract.
 func (so storageObligation) id() types.FileContractID {
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContractID(0)
-}
-
-// isSane checks that required assumptions about the storage obligation are
-// correct.
-func (so storageObligation) isSane() error {
-	// There should be an origin transaction set.
-	if len(so.OriginTransactionSet) == 0 {
-		build.Critical("origin transaction set is empty")
-		return errInsaneOriginSetSize
-	}
-
-	// The final transaction of the origin transaction set should have one file
-	// contract.
-	final := len(so.OriginTransactionSet) - 1
-	fcCount := len(so.OriginTransactionSet[final].FileContracts)
-	if fcCount != 1 {
-		build.Critical("wrong number of file contracts associated with storage obligation:", fcCount)
-		return errInsaneOriginSetFileContract
-	}
-
-	// The file contract in the final transaction of the origin transaction set
-	// should have two valid proof outputs and two missed proof outputs.
-	lenVPOs := len(so.OriginTransactionSet[final].FileContracts[0].ValidProofOutputs)
-	lenMPOs := len(so.OriginTransactionSet[final].FileContracts[0].MissedProofOutputs)
-	if lenVPOs != 2 || lenMPOs != 2 {
-		build.Critical("file contract has wrong number of VPOs and MPOs, expecting 2 each:", lenVPOs, lenMPOs)
-		return errInsaneFileContractOutputCounts
-	}
-
-	// If there is a revision transaction set, there should be one file
-	// contract revision in the final transaction.
-	if len(so.RevisionTransactionSet) > 0 {
-		final = len(so.OriginTransactionSet) - 1
-		fcrCount := len(so.OriginTransactionSet[final].FileContractRevisions)
-		if fcrCount != 1 {
-			build.Critical("wrong number of file contract revisions in final transaction of revision transaction set:", fcrCount)
-			return errInsaneRevisionSetRevisionCount
-		}
-
-		// The file contract revision in the final transaction of the revision
-		// transaction set should have two valid proof outputs and two missed
-		// proof outputs.
-		lenVPOs = len(so.RevisionTransactionSet[final].FileContractRevisions[0].NewValidProofOutputs)
-		lenMPOs = len(so.RevisionTransactionSet[final].FileContractRevisions[0].NewMissedProofOutputs)
-		if lenVPOs != 2 || lenMPOs != 2 {
-			build.Critical("file contract has wrong number of VPOs and MPOs, expecting 2 each:", lenVPOs, lenMPOs)
-			return errInsaneFileContractRevisionOutputCounts
-		}
-	}
-	return nil
 }
 
 // merkleRoot returns the file merkle root of a storage obligation.

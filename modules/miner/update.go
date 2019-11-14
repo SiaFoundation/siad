@@ -214,12 +214,6 @@ func (m *Miner) getNewSplitSets(diff *modules.TransactionPoolDiff) []*mapElement
 	return newElements
 }
 
-// peekAtBlock checks top of the blockMapHeap, and returns the top element (but
-// does not remove it from the heap). Returns false if the heap is empty.
-func (m *Miner) peekAtBlock() (*mapElement, bool) {
-	return m.blockMapHeap.peek()
-}
-
 // peekAtOverflow checks top of the overflowMapHeap, and returns the top element
 // (but does not remove it from the heap). Returns false if the heap is empty.
 func (m *Miner) peekAtOverflow() (*mapElement, bool) {

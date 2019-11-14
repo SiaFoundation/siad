@@ -24,9 +24,6 @@ const (
 	SiaDirMetadata = ".siadir"
 	// walFile is the filename of the renter's writeaheadlog's file.
 	walFile = modules.RenterDir + ".wal"
-	// repairLoopFilename is the filename to be used when persisting bubble
-	// updates that are called from the repair loop
-	repairLoopFilename = "repairloop.json"
 )
 
 var (

@@ -110,10 +110,7 @@ import (
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
 
-var (
-	errNoPeers     = errors.New("no peers")
-	errUnreachable = errors.New("peer did not respond to ping")
-)
+var errNoPeers = errors.New("no peers")
 
 // Gateway implements the modules.Gateway interface.
 type Gateway struct {

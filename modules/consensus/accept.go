@@ -15,11 +15,10 @@ import (
 )
 
 var (
-	errDoSBlock        = errors.New("block is known to be invalid")
-	errInconsistentSet = errors.New("consensus set is not in a consistent state")
-	errNoBlockMap      = errors.New("block map is not in database")
-	errNonLinearChain  = errors.New("block set is not a contiguous chain")
-	errOrphan          = errors.New("block has no known parent")
+	errDoSBlock       = errors.New("block is known to be invalid")
+	errNoBlockMap     = errors.New("block map is not in database")
+	errNonLinearChain = errors.New("block set is not a contiguous chain")
+	errOrphan         = errors.New("block has no known parent")
 )
 
 // managedBroadcastBlock will broadcast a block to the consensus set's peers.

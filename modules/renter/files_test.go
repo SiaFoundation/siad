@@ -9,26 +9,11 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
-
-// newTestingWal is a helper method to create a wal during testing.
-func newTestingWal() *writeaheadlog.WAL {
-	walDir := filepath.Join(os.TempDir(), "wals")
-	if err := os.MkdirAll(walDir, 0700); err != nil {
-		panic(err)
-	}
-	walPath := filepath.Join(walDir, hex.EncodeToString(fastrand.Bytes(8)))
-	_, wal, err := writeaheadlog.New(walPath)
-	if err != nil {
-		panic(err)
-	}
-	return wal
-}
 
 // newRenterTestFile creates a test file when the test has a renter so that the
 // file is properly added to the renter. It returns the SiaFileSetEntry that the

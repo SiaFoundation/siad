@@ -90,8 +90,6 @@ type (
 
 	// piece represents a single piece of a chunk on disk
 	piece struct {
-		offset          uint32      // offset of the piece within the sector
-		length          uint32      // length of the piece within the sector
 		HostTableOffset uint32      // offset of the host's key within the pubKeyTable
 		MerkleRoot      crypto.Hash // merkle root of the piece
 	}

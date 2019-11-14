@@ -242,22 +242,6 @@ var (
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
-	// uploadPollTimeout defines the maximum amount of time the renter will poll
-	// for an upload to complete.
-	uploadPollTimeout = build.Select(build.Var{
-		Dev:      5 * time.Minute,
-		Standard: 60 * time.Minute,
-		Testing:  10 * time.Second,
-	}).(time.Duration)
-
-	// uploadPollInterval defines the renter's polling interval when waiting for
-	// file to upload.
-	uploadPollInterval = build.Select(build.Var{
-		Dev:      5 * time.Second,
-		Standard: 5 * time.Second,
-		Testing:  1 * time.Second,
-	}).(time.Duration)
-
 	// snapshotSyncSleepDuration defines how long the renter sleeps between
 	// trying to synchronize snapshots across hosts.
 	snapshotSyncSleepDuration = build.Select(build.Var{
@@ -303,6 +287,9 @@ var (
 const (
 	// defaultFilePerm defines the default permissions used for a new file if no
 	// permissions are supplied.
+	//
+	// TODO: not currently being used instead permissions are manually set,
+	// should we update that?
 	defaultFilePerm = 0666
 
 	// PriceEstimationSafetyFactor is the factor of safety used in the price

@@ -76,6 +76,8 @@ func (m *Miner) saveSync() error {
 }
 
 // threadedSaveLoop periodically saves the miner persist.
+//
+// TODO: This is never called?
 func (m *Miner) threadedSaveLoop() {
 	for {
 		select {

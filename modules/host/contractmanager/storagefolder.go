@@ -20,21 +20,6 @@ var (
 	// that does not have the correct index.
 	errBadStorageFolderIndex = errors.New("no storage folder exists at that index")
 
-	// errIncompleteOffload is returned when the host is tasked with offloading
-	// sectors from a storage folder but is unable to offload the requested
-	// number - but is able to offload some of them.
-	errIncompleteOffload = errors.New("could not successfully offload specified number of sectors from storage folder")
-
-	// errInsufficientRemainingStorageForRemoval is returned if the remaining
-	// storage folders do not have enough space remaining to support being
-	// removed.
-	errInsufficientRemainingStorageForRemoval = errors.New("not enough storage remaining to support removal of disk")
-
-	// errInsufficientRemainingStorageForShrink is returned if the remaining
-	// storage folders do not have enough space remaining to support being
-	// reduced in size.
-	errInsufficientRemainingStorageForShrink = errors.New("not enough storage remaining to support shrinking of disk")
-
 	// ErrLargeStorageFolder is returned if a new storage folder or a resized
 	// storage folder would exceed the maximum allowed size.
 	ErrLargeStorageFolder = fmt.Errorf("maximum allowed size for a storage folder is %v bytes", MaximumSectorsPerStorageFolder*modules.SectorSize)

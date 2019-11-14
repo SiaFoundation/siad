@@ -7,13 +7,6 @@ import (
 )
 
 const (
-	// expectedContractFeesMultiplier is the total number of times we expect to
-	// pay the contract and transacation fees in a relationship with a host
-	// during one renew period. Users tend to fixate on the fees quite a bit, so
-	// we bias this number to be slightly higher than what we actually expect so
-	// that the hostdb slightly prefers to avoid fees.
-	expectedContractFeesMultiplier = 2.0
-
 	// historicInteractionDecay defines the decay of the HistoricSuccessfulInteractions
 	// and HistoricFailedInteractions after every block for a host entry.
 	historicInteractionDecay = 0.9995

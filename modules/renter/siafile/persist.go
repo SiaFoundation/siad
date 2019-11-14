@@ -202,6 +202,8 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 
 // createDeletePartialUpdate is a helper method that creates a writeaheadlog for
 // deleting a .partial file.
+//
+//lint:ignore U1000 Ignore unused code, it's prep for partial uploads
 func createDeletePartialUpdate(path string) writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeletePartialName,
@@ -717,14 +719,6 @@ func (sf *SiaFile) saveChunkUpdate(chunk chunk) writeaheadlog.Update {
 	offset := sf.chunkOffset(chunk.Index)
 	chunkBytes := marshalChunk(chunk)
 	return sf.createInsertUpdate(offset, chunkBytes)
-}
-
-// saveChunksUpdates creates writeaheadlog updates which save the marshaled chunks of
-// the SiaFile to disk when applied.
-func (sf *SiaFile) saveChunksUpdates() ([]writeaheadlog.Update, error) {
-	return sf.iterateChunks(func(chunk *chunk) (bool, error) {
-		return true, nil
-	})
 }
 
 // saveHeaderUpdates creates writeaheadlog updates to saves the metadata and

@@ -13,15 +13,7 @@ package renter
 
 import (
 	"container/heap"
-	"errors"
 	"time"
-)
-
-var (
-	errDownloadRenterClosed = errors.New("download could not be scheduled because renter is shutting down")
-	errInsufficientHosts    = errors.New("insufficient hosts to recover file")
-	errInsufficientPieces   = errors.New("couldn't fetch enough pieces to recover data")
-	errPrevErr              = errors.New("download could not be completed due to a previous error")
 )
 
 // downloadChunkHeap is a heap that is sorted first by file priority, then by

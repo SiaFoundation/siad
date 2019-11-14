@@ -94,10 +94,6 @@ var (
 		Version: "0.5.2",
 	}
 
-	// errHostClosed gets returned when a call is rejected due to the host
-	// having been closed.
-	errHostClosed = errors.New("call is disabled because the host is closed")
-
 	// Nil dependency errors.
 	errNilCS      = errors.New("host cannot use a nil state")
 	errNilTpool   = errors.New("host cannot use a nil transaction pool")
@@ -145,13 +141,12 @@ type Host struct {
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
-	announced         bool
-	announceConfirmed bool
-	blockHeight       types.BlockHeight
-	publicKey         types.SiaPublicKey
-	secretKey         crypto.SecretKey
-	recentChange      modules.ConsensusChangeID
-	unlockHash        types.UnlockHash // A wallet address that can receive coins.
+	announced    bool
+	blockHeight  types.BlockHeight
+	publicKey    types.SiaPublicKey
+	secretKey    crypto.SecretKey
+	recentChange modules.ConsensusChangeID
+	unlockHash   types.UnlockHash // A wallet address that can receive coins.
 
 	// Host transient fields - these fields are either determined at startup or
 	// otherwise are not critical to always be correct.

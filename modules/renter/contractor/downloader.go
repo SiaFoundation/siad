@@ -34,8 +34,7 @@ type hostDownloader struct {
 	contractor   *Contractor
 	downloader   *proto.Downloader
 	hostSettings modules.HostExternalSettings
-	invalid      bool   // true if invalidate has been called
-	speed        uint64 // Bytes per second.
+	invalid      bool // true if invalidate has been called
 	mu           sync.Mutex
 }
 
