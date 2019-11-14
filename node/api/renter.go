@@ -1221,6 +1221,12 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	files, err := trimSiaDirFolderOnFiles(file)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	file = files[0]
 	WriteJSON(w, RenterFile{
 		File: file,
 	})
