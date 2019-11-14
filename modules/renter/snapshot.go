@@ -118,7 +118,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	defer backup.Close()
 
 	// Prepare the siapath.
-	sp, err := modules.NewSiaPath(name)
+	sp, err := modules.SnapshotsSiaPath().Join(name)
 	if err != nil {
 		return err
 	}
@@ -534,8 +534,6 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				if meta.Name == sp.String() {
 					found = true
 					break
-				} else {
-					println("!=", meta.Name, sp.String())
 				}
 			}
 			r.mu.RUnlock(id)
