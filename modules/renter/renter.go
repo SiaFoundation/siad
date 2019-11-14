@@ -610,12 +610,6 @@ func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) er
 		return err
 	}
 	defer r.tg.Done()
-	// Prepend the provided siapath with the /home/siafiles dir.
-	var err error
-	siaPath, err = modules.UserSiaPath().Join(siaPath.String())
-	if err != nil {
-		return err
-	}
 	// Check if file exists and is being tracked.
 	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
