@@ -901,7 +901,7 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkFindRandomFile(t, rt.renter, modules.UserSiaPath(), siaPath1, siaPath2, siaPath3)
+	checkFindRandomFile(t, rt.renter, modules.RootSiaPath(), siaPath1, siaPath2, siaPath3)
 
 	// Create a directory
 	dir, err := modules.NewSiaPath("Dir")
