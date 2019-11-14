@@ -221,10 +221,6 @@ func TestRenterFileList(t *testing.T) {
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
 	entry2SP := rt.renter.staticFileSystem.FileSiaPath(entry2)
-	entry2SP, err = entry2SP.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
 	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
