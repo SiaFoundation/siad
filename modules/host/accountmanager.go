@@ -332,7 +332,11 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 // callConsensusChanged is called by the host whenever it processed a
 // change to the consensus, we use it to rotate the fingerprints as we do so
 // based on the current blockheight
-func (am *accountManager) callConsensusChanged(currentBlockHeight types.BlockHeight) {
+func (am *accountManager) callConsensusChanged() {
+	am.h.mu.Lock()
+	currentBlockHeight := am.h.blockHeight
+	am.h.mu.Unlock()
+
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -435,40 +439,40 @@ func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.
 }
 
 // save will add the given fingerprint to the appropriate bucket
-func (fM *fingerprintMap) save(fp crypto.Hash, expiry types.BlockHeight) {
-	if expiry <= fM.currentThreshold {
-		fM.current[fp] = struct{}{}
+func (fm *fingerprintMap) save(fp crypto.Hash, expiry types.BlockHeight) {
+	if expiry <= fm.currentThreshold {
+		fm.current[fp] = struct{}{}
 		return
 	}
 
-	fM.next[fp] = struct{}{}
+	fm.next[fp] = struct{}{}
 }
 
 // has will return true when the fingerprint was present in either of the two
 // buckets
-func (fM *fingerprintMap) has(fp crypto.Hash) bool {
-	_, exists := fM.current[fp]
+func (fm *fingerprintMap) has(fp crypto.Hash) bool {
+	_, exists := fm.current[fp]
 	if !exists {
-		_, exists = fM.next[fp]
+		_, exists = fm.next[fp]
 	}
 	return exists
 }
 
 // tryRotate will rotate the bucket if necessary, depending on the current block
 // height. It swaps the current for the next bucket and reallocates the next
-func (fM *fingerprintMap) tryRotate(currentBlockHeight types.BlockHeight) {
+func (fm *fingerprintMap) tryRotate(currentBlockHeight types.BlockHeight) {
 	// If the current blockheihgt is less or equal than the current bucket's
 	// threshold, we do not need to rotate the bucket files on the file system
-	if currentBlockHeight <= fM.currentThreshold {
+	if currentBlockHeight <= fm.currentThreshold {
 		return
 	}
 
 	// If it is, we swap the current and next buckets and recreate next
-	fM.current = fM.next
-	fM.next = make(map[crypto.Hash]struct{})
+	fm.current = fm.next
+	fm.next = make(map[crypto.Hash]struct{})
 
 	// Recalculate the threshold
-	fM.currentThreshold = calculateBucketThreshold(currentBlockHeight, fM.bucketBlockRange)
+	fm.currentThreshold = calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
 }
 
 // Implementation of heap.Interface for blockedCallHeap.

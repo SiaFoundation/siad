@@ -126,7 +126,7 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 // newFileBucket will create a new bucket for given size and blockheight
 func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fingerprintManager, err error) {
 	dir := ap.h.persistDir
-	fM := &fingerprintManager{
+	fm := &fingerprintManager{
 		bucketBlockRange: bucketBlockRange,
 		currentPath:      filepath.Join(dir, fingerprintsCurrFilename),
 		currentThreshold: calculateBucketThreshold(ap.h.blockHeight, bucketBlockRange),
@@ -134,16 +134,16 @@ func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fin
 	}
 
 	// Open the current fingerprints file in append only mode
-	if fM.current, err = ap.openFileWithMetadata(fM.currentPath, appendOnlyFlag, fingerprintsMetadata); err != nil {
+	if fm.current, err = ap.openFileWithMetadata(fm.currentPath, appendOnlyFlag, fingerprintsMetadata); err != nil {
 		return nil, err
 	}
 
 	// Open the next fingerprints file in append only mode
-	if fM.next, err = ap.openFileWithMetadata(fM.nextPath, appendOnlyFlag, fingerprintsMetadata); err != nil {
+	if fm.next, err = ap.openFileWithMetadata(fm.nextPath, appendOnlyFlag, fingerprintsMetadata); err != nil {
 		return nil, err
 	}
 
-	return fM, nil
+	return fm, nil
 }
 
 // callSaveAccount writes away the data for a single ephemeral account to disk
@@ -364,28 +364,28 @@ func (a *accountData) transformToAccount(index uint32) *account {
 }
 
 // save will add the given fingerprint to the appropriate bucket
-func (fM *fingerprintManager) save(fp crypto.Hash, expiry types.BlockHeight) (err error) {
+func (fm *fingerprintManager) save(fp crypto.Hash, expiry types.BlockHeight) (err error) {
 	bytes := make([]byte, fingerprintSize)
 	copy(bytes, encoding.Marshal(fp))
 
-	if expiry <= fM.currentThreshold {
-		_, err = fM.current.Write(bytes)
+	if expiry <= fm.currentThreshold {
+		_, err = fm.current.Write(bytes)
 		return err
 	}
 
-	_, err = fM.next.Write(bytes)
+	_, err = fm.next.Write(bytes)
 	return err
 }
 
 // populateMap will read all the fingerprints from both buckets and
 // populate the given map
-func (fM *fingerprintManager) populateMap(m map[crypto.Hash]struct{}) error {
-	bc, err := ioutil.ReadAll(fM.current)
+func (fm *fingerprintManager) populateMap(m map[crypto.Hash]struct{}) error {
+	bc, err := ioutil.ReadAll(fm.current)
 	if err != nil {
 		return err
 	}
 
-	bn, err := ioutil.ReadAll(fM.next)
+	bn, err := ioutil.ReadAll(fm.next)
 	if err != nil {
 		return err
 	}
@@ -402,41 +402,41 @@ func (fM *fingerprintManager) populateMap(m map[crypto.Hash]struct{}) error {
 
 // tryRotate will rotate the fingerprint bucket files, but only if the current
 // block height exceeds the current bucket's threshold
-func (fM *fingerprintManager) tryRotate(currentBlockHeight types.BlockHeight) (err error) {
+func (fm *fingerprintManager) tryRotate(currentBlockHeight types.BlockHeight) (err error) {
 	// If the current blockheihgt is less or equal than the current bucket's
 	// threshold, we do not need to rotate the bucket files on the file system
-	if currentBlockHeight <= fM.currentThreshold {
+	if currentBlockHeight <= fm.currentThreshold {
 		return nil
 	}
 
 	// If it is larger, cleanly close the current fingerprint bucket
-	if err = syncAndClose(fM.current); err != nil {
+	if err = syncAndClose(fm.current); err != nil {
 		return err
 	}
 
 	// Rename the next bucket to the current bucket
-	if err = os.Rename(fM.nextPath, fM.currentPath); err != nil {
+	if err = os.Rename(fm.nextPath, fm.currentPath); err != nil {
 		return err
 	}
-	fM.current = fM.next
+	fm.current = fm.next
 
 	// Create a new next bucket
-	fM.next, err = os.OpenFile(fM.nextPath, appendOnlyFlag, 0600)
+	fm.next, err = os.OpenFile(fm.nextPath, appendOnlyFlag, 0600)
 	if err != nil {
 		return err
 	}
 
 	// Recalculate the threshold
-	fM.currentThreshold = calculateBucketThreshold(currentBlockHeight, fM.bucketBlockRange)
+	fm.currentThreshold = calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
 
 	return nil
 }
 
 // close will close all open files
-func (fM *fingerprintManager) close() error {
+func (fm *fingerprintManager) close() error {
 	return errors.Compose(
-		syncAndClose(fM.current),
-		syncAndClose(fM.next),
+		syncAndClose(fm.current),
+		syncAndClose(fm.next),
 	)
 }
 
