@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -32,11 +33,10 @@ func createMetadataUpdate(path string, metadata Metadata) (writeaheadlog.Update,
 	if err != nil {
 		return writeaheadlog.Update{}, err
 	}
-
 	// Create update
 	return writeaheadlog.Update{
 		Name:         updateMetadataName,
-		Instructions: encoding.MarshalAll(data, path),
+		Instructions: encoding.MarshalAll(data, filepath.Join(path, modules.SiaDirExtension)),
 	}, nil
 }
 

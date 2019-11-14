@@ -97,7 +97,7 @@ func (sd *SiaDir) Metadata() Metadata {
 	return sd.metadata
 }
 
-// Path returns the SiaPath of the SiaDir
+// Path returns the path of the SiaDir on disk.
 func (sd *SiaDir) Path() string {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()

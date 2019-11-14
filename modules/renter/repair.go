@@ -245,7 +245,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		}
 		// Sanity check that there is at least the current directory
 		if len(directories) == 0 {
-			build.Critical("No directories returned from DirList")
+			build.Critical("No directories returned from DirList", siaPath.String())
 		}
 
 		// Check if we are in an empty Directory. This will be the case before

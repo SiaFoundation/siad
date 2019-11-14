@@ -155,8 +155,10 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 // creates one as needed
 func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
-	_, err := os.Stat(path)
-	if err == nil || !os.IsNotExist(err) {
+	_, err := os.Stat(filepath.Join(path, modules.SiaDirExtension))
+	if err == nil {
+		return Metadata{}, writeaheadlog.Update{}, os.ErrExist
+	} else if !os.IsNotExist(err) {
 		return Metadata{}, writeaheadlog.Update{}, err
 	}
 
@@ -184,6 +186,9 @@ func createDirMetadataAll(dirPath, rootPath string) ([]writeaheadlog.Update, err
 	// Create path to directory
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return nil, err
+	}
+	if dirPath == rootPath {
+		return []writeaheadlog.Update{}, nil
 	}
 
 	// Create metadata
