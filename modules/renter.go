@@ -90,7 +90,7 @@ func (fm *FilterMode) FromString(s string) error {
 		*fm = HostDBActiveWhitelist
 	default:
 		*fm = HostDBFilterError
-		return fmt.Errorf("Could not assigned FilterMode from string %v", s)
+		return fmt.Errorf("could not assigned FilterMode from string %v", s)
 	}
 	return nil
 }
