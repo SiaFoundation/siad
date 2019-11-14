@@ -150,8 +150,8 @@ func gatewayblacklistcmd() {
 		die("Could not get gateway blacklist", err)
 	}
 	fmt.Println(len(gbg.Blacklist), "peers currently on the gateway blacklist")
-	for _, x := range gbg.Blacklist {
-		fmt.Println(x)
+	for _, ip := range gbg.Blacklist {
+		fmt.Println(ip)
 	}
 
 }

@@ -25,10 +25,6 @@ var (
 	// errUnableToParseRateLimit is returned when the input is unable to be
 	// parsed into a rate limit unit
 	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
-
-	// errUnableToParseBlacklistNetAddresses is returned when the input is unable
-	// to be parsed into a []modules.Netaddress
-	errUnableToParseBlacklistNetAddresses = errors.New("unable to parse blacklist net addresses")
 )
 
 // filesize returns a string that displays a filesize in human-readable units.
@@ -45,7 +41,7 @@ func filesizeUnits(size uint64) string {
 // gateway peers and returning them as a []modules.NetAddress
 func parseBlacklistNetAddresses(addrString string) ([]modules.NetAddress, error) {
 	if addrString == "" {
-		return nil, errUnableToParseBlacklistNetAddresses
+		return nil, errors.New("blank address string provided")
 	}
 	peers := strings.Split(addrString, ",")
 	var netAddrs []modules.NetAddress
