@@ -27,7 +27,7 @@ func TestDir(dirs ...string) string {
 // module.
 func siatestTestDir(testName string) string {
 	path := TestDir("siatest", testName)
-	if err := os.MkdirAll(path, 0777); err != nil {
+	if err := os.MkdirAll(path, 0750); err != nil {
 		panic(err)
 	}
 	return path

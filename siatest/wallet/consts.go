@@ -11,7 +11,7 @@ import (
 // directory again.
 func walletTestDir(testName string) string {
 	path := siatest.TestDir("wallet", testName)
-	if err := os.MkdirAll(path, 0777); err != nil {
+	if err := os.MkdirAll(path, 0750); err != nil {
 		panic(err)
 	}
 	return path
