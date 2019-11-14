@@ -274,7 +274,7 @@ func TestRenterRenameFile(t *testing.T) {
 	// Rename a file that does exist.
 	entry, _ := rt.renter.newRenterTestFile()
 	var sp modules.SiaPath
-	if err := sp.FromSysPath(entry.SiaFilePath(), sfs.DirPath(modules.UserSiaPath())); err != nil {
+	if err := sp.FromSysPath(entry.SiaFilePath(), sfs.DirPath(modules.RootSiaPath())); err != nil {
 		t.Fatal(err)
 	}
 	err = rt.renter.RenameFile(sp, siaPath1)
@@ -296,19 +296,11 @@ func TestRenterRenameFile(t *testing.T) {
 		t.Errorf("RenameFile failed: expected %v, got %v", siaPath1a.String(), files[0].SiaPath)
 	}
 	// Confirm SiaFileSet was updated
-	sp1a, err := modules.UserSiaPath().Join(siaPath1a.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sp1, err := modules.UserSiaPath().Join(siaPath1.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = rt.renter.staticFileSystem.OpenSiaFile(sp1a)
+	_, err = rt.renter.staticFileSystem.OpenSiaFile(siaPath1a)
 	if err != nil {
 		t.Fatal("renter staticFileSet not updated to new file name:", err)
 	}
-	_, err = rt.renter.staticFileSystem.OpenSiaFile(sp1)
+	_, err = rt.renter.staticFileSystem.OpenSiaFile(siaPath1)
 	if err == nil {
 		t.Fatal("old name not removed from renter staticFileSet")
 	}
@@ -318,7 +310,7 @@ func TestRenterRenameFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sp2 modules.SiaPath
-	if err := sp2.FromSysPath(entry2.SiaFilePath(), sfs.DirPath(modules.UserSiaPath())); err != nil {
+	if err := sp2.FromSysPath(entry2.SiaFilePath(), sfs.DirPath(modules.RootSiaPath())); err != nil {
 		t.Fatal(err)
 	}
 	err = rt.renter.RenameFile(sp2, siaPath1) // Rename to "1"
@@ -356,16 +348,12 @@ func TestRenterRenameFile(t *testing.T) {
 	}
 
 	// Confirm directory metadatas exist
-	dirSiaPath, err := modules.UserSiaPath().Join(siaPathWithDir.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for !dirSiaPath.Equals(modules.RootSiaPath()) {
-		dirSiaPath, err = dirSiaPath.Dir()
+	for !siaPathWithDir.Equals(modules.RootSiaPath()) {
+		siaPathWithDir, err = siaPathWithDir.Dir()
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = rt.renter.staticFileSystem.OpenSiaDir(dirSiaPath)
+		_, err = rt.renter.staticFileSystem.OpenSiaDir(siaPathWithDir)
 		if err != nil {
 			t.Fatal(err)
 		}
