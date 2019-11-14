@@ -155,7 +155,8 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 // creates one as needed
 func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
-	_, err := os.Stat(filepath.Join(path, modules.SiaDirExtension))
+	mdPath := filepath.Join(path, modules.SiaDirExtension)
+	_, err := os.Stat(mdPath)
 	if err == nil {
 		return Metadata{}, writeaheadlog.Update{}, os.ErrExist
 	} else if !os.IsNotExist(err) {
@@ -176,7 +177,7 @@ func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
 		ModTime:       time.Now(),
 		StuckHealth:   DefaultDirHealth,
 	}
-	update, err := createMetadataUpdate(path, md)
+	update, err := createMetadataUpdate(mdPath, md)
 	return md, update, err
 }
 

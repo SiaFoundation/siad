@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -36,7 +35,7 @@ func createMetadataUpdate(path string, metadata Metadata) (writeaheadlog.Update,
 	// Create update
 	return writeaheadlog.Update{
 		Name:         updateMetadataName,
-		Instructions: encoding.MarshalAll(data, filepath.Join(path, modules.SiaDirExtension)),
+		Instructions: encoding.MarshalAll(data, path),
 	}, nil
 }
 
@@ -140,7 +139,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	}
 
 	// Open the file
-	file, err := sd.deps.OpenFile(sd.path, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
+	file, err := sd.deps.OpenFile(sd.mdPath(), os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
@@ -220,7 +219,7 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 	}
 
 	// Sanity check path belongs to siadir
-	if path != sd.path {
+	if path != sd.mdPath() {
 		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, sd.path))
 		return nil
 	}
@@ -238,5 +237,5 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 
 // saveMetadataUpdate saves the metadata of the SiaDir
 func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	return createMetadataUpdate(sd.path, sd.metadata)
+	return createMetadataUpdate(sd.mdPath(), sd.metadata)
 }
