@@ -69,6 +69,16 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
 	return nil
 }
 
+// openAndUpdateDir is a helper method for updating a siadir metadata
+func (rt *renterTester) openAndUpdateDir(siapath modules.SiaPath, metadata siadir.Metadata) error {
+	siadir, err := rt.renter.staticFileSystem.OpenSiaDir(siapath)
+	if err != nil {
+		return err
+	}
+	defer siadir.Close()
+	return siadir.UpdateMetadata(metadata)
+}
+
 // TestBubbleHealth tests to make sure that the health of the most in need file
 // in a directory is bubbled up to the right levels and probes the supporting
 // functions as well
@@ -156,11 +166,22 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
 	}
-	if err := rt.renter.staticFileSystem.UpdateDirMetadata(modules.RootSiaPath(), metadataUpdate); err != nil {
+	// Create OpenAndUpdateDir helper method
+	if err := rt.openAndUpdateDir(modules.RootSiaPath(), metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
+	siaPath = subDir1
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
+		t.Fatal(err)
+	}
+	siaPath = subDir1_1
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
+		t.Fatal(err)
+	}
+	// Set health of subDir1/subDir2 to be the worst and set the
+	siaPath = subDir1_2
 	metadataUpdate.Health = 4
-	if err := rt.renter.staticFileSystem.UpdateDirMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -302,7 +323,10 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
 	}
-	rt.renter.managedBubbleMetadata(subDir1_2_1)
+	if err := rt.openAndUpdateDir(subDir1_2_1, expectedHealth); err != nil {
+		t.Fatal(err)
+	}
+	rt.renter.managedBubbleMetadata(siaPath)
 	build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
@@ -372,7 +396,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
 	}
-	if err := rt.renter.staticFileSystem.UpdateDirMetadata(subDir1_2, oldestHealthCheckUpdate); err != nil {
+	if err := rt.openAndUpdateDir(subDir1_2, oldestHealthCheckUpdate); err != nil {
 		t.Fatal(err)
 	}
 

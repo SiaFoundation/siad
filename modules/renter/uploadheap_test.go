@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
@@ -347,7 +346,7 @@ func TestAddChunksToHeap(t *testing.T) {
 		}
 		// Make sure directories are created
 		err = rt.renter.CreateDir(dirSiaPath)
-		if err != nil && err != siadir.ErrPathOverload {
+		if err != nil && err != filesystem.ErrExists {
 			t.Fatal(err)
 		}
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)

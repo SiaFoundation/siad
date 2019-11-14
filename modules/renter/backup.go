@@ -296,7 +296,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 				return err
 			}
 			defer entry.Close()
-			// Get a reader to read from the siafile.
+			// Get a reader to read from the siadir.
 			dr, err := entry.DirReader()
 			if err != nil {
 				return err
@@ -324,6 +324,17 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
 func (r *Renter) managedUntarDir(tr *tar.Reader) error {
+	// dirsToUpdate are all the directories that will need bubble to be called
+	// on them so that the renter's directory metadata from the back up is
+	// updated
+	dirsToUpdate := make(map[modules.SiaPath]struct{})
+	defer func() {
+		// Make sure that we call bubble on any directories impacted by trying
+		// to untar the directory even if we encouter an error halfway through
+		for sp := range dirsToUpdate {
+			go r.callThreadedBubbleMetadata(sp)
+		}
+	}()
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
@@ -376,6 +387,9 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 				dirEntry.Close()
 				return err
 			}
+			// Metadata was updated so add to list of directories to be updated
+			addUniqueBubblePath(siaPath, dirsToUpdate)
+			// Close Directory
 			dirEntry.Close()
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
 			// Add the file to the SiaFileSet.
@@ -388,6 +402,9 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			if err != nil {
 				return err
 			}
+			// Add directory that siafile resides in to the list of directories
+			// to be updated
+			addUniqueBubblePath(siaPath, dirsToUpdate)
 		}
 	}
 	return nil

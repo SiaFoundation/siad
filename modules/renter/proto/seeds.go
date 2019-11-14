@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/dchest/threefish"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -181,7 +182,7 @@ func PrefixedSignedIdentifier(renterSeed EphemeralRenterSeed, txn types.Transact
 
 // IsValid checks the signature against a seed and contract to determine if it
 // was created using the specified seed.
-func (csi ContractSignedIdentifier) IsValid(renterSeed EphemeralRenterSeed, txn types.Transaction, hostKey crypto.Ciphertext) (types.SiaPublicKey, bool) {
+func (csi ContractSignedIdentifier) IsValid(renterSeed EphemeralRenterSeed, txn types.Transaction, hostKey crypto.Ciphertext) (types.SiaPublicKey, bool, error) {
 	// Get the seeds and wipe them after we are done using them.
 	cis := renterSeed.contractIdentifierSeed()
 	defer fastrand.Read(cis[:])
@@ -195,24 +196,25 @@ func (csi ContractSignedIdentifier) IsValid(renterSeed EphemeralRenterSeed, txn 
 	// Create the cipher for verifying the signature and decrypting the hostKey.
 	sk, err := crypto.NewSiaKey(crypto.TypeThreefish, signingKey[:])
 	if err != nil {
-		panic("This should never happen")
+		build.Critical("Unable to generate New Sia Key", err)
+		return types.SiaPublicKey{}, false, errors.AddContext(err, "error getting new Sia PublicKey")
 	}
 	// Pad the identifier and sign it but then only use 32 bytes of the
 	// signature.
 	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))[:32]
 	// Compare the signatures.
 	if !bytes.Equal(signature, csi[48:80]) {
-		return types.SiaPublicKey{}, false
+		return types.SiaPublicKey{}, false, errors.New("signature bytes not equal")
 	}
 	// Decrypt the hostKey.
 	hk, err := sk.DecryptBytes(hostKey)
 	if err != nil {
-		return types.SiaPublicKey{}, false
+		return types.SiaPublicKey{}, false, errors.AddContext(err, "error decrypting bytes")
 	}
 	// Decode the hostKey.
 	var spk types.SiaPublicKey
 	if err := encoding.Unmarshal(hk, &spk); err != nil {
-		return types.SiaPublicKey{}, false
+		return types.SiaPublicKey{}, false, errors.AddContext(err, "error unmarshalling")
 	}
-	return spk, true
+	return spk, true, nil
 }

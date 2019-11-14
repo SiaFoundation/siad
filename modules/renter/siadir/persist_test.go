@@ -105,6 +105,35 @@ func newTestWAL() (*writeaheadlog.WAL, string) {
 	return wal, walFilePath
 }
 
+// TestIsSiaDirUpdate tests the IsSiaDirUpdate method.
+func TestIsSiaDirUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	sd, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataUpdate, err := createMetadataUpdate(sd.Path(), Metadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteUpdate := sd.createDeleteUpdate()
+	emptyUpdate := writeaheadlog.Update{}
+
+	if !IsSiaDirUpdate(metadataUpdate) {
+		t.Error("metadataUpdate should be a SiaDirUpdate but wasn't")
+	}
+	if !IsSiaDirUpdate(deleteUpdate) {
+		t.Error("deleteUpdate should be a SiaDirUpdate but wasn't")
+	}
+	if IsSiaDirUpdate(emptyUpdate) {
+		t.Error("emptyUpdate shouldn't be a SiaDirUpdate but was one")
+	}
+}
+
 // TestCreateReadMetadataUpdate tests if an update can be created using createMetadataUpdate
 // and if the created update can be read using readMetadataUpdate.
 func TestCreateReadMetadataUpdate(t *testing.T) {
@@ -261,8 +290,8 @@ func testApply(t *testing.T, siadir *SiaDir, apply func(...writeaheadlog.Update)
 	}
 }
 
-// TestManagedCreateAndApplyTransactions tests if
-// managedCreateAndApplyTransactions applies a set of updates correctly.
+// TestCreateAndApplyTransactions tests if CreateAndApplyTransactions applies a
+// set of updates correctly.
 func TestManagedCreateAndApplyTransactions(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -283,7 +312,7 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 	}
 
 	// Apply update.
-	if err := managedCreateAndApplyTransaction(siadir.wal, update); err != nil {
+	if err := CreateAndApplyTransaction(siadir.wal, update); err != nil {
 		t.Fatal("Failed to apply update", err)
 	}
 	// Open file.

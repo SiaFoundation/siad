@@ -266,7 +266,7 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 		return *n.lazySiaDir, nil
 	}
 	sd, err := siadir.LoadSiaDir(n.absPath(), modules.ProdDependencies, n.staticWal)
-	if err == siadir.ErrUnknownPath {
+	if os.IsNotExist(err) {
 		return nil, ErrNotExist
 	}
 	if err != nil {
@@ -673,7 +673,7 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		return err
 	}
 	err = dir.Rename(newBase)
-	if err == siadir.ErrPathOverload {
+	if os.IsExist(err) {
 		return ErrExists
 	}
 	if err != nil {

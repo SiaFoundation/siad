@@ -20,7 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -283,12 +283,16 @@ func renterFilesAndContractSummary() error {
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return err
+		return errors.AddContext(err, "unable to get root dir with RenterGetDir")
 	}
 
 	rc, err := httpClient.RenterContractsGet()
 	if err != nil {
 		return err
+	}
+	redundancyStr := fmt.Sprintf("%.2f", rf.Directories[0].AggregateMinRedundancy)
+	if rf.Directories[0].AggregateMinRedundancy == -1 {
+		redundancyStr = "-"
 	}
 
 	fmt.Printf(`
@@ -296,7 +300,7 @@ func renterFilesAndContractSummary() error {
   Total Stored:   %v
   Min Redundancy: %v
   Contracts:      %v
-`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
+`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts))
 
 	return nil
 }
@@ -1558,7 +1562,7 @@ func renterfilesdeletecmd(path string) {
 	if errDir == nil {
 		fmt.Printf("Deleted directory '%v'\n", path)
 		return
-	} else if !strings.Contains(errDir.Error(), siadir.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 		die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
 	}
 	// Unknown file/folder.
@@ -1584,7 +1588,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
-	} else if !strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
 	}
 	die(fmt.Sprintf("Unknown file '%v'", path))

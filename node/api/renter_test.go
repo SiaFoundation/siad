@@ -579,7 +579,7 @@ func TestRenterConflicts(t *testing.T) {
 	// Upload using the same nickname.
 	err = st.stdPostAPI("/renter/upload/foo/bar.sia/test", uploadValues)
 	if err == nil {
-		t.Fatalf("expected %v, got %v", Error{"upload failed: " + siafile.ErrPathOverload.Error()}, err)
+		t.Fatalf("expected %v, got %v", Error{"upload failed: " + filesystem.ErrExists.Error()}, err)
 	}
 
 	// Upload using nickname that conflicts with folder.

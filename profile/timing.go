@@ -11,7 +11,7 @@ var (
 	uptime       int64
 )
 
-// Uptime() returns the number of nanoseconds that have passed since the first
+// Uptime returns the number of nanoseconds that have passed since the first
 // call to uptime.
 func Uptime() int64 {
 	if uptime == 0 {

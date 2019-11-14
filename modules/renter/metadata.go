@@ -29,6 +29,33 @@ const (
 	bubblePending
 )
 
+// addUniqueBubblePath will only add a unique bubble path to a map. Since bubble
+// calls itself on the parent directory when it finishes with a directory, only
+// a call to the lowest level child directory is needed to properly update the
+// entire directory tree.
+func addUniqueBubblePath(newPath modules.SiaPath, paths map[modules.SiaPath]struct{}) {
+	// Check if path is already in the map
+	if _, ok := paths[newPath]; ok {
+		return
+	}
+	// Iterate through map
+	for path := range paths {
+		if strings.Contains(path.String(), newPath.String()) {
+			// There is already a child directory in the map so this path does
+			// not need to be added
+			return
+		}
+		if strings.Contains(newPath.String(), path.String()) {
+			// There is a path in the map that is a parent of the new directory.
+			// Delete the parent directory from the map
+			delete(paths, path)
+		}
+	}
+	// Add newPath to map
+	paths[newPath] = struct{}{}
+	return
+}
+
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
 // caller should proceed by calling bubble. If 'false' is returned, the caller
 // should not bubble, another thread will handle running the bubble.
@@ -139,7 +166,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if fileMetadata.LastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
 				metadata.LastHealthCheckTime = fileMetadata.LastHealthCheckTime
 			}
-			metadata.MinRedundancy = math.Min(metadata.MinRedundancy, fileMetadata.Redundancy)
+			if fileMetadata.Redundancy != -1 {
+				metadata.MinRedundancy = math.Min(metadata.MinRedundancy, fileMetadata.Redundancy)
+			}
 			if fileMetadata.ModTime.After(metadata.ModTime) {
 				metadata.ModTime = fileMetadata.ModTime
 			}
@@ -181,7 +210,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
 		metadata.AggregateStuckHealth = math.Max(metadata.AggregateStuckHealth, aggregateStuckHealth)
 		// Track the min value for AggregateMinRedundancy
-		metadata.AggregateMinRedundancy = math.Min(metadata.AggregateMinRedundancy, aggregateMinRedundancy)
+		if aggregateMinRedundancy != -1 {
+			metadata.AggregateMinRedundancy = math.Min(metadata.AggregateMinRedundancy, aggregateMinRedundancy)
+		}
 		// Update LastHealthCheckTime
 		if aggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
 			metadata.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
@@ -200,14 +231,13 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	if metadata.ModTime.IsZero() {
 		metadata.ModTime = time.Now()
 	}
-
 	// Sanity check on Redundancy. If MinRedundancy is still math.MaxFloat64
-	// then set it to 0
+	// then set it to -1 to indicate an empty directory
 	if metadata.AggregateMinRedundancy == math.MaxFloat64 {
-		metadata.AggregateMinRedundancy = 0
+		metadata.AggregateMinRedundancy = -1
 	}
 	if metadata.MinRedundancy == math.MaxFloat64 {
-		metadata.MinRedundancy = 0
+		metadata.MinRedundancy = -1
 	}
 
 	return metadata, nil

@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -19,8 +21,8 @@ func checkMetadataInit(md Metadata) error {
 	if !md.AggregateLastHealthCheckTime.IsZero() {
 		return fmt.Errorf("AggregateLastHealthCheckTime should be zero but was %v", md.AggregateLastHealthCheckTime)
 	}
-	if md.AggregateMinRedundancy != 0 {
-		return fmt.Errorf("SiaDir AggregateMinRedundancy not set properly: got %v expected 0", md.AggregateMinRedundancy)
+	if md.AggregateMinRedundancy != DefaultDirRedundancy {
+		return fmt.Errorf("SiaDir AggregateMinRedundancy not set properly: got %v expected %v", md.AggregateMinRedundancy, DefaultDirRedundancy)
 	}
 	if md.AggregateModTime.IsZero() {
 		return errors.New("AggregateModTime not initialized")
@@ -48,8 +50,8 @@ func checkMetadataInit(md Metadata) error {
 	if !md.LastHealthCheckTime.IsZero() {
 		return fmt.Errorf("LastHealthCheckTime should be zero but was %v", md.LastHealthCheckTime)
 	}
-	if md.MinRedundancy != 0 {
-		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected 0", md.MinRedundancy)
+	if md.MinRedundancy != DefaultDirRedundancy {
+		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected %v", md.MinRedundancy, DefaultDirRedundancy)
 	}
 	if md.ModTime.IsZero() {
 		return errors.New("ModTime not initialized")
@@ -182,101 +184,102 @@ func newRootDir(t *testing.T) (string, error) {
 //}
 
 // Test UpdatedMetadata probes the UpdateMetadata method
-//func TestUpdateMetadata(t *testing.T) {
-//	if testing.Short() {
-//		t.SkipNow()
-//	}
-//	t.Parallel()
-//
-//	// Create new siaDir
-//	rootDir, err := newRootDir(t)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	siaPath, err := modules.NewSiaPath("TestDir")
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	wal, _ := newTestWAL()
-//	siaDir, err := New(siaPath, rootDir, wal)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Check metadata was initialized properly in memory and on disk
-//	md := siaDir.metadata
-//	if err = checkMetadataInit(md); err != nil {
-//		t.Fatal(err)
-//	}
-//	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	md = siaDir.metadata
-//	if err = checkMetadataInit(md); err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Set the metadata
-//	checkTime := time.Now()
-//	metadataUpdate := md
-//	// Aggregate fields
-//	metadataUpdate.AggregateHealth = 7
-//	metadataUpdate.AggregateLastHealthCheckTime = checkTime
-//	metadataUpdate.AggregateMinRedundancy = 2.2
-//	metadataUpdate.AggregateModTime = checkTime
-//	metadataUpdate.AggregateNumFiles = 11
-//	metadataUpdate.AggregateNumStuckChunks = 15
-//	metadataUpdate.AggregateNumSubDirs = 5
-//	metadataUpdate.AggregateSize = 2432
-//	metadataUpdate.AggregateStuckHealth = 5
-//	// SiaDir fields
-//	metadataUpdate.Health = 4
-//	metadataUpdate.LastHealthCheckTime = checkTime
-//	metadataUpdate.MinRedundancy = 2
-//	metadataUpdate.ModTime = checkTime
-//	metadataUpdate.NumFiles = 5
-//	metadataUpdate.NumStuckChunks = 6
-//	metadataUpdate.NumSubDirs = 4
-//	metadataUpdate.Size = 223
-//	metadataUpdate.StuckHealth = 2
-//
-//	err = siaDir.UpdateMetadata(metadataUpdate)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Check that the metadata was updated properly in memory and on disk
-//	md = siaDir.metadata
-//	err = equalMetadatas(md, metadataUpdate)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	siaDir, err = LoadSiaDir(rootDir, siaPath, modules.ProdDependencies, wal)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	md = siaDir.metadata
-//	// Check Time separately due to how the time is persisted
-//	if !md.AggregateLastHealthCheckTime.Equal(metadataUpdate.AggregateLastHealthCheckTime) {
-//		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", md.AggregateLastHealthCheckTime, metadataUpdate.AggregateLastHealthCheckTime)
-//	}
-//	metadataUpdate.AggregateLastHealthCheckTime = md.AggregateLastHealthCheckTime
-//	if !md.LastHealthCheckTime.Equal(metadataUpdate.LastHealthCheckTime) {
-//		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", md.LastHealthCheckTime, metadataUpdate.LastHealthCheckTime)
-//	}
-//	metadataUpdate.LastHealthCheckTime = md.LastHealthCheckTime
-//	if !md.AggregateModTime.Equal(metadataUpdate.AggregateModTime) {
-//		t.Fatalf("AggregateModTimes not equal, got %v expected %v", md.AggregateModTime, metadataUpdate.AggregateModTime)
-//	}
-//	metadataUpdate.AggregateModTime = md.AggregateModTime
-//	if !md.ModTime.Equal(metadataUpdate.ModTime) {
-//		t.Fatalf("ModTimes not equal, got %v expected %v", md.ModTime, metadataUpdate.ModTime)
-//	}
-//	metadataUpdate.ModTime = md.ModTime
-//	// Check the rest of the metadata
-//	err = equalMetadatas(md, metadataUpdate)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//}
+func TestUpdateMetadata(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create new siaDir
+	rootDir, err := newRootDir(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath, err := modules.NewSiaPath("TestDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaDirSysPath := siaPath.SiaDirSysPath(rootDir)
+	wal, _ := newTestWAL()
+	siaDir, err := New(siaDirSysPath, rootDir, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check metadata was initialized properly in memory and on disk
+	md := siaDir.metadata
+	if err = checkMetadataInit(md); err != nil {
+		t.Fatal(err)
+	}
+	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md = siaDir.metadata
+	if err = checkMetadataInit(md); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the metadata
+	checkTime := time.Now()
+	metadataUpdate := md
+	// Aggregate fields
+	metadataUpdate.AggregateHealth = 7
+	metadataUpdate.AggregateLastHealthCheckTime = checkTime
+	metadataUpdate.AggregateMinRedundancy = 2.2
+	metadataUpdate.AggregateModTime = checkTime
+	metadataUpdate.AggregateNumFiles = 11
+	metadataUpdate.AggregateNumStuckChunks = 15
+	metadataUpdate.AggregateNumSubDirs = 5
+	metadataUpdate.AggregateSize = 2432
+	metadataUpdate.AggregateStuckHealth = 5
+	// SiaDir fields
+	metadataUpdate.Health = 4
+	metadataUpdate.LastHealthCheckTime = checkTime
+	metadataUpdate.MinRedundancy = 2
+	metadataUpdate.ModTime = checkTime
+	metadataUpdate.NumFiles = 5
+	metadataUpdate.NumStuckChunks = 6
+	metadataUpdate.NumSubDirs = 4
+	metadataUpdate.Size = 223
+	metadataUpdate.StuckHealth = 2
+
+	err = siaDir.UpdateMetadata(metadataUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the metadata was updated properly in memory and on disk
+	md = siaDir.metadata
+	err = equalMetadatas(md, metadataUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaDir, err = LoadSiaDir(siaDirSysPath, modules.ProdDependencies, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md = siaDir.metadata
+	// Check Time separately due to how the time is persisted
+	if !md.AggregateLastHealthCheckTime.Equal(metadataUpdate.AggregateLastHealthCheckTime) {
+		t.Fatalf("AggregateLastHealthCheckTimes not equal, got %v expected %v", md.AggregateLastHealthCheckTime, metadataUpdate.AggregateLastHealthCheckTime)
+	}
+	metadataUpdate.AggregateLastHealthCheckTime = md.AggregateLastHealthCheckTime
+	if !md.LastHealthCheckTime.Equal(metadataUpdate.LastHealthCheckTime) {
+		t.Fatalf("LastHealthCheckTimes not equal, got %v expected %v", md.LastHealthCheckTime, metadataUpdate.LastHealthCheckTime)
+	}
+	metadataUpdate.LastHealthCheckTime = md.LastHealthCheckTime
+	if !md.AggregateModTime.Equal(metadataUpdate.AggregateModTime) {
+		t.Fatalf("AggregateModTimes not equal, got %v expected %v", md.AggregateModTime, metadataUpdate.AggregateModTime)
+	}
+	metadataUpdate.AggregateModTime = md.AggregateModTime
+	if !md.ModTime.Equal(metadataUpdate.ModTime) {
+		t.Fatalf("ModTimes not equal, got %v expected %v", md.ModTime, metadataUpdate.ModTime)
+	}
+	metadataUpdate.ModTime = md.ModTime
+	// Check the rest of the metadata
+	err = equalMetadatas(md, metadataUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

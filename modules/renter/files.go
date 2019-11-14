@@ -2,7 +2,7 @@ package renter
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 )
 
 // DeleteFile removes a file entry from the renter and deletes its data from
@@ -84,7 +84,7 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	err = r.CreateDir(dirSiaPath)
-	if err != siadir.ErrPathOverload && err != nil {
+	if err != filesystem.ErrExists && err != nil {
 		return err
 	}
 	// Call callThreadedBubbleMetadata on the new directory to make sure the

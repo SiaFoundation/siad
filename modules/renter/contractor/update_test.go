@@ -36,6 +36,7 @@ func TestIntegrationAutoRenew(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
@@ -119,6 +120,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 		ExpectedUpload:     modules.DefaultAllowance.ExpectedUpload,
 		ExpectedDownload:   modules.DefaultAllowance.ExpectedDownload,
 		ExpectedRedundancy: modules.DefaultAllowance.ExpectedRedundancy,
+		MaxPeriodChurn:     modules.DefaultAllowance.MaxPeriodChurn,
 	}
 	err = c.SetAllowance(a)
 	if err != nil {
