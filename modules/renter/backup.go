@@ -228,7 +228,8 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
 // it to dst.
 func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
-	// Walk over all the siafiles in /home/siafiles and add them to the tarball.
+	// Walk over all the siafiles in in the user's home and add them to the
+	// tarball.
 	return r.staticFileSystem.Walk(modules.UserSiaPath(), func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
@@ -383,6 +384,9 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			}
 			// Update the metadata.
 			dirEntry, err := r.staticFileSystem.OpenSiaDir(siaPath)
+			if err != nil {
+				return err
+			}
 			if err := dirEntry.UpdateMetadata(md); err != nil {
 				dirEntry.Close()
 				return err

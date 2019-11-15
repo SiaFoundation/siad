@@ -278,13 +278,13 @@ func TestNextExploredDirectory(t *testing.T) {
 
 	// Create a test directory with the following healths/aggregateHealths
 	//
-	// 0/3
-	// SubDir1/ 1/2
-	// SubDir1/SubDir1/ 1/1
-	// SubDir1/SubDir2/ 2/2
-	// SubDir2/ 1/3
-	// SubDir2/SubDir1/ 1/1
-	// SubDir2/SubDir2/ 3/3
+	// root/ 0/3
+	// root/SubDir1/ 1/2
+	// root/SubDir1/SubDir1/ 1/1
+	// root/SubDir1/SubDir2/ 2/2
+	// root/SubDir2/ 1/3
+	// root/SubDir2/SubDir1/ 1/1
+	// root/SubDir2/SubDir2/ 3/3
 	//
 	// Overall we would expect to see root/SubDir2/SubDir2 popped first followed
 	// by root/SubDir1/SubDir2

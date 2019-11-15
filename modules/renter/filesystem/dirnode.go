@@ -54,24 +54,6 @@ func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 	return sd.DirReader()
 }
 
-// HealthPercentage returns the health in a more human understandable format out
-// of 100%
-//
-// The percentage is out of 1.25, this is to account for the RepairThreshold of
-// 0.25 and assumes that the worst health is 1.5. Since we do not repair until
-// the health is worse than the RepairThreshold, a health of 0 - 0.25 is full
-// health. Likewise, a health that is greater than 1.25 is essentially 0 health.
-func HealthPercentage(health float64) float64 {
-	healthPercent := 100 * (1.25 - health)
-	if healthPercent > 100 {
-		healthPercent = 100
-	}
-	if healthPercent < 0 {
-		healthPercent = 0
-	}
-	return healthPercent
-}
-
 // Metadata is a wrapper for SiaDir.Metadata.
 func (n *DirNode) Metadata() (siadir.Metadata, error) {
 	n.mu.Lock()
@@ -427,7 +409,7 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		AggregateHealth:              metadata.AggregateHealth,
 		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
 		AggregateMaxHealth:           aggregateMaxHealth,
-		AggregateMaxHealthPercentage: HealthPercentage(aggregateMaxHealth),
+		AggregateMaxHealthPercentage: modules.HealthPercentage(aggregateMaxHealth),
 		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
 		AggregateMostRecentModTime:   metadata.AggregateModTime,
 		AggregateNumFiles:            metadata.AggregateNumFiles,
@@ -440,7 +422,7 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		Health:              metadata.Health,
 		LastHealthCheckTime: metadata.LastHealthCheckTime,
 		MaxHealth:           maxHealth,
-		MaxHealthPercentage: HealthPercentage(maxHealth),
+		MaxHealthPercentage: modules.HealthPercentage(maxHealth),
 		MinRedundancy:       metadata.MinRedundancy,
 		MostRecentModTime:   metadata.ModTime,
 		NumFiles:            metadata.NumFiles,

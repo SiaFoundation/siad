@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -152,7 +153,7 @@ func TestHealthPercentage(t *testing.T) {
 		{0, 100},
 	}
 	for _, test := range tests {
-		hp := HealthPercentage(test.health)
+		hp := modules.HealthPercentage(test.health)
 		if hp != test.healthPercentage {
 			t.Fatalf("Expect %v got %v", test.healthPercentage, hp)
 		}
