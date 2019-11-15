@@ -20,8 +20,8 @@ type (
 	}
 )
 
-// close calls the common close method.
-func (n *FileNode) close() {
+// closeFileNode calls the common closeNode method.
+func (n *FileNode) closeFileNode() {
 	n.node.closeNode()
 }
 
@@ -29,7 +29,7 @@ func (n *FileNode) close() {
 func (n *FileNode) managedClose() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	n.close()
+	n.closeFileNode()
 }
 
 // Close calls close on the underlying node and also removes the fNode from its

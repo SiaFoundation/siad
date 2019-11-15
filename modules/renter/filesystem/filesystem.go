@@ -36,7 +36,6 @@ type (
 	// future.
 	FileSystem struct {
 		DirNode
-		staticLog *persist.Logger
 	}
 
 	// node is a struct that contains the commmon fields of every node.
@@ -47,6 +46,7 @@ type (
 		name      *string
 		staticWal *writeaheadlog.WAL
 		threads   map[threadUID]struct{} // tracks all the threadUIDs of evey copy of the node
+		staticLog *persist.Logger
 		staticUID threadUID
 		mu        *sync.Mutex
 
@@ -57,11 +57,12 @@ type (
 )
 
 // newNode is a convenience function to initialize a node.
-func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadlog.WAL) node {
+func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadlog.WAL, log *persist.Logger) node {
 	return node{
 		path:      &path,
 		parent:    parent,
 		name:      &name,
+		staticLog: log,
 		staticUID: newThreadUID(),
 		staticWal: wal,
 		threads:   make(map[threadUID]struct{}),
@@ -106,12 +107,11 @@ func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem,
 	return &FileSystem{
 		DirNode: DirNode{
 			// The root doesn't require a parent, a name or uid.
-			node:        newNode(nil, root, "", 0, wal),
+			node:        newNode(nil, root, "", 0, wal, log),
 			directories: make(map[string]*DirNode),
 			files:       make(map[string]*FileNode),
 			lazySiaDir:  new(*siadir.SiaDir),
 		},
-		staticLog: log,
 	}, nil
 }
 
@@ -184,13 +184,14 @@ func (fs *FileSystem) List(siaPath modules.SiaPath, recursive, cached bool, offl
 }
 
 // FileExists checks to see if a file with the provided siaPath already exists
-// in the renter. This will also return 'false' if the file is inaccessible due
-// to other reasons than not existing since the renter usually only cares
-// whether the file is accessible.
-func (fs *FileSystem) FileExists(siaPath modules.SiaPath) bool {
+// in the renter.
+func (fs *FileSystem) FileExists(siaPath modules.SiaPath) (bool, error) {
 	path := fs.FilePath(siaPath)
 	_, err := os.Stat(path)
-	return err == nil
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return true, err
 }
 
 // FilePath converts a SiaPath into a file's system path.

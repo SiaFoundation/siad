@@ -389,7 +389,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			if err != nil {
 				return nil, err
 			}
-			exists := r.staticFileSystem.FileExists(siaPath)
+			exists, _ := r.staticFileSystem.FileExists(siaPath)
 			if !exists {
 				break
 			}
