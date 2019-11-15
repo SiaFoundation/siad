@@ -22,7 +22,7 @@ type (
 
 // close calls the common close method.
 func (n *FileNode) close() {
-	n.node._close()
+	n.node.closeNode()
 }
 
 // managedClose calls close while holding the node's lock.
@@ -48,7 +48,7 @@ func (n *FileNode) Close() {
 	}
 
 	// Call common close method.
-	n.node._close()
+	n.node.closeNode()
 
 	// Remove node from parent if the current thread was the last one.
 	removeDir := len(n.threads) == 0

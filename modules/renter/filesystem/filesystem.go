@@ -76,9 +76,9 @@ func newThreadUID() threadUID {
 	return threadUID(fastrand.Uint64n(math.MaxUint64))
 }
 
-// close removes a thread from the node's threads map. This should only be
+// closeNode removes a thread from the node's threads map. This should only be
 // called from within other 'close' methods.
-func (n *node) _close() {
+func (n *node) closeNode() {
 	if _, exists := n.threads[n.threadUID]; !exists {
 		build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
 	}

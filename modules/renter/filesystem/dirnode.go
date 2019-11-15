@@ -160,7 +160,7 @@ func (n *DirNode) managedList(recursive, cached bool, fileLoadChan chan *FileNod
 
 // close calls the common close method.
 func (n *DirNode) close() {
-	n.node._close()
+	n.node.closeNode()
 	// If no more threads use the directory we delete the SiaDir to invalidate
 	// the cache.
 	if len(n.threads) == 0 {
