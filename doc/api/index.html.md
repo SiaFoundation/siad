@@ -1386,6 +1386,11 @@ responses](#standard-responses).
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/announce"
 ```
+> curl example with a custom netaddress
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/announce?netaddress=siahost.example.net"
+```
 
 Announce the host to the network as a source of storage. Generally only needs to
 be called once.
