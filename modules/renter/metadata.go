@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -38,18 +39,26 @@ const (
 type uniqueBubblePaths struct {
 	childDirs  map[modules.SiaPath]struct{}
 	parentDirs map[modules.SiaPath]struct{}
+
+	r  *Renter
+	mu sync.Mutex
 }
 
 // newUniqueBubblePaths returns an initialized uniqueBubblePaths struct
-func newUniqueBubblePaths() uniqueBubblePaths {
-	return uniqueBubblePaths{
+func (r *Renter) newUniqueBubblePaths() *uniqueBubblePaths {
+	return &uniqueBubblePaths{
 		childDirs:  make(map[modules.SiaPath]struct{}),
 		parentDirs: make(map[modules.SiaPath]struct{}),
+
+		r: r,
 	}
 }
 
-// addPath adds a path to uniqueBubblePaths.
-func (ubp uniqueBubblePaths) addPath(path modules.SiaPath) error {
+// managedAddPath adds a path to uniqueBubblePaths.
+func (ubp *uniqueBubblePaths) managedAddPath(path modules.SiaPath) error {
+	ubp.mu.Lock()
+	defer ubp.mu.Unlock()
+
 	// Check if the path is in the parent directory map
 	if _, ok := ubp.parentDirs[path]; ok {
 		return nil
@@ -82,6 +91,16 @@ func (ubp uniqueBubblePaths) addPath(path modules.SiaPath) error {
 		path = parentDir
 	}
 	return nil
+}
+
+// managedBubbleDirs uses the uniqueBubblePaths's Renter to call
+// callThreadedBubbleMetadata on all the directories in the childDir map
+func (ubp *uniqueBubblePaths) managedBubbleDirs() {
+	ubp.mu.Lock()
+	defer ubp.mu.Unlock()
+	for sp := range ubp.childDirs {
+		go ubp.r.callThreadedBubbleMetadata(sp)
+	}
 }
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
