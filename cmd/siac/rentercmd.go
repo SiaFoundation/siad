@@ -1628,7 +1628,7 @@ func renterfilesdownload(path, destination string) {
 	// If the download is blocking, display progress as the file downloads.
 	file, err := httpClient.RenterFileGet(siaPath)
 	if err != nil {
-		// Error ignored. Why?
+		die("Error getting file after download has started:", err)
 	}
 
 	failedDownloads := downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})
