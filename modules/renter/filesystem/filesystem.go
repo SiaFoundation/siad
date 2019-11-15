@@ -71,6 +71,30 @@ func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadl
 	}
 }
 
+// managedLockWithParent is a helper method which correctly acquires the lock of
+// a node and it's parent. If no parent it available it will return 'nil'. In
+// either case the node and potential parent will be locked after the call.
+func (n *node) managedLockWithParent() *DirNode {
+	var parent *DirNode
+	for {
+		// If a parent exists, we need to lock it while closing a child.
+		n.mu.Lock()
+		parent = n.parent
+		n.mu.Unlock()
+		if parent != nil {
+			parent.mu.Lock()
+		}
+		n.mu.Lock()
+		if n.parent != parent {
+			n.mu.Unlock()
+			parent.mu.Unlock()
+			continue // try again
+		}
+		break
+	}
+	return parent
+}
+
 // newThreadUID returns a random threadUID to be used as the threadUID in the
 // threads map of the node.
 func newThreadUID() threadUID {

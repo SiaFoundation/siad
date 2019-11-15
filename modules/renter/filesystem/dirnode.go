@@ -271,21 +271,7 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 // currently in use.
 func (n *DirNode) Close() {
 	// If a parent exists, we need to lock it while closing a child.
-	var parent *DirNode
-	for {
-		n.mu.Lock()
-		parent = n.parent
-		n.mu.Unlock()
-		if parent != nil {
-			parent.mu.Lock()
-		}
-		n.mu.Lock()
-		if n.parent != parent {
-			n.mu.Unlock()
-			continue // try again
-		}
-		break
-	}
+	parent := n.node.managedLockWithParent()
 
 	// call private close method.
 	n.closeDirNode()
@@ -322,11 +308,10 @@ func (n *DirNode) Close() {
 // Delete recursively deletes a dNode from disk.
 func (n *DirNode) managedDelete() error {
 	// If there is a parent lock it.
-	if n.parent != nil {
-		n.parent.mu.Lock()
-		defer n.parent.mu.Unlock()
+	parent := n.managedLockWithParent()
+	if parent != nil {
+		defer parent.mu.Unlock()
 	}
-	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Get contents of dir.
 	dirsToLock := n.childDirs()
@@ -475,6 +460,14 @@ func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.E
 	if _, exists := n.files[fileName]; exists {
 		return ErrExists
 	}
+	// Make sure we don't have a folder with that name in memory already.
+	if _, exists := n.directories[fileName]; exists {
+		return ErrExists
+	}
+	// Make sure that no directory of that name exists on disk.
+	if _, err := os.Stat(filepath.Join(n.absPath(), fileName)); !os.IsNotExist(err) {
+		return ErrExists
+	}
 	_, err := siafile.New(filepath.Join(n.absPath(), fileName+modules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode, nil, disablePartialUpload)
 	return errors.AddContext(err, "NewSiaFile: failed to create file")
 }
@@ -487,28 +480,30 @@ func (n *DirNode) managedOpenFile(fileName string) (*FileNode, error) {
 	return n.openFile(fileName)
 }
 
-// openFile opens a SiaFile and adds it and all of its parents to the
-// filesystem tree.
+// openFile opens a SiaFile and adds it and all of its parents to the filesystem
+// tree.
 func (n *DirNode) openFile(fileName string) (*FileNode, error) {
 	fn, exists := n.files[fileName]
-	if !exists {
-		// Load file from disk.
-		filePath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
-		sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
-		if err == siafile.ErrUnknownPath || os.IsNotExist(err) {
-			return nil, ErrNotExist
-		}
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to load SiaFile from disk")
-		}
-		fn = &FileNode{
-			node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
-			SiaFile: sf,
-		}
-		n.files[fileName] = fn
-	} else if exists && fn.Deleted() {
+	if exists && fn.Deleted() {
 		return nil, ErrNotExist // don't return a deleted file
 	}
+	if exists {
+		return fn.managedCopy(), nil
+	}
+	// Load file from disk.
+	filePath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
+	sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
+	if err == siafile.ErrUnknownPath || os.IsNotExist(err) {
+		return nil, ErrNotExist
+	}
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load SiaFile from disk")
+	}
+	fn = &FileNode{
+		node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
+		SiaFile: sf,
+	}
+	n.files[fileName] = fn
 	// Clone the node, give it a new UID and return it.
 	return fn.managedCopy(), nil
 }

@@ -34,21 +34,8 @@ func (n *FileNode) managedClose() {
 // Close calls close on the underlying node and also removes the fNode from its
 // parent.
 func (n *FileNode) Close() {
-	var parent *DirNode
-	for {
-		// If a parent exists, we need to lock it while closing a child.
-		n.mu.Lock()
-		parent = n.parent
-		n.mu.Unlock()
-		if parent != nil {
-			parent.mu.Lock()
-		}
-		n.mu.Lock()
-		if n.parent != parent {
-			n.mu.Unlock() // try again
-		}
-		break
-	}
+	// If a parent exists, we need to lock it while closing a child.
+	parent := n.node.managedLockWithParent()
 
 	// Call common close method.
 	n.node.closeNode()
