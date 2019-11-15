@@ -7,10 +7,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -48,22 +46,13 @@ type (
 		parent    *DirNode
 		name      *string
 		staticWal *writeaheadlog.WAL
-		threads   map[threadUID]threadInfo // tracks all the threadUIDs of evey copy of the node
+		threads   map[threadUID]struct{} // tracks all the threadUIDs of evey copy of the node
 		staticUID threadUID
 		mu        *sync.Mutex
 
 		// fields that differ between copies of the same node.
 		threadUID threadUID // unique ID of a copy of a node
 	}
-
-	// threadInfo contains useful information about the thread accessing the
-	// SiaDirSetEntry
-	threadInfo struct {
-		callingFiles []string
-		callingLines []int
-		lockTime     time.Time
-	}
-
 	threadUID uint64
 )
 
@@ -75,23 +64,10 @@ func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadl
 		name:      &name,
 		staticUID: newThreadUID(),
 		staticWal: wal,
-		threads:   make(map[threadUID]threadInfo),
+		threads:   make(map[threadUID]struct{}),
 		threadUID: uid,
 		mu:        new(sync.Mutex),
 	}
-}
-
-// newThreadInfo created a threadInfo entry for the threadMap
-func newThreadInfo() threadInfo {
-	tt := threadInfo{
-		callingFiles: make([]string, threadDepth+1),
-		callingLines: make([]int, threadDepth+1),
-		lockTime:     time.Now(),
-	}
-	for i := 0; i <= threadDepth; i++ {
-		_, tt.callingFiles[i], tt.callingLines[i], _ = runtime.Caller(2 + i)
-	}
-	return tt
 }
 
 // newThreadUID returns a random threadUID to be used as the threadUID in the

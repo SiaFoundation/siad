@@ -550,7 +550,7 @@ func (n *DirNode) copy() *DirNode {
 	// Copy the dNode and change the uid to a unique one.
 	newNode := *n
 	newNode.threadUID = newThreadUID()
-	newNode.threads[newNode.threadUID] = newThreadInfo()
+	newNode.threads[newNode.threadUID] = struct{}{}
 	return &newNode
 }
 
