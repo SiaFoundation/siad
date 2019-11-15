@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
@@ -220,8 +219,9 @@ func (n *DirNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.Fi
 // managedUniquePrefix returns a new path for the siafile with the given path
 // and uid by adding a suffix to the current path and incrementing it as long as
 // the resulting path is already taken.
-func (n *DirNode) managedUniquePrefix(currentPath string, uid siafile.SiafileUID) (path string, exists bool) {
+func (n *DirNode) managedUniquePrefix(path string, uid siafile.SiafileUID) (string, bool) {
 	suffix := 0
+	currentPath := path
 	for {
 		fileName := strings.TrimSuffix(filepath.Base(currentPath), modules.SiaFileExtension)
 		oldFile, err := n.managedOpenFile(fileName)
@@ -271,22 +271,27 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 // currently in use.
 func (n *DirNode) Close() {
 	// If a parent exists, we need to lock it while closing a child.
-	n.mu.Lock()
-	parent := n.parent
-	n.mu.Unlock()
-	if parent != nil {
-		parent.mu.Lock()
-	}
-	n.mu.Lock()
-	if n.parent != parent {
-		build.Critical("dir parent changed")
+	var parent *DirNode
+	for {
+		n.mu.Lock()
+		parent = n.parent
+		n.mu.Unlock()
+		if parent != nil {
+			parent.mu.Lock()
+		}
+		n.mu.Lock()
+		if n.parent != parent {
+			n.mu.Unlock()
+			continue // try again
+		}
+		break
 	}
 
 	// call private close method.
 	n.closeDirNode()
 
 	// Remove node from parent if there are no more children after this close.
-	removeDir := len(n.threads) == 0 && len(n.directories) == 0 && len(n.files) == 0 && true
+	removeDir := len(n.threads) == 0 && len(n.directories) == 0 && len(n.files) == 0
 	if parent != nil && removeDir {
 		parent.removeDir(n)
 	}

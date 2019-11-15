@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
@@ -35,16 +34,20 @@ func (n *FileNode) managedClose() {
 // Close calls close on the underlying node and also removes the fNode from its
 // parent.
 func (n *FileNode) Close() {
-	// If a parent exists, we need to lock it while closing a child.
-	n.mu.Lock()
-	parent := n.parent
-	n.mu.Unlock()
-	if parent != nil {
-		parent.mu.Lock()
-	}
-	n.mu.Lock()
-	if n.parent != parent {
-		build.Critical("parent changed")
+	var parent *DirNode
+	for {
+		// If a parent exists, we need to lock it while closing a child.
+		n.mu.Lock()
+		parent = n.parent
+		n.mu.Unlock()
+		if parent != nil {
+			parent.mu.Lock()
+		}
+		n.mu.Lock()
+		if n.parent != parent {
+			n.mu.Unlock() // try again
+		}
+		break
 	}
 
 	// Call common close method.
