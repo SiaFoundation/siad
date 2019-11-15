@@ -19,7 +19,7 @@ func metadataUpdate(path string, metadata siadir.Metadata) (writeaheadlog.Update
 
 	// Create update
 	return writeaheadlog.Update{
-		Name:         updateMetadataName,
+		Name:         updateDirMetadataName,
 		Instructions: encoding.MarshalAll(data, path),
 	}, nil
 }

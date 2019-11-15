@@ -3,13 +3,13 @@ package filesystem
 import "gitlab.com/NebulousLabs/writeaheadlog"
 
 const (
-	// updateDeleteName is the name of a siaDir update that deletes the
-	// specified metadata file.
-	updateDeleteName = "SiaDirDelete"
+	// updateDeleteDirName is the name of a filesystem update that deletes the
+	// specified directory metadata file.
+	updateDeleteDirName = "SiaDirDelete"
 
-	// updateMetadataName is the name of a siaDir update that inserts new
-	// information into the metadata file
-	updateMetadataName = "SiaDirMetadata"
+	// updateDirMetadataName is the name of a siaDir update that inserts new
+	// information into the siadir metadata file
+	updateDirMetadataName = "SiaDirMetadata"
 
 	// threadDepth is how deep the ThreadType will track calling files and
 	// calling lines
@@ -20,7 +20,7 @@ const (
 // belongs to the filesystem package.
 func IsFileSystemUpdate(update writeaheadlog.Update) bool {
 	switch update.Name {
-	case updateMetadataName, updateDeleteName:
+	case updateDirMetadataName, updateDeleteDirName:
 		return true
 	default:
 		return false
