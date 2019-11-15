@@ -1751,6 +1751,11 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{"failed to get file infos:" + err.Error()}, http.StatusInternalServerError)
 		return
 	}
+	files, err = trimSiaDirFolderOnFiles(files...)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	WriteJSON(w, RenterDirectory{
 		Directories: directories,
 		Files:       files,
