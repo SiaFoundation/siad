@@ -106,14 +106,13 @@ func (n *DirNode) managedList(recursive, cached bool, fileLoadChan chan *FileNod
 		}
 		// Handle dir.
 		if info.IsDir() {
-			n.mu.Lock()
 			// Open the dir.
+			n.mu.Lock()
 			dir, err := n.openDir(info.Name())
+			n.mu.Unlock()
 			if err != nil {
-				n.mu.Unlock()
 				return err
 			}
-			n.mu.Unlock()
 			// Hand a copy to the worker. It will handle closing it.
 			dirLoadChan <- dir.managedCopy()
 			// Call managedList on the child if 'recursive' was specified.
@@ -168,26 +167,9 @@ func (n *DirNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker)
 		return err
 	}
 	// Check if the path is taken.
-	err = ErrExists
-	suffix := 0
-	currentPath := path
-	for {
-		fileName := strings.TrimSuffix(filepath.Base(currentPath), modules.SiaFileExtension)
-		oldFile, err := n.managedOpenFile(fileName)
-		exists := err == nil
-		if exists && oldFile.UID() == sf.UID() {
-			oldFile.Close()
-			return nil // skip file since it already exists
-		} else if exists {
-			// Exists: update currentPath and fileName
-			suffix++
-			currentPath = strings.TrimSuffix(path, modules.SiaFileExtension)
-			currentPath = fmt.Sprintf("%v_%v%v", currentPath, suffix, modules.SiaFileExtension)
-			fileName = filepath.Base(currentPath)
-			oldFile.Close()
-			continue
-		}
-		break
+	currentPath, exists := n.managedUniquePrefix(path, sf.UID())
+	if exists {
+		return nil // file already exists
 	}
 	// Either the file doesn't exist yet or we found a filename that doesn't
 	// exist. Update the UID for safety and set the correct siafilepath.
@@ -233,6 +215,32 @@ func (n *DirNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.Fi
 	}
 	n.files[key] = fn
 	return fn.managedCopy(), nil
+}
+
+// managedUniquePrefix returns a new path for the siafile with the given path
+// and uid by adding a suffix to the current path and incrementing it as long as
+// the resulting path is already taken.
+func (n *DirNode) managedUniquePrefix(currentPath string, uid siafile.SiafileUID) (path string, exists bool) {
+	suffix := 0
+	for {
+		fileName := strings.TrimSuffix(filepath.Base(currentPath), modules.SiaFileExtension)
+		oldFile, err := n.managedOpenFile(fileName)
+		exists := err == nil
+		if exists && oldFile.UID() == uid {
+			oldFile.Close()
+			return "", true // skip file since it already exists
+		} else if exists {
+			// Exists: update currentPath and fileName
+			suffix++
+			currentPath = strings.TrimSuffix(path, modules.SiaFileExtension)
+			currentPath = fmt.Sprintf("%v_%v%v", currentPath, suffix, modules.SiaFileExtension)
+			fileName = filepath.Base(currentPath)
+			oldFile.Close()
+			continue
+		}
+		break
+	}
+	return currentPath, false
 }
 
 // managedSiaDir calls siaDir while holding the node's lock.
