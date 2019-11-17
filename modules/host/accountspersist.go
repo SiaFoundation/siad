@@ -73,9 +73,9 @@ type (
 
 	// accountData contains all data persisted for a single account
 	accountData struct {
-		Id      types.SiaPublicKey
-		Balance types.Currency
-		LastTxn int64
+		Id          types.SiaPublicKey
+		Balance     types.Currency
+		lastTxnTime int64
 	}
 
 	// indexLock contains a lock plus a count of the number of threads currently
@@ -346,9 +346,9 @@ func (a *account) transformToAccountData() accountData {
 	spk := types.SiaPublicKey{}
 	spk.LoadString(a.id)
 	return accountData{
-		Id:      spk,
-		Balance: a.balance,
-		LastTxn: a.lastTxn,
+		Id:          spk,
+		Balance:     a.balance,
+		lastTxnTime: a.lastTxnTime,
 	}
 }
 
@@ -356,10 +356,10 @@ func (a *account) transformToAccountData() accountData {
 // account we keep in memory
 func (a *accountData) transformToAccount(index uint32) *account {
 	return &account{
-		id:      a.Id.String(),
-		balance: a.Balance,
-		index:   index,
-		lastTxn: a.LastTxn,
+		id:          a.Id.String(),
+		balance:     a.Balance,
+		index:       index,
+		lastTxnTime: a.lastTxnTime,
 	}
 }
 

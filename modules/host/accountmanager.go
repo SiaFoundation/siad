@@ -99,11 +99,11 @@ type (
 		id      string
 		balance types.Currency
 
-		// lastTxn is the timestamp of the last transaction that occured
+		// lastTxnTime is the timestamp of the last transaction that occured
 		// involving this ephemeral account. We keep track of this last
 		// transaction timestamp to allow pruning the ephemeral account after
 		// the account expiry timeout.
-		lastTxn int64
+		lastTxnTime int64
 
 		index        uint32
 		blockedCalls blockedCallHeap
@@ -191,7 +191,7 @@ func (am *accountManager) callSetData(accounts map[string]*account, fingerprints
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	am.accounts = accounts
-	am.fingerprints.current = fingerprints
+	am.fingerprints.next = fingerprints
 }
 
 // callDeposit will deposit the given amount into the account
@@ -216,7 +216,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 
 	// Update account details
 	acc.balance = updatedBalance
-	acc.lastTxn = time.Now().Unix()
+	acc.lastTxnTime = time.Now().Unix()
 
 	// Unblock blocked calls if the remaining balance allows it
 	remaining := acc.balance
@@ -293,7 +293,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return errBalanceInsufficient
 	}
 	acc.balance = acc.balance.Sub(amount)
-	acc.lastTxn = time.Now().Unix()
+	acc.lastTxnTime = time.Now().Unix()
 	am.fingerprints.save(fp, msg.expiry)
 
 	// Track the unsaved delta by adding the amount we are spending
@@ -378,7 +378,7 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 			}
 
 			if acc.balance.Cmp(types.ZeroCurrency) != 0 {
-				last := acc.lastTxn
+				last := acc.lastTxnTime
 				if now-last > accountExpiryTimeoutAsInt64 {
 					am.h.log.Debugf("DEBUG: expiring account %v at %v", id, now)
 					acc.balance = types.ZeroCurrency
