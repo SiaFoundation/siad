@@ -28,6 +28,7 @@ const (
 // should be unique and listed here.
 const (
 	// alertIDUnknown is the id of an unknown alert.
+	//lint:ignore U1000 keeping for safety
 	alertIDUnknown = "unknown"
 	// AlertIDWalletLockedDuringMaintenance is the id of the alert that is
 	// registered if the wallet is locked during a contract renewal or formation.
