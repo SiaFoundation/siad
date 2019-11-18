@@ -284,8 +284,8 @@ func (n *DirNode) Close() {
 
 	// Unlock child and parent.
 	n.mu.Unlock()
-	parent.mu.Unlock()
 	if parent != nil {
+		parent.mu.Unlock()
 		parent.managedTryRemoveFromParentsIteratively()
 	}
 }
