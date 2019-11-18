@@ -1,12 +1,15 @@
 package contractor
 
 import (
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // watchdogPersist defines what watchdog data persists across sessions.
 type watchdogPersist struct {
-	Contracts map[string]fileContractStatusPersist `json:"Contracts"`
+	Contracts         map[string]fileContractStatusPersist `json:"Contracts"`
+	ArchivedContracts map[string]fileContractStatusPersist `json:"ArchivedContracts"`
 }
 
 // fileContractStatusPersist defines what information from fileContractStatus is persisted.
@@ -26,26 +29,33 @@ type fileContractStatusPersist struct {
 	WindowEnd   types.BlockHeight `json:"ExpirationWindowEnd"`
 }
 
-// persistData returns the data that will be saved to disk for fileContractStatus.
-func (d *fileContractStatus) persistData() fileContractStatusPersist {
-	persistedParentOutputs := make([]types.SiacoinOutputID, 0, len(d.parentOutputs))
-	for oid := range d.parentOutputs {
-		persistedParentOutputs = append(persistedParentOutputs, oid)
-	}
-	return fileContractStatusPersist{
+// persistData returns the data that will be saved to disk for
+// fileContractStatus. If archived is set to true, it will avoid persisting
+// fields that are irrelevant for archival purposes.
+func (d *fileContractStatus) persistData(archived bool) fileContractStatusPersist {
+	data := fileContractStatusPersist{
 		FormationSweepHeight: d.formationSweepHeight,
 		ContractFound:        d.contractFound,
 		RevisionFound:        d.revisionFound,
 		StorageProofFound:    d.storageProofFound,
 
-		FormationTxnSet: d.formationTxnSet,
-		ParentOutputs:   persistedParentOutputs,
-
-		SweepTxn:     d.sweepTxn,
-		SweepParents: d.sweepParents,
-		WindowStart:  d.windowStart,
-		WindowEnd:    d.windowEnd,
+		WindowStart: d.windowStart,
+		WindowEnd:   d.windowEnd,
 	}
+
+	if !archived {
+		persistedParentOutputs := make([]types.SiacoinOutputID, 0, len(d.parentOutputs))
+		for oid := range d.parentOutputs {
+			persistedParentOutputs = append(persistedParentOutputs, oid)
+		}
+
+		data.FormationTxnSet = d.formationTxnSet
+		data.ParentOutputs = persistedParentOutputs
+		data.SweepTxn = d.sweepTxn
+		data.SweepParents = d.sweepParents
+	}
+
+	return data
 }
 
 // callPersistData returns the data in the watchdog that will be saved to disk.
@@ -57,7 +67,10 @@ func (w *watchdog) callPersistData() watchdogPersist {
 		Contracts: make(map[string]fileContractStatusPersist),
 	}
 	for fcID, contractData := range w.contracts {
-		data.Contracts[fcID.String()] = contractData.persistData()
+		data.Contracts[fcID.String()] = contractData.persistData(false)
+	}
+	for fcID, contractData := range w.archivedContracts {
+		data.Contracts[fcID.String()] = contractData.persistData(true)
 	}
 
 	return data
@@ -100,5 +113,29 @@ func newWatchdogFromPersist(contractor *Contractor, persistData watchdogPersist)
 			w.addOutputDependency(oid, fcID)
 		}
 	}
+
+	for fcIDString, data := range persistData.ArchivedContracts {
+		if err := fcID.LoadString(fcIDString); err != nil {
+			return nil, err
+		}
+		if _, ok := w.contracts[fcID]; ok {
+			return nil, errors.New("(watchdog) archived contract still in regular contracts map")
+		}
+
+		// Add persisted contract data to the watchdog.
+		contractData := &fileContractStatus{
+			formationSweepHeight: data.FormationSweepHeight,
+			contractFound:        data.ContractFound,
+			revisionFound:        data.RevisionFound,
+			storageProofFound:    data.StorageProofFound,
+
+			// (Skipping un-archived fields.)
+
+			windowStart: data.WindowStart,
+			windowEnd:   data.WindowEnd,
+		}
+		w.archivedContracts[fcID] = contractData
+	}
+
 	return w, nil
 }

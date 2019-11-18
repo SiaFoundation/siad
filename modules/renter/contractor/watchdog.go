@@ -36,6 +36,10 @@ type watchdog struct {
 	// in here.
 	contracts map[types.FileContractID]*fileContractStatus
 
+	// archivedContracts are contracts that have expired and stored for archival
+	// purposes.
+	archivedContracts map[types.FileContractID]*fileContractStatus
+
 	// outputDependencies maps Siacoin outputs to the file contracts that are
 	// dependent on them. When a contract is first submitted to the watchdog to be
 	// monitored, the outputDependencies created for that contract are the
@@ -115,6 +119,7 @@ func newWatchdog(contractor *Contractor) *watchdog {
 	renewWindow := contractor.Allowance().RenewWindow
 	return &watchdog{
 		contracts:          make(map[types.FileContractID]*fileContractStatus),
+		archivedContracts:  make(map[types.FileContractID]*fileContractStatus),
 		outputDependencies: make(map[types.SiacoinOutputID]map[types.FileContractID]struct{}),
 
 		renewWindow: renewWindow,
@@ -251,8 +256,8 @@ func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
 	}()
 }
 
-// deleteContract removes all data about this contract from the watchdog.
-func (w *watchdog) deleteContract(fcID types.FileContractID) {
+// archiveContract archives the file contract.
+func (w *watchdog) archiveContract(fcID types.FileContractID) {
 	w.contractor.log.Debugln("Deleting contract: ", fcID)
 	contractData, ok := w.contracts[fcID]
 	if ok {
@@ -260,6 +265,7 @@ func (w *watchdog) deleteContract(fcID types.FileContractID) {
 			w.removeOutputDependency(oid, fcID)
 		}
 	}
+	w.archivedContracts[fcID] = contractData
 	delete(w.contracts, fcID)
 }
 
@@ -439,7 +445,7 @@ func (w *watchdog) findDependencySpends(txn types.Transaction) {
 
 			//  Signal to the contractor that this contract's inputs were
 			//  double-spent and that it should be removed.
-			w.deleteContract(fcID)
+			w.archiveContract(fcID)
 			go w.contractor.callNotifyDoubleSpend(fcID, w.blockHeight)
 		} else {
 			w.contractor.log.Debugln("Removed transaction from set for: ", fcID, len(prunedFormationTxnSet))
@@ -660,7 +666,7 @@ func (w *watchdog) callCheckContracts() {
 				// TODO: ++ host / send signal back to watchee
 				w.contractor.log.Debugln("did find proof", fcID)
 			}
-			w.deleteContract(fcID)
+			w.archiveContract(fcID)
 		}
 	}
 }
