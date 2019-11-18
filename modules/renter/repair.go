@@ -53,7 +53,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modul
 		// Add stuck chunk to upload heap and signal repair needed
 		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks)
 		if err != nil {
-			return dirSiaPaths, errors.AddContext(err, "unable to push random stuck chunk from"+siaPath.String()+"of "+dirSiaPath.String())
+			return dirSiaPaths, errors.AddContext(err, "unable to push random stuck chunk from '"+siaPath.String()+"' of '"+dirSiaPath.String()+"'")
 		}
 
 		// Sanity check that stuck chunks were added
@@ -327,12 +327,16 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	defer siaDir.Close()
 	metadata := siaDir.Metadata()
 	aggregateNumStuckChunks := metadata.AggregateNumStuckChunks
-	if aggregateNumStuckChunks == 0 {
-		return modules.SiaPath{}, errors.New("No stuck chunks found in stuck files")
-	}
+	numStuckChunks := metadata.NumStuckChunks
 	numFiles := metadata.NumFiles
-	if numFiles == 0 {
-		return modules.SiaPath{}, errors.New("no files in directory")
+	r.repairLog.Printf("Attempting to pull random stuck file from %v, AggregateNumStuckChunks: %v, NumStuckChunks: %v", dirSiaPath.String(), aggregateNumStuckChunks, numStuckChunks)
+	if aggregateNumStuckChunks == 0 || numStuckChunks == 0 || numFiles == 0 {
+		// If the number of stuck chunks or number of files is zero then this
+		// directory should not have been used to find a stuck file. Call bubble
+		// to make sure that the metadata is updated
+		go r.callThreadedBubbleMetadata(dirSiaPath)
+		err = fmt.Errorf("managedStuckFile should not have been called on %v, AggregateNumStuckChunks: %v, NumStuckChunks: %v, NumFiles: %v", dirSiaPath.String(), aggregateNumStuckChunks, numStuckChunks, numFiles)
+		return modules.SiaPath{}, err
 	}
 
 	// Use rand to decide which file to select. We can chose a file by
@@ -380,10 +384,17 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 
 		// Decrement rand and check if we have decremented fully
 		rand = rand - numStuckChunks
+		siapath = sp
 		if rand < 0 {
-			siapath = sp
 			break
 		}
+	}
+	if siapath.Equals(modules.SiaPath{}) {
+		// If no files were selected from the directory than there is a mismatch
+		// between the file metadata and the directory metadata. Call bubble to
+		// update the directory metadata
+		go r.callThreadedBubbleMetadata(dirSiaPath)
+		return modules.SiaPath{}, errors.New("no files selected from directory " + dirSiaPath.String())
 	}
 	return siapath, nil
 }
