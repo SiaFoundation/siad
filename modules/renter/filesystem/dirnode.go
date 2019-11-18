@@ -266,9 +266,10 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 	return sd, nil
 }
 
-// Close calls close on the dNode and also removes the dNode from its parent if
-// it's no longer being used and if it doesn't have any children which are
-// currently in use.
+// Close calls close on the DirNode and also removes the dNode from its parent
+// if it's no longer being used and if it doesn't have any children which are
+// currently in use. This happens iteratively for all parent as long as
+// removing a child resulted in them not having any children left.
 func (n *DirNode) Close() {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
@@ -286,6 +287,7 @@ func (n *DirNode) Close() {
 	n.mu.Unlock()
 	if parent != nil {
 		parent.mu.Unlock()
+		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
 }

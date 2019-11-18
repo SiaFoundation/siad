@@ -192,10 +192,6 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil {
 		return err
 	}
-	err = fs.NewSiaDir(modules.RootSiaPath())
-	if err != nil && err != filesystem.ErrExists {
-		return err
-	}
 	err = fs.NewSiaDir(modules.HomeSiaPath())
 	if err != nil && err != filesystem.ErrExists {
 		return err

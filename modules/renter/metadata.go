@@ -340,7 +340,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 
 	//  Open SiaDir
 	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil && err == filesystem.ErrNotExist {
+	if err != nil && errors.Contains(err, filesystem.ErrNotExist) {
 		// If siadir doesn't exist create one
 		err = r.staticFileSystem.NewSiaDir(siaPath)
 		if err != nil {
@@ -357,7 +357,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 
 	// Grab the metadata.
 	md, err := siaDir.Metadata()
-	if err != nil && err == filesystem.ErrNotExist {
+	if err != nil && errors.Contains(err, filesystem.ErrNotExist) {
 		// If metadata doesn't exist create it.
 		err = r.staticFileSystem.NewSiaDir(siaPath)
 		if err != nil {

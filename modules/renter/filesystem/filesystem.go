@@ -125,10 +125,7 @@ func (n *node) managedAbsPath() string {
 // New creates a new FileSystem at the specified root path. The folder will be
 // created if it doesn't exist already.
 func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem, error) {
-	if err := os.Mkdir(root, 0700); err != nil && !os.IsExist(err) {
-		return nil, errors.AddContext(err, "failed to create root dir")
-	}
-	return &FileSystem{
+	fs := &FileSystem{
 		DirNode: DirNode{
 			// The root doesn't require a parent, a name or uid.
 			node:        newNode(nil, root, "", 0, wal, log),
@@ -136,7 +133,13 @@ func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem,
 			files:       make(map[string]*FileNode),
 			lazySiaDir:  new(*siadir.SiaDir),
 		},
-	}, nil
+	}
+	// Prepare root folder.
+	err := fs.NewSiaDir(modules.RootSiaPath())
+	if err != nil && !errors.Contains(err, ErrExists) {
+		return nil, err
+	}
+	return fs, nil
 }
 
 // AddSiaFileFromReader adds an existing SiaFile to the set and stores it on

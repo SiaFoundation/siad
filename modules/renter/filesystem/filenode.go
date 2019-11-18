@@ -31,8 +31,10 @@ func (n *FileNode) managedClose() {
 	n.closeFileNode()
 }
 
-// Close calls close on the underlying node and also removes the fNode from its
-// parent.
+// Close calls close on the FileNode and also removes the FileNode from its
+// parent if it's no longer being used and if it doesn't have any children which
+// are currently in use. This happens iteratively for all parent as long as
+// removing a child resulted in them not having any children left.
 func (n *FileNode) Close() {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
@@ -41,14 +43,14 @@ func (n *FileNode) Close() {
 	n.node.closeNode()
 
 	// Remove node from parent if the current thread was the last one.
-	removeDir := len(n.threads) == 0
-	if removeDir {
+	if parent != nil && len(n.threads) == 0 {
 		parent.removeFile(n)
 	}
 	// Unlock child and parent.
 	n.mu.Unlock()
 	if parent != nil {
 		parent.mu.Unlock()
+		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
 }
