@@ -77,6 +77,11 @@ type (
 		fingerprints            *fingerprintMap
 		staticAccountsPersister *accountsPersister
 
+		// the account manager keeps track of the current blockheight, every
+		// time there's a consensus change this value is updated to the current
+		// block height
+		blockHeight types.BlockHeight
+
 		// To increase performance, the account manager will persist the account
 		// data in an asynchronous fashion. This will allow users to withdraw
 		// money from an ephemeral account without requiring the user to wait
@@ -96,17 +101,22 @@ type (
 
 	// account contains all data related to an ephemeral account
 	account struct {
-		id      string
-		balance types.Currency
+		index        uint32
+		id           string
+		balance      types.Currency
+		blockedCalls blockedCallHeap
+
+		// the reserved balance keeps track of how much balance is contained
+		// withint the blocked call heap. We need to take this into
+		// consideration to avoid race conditions where withdrawals fulfil
+		// leaving recently unblocked withdrawals with insufficient balance.
+		reservedBalance types.Currency
 
 		// lastTxnTime is the timestamp of the last transaction that occured
 		// involving this ephemeral account. We keep track of this last
 		// transaction timestamp to allow pruning the ephemeral account after
 		// the account expiry timeout.
 		lastTxnTime int64
-
-		index        uint32
-		blockedCalls blockedCallHeap
 	}
 
 	// blockedCall represents a pending withdraw
@@ -139,11 +149,32 @@ type (
 	}
 )
 
+// Implementation of heap.Interface for blockedCallHeap.
+func (bch blockedCallHeap) Len() int           { return len(bch) }
+func (bch blockedCallHeap) Less(i, j int) bool { return bch[i].timestamp < bch[j].timestamp }
+func (bch blockedCallHeap) Swap(i, j int)      { bch[i], bch[j] = bch[j], bch[i] }
+func (bch *blockedCallHeap) Push(x interface{}) {
+	bTxn := x.(blockedCall)
+	*bch = append(*bch, &bTxn)
+}
+func (bch *blockedCallHeap) Pop() interface{} {
+	old := *bch
+	n := len(old)
+	bTxn := old[n-1]
+	*bch = old[0 : n-1]
+	return bTxn
+}
+
 // newAccountManager returns a new account manager ready for use by the host
 func (h *Host) newAccountManager() (_ *accountManager, err error) {
+	h.mu.Lock()
+	currentBlockHeight := h.blockHeight
+	h.mu.Unlock()
+
 	am := &accountManager{
 		accounts:     make(map[string]*account),
 		fingerprints: newFingerprintMap(h.blockHeight, bucketBlockRange),
+		blockHeight:  currentBlockHeight,
 		h:            h,
 	}
 
@@ -240,11 +271,18 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	return nil
 }
 
-// callWithdraw will try to spend from an account, this call will block if the
-// account balance is insufficient
+// callWithdraw will try to withdraw money from an ephemeral account. If the
+// account balance is insufficient, it will block until either a timeout
+// expires, the account receives sufficient funds or we receive a stop message
+//
+// Note that this function has intricate locking going on, beware when making
+// changes to properly release the lock before returning
 func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature) error {
+	hIS := am.h.InternalSettings()
+
 	am.mu.Lock()
 
+	// Extract for readability
 	id, amount, expiry := msg.account, msg.amount, msg.expiry
 
 	// Validat the withdrawal
@@ -261,16 +299,26 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		acc = am.newAccount(id)
 	}
 
-	// If current account balance is insufficient, we block until either the
+	// Make sure to include reserved balance when seeing if balance is
+	// sufficient, the reserved balance is money that's waiting to withdrawn by
+	// earlier blocked withdrawals.
+	requiredBalance := amount.Add(acc.reservedBalance)
+
+	// If the account balance is insufficient, we block until either the
 	// blockCallTimeout expires, the account receives sufficient deposits or we
 	// receive a message on the thread group's stop channel
-	if acc.balance.Cmp(amount) < 0 {
+	if acc.balance.Cmp(requiredBalance) < 0 {
 		tx := blockedCall{
 			unblock:   make(chan struct{}),
 			required:  amount,
 			timestamp: time.Now().Unix(),
 		}
 		acc.blockedCalls.Push(tx)
+
+		// Update reserved balance
+		acc.reservedBalance = requiredBalance
+
+		// Unlock the mutex! (important unlock as select case re-acquire it)
 		am.mu.Unlock()
 
 	BlockLoop:
@@ -279,24 +327,25 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 			case <-am.h.tg.StopChan():
 				return errors.New("ERROR: withdraw cancelled, stop received")
 			case <-tx.unblock:
+				// Re-acquire the lock)
 				am.mu.Lock()
 
-				// Requeue if balance is insufficient. We requeue using the
-				// original timestamp and do so to catch the race condition
-				// where the deposit might have already been spent
-				if acc.balance.Cmp(amount) < 0 {
-					tx := blockedCall{
-						unblock:   make(chan struct{}),
-						required:  tx.required,
-						timestamp: tx.timestamp,
-					}
-					acc.blockedCalls.Push(tx)
+				// Release reserved balance
+				acc.reservedBalance = acc.reservedBalance.Sub(amount)
+
+				// Verify current blockheight does not exceed expiry (sufficient
+				// time may have passed between now and previous check)
+				if am.blockHeight > msg.expiry {
 					am.mu.Unlock()
-					continue
+					return errWithdrawalExpired
 				}
 
 				break BlockLoop
 			case <-time.After(blockedCallTimeout):
+				// Release reserved balance
+				am.mu.Lock()
+				acc.reservedBalance = acc.reservedBalance.Sub(amount)
+				am.mu.Unlock()
 				return errBalanceInsufficient
 			}
 		}
@@ -312,8 +361,8 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	am.fingerprints.save(fp, msg.expiry)
 
 	// Track the unsaved delta by adding the amount we are spending
-	unsaved, _ := amount.Uint64()
-	atomic.AddUint64(&am.atomicUnsavedDelta, unsaved)
+	amountAsUint64, _ := amount.Uint64()
+	atomic.AddUint64(&am.atomicUnsavedDelta, amountAsUint64)
 
 	// Persist the account data and fingerprint data asynchronously
 	awaitPersist := make(chan struct{})
@@ -328,12 +377,12 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 
 		// Track the unsaved delta, decrement the unsaved delta with the amount
 		// we just persisted to disk
-		atomic.AddUint64(&am.atomicUnsavedDelta, ^uint64(unsaved-1))
+		atomic.AddUint64(&am.atomicUnsavedDelta, ^uint64(amountAsUint64-1))
 		close(awaitPersist)
 	}()
 
 	// If the unsaved delta exceeds the maximum, block until we persisted
-	maxUnsavedDelta, _ := am.h.InternalSettings().MaxUnsavedDelta.Uint64()
+	maxUnsavedDelta, _ := hIS.MaxUnsavedDelta.Uint64()
 	if atomic.LoadUint64(&am.atomicUnsavedDelta) > maxUnsavedDelta {
 		<-awaitPersist
 		am.mu.Unlock()
@@ -356,6 +405,7 @@ func (am *accountManager) callConsensusChanged() {
 	defer am.mu.Unlock()
 
 	// Rotate fingerprints both in-memory and on disk
+	am.blockHeight = currentBlockHeight
 	am.fingerprints.tryRotate(currentBlockHeight)
 	err := am.staticAccountsPersister.staticFingerprintManager.tryRotate(currentBlockHeight)
 	if err != nil {
@@ -430,13 +480,12 @@ func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.
 	}
 
 	// Verify the current blockheight does not exceed the expiry
-	currentBlockHeight := am.h.blockHeight
-	if currentBlockHeight > msg.expiry {
+	if am.blockHeight > msg.expiry {
 		return crypto.Hash{}, errWithdrawalExpired
 	}
 
 	// Verify the withdrawal is not too far into the future
-	if msg.expiry > calculateBucketThreshold(currentBlockHeight, bucketBlockRange)+bucketBlockRange {
+	if msg.expiry > calculateBucketThreshold(am.blockHeight, bucketBlockRange)+bucketBlockRange {
 		return crypto.Hash{}, errWithdrawalExtremeFuture
 	}
 
@@ -488,20 +537,4 @@ func (fm *fingerprintMap) tryRotate(currentBlockHeight types.BlockHeight) {
 
 	// Recalculate the threshold
 	fm.currentThreshold = calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
-}
-
-// Implementation of heap.Interface for blockedCallHeap.
-func (bch blockedCallHeap) Len() int           { return len(bch) }
-func (bch blockedCallHeap) Less(i, j int) bool { return bch[i].timestamp < bch[j].timestamp }
-func (bch blockedCallHeap) Swap(i, j int)      { bch[i], bch[j] = bch[j], bch[i] }
-func (bch *blockedCallHeap) Push(x interface{}) {
-	bTxn := x.(blockedCall)
-	*bch = append(*bch, &bTxn)
-}
-func (bch *blockedCallHeap) Pop() interface{} {
-	old := *bch
-	n := len(old)
-	bTxn := old[n-1]
-	*bch = old[0 : n-1]
-	return bTxn
 }
