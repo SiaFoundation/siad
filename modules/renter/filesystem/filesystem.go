@@ -442,15 +442,15 @@ func (fs *FileSystem) RenameDir(oldSiaPath, newSiaPath modules.SiaPath) error {
 
 // managedDeleteFile opens the parent folder of the file to delete and calls
 // managedDeleteFile on it.
-func (fs *FileSystem) managedDeleteFile(path string) error {
+func (fs *FileSystem) managedDeleteFile(relPath string) error {
 	// Open the folder that contains the file.
-	dirPath, fileName := filepath.Split(path)
+	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
 		dir = &fs.DirNode // file is in the root dir
 	} else {
 		var err error
-		dir, err = fs.managedOpenDir(filepath.Dir(path))
+		dir, err = fs.managedOpenDir(filepath.Dir(relPath))
 		if err != nil {
 			return errors.AddContext(err, "failed to open parent dir of file")
 		}
@@ -465,19 +465,13 @@ func (fs *FileSystem) managedDeleteFile(path string) error {
 // managedDelete on it.
 func (fs *FileSystem) managedDeleteDir(path string) error {
 	// Open the dir.
-	var dir *DirNode
-	if path == "" {
-		dir = &fs.DirNode // file is in the root dir
-	} else {
-		var err error
-		dir, err = fs.managedOpenDir(path)
-		if err != nil {
-			return errors.AddContext(err, "failed to open parent dir of file")
-		}
-		// Close the dir since we are not returning it. The open file keeps it
-		// loaded in memory.
-		defer dir.Close()
+	dir, err := fs.managedOpenDir(path)
+	if err != nil {
+		return errors.AddContext(err, "failed to open parent dir of file")
 	}
+	// Close the dir since we are not returning it. The open file keeps it
+	// loaded in memory.
+	defer dir.Close()
 	return dir.managedDelete()
 }
 
@@ -493,6 +487,8 @@ func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, offline map[strin
 }
 
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
+// offlineMap, goodForRenewMap and contractMap don't need to be provided if
+// 'recursive' is set to 'true'.
 func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
 	// Open the folder.
 	dir, err := fs.managedOpenDir(siaPath.String())
@@ -532,7 +528,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 			var fi modules.FileInfo
 			var err error
 			if cached {
-				fi, err = sf.staticCachedInfo(fs.managedSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
+				fi, err = sf.staticCachedInfo(fs.managedSiaPath(&sf.node))
 			} else {
 				fi, err = sf.managedFileInfo(fs.managedSiaPath(&sf.node), offlineMap, goodForRenewMap, contractsMap)
 			}

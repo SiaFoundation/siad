@@ -166,7 +166,7 @@ func (n *FileNode) managedRename(newName string, oldParent, newParent *DirNode) 
 // cachedFileInfo returns information on a siafile. As a performance
 // optimization, the fileInfo takes the maps returned by
 // renter.managedContractUtilityMaps for many files at once.
-func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	md := n.Metadata()
 
 	// Build the FileInfo

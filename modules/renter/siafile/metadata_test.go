@@ -33,10 +33,13 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load partialsSiaFile: %v", err)
 	}
-	//	partialsEntry := &SiaFileSetEntry{
-	//		dummyEntry(partialsSiaFile),
-	//		uint64(fastrand.Intn(math.MaxInt32)),
-	//	}
+	/*
+		 PARTIAL TODO:
+			partialsEntry := &SiaFileSetEntry{
+				dummyEntry(partialsSiaFile),
+				uint64(fastrand.Intn(math.MaxInt32)),
+			}
+	*/
 	// Create the files.
 	sf1Path := filepath.Join(dir, "sf1"+modules.SiaFileExtension)
 	sf2Path := filepath.Join(dir, "sf2"+modules.SiaFileExtension)

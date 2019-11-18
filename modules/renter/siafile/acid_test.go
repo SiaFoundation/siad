@@ -146,16 +146,19 @@ OUTER:
 				}
 			}
 			// Load file again.
-			// TODO: Uncomment once we enable partial chunks again
-			//	_, err = loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
-			//	if err != nil {
-			//		if errors.Contains(err, errDiskFault) {
-			//			numRecoveries++
-			//			continue // try again
-			//		} else {
-			//			t.Fatal(err)
-			//		}
-			//	}
+			/*
+				 PARTIAL TODO:
+						 TODO: Uncomment once we enable partial chunks again
+							_, err = loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
+							if err != nil {
+								if errors.Contains(err, errDiskFault) {
+									numRecoveries++
+									continue // try again
+								} else {
+									t.Fatal(err)
+								}
+							}
+			*/
 			sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
@@ -165,10 +168,13 @@ OUTER:
 					t.Fatal(err)
 				}
 			}
-			//	partialsEntry := &SiaFileSetEntry{
-			//		dummyEntry(partialsSiaFile),
-			//		uint64(fastrand.Intn(math.MaxInt32)),
-			//	}
+			/*
+				 PARTIAL TODO:
+						partialsEntry := &SiaFileSetEntry{
+							dummyEntry(partialsSiaFile),
+							uint64(fastrand.Intn(math.MaxInt32)),
+						}
+			*/
 			sf.deps = fdd
 			//sf = dummyEntry(siafile)
 			sf.SetPartialsSiaFile(nil)
