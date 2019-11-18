@@ -615,6 +615,9 @@ func (n *DirNode) removeFile(child *FileNode) {
 
 // managedRename renames the fNode's underlying file.
 func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) error {
+	// Iteratively remove oldParent after Rename is done.
+	defer oldParent.managedTryRemoveFromParentsIteratively()
+
 	// Lock the parents. If they are the same, only lock one.
 	oldParent.mu.Lock()
 	defer oldParent.mu.Unlock()
@@ -682,8 +685,6 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 	}
 	// Remove dir from old parent and add it to new parent.
 	oldParent.removeDir(n)
-	// Iteratively remove oldParent after Rename is done.
-	defer oldParent.managedTryRemoveFromParentsIteratively()
 	// Update parent and name.
 	n.parent = newParent
 	*n.name = newName
