@@ -47,23 +47,9 @@ func (n *FileNode) Close() {
 	}
 	// Unlock child and parent.
 	n.mu.Unlock()
+	parent.mu.Unlock()
 	if parent != nil {
-		child := parent
-		parent := parent.parent
-		child.mu.Unlock() // child is the parent we locked before
-
-		// Iteratively try to remove parents as long as children got removed.
-		for removeDir && parent != nil {
-			parent.mu.Lock()
-			child.mu.Lock()
-			removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
-			if removeDir {
-				parent.removeDir(child)
-			}
-			child.mu.Unlock()
-			child, parent = parent, parent.parent
-			child.mu.Unlock() // parent became child
-		}
+		parent.managedTryRemoveFromParentsIteratively()
 	}
 }
 

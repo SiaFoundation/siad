@@ -284,28 +284,38 @@ func (n *DirNode) Close() {
 
 	// Unlock child and parent.
 	n.mu.Unlock()
+	parent.mu.Unlock()
 	if parent != nil {
-		child := parent
-		parent := parent.parent
-		child.mu.Unlock() // child is the parent we locked before
-
-		// Iteratively try to remove from parents as long as children got
-		// removed.
-		for removeDir && parent != nil {
-			parent.mu.Lock()
-			child.mu.Lock()
-			removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
-			if removeDir {
-				parent.removeDir(child)
-			}
-			child.mu.Unlock()
-			child, parent = parent, parent.parent
-			child.mu.Unlock() // parent became child
-		}
+		parent.managedTryRemoveFromParentsIteratively()
 	}
 }
 
-// Delete recursively deletes a dNode from disk.
+// managedTryRemoveFromParentsIteratively will remove the DirNode from its
+// parent if it doesn't have any more files or directories as children. It will
+// do so iteratively until it reaches an acestor with children.
+func (n *DirNode) managedTryRemoveFromParentsIteratively() {
+	n.mu.Lock()
+	child := n
+	parent := n.parent
+	n.mu.Unlock()
+
+	// Iteratively try to remove from parents as long as children got
+	// removed.
+	removeDir := true
+	for removeDir && parent != nil {
+		parent.mu.Lock()
+		child.mu.Lock()
+		removeDir = len(child.threads)+len(child.directories)+len(child.files) == 0
+		if removeDir {
+			parent.removeDir(child)
+		}
+		child.mu.Unlock()
+		child, parent = parent, parent.parent
+		child.mu.Unlock() // parent became child
+	}
+}
+
+// managedDelete recursively deletes a dNode from disk.
 func (n *DirNode) managedDelete() error {
 	// If there is a parent lock it.
 	parent := n.managedLockWithParent()
@@ -671,8 +681,9 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		return err
 	}
 	// Remove dir from old parent and add it to new parent.
-	// TODO: iteratively remove parents like in Close
 	oldParent.removeDir(n)
+	// Iteratively remove oldParent after Rename is done.
+	defer oldParent.managedTryRemoveFromParentsIteratively()
 	// Update parent and name.
 	n.parent = newParent
 	*n.name = newName
