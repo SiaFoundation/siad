@@ -2,6 +2,8 @@ package host
 
 import (
 	"math/rand"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -289,6 +291,132 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	err = am.callWithdraw(msg1, sig2)
 	if err != errWithdrawalInvalidSignature {
 		t.Fatal("Expected withdrawal invalid signature error", err)
+	}
+}
+
+// TestAccountWithdrawalMultiple will deposit a large sum and make a lot of
+// small withdrawals
+func TestAccountWithdrawalMultiple(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a host
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// Prepare an account and fund it
+	sk, spk := prepareAccount()
+	account := spk.String()
+	err = am.callDeposit(account, types.NewCurrency64(1e3))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var errors []error = make([]error, 0)
+	for i := 0; i < 1e3; i++ {
+		diff := types.NewCurrency64(1)
+		msg, sig := prepareWithdrawal(account, diff, am.h.blockHeight+5, sk)
+
+		err = am.callWithdraw(msg, sig)
+		if err != nil {
+			t.Log(err.Error())
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		t.Fatal("One or multiple withdrawals failed:")
+		for _, e := range errors {
+			t.Log(e.Error())
+		}
+	}
+
+	balance := getAccountBalance(am, account)
+	if !balance.Equals(types.ZeroCurrency) {
+		t.Fatal("Unexpected account balance after withdrawals")
+	}
+}
+
+// TestAccountWithdrawalBlockMultiple will deposit a large sum in increments,
+// meanwhile making a lot of small withdrawals that will block but eventually
+// resolve
+func TestAccountWithdrawalBlockMultiple(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a host
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// Prepare an account
+	sk, spk := prepareAccount()
+	account := spk.String()
+
+	// Deposit money into the account in small increments
+	numDeposits := 100
+	depositAmount := types.NewCurrency64(10)
+
+	// Add a waitgroup to wait for all deposits and withdrawals that are taking
+	// concurrently taking place. Keep track of potential errors using atomics
+	var wg sync.WaitGroup
+	var atomicDepositErrs, atomicWithdrawalErrs uint64
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for d := 0; d < numDeposits; d++ {
+			time.Sleep(time.Duration(rand.Intn(5)+5) * time.Millisecond)
+			if err := am.callDeposit(account, depositAmount); err != nil {
+				atomic.AddUint64(&atomicDepositErrs, 1)
+			}
+		}
+	}()
+
+	// Run the withdrawals in 10 separate buckets (ensure that withdrawals do
+	// not exceed numDeposits * depositAmount)
+	for b := 0; b < 10; b++ {
+		wg.Add(1)
+		go func(bucket int) {
+			defer wg.Done()
+			for i := bucket * 1e2; i < (bucket+1)*1e2; i++ {
+				diff := types.NewCurrency64(1)
+				msg, sig := prepareWithdrawal(account, diff, am.h.blockHeight+5, sk)
+				if wErr := am.callWithdraw(msg, sig); wErr != nil {
+					atomic.AddUint64(&atomicWithdrawalErrs, 1)
+					t.Log(wErr)
+				}
+			}
+		}(b)
+	}
+	wg.Wait()
+
+	// Verify all deposits were successful
+	depositErrors := atomic.LoadUint64(&atomicDepositErrs)
+	if depositErrors != 0 {
+		t.Fatal("Unexpected error during deposits")
+	}
+
+	// Verify all withdrawals were successful
+	withdrawalErrors := atomic.LoadUint64(&atomicWithdrawalErrs)
+	if withdrawalErrors != 0 {
+		t.Fatal("Unexpected error during withdrawals")
+	}
+
+	// Account balance should be zero..
+	balance := getAccountBalance(am, account)
+	if !balance.Equals(types.ZeroCurrency) {
+		t.Log(balance.String())
+		t.Fatal("Unexpected account balance")
 	}
 }
 

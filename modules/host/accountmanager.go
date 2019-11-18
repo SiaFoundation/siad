@@ -42,8 +42,8 @@ var (
 	// times out
 	blockedCallTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
-		Dev:      15 * time.Second,
-		Testing:  3 * time.Second,
+		Dev:      1 * time.Minute,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
 
@@ -280,6 +280,21 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 				return errors.New("ERROR: withdraw cancelled, stop received")
 			case <-tx.unblock:
 				am.mu.Lock()
+
+				// Requeue if balance is insufficient. We requeue using the
+				// original timestamp and do so to catch the race condition
+				// where the deposit might have already been spent
+				if acc.balance.Cmp(amount) < 0 {
+					tx := blockedCall{
+						unblock:   make(chan struct{}),
+						required:  tx.required,
+						timestamp: tx.timestamp,
+					}
+					acc.blockedCalls.Push(tx)
+					am.mu.Unlock()
+					continue
+				}
+
 				break BlockLoop
 			case <-time.After(blockedCallTimeout):
 				return errBalanceInsufficient
