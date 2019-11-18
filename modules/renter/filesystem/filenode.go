@@ -149,8 +149,9 @@ func (n *FileNode) managedRename(newName string, oldParent, newParent *DirNode) 
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	// Check that newParent doesn't have a file with that name already.
-	if _, exists := newParent.files[newName]; exists {
+	// Check that newParent doesn't have a file or folder with that name
+	// already.
+	if exists := newParent.childExists(newName); exists {
 		return ErrExists
 	}
 	newPath := filepath.Join(newParent.absPath(), newName) + modules.SiaFileExtension

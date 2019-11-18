@@ -197,9 +197,9 @@ func (n *DirNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.Fi
 	if _, err := os.Stat(filepath.Join(path)); !os.IsNotExist(err) {
 		return nil, ErrExists
 	}
-	// Check if the file exists in memory.
+	// Check if the file or folder exists already.
 	key := strings.TrimSuffix(fileName, modules.SiaFileExtension)
-	if _, exists := n.files[key]; exists {
+	if exists := n.childExists(key); exists {
 		return nil, ErrExists
 	}
 	// Otherwise create the file.
@@ -442,6 +442,22 @@ func (n *DirNode) childDirs() []*DirNode {
 	return dirs
 }
 
+// managedExists returns 'true' if a file or folder with the given name already
+// exists within the dir.
+func (n *DirNode) childExists(name string) bool {
+	// Check the ones in memory first.
+	if _, exists := n.files[name]; exists {
+		return true
+	}
+	if _, exists := n.directories[name]; exists {
+		return true
+	}
+	// Check that no dir or file exists on disk.
+	_, errFile := os.Stat(filepath.Join(n.absPath(), name))
+	_, errDir := os.Stat(filepath.Join(n.absPath(), name+modules.SiaFileExtension))
+	return !os.IsNotExist(errFile) || !os.IsNotExist(errDir)
+}
+
 // childFiles is a convenience method to return the files field of a DNode as a
 // slice.
 func (n *DirNode) childFiles() []*FileNode {
@@ -456,16 +472,8 @@ func (n *DirNode) childFiles() []*FileNode {
 func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	// Make sure we don't have a copy of that file in memory already.
-	if _, exists := n.files[fileName]; exists {
-		return ErrExists
-	}
-	// Make sure we don't have a folder with that name in memory already.
-	if _, exists := n.directories[fileName]; exists {
-		return ErrExists
-	}
-	// Make sure that no directory of that name exists on disk.
-	if _, err := os.Stat(filepath.Join(n.absPath(), fileName)); !os.IsNotExist(err) {
+	// Make sure we don't have a file or folder with that name already.
+	if exists := n.childExists(fileName); exists {
 		return ErrExists
 	}
 	_, err := siafile.New(filepath.Join(n.absPath(), fileName+modules.SiaFileExtension), source, n.staticWal, ec, mk, fileSize, fileMode, nil, disablePartialUpload)
@@ -573,9 +581,7 @@ func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
 	return subNode.managedOpenDir(filepath.Join(pathList...))
 }
 
-// managedRemoveDir removes a dir from a dNode. If as a result the dNode ends up
-// without children and if the threads map of the dNode is empty, the dNode will
-// remove itself from its parent.
+// managedRemoveDir removes a dir from a dNode.
 // NOTE: child.mu needs to be locked
 func (n *DirNode) removeDir(child *DirNode) {
 	// Remove the child node.
@@ -586,9 +592,7 @@ func (n *DirNode) removeDir(child *DirNode) {
 	delete(n.directories, *child.name)
 }
 
-// removeFile removes a child from a dNode. If as a result the dNode
-// ends up without children and if the threads map of the dNode is empty, the
-// dNode will remove itself from its parent.
+// removeFile removes a child from a dNode.
 // NOTE: child.mu needs to be locked
 func (n *DirNode) removeFile(child *FileNode) {
 	// Remove the child node.
@@ -602,17 +606,14 @@ func (n *DirNode) removeFile(child *FileNode) {
 // managedRename renames the fNode's underlying file.
 func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) error {
 	// Lock the parents. If they are the same, only lock one.
-	if oldParent.staticUID == newParent.staticUID {
-		oldParent.mu.Lock()
-		defer oldParent.mu.Unlock()
-	} else {
-		oldParent.mu.Lock()
-		defer oldParent.mu.Unlock()
+	oldParent.mu.Lock()
+	defer oldParent.mu.Unlock()
+	if oldParent.staticUID != newParent.staticUID {
 		newParent.mu.Lock()
 		defer newParent.mu.Unlock()
 	}
-	// Check that newParent doesn't have a dir with that name already.
-	if _, exists := newParent.files[newName]; exists {
+	// Check that newParent doesn't have a dir or file with that name already.
+	if exists := newParent.childExists(newName); exists {
 		return ErrExists
 	}
 	n.mu.Lock()
