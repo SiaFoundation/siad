@@ -12,7 +12,7 @@ import (
 const (
 	// persistVersion defines the Sia version that the persistence was
 	// last updated
-	persistVersion = "1.4.0"
+	persistVersion = "1.4.2"
 )
 
 const (

@@ -420,6 +420,41 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 }
 
 // convertPersistVersionFrom133To140 upgrades a legacy persist file to the next
+// version, converting the old filesystem to the new one.
+func (r *Renter) convertPersistVersionFrom140To142(path string) error {
+	metadata := persist.Metadata{
+		Header:  settingsMetadata.Header,
+		Version: persistVersion133,
+	}
+	var p persistence
+	err := persist.LoadJSON(metadata, &p, path)
+	if err != nil {
+		return errors.AddContext(err, "could not load json")
+	}
+	// Rename siafiles folder to fs/home/user and snapshots to fs/snapshots.
+	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
+	newHomePath := modules.HomeSiaPath().SiaDirSysPath(fsRoot)
+	newSiaFilesPath := modules.UserSiaPath().SiaDirSysPath(fsRoot)
+	newSnapshotsPath := modules.SnapshotsSiaPath().SiaDirSysPath(fsRoot)
+	if err := os.MkdirAll(newHomePath, 0700); err != nil {
+		return errors.AddContext(err, "failed to create new home dir")
+	}
+	if err := os.Rename(filepath.Join(r.persistDir, "siafiles"), newSiaFilesPath); err != nil {
+		return errors.AddContext(err, "failed to rename legacy siafiles folder")
+	}
+	if err := os.Rename(filepath.Join(r.persistDir, "snapshots"), newSnapshotsPath); err != nil {
+		return errors.AddContext(err, "failed to rename legacy snapshots dir")
+	}
+	// Save metadata with updated version
+	metadata.Version = persistVersion142
+	err = persist.SaveJSON(metadata, p, path)
+	if err != nil {
+		return errors.AddContext(err, "could not save json")
+	}
+	return nil
+}
+
+// convertPersistVersionFrom133To140 upgrades a legacy persist file to the next
 // version, converting legacy SiaFiles in the process.
 func (r *Renter) convertPersistVersionFrom133To140(path string, oldContracts []modules.RenterContract) error {
 	metadata := persist.Metadata{
