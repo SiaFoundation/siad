@@ -165,6 +165,11 @@ func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, siaPath modules.Sia
 	return dir.managedNewSiaFileFromReader(siaPath.Name(), rs)
 }
 
+// CachedFileInfo returns the cached File Information of the siafile
+func (fs *FileSystem) CachedFileInfo(siaPath modules.SiaPath) (modules.FileInfo, error) {
+	return fs.managedFileInfo(siaPath, true, nil, nil, nil)
+}
+
 // DeleteDir deletes a dir from the filesystem. The dir will be marked as
 // 'deleted' which should cause all remaining instances of the dir to be close
 // shortly. Only when all instances of the dir are closed it will be removed
@@ -202,7 +207,7 @@ func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 
 // FileInfo returns the File Information of the siafile
 func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
-	return fs.managedFileInfo(siaPath, offline, goodForRenew, contracts)
+	return fs.managedFileInfo(siaPath, false, offline, goodForRenew, contracts)
 }
 
 // List lists the files and directories within a SiaDir.
@@ -476,13 +481,16 @@ func (fs *FileSystem) managedDeleteDir(path string) error {
 }
 
 // managedFileInfo returns the FileInfo of the siafile.
-func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, cached bool, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Open the file.
 	file, err := fs.managedOpenFile(siaPath.String())
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
 	defer file.Close()
+	if cached {
+		return file.staticCachedInfo(siaPath)
+	}
 	return file.managedFileInfo(siaPath, offline, goodForRenew, contracts)
 }
 
@@ -497,7 +505,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	}
 	defer dir.Close()
 	// Prepare a pool of workers.
-	numThreads := 20
+	numThreads := 40
 	dirLoadChan := make(chan *DirNode, numThreads)
 	fileLoadChan := make(chan *FileNode, numThreads)
 	var fisMu, disMu sync.Mutex
@@ -547,7 +555,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	}
 	// Spin the workers up.
 	var wg sync.WaitGroup
-	for i := 0; i < numThreads; i++ {
+	for i := 0; i < numThreads/2; i++ {
 		wg.Add(1)
 		go func() {
 			dirWorker()
@@ -586,15 +594,15 @@ func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath) error {
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) managedOpenFile(path string) (*FileNode, error) {
+func (fs *FileSystem) managedOpenFile(relPath string) (*FileNode, error) {
 	// Open the folder that contains the file.
-	dirPath, fileName := filepath.Split(path)
+	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
 		dir = &fs.DirNode // file is in the root dir
 	} else {
 		var err error
-		dir, err = fs.managedOpenDir(filepath.Dir(path))
+		dir, err = fs.managedOpenDir(filepath.Dir(relPath))
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to open parent dir of file")
 		}
@@ -607,15 +615,15 @@ func (fs *FileSystem) managedOpenFile(path string) (*FileNode, error) {
 
 // managedNewSiaFile opens the parent folder of the new SiaFile and calls
 // managedNewSiaFile on it.
-func (fs *FileSystem) managedNewSiaFile(path string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
 	// Open the folder that contains the file.
-	dirPath, fileName := filepath.Split(path)
+	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
 	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
 		dir = &fs.DirNode // file is in the root dir
 	} else {
 		var err error
-		dir, err = fs.managedOpenDir(filepath.Dir(path))
+		dir, err = fs.managedOpenDir(filepath.Dir(relPath))
 		if err != nil {
 			return errors.AddContext(err, "failed to open parent dir of new file")
 		}
