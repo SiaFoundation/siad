@@ -300,8 +300,8 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	}
 
 	// Make sure to include reserved balance when seeing if balance is
-	// sufficient, the reserved balance is money that's waiting to withdrawn by
-	// earlier blocked withdrawals.
+	// sufficient, the reserved balance is money that's waiting to be withdrawn
+	// by earlier blocked calls. This is important to prevent race conditions.
 	requiredBalance := amount.Add(acc.reservedBalance)
 
 	// If the account balance is insufficient, we block until either the
