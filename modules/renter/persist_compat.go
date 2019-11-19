@@ -424,7 +424,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 func (r *Renter) convertPersistVersionFrom140To142(path string) error {
 	metadata := persist.Metadata{
 		Header:  settingsMetadata.Header,
-		Version: persistVersion133,
+		Version: persistVersion140,
 	}
 	var p persistence
 	err := persist.LoadJSON(metadata, &p, path)
@@ -439,10 +439,10 @@ func (r *Renter) convertPersistVersionFrom140To142(path string) error {
 	if err := os.MkdirAll(newHomePath, 0700); err != nil {
 		return errors.AddContext(err, "failed to create new home dir")
 	}
-	if err := os.Rename(filepath.Join(r.persistDir, "siafiles"), newSiaFilesPath); err != nil {
+	if err := os.Rename(filepath.Join(r.persistDir, "siafiles"), newSiaFilesPath); err != nil && !os.IsNotExist(err) {
 		return errors.AddContext(err, "failed to rename legacy siafiles folder")
 	}
-	if err := os.Rename(filepath.Join(r.persistDir, "snapshots"), newSnapshotsPath); err != nil {
+	if err := os.Rename(filepath.Join(r.persistDir, "snapshots"), newSnapshotsPath); err != nil && !os.IsNotExist(err) {
 		return errors.AddContext(err, "failed to rename legacy snapshots dir")
 	}
 	// Save metadata with updated version

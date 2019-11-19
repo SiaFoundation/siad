@@ -3073,9 +3073,9 @@ func TestUploadAfterDelete(t *testing.T) {
 	}
 }
 
-// TestSiafileCompatCode checks that legacy renters can upgrade to the latest
+// TestSiafileCompatCodeV137 checks that legacy renters can upgrade to the v137
 // siafile format.
-func TestSiafileCompatCode(t *testing.T) {
+func TestSiafileCompatCodeV137(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -3204,6 +3204,74 @@ func TestSiafileCompatCode(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSiafileCompatCodeV140 checks that legacy renters can upgrade to the v140
+// siafile format.
+func TestSiafileCompatCodeV140(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get test directory
+	testDir := renterTestDir(t.Name())
+
+	// Copy the legacy settings file to the test directory.
+	renterDir := filepath.Join(testDir, "renter")
+	source := "../../compatibility/renter_v140.json"
+	destination := filepath.Join(renterDir, "renter.json")
+	if err := copyFile(source, destination); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare a legacy snapshots and siafiles folder which should be moved by
+	// the upgrade code.
+	siafilesDir := filepath.Join(renterDir, "siafiles")
+	snapshotsDir := filepath.Join(renterDir, "snapshots")
+	if err := os.MkdirAll(siafilesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(snapshotsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Add a dummy snapshot and siafile to their corresponding folder.
+	dummySiafile := "foo.sia"
+	dummySnapshot := "bar.sia"
+	var f *os.File
+	var err error
+	if f, err = os.Create(filepath.Join(siafilesDir, dummySiafile)); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if f, err = os.Create(filepath.Join(snapshotsDir, dummySnapshot)); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	// Create new node with legacy sia file.
+	r, err := siatest.NewNode(node.AllModules(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the folders don't exist anymore.
+	if _, err := os.Stat(siafilesDir); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	if _, err := os.Stat(snapshotsDir); !os.IsNotExist(err) {
+		t.Fatal("Error should be ErrNotExist but was", err)
+	}
+	// Make sure the files are where we would expect them.
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, dummySiafile)
+	if _, err := os.Stat(expectedLocation); err != nil {
+		t.Fatal(err)
+	}
+	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupRoot, dummySnapshot)
+	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
 }
