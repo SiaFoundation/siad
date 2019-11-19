@@ -11,7 +11,7 @@ import (
 // directory again.
 func daemonTestDir(testName string) string {
 	path := siatest.TestDir("daemon", testName)
-	if err := os.MkdirAll(path, 0750); err != nil {
+	if err := os.MkdirAll(path, siatest.DefaultDiskPermissions); err != nil {
 		panic(err)
 	}
 	return path

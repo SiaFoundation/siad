@@ -11,7 +11,7 @@ import (
 // delete the directory again.
 func tpoolTestDir(testName string) string {
 	path := siatest.TestDir("transactionpool", testName)
-	if err := os.MkdirAll(path, 0750); err != nil {
+	if err := os.MkdirAll(path, siatest.DefaultDiskPermissions); err != nil {
 		panic(err)
 	}
 	return path
