@@ -37,7 +37,7 @@ type programState struct {
 // final instruction is executed, the MDM will create an updated revision of the
 // FileContract which has to be signed by the renter and the host.
 type Program struct {
-	// The contract specifies which contract is being modified by the MDM. If
+	// The contract ID specifies which contract is being modified by the MDM. If
 	// all the instructions in the program are readonly instructions, the
 	// program will execute in readonly mode which means that it will not lock
 	// the contract before executing the instructions. This means that the
