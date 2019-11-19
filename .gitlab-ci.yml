@@ -135,4 +135,3 @@ deploy:
       - $CI_PROJECT_DIR/artifacts
   script: 
     - ./deploy.sh "$NIGHTLY_SIGNING_KEY"
-    - cp -R ./artifacts $CI_PROJECT_DIR/artifacts
