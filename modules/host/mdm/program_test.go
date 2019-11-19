@@ -13,7 +13,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
 	var r io.Reader
-	p := mdm.NewProgram(newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
+	p := mdm.NewProgram(InitCost(0), newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
 	// Execute the program.
 	outputs, err := p.Execute(context.Background())
 	if err != nil {
