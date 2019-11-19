@@ -33,7 +33,7 @@ type programState struct {
 }
 
 // Program is a collection of instructions. Within a program, each instruction
-// will potentially modify the size and merkle root of a file contract. Afte the
+// will potentially modify the size and merkle root of a file contract. After the
 // final instruction is executed, the MDM will create an updated revision of the
 // FileContract which has to be signed by the renter and the host.
 type Program struct {
