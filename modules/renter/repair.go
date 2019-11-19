@@ -329,7 +329,6 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	aggregateNumStuckChunks := metadata.AggregateNumStuckChunks
 	numStuckChunks := metadata.NumStuckChunks
 	numFiles := metadata.NumFiles
-	r.repairLog.Printf("Attempting to pull random stuck file from %v, AggregateNumStuckChunks: %v, NumStuckChunks: %v", dirSiaPath.String(), aggregateNumStuckChunks, numStuckChunks)
 	if aggregateNumStuckChunks == 0 || numStuckChunks == 0 || numFiles == 0 {
 		// If the number of stuck chunks or number of files is zero then this
 		// directory should not have been used to find a stuck file. Call bubble
