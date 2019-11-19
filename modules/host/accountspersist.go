@@ -147,13 +147,13 @@ func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fin
 }
 
 // callSaveAccount writes away the data for a single ephemeral account to disk
-func (ap *accountsPersister) callSaveAccount(a *account) error {
-	ap.managedLockIndex(a.index)
-	defer ap.managedUnlockIndex(a.index)
+func (ap *accountsPersister) callSaveAccount(index uint32, data *accountData) error {
+	ap.managedLockIndex(index)
+	defer ap.managedUnlockIndex(index)
 
 	accBytes := make([]byte, accountSize)
-	copy(accBytes, encoding.Marshal(a.transformToAccountData()))
-	_, err := ap.accounts.WriteAt(accBytes, headerOffset+int64(uint64(a.index)*accountSize))
+	copy(accBytes, encoding.Marshal(data))
+	_, err := ap.accounts.WriteAt(accBytes, headerOffset+int64(uint64(index)*accountSize))
 	if err != nil {
 		return err
 	}
@@ -342,10 +342,10 @@ func (ap *accountsPersister) close() error {
 
 // transformToAccountData transforms the account into an accountData struct
 // which will contain all data we persist to disk
-func (a *account) transformToAccountData() accountData {
+func (a *account) transformToAccountData() *accountData {
 	spk := types.SiaPublicKey{}
 	spk.LoadString(a.id)
-	return accountData{
+	return &accountData{
 		Id:          spk,
 		Balance:     a.balance,
 		lastTxnTime: a.lastTxnTime,

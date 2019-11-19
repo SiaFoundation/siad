@@ -2,7 +2,6 @@ package host
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -21,6 +20,10 @@ var (
 	errWithdrawalExpired          = errors.New("ephemeral account withdrawal message expired")
 	errWithdrawalExtremeFuture    = errors.New("ephemeral account withdrawal message expires too far into the future")
 	errWithdrawalInvalidSignature = errors.New("ephemeral account withdrawal message signature is invalid")
+	errWithdrawalCancelled        = errors.New("ephemeral account withdrawal cancelled due to a shutdown")
+
+	// Only used for testing purposes
+	errMaxUnsavedDeltaReached = errors.New("maxUnsavedDeltaReached")
 
 	// accountExpiryTimeout defines the maximum amount of time an account can be
 	// inactive before it gets pruned
@@ -68,10 +71,11 @@ type (
 		nonce   uint64
 	}
 
-	// accountManager is a struct that holds all ephemeral accounts in memory,
-	// along with a lookup table of all fingerprints it has already processed.
-	// It has an accounts persister that will persist all ephemeral account data
-	// to disk
+	// The accountManager manages all ephemeral accounts and keeps track of the
+	// fingerprints for withdrawals that have been processed. The account
+	// manager is hooked into the consensus changes and keeps track of the
+	// current blockheight in order to prune the expired fingerprints. It has an
+	// accounts persister that will persist all ephemeral account data to disk
 	accountManager struct {
 		accounts                map[string]*account
 		fingerprints            *fingerprintMap
@@ -93,7 +97,7 @@ type (
 		// withdraw that money twice. To limit this risk to the host, he can set
 		// a maxunsaved delta, when that amount is reached all withdrawals lock
 		// until the accounts have successfully been persisted.
-		atomicUnsavedDelta uint64
+		unsavedDelta types.Currency
 
 		mu sync.Mutex
 		h  *Host
@@ -135,12 +139,9 @@ type (
 	// fingerprints. The current fingerprints are the ones which expire before
 	// the current threshold. Fingerprints with a blockheight that is higher
 	// than this threshold are kept in the next bucket. By keeping these in two
-	// separate buckets, we allow pruning the fingerprints which are no longer
-	// valid, due to the current blockheight that has caught up with their
-	// expiry, to be pruned in constant time. When the blockheight exceeds the
-	// current threshold, the buckets get swapped and the next bucket gets
-	// renewed. Effectively pruning the entire 'current' bucket in constant
-	// time.
+	// separate buckets, we allow pruning the fingerprints which expired in
+	// constant time. When the current blockheight catches up to the current
+	// threshold, the current bucket is thrown away and is replaced by the next.
 	fingerprintMap struct {
 		bucketBlockRange int
 		currentThreshold types.BlockHeight
@@ -166,11 +167,7 @@ func (bch *blockedCallHeap) Pop() interface{} {
 }
 
 // newAccountManager returns a new account manager ready for use by the host
-func (h *Host) newAccountManager() (_ *accountManager, err error) {
-	h.mu.Lock()
-	currentBlockHeight := h.blockHeight
-	h.mu.Unlock()
-
+func (h *Host) newAccountManager(currentBlockHeight types.BlockHeight) (_ *accountManager, err error) {
 	am := &accountManager{
 		accounts:     make(map[string]*account),
 		fingerprints: newFingerprintMap(h.blockHeight, bucketBlockRange),
@@ -262,7 +259,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	}
 
 	// Persist the account
-	err := am.staticAccountsPersister.callSaveAccount(acc)
+	err := am.staticAccountsPersister.callSaveAccount(acc.index, acc.transformToAccountData())
 	if err != nil {
 		am.h.log.Println("ERROR: could not save account:", id, err)
 		return errAccountPersist
@@ -274,23 +271,22 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 // callWithdraw will try to withdraw money from an ephemeral account. If the
 // account balance is insufficient, it will block until either a timeout
 // expires, the account receives sufficient funds or we receive a stop message.
+//
 // The caller can specify a priority, which will define the order in which the
 // withdrawals get processed in the event they are blocked.
 //
-// Note that this function has intricate locking going on, beware when making
-// changes to properly release the lock before returning
+// Note that this function has very intricate locking, be extra cautious when
+// making changes
 func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) error {
+	id, amount, expiry := msg.account, msg.amount, msg.expiry
+
+	// Make sure to fetch the host's internal settings outside of the lock
 	hIS := am.h.InternalSettings()
 
 	am.mu.Lock()
 
-	// Extract for readability
-	id, amount, expiry := msg.account, msg.amount, msg.expiry
-
 	// Validat the withdrawal
-	fp, err := am.validateWithdrawal(msg, sig)
-	if err != nil {
-		am.h.log.Printf("ERROR: invalid withdrawal %v", err)
+	if err := am.validateWithdrawal(msg, sig); err != nil {
 		am.mu.Unlock()
 		return err
 	}
@@ -301,14 +297,10 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		acc = am.newAccount(id)
 	}
 
-	// Make sure to include reserved balance when seeing if balance is
-	// sufficient, the reserved balance is money that's waiting to be withdrawn
-	// by earlier blocked calls. This is important to prevent race conditions.
+	// If the account balance is less than the required balance (which takes
+	// into account the already reserved balance, which is the sum of all
+	// pending withdrawals in the heap) we block this withdrawal
 	requiredBalance := amount.Add(acc.reservedBalance)
-
-	// If the account balance is insufficient, we block until either the
-	// blockCallTimeout expires, the account receives sufficient deposits or we
-	// receive a message on the thread group's stop channel
 	if acc.balance.Cmp(requiredBalance) < 0 {
 		tx := blockedCall{
 			unblock:  make(chan struct{}),
@@ -316,18 +308,17 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 			priority: priority,
 		}
 		acc.blockedCalls.Push(tx)
-
-		// Update reserved balance
 		acc.reservedBalance = requiredBalance
 
-		// Unlock the mutex! (important unlock as select case re-acquire it)
+		// Unlock the mutex! (important unlock as we re-acquire it when we get
+		// unblocked)
 		am.mu.Unlock()
 
 	BlockLoop:
 		for {
 			select {
 			case <-am.h.tg.StopChan():
-				return errors.New("ERROR: withdraw cancelled, stop received")
+				return errWithdrawalCancelled
 			case <-tx.unblock:
 				// Re-acquire the lock)
 				am.mu.Lock()
@@ -337,57 +328,61 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 
 				// Verify current blockheight does not exceed expiry (sufficient
 				// time may have passed between now and previous check)
-				if am.blockHeight > msg.expiry {
+				if am.blockHeight > expiry {
 					am.mu.Unlock()
 					return errWithdrawalExpired
 				}
 
 				break BlockLoop
 			case <-time.After(blockedCallTimeout):
-				// Release reserved balance
-				am.mu.Lock()
-				acc.reservedBalance = acc.reservedBalance.Sub(amount)
-				am.mu.Unlock()
+				// Release reserved balance in a separate go routine
+				if err := am.h.tg.Add(); err == nil {
+					go func() {
+						defer am.h.tg.Done()
+						am.mu.Lock()
+						acc.reservedBalance = acc.reservedBalance.Sub(amount)
+						am.mu.Unlock()
+					}()
+				}
 				return errBalanceInsufficient
 			}
 		}
 	}
 
-	// Sanity check to avoid the negative currency panic possible by subtracting
+	// Sanity check to avoid a negative currency
 	if acc.balance.Cmp(amount) < 0 {
+		// Log it to ensure it is noticable from reading the logs, because we
+		// keep track of reservered balance this should never happen
+		am.h.log.Println("WARNING: unexpected insufficient balance")
 		am.mu.Unlock()
 		return errBalanceInsufficient
 	}
+
+	// Update the account details
 	acc.balance = acc.balance.Sub(amount)
 	acc.lastTxnTime = time.Now().Unix()
-	am.fingerprints.save(fp, msg.expiry)
 
-	// Track the unsaved delta by adding the amount we are spending
-	amountAsUint64, _ := amount.Uint64()
-	atomic.AddUint64(&am.atomicUnsavedDelta, amountAsUint64)
+	// Track the fingerprint
+	fingerprint := crypto.HashAll(*msg)
+	am.fingerprints.save(fingerprint, expiry)
 
 	// Persist the account data and fingerprint data asynchronously
+	am.unsavedDelta = am.unsavedDelta.Add(amount)
+	maxUnsavedDeltaReached := hIS.MaxUnsavedDelta.Cmp(am.unsavedDelta) < 0
 	awaitPersist := make(chan struct{})
-	go func() {
-		if err := am.staticAccountsPersister.callSaveAccount(acc); err != nil {
-			am.h.log.Println("ERROR: could not save account", id, err)
-		}
+	go am.threadedPersist(acc.index, acc.transformToAccountData(), fingerprint, expiry, amount, awaitPersist, !maxUnsavedDeltaReached)
 
-		if err := am.staticAccountsPersister.callSaveFingerprint(fp, expiry); err != nil {
-			am.h.log.Println("ERROR: could not save fingerprint", fp, err)
-		}
-
-		// Track the unsaved delta, decrement the unsaved delta with the amount
-		// we just persisted to disk
-		atomic.AddUint64(&am.atomicUnsavedDelta, ^uint64(amountAsUint64-1))
-		close(awaitPersist)
-	}()
-
-	// If the unsaved delta exceeds the maximum, block until we persisted
-	maxUnsavedDelta, _ := hIS.MaxUnsavedDelta.Uint64()
-	if atomic.LoadUint64(&am.atomicUnsavedDelta) > maxUnsavedDelta {
+	// Wait until the persist was successful if we've reached the maximum amount
+	// of  unsaved delta
+	if maxUnsavedDeltaReached {
 		<-awaitPersist
 		am.mu.Unlock()
+
+		// Disrupt will exit with an error when maxUnsavedDelta was reached
+		if am.h.dependencies.Disrupt("errMaxUnsavedDeltaReached") {
+			return errMaxUnsavedDeltaReached
+		}
+
 		return nil
 	}
 
@@ -469,26 +464,58 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 	}
 }
 
+// threadedPersist will asynchronously persist the account data to disk
+func (am *accountManager) threadedPersist(accountIndex uint32, accountData *accountData, fingerprint crypto.Hash, expiry types.BlockHeight, amount types.Currency, blockChan chan struct{}, managed bool) {
+	if err := am.h.tg.Add(); err != nil {
+		return
+	}
+	defer am.h.tg.Done()
+	defer close(blockChan)
+
+	// Disrupt will add latency to the persist by sleeping for the predefined
+	// duration, this causes unsaved delta to build up
+	_ = am.h.dependencies.Disrupt("errMaxUnsavedDeltaReached")
+
+	// Persist account data
+	if err := am.staticAccountsPersister.callSaveAccount(accountIndex, accountData); err != nil {
+		am.h.log.Println("ERROR: could not save account:", accountData.Id, err)
+	}
+
+	// Persist fingerprint data
+	if err := am.staticAccountsPersister.callSaveFingerprint(fingerprint, expiry); err != nil {
+		am.h.log.Println("ERROR: could not save fingerprint:", err)
+	}
+
+	// Update the unsaved delta
+	if managed {
+		am.mu.Lock()
+		am.unsavedDelta = am.unsavedDelta.Sub(amount)
+		am.mu.Unlock()
+	} else {
+		am.unsavedDelta = am.unsavedDelta.Sub(amount)
+	}
+}
+
 // validateWithdrawal returns an error if the withdrawal has already been
 // processed or if the withdrawal message is either expired or too far into the
 // future. If the signature is valid, it returns the fingerprint which is the
 // hash of the withdrawal message
-func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.Signature) (crypto.Hash, error) {
+func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.Signature) error {
+	fp := crypto.HashAll(*msg)
 
 	// Verify we have not processed this withdrawal before
-	fp := crypto.HashAll(*msg)
 	if exists := am.fingerprints.has(fp); exists {
-		return crypto.Hash{}, errWithdrawalSpent
+		return errWithdrawalSpent
 	}
 
 	// Verify the current blockheight does not exceed the expiry
 	if am.blockHeight > msg.expiry {
-		return crypto.Hash{}, errWithdrawalExpired
+		return errWithdrawalExpired
 	}
 
 	// Verify the withdrawal is not too far into the future
 	if msg.expiry > calculateBucketThreshold(am.blockHeight, bucketBlockRange)+bucketBlockRange {
-		return crypto.Hash{}, errWithdrawalExtremeFuture
+		return errWithdrawalExtremeFuture
 	}
 
 	// Verify the signature
@@ -498,10 +525,10 @@ func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.
 	copy(pk[:], spk.Key)
 	err := crypto.VerifyHash(fp, pk, sig)
 	if err != nil {
-		return crypto.Hash{}, errWithdrawalInvalidSignature
+		return errWithdrawalInvalidSignature
 	}
 
-	return fp, nil
+	return nil
 }
 
 // save will add the given fingerprint to the appropriate bucket

@@ -1,6 +1,8 @@
 package dependencies
 
 import (
+	"time"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -13,10 +15,7 @@ type HostRejectAllSessionLocks struct {
 // Disrupt will interpret a signal from the host and tell the host to pretend it
 // has no record of the contract.
 func (d *HostRejectAllSessionLocks) Disrupt(s string) bool {
-	if s == "loopLockNoRecordOfThatContract" {
-		return true
-	}
-	return false
+	return s == "loopLockNoRecordOfThatContract"
 }
 
 // HostExpireEphemeralAccounts is a dependency injection for the host that will
@@ -29,4 +28,11 @@ type HostExpireEphemeralAccounts struct {
 // expire all ephemeral accounts on the next prune cycle
 func (d *HostExpireEphemeralAccounts) Disrupt(s string) bool {
 	return s == "expireEphemeralAccounts"
+}
+
+// NewHostMaxUnsavedDeltaReached is a dependency injection for the host that
+// will ensure the ephemeral account max saved delta is reached by persisting
+// with a set latency.
+func NewHostMaxUnsavedDeltaReached(duration time.Duration) modules.Dependencies {
+	return newDependencyAddLatency("errMaxUnsavedDeltaReached", duration)
 }

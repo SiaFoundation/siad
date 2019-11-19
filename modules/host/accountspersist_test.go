@@ -127,7 +127,7 @@ func TestFingerprintsReload(t *testing.T) {
 	}
 }
 
-// balanceOf will return the balance for given account
+// getAccountBalance will return the balance for given account
 func getAccountBalance(am *accountManager, id string) types.Currency {
 	am.mu.Lock()
 	defer am.mu.Unlock()

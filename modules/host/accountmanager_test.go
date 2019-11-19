@@ -420,6 +420,81 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	}
 }
 
+// TestAccountMaxUnsavedDelta tests the behaviour when the amount of unsaved
+// delta exceeds the maxUnsavedDelta. The account manager should wait until the
+// asynchronous persist successfully completed before releasing the lock to
+// accept more withdrawals.
+func TestAccountMaxUnsavedDelta(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a host that persists the accounts data to disk with a certain
+	// latency, this will ensure that we can reach the maxunsaveddelta and the
+	// host will effectively block until it drops below the maximum
+	deps := dependencies.NewHostMaxUnsavedDeltaReached(200 * time.Millisecond)
+	ht, err := blankMockHostTester(deps, t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// Use the maxEphemeralAccountBalance in combination with maxUnsavedDelta to
+	// figure a good maxAttempts, changing these host settings would also affect
+	// what 'd be a good max attempts
+	hIS := ht.host.InternalSettings()
+	numAccountsUint, _ := hIS.MaxUnsavedDelta.Div(hIS.MaxEphemeralAccountBalance).Uint64()
+	maxAttempts := int(numAccountsUint) * 5
+
+	// Keep track of how many times the max unsaved delta was reached. We assume
+	// that it works properly when this number exceeds 1, because this means
+	// that it was also successful in decreasing the unsaved delta when the
+	// persist was successful
+	var atomicUnsavedDeltaReached uint64
+
+	var wg sync.WaitGroup
+	for maxAttempts > 0 {
+		wg.Add(1)
+
+		// Make an account and deposit the max balance into it
+		sk, spk := prepareAccount()
+		account := spk.String()
+		if err = am.callDeposit(account, hIS.MaxEphemeralAccountBalance); err != nil {
+			t.Fatal(err)
+		}
+
+		// Prepare a withdrawal
+		msg, sig := prepareWithdrawal(account, hIS.MaxEphemeralAccountBalance, am.h.blockHeight, sk)
+
+		go func() {
+			defer wg.Done()
+			if wErr := callWithdraw(am, msg, sig); wErr == errMaxUnsavedDeltaReached {
+				atomic.AddUint64(&atomicUnsavedDeltaReached, 1)
+			}
+		}()
+
+		// Escape early
+		unsavedDeltaReached := atomic.LoadUint64(&atomicUnsavedDeltaReached) > 1
+		if unsavedDeltaReached {
+			break
+		}
+
+		maxAttempts--
+	}
+
+	wg.Wait()
+	if err := ht.host.tg.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	unsavedDeltaReached := atomic.LoadUint64(&atomicUnsavedDeltaReached) > 1
+	if !unsavedDeltaReached {
+		t.Fatal("Unsaved delta not reached")
+	}
+
+}
+
 // callWithdraw will perform the withdrawal using a timestamp for the priority
 func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signature) error {
 	return am.callWithdraw(msg, sig, time.Now().UnixNano())

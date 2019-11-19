@@ -277,7 +277,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	})
 
 	// Add the account manager subsystem
-	h.staticAccountManager, err = h.newAccountManager()
+	h.staticAccountManager, err = h.newAccountManager(h.blockHeight)
 	if err != nil {
 		return nil, err
 	}
