@@ -299,6 +299,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
+		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
 	}
 
 	// Run tests
@@ -426,7 +427,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 		// Download files to build download history
 		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
-			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false)
+			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false)
 			if err != nil {
 				t.Fatal("Could not Download file:", err)
 			}
@@ -671,7 +672,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Try downloading the renamed file.
-	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size)); err != nil {
+	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1020,7 +1021,7 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	}()
 	// Download the file asynchronously.
 	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
-	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true)
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3901,5 +3902,40 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if nextPeriod != currentPeriod+period {
 		t.Fatalf("expected next period to be %v but got %v", currentPeriod+period, nextPeriod)
+	}
+}
+
+// testDownloadServedFromDisk tests whether downloads will actually be served
+// from disk.
+func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
+	// Make sure a renter is available for testing.
+	if len(tg.Renters()) == 0 {
+		renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+		_, err := tg.AddNodes(renterParams)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := tg.Renters()[0]
+	// Upload a file. Choose more datapieces than hosts available to prevent the
+	// file from reaching 1x redundancy. That way it will only be downloadable
+	// from disk.
+	_, rf, err := r.UploadNewFile(int(1000), uint64(len(tg.Hosts())+1), 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download it in all ways possible. The download will only succeed if
+	// served from disk.
+	_, _, err = r.DownloadByStreamWithDiskFetch(rf, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = r.DownloadToDiskWithDiskFetch(rf, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.StreamWithDiskFetch(rf, false)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
