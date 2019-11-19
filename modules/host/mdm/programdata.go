@@ -2,7 +2,7 @@ package mdm
 
 import (
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -31,6 +31,9 @@ type ProgramData struct {
 	// arrive.
 	requests []dataRequest
 
+	// cancel is used to cancel the background thread.
+	cancel chan struct{}
+
 	// wg is used to wait for the background thread to finish.
 	wg sync.WaitGroup
 
@@ -46,7 +49,9 @@ type dataRequest struct {
 // will read from the reader until dataLength is reached.
 func NewProgramData(r io.Reader, dataLength uint64) *ProgramData {
 	pd := &ProgramData{
-		r: r,
+		cancel:       make(chan struct{}),
+		r:            r,
+		staticLength: dataLength,
 	}
 	pd.wg.Add(1)
 	go func() {
@@ -63,6 +68,11 @@ func (pd *ProgramData) threadedFetchData() {
 	packet := make([]byte, 1<<11) // 1kib
 	remainingData := int64(pd.staticLength)
 	for remainingData > 0 {
+		select {
+		case <-pd.cancel:
+			return
+		default:
+		}
 		// Adjust the length of the packet according to the remaining data.
 		if remainingData <= int64(cap(packet)) {
 			packet = packet[:remainingData]
@@ -99,7 +109,7 @@ func (pd *ProgramData) threadedFetchData() {
 func (pd *ProgramData) managedBytes(offset, length uint64) ([]byte, error) {
 	// Check if request is valid.
 	if offset+length > pd.staticLength {
-		return nil, errors.New("offset+length out of bounds")
+		return nil, fmt.Errorf("offset+length out of bounds: %v > %v", offset+length, pd.staticLength)
 	}
 	// Check if data is available already.
 	pd.mu.Lock()
@@ -119,7 +129,7 @@ func (pd *ProgramData) managedBytes(offset, length uint64) ([]byte, error) {
 	defer pd.mu.Unlock()
 	// Check if the data is available again. It should be unless there was a
 	// reading error.
-	if uint64(len(pd.data)) >= offset+length {
+	if uint64(len(pd.data)) < offset+length {
 		return nil, pd.readErr
 	}
 	return pd.data[offset:][:length], nil
@@ -152,4 +162,12 @@ func (pd *ProgramData) Hash(offset uint64) (crypto.Hash, error) {
 // Len returns the length of the program data.
 func (pd *ProgramData) Len() uint64 {
 	return pd.staticLength
+}
+
+// Stop will stop the background thread and wait for it to return.
+func (pd *ProgramData) Stop() {
+	pd.mu.Lock()
+	defer pd.mu.Unlock()
+	close(pd.cancel)
+	pd.wg.Wait()
 }

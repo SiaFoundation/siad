@@ -1,1 +1,55 @@
 package mdm
+
+import (
+	"bytes"
+	"encoding/binary"
+	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/fastrand"
+)
+
+// TestNewProgramData tests starting and stopping a ProgramData object.
+func TestNewProgramData(t *testing.T) {
+	buf := bytes.NewReader(fastrand.Bytes(10))
+	pd := NewProgramData(buf, uint64(buf.Len()))
+	pd.Stop()
+}
+
+// TestHash will test a number of random calls to Hash which should be
+// successful.
+func TestHash(t *testing.T) {
+	data := fastrand.Bytes(1000)
+	buf := bytes.NewReader(data)
+	pd := NewProgramData(buf, uint64(len(data)))
+	for i := 0; i < 1000; i++ {
+		offset := fastrand.Intn(len(data) - crypto.HashSize + 1)
+		h, err := pd.Hash(uint64(offset))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(h[:], data[offset:][:crypto.HashSize]) {
+			t.Fatalf("hash should be %v but was %v", data[offset:][:crypto.HashSize], h[:])
+		}
+	}
+	pd.Stop()
+}
+
+// TestUint64 will test a number of random calls to Uint64 which should be
+// successful.
+func TestUint64(t *testing.T) {
+	data := fastrand.Bytes(1000)
+	buf := bytes.NewReader(data)
+	pd := NewProgramData(buf, uint64(len(data)))
+	for i := 0; i < 1000; i++ {
+		offset := fastrand.Intn(len(data) - 8 + 1)
+		n, err := pd.Uint64(uint64(offset))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if expected := binary.LittleEndian.Uint64(data[offset:][:8]); expected != n {
+			t.Fatalf("uint64 should be %v but was %v", expected, n)
+		}
+	}
+	pd.Stop()
+}
