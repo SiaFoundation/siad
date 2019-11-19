@@ -419,7 +419,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 	return names, err
 }
 
-// convertPersistVersionFrom133To140 upgrades a legacy persist file to the next
+// convertPersistVersionFrom140To142 upgrades a legacy persist file to the next
 // version, converting the old filesystem to the new one.
 func (r *Renter) convertPersistVersionFrom140To142(path string) error {
 	metadata := persist.Metadata{
