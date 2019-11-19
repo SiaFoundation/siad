@@ -15,17 +15,17 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// ErrInsufficientBudget is returned if the program has to be aborted due to
+// running out of resources.
+var ErrInsufficientBudget = errors.New("program has insufficient budget to execute")
+
 // programState contains some fields needed for the execution of instructions.
 // The program's state is captured when the program is created and remains the
 // same during the execution of the program.
 type programState struct {
 	// host related fields
 	blockHeight types.BlockHeight
-	secretKey   crypto.SecretKey
-	settings    modules.HostExternalSettings
 	host        Host
-	// revision related fields
-	currentRevision types.FileContractRevision
 	// storage obligation related fields
 	sectorsRemoved   []crypto.Hash
 	sectorsGained    []crypto.Hash
@@ -42,17 +42,14 @@ type Program struct {
 	// program will execute in readonly mode which means that it will not lock
 	// the contract before executing the instructions. This means that the
 	// contract id field will be ignored.
-	staticFCID         types.FileContractID
 	so                 StorageObligation
 	instructions       []instruction
 	staticData         *ProgramData
 	staticProgramState *programState
 
-	finalContractSize uint64 // contract size after executing all instructions
-
-	staticNewValidProofValues  []types.Currency
-	staticNewMissedProofValues []types.Currency
-	staticNewRevisionNumber    uint64
+	finalContractSize uint64      // contract size after executing all instructions
+	initialMerkleRoot crypto.Hash // merkle root when program was created
+	budget            Cost
 
 	executing   bool
 	finalOutput Output
@@ -65,18 +62,16 @@ type Program struct {
 
 // NewProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data.
-func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, initialContractSize, programDataLen uint64, data io.Reader, newValidProofValues, newMissedProofValues []types.Currency, NewRevisionNumber uint64) *Program {
+func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) *Program {
 	// TODO: capture hostState
 	return &Program{
-		finalContractSize:          initialContractSize,
-		outputChan:                 make(chan Output),
-		staticProgramState:         nil,
-		staticFCID:                 fcid,
-		staticData:                 NewProgramData(data, programDataLen),
-		staticNewValidProofValues:  newValidProofValues,
-		staticNewMissedProofValues: newMissedProofValues,
-		so:                         so,
-		tg:                         &mdm.tg,
+		finalContractSize:  initialContractSize,
+		initialMerkleRoot:  initialMerkleRoot,
+		outputChan:         make(chan Output),
+		staticProgramState: nil,
+		staticData:         NewProgramData(data, programDataLen),
+		so:                 so,
+		tg:                 &mdm.tg,
 	}
 }
 
@@ -98,11 +93,10 @@ func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 	if !p.readOnly() && !p.so.Locked() {
 		return nil, errors.New("contract needs to be locked for a program with one or more write instructions")
 	}
-	// Sanity check the new values for valid and missed proofs.
-	if len(p.staticNewValidProofValues) != len(p.staticProgramState.currentRevision.NewValidProofOutputs) {
-		return nil, errors.New("wrong number of valid proof values")
-	} else if len(p.staticNewMissedProofValues) != len(p.staticProgramState.currentRevision.NewMissedProofOutputs) {
-		return nil, errors.New("wrong number of missed proof values")
+	// Make sure the budget covers the initial cost.
+	budget, ok := p.budget.Min(InitCost(p.staticData.Len()))
+	if !ok {
+		return nil, ErrInsufficientBudget
 	}
 	// Execute all the instructions.
 	if err := p.tg.Add(); err != nil {
@@ -111,7 +105,9 @@ func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 	go func() {
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		fcRoot := p.staticProgramState.currentRevision.NewFileMerkleRoot
+		p.mu.Lock()
+		fcRoot := p.initialMerkleRoot
+		p.mu.Unlock()
 		for _, i := range p.instructions {
 			select {
 			case <-ctx.Done(): // Check for interrupt
@@ -119,75 +115,36 @@ func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 			default:
 			}
 			// Execute next instruction.
-			output := i.Execute(fcRoot)
-			if output.Error != nil {
-				// TODO: If the error was the host's fault refund the renter.
-				break // Interrupt on execution error
-			}
+			output := i.Execute(fcRoot, budget)
 			fcRoot = output.NewMerkleRoot
 			p.outputChan <- output
 			p.finalOutput = output
+			// Abort if the last output contained an error.
+			if output.Error != nil {
+				break
+			}
 		}
 	}()
 	return p.outputChan, nil
 }
 
-// Result returns the signed txn with the new contract revision after the
-// execution of the program. It should only be called after the channel returned
-// by Execute is closed.
-func (p *Program) Result() (types.Transaction, error) {
+// Finalize commits the changes made by the program to disk. It should only be
+// called after the channel returned by Execute is closed.
+func (p *Program) Finalize() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.executing {
 		err := errors.New("can't call 'Result' before 'Execute'")
 		build.Critical(err)
-		return types.Transaction{}, err
+		return err
 	}
-	// Construct the new revision.
-	currentRevision := p.staticProgramState.currentRevision
-	newRevision := p.staticProgramState.currentRevision
-	newRevision.NewRevisionNumber = p.staticNewRevisionNumber
-	newRevision.NewFileSize = p.finalOutput.NewSize
-	newRevision.NewFileMerkleRoot = p.finalOutput.NewMerkleRoot
-	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
-	for i := range newRevision.NewValidProofOutputs {
-		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
-			Value:      p.staticNewValidProofValues[i],
-			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
-		}
-	}
-	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
-	for i := range newRevision.NewMissedProofOutputs {
-		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
-			Value:      p.staticNewMissedProofValues[i],
-			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
-		}
-	}
-	// Sign the revision.
-	txn, err := createRevisionSignature(newRevision, p.renterSig, p.staticProgramState.secretKey, p.staticProgramState.blockHeight)
-	if err != nil {
-		return types.Transaction{}, err
-	}
-	// If everything went well, commit the changes to the storage obligation.
+	// Commit the changes to the storage obligation.
 	ps := p.staticProgramState
-	err = p.so.Update(ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	err := p.so.Update(ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
 	if err != nil {
-		return types.Transaction{}, err
+		return err
 	}
-	return txn, nil
-}
-
-// managedCost returns the amount of money that the execution of the program
-// costs. It is the cost of all of the instructions.
-func (p *Program) managedCost() (cost Cost) {
-	p.mu.Lock()
-	defer p.mu.Lock()
-	// TODO: This is actually not quite true. We fetch the program's data in the
-	// background so we don't know how much data is transmitted in total.
-	for _, i := range p.instructions {
-		cost = cost.Add(i.Cost())
-	}
-	return
+	return nil
 }
 
 // readOnly returns 'true' if all of the instructions executed by a program are

@@ -32,6 +32,24 @@ func (c Cost) Add(c2 Cost) Cost {
 	}
 }
 
+// Min subtracts a Cost from another Cost. It will return 'false' if that would
+// result in an underflow and 'true' on success.
+func (c Cost) Min(c2 Cost) (Cost, bool) {
+	// Helper method that subtracts one number from another and returns 'false'
+	// in case of an underflow.
+	min := func(a, b uint64) (uint64, bool) {
+		return a - b, b <= a
+	}
+	var cost Cost
+	var ok1, ok2, ok3, ok4, ok5 bool
+	cost.Compute, ok1 = min(c.Compute, c2.Compute)
+	cost.DiskAccesses, ok2 = min(c.Compute, c2.Compute)
+	cost.DiskRead, ok3 = min(c.Compute, c2.Compute)
+	cost.DiskWrite, ok4 = min(c.Compute, c2.Compute)
+	cost.Memory, ok5 = min(c.Compute, c2.Compute)
+	return cost, ok1 && ok2 && ok3 && ok4 && ok5
+}
+
 // InitCost is the cost of instantiating the MDM
 func InitCost(programLen uint64) Cost {
 	return Cost{

@@ -11,8 +11,7 @@ import (
 // Instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
-	Cost() Cost
-	Execute(fcRoot crypto.Hash) Output
+	Execute(fcRoot crypto.Hash, budget Cost) Output
 	ReadOnly() bool
 }
 
@@ -27,6 +26,9 @@ type Output struct {
 	// invalid program, and the error will be prefixed by 'hosterr' if the error
 	// resulted from a host error such as a disk failure.
 	Error error
+
+	// NewBudget is the budget remaining after executing the instruction.
+	NewBudget Cost
 
 	// NewSize is the size of a file contract after the execution of an
 	// instruction.
@@ -88,7 +90,6 @@ func (p *Program) NewReadSectorInstruction(rootOff, offsetOff, lengthOff uint64,
 	p.instructions = append(p.instructions, &instructionReadSector{
 		commonInstruction: commonInstruction{
 			staticContractSize: p.finalContractSize,
-			staticFCID:         p.staticFCID,
 			staticData:         p.staticData,
 			staticMerkleProof:  merkleProof,
 			staticState:        p.staticProgramState,
@@ -106,7 +107,12 @@ func (i *instructionReadSector) Cost() Cost {
 }
 
 // Execute execute the 'Read' instruction.
-func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
+func (i *instructionReadSector) Execute(fcRoot crypto.Hash, budget Cost) Output {
+	// Subtract cost from budget beforehand.
+	newBudget, ok := budget.Min(ReadSectorCost())
+	if !ok {
+		return outputFromError(ErrInsufficientBudget)
+	}
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOff)
 	if err != nil {
@@ -150,6 +156,7 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 
 	// Return the output.
 	return Output{
+		NewBudget:     newBudget,
 		NewSize:       i.staticContractSize, // size stays the same
 		NewMerkleRoot: fcRoot,               // root stays the same
 		Output:        data,

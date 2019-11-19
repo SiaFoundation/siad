@@ -12,10 +12,10 @@ type ProgramData struct {
 	// data contains the already received data.
 	data []byte
 
-	// length is the expected length of the program data. This is the amount of
-	// data that was paid for and not more than that will be read from the
-	// reader. Less data will be considered an unexpected EOF.
-	length uint64
+	// staticLength is the expected length of the program data. This is the
+	// amount of data that was paid for and not more than that will be read from
+	// the reader. Less data will be considered an unexpected EOF.
+	staticLength uint64
 
 	// r is the reader used to fetch more data.
 	r io.Reader
@@ -50,4 +50,9 @@ func (pd *ProgramData) Uint64(offset uint64) (uint64, error) {
 // specified offset hasn't been fetched yet.
 func (pd *ProgramData) Hash(offset uint64) (crypto.Hash, error) {
 	panic("not implemented yet")
+}
+
+// Len returns the length of the program data.
+func (pd *ProgramData) Len() uint64 {
+	return pd.staticLength
 }

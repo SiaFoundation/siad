@@ -31,6 +31,13 @@ type MDM struct {
 	tg   threadgroup.ThreadGroup
 }
 
+// New creates a new MDM.
+func New(h Host) *MDM {
+	return &MDM{
+		host: h,
+	}
+}
+
 // Stop will stop the MDM and wait for all of the spawned programs to stop
 // executing while also preventing new programs from being started.
 func (mdm *MDM) Stop() error {
