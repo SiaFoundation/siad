@@ -79,7 +79,7 @@ func TestAccountcallWithdraw(t *testing.T) {
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+10, sk)
 
 	// Spend half of it and verify account balance
-	err = am.callWithdraw(msg, sig)
+	err = callWithdraw(am, msg, sig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestAccountcallWithdraw(t *testing.T) {
 	}()
 	overSpend := types.NewCurrency64(7)
 	msg, sig = prepareWithdrawal(accountID, overSpend, am.h.blockHeight+10, sk)
-	err = am.callWithdraw(msg, sig)
+	err = callWithdraw(am, msg, sig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestAccountcallWithdraw(t *testing.T) {
 	sk, spk = prepareAccount()
 	unknown := spk.String()
 	msg, sig = prepareWithdrawal(unknown, overSpend, am.h.blockHeight+10, sk)
-	err = am.callWithdraw(msg, sig)
+	err = callWithdraw(am, msg, sig)
 	if err != errBalanceInsufficient {
 		t.Fatal(err)
 	}
@@ -180,12 +180,12 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	// Prepare a withdrawal message
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+10, sk)
-	err = am.callWithdraw(msg, sig)
+	err = callWithdraw(am, msg, sig)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = am.callWithdraw(msg, sig)
+	err = callWithdraw(am, msg, sig)
 	if err != errWithdrawalSpent {
 		t.Fatal("Expected withdrawal spent error", err)
 	}
@@ -219,7 +219,7 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	// Prepare a withdrawal message
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight-1, sk)
-	err = am.callWithdraw(msg, sig)
+	err = callWithdraw(am, msg, sig)
 	if err != errWithdrawalExpired {
 		t.Fatal("Expected withdrawal expired error", err)
 	}
@@ -253,7 +253,7 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	// Prepare a withdrawal message
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+(2*bucketBlockRange)+1, sk)
-	err = am.callWithdraw(msg, sig)
+	err = callWithdraw(am, msg, sig)
 	if err != errWithdrawalExtremeFuture {
 		t.Fatal("Expected withdrawal extreme future error", err)
 	}
@@ -288,7 +288,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	sk2, _ := prepareAccount()
 	_, sig2 := prepareWithdrawal(spk1.String(), diff, am.h.blockHeight+5, sk2)
 
-	err = am.callWithdraw(msg1, sig2)
+	err = callWithdraw(am, msg1, sig2)
 	if err != errWithdrawalInvalidSignature {
 		t.Fatal("Expected withdrawal invalid signature error", err)
 	}
@@ -322,7 +322,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		diff := types.NewCurrency64(1)
 		msg, sig := prepareWithdrawal(account, diff, am.h.blockHeight+5, sk)
 
-		err = am.callWithdraw(msg, sig)
+		err = callWithdraw(am, msg, sig)
 		if err != nil {
 			t.Log(err.Error())
 			errors = append(errors, err)
@@ -391,7 +391,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 			for i := bucket * 1e2; i < (bucket+1)*1e2; i++ {
 				diff := types.NewCurrency64(1)
 				msg, sig := prepareWithdrawal(account, diff, am.h.blockHeight+5, sk)
-				if wErr := am.callWithdraw(msg, sig); wErr != nil {
+				if wErr := callWithdraw(am, msg, sig); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
 				}
@@ -418,6 +418,11 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		t.Log(balance.String())
 		t.Fatal("Unexpected account balance")
 	}
+}
+
+// callWithdraw will perform the withdrawal using a timestamp for the priority
+func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signature) error {
+	return am.callWithdraw(msg, sig, time.Now().UnixNano())
 }
 
 // prepareWithdrawal prepares a withdrawal message, signs it using the provided

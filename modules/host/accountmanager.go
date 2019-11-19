@@ -121,9 +121,9 @@ type (
 
 	// blockedCall represents a pending withdraw
 	blockedCall struct {
-		unblock   chan struct{}
-		required  types.Currency
-		timestamp int64
+		unblock  chan struct{}
+		required types.Currency
+		priority int64
 	}
 
 	// blockedCallHeap is a heap of blocking transactions; the heap is sorted in
@@ -151,7 +151,7 @@ type (
 
 // Implementation of heap.Interface for blockedCallHeap.
 func (bch blockedCallHeap) Len() int           { return len(bch) }
-func (bch blockedCallHeap) Less(i, j int) bool { return bch[i].timestamp < bch[j].timestamp }
+func (bch blockedCallHeap) Less(i, j int) bool { return bch[i].priority < bch[j].priority }
 func (bch blockedCallHeap) Swap(i, j int)      { bch[i], bch[j] = bch[j], bch[i] }
 func (bch *blockedCallHeap) Push(x interface{}) {
 	bTxn := x.(blockedCall)
@@ -273,11 +273,13 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 
 // callWithdraw will try to withdraw money from an ephemeral account. If the
 // account balance is insufficient, it will block until either a timeout
-// expires, the account receives sufficient funds or we receive a stop message
+// expires, the account receives sufficient funds or we receive a stop message.
+// The caller can specify a priority, which will define the order in which the
+// withdrawals get processed in the event they are blocked.
 //
 // Note that this function has intricate locking going on, beware when making
 // changes to properly release the lock before returning
-func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature) error {
+func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) error {
 	hIS := am.h.InternalSettings()
 
 	am.mu.Lock()
@@ -309,9 +311,9 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	// receive a message on the thread group's stop channel
 	if acc.balance.Cmp(requiredBalance) < 0 {
 		tx := blockedCall{
-			unblock:   make(chan struct{}),
-			required:  amount,
-			timestamp: time.Now().Unix(),
+			unblock:  make(chan struct{}),
+			required: amount,
+			priority: priority,
 		}
 		acc.blockedCalls.Push(tx)
 

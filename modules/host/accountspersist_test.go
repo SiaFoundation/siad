@@ -91,12 +91,12 @@ func TestFingerprintsReload(t *testing.T) {
 	// Prepare a withdrawal message
 	amount := types.NewCurrency64(1)
 	msg1, sig1 := prepareWithdrawal(id, amount, am.h.blockHeight+10, sk)
-	err = am.callWithdraw(msg1, sig1)
+	err = callWithdraw(am, msg1, sig1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	msg2, sig2 := prepareWithdrawal(id, amount, am.h.blockHeight+10, sk)
-	err = am.callWithdraw(msg2, sig2)
+	err = callWithdraw(am, msg2, sig2)
 	if err != nil {
 		t.Fatal(err)
 	}
