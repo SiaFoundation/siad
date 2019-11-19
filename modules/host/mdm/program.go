@@ -62,7 +62,7 @@ type Program struct {
 
 // NewProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data.
-func (mdm *MDM) NewProgram(fcid types.FileContractID, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) *Program {
+func (mdm *MDM) NewProgram(so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) *Program {
 	// TODO: capture hostState
 	return &Program{
 		finalContractSize:  initialContractSize,
