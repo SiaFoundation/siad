@@ -80,7 +80,12 @@ func (pd *ProgramData) threadedFetchData() {
 		n, err := pd.r.Read(packet)
 		if err != nil {
 			pd.mu.Lock()
+			// Remember the error and close all open requests before stopping
+			// the loop.
 			pd.readErr = err
+			for _, r := range pd.requests {
+				close(r.c)
+			}
 			pd.mu.Unlock()
 			break
 		}

@@ -3,7 +3,9 @@ package mdm
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -52,4 +54,30 @@ func TestUint64(t *testing.T) {
 		}
 	}
 	pd.Stop()
+}
+
+// TestOutOfBounds tests the out-of-bounds check.
+func TestOutOfBounds(t *testing.T) {
+	buf := bytes.NewReader(fastrand.Bytes(8))
+	pd := NewProgramData(buf, 7)
+	_, err := pd.managedBytes(0, 8)
+	if err == nil {
+		t.Fatal("managedBytes should fail")
+	}
+	pd.Stop()
+}
+
+// TestEOFWhileReading tests that an error returned by the reader is correctly
+// returned.
+func TestEOFWhileReading(t *testing.T) {
+	r := bytes.NewReader(fastrand.Bytes(7))
+	pd := NewProgramData(r, 8)
+	go func() {
+		time.Sleep(time.Second)
+		pd.Stop()
+	}()
+	_, err := pd.Uint64(0)
+	if err != io.EOF {
+		t.Fatalf("error was supposed to be %v but was %v", io.EOF, err)
+	}
 }
