@@ -178,19 +178,25 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	}
 
 	// wait for hostdb to scan host
-	activeHosts, err := c.hdb.ActiveHosts()
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		activeHosts, err := c.hdb.ActiveHosts()
+		if err != nil {
+			return err
+		}
+		if len(activeHosts) == 0 {
+			return errors.New("no active hosts")
+		}
+		complete, scanCheckErr := c.hdb.InitialScanComplete()
+		if scanCheckErr != nil {
+			return scanCheckErr
+		}
+		if !complete {
+			return errors.New("initial scan not complete")
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, nil, nil, err
-	}
-	for i := 0; i < 50 && len(activeHosts) == 0; i++ {
-		time.Sleep(time.Millisecond * 100)
-	}
-	activeHosts, err = c.hdb.ActiveHosts()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	if len(activeHosts) == 0 {
-		return nil, nil, nil, errors.New("host did not make it into the contractor hostdb in time")
 	}
 
 	return h, c, m, nil

@@ -238,6 +238,17 @@ type ContractUtility struct {
 	Locked bool
 }
 
+// ContractWatchStatus provides information about the status of a contract in
+// the renter's watchdog. If the contract has been double-spent, the fields
+// other than DoubleSpendHeight are not up-to-date.
+type ContractWatchStatus struct {
+	FormationSweepHeight      types.BlockHeight `json:"formationsweepheight"`
+	ContractFound             bool              `json:"contractfound"`
+	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
+	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
+	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
+}
+
 // DirectoryInfo provides information about a siadir
 type DirectoryInfo struct {
 	// The following fields are aggregate values of the siadir. These values are
@@ -586,6 +597,10 @@ type Renter interface {
 
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
+
+	// ContractStatus returns the status of the contract with the given ID in the
+	// watchdog, and a bool indicating whether or not the watchdog is aware of it.
+	ContractStatus(fcID types.FileContractID) (ContractWatchStatus, bool)
 
 	// CreateBackup creates a backup of the renter's siafiles. If a secret is not
 	// nil, the backup will be encrypted using the provided secret.

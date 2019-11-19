@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -19,7 +20,7 @@ func TestTpoolTransactionsGet(t *testing.T) {
 	testdir := tpoolTestDir(t.Name())
 
 	// Create a miners
-	miner, err := siatest.NewNode(siatest.Miner(filepath.Join(testdir, "miner")))
+	miner, err := siatest.NewNode(node.Miner(filepath.Join(testdir, "miner")))
 	if err != nil {
 		t.Fatal(err)
 	}
