@@ -1313,8 +1313,9 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		t.Fatal(err)
 	}
 
-	allowance := modules.DefaultAllowance
+	allowance := siatest.DefaultAllowance
 	allowance.Hosts = 1
+	allowance.Period = 200
 	if err := renter.RenterPostAllowance(allowance); err != nil {
 		t.Fatal(err)
 	}
@@ -1338,8 +1339,8 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if err != nil {
 			return errors.AddContext(err, "ContractStatus API call failed")
 		}
-		if !status.ContractFound {
-			return errors.AddContext(err, "Active contract not being monitored by watchdog")
+		if !status.ContractFound || status.Archived {
+			return errors.AddContext(err, "Active contract not being monitored (or arcived) by watchdog")
 		}
 		return nil
 	})
@@ -1456,11 +1457,19 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if status.ContractFound {
 			return errors.New("contract marked as found)")
 		}
+		if status.WindowStart == 0 || status.WindowEnd == 0 {
+			return errors.New("contract status does not contain proper window values")
+		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Save the window end height, and a copy of the contract status to test
+	// contract archival in the watchdog.
+	var windowEnd types.BlockHeight
+	var contractStatus modules.ContractWatchStatus
 
 	// Let the watchdog send transactions now.
 	toggleDep.DisableWatchdogBroadcast(false)
@@ -1477,6 +1486,8 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if err != nil {
 			return err
 		}
+		windowEnd = status.WindowEnd
+		contractStatus = status
 
 		// A valid sweep will appear as a double-spend.  This is guaranteed to be
 		// the renter watchdog because the host is offline and because the renter's
@@ -1490,6 +1501,46 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if !status.ContractFound {
 			return errors.New("contract not marked as found)")
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine past the storage window.
+	minerCG, err := reorgMiner.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := minerCG.Height; i < windowEnd+10; i++ {
+		if err := reorgMiner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that the contrat is marked as archived.
+	err = build.Retry(50, 250*time.Millisecond, func() error {
+		newStatus, err := renter.RenterContractStatus(fcID)
+		if err != nil {
+			return err
+		}
+
+		if !newStatus.Archived {
+			return errors.New("Expected contract to be archived")
+		}
+
+		// Check that the other values are the same as the old copy of the status.
+		different := (contractStatus.FormationSweepHeight != newStatus.FormationSweepHeight) &&
+			(contractStatus.ContractFound != newStatus.ContractFound) &&
+			(contractStatus.LatestRevisionFound != newStatus.LatestRevisionFound) &&
+			(contractStatus.StorageProofFoundAtHeight != newStatus.StorageProofFoundAtHeight) &&
+			(contractStatus.DoubleSpendHeight != newStatus.DoubleSpendHeight) &&
+			(contractStatus.WindowStart != newStatus.WindowStart) &&
+			(contractStatus.WindowEnd != newStatus.WindowEnd)
+		if different {
+			return errors.New("Expected contract status to be otherwise the same")
+		}
+
 		return nil
 	})
 	if err != nil {
