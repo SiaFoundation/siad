@@ -11,16 +11,37 @@ import (
 )
 
 var (
+	// ErrAccountPersist occurs when an ephemeral account could not be persisted
+	// to disk
 	ErrAccountPersist = errors.New("ephemeral account could not persisted to disk")
 
+	// ErrBalanceInsufficient occurs when a withdrawal could not be succesfully
+	// completed because the account's balance was insufficient
 	ErrBalanceInsufficient = errors.New("ephemeral account balance was insufficient")
-	ErrBalanceMaxExceeded  = errors.New("ephemeral account balance exceeded the maximum")
 
-	ErrWithdrawalSpent            = errors.New("ephemeral account withdrawal message was already spent")
-	ErrWithdrawalExpired          = errors.New("ephemeral account withdrawal message expired")
-	ErrWithdrawalExtremeFuture    = errors.New("ephemeral account withdrawal message expires too far into the future")
+	// ErrBalanceMaxExceeded occurs when a deposit is sufficiently large it
+	// would exceed the maximum ephemeral account balance
+	ErrBalanceMaxExceeded = errors.New("ephemeral account balance exceeded the maximum")
+
+	// ErrWithdrawalSpent occurs when a withdrawal is being performed using a
+	// withdrawal message that has been spent already
+	ErrWithdrawalSpent = errors.New("ephemeral account withdrawal message was already spent")
+
+	// ErrWithdrawalExpired occurs when the withdrawal message's expiry
+	// blockheight is in the past
+	ErrWithdrawalExpired = errors.New("ephemeral account withdrawal message expired")
+
+	// ErrWithdrawalExtremeFuture occurs when the withdrawal message's expiry
+	// blockheight is too far into the future
+	ErrWithdrawalExtremeFuture = errors.New("ephemeral account withdrawal message expires too far into the future")
+
+	// ErrWithdrawalInvalidSignature occurs when the provided withdrawal
+	// signature was deemed invalid
 	ErrWithdrawalInvalidSignature = errors.New("ephemeral account withdrawal message signature is invalid")
-	ErrWithdrawalCancelled        = errors.New("ephemeral account withdrawal cancelled due to a shutdown")
+
+	// ErrWithdrawalCancelled occurs when the host was willingly or unwillingly
+	// stopped in the midst of a withdrawal process
+	ErrWithdrawalCancelled = errors.New("ephemeral account withdrawal cancelled due to a shutdown")
 
 	// Only used for testing purposes
 	errMaxUnsavedDeltaReached = errors.New("maxUnsavedDeltaReached")
