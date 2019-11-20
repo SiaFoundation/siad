@@ -63,6 +63,20 @@ func TestSaveLoad(t *testing.T) {
 		{1}: expectedFileContractStatus,
 	}
 
+	expectedArchivedContract := modules.ContractWatchStatus{
+		Archived:                  true,
+		FormationSweepHeight:      11,
+		ContractFound:             true,
+		LatestRevisionFound:       3883889,
+		StorageProofFoundAtHeight: 12312,
+		DoubleSpendHeight:         12333333,
+		WindowStart:               1111111231209,
+		WindowEnd:                 123808900,
+	}
+	c.staticWatchdog.archivedContracts = map[types.FileContractID]modules.ContractWatchStatus{
+		{2}: expectedArchivedContract,
+	}
+
 	c.oldContracts = map[types.FileContractID]modules.RenterContract{
 		{0}: {ID: types.FileContractID{0}, HostPublicKey: types.SiaPublicKey{Key: []byte("foo")}},
 		{1}: {ID: types.FileContractID{1}, HostPublicKey: types.SiaPublicKey{Key: []byte("bar")}},
@@ -262,6 +276,37 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if contract.windowEnd != expectedFileContractStatus.windowEnd {
 		t.Fatal("watchdog not restored properly", contract)
+	}
+	if len(c.staticWatchdog.archivedContracts) != 1 {
+		t.Fatal("watchdog not restored poerly", c.staticWatchdog.archivedContracts)
+	}
+	archivedContract, ok := c.staticWatchdog.archivedContracts[types.FileContractID{2}]
+	if !ok {
+		t.Fatal("watchdog not restored poerly", c.staticWatchdog.archivedContracts)
+	}
+	if archivedContract.Archived != expectedArchivedContract.Archived {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
+	if archivedContract.FormationSweepHeight != expectedArchivedContract.FormationSweepHeight {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
+	if archivedContract.ContractFound != expectedArchivedContract.ContractFound {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
+	if archivedContract.LatestRevisionFound != expectedArchivedContract.LatestRevisionFound {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
+	if archivedContract.StorageProofFoundAtHeight != expectedArchivedContract.StorageProofFoundAtHeight {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
+	if archivedContract.DoubleSpendHeight != expectedArchivedContract.DoubleSpendHeight {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
+	if archivedContract.WindowStart != expectedArchivedContract.WindowStart {
+		t.Fatal("Archived contract not restored properly", archivedContract)
+	}
+	if archivedContract.WindowEnd != expectedArchivedContract.WindowEnd {
+		t.Fatal("Archived contract not restored properly", archivedContract)
 	}
 
 	// Check churnLimiter state.
