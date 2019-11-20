@@ -37,8 +37,8 @@ var (
 	// manager prunes ephemeral accounts which have been inactive
 	pruneExpiredAccountsFrequency = build.Select(build.Var{
 		Standard: 1 * time.Hour,
-		Dev:      15 * time.Second,
-		Testing:  3 * time.Second,
+		Dev:      15 * time.Minute,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 
 	// blockedCallTimeout is the amount of time after which a blocked withdrawal

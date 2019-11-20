@@ -51,8 +51,8 @@ func TestAccountCallDeposit(t *testing.T) {
 	}
 }
 
-// TestAccountcallWithdraw verifies we can spend from an ephemeral account
-func TestAccountcallWithdraw(t *testing.T) {
+// TestAccountCallWithdraw verifies we can spend from an ephemeral account
+func TestAccountCallWithdraw(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -363,8 +363,8 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	account := spk.String()
 
 	// Deposit money into the account in small increments
-	numDeposits := 100
-	depositAmount := types.NewCurrency64(10)
+	deposits := 20
+	depositAmount := 100
 
 	// Add a waitgroup to wait for all deposits and withdrawals that are taking
 	// concurrently taking place. Keep track of potential errors using atomics
@@ -374,23 +374,26 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for d := 0; d < numDeposits; d++ {
-			time.Sleep(time.Duration(rand.Intn(5)+5) * time.Millisecond)
-			if err := am.callDeposit(account, depositAmount); err != nil {
+		for d := 0; d < deposits; d++ {
+			time.Sleep(time.Duration(10 * time.Millisecond))
+			if err := am.callDeposit(account, types.NewCurrency64(uint64(depositAmount))); err != nil {
 				atomic.AddUint64(&atomicDepositErrs, 1)
 			}
 		}
 	}()
 
+	buckets := 10
+	withdrawals := deposits * depositAmount
+	withdrawalAmount := 1
+
 	// Run the withdrawals in 10 separate buckets (ensure that withdrawals do
 	// not exceed numDeposits * depositAmount)
-	for b := 0; b < 10; b++ {
+	for b := 0; b < buckets; b++ {
 		wg.Add(1)
 		go func(bucket int) {
 			defer wg.Done()
-			for i := bucket * 1e2; i < (bucket+1)*1e2; i++ {
-				diff := types.NewCurrency64(1)
-				msg, sig := prepareWithdrawal(account, diff, am.h.blockHeight+5, sk)
+			for i := bucket * (withdrawals / buckets); i < (bucket+1)*(withdrawals/buckets); i++ {
+				msg, sig := prepareWithdrawal(account, types.NewCurrency64(uint64(withdrawalAmount)), am.h.blockHeight, sk)
 				if wErr := callWithdraw(am, msg, sig); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
