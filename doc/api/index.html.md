@@ -3779,7 +3779,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "duration=10m" "localhost:9980/re
 
 This endpoint will pause any future uploads or repairs for the duration
 requested. Any in progress chunks will finish. This can be used to free up the
-workers to exlcusively focus on downloads. Since this will pause file repairs it
+workers to exclusively focus on downloads. Since this will pause file repairs it
 is advised to not pause for too long. If no duration is supplied then the
 default duration of 10 minutes will be used. If the uploads are already paused,
 additional calls to pause the uploads will result in the duration of the pause
