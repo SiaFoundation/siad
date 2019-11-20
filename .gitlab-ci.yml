@@ -1,55 +1,57 @@
-image: golang:1.12
-
+default:
+  image: golang:1.12
+  before_script:
+    - mkdir -p .cache/gocache
+    - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
+    - export GOPATH="$CI_PROJECT_DIR/.cache"
+ 
 stages:
   - lint
   - test
   - deploy
- 
+
 lint:
   stage: lint
+  cache:
+    key: lint-cache
+    paths:
+      - .cache
   script: 
     - go get github.com/golangci/golangci-lint/cmd/golangci-lint
-    - golangci-lint run --disable-all --enable=vet --enable=gofmt ./...
+    - .cache/bin/golangci-lint run --disable-all --enable=vet --enable=gofmt --deadline=600s ./...
+    - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
     - make test
 
 legacy-tests:
   stage: test
+  cache:
+    key: legacy-cache
+    paths:
+      - .cache
   except:
     - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
   script: 
     - make test-long pkgs="./node ./node/api ./node/api/server" run=.
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 package-tests:
   stage: test
+  cache:
+    key: package-cache
+    paths:
+      - .cache
   except:
     - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
   script: 
     - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 siatest-tests:
   stage: test
+  cache:
+    key: integration-cache
+    paths:
+      - .cache
   except:
     - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
   script:
     - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
@@ -58,12 +60,10 @@ siatest-renter-tests:
   stage: test
   except:
     - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
+  cache:
+    key: siatest-renter-tests-cache
     paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
+      - .cache
   script:
     - make test-long run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
@@ -135,4 +135,3 @@ deploy:
       - $CI_PROJECT_DIR/artifacts
   script: 
     - ./deploy.sh "$NIGHTLY_SIGNING_KEY"
-    - cp -R ./artifacts $CI_PROJECT_DIR/artifacts

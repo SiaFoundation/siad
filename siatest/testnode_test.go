@@ -3,6 +3,7 @@ package siatest
 import (
 	"net"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -12,7 +13,7 @@ import (
 // TestNextNodeAddress probes nextNodeAddress to verify that the addresses are
 // indexing properly
 func TestNextNodeAddress(t *testing.T) {
-	if !testing.Short() {
+	if !testing.Short() || runtime.GOOS == "darwin" {
 		t.SkipNow()
 	}
 	// Confirm testNodeAddressCounter is initialized correctly
@@ -61,7 +62,8 @@ func TestNextNodeAddress(t *testing.T) {
 // TestNodeBlacklistConnections probes the functionality of connecting nodes and
 // blacklisting nodes to confirm nodes connect as intended
 func TestNodeBlacklistConnections(t *testing.T) {
-	if testing.Short() {
+	// Skip if testing short or running on mac
+	if testing.Short() || runtime.GOOS == "darwin" {
 		t.SkipNow()
 	}
 	t.Parallel()

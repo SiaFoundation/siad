@@ -37,6 +37,8 @@ type DependencyToggleWatchdogBroadcast struct {
 	modules.ProductionDependencies
 }
 
+// DisableWatchdogBroadcast will prevent the watchdog from broadcating
+// transactions.
 func (d *DependencyToggleWatchdogBroadcast) DisableWatchdogBroadcast(disable bool) {
 	d.mu.Lock()
 	d.broadcastsDisabled = disable
@@ -69,7 +71,7 @@ func (d *DependencyHighMinHostScore) Disrupt(s string) bool {
 	return forcingHighMinScore && s == "HighMinHostScore"
 }
 
-// ForceHighMinHostScores causes the dependency disrupt to activate.
+// ForceHighMinHostScore causes the dependency disrupt to activate.
 func (d *DependencyHighMinHostScore) ForceHighMinHostScore(force bool) {
 	d.mu.Lock()
 	d.forcingHighMinScore = force
