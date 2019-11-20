@@ -259,8 +259,8 @@ type DependencyAddLatency struct {
 	modules.ProductionDependencies
 }
 
-// newDependencyInterruptAfterNCalls creates a new
-// DependencyInterruptAfterNCalls from a given disrupt key and n.
+// newDependencyAddLatency creates a new DependencyAddLatency from a given
+// disrupt string and duration
 func newDependencyAddLatency(str string, d time.Duration) *DependencyAddLatency {
 	return &DependencyAddLatency{
 		str:      str,
