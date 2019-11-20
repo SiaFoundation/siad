@@ -1518,7 +1518,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		}
 	}
 
-	// Check that the contrat is marked as archived.
+	// Check that the contract is marked as archived.
 	err = build.Retry(50, 250*time.Millisecond, func() error {
 		newStatus, err := renter.RenterContractStatus(fcID)
 		if err != nil {

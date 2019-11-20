@@ -36,8 +36,8 @@ type watchdog struct {
 	// in here.
 	contracts map[types.FileContractID]*fileContractStatus
 
-	// archivedContracts are contracts that have expired and stored for archival
-	// purposes.
+	// archivedContracts are contracts that have expired and are stored for
+	// archival purposes.
 	archivedContracts map[types.FileContractID]modules.ContractWatchStatus
 
 	// outputDependencies maps Siacoin outputs to the file contracts that are

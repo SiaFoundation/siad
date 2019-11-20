@@ -278,11 +278,11 @@ func TestSaveLoad(t *testing.T) {
 		t.Fatal("watchdog not restored properly", contract)
 	}
 	if len(c.staticWatchdog.archivedContracts) != 1 {
-		t.Fatal("watchdog not restored poerly", c.staticWatchdog.archivedContracts)
+		t.Fatal("watchdog not restored properly", c.staticWatchdog.archivedContracts)
 	}
 	archivedContract, ok := c.staticWatchdog.archivedContracts[types.FileContractID{2}]
 	if !ok {
-		t.Fatal("watchdog not restored poerly", c.staticWatchdog.archivedContracts)
+		t.Fatal("watchdog not restored properly", c.staticWatchdog.archivedContracts)
 	}
 	if archivedContract.Archived != expectedArchivedContract.Archived {
 		t.Fatal("Archived contract not restored properly", archivedContract)

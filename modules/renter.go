@@ -255,8 +255,8 @@ type ContractWatchStatus struct {
 	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
 	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
 	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
-	WindowStart               types.BlockHeight `json:"ExpirationWindowStart"`
-	WindowEnd                 types.BlockHeight `json:"ExpirationWindowEnd"`
+	WindowStart               types.BlockHeight `json:"windowstart"`
+	WindowEnd                 types.BlockHeight `json:"windowend"`
 }
 
 // DirectoryInfo provides information about a siadir
