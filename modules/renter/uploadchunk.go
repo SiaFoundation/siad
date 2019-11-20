@@ -3,7 +3,6 @@ package renter
 import (
 	"fmt"
 	"io"
-	"os"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -206,7 +205,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	d, err := r.managedNewDownload(downloadParams{
 		destination:       buf,
 		destinationType:   "buffer",
-		disableLocalFetch: true, // no need to try load it from disk.
+		disableLocalFetch: false,
 		file:              snap,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
@@ -393,47 +392,8 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		}
 		return nil
 	}
-
-	// Download the chunk if it's not on disk.
-	if chunk.fileEntry.LocalPath() == "" {
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-
-	// Try to read the data from disk. If that fails, fallback to downloading.
-	err := func() error {
-		osFile, err := os.Open(chunk.fileEntry.LocalPath())
-		if os.IsNotExist(err) {
-			// If the file doesn't exist we set the path to an empty string.
-			// This is an additional protection in case the user creates a
-			// different file at the same path later which would cause a
-			// corruption.
-			err = errors.Compose(err, chunk.fileEntry.SetLocalPath(""))
-		}
-		if err != nil {
-			return err
-		}
-		defer osFile.Close()
-		// If the file on disk doesn't have the right size we don't use it
-		// for repairing. This protects in case the user creates a different
-		// file at the same location.
-		fi, err := osFile.Stat()
-		if err != nil {
-			return err
-		}
-		if err == nil && uint64(fi.Size()) != chunk.fileEntry.Size() {
-			failedRepairErr := fmt.Errorf("failed to repair from disk due to filesize not matching %v != %v",
-				fi.Size(), chunk.fileEntry.Size())
-			return errors.Compose(failedRepairErr, chunk.fileEntry.SetLocalPath(""))
-		}
-		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
-		_, err = chunk.readLogicalData(sr)
-		return err
-	}()
-	if err != nil {
-		r.log.Debugln("failed to read file, downloading instead:", err)
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-	return nil
+	// Download the chunk if it's not being streamed.
+	return r.managedDownloadLogicalChunkData(chunk)
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any

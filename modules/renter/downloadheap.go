@@ -160,13 +160,13 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 	}
 }
 
-// managedTryServeChunkFromDisk will try to fetch the chunk from disk if
+// managedTryFetchChunkFromDisk will try to fetch the chunk from disk if
 // possible.
 // NOTE: we can only confirm that the file has the right name and size but not
 // the it wasn't modified on disk without us knowing. If that's the case then we
 // are going to return the updated file to the user which might not be the same
 // data that was uploaded.
-func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bool {
+func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bool {
 	// Get path at which we expect to find the file.
 	fileName := chunk.renterFile.SiaPath().Name()
 	localPath := chunk.renterFile.LocalPath()
@@ -176,7 +176,7 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// Open the file.
 	file, err := os.Open(localPath)
 	if err != nil {
-		r.log.Debugf("managedTryServeChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
+		r.log.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
 	defer file.Close()
@@ -185,11 +185,11 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// file at the same location.
 	fi, err := file.Stat()
 	if err != nil {
-		r.log.Debugf("managedTryServeChunkFromDisk failed to stat file %v for %v: %v", localPath, fileName, err)
+		r.log.Debugf("managedTryFetchChunkFromDisk failed to stat file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
 	if err == nil && uint64(fi.Size()) != chunk.renterFile.Size() {
-		r.log.Debugf("managedTryServeChunkFromDisk failed due to filesize not matching %v != %v between file at %v and %v",
+		r.log.Debugf("managedTryFetchChunkFromDisk failed due to filesize not matching %v != %v between file at %v and %v",
 			fi.Size(), chunk.renterFile.Size(), localPath, fileName)
 		return false
 	}
@@ -197,19 +197,19 @@ func (r *Renter) managedTryServeChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
 	pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 	if err != nil {
-		r.log.Debugf("managedTryServeChunkFromDisk failed to read data pieces from %v for %v: %v",
+		r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v",
 			localPath, fileName, err)
 		return false
 	}
 	shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
 	if err != nil {
-		r.log.Debugf("managedTryServeChunkFromDisk failed to encode data pieces from %v for %v: %v",
+		r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
 			localPath, fileName, err)
 		return false
 	}
 	err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
 	if err != nil {
-		r.log.Debugf("managedTryServeChunkFromDisk failed to write data pieces from %v for %v: %v",
+		r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
 			localPath, fileName, err)
 		return false
 	}
@@ -267,7 +267,7 @@ LOOP:
 				return
 			}
 			// Check if we can serve the chunk from disk.
-			if !nextChunk.staticDisableDiskFetch && r.managedTryServeChunkFromDisk(nextChunk) {
+			if !nextChunk.staticDisableDiskFetch && r.managedTryFetchChunkFromDisk(nextChunk) {
 				continue
 			} else if !nextChunk.staticDisableDiskFetch && nextChunk.renterFile.LocalPath() != "" {
 				// If the local path is set and we still weren't able to load
