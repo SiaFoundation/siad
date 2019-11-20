@@ -1247,16 +1247,18 @@ single ephemeral account.
 **maxunsaveddelta** | hastings  
 To increase performance, the host will allow a user to withdraw from an
 ephemeral without requiring the user to wait until the host has persisted the
-withdrawal to complete a transaction. This means that the user can perform
-actions such as downloads with significantly less latency. This also means that
-if the host loses power at that exact moment, the host will forget that the user
-has spent money and the user will be able to spend that money again.
+updated ephemeral account balance to complete a transaction. This means that the
+user can perform actions such as downloads with significantly less latency. This
+also means that if the host loses power at that exact moment, the host will
+forget that the user has spent money and the user will be able to spend that
+money again.
 
 maxunsaveddelta is the maximum amount of money that the host is willing to risk
-to a power loss. If a user's withdrawal would put the host over the
-maxunsaveddelta, the host will wait to complete the user's transaction until it
-has persisted the widthdrawal, to prevent the host from having too much money at
-risk.
+to a power loss. The account manager will keep track of the total amount of
+money that has been withdrawn, but has not yet been persisted to disk. If a
+user's withdrawal would put the host over the maxunsaveddelta, the host will
+wait to complete the user's transaction until it has persisted the widthdrawal,
+to prevent the host from having too much money at risk.
 
 Note that money is only at risk if the host experiences an unclean shutdown
 while in the middle of a transaction with a user, and generally the amount at
@@ -1410,10 +1412,11 @@ single ephemeral account.
 **maxunsaveddelta** | hastings  
 To increase performance, the host will allow a user to withdraw from an
 ephemeral without requiring the user to wait until the host has persisted the
-withdrawal to complete a transaction. This means that the user can perform
-actions such as downloads with significantly less latency. This also means that
-if the host loses power at that exact moment, the host will forget that the user
-has spent money and the user will be able to spend that money again.
+updated ephemeral account balance to complete a transaction. This means that the
+user can perform actions such as downloads with significantly less latency. This
+also means that if the host loses power at that exact moment, the host will
+forget that the user has spent money and the user will be able to spend that
+money again.
 
 maxunsaveddelta is the maximum amount of money that the host is willing to risk
 to a power loss. If a user's withdrawal would put the host over the

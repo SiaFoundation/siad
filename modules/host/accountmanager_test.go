@@ -46,7 +46,7 @@ func TestAccountCallDeposit(t *testing.T) {
 	// Verify the deposit can not exceed the max account balance
 	maxAccountBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
 	err = am.callDeposit(accountID, maxAccountBalance)
-	if err != errBalanceMaxExceeded {
+	if err != ErrBalanceMaxExceeded {
 		t.Fatal(err)
 	}
 }
@@ -112,7 +112,7 @@ func TestAccountCallWithdraw(t *testing.T) {
 	unknown := spk.String()
 	msg, sig = prepareWithdrawal(unknown, overSpend, am.h.blockHeight+10, sk)
 	err = callWithdraw(am, msg, sig)
-	if err != errBalanceInsufficient {
+	if err != ErrBalanceInsufficient {
 		t.Fatal(err)
 	}
 }
@@ -186,7 +186,7 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	}
 
 	err = callWithdraw(am, msg, sig)
-	if err != errWithdrawalSpent {
+	if err != ErrWithdrawalSpent {
 		t.Fatal("Expected withdrawal spent error", err)
 	}
 }
@@ -220,7 +220,7 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight-1, sk)
 	err = callWithdraw(am, msg, sig)
-	if err != errWithdrawalExpired {
+	if err != ErrWithdrawalExpired {
 		t.Fatal("Expected withdrawal expired error", err)
 	}
 }
@@ -254,7 +254,7 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+(2*bucketBlockRange)+1, sk)
 	err = callWithdraw(am, msg, sig)
-	if err != errWithdrawalExtremeFuture {
+	if err != ErrWithdrawalExtremeFuture {
 		t.Fatal("Expected withdrawal extreme future error", err)
 	}
 }
@@ -289,7 +289,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	_, sig2 := prepareWithdrawal(spk1.String(), diff, am.h.blockHeight+5, sk2)
 
 	err = callWithdraw(am, msg1, sig2)
-	if err != errWithdrawalInvalidSignature {
+	if err != ErrWithdrawalInvalidSignature {
 		t.Fatal("Expected withdrawal invalid signature error", err)
 	}
 }
@@ -446,8 +446,8 @@ func TestAccountMaxUnsavedDelta(t *testing.T) {
 	// Use the maxEphemeralAccountBalance in combination with maxUnsavedDelta to
 	// figure a good maxAttempts, changing these host settings would also affect
 	// what 'd be a good max attempts
-	hIS := ht.host.InternalSettings()
-	numAccountsUint, _ := hIS.MaxUnsavedDelta.Div(hIS.MaxEphemeralAccountBalance).Uint64()
+	his := ht.host.InternalSettings()
+	numAccountsUint, _ := his.MaxUnsavedDelta.Div(his.MaxEphemeralAccountBalance).Uint64()
 	maxAttempts := int(numAccountsUint) * 5
 
 	// Keep track of how many times the max unsaved delta was reached. We assume
@@ -463,12 +463,12 @@ func TestAccountMaxUnsavedDelta(t *testing.T) {
 		// Make an account and deposit the max balance into it
 		sk, spk := prepareAccount()
 		account := spk.String()
-		if err = am.callDeposit(account, hIS.MaxEphemeralAccountBalance); err != nil {
+		if err = am.callDeposit(account, his.MaxEphemeralAccountBalance); err != nil {
 			t.Fatal(err)
 		}
 
 		// Prepare a withdrawal
-		msg, sig := prepareWithdrawal(account, hIS.MaxEphemeralAccountBalance, am.h.blockHeight, sk)
+		msg, sig := prepareWithdrawal(account, his.MaxEphemeralAccountBalance, am.h.blockHeight, sk)
 
 		go func() {
 			defer wg.Done()
