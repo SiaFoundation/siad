@@ -370,6 +370,12 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	am.unsavedDelta = am.unsavedDelta.Add(amount)
 	maxUnsavedDeltaReached := hIS.MaxUnsavedDelta.Cmp(am.unsavedDelta) < 0
 	awaitPersist := make(chan struct{})
+
+	// Add to the threadgroup before entering the goroutine to ensure a close
+	// properly awaits pending persists
+	if err := am.h.tg.Add(); err != nil {
+		return errWithdrawalCancelled
+	}
 	go am.threadedPersist(acc.index, acc.transformToAccountData(), fingerprint, expiry, amount, awaitPersist, !maxUnsavedDeltaReached)
 
 	// Wait until the persist was successful if we've reached the maximum amount
@@ -465,10 +471,9 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 }
 
 // threadedPersist will asynchronously persist the account data to disk
+// Note that the caller should have already incremented the threadgroup count.
+// This is required to ensure that a close properly awaits the pending persists.
 func (am *accountManager) threadedPersist(accountIndex uint32, accountData *accountData, fingerprint crypto.Hash, expiry types.BlockHeight, amount types.Currency, blockChan chan struct{}, managed bool) {
-	if err := am.h.tg.Add(); err != nil {
-		return
-	}
 	defer am.h.tg.Done()
 	defer close(blockChan)
 
@@ -514,7 +519,7 @@ func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.
 	}
 
 	// Verify the withdrawal is not too far into the future
-	if msg.expiry > calculateBucketThreshold(am.blockHeight, bucketBlockRange)+bucketBlockRange {
+	if msg.expiry >= calculateBucketThreshold(am.blockHeight, bucketBlockRange)+bucketBlockRange {
 		return errWithdrawalExtremeFuture
 	}
 
@@ -533,7 +538,7 @@ func (am *accountManager) validateWithdrawal(msg *withdrawalMessage, sig crypto.
 
 // save will add the given fingerprint to the appropriate bucket
 func (fm *fingerprintMap) save(fp crypto.Hash, expiry types.BlockHeight) {
-	if expiry <= fm.currentThreshold {
+	if expiry < fm.currentThreshold {
 		fm.current[fp] = struct{}{}
 		return
 	}

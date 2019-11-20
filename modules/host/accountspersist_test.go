@@ -95,6 +95,7 @@ func TestFingerprintsReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	msg2, sig2 := prepareWithdrawal(id, amount, am.h.blockHeight+10, sk)
 	err = callWithdraw(am, msg2, sig2)
 	if err != nil {
