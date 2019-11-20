@@ -420,25 +420,27 @@ func (am *accountManager) callConsensusChanged() {
 // it does this by nullifying the account's balance which frees up the account
 // at that index
 func (am *accountManager) threadedPruneExpiredAccounts() {
-	if err := am.h.tg.Add(); err != nil {
-		return
-	}
-	defer am.h.tg.Done()
-
-	var force bool
-	if am.h.dependencies.Disrupt("expireEphemeralAccounts") {
-		force = true
-	}
-
 	var accountExpiryTimeoutAsInt64 = int64(accountExpiryTimeout)
+
+	var forceExpire bool
+	if am.h.dependencies.Disrupt("expireEphemeralAccounts") {
+		forceExpire = true
+	}
 
 	for {
 		pruned := make([]uint32, 0)
 
+		// Increment the threadgroup counter but ensure it is decremented within
+		// a single iteration of this loop. If it would be outside of the loop
+		// it'd cause 'Flush' to enter into a deadlock when called
+		if err := am.h.tg.Add(); err != nil {
+			return
+		}
 		am.mu.Lock()
+
 		now := time.Now().Unix()
 		for id, acc := range am.accounts {
-			if force {
+			if forceExpire {
 				am.h.log.Debugf("DEBUG: force expiring account %v", id)
 				acc.balance = types.ZeroCurrency
 				pruned = append(pruned, acc.index)
@@ -446,15 +448,16 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 			}
 
 			if acc.balance.Cmp(types.ZeroCurrency) != 0 {
-				last := acc.lastTxnTime
-				if now-last > accountExpiryTimeoutAsInt64 {
+				if now-acc.lastTxnTime > accountExpiryTimeoutAsInt64 {
 					am.h.log.Debugf("DEBUG: expiring account %v at %v", id, now)
 					acc.balance = types.ZeroCurrency
 					pruned = append(pruned, acc.index)
 				}
 			}
 		}
+
 		am.mu.Unlock()
+		am.h.tg.Done()
 
 		for _, index := range pruned {
 			am.staticAccountsPersister.callReleaseIndex(index)
