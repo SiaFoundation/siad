@@ -264,6 +264,10 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		return err
 	}
 
+	w.mu.Lock()
+	w.unlocked = true
+	w.mu.Unlock()
+
 	// Subscribe to the consensus set if this is the first unlock for the
 	// wallet object.
 	w.mu.RLock()
@@ -297,7 +301,6 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 	}
 
 	w.mu.Lock()
-	w.unlocked = true
 	w.subscribed = true
 	w.mu.Unlock()
 	return nil
