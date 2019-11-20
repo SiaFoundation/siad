@@ -99,7 +99,9 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 	// heap and distributed to workers - the sole purpose of the heap is to
 	// block workers from receiving a chunk until memory has been allocated.
 	if !udc.staticNeedsMemory {
-		r.managedDistributeDownloadChunkToWorkers(udc)
+		if !r.managedTryFetchChunkFromDisk(udc) {
+			r.managedDistributeDownloadChunkToWorkers(udc)
+		}
 		return
 	}
 
