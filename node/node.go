@@ -88,6 +88,9 @@ type NodeParams struct {
 	RenterDeps       modules.Dependencies
 	WalletDeps       modules.Dependencies
 
+	// Dependencies for storage monitor supporting dependency injection.
+	StorageManagerDeps modules.Dependencies
+
 	// Custom settings for modules
 	Allowance   modules.Allowance
 	Bootstrap   bool
@@ -379,16 +382,21 @@ func New(params NodeParams) (*Node, <-chan error) {
 		if !params.CreateHost {
 			return nil, nil
 		}
+		if params.HostAddress == "" {
+			params.HostAddress = "localhost:0"
+		}
 		hostDeps := params.HostDeps
 		if hostDeps == nil {
 			hostDeps = modules.ProdDependencies
 		}
-		if params.HostAddress == "" {
-			params.HostAddress = "localhost:0"
+		smDeps := params.StorageManagerDeps
+		if smDeps == nil {
+			smDeps = new(modules.ProductionDependencies)
 		}
 		i++
 		printfRelease("(%d/%d) Loading host...\n", i, numModules)
-		return host.NewCustomHost(hostDeps, cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		return host, err
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create host"))
