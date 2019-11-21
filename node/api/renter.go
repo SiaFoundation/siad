@@ -1224,6 +1224,7 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps
 			return
 		} else if hosts != 0 && hosts < requiredHosts {
 			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", modules.DefaultAllowance.Hosts, hosts)}, http.StatusBadRequest)
+			return
 		} else {
 			allowance.Hosts = hosts
 		}
