@@ -1447,7 +1447,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		return
 	}
 	// Create destination on disk.
-	if err = os.MkdirAll(destination, 0755); err != nil {
+	if err = os.MkdirAll(destination, 0750); err != nil {
 		err = errors.AddContext(err, "failed to create destination dir")
 		return
 	}

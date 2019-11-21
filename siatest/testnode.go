@@ -350,13 +350,13 @@ func (tn *TestNode) initRootDirs() error {
 	tn.downloadDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), "downloads"),
 	}
-	if err := os.MkdirAll(tn.downloadDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.downloadDir.path, DefaultDiskPermissions); err != nil {
 		return err
 	}
 	tn.filesDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
 	}
-	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.filesDir.path, DefaultDiskPermissions); err != nil {
 		return err
 	}
 	return nil
