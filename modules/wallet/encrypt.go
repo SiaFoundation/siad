@@ -145,24 +145,51 @@ func (w *Wallet) managedMasterKey(seed modules.Seed) (crypto.CipherKey, error) {
 // managedUnlock loads all of the encrypted file structures into wallet memory. Even
 // after loading, the structures are kept encrypted, but some data such as
 // addresses are decrypted so that the wallet knows what to track.
-func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
+func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) <-chan error {
+	errChan := make(chan error, 1)
+
+	// Blocking unlock
+	lastChange, err := w.managedBlockingUnlock(masterKey)
+	if err != nil {
+		errChan <- err
+		return errChan
+	}
+
+	// non-blocking unlock
+	go func() {
+		defer close(errChan)
+		if err := w.tg.Add(); err != nil {
+			errChan <- err
+			return
+		}
+		defer w.tg.Done()
+		err := w.managedAsyncUnlock(lastChange)
+		if err != nil {
+			errChan <- err
+		}
+	}()
+	return errChan
+}
+
+// managedBlockingUnlock handles the blocking part of hte managedUnlock method.
+func (w *Wallet) managedBlockingUnlock(masterKey crypto.CipherKey) (modules.ConsensusChangeID, error) {
 	w.mu.RLock()
 	unlocked := w.unlocked
 	encrypted := w.encrypted
 	w.mu.RUnlock()
 	if unlocked {
-		return errAlreadyUnlocked
+		return modules.ConsensusChangeID{}, errAlreadyUnlocked
 	} else if !encrypted {
-		return errUnencryptedWallet
+		return modules.ConsensusChangeID{}, errUnencryptedWallet
 	}
 
 	// Load db objects into memory.
-	var lastChange modules.ConsensusChangeID
 	var primarySeedFile seedFile
 	var primarySeedProgress uint64
 	var auxiliarySeedFiles []seedFile
 	var unseededKeyFiles []spendableKeyFile
 	var watchedAddrs []types.UnlockHash
+	var lastChange modules.ConsensusChangeID
 	err := func() error {
 		w.mu.Lock()
 		defer w.mu.Unlock()
@@ -208,7 +235,7 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		return nil
 	}()
 	if err != nil {
-		return err
+		return modules.ConsensusChangeID{}, err
 	}
 
 	// Decrypt + load keys.
@@ -261,13 +288,17 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		return nil
 	}()
 	if err != nil {
-		return err
+		return modules.ConsensusChangeID{}, err
 	}
 
 	w.mu.Lock()
 	w.unlocked = true
 	w.mu.Unlock()
+	return lastChange, nil
+}
 
+// managedAsyncUnlock handles the async part of hte managedUnlock method.
+func (w *Wallet) managedAsyncUnlock(lastChange modules.ConsensusChangeID) error {
 	// Subscribe to the consensus set if this is the first unlock for the
 	// wallet object.
 	w.mu.RLock()
@@ -281,7 +312,7 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		go w.rescanMessage(done)
 		defer close(done)
 
-		err = w.cs.ConsensusSetSubscribe(w, lastChange, w.tg.StopChan())
+		err := w.cs.ConsensusSetSubscribe(w, lastChange, w.tg.StopChan())
 		if err == modules.ErrInvalidConsensusChangeID {
 			// something went wrong; resubscribe from the beginning
 			err = dbPutConsensusChangeID(w.dbTx, modules.ConsensusChangeBeginning)
@@ -299,7 +330,6 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		}
 		w.tpool.TransactionPoolSubscribe(w)
 	}
-
 	w.mu.Lock()
 	w.subscribed = true
 	w.mu.Unlock()
@@ -514,7 +544,9 @@ func (w *Wallet) ChangeKeyWithSeed(seed modules.Seed, newKey crypto.CipherKey) e
 
 // Unlock will decrypt the wallet seed and load all of the addresses into
 // memory.
-func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
+func (w *Wallet) Unlock(masterKey crypto.CipherKey) <-chan error {
+	errChan := make(chan error, 1)
+	defer close(errChan)
 	// By having the wallet's ThreadGroup track the Unlock method, we ensure
 	// that Unlock will never unlock the wallet once the ThreadGroup has been
 	// stopped. Without this precaution, the wallet's Close method would be
@@ -522,12 +554,14 @@ func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
 	// to Unlock the wallet in the short interval after Close calls w.Lock
 	// and before Close calls w.mu.Lock.
 	if err := w.tg.Add(); err != nil {
-		return err
+		errChan <- err
+		return errChan
 	}
 	defer w.tg.Done()
 
 	if !w.scanLock.TryLock() {
-		return errScanInProgress
+		errChan <- errScanInProgress
+		return errChan
 	}
 	defer w.scanLock.Unlock()
 

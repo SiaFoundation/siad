@@ -59,7 +59,7 @@ func createExplorerTester(name string) (*explorerTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = w.Unlock(key)
+	err = <-w.Unlock(key)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (et *explorerTester) reorgToBlank() error {
 	if err != nil {
 		return err
 	}
-	err = w.Unlock(key)
+	err = <-w.Unlock(key)
 	if err != nil {
 		return err
 	}

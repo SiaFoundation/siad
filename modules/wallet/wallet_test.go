@@ -54,7 +54,7 @@ func createWalletTester(name string, deps modules.Dependencies) (*walletTester, 
 	if err != nil {
 		return nil, err
 	}
-	err = w.Unlock(masterKey)
+	err = <-w.Unlock(masterKey)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func TestRescanning(t *testing.T) {
 		// acquire the write lock so that Unlock acquires the trymutex, but
 		// cannot proceed further
 		wt.wallet.mu.Lock()
-		errChan <- wt.wallet.Unlock(wt.walletMasterKey)
+		errChan <- <-wt.wallet.Unlock(wt.walletMasterKey)
 	}()
 
 	// wait for goroutine to start, after which Rescanning should return true
@@ -580,7 +580,7 @@ func TestDistantWallets(t *testing.T) {
 		t.Fatal(err)
 	}
 	sk := crypto.NewWalletKey(crypto.HashObject(wt.wallet.primarySeed))
-	err = w2.Unlock(sk)
+	err = <-w2.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}

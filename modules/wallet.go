@@ -298,10 +298,12 @@ type (
 		// wallet seeds are encrypted by default, and the wallet will not know
 		// which addresses to watch for on the blockchain until unlock has been
 		// called.
+		// Unlock will return a channel as soon as the wallet is unlocked but
+		// before the wallet is caught up to consensus.
 		//
 		// All items in the wallet are encrypted using different keys which are
 		// derived from the master key.
-		Unlock(masterKey crypto.CipherKey) error
+		Unlock(masterKey crypto.CipherKey) <-chan error
 
 		// ChangeKey changes the wallet's materKey from masterKey to newKey,
 		// re-encrypting the wallet with the provided key.

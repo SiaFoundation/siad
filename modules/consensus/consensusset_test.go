@@ -117,7 +117,7 @@ func blankConsensusSetTester(name string, deps modules.Dependencies) (*consensus
 	if err != nil {
 		return nil, err
 	}
-	err = w.Unlock(key)
+	err = <-w.Unlock(key)
 	if err != nil {
 		return nil, err
 	}

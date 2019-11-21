@@ -45,7 +45,7 @@ func TestIntegrationMinimumValidChildTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = w.Unlock(key)
+	err = <-w.Unlock(key)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -130,7 +130,7 @@ func (hdbt *hdbTester) initWallet() error {
 	if err != nil {
 		return err
 	}
-	err = hdbt.wallet.Unlock(hdbt.walletKey)
+	err = <-hdbt.wallet.Unlock(hdbt.walletKey)
 	if err != nil {
 		return err
 	}

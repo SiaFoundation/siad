@@ -43,7 +43,7 @@ func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.Transa
 			return nil, err
 		}
 	}
-	err = w.Unlock(key)
+	err = <-w.Unlock(key)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 			return nil, nil, nil, err
 		}
 	}
-	err = w.Unlock(key)
+	err = <-w.Unlock(key)
 	if err != nil {
 		return nil, nil, nil, err
 	}

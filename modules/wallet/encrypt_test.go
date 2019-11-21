@@ -38,11 +38,11 @@ func postEncryptionTesting(m modules.TestMiner, w *Wallet, masterKey crypto.Ciph
 	}
 
 	// Try unlocking and using the wallet.
-	err = w.Unlock(masterKey)
+	err = <-w.Unlock(masterKey)
 	if err != nil {
 		panic(err)
 	}
-	err = w.Unlock(masterKey)
+	err = <-w.Unlock(masterKey)
 	if err != errAlreadyUnlocked {
 		panic(err)
 	}
@@ -61,7 +61,7 @@ func postEncryptionTesting(m modules.TestMiner, w *Wallet, masterKey crypto.Ciph
 	if siacoinBal.IsZero() {
 		panic("wallet balance reported as 0 after maturing some mined blocks")
 	}
-	err = w.Unlock(masterKey)
+	err = <-w.Unlock(masterKey)
 	if err != errAlreadyUnlocked {
 		panic(err)
 	}
@@ -75,11 +75,11 @@ func postEncryptionTesting(m modules.TestMiner, w *Wallet, masterKey crypto.Ciph
 	if err != modules.ErrLockedWallet {
 		panic(err)
 	}
-	err = w.Unlock(nil)
+	err = <-w.Unlock(nil)
 	if err != modules.ErrBadEncryptionKey {
 		panic(err)
 	}
-	err = w.Unlock(masterKey)
+	err = <-w.Unlock(masterKey)
 	if err != nil {
 		panic(err)
 	}
@@ -125,7 +125,7 @@ func TestIntegrationPreEncryption(t *testing.T) {
 	if err != modules.ErrLockedWallet {
 		t.Fatal(err)
 	}
-	err = wt.wallet.Unlock(nil)
+	err = <-wt.wallet.Unlock(nil)
 	if err != errUnencryptedWallet {
 		t.Fatal(err)
 	}
@@ -197,13 +197,13 @@ func TestIntegrationBlankEncryption(t *testing.T) {
 	}
 
 	// Try unlocking the wallet using a blank key.
-	err = wt.wallet.Unlock(nil)
+	err = <-wt.wallet.Unlock(nil)
 	if err != modules.ErrBadEncryptionKey {
 		t.Fatal(err)
 	}
 	// Try unlocking the wallet using the correct key.
 	sk := crypto.NewWalletKey(crypto.HashObject(seed))
-	err = wt.wallet.Unlock(sk)
+	err = <-wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,14 +322,14 @@ func TestInitFromSeedConcurrentUnlock(t *testing.T) {
 
 	// unlock should now return an error
 	sk := crypto.NewWalletKey(crypto.HashObject(seed))
-	err = w.Unlock(sk)
+	err = <-w.Unlock(sk)
 	if err != errScanInProgress {
 		t.Fatal("expected errScanInProgress, got", err)
 	}
 	// wait for init to finish
 	for i := 0; i < 100; i++ {
 		time.Sleep(time.Millisecond * 10)
-		err = w.Unlock(sk)
+		err = <-w.Unlock(sk)
 		if err == nil {
 			break
 		}
@@ -368,14 +368,14 @@ func TestUnlockConcurrent(t *testing.T) {
 		// acquire the write lock so that Unlock acquires the trymutex, but
 		// cannot proceed further
 		wt.wallet.mu.Lock()
-		errChan <- wt.wallet.Unlock(wt.walletMasterKey)
+		errChan <- <-wt.wallet.Unlock(wt.walletMasterKey)
 	}()
 
 	// wait for goroutine to start
 	time.Sleep(time.Millisecond * 10)
 
 	// unlock should now return an error
-	err = wt.wallet.Unlock(wt.walletMasterKey)
+	err = <-wt.wallet.Unlock(wt.walletMasterKey)
 	if err != errScanInProgress {
 		t.Fatal("expected errScanInProgress, got", err)
 	}
@@ -417,7 +417,7 @@ func TestInitFromSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	sk := crypto.NewWalletKey(crypto.HashObject(seed))
-	err = w.Unlock(sk)
+	err = <-w.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,12 +509,12 @@ func TestChangeKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = wt.wallet.Unlock(wt.walletMasterKey)
+	err = <-wt.wallet.Unlock(wt.walletMasterKey)
 	if err == nil {
 		t.Fatal("expected unlock to fail with the original key")
 	}
 
-	err = wt.wallet.Unlock(newKey)
+	err = <-wt.wallet.Unlock(newKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +567,7 @@ func TestChangeKeyWithSeedCompatV141(t *testing.T) {
 	wt.wallet = wallet
 
 	// Unlock the wallet.
-	err = wt.wallet.Unlock(wt.walletMasterKey)
+	err = <-wt.wallet.Unlock(wt.walletMasterKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,12 +588,12 @@ func TestChangeKeyWithSeedCompatV141(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = wt.wallet.Unlock(wt.walletMasterKey)
+	err = <-wt.wallet.Unlock(wt.walletMasterKey)
 	if err == nil {
 		t.Fatal("expected unlock to fail with the original key")
 	}
 
-	err = wt.wallet.Unlock(newKey)
+	err = <-wt.wallet.Unlock(newKey)
 	if err != nil {
 		t.Fatal(err)
 	}

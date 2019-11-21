@@ -26,7 +26,7 @@ func TestScanLargeIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = wt.wallet.Unlock(masterKey)
+	err = <-wt.wallet.Unlock(masterKey)
 	if err != nil {
 		t.Fatal(err)
 	}
