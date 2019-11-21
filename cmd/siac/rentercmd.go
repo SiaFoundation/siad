@@ -436,16 +436,16 @@ func renterallowancecmd() {
 
 	// Show allowance info
 	fmt.Printf(`Allowance:
-	Amount:               %v
-	Period:               %v blocks
-	Renew Window:         %v blocks
-	Hosts:                %v
+  Amount:               %v
+  Period:               %v blocks
+  Renew Window:         %v blocks
+  Hosts:                %v
 
 Expectations for period:
-	Expected Storage:     %v
-	Expected Upload:      %v
-	Expected Download:    %v
-	Expected Redundancy:  %v
+  Expected Storage:     %v
+  Expected Upload:      %v
+  Expected Download:    %v
+  Expected Redundancy:  %v
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
 		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
 

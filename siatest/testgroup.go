@@ -431,6 +431,10 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 	// each renter is supposed to have at least expectedContracts with hosts
 	// from the hosts map.
 	for renter := range renters {
+		if renter.params.SkipSetAllowance {
+			continue
+		}
+
 		numRetries := 0
 		// Get expected number of contracts for this renter.
 		rg, err := renter.RenterGet()
@@ -450,6 +454,7 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 				expectedContracts--
 			}
 		}
+
 		// Check if number of contracts is sufficient.
 		err = Retry(1000, 100*time.Millisecond, func() error {
 			numRetries++

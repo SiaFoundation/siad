@@ -2,10 +2,16 @@ package host
 
 import (
 	"bytes"
+	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host"
+	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
 // TestHostGetPubKey confirms that the pubkey is returned through the API
@@ -49,5 +55,144 @@ func TestHostGetPubKey(t *testing.T) {
 		t.Log("HostGet PubKey:", hg.PublicKey)
 		t.Log("Server PubKey:", pk)
 		t.Fatal("Public Keys don't match")
+	}
+}
+
+// TestHostAlertDiskTrouble verifies the host properly registers the disk
+// trouble alert, and returns it through the alerts endpoint
+func TestHostAlertDiskTrouble(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	groupParams := siatest.GroupParams{
+		Miners: 1,
+	}
+
+	alert := modules.Alert{
+		Cause:    "",
+		Module:   "contractmanager",
+		Msg:      contractmanager.AlertMSGHostDiskTrouble,
+		Severity: modules.SeverityCritical,
+	}
+
+	testDir := hostTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a node which won't be able to form a contract due to disk trouble
+	depDiskTrouble := dependencies.NewDependencyHostDiskTrouble()
+	hostParams := node.Host(filepath.Join(testDir, "/host"))
+	hostParams.StorageManagerDeps = depDiskTrouble
+	nodes, err := tg.AddNodes(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := nodes[0]
+
+	// Add a storage folder and resize it - should trigger disk trouble
+	sf := hostTestDir("/some/folder")
+	err = h.HostStorageFoldersAddPost(sf, 1<<24)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	depDiskTrouble.Fail()
+	_ = h.HostStorageFoldersResizePost(sf, 1<<23)
+
+	// Test that host registered the alert.
+	err = h.IsAlertRegistered(alert)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test that host reload unregisters the alert
+	err = tg.RestartNode(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h.IsAlertUnregistered(alert)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestHostAlertInsufficientCollateral verifies the host properly registers the
+// insufficient collateral alert, and returns it through the alerts endpoint
+func TestHostAlertInsufficientCollateral(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a test group
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Renters: 1,
+		Miners:  1,
+	}
+	testDir := hostTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Confirm contracts got created
+	r := tg.Renters()[0]
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) == 0 {
+		t.Fatal("No contracts created")
+	}
+
+	// Nullify the host's collateral budget
+	h := tg.Hosts()[0]
+	hS, _ := h.HostGet()
+	err = h.HostModifySettingPost(client.HostParamCollateralBudget, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine blocks to force contract renewal
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test that host registered alert.
+	alert := modules.Alert{
+		Cause:    "",
+		Module:   "host",
+		Msg:      host.AlertMSGHostInsufficientCollateral,
+		Severity: modules.SeverityWarning,
+	}
+
+	if err = h.IsAlertRegistered(alert); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reinstate the host's collateral budget
+	err = h.HostModifySettingPost(client.HostParamCollateralBudget, hS.InternalSettings.CollateralBudget)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test that host unregistered alert.
+	if err = h.IsAlertUnregistered(alert); err != nil {
+		t.Fatal(err)
 	}
 }

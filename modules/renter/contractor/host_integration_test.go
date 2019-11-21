@@ -71,7 +71,7 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -113,8 +113,8 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	return contractor, <-errChan
 }
 
-// newTestingTrio creates a Host, Contractor, and TestMiner that can be used
-// for testing host/renter interactions.
+// newTestingTrio creates a Host, Contractor, and TestMiner that can be
+// used for testing host/renter interactions.
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, error) {
 	testdir := build.TempDir("contractor", name)
 
