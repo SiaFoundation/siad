@@ -9,8 +9,8 @@ import (
 
 // watchdogPersist defines what watchdog data persists across sessions.
 type watchdogPersist struct {
-	Contracts         map[string]fileContractStatusPersist   `json:"Contracts"`
-	ArchivedContracts map[string]modules.ContractWatchStatus `json:"ArchivedContracts"`
+	Contracts         map[string]fileContractStatusPersist   `json:"contracts"`
+	ArchivedContracts map[string]modules.ContractWatchStatus `json:"archivedcontracts"`
 }
 
 // fileContractStatusPersist defines what information from fileContractStatus is persisted.
