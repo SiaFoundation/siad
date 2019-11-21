@@ -40,6 +40,13 @@ const (
 	// call to 'gateway.Offline' if the value returned is 'false' and
 	// unregistered when it returns 'true'.
 	AlertIDGatewayOffline = "gateway-offline"
+	// AlertIDHostDiskTrouble is the id of the alert that is registered when the
+	// host is encountering problems interacting with one or more of his disks
+	AlertIDHostDiskTrouble = "host-disk-trouble"
+	// AlertIDHostInsufficientCollateral is the id of the alert that is
+	// registered if the host has insufficient collateral budget left to form or
+	// renew a contract
+	AlertIDHostInsufficientCollateral = "host-insufficient-collateral"
 )
 
 // AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID
@@ -76,12 +83,21 @@ type (
 	AlertSeverity uint64
 )
 
+// Equals returns true if x and y are identical alerts
+func (x Alert) Equals(y Alert) bool {
+	return x.Module == y.Module && x.Cause == y.Cause && x.Msg == y.Msg && x.Severity == y.Severity
+}
+
 // MarshalJSON defines a JSON encoding for the AlertSeverity.
 func (a AlertSeverity) MarshalJSON() ([]byte, error) {
-	if a == SeverityWarning || a == SeverityError || a == SeverityCritical {
-		return json.Marshal(a.String())
+	switch a {
+	case SeverityWarning:
+	case SeverityError:
+	case SeverityCritical:
+	default:
+		return nil, errors.New("unknown AlertSeverity")
 	}
-	return nil, errors.New("unknown AlertSeverity")
+	return json.Marshal(a.String())
 }
 
 // UnmarshalJSON attempts to decode an AlertSeverity.
