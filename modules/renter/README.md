@@ -64,7 +64,7 @@ responsibilities.
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
- - [FUSE Subsystem](#fuse-subsystem)
+ - [Fuse Subsystem](#fuse-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -649,14 +649,43 @@ The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
 
-### FUSE Subsystem
+### Fuse Subsystem
 **Key Files**
  - [fuse.go](./fuse.go)
 
-The FUSE subsystem enables mounting the renter as a virtual filesystem. When
+The fuse subsystem enables mounting the renter as a virtual filesystem. When
 mounted, the kernel forwards I/O syscalls on files and folders to the userland
 code in this subsystem. For example, the `read` syscall is implemented by
 downloading data from Sia hosts.
 
-*TODO* 
-  - add complexities
+Fuse is implemented using the `hanwen/go-fuse/v2` series of packages, primarily
+`fs` and `fuse`. The fuse package recognizes a single node interface for files
+and folders, but the renter has two structs, one for files and another for
+folders. Each the fuseDirnode and the fuseFilenode implement the same Node
+interfaces.
+
+The fuse implementation is remarkably sensitive to small details. UID mistakes,
+slow load times, or missing/incorrect method implementations can often destroy
+an external application's ability to interact with fuse. Currently we use
+ranger, Nautilus, vlc/mpv, and siastream when testing if fuse is still working
+well. More programs may be added to this list as we discover more programs that
+have unique requirements for working with the fuse package.
+
+The siatest/renter suite has two packages which are useful for testing fuse. The
+first is [fuse\_test.go](../../siatest/renter/fuse_test.go), and the second is
+[fusemock\_test.go](../../siatest/renter/fusemock_test.go). The first file
+leverages a testgroup with a renter, a miner, and several hosts to mimic the Sia
+network, and then mounts a fuse folder which uses the full fuse implementation.
+The second file contains a hand-rolled implementation of a fake filesystem which
+implements the fuse interfaces. Both have a commented out sleep at the end of
+the test which, when uncommented, allows a developer to explore the final
+mounted fuse folder with any system application to see if things are working
+correctly.
+
+The mocked fuse is useful for debugging issues related to the fuse
+implementation. When using the renter implementation, it can be difficult to
+determine whether something is not working because there is a bug in the renter
+code, or whether something is not working because the fuse libraries are being
+used incorrectly. The mocked fuse is an easy way to replicate any desired
+behavior and check for misunderstandings that the programmer may have about how
+the fuse librires are meant to be used.
