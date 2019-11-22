@@ -107,6 +107,22 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Check the statfs return values. This works because we only do fuse
+	// testing on linux right now.
+	var stat syscall.Statfs_t
+	err = syscall.Statfs(mountpoint1, &stat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stat.Bsize == 0 {
+		t.Error("expecting non-zero block size")
+	}
+	if stat.Blocks != stat.Bfree {
+		t.Error("expecting the entire filesystem to be free space")
+	}
+	if stat.Files != 0 {
+		t.Error("expecting zero files in filesystem")
+	}
 
 	// Try unmounting the fuse filesystem.
 	err = r.RenterFuseUnmount(mountpoint1)
@@ -202,6 +218,39 @@ func TestFuse(t *testing.T) {
 	}
 	if fuseStat.Mode() != localStat.Mode() {
 		t.Error("mode mismatch")
+	}
+
+	// Statfs the file in the directory, and the directory that contains the
+	// file.
+	var dirStat, fileStat syscall.Statfs_t
+	err = syscall.Statfs(mountpoint1, &dirStat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = syscall.Statfs(fusePath, &fileStat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirStat.Bsize != fileStat.Bsize {
+		t.Error("directory and file are not reporting the same block size - unsure if application will get upset at this")
+	}
+	if dirStat.Blocks != fileStat.Blocks {
+		t.Error("directory and file statfs are reporting a different filesystem size")
+	}
+	if dirStat.Bfree != fileStat.Bfree {
+		t.Error("directory and file statfs are reporting different values for free space")
+	}
+	if dirStat.Files != fileStat.Files {
+		t.Error("directory and file statfs are reporting different values for num files in filesystem")
+	}
+	if dirStat.Bsize == 0 {
+		t.Error("expecting non-zero block size")
+	}
+	if dirStat.Blocks == dirStat.Bfree {
+		t.Error("expecting statfs to suggest that some of the renter space has been consumed")
+	}
+	if dirStat.Files != 1 {
+		t.Error("expecting the filesystem to be reporting one file")
 	}
 
 	// Create a directory within the root directory and see if the directory
@@ -488,6 +537,24 @@ func TestFuse(t *testing.T) {
 	err = localfd2Fuse.Close()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check that the overall filesystem has kept up with the updates.
+	err = syscall.Statfs(mountpoint1, &stat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stat.Bsize == 0 {
+		t.Error("expecting non-zero block size")
+	}
+	if stat.Bsize != dirStat.Bsize {
+		t.Error("the filesystem size appears to have changed")
+	}
+	if stat.Blocks == stat.Bfree {
+		t.Error("expecting space to be consumed on the filesystem")
+	}
+	if stat.Files != 4 {
+		t.Error("expecting four files in filesystem")
 	}
 
 	// Check that the read-only flag is being respected.
