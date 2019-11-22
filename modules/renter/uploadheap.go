@@ -564,13 +564,9 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		// Check to see if we are still adding chunks
 		heapLen := r.uploadHeap.managedLen()
 		if heapLen == prevHeapLen {
-			// No more chunks added to the uploadHeap from the worst health
-			// directory. This means that the worse health chunks are already in
-			// the heap or are currently being repaired, so return. This can be
-			// the case in new uploads or repair loop iterations triggered from
-			// bubble
-			r.repairLog.Debugln("no more chunks added to the upload heap")
-			return siaPaths, nil
+			// If no chunks were added from this directory then just continue as
+			// this could be due to a slight delay in the metadata being updated
+			continue
 		}
 		chunksAdded := heapLen - prevHeapLen
 		prevHeapLen = heapLen
