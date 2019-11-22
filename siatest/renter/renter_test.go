@@ -3073,8 +3073,8 @@ func TestUploadAfterDelete(t *testing.T) {
 	}
 }
 
-// TestSiafileCompatCodeV137 checks that legacy renters can upgrade to the v137
-// siafile format.
+// TestSiafileCompatCodeV137 checks that legacy renters can upgrade from the
+// v137 siafile format.
 func TestSiafileCompatCodeV137(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -3208,8 +3208,8 @@ func TestSiafileCompatCodeV137(t *testing.T) {
 	}
 }
 
-// TestSiafileCompatCodeV140 checks that legacy renters can upgrade to the v140
-// siafile format.
+// TestSiafileCompatCodeV140 checks that legacy renters can upgrade from the
+// v140 siafile format.
 func TestSiafileCompatCodeV140(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
