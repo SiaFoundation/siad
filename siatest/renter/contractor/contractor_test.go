@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -1582,9 +1583,18 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Shutdown a hosts to cause churn.
 	hosts := tg.Hosts()
 	numHostsShutdown := 1
+
+	// Before shutting down a host, get its pubkey to verify that the correct
+	// contract is getting churned.
+	hostInfo, err := hosts[0].HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostPubKey := hostInfo.PublicKey
+
+	// Shutdown a host to cause churn.
 	err = hosts[0].StopNode()
 	if err != nil {
 		t.Fatal(err)
@@ -1618,6 +1628,11 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
 		}
+		churnedHost := rc.DisabledContracts[0].HostPublicKey
+		if churnedHost.Algorithm != hostPubKey.Algorithm || !bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+			return errors.New("wrong host churned")
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -1664,6 +1679,14 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", 1, len(rc.DisabledContracts))
 		}
+
+		// Check that a *different* host (i.e. not the offline host) was churned
+		// this time.
+		churnedHost := rc.DisabledContracts[0].HostPublicKey
+		if churnedHost.Algorithm == hostPubKey.Algorithm && bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+			return errors.New("wrong host churned")
+		}
+
 		return nil
 	})
 	if err != nil {

@@ -436,12 +436,12 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 		h.announced = false
 	}
 
+	h.settings = settings
+	h.revisionNumber++
+
 	// The locked storage collateral was altered, we potentially want to
 	// unregister the insufficient collateral budget alert
 	h.TryUnregisterInsufficientCollateralBudgetAlert()
-
-	h.settings = settings
-	h.revisionNumber++
 
 	err = h.saveSync()
 	if err != nil {
