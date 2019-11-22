@@ -108,8 +108,8 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	// Create the root filesystem object.
 	root := &fuseDirnode{
-		filesystem: filesystem,
-		siapath:    sp,
+		filesystem:    filesystem,
+		staticSiaPath: sp,
 
 		// TODO: This will one day need to be fetched using the root inode for
 		// the filesystem, instead of having our own counter.
@@ -155,7 +155,7 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 	for mountPoint, filesystem := range fm.mountPoints {
 		infos = append(infos, modules.MountInfo{
 			MountPoint: mountPoint,
-			SiaPath:    filesystem.root.siapath,
+			SiaPath:    filesystem.root.staticSiaPath,
 		})
 	}
 	return infos
