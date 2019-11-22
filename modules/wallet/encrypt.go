@@ -523,7 +523,7 @@ func (w *Wallet) IsMasterKey(masterKey crypto.CipherKey) (bool, error) {
 
 	// Check provided key
 	err := checkMasterKey(w.dbTx, masterKey)
-	if err == modules.ErrBadEncryptionKey {
+	if errors.Contains(err, modules.ErrBadEncryptionKey) {
 		return false, nil
 	}
 	if err != nil {
