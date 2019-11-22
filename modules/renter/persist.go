@@ -54,6 +54,7 @@ var (
 	persistVersion040 = "0.4"
 	persistVersion133 = "1.3.3"
 	persistVersion140 = "1.4.0"
+	persistVersion142 = "1.4.2"
 )
 
 type (
@@ -96,6 +97,11 @@ func (r *Renter) managedLoadSettings() error {
 		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename), oldContracts)
 		if err != nil {
 			r.log.Println("WARNING: 133 to 140 renter upgrade failed", err)
+		}
+		// Then upgrade from 140 to 142.
+		err = r.convertPersistVersionFrom140To142(filepath.Join(r.persistDir, PersistFilename))
+		if err != nil {
+			r.log.Println("WARNING: 140 to 142 renter upgrade failed", err)
 			// Nothing left to try.
 			return err
 		}
@@ -187,11 +193,23 @@ func (r *Renter) managedInitPersist() error {
 		}
 	}
 
-	// Prepare the filesystem and create the essential dirs.
+	// Create the filesystem.
 	fs, err := filesystem.New(fsRoot, r.log, wal)
 	if err != nil {
 		return err
 	}
+
+	// Initialize the wal, staticFileSet and the staticDirSet. With the
+	// staticDirSet finish the initialization of the files directory
+	r.wal = wal
+	r.staticFileSystem = fs
+
+	// Load the prior persistence structures.
+	if err := r.managedLoadSettings(); err != nil {
+		return errors.AddContext(err, "failed to load renter's persistence structrue")
+	}
+
+	// Create the essential dirs in the filesystem.
 	err = fs.NewSiaDir(modules.HomeSiaPath())
 	if err != nil && err != filesystem.ErrExists {
 		return err
@@ -204,11 +222,5 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
-
-	// Initialize the wal, staticFileSet and the staticDirSet. With the
-	// staticDirSet finish the initialization of the files directory
-	r.wal = wal
-	r.staticFileSystem = fs
-	// Load the prior persistence structures.
-	return r.managedLoadSettings()
+	return nil
 }
