@@ -11,7 +11,8 @@ used. They are unix-like paths relative to the specified root of the
 Filesystem except for the fact that they don't start with a leading slash.
 Ideally all parts of the siad codebase only have to interact with SiaPaths
 instead of system paths and the Filesystem would handle all of the
-translations between SiaPaths and regular system paths.
+translations between SiaPaths and regular system paths. The Filesystem also
+enforces that files and folders can't share the same name.
 
 The Filesystem is an in-memory tree-like data structure of nodes. The nodes
 can either be files or directories. Directory nodes potentially point to
@@ -47,12 +48,13 @@ The Filesystem has the following subsystems.
 The Filesystem subsystem contains Filesystem specific errors, the definition
 for the common `node` type as well as all the exported methods which are
 called by other modules.
-It is a special `DirNode` which acts as the root of the Filesystem and is
-always kept in memory instead of being pruned like the other nodes. The job
-of the FileSystem is to translate SiaPaths into regular paths and pass calls
-to its exported methods on to the correct child if possible. It also
-implements some high level methods which might require interacting with
-multiple nodes like `RenameDir` for example.
+
+It is a special `DirNode` which acts as the root of the Filesystem, is
+created upon startup and is always kept in memory instead of being pruned
+like the other nodes. The job of the FileSystem is to translate SiaPaths into
+regular paths and pass calls to its exported methods on to the correct child
+if possible. It also implements some high level methods which might require
+interacting with multiple nodes like `RenameDir` for example.
 
 ### DirNode
 **Key Files**
