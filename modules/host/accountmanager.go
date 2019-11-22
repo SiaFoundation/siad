@@ -335,11 +335,15 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return ErrWithdrawalSpent
 	}
 
-	// Save the fingerprint (both in-memory and to disk, synchronously)
+	// Save the fingerprint
 	am.fingerprints.save(fingerprint, msg.expiry, currentBlockHeight)
-	am.mu.Unlock()
-	am.staticAccountsPersister.callSaveFingerprint(fingerprint, msg.expiry, currentBlockHeight)
-	am.mu.Lock()
+	if err := am.h.tg.Add(); err != nil {
+		return ErrWithdrawalCancelled
+	}
+	go func() {
+		defer am.h.tg.Done()
+		am.staticAccountsPersister.callSaveFingerprint(fingerprint, msg.expiry, currentBlockHeight)
+	}()
 
 	// Ensure the account exists
 	acc, exists := am.accounts[msg.account]
