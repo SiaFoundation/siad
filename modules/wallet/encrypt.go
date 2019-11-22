@@ -163,6 +163,9 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) <-chan error {
 			return
 		}
 		defer w.tg.Done()
+		if w.deps.Disrupt("DisableAsyncUnlock") {
+			return
+		}
 		err := w.managedAsyncUnlock(lastChange)
 		if err != nil {
 			errChan <- err
@@ -184,12 +187,12 @@ func (w *Wallet) managedBlockingUnlock(masterKey crypto.CipherKey) (modules.Cons
 	}
 
 	// Load db objects into memory.
+	var lastChange modules.ConsensusChangeID
 	var primarySeedFile seedFile
 	var primarySeedProgress uint64
 	var auxiliarySeedFiles []seedFile
 	var unseededKeyFiles []spendableKeyFile
 	var watchedAddrs []types.UnlockHash
-	var lastChange modules.ConsensusChangeID
 	err := func() error {
 		w.mu.Lock()
 		defer w.mu.Unlock()
