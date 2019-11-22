@@ -279,7 +279,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	})
 
 	// Add the account manager subsystem
-	h.staticAccountManager, err = h.newAccountManager(h.blockHeight)
+	h.staticAccountManager, err = h.newAccountManager()
 	if err != nil {
 		return nil, err
 	}
@@ -460,4 +460,11 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 	}
 	defer h.tg.Done()
 	return h.settings
+}
+
+// BlockHeight returns the host's current blockheight.
+func (h *Host) BlockHeight() types.BlockHeight {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.blockHeight
 }

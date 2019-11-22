@@ -235,13 +235,13 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		}
 		settings.MaxEphemeralAccountBalance = x
 	}
-	if req.FormValue("maxunsaveddelta") != "" {
+	if req.FormValue("maxephemeralaccountrisk") != "" {
 		var x types.Currency
-		_, err := fmt.Sscan(req.FormValue("maxunsaveddelta"), &x)
+		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountrisk"), &x)
 		if err != nil {
 			return modules.HostInternalSettings{}, err
 		}
-		settings.MaxUnsavedDelta = x
+		settings.MaxEphemeralAccountRisk = x
 	}
 
 	return settings, nil

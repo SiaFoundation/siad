@@ -115,7 +115,7 @@ In version `1.4.2`, sia hosting is configured as follows:
 | minstorageprice            | in SC / TB                                      |
 | minuploadbandwidthprice    | in SC / TB                                      |
 | maxephemeralaccountbalance | in SC                                           |
-| maxunsaveddelta            | in SC                                           |
+| maxephemeralaccountrisk    | in SC                                           |
 
 You can call this many times to configure you host before
 announcing. Alternatively, you can manually adjust these parameters

@@ -381,7 +381,7 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if !settings.MaxEphemeralAccountBalance.Equals(defaultMaxEphemeralAccountBalance) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MaxUnsavedDelta.Equals(defaultMaxUnsavedDelta) {
+	if !settings.MaxEphemeralAccountRisk.Equals(defaultMaxEphemeralAccountRisk) {
 		t.Error("settings retrieval did not return default value")
 	}
 

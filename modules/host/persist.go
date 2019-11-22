@@ -72,7 +72,7 @@ func (h *Host) establishDefaults() error {
 		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
 
 		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,
-		MaxUnsavedDelta:            defaultMaxUnsavedDelta,
+		MaxEphemeralAccountRisk:    defaultMaxEphemeralAccountRisk,
 	}
 
 	// Generate signing key, for revising contracts.

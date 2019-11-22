@@ -36,9 +36,9 @@ func NewDependencyHostDiskTrouble() *DependencyInterruptOnceOnKeyword {
 	return newDependencyInterruptOnceOnKeyword("diskTrouble")
 }
 
-// NewHostMaxUnsavedDeltaReached is a dependency injection for the host that
-// will ensure the ephemeral account max saved delta is reached by persisting
-// with a set latency.
-func NewHostMaxUnsavedDeltaReached(duration time.Duration) modules.Dependencies {
-	return newDependencyAddLatency("errMaxUnsavedDeltaReached", duration)
+// NewHostMaxEphemeralAccountRiskReached is a dependency injection for the host
+// that will ensure the ephemeral account max saved delta is reached by
+// persisting with a set latency.
+func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) modules.Dependencies {
+	return newDependencyAddLatency("errMaxRiskReached", duration)
 }

@@ -75,8 +75,8 @@ func TestAccountCallWithdraw(t *testing.T) {
 	}
 
 	// Prepare a withdrawal message
-	diff := types.NewCurrency64(5)
-	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+10, sk)
+	amount := types.NewCurrency64(5)
+	msg, sig := prepareWithdrawal(accountID, amount, am.h.blockHeight, sk)
 
 	// Spend half of it and verify account balance
 	err = callWithdraw(am, msg, sig)
@@ -84,36 +84,69 @@ func TestAccountCallWithdraw(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify the balance after the spend
+	// Verify current balance
+	current := types.NewCurrency64(5)
 	balance := getAccountBalance(am, accountID)
-	if !balance.Equals(types.NewCurrency64(5)) {
+	if !balance.Equals(current) {
 		t.Fatal("Account balance was incorrect after spend")
 	}
 
-	// Spend more than the account holds, have it block and then fund it to
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		_ = am.callDeposit(accountID, types.NewCurrency64(3))
-	}()
 	overSpend := types.NewCurrency64(7)
-	msg, sig = prepareWithdrawal(accountID, overSpend, am.h.blockHeight+10, sk)
-	err = callWithdraw(am, msg, sig)
-	if err != nil {
-		t.Fatal(err)
+	deposit := types.NewCurrency64(3)
+	expected := current.Add(deposit).Sub(overSpend)
+
+	var atomicErrs uint64
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		msg, sig = prepareWithdrawal(accountID, overSpend, am.h.blockHeight, sk)
+		if err := callWithdraw(am, msg, sig); err != nil {
+			atomic.AddUint64(&atomicErrs, 1)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(100 * time.Millisecond) // ensure deposit is after withdraw
+		if err := am.callDeposit(accountID, deposit); err != nil {
+			atomic.AddUint64(&atomicErrs, 1)
+		}
+	}()
+	wg.Wait()
+	if atomic.LoadUint64(&atomicErrs) != 0 {
+		t.Fatal("Unexpected error occurred during blocked withdrawal")
 	}
 
 	balance = getAccountBalance(am, accountID)
-	if !balance.Equals(types.NewCurrency64(1)) {
-		t.Fatal("Account balance was incorrect after spend")
+	if !balance.Equals(expected) {
+		t.Fatal("Account balance was incorrect after spend", balance.HumanString())
 	}
 
-	// Spend from an unknown account and verify it timed out
-	sk, spk = prepareAccount()
-	unknown := spk.String()
-	msg, sig = prepareWithdrawal(unknown, overSpend, am.h.blockHeight+10, sk)
-	err = callWithdraw(am, msg, sig)
-	if err != ErrBalanceInsufficient {
+}
+
+// TestAccountCallWithdrawTimeout verifies withdrawals timeout eventually
+func TestAccountCallWithdrawTimeout(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
 		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// Prepare a new account
+	sk, spk := prepareAccount()
+	unknown := spk.String()
+
+	// Withdraw from it
+	amount := types.NewCurrency64(1)
+	msg, sig := prepareWithdrawal(unknown, amount, am.h.blockHeight, sk)
+	if err := callWithdraw(am, msg, sig); err != ErrBalanceInsufficient {
+		t.Fatal("Unexpected error: ", err)
 	}
 }
 
@@ -349,7 +382,6 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
 	// Prepare a host
 	ht, err := blankHostTester(t.Name())
@@ -423,38 +455,38 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	}
 }
 
-// TestAccountMaxUnsavedDelta tests the behaviour when the amount of unsaved
-// delta exceeds the maxUnsavedDelta. The account manager should wait until the
-// asynchronous persist successfully completed before releasing the lock to
-// accept more withdrawals.
-func TestAccountMaxUnsavedDelta(t *testing.T) {
+// TestAccountMaxEphemeralAccountRisk tests the behaviour when the amount of
+// unsaved ephemeral account balances exceeds the 'maxephemeralaccountrisk'. The
+// account manager should wait until the asynchronous persist successfully
+// completed before releasing the lock to accept more withdrawals.
+func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
 	// Prepare a host that persists the accounts data to disk with a certain
-	// latency, this will ensure that we can reach the maxunsaveddelta and the
-	// host will effectively block until it drops below the maximum
-	deps := dependencies.NewHostMaxUnsavedDeltaReached(200 * time.Millisecond)
+	// latency, this will ensure that we can reach the maxephemeralaccountrisk
+	// and the host will effectively block until it drops below the maximum
+	deps := dependencies.NewHostMaxEphemeralAccountRiskReached(200 * time.Millisecond)
 	ht, err := blankMockHostTester(deps, t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	am := ht.host.staticAccountManager
 
-	// Use the maxEphemeralAccountBalance in combination with maxUnsavedDelta to
-	// figure a good maxAttempts, changing these host settings would also affect
-	// what 'd be a good max attempts
+	// Use the maxEphemeralAccountBalance in combination with
+	// maxephemeralaccountrisk to figure a good maxAttempts, changing these host
+	// settings would also affect what 'd be a good max attempts
 	his := ht.host.InternalSettings()
-	numAccountsUint, _ := his.MaxUnsavedDelta.Div(his.MaxEphemeralAccountBalance).Uint64()
+	numAccountsUint, _ := his.MaxEphemeralAccountRisk.Div(his.MaxEphemeralAccountBalance).Uint64()
 	maxAttempts := int(numAccountsUint) * 5
 
-	// Keep track of how many times the max unsaved delta was reached. We assume
-	// that it works properly when this number exceeds 1, because this means
-	// that it was also successful in decreasing the unsaved delta when the
-	// persist was successful
-	var atomicUnsavedDeltaReached uint64
+	// Keep track of how many times the maxEpheramalAccountRisk was reached. We
+	// assume that it works properly when this number exceeds 1, because this
+	// means that it was also successful in decreasing the current risk when
+	// the persist was successful
+	var atomicMaxRiskReached uint64
 
 	var wg sync.WaitGroup
 	for maxAttempts > 0 {
@@ -472,14 +504,14 @@ func TestAccountMaxUnsavedDelta(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			if wErr := callWithdraw(am, msg, sig); wErr == errMaxUnsavedDeltaReached {
-				atomic.AddUint64(&atomicUnsavedDeltaReached, 1)
+			if wErr := callWithdraw(am, msg, sig); wErr == errMaxRiskReached {
+				atomic.AddUint64(&atomicMaxRiskReached, 1)
 			}
 		}()
 
 		// Escape early
-		unsavedDeltaReached := atomic.LoadUint64(&atomicUnsavedDeltaReached) > 1
-		if unsavedDeltaReached {
+		maxRiskReached := atomic.LoadUint64(&atomicMaxRiskReached) > 1
+		if maxRiskReached {
 			break
 		}
 
@@ -491,9 +523,9 @@ func TestAccountMaxUnsavedDelta(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unsavedDeltaReached := atomic.LoadUint64(&atomicUnsavedDeltaReached) > 1
-	if !unsavedDeltaReached {
-		t.Fatal("Unsaved delta not reached")
+	maxRiskReached := atomic.LoadUint64(&atomicMaxRiskReached) > 1
+	if !maxRiskReached {
+		t.Fatal("Max ephemeral account balance risk was not reached")
 	}
 
 }

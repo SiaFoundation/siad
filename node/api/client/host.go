@@ -55,8 +55,9 @@ const (
 	// HostParamMaxEphemeralAccountBalance is the maximum ephemeral account
 	// balance in hastings
 	HostParamMaxEphemeralAccountBalance = HostParam("maxephemeralaccountbalance")
-	// HostParamMaxUnsavedDelta is the maximum unsaved delta in hastings
-	HostParamMaxUnsavedDelta = HostParam("maxunsaveddelta")
+	// HostParamMaxEphemeralAccountRisk is the maximum ephemeral account risk in
+	// hastings
+	HostParamMaxEphemeralAccountRisk = HostParam("maxephemeralaccountrisk")
 )
 
 // HostAnnouncePost uses the /host/announce endpoint to announce the host to

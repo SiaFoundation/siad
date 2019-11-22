@@ -61,7 +61,7 @@ such as downloading with significantly less latency. This also means that if the
 host loses power at that exact moment, the host will forget that the user has
 spent money and the user will be able to spend that money again. The host can
 configure the amount of money it is willing to risk due to this asynchronous
-persist model through the `maxunsaveddelta` setting.
+persist model through the `maxephemeralaccountrisk` setting.
 
 If an ephemeral account has been inactive for a period of 7 days, the host will
 prune it from the accounts list. This will effectively expire the account, along

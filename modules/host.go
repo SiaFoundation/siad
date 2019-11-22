@@ -101,7 +101,7 @@ type (
 		MinUploadBandwidthPrice   types.Currency `json:"minuploadbandwidthprice"`
 
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
-		MaxUnsavedDelta            types.Currency `json:"maxunsaveddelta"`
+		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
 	}
 
 	// HostNetworkMetrics reports the quantity of each type of RPC call that
