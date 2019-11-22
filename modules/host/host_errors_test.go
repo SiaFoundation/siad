@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // dependencyErrMkdirAll is a dependency set that returns an error when MkdirAll
@@ -38,14 +39,14 @@ func TestHostFailedMkdirAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht.host, err = newHost(&dependencyErrMkdirAll{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(&dependencyErrMkdirAll{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != mockErrMkdirAll {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
 	// incomplete. If ht.host is nil at the end of the function, the ht.Close()
 	// operation will fail.
-	ht.host, err = newHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,14 +79,14 @@ func TestHostFailedNewLogger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht.host, err = newHost(&dependencyErrNewLogger{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(&dependencyErrNewLogger{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != mockErrNewLogger {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
 	// incomplete. If ht.host is nil at the end of the function, the ht.Close()
 	// operation will fail.
-	ht.host, err = newHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,14 +119,14 @@ func TestHostFailedOpenDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht.host, err = newHost(&dependencyErrOpenDatabase{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(&dependencyErrOpenDatabase{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err == nil || !strings.Contains(err.Error(), "simulated OpenDatabase failure") {
 		t.Fatal("Opening database should have failed", err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
 	// incomplete. If ht.host is nil at the end of the function, the ht.Close()
 	// operation will fail.
-	ht.host, err = newHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,14 +159,14 @@ func TestHostFailedLoadFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht.host, err = newHost(&dependencyErrLoadFile{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
-	if err != mockErrLoadFile {
+	ht.host, err = NewCustomHost(&dependencyErrLoadFile{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	if !errors.Contains(err, mockErrLoadFile) {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
 	// incomplete. If ht.host is nil at the end of the function, the ht.Close()
 	// operation will fail.
-	ht.host, err = newHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,14 +199,14 @@ func TestHostFailedListen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht.host, err = newHost(&dependencyErrListen{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(&dependencyErrListen{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != mockErrListen {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
 	// incomplete. If ht.host is nil at the end of the function, the ht.Close()
 	// operation will fail.
-	ht.host, err = newHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		t.Fatal(err)
 	}

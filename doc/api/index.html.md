@@ -1386,6 +1386,11 @@ responses](#standard-responses).
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/announce"
 ```
+> curl example with a custom netaddress
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/announce?netaddress=siahost.example.net"
+```
 
 Announce the host to the network as a source of storage. Generally only needs to
 be called once.
@@ -1573,7 +1578,7 @@ Number of successful read & write operations.
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000" "localhost:9980/host/storage/add"
+curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&size=1000000000000" "localhost:9980/host/storage/folders/add"
 ```
 
 adds a storage folder to the manager. The manager may not check that there is
@@ -1602,7 +1607,7 @@ responses](#standard-responses).
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&force=false" "localhost:9980/host/storage/remove"
+curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&force=false" "localhost:9980/host/storage/folders/remove"
 ```
 
 Remove a storage folder from the manager. All sotrage on the folder will be
@@ -1631,7 +1636,7 @@ responses](#standard-responses).
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=1000000000000" "localhost:9980/host/storage/resize"
+curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=1000000000000" "localhost:9980/host/storage/folders/resize"
 ```
 
 Grows or shrinks a storage file in the manager. The manager may not check that
@@ -2907,7 +2912,7 @@ retrieves the contents of a directory on the sia network
 ### Path Parameters
 ### REQUIRED
 **siapath** | string  
-Path to the directory on the sia netork  
+Path to the directory on the sia network  
 
 ### JSON Response
 > JSON Response Example
@@ -2942,7 +2947,8 @@ the total number of files in the sub directory tree
 **aggregatenumstuckchunks** | uint64  
 the total number of stuck chunks in the sub directory tree
 
-**aggregatenumsize** | uint64  
+**aggregatesize** | uint64  
+the total size in bytes of files in the sub directory tree
 
 **health** | float64  
 This is the worst health of any of the files or subdirectories. Health is the
@@ -3472,6 +3478,10 @@ If httresp is true, the data will be written to the http response.
 If async is true, the http request will be non blocking. Can't be used with
 httpresp.
 
+**disablelocalfetch** | boolean  
+If disablelocalfetch is true, downloads won't be served from disk even if the
+file is available locally.
+
 **length** | bytes  
 Length of the requested data. Has to be <= filesize-offset.  
 
@@ -3623,6 +3633,11 @@ number of files you are steaming.
 ### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
+
+### OPTIONAL
+**disablelocalfetch** | boolean  
+If disablelocalfetch is true, downloads won't be served from disk even if the
+file is available locally.
 
 ### Response
 

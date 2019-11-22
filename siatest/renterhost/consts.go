@@ -11,7 +11,7 @@ import (
 // delete the directory again.
 func renterHostTestDir(testName string) string {
 	path := siatest.TestDir("renterhost", testName)
-	if err := os.MkdirAll(path, 0777); err != nil {
+	if err := os.MkdirAll(path, siatest.DefaultDiskPermissions); err != nil {
 		panic(err)
 	}
 	return path

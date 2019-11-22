@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -67,7 +68,7 @@ func (cm *ContractManager) loadSettings() error {
 		return cm.initSettings()
 	} else if err != nil {
 		cm.log.Println("ERROR: unable to load the contract manager settings file:", err)
-		return build.ExtendErr("error loading the contract manager settings file", err)
+		return errors.AddContext(err, "error loading the contract manager settings file")
 	}
 
 	// Copy the saved settings into the contract manager.

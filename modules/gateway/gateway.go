@@ -402,12 +402,12 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	// problem, but if it does, we want to know about any errors preventing us
 	// from loading it.
 	if loadErr := g.load(); loadErr != nil && !os.IsNotExist(loadErr) {
-		return nil, loadErr
+		return nil, errors.AddContext(loadErr, "unable to load gateway")
 	}
 	// Create the ratelimiter and set it to the persisted limits.
 	g.rl = ratelimit.NewRateLimit(0, 0, 0)
 	if err := setRateLimits(g.rl, g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to set rate limits for the gateway")
 	}
 	// Spawn the thread to periodically save the gateway.
 	go g.threadedSaveLoop()
@@ -437,7 +437,8 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	permanentListenClosedChan := make(chan struct{})
 	g.listener, err = net.Listen("tcp", addr)
 	if err != nil {
-		return nil, err
+		context := fmt.Sprintf("unable to create gateway tcp listener with address %v", addr)
+		return nil, errors.AddContext(err, context)
 	}
 	// Automatically close the listener when g.threads.Stop() is called.
 	g.threads.OnStop(func() {
@@ -451,7 +452,8 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	host, port, err := net.SplitHostPort(g.listener.Addr().String())
 	g.port = port
 	if err != nil {
-		return nil, err
+		context := fmt.Sprintf("unable to split host and port from address %v", g.listener.Addr().String())
+		return nil, errors.AddContext(err, context)
 	}
 
 	if ip := net.ParseIP(host); ip.IsUnspecified() && ip != nil {

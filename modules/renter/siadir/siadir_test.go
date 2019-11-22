@@ -22,8 +22,8 @@ func checkMetadataInit(md Metadata) error {
 	if !md.AggregateLastHealthCheckTime.IsZero() {
 		return fmt.Errorf("AggregateLastHealthCheckTime should be zero but was %v", md.AggregateLastHealthCheckTime)
 	}
-	if md.AggregateMinRedundancy != 0 {
-		return fmt.Errorf("SiaDir AggregateMinRedundancy not set properly: got %v expected 0", md.AggregateMinRedundancy)
+	if md.AggregateMinRedundancy != DefaultDirRedundancy {
+		return fmt.Errorf("SiaDir AggregateMinRedundancy not set properly: got %v expected %v", md.AggregateMinRedundancy, DefaultDirRedundancy)
 	}
 	if md.AggregateModTime.IsZero() {
 		return errors.New("AggregateModTime not initialized")
@@ -51,8 +51,8 @@ func checkMetadataInit(md Metadata) error {
 	if !md.LastHealthCheckTime.IsZero() {
 		return fmt.Errorf("LastHealthCheckTime should be zero but was %v", md.LastHealthCheckTime)
 	}
-	if md.MinRedundancy != 0 {
-		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected 0", md.MinRedundancy)
+	if md.MinRedundancy != DefaultDirRedundancy {
+		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected %v", md.MinRedundancy, DefaultDirRedundancy)
 	}
 	if md.ModTime.IsZero() {
 		return errors.New("ModTime not initialized")

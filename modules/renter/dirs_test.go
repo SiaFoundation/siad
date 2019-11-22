@@ -86,6 +86,9 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	if metadata.AggregateModTime.IsZero() {
 		return fmt.Errorf("AggregateModTime not initialized: %v", metadata.AggregateModTime)
 	}
+	if metadata.AggregateMinRedundancy != siadir.DefaultDirRedundancy {
+		return fmt.Errorf("AggregateMinRedundancy not initialized properly: have %v expected %v", metadata.AggregateMinRedundancy, siadir.DefaultDirRedundancy)
+	}
 	if metadata.AggregateStuckHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("AggregateStuckHealth not initialized properly: have %v expected %v", metadata.AggregateStuckHealth, siadir.DefaultDirHealth)
 	}
@@ -98,6 +101,9 @@ func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
 	}
 	if metadata.ModTime.IsZero() {
 		return fmt.Errorf("ModTime not initialized: %v", metadata.ModTime)
+	}
+	if metadata.MinRedundancy != siadir.DefaultDirRedundancy {
+		return fmt.Errorf("MinRedundancy not initialized properly: have %v expected %v", metadata.MinRedundancy, siadir.DefaultDirRedundancy)
 	}
 	if metadata.StuckHealth != siadir.DefaultDirHealth {
 		return fmt.Errorf("StuckHealth not initialized properly: have %v expected %v", metadata.StuckHealth, siadir.DefaultDirHealth)

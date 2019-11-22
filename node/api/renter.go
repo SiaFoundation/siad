@@ -1447,6 +1447,10 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	// If httprespparam is present, this parameter is ignored.
 	asyncparam := req.FormValue("async")
 
+	// disablelocalfetchparam determines whether downloads will be fetched from
+	// disk if available.
+	disablelocalfetchparam := req.FormValue("disablelocalfetch")
+
 	// Parse the offset and length parameters.
 	var offset, length uint64
 	if len(offsetparam) > 0 {
@@ -1479,12 +1483,21 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 		return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
 	}
 
+	var disableLocalFetch bool
+	if disablelocalfetchparam != "" {
+		disableLocalFetch, err = scanBool(disablelocalfetchparam)
+		if err != nil {
+			return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablelocalfetch flag")
+		}
+	}
+
 	dp := modules.RenterDownloadParameters{
-		Destination: destination,
-		Async:       async,
-		Length:      length,
-		Offset:      offset,
-		SiaPath:     siaPath,
+		Destination:      destination,
+		DisableDiskFetch: disableLocalFetch,
+		Async:            async,
+		Length:           length,
+		Offset:           offset,
+		SiaPath:          siaPath,
 	}
 	if httpresp {
 		dp.Httpwriter = w
@@ -1500,7 +1513,17 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	fileName, streamer, err := api.renter.Streamer(siaPath)
+	disablelocalfetchparam := req.FormValue("disablelocalfetch")
+	var disableLocalFetch bool
+	if disablelocalfetchparam != "" {
+		disableLocalFetch, err = scanBool(disablelocalfetchparam)
+		if err != nil {
+			err = errors.AddContext(err, "error parsing the disablelocalfetch flag")
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	fileName, streamer, err := api.renter.Streamer(siaPath, disableLocalFetch)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
 			http.StatusInternalServerError)

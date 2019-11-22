@@ -259,7 +259,7 @@ func (ffn *fuseFilenode) Open(ctx context.Context, flags uint32) (fs.FileHandle,
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
 
-	_, stream, err := ffn.filesystem.renter.Streamer(ffn.staticSiapath)
+	_, stream, err := ffn.filesystem.renter.Streamer(ffn.staticSiapath, false)
 	if err != nil {
 		ffn.filesystem.renter.log.Printf("Unable to get stream for file %v: %v", ffn.staticSiapath, err)
 		return nil, 0, errToStatus(err)

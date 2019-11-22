@@ -606,7 +606,7 @@ func wallettransactionscmd() {
 	txns := append(wtg.ConfirmedTransactions, wtg.UnconfirmedTransactions...)
 	sts, err := wallet.ComputeValuedTransactions(txns, cg.Height)
 	if err != nil {
-
+		die("Could not compute valued transaction: ", err)
 	}
 	for _, txn := range sts {
 		// Determine the number of outgoing siacoins and siafunds.
@@ -631,7 +631,7 @@ func wallettransactionscmd() {
 
 		// Print the results.
 		if uint64(txn.ConfirmationTimestamp) != unconfirmedTransactionTimestamp {
-			fmt.Printf(time.Unix(int64(txn.ConfirmationTimestamp), 0).Format("2006-01-02 15:04:05-0700"))
+			fmt.Println(time.Unix(int64(txn.ConfirmationTimestamp), 0).Format("2006-01-02 15:04:05-0700"))
 		} else {
 			fmt.Printf("             unconfirmed")
 		}
