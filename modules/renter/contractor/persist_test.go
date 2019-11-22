@@ -22,10 +22,45 @@ func (m memPersist) load(data *contractorPersist) error { *data = contractorPers
 
 // TestSaveLoad tests that the contractor can save and load itself.
 func TestSaveLoad(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
 	// create contractor with mocked persist dependency
 	c := &Contractor{
 		persist: new(memPersist),
 		synced:  make(chan struct{}),
+	}
+
+	c.staticWatchdog = newWatchdog(c)
+	expectedFileContractStatus := &fileContractStatus{
+		formationSweepHeight: 543210,
+		contractFound:        true,
+		revisionFound:        400,
+		storageProofFound:    987123,
+
+		formationTxnSet: []types.Transaction{
+			{
+				ArbitraryData: [][]byte{{1, 2, 3, 4, 5}},
+			},
+		},
+		parentOutputs: map[types.SiacoinOutputID]struct{}{
+			{4}: {},
+		},
+
+		sweepTxn: types.Transaction{
+			ArbitraryData: [][]byte{{1, 2, 3}},
+		},
+
+		sweepParents: []types.Transaction{{
+			ArbitraryData: [][]byte{{4, 5, 63}},
+		}},
+
+		windowStart: 5,
+		windowEnd:   10,
+	}
+	c.staticWatchdog.contracts = map[types.FileContractID]*fileContractStatus{
+		{1}: expectedFileContractStatus,
 	}
 
 	c.oldContracts = map[types.FileContractID]modules.RenterContract{
@@ -41,6 +76,10 @@ func TestSaveLoad(t *testing.T) {
 		{1}: {2},
 	}
 	close(c.synced)
+
+	c.staticChurnLimiter = newChurnLimiter(c)
+	c.staticChurnLimiter.aggregateCurrentPeriodChurn = 123456
+	c.staticChurnLimiter.remainingChurnBudget = -789
 
 	// save, clear, and reload
 	err := c.save()
@@ -86,6 +125,7 @@ func TestSaveLoad(t *testing.T) {
 	c.allowance.ExpectedUpload = 0
 	c.allowance.ExpectedDownload = 0
 	c.allowance.ExpectedRedundancy = 0
+	c.allowance.MaxPeriodChurn = 0
 
 	// save, clear, and reload
 	err = c.save()
@@ -140,6 +180,7 @@ func TestSaveLoad(t *testing.T) {
 	c.allowance.ExpectedUpload = uint64(fastrand.Intn(100))
 	c.allowance.ExpectedDownload = uint64(fastrand.Intn(100))
 	c.allowance.ExpectedRedundancy = float64(fastrand.Intn(100))
+	c.allowance.MaxPeriodChurn = 1357
 	a := c.allowance
 	// Save
 	err = c.save()
@@ -169,6 +210,75 @@ func TestSaveLoad(t *testing.T) {
 	if c.allowance.ExpectedRedundancy != a.ExpectedRedundancy {
 		t.Errorf("ExpectedRedundancy was %v but should be %v",
 			c.allowance.ExpectedRedundancy, a.ExpectedRedundancy)
+	}
+	if c.allowance.MaxPeriodChurn != a.MaxPeriodChurn {
+		t.Errorf("MaxPeriodChurn was %v but should be %v",
+			c.allowance.MaxPeriodChurn, a.MaxPeriodChurn)
+	}
+
+	// Check the watchdog settings.
+	if c.staticWatchdog == nil {
+		t.Fatal("Watchdog not restored")
+	}
+	contract, ok := c.staticWatchdog.contracts[types.FileContractID{1}]
+	if !ok {
+		t.Fatal("Contract not found", len(c.staticWatchdog.contracts))
+	}
+	if contract.formationSweepHeight != expectedFileContractStatus.formationSweepHeight {
+		t.Fatal("watchdog not restored properly", contract.formationSweepHeight)
+	}
+	if contract.contractFound != expectedFileContractStatus.contractFound {
+		t.Fatal("watchdog not restored properly")
+	}
+	if contract.revisionFound != expectedFileContractStatus.revisionFound {
+		t.Fatal("watchdog not restored properly", contract.revisionFound)
+	}
+	if contract.storageProofFound != expectedFileContractStatus.storageProofFound {
+		t.Fatal("watchdog not restored properly", contract.storageProofFound)
+	}
+	if len(contract.formationTxnSet) != 1 {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.formationTxnSet[0].ID() != expectedFileContractStatus.formationTxnSet[0].ID() {
+		t.Fatal("watchdog not restored properly", contract.formationTxnSet)
+	}
+	if len(contract.parentOutputs) != 1 {
+		t.Fatal("watchdog not restored properly", contract.parentOutputs)
+	}
+	if _, foundOutput := contract.parentOutputs[types.SiacoinOutputID{4}]; !foundOutput {
+		t.Fatal("watchdog not restored properly", contract.parentOutputs)
+	}
+	if contract.sweepTxn.ID() != expectedFileContractStatus.sweepTxn.ID() {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if len(contract.sweepParents) != len(expectedFileContractStatus.sweepParents) {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.sweepParents[0].ID() != expectedFileContractStatus.sweepParents[0].ID() {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.windowStart != expectedFileContractStatus.windowStart {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+	if contract.windowEnd != expectedFileContractStatus.windowEnd {
+		t.Fatal("watchdog not restored properly", contract)
+	}
+
+	// Check churnLimiter state.
+	aggregateChurn, maxChurn := c.staticChurnLimiter.managedAggregateAndMaxChurn()
+	if aggregateChurn != 123456 {
+		t.Fatal("Expected 123456 aggregate churn", aggregateChurn)
+	}
+	if maxChurn != a.MaxPeriodChurn {
+		t.Fatal("Expected 1357 max churn", maxChurn)
+	}
+	remainingChurnBudget, periodBudget := c.staticChurnLimiter.managedChurnBudget()
+	if remainingChurnBudget != -789 {
+		t.Fatal("Expected -789 remainingChurnBudget", remainingChurnBudget)
+	}
+	expectedPeriodBudget := 1357 - 123456
+	if periodBudget != expectedPeriodBudget {
+		t.Fatal("Expected remainingChurnBudget", periodBudget)
 	}
 }
 

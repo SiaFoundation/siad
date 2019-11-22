@@ -283,30 +283,3 @@ func TestUpdateMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-// TestDelete tests if deleting a siadir removes the siadir from disk and sets
-// the deleted flag correctly.
-func TestDelete(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create SiaFileSet with SiaDir
-	entry, _, err := newTestSiaDirSetWithDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Delete siadir.
-	if err := entry.Delete(); err != nil {
-		t.Fatal("Failed to delete siadir", err)
-	}
-	// Check if siadir was deleted and if deleted flag was set.
-	if !entry.Deleted() {
-		t.Fatal("Deleted flag was not set correctly")
-	}
-	siaDirPath := entry.siaPath.SiaDirSysPath(entry.rootDir)
-	if _, err := os.Open(siaDirPath); !os.IsNotExist(err) {
-		t.Fatal("Expected a siadir doesn't exist error but got", err)
-	}
-}

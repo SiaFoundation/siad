@@ -86,6 +86,7 @@ type (
 		Settings         modules.RenterSettings     `json:"settings"`
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
+		NextPeriod       types.BlockHeight          `json:"Nextperiod"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -242,8 +243,8 @@ type (
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
 	}
 
-	// RenterFUSEInfo contains information about mounted FUSE filesystems.
-	RenterFUSEInfo struct {
+	// RenterFuseInfo contains information about mounted fuse filesystems.
+	RenterFuseInfo struct {
 		MountPoints []modules.MountInfo `json:"mountPoints"`
 	}
 )
@@ -522,10 +523,13 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 		WriteError(w, Error{"unable to get Period Spending: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	currentPeriod := api.renter.CurrentPeriod()
+	nextPeriod := currentPeriod + settings.Allowance.Period
 	WriteJSON(w, RenterGET{
 		Settings:         settings,
 		FinancialMetrics: spending,
-		CurrentPeriod:    api.renter.CurrentPeriod(),
+		CurrentPeriod:    currentPeriod,
+		NextPeriod:       nextPeriod,
 	})
 }
 
@@ -543,7 +547,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 
 	// Scan for all allowance fields
 	var hostsSet, renewWindowSet, expectedStorageSet,
-		expectedUploadSet, expectedDownloadSet, expectedRedundancySet bool
+		expectedUploadSet, expectedDownloadSet, expectedRedundancySet, maxPeriodChurnSet bool
 	if f := req.FormValue("funds"); f != "" {
 		funds, ok := scanAmount(f)
 		if !ok {
@@ -619,6 +623,15 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.Allowance.ExpectedRedundancy = expectedRedundancy
 		expectedRedundancySet = true
+	}
+	if mpc := req.FormValue("maxperiodchurn"); mpc != "" {
+		var maxPeriodChurn uint64
+		if _, err := fmt.Sscan(mpc, &maxPeriodChurn); err != nil {
+			WriteError(w, Error{"unable to parse new max churn per period: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxPeriodChurn = maxPeriodChurn
+		maxPeriodChurnSet = true
 	}
 
 	// Validate any allowance changes. Funds and Period are the only required
@@ -704,6 +717,16 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		} else if settings.Allowance.ExpectedRedundancy == 0 {
 			settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+		}
+
+		// If the user set MaxPeriodChurn to 0 return an error, otherwise if
+		// MaxPeriodChurn was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.MaxPeriodChurn == 0 && maxPeriodChurnSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroMaxPeriodChurn.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.MaxPeriodChurn == 0 {
+			settings.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 		}
 	}
 
@@ -1018,6 +1041,12 @@ func (api *API) renterClearDownloadsHandler(w http.ResponseWriter, req *http.Req
 	WriteSuccess(w)
 }
 
+// renterContractorChurnStatus handles the API call to request the churn status
+// from the renter's contractor.
+func (api *API) renterContractorChurnStatus(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	WriteJSON(w, api.renter.ContractorChurnStatus())
+}
+
 // renterDownloadsHandler handles the API call to request the download queue.
 func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	var downloads []DownloadInfo
@@ -1070,20 +1099,20 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 	})
 }
 
-// renterFUSEHandlerGET handles the API call to /renter/fuse.
-func (api *API) renterFUSEHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	WriteJSON(w, RenterFUSEInfo{
+// renterFuseHandlerGET handles the API call to /renter/fuse.
+func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	WriteJSON(w, RenterFuseInfo{
 		MountPoints: api.renter.MountInfo(),
 	})
 }
 
-// renterFUSEMountHandlerPOST handles the API call to /renter/fuse/mount.
-func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterFuseMountHandlerPOST handles the API call to /renter/fuse/mount.
+func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var sp modules.SiaPath
 	spfv := req.FormValue("siapath")
 	// Check the form value for root path before attempting to call
 	// modules.NewSiaPath, as RootSiaPath is considered an edge case at the moment.
-	if spfv == "/" {
+	if spfv == "/" || spfv == "" {
 		sp = modules.RootSiaPath()
 	} else {
 		s, err := modules.NewSiaPath(spfv)
@@ -1110,8 +1139,8 @@ func (api *API) renterFUSEMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 	WriteSuccess(w)
 }
 
-// renterFUSEUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
-func (api *API) renterFUSEUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// renterFuseUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
+func (api *API) renterFuseUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if err := api.renter.Unmount(req.FormValue("mount")); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1708,4 +1737,22 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	// Report that no calls were made
 	WriteError(w, Error{"no calls were made, please check your submission and try again"}, http.StatusInternalServerError)
 	return
+}
+
+// renterContractStatusHandler  handles the API call to check the status of a
+// contract monitored by the renter.
+func (api *API) renterContractStatusHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	var fcID types.FileContractID
+	if err := fcID.LoadString(req.FormValue("id")); err != nil {
+		WriteError(w, Error{"unable to parse id:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	contractStatus, monitoringContract := api.renter.ContractStatus(fcID)
+	if !monitoringContract {
+		WriteError(w, Error{"renter unaware of contract"}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, contractStatus)
 }

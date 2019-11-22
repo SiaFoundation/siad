@@ -114,11 +114,11 @@ func (sp SiaPath) IsRoot() bool {
 	return sp.Path == ""
 }
 
-// Join joins the string to the end of the SiaPath with a "/" and returns
-// the new SiaPath
+// Join joins the string to the end of the SiaPath with a "/" and returns the
+// new SiaPath.
 func (sp SiaPath) Join(s string) (SiaPath, error) {
 	if s == "" {
-		return sp, nil
+		return SiaPath{}, errors.New("cannot join an empty string to a siapath")
 	}
 	return newSiaPath(sp.Path + "/" + clean(s))
 }

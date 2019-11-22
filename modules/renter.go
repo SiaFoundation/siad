@@ -27,6 +27,7 @@ var (
 		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
 		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
+		MaxPeriodChurn:     uint64(250e9),                                // 250 GB
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
@@ -219,6 +220,13 @@ type Allowance struct {
 
 	// ExpectedRedundancy is the average redundancy of files being uploaded.
 	ExpectedRedundancy float64 `json:"expectedredundancy"`
+
+	// MaxPeriodChurn is maximum amount of contract churn allowed in a single
+	// period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
+
+	// NOTE: If you are changing the allowance struct, you must change or
+	// add compatibility code for the contractor's persistence.
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the
@@ -237,6 +245,17 @@ type ContractUtility struct {
 	// If a contract is locked, the utility should not be updated. 'Locked' is a
 	// value that gets persisted.
 	Locked bool
+}
+
+// ContractWatchStatus provides information about the status of a contract in
+// the renter's watchdog. If the contract has been double-spent, the fields
+// other than DoubleSpendHeight are not up-to-date.
+type ContractWatchStatus struct {
+	FormationSweepHeight      types.BlockHeight `json:"formationsweepheight"`
+	ContractFound             bool              `json:"contractfound"`
+	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
+	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
+	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
 }
 
 // DirectoryInfo provides information about a siadir
@@ -273,13 +292,15 @@ type DirectoryInfo struct {
 }
 
 // Name implements os.FileInfo.
-func (d DirectoryInfo) Name() string { return d.SiaPath.String() }
+func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
 
 // Size implements os.FileInfo.
 func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
 
 // Mode implements os.FileInfo.
-func (d DirectoryInfo) Mode() os.FileMode { return 0700 }
+//
+// TODO: get the real mode
+func (d DirectoryInfo) Mode() os.FileMode { return 0755 }
 
 // ModTime implements os.FileInfo.
 func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
@@ -332,6 +353,7 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
+	FileMode         os.FileMode       `json:"mode"`    // name chaned to avoid conflict with Mode()
 	ModificationTime time.Time         `json:"modtime"` // name changed to avoid conflict with ModTime() method
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
@@ -341,18 +363,19 @@ type FileInfo struct {
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
+	UID              string            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
 	UploadProgress   float64           `json:"uploadprogress"`
 }
 
 // Name implements os.FileInfo.
-func (f FileInfo) Name() string { return f.SiaPath.String() }
+func (f FileInfo) Name() string { return f.SiaPath.Name() }
 
 // Size implements os.FileInfo.
 func (f FileInfo) Size() int64 { return int64(f.Filesize) }
 
 // Mode implements os.FileInfo.
-func (f FileInfo) Mode() os.FileMode { return 0666 }
+func (f FileInfo) Mode() os.FileMode { return f.FileMode }
 
 // ModTime implements os.FileInfo.
 func (f FileInfo) ModTime() time.Time { return f.ModificationTime }
@@ -605,6 +628,16 @@ type ContractorSpending struct {
 	PreviousSpending types.Currency `json:"previousspending"`
 }
 
+// ContractorChurnStatus contains the current churn budgets for the Contractor's
+// churnLimiter and the aggregate churn for the current period.
+type ContractorChurnStatus struct {
+	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
+	// period.
+	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
+	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
+}
+
 // UploadedBackup contains metadata about an uploaded backup.
 type UploadedBackup struct {
 	Name           string
@@ -635,6 +668,10 @@ type Renter interface {
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
 
+	// ContractStatus returns the status of the contract with the given ID in the
+	// watchdog, and a bool indicating whether or not the watchdog is aware of it.
+	ContractStatus(fcID types.FileContractID) (ContractWatchStatus, bool)
+
 	// CreateBackup creates a backup of the renter's siafiles. If a secret is not
 	// nil, the backup will be encrypted using the provided secret.
 	CreateBackup(dst string, secret []byte) error
@@ -654,6 +691,9 @@ type Renter interface {
 
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []RenterContract
+
+	// ContractorChurnStatus returns contract churn stats for the current period.
+	ContractorChurnStatus() ContractorChurnStatus
 
 	// ContractUtility provides the contract utility for a given host key.
 	ContractUtility(pk types.SiaPublicKey) (ContractUtility, bool)

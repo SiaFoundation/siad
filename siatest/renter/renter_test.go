@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -299,6 +298,7 @@ func TestRenterFour(t *testing.T) {
 	subTests := []test{
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
+		{"TestNextPeriod", testNextPeriod},
 	}
 
 	// Run tests
@@ -1455,6 +1455,32 @@ func TestRenterAddNodes(t *testing.T) {
 		{"TestUploadReady", testUploadReady},
 		{"TestOverspendAllowance", testOverspendAllowance},
 		{"TestRenterAllowanceCancel", testRenterAllowanceCancel},
+	}
+
+	// Run tests
+	if err := runRenterTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterAddNodes2 runs a subset of tests that require adding their own
+// renter. TestRenterPostCancelAllowance was split into its own test to improve
+// reliability - it was flaking previously.
+func TestRenterAddNodes2(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+
+	// Specify subtests to run
+	subTests := []test{
 		{"TestRenterPostCancelAllowance", testRenterPostCancelAllowance},
 	}
 
@@ -2975,12 +3001,15 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			// Calculate the renter seed given the WindowStart of the contract.
 			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			// Check if the identifier is valid.
-			spk, valid := csi.IsValid(rs, txn, encryptedHostKey)
+			spk, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !valid {
 				t.Fatal("identifier is invalid")
 			}
 			// Check that the host's key is a valid key from the hostb.
-			_, err := r.HostDbHostsGet(spk)
+			_, err = r.HostDbHostsGet(spk)
 			if err != nil {
 				t.Fatal("hostKey is invalid", err)
 			}
@@ -3701,117 +3730,6 @@ func TestAsyncStartupRace(t *testing.T) {
 	}
 }
 
-// TestFUSE tests the renter's FUSE filesystem support. This test is only run on Linux.
-func TestFUSE(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	if runtime.GOOS != "linux" {
-		t.Skip("Skipping FUSE test on non-Linux OS")
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := siatest.TestDir("fuse", t.Name())
-	if err := os.MkdirAll(testDir, 0777); err != nil {
-		t.Fatal(err)
-	}
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal("Failed to create group: ", err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	// Create a subdir in the renter's files folder.
-	r := tg.Renters()[0]
-	subDir, err := r.FilesDir().CreateDir("subDir")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Add a file to that dir.
-	lf, err := subDir.NewFile(100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Upload the file.
-	dataPieces := uint64(len(tg.Hosts()) - 1)
-	parityPieces := uint64(1)
-	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-
-	// We should be able to download the first file.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		_, _, err = r.DownloadToDisk(rf, false)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a fuse mountpoint and mount subDir there.
-	mountpoint := filepath.Join(testDir, "mnt")
-	if err := os.MkdirAll(mountpoint, 0777); err != nil {
-		t.Fatal(err)
-	}
-	err = r.RenterFUSEMount(r.SiaPath(subDir.Path()), mountpoint, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.RenterFUSEUnmount()
-
-	// We should be able to see the siafile in the directory.
-	infos, err := ioutil.ReadDir(filepath.Join(mountpoint, "subDir"))
-	if err != nil {
-		t.Fatal(err)
-	} else if len(infos) != 1 || infos[0].Name() != lf.FileName() || infos[0].Size() != 100 {
-		t.Fatal("wrong dir info")
-	}
-
-	// Read the file and verify its contents
-	data, err := ioutil.ReadFile(filepath.Join(mountpoint, "subDir", lf.FileName()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := lf.Equal(data); err != nil {
-		t.Fatal(err)
-	}
-	// compare metadata
-	files, err := r.RenterFilesGet(false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fi := files.Files[0]
-	stat, err := os.Stat(filepath.Join(mountpoint, "subDir", lf.FileName()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stat.IsDir() != fi.IsDir() {
-		t.Error("IsDir mismatch:", stat.IsDir(), fi.IsDir())
-	}
-	if stat.Size() != fi.Size() {
-		t.Error("Size mismatch:", stat.Size(), fi.Size())
-	}
-	if !stat.ModTime().Round(time.Minute).Equal(fi.ModTime().Round(time.Minute)) {
-		t.Error("ModTime mismatch:", stat.ModTime().Round(time.Minute), fi.ModTime().Round(time.Minute))
-	}
-	if filepath.Join("subDir", stat.Name()) != fi.Name() {
-		t.Error("Name mismatch:", filepath.Join("subDir", stat.Name()), fi.Name())
-	}
-	if stat.Mode() != fi.Mode() {
-		t.Error("Mode mismatch:", stat.Mode(), fi.Mode())
-	}
-}
-
 // testRenterPostCancelAllowance tests setting and cancelling the allowance
 // through the /renter POST endpoint
 func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
@@ -3950,5 +3868,38 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testNextPeriod confirms that the value for NextPeriod in RenterGET is valid
+func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the renter
+	r := tg.Renters()[0]
+
+	// Request RenterGET
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(rg.Settings.Allowance, modules.Allowance{}) {
+		t.Fatal("test only is valid if the allowance is set")
+	}
+
+	// Check Next Period
+	currentPeriod, err := r.RenterCurrentPeriod()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := r.RenterSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	period := settings.Allowance.Period
+	nextPeriod := rg.NextPeriod
+	if nextPeriod == 0 {
+		t.Fatal("NextPeriod should not be zero for a renter with an allowance and contracts")
+	}
+	if nextPeriod != currentPeriod+period {
+		t.Fatalf("expected next period to be %v but got %v", currentPeriod+period, nextPeriod)
 	}
 }
