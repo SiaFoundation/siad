@@ -16,3 +16,14 @@ func renterTestDir(testName string) string {
 	}
 	return path
 }
+
+// fuseTestDir creates a temporary testing directory for a fuse test. This
+// should only every be called once per test. Otherwise it will delete the
+// directory again.
+func fuseTestDir(testName string) string {
+	path := siatest.TestDir("fuse", testName)
+	if err := os.MkdirAll(path, siatest.DefaultDiskPermissions); err != nil {
+		panic(err)
+	}
+	return path
+}

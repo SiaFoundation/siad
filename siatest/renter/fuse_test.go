@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -48,16 +49,14 @@ func TestFuse(t *testing.T) {
 	}
 	t.Parallel()
 
+	fmt.Println("Creating TestGroup")
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:   2,
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := siatest.TestDir("fuse", t.Name())
-	if err := os.MkdirAll(testDir, siatest.DefaultDiskPermissions); err != nil {
-		t.Fatal(err)
-	}
+	testDir := fuseTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
@@ -69,6 +68,7 @@ func TestFuse(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
+	fmt.Println("TestGroup Created")
 	// Try mounting an empty fuse filesystem.
 	mountpoint1 := filepath.Join(testDir, "mount1")
 	err = os.MkdirAll(mountpoint1, siatest.DefaultDiskPermissions)
@@ -252,6 +252,75 @@ func TestFuse(t *testing.T) {
 	if dirStat.Files != 1 {
 		t.Error("expecting the filesystem to be reporting one file")
 	}
+
+	///////////////////////////////////////////////////////////////////
+	// Rename test
+
+	// Rename file
+	newSiapth := modules.RandomSiaPath()
+	remoteFile, err = r.Rename(remoteFile, newSiapth)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remember original siaPath
+	path = remoteFile.SiaPath()
+	fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// open fuse file
+	// read file
+	fuseFile, err = os.Open(fusePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = ioutil.ReadAll(fuseFile)
+	if err != nil {
+		t.Error(err)
+	}
+	localFileData, err = localFile.Data()
+	if err != nil {
+		t.Error(err)
+	}
+	if bytes.Compare(data, localFileData) != 0 {
+		t.Error("data from the local file and data from the fuse file do not match")
+	}
+
+	// rename file with fuse file open
+	fmt.Println("Rename file again")
+	newSiapth = modules.RandomSiaPath()
+	remoteFile, err = r.Rename(remoteFile, newSiapth)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path = remoteFile.SiaPath()
+	fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// read file
+	fmt.Println("Read File again")
+	data, err = ioutil.ReadAll(fuseFile)
+	if err != nil {
+		t.Error(err)
+	}
+	localFileData, err = localFile.Data()
+	if err != nil {
+		t.Error(err)
+	}
+	if bytes.Compare(data, localFileData) != 0 {
+		t.Error("data from the local file and data from the fuse file do not match")
+	}
+	err = fuseFile.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// End of Rename test
+	////////////////////////////////////////////////////////////////////////////
 
 	// Create a directory within the root directory and see if the directory
 	// appears in the fuse area.
