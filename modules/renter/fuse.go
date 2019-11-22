@@ -1,10 +1,5 @@
 package renter
 
-// TODO: Need to create a single 'ReadAt' endpoint for the streamer, that will
-// seek the streamer and read from it at the same time, this is a concurrency
-// issue as multiple concurrent reads may be happening on the streamer at once,
-// a 'Seek then Read' approach is not necessarily safe with fuse.
-
 // TODO: Chris's new filesystem actually has inodes and unique inode numbers. We
 // should integrate these instead of the UIDs?
 
@@ -271,6 +266,11 @@ func (ffn *fuseFilenode) Open(ctx context.Context, flags uint32) (fs.FileHandle,
 
 // Read will read data from the file and place it in dest.
 func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte, offset int64) (fuse.ReadResult, syscall.Errno) {
+	// TODO: Right now only one call to Read from a file can be in effect at
+	// once, based on the way the streamer and the read call has been
+	// implemented. As the streamer gets updated to more readily support
+	// multiple concurrrent streams at once, this method can be re-implemented
+	// to greatly increase speeds.
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
 
