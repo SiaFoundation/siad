@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -29,79 +28,6 @@ const (
 	bubbleActive
 	bubblePending
 )
-
-// uniqueBubblePaths is a helper struct for determining the minimum number of
-// directories that will need to have callThreadedBubbleMetadata called on in
-// order to properly update the affected directory tree. Since bubble calls
-// itself on the parent directory when it finishes with a directory, only a call
-// to the lowest level child directory is needed to properly update the entire
-// directory tree.
-type uniqueBubblePaths struct {
-	childDirs  map[modules.SiaPath]struct{}
-	parentDirs map[modules.SiaPath]struct{}
-
-	r  *Renter
-	mu sync.Mutex
-}
-
-// newUniqueBubblePaths returns an initialized uniqueBubblePaths struct
-func (r *Renter) newUniqueBubblePaths() *uniqueBubblePaths {
-	return &uniqueBubblePaths{
-		childDirs:  make(map[modules.SiaPath]struct{}),
-		parentDirs: make(map[modules.SiaPath]struct{}),
-
-		r: r,
-	}
-}
-
-// managedAddPath adds a path to uniqueBubblePaths.
-func (ubp *uniqueBubblePaths) managedAddPath(path modules.SiaPath) error {
-	ubp.mu.Lock()
-	defer ubp.mu.Unlock()
-
-	// Check if the path is in the parent directory map
-	if _, ok := ubp.parentDirs[path]; ok {
-		return nil
-	}
-
-	// Check if the path is in the child directory map
-	if _, ok := ubp.childDirs[path]; ok {
-		return nil
-	}
-
-	// Add path to the childDir map
-	ubp.childDirs[path] = struct{}{}
-
-	// Check all path elements to make sure any parent directories are removed
-	// from the child directory map and added to the parent directory map
-	for !path.IsRoot() {
-		// Get the parentDir of the path
-		parentDir, err := path.Dir()
-		if err != nil {
-			contextStr := fmt.Sprintf("unable to get parent directory of %v", path)
-			return errors.AddContext(err, contextStr)
-		}
-		// Check if the parentDir is in the childDirs map
-		if _, ok := ubp.childDirs[parentDir]; ok {
-			// Remove from childDir map and add to parentDir map
-			delete(ubp.childDirs, parentDir)
-			ubp.parentDirs[parentDir] = struct{}{}
-		}
-		// Set path equal to the parentDir
-		path = parentDir
-	}
-	return nil
-}
-
-// managedBubbleDirs uses the uniqueBubblePaths's Renter to call
-// callThreadedBubbleMetadata on all the directories in the childDir map
-func (ubp *uniqueBubblePaths) managedBubbleDirs() {
-	ubp.mu.Lock()
-	defer ubp.mu.Unlock()
-	for sp := range ubp.childDirs {
-		go ubp.r.callThreadedBubbleMetadata(sp)
-	}
-}
 
 // managedPrepareBubble will add a bubble to the bubble map. If 'true' is returned, the
 // caller should proceed by calling bubble. If 'false' is returned, the caller

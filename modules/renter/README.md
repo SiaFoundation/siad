@@ -64,6 +64,7 @@ responsibilities.
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
+ - [Refresh Paths Subsystem](#refresh-paths-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -643,3 +644,17 @@ it up by finding a stuck chunk.
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
+
+### Refresh Paths Subsystem
+**Key Files**
+ - [refreshpaths.go](./refreshpaths.go)
+
+The refresh paths subsystem of the renter is a helper subsystem that tracks the
+minimum unique paths that need to be refreshed in order to refresh the entire
+affected portion of the file system.
+
+**Inbound Complexities** 
+ - `callAdd` is used to try and add a new path. 
+ - `callRefreshAll` is used to refresh all the directories corresponding to the
+   unique paths in order to update the filesystem
+   

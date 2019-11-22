@@ -40,12 +40,12 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		{Path: "root/SubDir2/SubDir2/SubDir2"},
 	}
 
-	// Create a map of directories to be bubbled
-	dirsToBubble := rt.renter.newUniqueBubblePaths()
+	// Create a map of directories to be refreshed
+	dirsToRefresh := rt.renter.newUniqueRefreshPaths()
 
 	// Add all paths to map
 	for _, path := range paths {
-		err = dirsToBubble.managedAddPath(path)
+		err = dirsToRefresh.callAdd(path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,7 +53,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 
 	// No randomly add more paths
 	for i := 0; i < 10; i++ {
-		err = dirsToBubble.managedAddPath(paths[fastrand.Intn(len(paths))])
+		err = dirsToRefresh.callAdd(paths[fastrand.Intn(len(paths))])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,11 +66,11 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		{Path: "root/SubDir2/SubDir1"},
 		{Path: "root/SubDir2/SubDir2/SubDir2"},
 	}
-	if len(dirsToBubble.childDirs) != len(uniquePaths) {
-		t.Fatalf("Expected %v paths in map but got %v", len(uniquePaths), len(dirsToBubble.childDirs))
+	if len(dirsToRefresh.childDirs) != len(uniquePaths) {
+		t.Fatalf("Expected %v paths in map but got %v", len(uniquePaths), len(dirsToRefresh.childDirs))
 	}
 	for _, path := range uniquePaths {
-		if _, ok := dirsToBubble.childDirs[path]; !ok {
+		if _, ok := dirsToRefresh.childDirs[path]; !ok {
 			t.Fatal("Did not find path in map", path)
 		}
 	}
@@ -108,7 +108,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 	}
 
 	// Have uniqueBubblePaths call bubble
-	dirsToBubble.managedBubbleDirs()
+	dirsToRefresh.callRefreshAll()
 
 	// Wait for root directory to show proper number of files
 	err = build.Retry(100, 100*time.Millisecond, func() error {
@@ -116,8 +116,8 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if int(di[0].AggregateNumFiles) != len(dirsToBubble.childDirs) {
-			return fmt.Errorf("Expected AggregateNumFiles to be %v but got %v", len(dirsToBubble.childDirs), di[0].AggregateNumFiles)
+		if int(di[0].AggregateNumFiles) != len(dirsToRefresh.childDirs) {
+			return fmt.Errorf("Expected AggregateNumFiles to be %v but got %v", len(dirsToRefresh.childDirs), di[0].AggregateNumFiles)
 		}
 		return nil
 	})
