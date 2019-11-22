@@ -24,7 +24,7 @@ type LocalDir struct {
 func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
 	fileName := fmt.Sprintf("dir-%s", persist.RandomSuffix())
 	path := filepath.Join(tn.RenterDir(), modules.SiapathRoot, fileName)
-	err := os.MkdirAll(path, 0777)
+	err := os.MkdirAll(path, DefaultDiskPermissions)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to make local directory for new local dir")
 	}
