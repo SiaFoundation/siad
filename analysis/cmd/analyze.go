@@ -2,9 +2,13 @@ package main
 
 import (
 	"gitlab.com/NebulousLabs/Sia/analysis/lockcheck"
-	"golang.org/x/tools/go/analysis/singlechecker"
+	"gitlab.com/NebulousLabs/Sia/analysis/returncheck"
+	"golang.org/x/tools/go/analysis/multichecker"
 )
 
 func main() {
-	singlechecker.Main(lockcheck.Analyzer)
+	multichecker.Main(
+		lockcheck.Analyzer,
+		returncheck.Analyzer,
+	)
 }
