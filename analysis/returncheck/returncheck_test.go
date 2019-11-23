@@ -39,6 +39,7 @@ func Test(t *testing.T) {
 	func (a *api) shouldFailNoImmediateReturn2(w http.ResponseWriter) {
 		WriteError(w, Error{"Bad Request"}, http.StatusBadRequest) // want "missing immediate return statement after call to WriteError"
 		if true {
+			a.doSomething()
 			return
 		}
 	}
