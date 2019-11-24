@@ -64,13 +64,11 @@ func nextNode(b *cfg.Block, curr int) ast.Node {
 			return b.Nodes[next]
 		}
 	case 1:
-		if len(b.Succs) == 1 {
-			for next := 0; next < len(b.Succs[0].Nodes); next++ {
-				if isException(b.Succs[0].Nodes[next]) {
-					continue
-				}
-				return b.Succs[0].Nodes[next]
+		for next := 0; next < len(b.Succs[0].Nodes); next++ {
+			if isException(b.Succs[0].Nodes[next]) {
+				continue
 			}
+			return b.Succs[0].Nodes[next]
 		}
 	}
 	return nil
