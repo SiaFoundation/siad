@@ -479,6 +479,47 @@ func TestSiaPublicKeyString(t *testing.T) {
 	}
 }
 
+// TestSiaPublicKeyEquals tests the functionality of the implementation of
+// Equals on a SiaPublicKey
+func TestSiaPublicKeyEquals(t *testing.T) {
+	var x, y SiaPublicKey
+	key := func() []byte { return fastrand.Bytes(32) }
+	spk := func(algo Specifier, key []byte) SiaPublicKey {
+		return SiaPublicKey{
+			Algorithm: algo,
+			Key:       key,
+		}
+	}
+
+	// same algorithm, same key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEd25519, x.Key)
+	if !x.Equals(y) || !y.Equals(x) {
+		t.Fatal("Expected keys to be equal")
+	}
+
+	// same algorithm, different key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEd25519, key())
+	if x.Equals(y) || y.Equals(x) {
+		t.Fatal("Expected keys not to be equal")
+	}
+
+	// different algorithm, same key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEntropy, x.Key)
+	if x.Equals(y) || y.Equals(x) {
+		t.Fatal("Expected keys not to be equal")
+	}
+
+	// different algorithm, different key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEntropy, key())
+	if x.Equals(y) || y.Equals(x) {
+		t.Fatal("Expected keys not to be equal")
+	}
+}
+
 // TestSiaPublicKeyUnmarshalJSON checks that UnmarshalJSON supports both
 // encodings of SiaPublicKey.
 func TestSiaPublicKeyUnmarshalJSON(t *testing.T) {

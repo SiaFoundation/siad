@@ -1628,8 +1628,8 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
 		}
-		churnedHost := rc.DisabledContracts[0].HostPublicKey
-		if churnedHost.Algorithm != hostPubKey.Algorithm || !bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if !churnedHostKey.Equals(hostPubKey) {
 			return errors.New("wrong host churned")
 		}
 

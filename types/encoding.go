@@ -616,6 +616,11 @@ func (spk *SiaPublicKey) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Equals compares two SiaPublicKey types for equality
+func (x SiaPublicKey) Equals(y SiaPublicKey) bool {
+	return x.Algorithm == y.Algorithm && bytes.Equal(x.Key, y.Key)
+}
+
 // MarshalJSON marshals a specifier as a string.
 func (s Specifier) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
