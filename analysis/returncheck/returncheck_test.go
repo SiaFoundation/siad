@@ -62,16 +62,6 @@ func Test(t *testing.T) {
 		}
 	}
 
-	func (a *api) shouldSucceedEdgeCaseMultipleIfs(w http.ResponseWriter) {
-		if true {
-			WriteError(w, Error{"Bad Request"}, http.StatusBadRequest)
-			return
-		}
-		if true {
-			WriteError(w, Error{"Bad Request"}, http.StatusBadRequest)
-		}
-	}
-
 	func (a *api) shouldFailEdgeCaseMultipleIfs(w http.ResponseWriter) {
 		if true {
 			WriteError(w, Error{"Bad Request"}, http.StatusBadRequest) // want "missing immediate return statement after call to WriteError"
@@ -79,6 +69,16 @@ func Test(t *testing.T) {
 		if true {
 			WriteError(w, Error{"Bad Request"}, http.StatusBadRequest)
 			return
+		}
+	}
+
+	func (a *api) shouldSucceedEdgeCaseMultipleIfs(w http.ResponseWriter) {
+		if true {
+			WriteError(w, Error{"Bad Request"}, http.StatusBadRequest)
+			return
+		}
+		if true {
+			WriteError(w, Error{"Bad Request"}, http.StatusBadRequest)
 		}
 	}
 
