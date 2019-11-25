@@ -1,7 +1,9 @@
 package mdm
 
 import (
+	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -78,15 +80,29 @@ type instructionReadSector struct {
 	merkleRootOff uint64
 }
 
-// NewReadSectorInstruction creates a new 'ReadSector' instructions from the
+// decodeReadSectorInstruction creates a new 'ReadSector' instructions from the
 // provided operands and adds it to the program. This is only possible as long
 // as the program hasn't begun execution yet.
-func (p *Program) newReadSectorInstruction(rootOff, offsetOff, lengthOff uint64, merkleProof bool) error {
+func (p *Program) decodeReadSectorInstruction(instruction modules.Instruction) error {
+	// Check specifier.
+	if instruction.Specifier != modules.SpecifierReadSector {
+		return fmt.Errorf("expected specifier %v but got %v",
+			modules.SpecifierReadSector, instruction.Specifier)
+	}
+	// Check args.
+	if len(instruction.Args) != modules.RPCIReadSectorLen {
+		return fmt.Errorf("expected instruction to have len %v but was %v",
+			modules.RPCIReadSectorLen, len(instruction.Args))
+	}
+	// Read args.
+	rootOff := binary.LittleEndian.Uint64(instruction.Args[:8])
+	offsetOff := binary.LittleEndian.Uint64(instruction.Args[8:16])
+	lengthOff := binary.LittleEndian.Uint64(instruction.Args[16:24])
 	p.instructions = append(p.instructions, &instructionReadSector{
 		commonInstruction: commonInstruction{
 			staticContractSize: p.finalContractSize,
 			staticData:         p.staticData,
-			staticMerkleProof:  merkleProof,
+			staticMerkleProof:  instruction.Args[24] == 1,
 			staticState:        p.staticProgramState,
 		},
 		lengthOff:     lengthOff,

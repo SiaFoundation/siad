@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // TestNewEmptyProgram runs a program without instructions.
@@ -14,7 +15,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Execute the program.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), InitCost(0), newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), []modules.Instruction{}, InitCost(0), newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,8 +27,8 @@ func TestNewEmptyProgram(t *testing.T) {
 	if numOutputs > 0 {
 		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 0)
 	}
-	// Finalize the program.
-	if err := finalize(); err != nil {
-		t.Fatal(err)
+	// No need to finalize the progra since an empty program is readonly.
+	if finalize != nil {
+		t.Fatal("finalize callback should be nil for readonly program")
 	}
 }

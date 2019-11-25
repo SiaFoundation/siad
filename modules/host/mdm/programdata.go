@@ -2,6 +2,7 @@ package mdm
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -67,9 +68,20 @@ func NewProgramData(r io.Reader, dataLength uint64) *ProgramData {
 func (pd *ProgramData) threadedFetchData() {
 	packet := make([]byte, 1<<11) // 1kib
 	remainingData := int64(pd.staticLength)
+	quit := func(err error) {
+		pd.mu.Lock()
+		// Remember the error and close all open requests before stopping
+		// the loop.
+		pd.readErr = err
+		for _, r := range pd.requests {
+			close(r.c)
+		}
+		pd.mu.Unlock()
+	}
 	for remainingData > 0 {
 		select {
 		case <-pd.cancel:
+			quit(errors.New("stop called"))
 			return
 		default:
 		}
@@ -79,14 +91,7 @@ func (pd *ProgramData) threadedFetchData() {
 		}
 		n, err := pd.r.Read(packet)
 		if err != nil {
-			pd.mu.Lock()
-			// Remember the error and close all open requests before stopping
-			// the loop.
-			pd.readErr = err
-			for _, r := range pd.requests {
-				close(r.c)
-			}
-			pd.mu.Unlock()
+			quit(err)
 			break
 		}
 		pd.mu.Lock()
@@ -171,8 +176,6 @@ func (pd *ProgramData) Len() uint64 {
 
 // Stop will stop the background thread and wait for it to return.
 func (pd *ProgramData) Stop() {
-	pd.mu.Lock()
-	defer pd.mu.Unlock()
 	close(pd.cancel)
 	pd.wg.Wait()
 }

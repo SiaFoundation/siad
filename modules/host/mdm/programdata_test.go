@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"io"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -72,12 +71,14 @@ func TestOutOfBounds(t *testing.T) {
 func TestEOFWhileReading(t *testing.T) {
 	r := bytes.NewReader(fastrand.Bytes(7))
 	pd := NewProgramData(r, 8)
+	cont := make(chan struct{})
 	go func() {
-		time.Sleep(time.Second)
+		<-cont
 		pd.Stop()
 	}()
 	_, err := pd.Uint64(0)
 	if err != io.EOF {
-		t.Fatalf("error was supposed to be %v but was %v", io.EOF, err)
+		t.Errorf("error was supposed to be %v but was %v", io.EOF, err)
 	}
+	close(cont)
 }

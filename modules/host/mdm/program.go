@@ -3,6 +3,7 @@ package mdm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -46,13 +47,11 @@ type Program struct {
 	staticData         *ProgramData
 	staticProgramState *programState
 
-	finalContractSize uint64      // contract size after executing all instructions
-	initialMerkleRoot crypto.Hash // merkle root when program was created
+	finalContractSize uint64 // contract size after executing all instructions
 	budget            Cost
 
-	finalOutput Output
-	renterSig   types.TransactionSignature
-	outputChan  chan Output
+	renterSig  types.TransactionSignature
+	outputChan chan Output
 
 	mu sync.Mutex
 	tg *threadgroup.ThreadGroup
@@ -60,13 +59,12 @@ type Program struct {
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, budget Cost, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget Cost, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	// TODO: capture hostState
 	p := &Program{
 		budget:             budget,
 		finalContractSize:  initialContractSize,
-		initialMerkleRoot:  initialMerkleRoot,
-		outputChan:         make(chan Output),
+		outputChan:         make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			// TODO: initialize
 		},
@@ -77,6 +75,19 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, budget Cost, so StorageOblig
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// Convert the instructions.
+	var err error
+	for _, i := range instructions {
+		switch i.Specifier {
+		case modules.SpecifierReadSector:
+			err = p.decodeReadSectorInstruction(i)
+		default:
+			err = fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	// Make sure that the contract is locked unless the program we're executing
 	// is a readonly program.
 	if !p.readOnly() && !p.so.Locked() {
@@ -96,7 +107,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, budget Cost, so StorageOblig
 		defer close(p.outputChan)
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		fcRoot := p.initialMerkleRoot
+		fcRoot := initialMerkleRoot
 		for _, i := range p.instructions {
 			select {
 			case <-ctx.Done(): // Check for interrupt
@@ -107,14 +118,17 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, budget Cost, so StorageOblig
 			output := i.Execute(fcRoot, budget)
 			fcRoot = output.NewMerkleRoot
 			p.outputChan <- output
-			p.finalOutput = output
 			// Abort if the last output contained an error.
 			if output.Error != nil {
 				break
 			}
 		}
 	}()
-	return nil, p.outputChan, nil
+	// If the program is readonly there is no need to finalize it.
+	if p.readOnly() {
+		return nil, p.outputChan, nil
+	}
+	return p.managedFinalize, p.outputChan, nil
 }
 
 // managedFinalize commits the changes made by the program to disk. It should
