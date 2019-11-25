@@ -13,9 +13,8 @@ func TestNewEmptyProgram(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
 	var r io.Reader
-	p := mdm.NewProgram(InitCost(0), newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
 	// Execute the program.
-	outputs, err := p.Execute(context.Background())
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), InitCost(0), newTestStorageObligation(true), 0, crypto.Hash{}, 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +27,7 @@ func TestNewEmptyProgram(t *testing.T) {
 		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 0)
 	}
 	// Finalize the program.
-	if err := p.Finalize(); err != nil {
+	if err := finalize(); err != nil {
 		t.Fatal(err)
 	}
 }

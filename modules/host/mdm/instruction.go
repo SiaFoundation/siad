@@ -8,7 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// Instruction is the interface an instruction needs to implement to be part of
+// instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
 	Execute(fcRoot crypto.Hash, budget Cost) Output
@@ -81,12 +81,7 @@ type instructionReadSector struct {
 // NewReadSectorInstruction creates a new 'ReadSector' instructions from the
 // provided operands and adds it to the program. This is only possible as long
 // as the program hasn't begun execution yet.
-func (p *Program) NewReadSectorInstruction(rootOff, offsetOff, lengthOff uint64, merkleProof bool) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.executing {
-		return errors.New("can't add instruction after execution has begun")
-	}
+func (p *Program) newReadSectorInstruction(rootOff, offsetOff, lengthOff uint64, merkleProof bool) error {
 	p.instructions = append(p.instructions, &instructionReadSector{
 		commonInstruction: commonInstruction{
 			staticContractSize: p.finalContractSize,

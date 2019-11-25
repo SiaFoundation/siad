@@ -8,7 +8,6 @@ import (
 
 	"gitlab.com/NebulousLabs/threadgroup"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -51,7 +50,6 @@ type Program struct {
 	initialMerkleRoot crypto.Hash // merkle root when program was created
 	budget            Cost
 
-	executing   bool
 	finalOutput Output
 	renterSig   types.TransactionSignature
 	outputChan  chan Output
@@ -60,11 +58,11 @@ type Program struct {
 	tg *threadgroup.ThreadGroup
 }
 
-// NewProgram initializes a new program from a set of instructions and a reader
-// which can be used to fetch the program's data.
-func (mdm *MDM) NewProgram(budget Cost, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) *Program {
+// ExecuteProgram initializes a new program from a set of instructions and a reader
+// which can be used to fetch the program's data and executes it.
+func (mdm *MDM) ExecuteProgram(ctx context.Context, budget Cost, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	// TODO: capture hostState
-	return &Program{
+	p := &Program{
 		budget:             budget,
 		finalContractSize:  initialContractSize,
 		initialMerkleRoot:  initialMerkleRoot,
@@ -76,41 +74,29 @@ func (mdm *MDM) NewProgram(budget Cost, so StorageObligation, initialContractSiz
 		so:         so,
 		tg:         &mdm.tg,
 	}
-}
 
-// Execute will execute all of the program's instructions and create a file
-// contract revision to be signed by the host and renter at the end. The ctx can
-// be used to issue an interrupt which will stop the execution of the program as
-// soon as the current instruction is done executing.
-func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.executing {
-		err := errors.New("can't call 'Execute' more than once")
-		build.Critical(err)
-		return nil, err
-	}
-	p.executing = true
 	// Make sure that the contract is locked unless the program we're executing
 	// is a readonly program.
 	if !p.readOnly() && !p.so.Locked() {
-		return nil, errors.New("contract needs to be locked for a program with one or more write instructions")
+		return nil, nil, errors.New("contract needs to be locked for a program with one or more write instructions")
 	}
 	// Make sure the budget covers the initial cost.
 	budget, ok := p.budget.Min(InitCost(p.staticData.Len()))
 	if !ok {
-		return nil, ErrInsufficientBudget
+		return nil, nil, ErrInsufficientBudget
 	}
 	// Execute all the instructions.
 	if err := p.tg.Add(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	go func() {
 		defer p.tg.Done()
 		defer close(p.outputChan)
 		p.mu.Lock()
+		defer p.mu.Unlock()
 		fcRoot := p.initialMerkleRoot
-		p.mu.Unlock()
 		for _, i := range p.instructions {
 			select {
 			case <-ctx.Done(): // Check for interrupt
@@ -128,19 +114,14 @@ func (p *Program) Execute(ctx context.Context) (<-chan Output, error) {
 			}
 		}
 	}()
-	return p.outputChan, nil
+	return nil, p.outputChan, nil
 }
 
-// Finalize commits the changes made by the program to disk. It should only be
-// called after the channel returned by Execute is closed.
-func (p *Program) Finalize() error {
+// managedFinalize commits the changes made by the program to disk. It should
+// only be called after the channel returned by Execute is closed.
+func (p *Program) managedFinalize() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.executing {
-		err := errors.New("can't call 'Result' before 'Execute'")
-		build.Critical(err)
-		return err
-	}
 	// Commit the changes to the storage obligation.
 	ps := p.staticProgramState
 	err := p.so.Update(ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
