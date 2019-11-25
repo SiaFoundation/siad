@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -1529,18 +1530,11 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 			return errors.New("Expected contract to be archived")
 		}
 
-		// Check that the other values are the same as the old copy of the status.
-		different := (contractStatus.FormationSweepHeight != newStatus.FormationSweepHeight) &&
-			(contractStatus.ContractFound != newStatus.ContractFound) &&
-			(contractStatus.LatestRevisionFound != newStatus.LatestRevisionFound) &&
-			(contractStatus.StorageProofFoundAtHeight != newStatus.StorageProofFoundAtHeight) &&
-			(contractStatus.DoubleSpendHeight != newStatus.DoubleSpendHeight) &&
-			(contractStatus.WindowStart != newStatus.WindowStart) &&
-			(contractStatus.WindowEnd != newStatus.WindowEnd)
-		if different {
+		// Check that the status is equal to the old copy.
+		newStatus.Archived = true // the only value that should be different.
+		if !reflect.DeepEqual(newStatus, contractStatus) {
 			return errors.New("Expected contract status to be otherwise the same")
 		}
-
 		return nil
 	})
 	if err != nil {

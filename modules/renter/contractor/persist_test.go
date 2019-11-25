@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -284,28 +285,7 @@ func TestSaveLoad(t *testing.T) {
 	if !ok {
 		t.Fatal("watchdog not restored properly", c.staticWatchdog.archivedContracts)
 	}
-	if archivedContract.Archived != expectedArchivedContract.Archived {
-		t.Fatal("Archived contract not restored properly", archivedContract)
-	}
-	if archivedContract.FormationSweepHeight != expectedArchivedContract.FormationSweepHeight {
-		t.Fatal("Archived contract not restored properly", archivedContract)
-	}
-	if archivedContract.ContractFound != expectedArchivedContract.ContractFound {
-		t.Fatal("Archived contract not restored properly", archivedContract)
-	}
-	if archivedContract.LatestRevisionFound != expectedArchivedContract.LatestRevisionFound {
-		t.Fatal("Archived contract not restored properly", archivedContract)
-	}
-	if archivedContract.StorageProofFoundAtHeight != expectedArchivedContract.StorageProofFoundAtHeight {
-		t.Fatal("Archived contract not restored properly", archivedContract)
-	}
-	if archivedContract.DoubleSpendHeight != expectedArchivedContract.DoubleSpendHeight {
-		t.Fatal("Archived contract not restored properly", archivedContract)
-	}
-	if archivedContract.WindowStart != expectedArchivedContract.WindowStart {
-		t.Fatal("Archived contract not restored properly", archivedContract)
-	}
-	if archivedContract.WindowEnd != expectedArchivedContract.WindowEnd {
+	if !reflect.DeepEqual(archivedContract, expectedArchivedContract) {
 		t.Fatal("Archived contract not restored properly", archivedContract)
 	}
 

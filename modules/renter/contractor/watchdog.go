@@ -247,20 +247,22 @@ func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
 func (w *watchdog) archiveContract(fcID types.FileContractID, doubleSpendHeight types.BlockHeight) {
 	w.contractor.log.Debugln("Archiving contract: ", fcID)
 	contractData, ok := w.contracts[fcID]
-	if ok {
-		for oid := range contractData.parentOutputs {
-			w.removeOutputDependency(oid, fcID)
-		}
-		w.archivedContracts[fcID] = modules.ContractWatchStatus{
-			Archived:                  true,
-			FormationSweepHeight:      contractData.formationSweepHeight,
-			ContractFound:             contractData.contractFound,
-			LatestRevisionFound:       contractData.revisionFound,
-			StorageProofFoundAtHeight: contractData.storageProofFound,
-			DoubleSpendHeight:         doubleSpendHeight,
-			WindowStart:               contractData.windowStart,
-			WindowEnd:                 contractData.windowEnd,
-		}
+	if !ok {
+		return
+
+	}
+	for oid := range contractData.parentOutputs {
+		w.removeOutputDependency(oid, fcID)
+	}
+	w.archivedContracts[fcID] = modules.ContractWatchStatus{
+		Archived:                  true,
+		FormationSweepHeight:      contractData.formationSweepHeight,
+		ContractFound:             contractData.contractFound,
+		LatestRevisionFound:       contractData.revisionFound,
+		StorageProofFoundAtHeight: contractData.storageProofFound,
+		DoubleSpendHeight:         doubleSpendHeight,
+		WindowStart:               contractData.windowStart,
+		WindowEnd:                 contractData.windowEnd,
 	}
 	delete(w.contracts, fcID)
 }
