@@ -617,8 +617,8 @@ func (spk *SiaPublicKey) UnmarshalJSON(b []byte) error {
 }
 
 // Equals compares two SiaPublicKey types for equality
-func (x SiaPublicKey) Equals(y SiaPublicKey) bool {
-	return x.Algorithm == y.Algorithm && bytes.Equal(x.Key, y.Key)
+func (spk SiaPublicKey) Equals(key SiaPublicKey) bool {
+	return spk.Algorithm == key.Algorithm && bytes.Equal(spk.Key, key.Key)
 }
 
 // MarshalJSON marshals a specifier as a string.
