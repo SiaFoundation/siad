@@ -2,6 +2,7 @@ package mdm
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -15,6 +16,7 @@ type StorageObligation interface {
 // Host defines the minimal interface a Host needs to
 // implement to be used by the mdm.
 type Host interface {
+	BlockHeight() types.BlockHeight
 	ReadSector(sectorRoot crypto.Hash) ([]byte, error)
 }
 

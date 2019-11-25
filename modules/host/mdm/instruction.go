@@ -7,13 +7,12 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
-	Execute(fcRoot crypto.Hash, budget Cost) Output
+	Execute(fcRoot crypto.Hash) Output
 	ReadOnly() bool
 }
 
@@ -28,9 +27,6 @@ type Output struct {
 	// invalid program, and the error will be prefixed by 'hosterr' if the error
 	// resulted from a host error such as a disk failure.
 	Error error
-
-	// NewBudget is the budget remaining after executing the instruction.
-	NewBudget Cost
 
 	// NewSize is the size of a file contract after the execution of an
 	// instruction.
@@ -54,8 +50,7 @@ type Output struct {
 type commonInstruction struct {
 	staticMerkleProof  bool
 	staticContractSize uint64 // contract size before executing instruction
-	staticFCID         types.FileContractID
-	staticData         *ProgramData
+	staticData         *programData
 	staticState        *programState
 }
 
@@ -118,9 +113,10 @@ func (i *instructionReadSector) Cost() Cost {
 }
 
 // Execute execute the 'Read' instruction.
-func (i *instructionReadSector) Execute(fcRoot crypto.Hash, budget Cost) Output {
+func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	// Subtract cost from budget beforehand.
-	newBudget, ok := budget.Min(ReadSectorCost())
+	var ok bool
+	i.staticState.remainingBudget, ok = i.staticState.remainingBudget.Sub(ReadSectorCost())
 	if !ok {
 		return outputFromError(ErrInsufficientBudget)
 	}
@@ -167,7 +163,6 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash, budget Cost) Output 
 
 	// Return the output.
 	return Output{
-		NewBudget:     newBudget,
 		NewSize:       i.staticContractSize, // size stays the same
 		NewMerkleRoot: fcRoot,               // root stays the same
 		Output:        data,

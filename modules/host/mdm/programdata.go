@@ -8,12 +8,13 @@ import (
 	"sort"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
-// ProgramData is a buffer for the program data. It will read packets from r and
+// programData is a buffer for the program data. It will read packets from r and
 // append them to data.
-type ProgramData struct {
+type programData struct {
 	// data contains the already received data.
 	data []byte
 
@@ -46,10 +47,10 @@ type dataRequest struct {
 	c              chan struct{}
 }
 
-// NewProgramData creates a new ProgramData object from the specified reader. It
+// newProgramData creates a new ProgramData object from the specified reader. It
 // will read from the reader until dataLength is reached.
-func NewProgramData(r io.Reader, dataLength uint64) *ProgramData {
-	pd := &ProgramData{
+func newProgramData(r io.Reader, dataLength uint64) *programData {
+	pd := &programData{
 		cancel:       make(chan struct{}),
 		r:            r,
 		staticLength: dataLength,
@@ -65,8 +66,8 @@ func NewProgramData(r io.Reader, dataLength uint64) *ProgramData {
 // threadedFetchData fetches the program's data from the underlying reader of
 // the ProgramData. It will read from the reader until io.EOF is reached or
 // until the maximum number of packets are read.
-func (pd *ProgramData) threadedFetchData() {
-	packet := make([]byte, 1<<11) // 1kib
+func (pd *programData) threadedFetchData() {
+	var packet [1024]byte // 1kib
 	remainingData := int64(pd.staticLength)
 	quit := func(err error) {
 		pd.mu.Lock()
@@ -86,10 +87,11 @@ func (pd *ProgramData) threadedFetchData() {
 		default:
 		}
 		// Adjust the length of the packet according to the remaining data.
-		if remainingData <= int64(cap(packet)) {
-			packet = packet[:remainingData]
+		d := packet[:]
+		if remainingData <= int64(cap(d)) {
+			d = d[:remainingData]
 		}
-		n, err := pd.r.Read(packet)
+		n, err := pd.r.Read(d)
 		if err != nil {
 			quit(err)
 			break
@@ -116,16 +118,20 @@ func (pd *ProgramData) threadedFetchData() {
 
 // managedBytes tries to fetch length bytes at offset from the underlying data slice of
 // the ProgramData. If the data is not available yet,
-func (pd *ProgramData) managedBytes(offset, length uint64) ([]byte, error) {
+func (pd *programData) managedBytes(offset, length uint64) ([]byte, error) {
 	// Check if request is valid.
 	if offset+length > pd.staticLength {
 		return nil, fmt.Errorf("offset+length out of bounds: %v > %v", offset+length, pd.staticLength)
 	}
-	// Check if data is available already.
 	pd.mu.Lock()
+	// Check if data is available already.
 	if uint64(len(pd.data)) >= offset+length {
 		defer pd.mu.Unlock()
 		return pd.data[offset:], nil
+	}
+	// Check for previous error.
+	if pd.readErr != nil {
+		return nil, pd.readErr
 	}
 	// If not, queue up a request.
 	c := make(chan struct{})
@@ -139,7 +145,13 @@ func (pd *ProgramData) managedBytes(offset, length uint64) ([]byte, error) {
 	defer pd.mu.Unlock()
 	// Check if the data is available again. It should be unless there was a
 	// reading error.
-	if uint64(len(pd.data)) < offset+length {
+	outOfBounds := uint64(len(pd.data)) < offset+length
+	if outOfBounds && pd.readErr == nil {
+		err := errors.New("requested data was out of bounds even though there was no readErr")
+		build.Critical(err)
+		return nil, err
+
+	} else if outOfBounds && pd.readErr != nil {
 		return nil, pd.readErr
 	}
 	return pd.data[offset:][:length], nil
@@ -148,7 +160,7 @@ func (pd *ProgramData) managedBytes(offset, length uint64) ([]byte, error) {
 // Uint64 returns the next 8 bytes at the specified offset within the program
 // data as an uint64. This call will block if the data at the specified offset
 // hasn't been fetched yet.
-func (pd *ProgramData) Uint64(offset uint64) (uint64, error) {
+func (pd *programData) Uint64(offset uint64) (uint64, error) {
 	d, err := pd.managedBytes(offset, 8)
 	if err != nil {
 		return 0, err
@@ -159,7 +171,7 @@ func (pd *ProgramData) Uint64(offset uint64) (uint64, error) {
 // Hash returns the next crypto.HashSize bytes at the specified offset within
 // the program data as a crypto.Hash. This call will block if the data at the
 // specified offset hasn't been fetched yet.
-func (pd *ProgramData) Hash(offset uint64) (crypto.Hash, error) {
+func (pd *programData) Hash(offset uint64) (crypto.Hash, error) {
 	d, err := pd.managedBytes(offset, crypto.HashSize)
 	if err != nil {
 		return crypto.Hash{}, err
@@ -170,12 +182,12 @@ func (pd *ProgramData) Hash(offset uint64) (crypto.Hash, error) {
 }
 
 // Len returns the length of the program data.
-func (pd *ProgramData) Len() uint64 {
+func (pd *programData) Len() uint64 {
 	return pd.staticLength
 }
 
 // Stop will stop the background thread and wait for it to return.
-func (pd *ProgramData) Stop() {
+func (pd *programData) Stop() {
 	close(pd.cancel)
 	pd.wg.Wait()
 }

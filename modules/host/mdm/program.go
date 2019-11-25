@@ -23,6 +23,8 @@ var ErrInsufficientBudget = errors.New("program has insufficient budget to execu
 // The program's state is captured when the program is created and remains the
 // same during the execution of the program.
 type programState struct {
+	// mdm related fields.
+	remainingBudget Cost
 	// host related fields
 	blockHeight types.BlockHeight
 	host        Host
@@ -44,7 +46,7 @@ type Program struct {
 	// contract id field will be ignored.
 	so                 StorageObligation
 	instructions       []instruction
-	staticData         *ProgramData
+	staticData         *programData
 	staticProgramState *programState
 
 	finalContractSize uint64 // contract size after executing all instructions
@@ -62,13 +64,15 @@ type Program struct {
 func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget Cost, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	// TODO: capture hostState
 	p := &Program{
-		budget:             budget,
-		finalContractSize:  initialContractSize,
-		outputChan:         make(chan Output, len(instructions)),
+		budget:            budget,
+		finalContractSize: initialContractSize,
+		outputChan:        make(chan Output, len(instructions)),
 		staticProgramState: &programState{
-			// TODO: initialize
+			blockHeight:     mdm.host.BlockHeight(),
+			host:            mdm.host,
+			remainingBudget: budget,
 		},
-		staticData: NewProgramData(data, programDataLen),
+		staticData: newProgramData(data, programDataLen),
 		so:         so,
 		tg:         &mdm.tg,
 	}
@@ -94,7 +98,9 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		return nil, nil, errors.New("contract needs to be locked for a program with one or more write instructions")
 	}
 	// Make sure the budget covers the initial cost.
-	budget, ok := p.budget.Min(InitCost(p.staticData.Len()))
+	var ok bool
+	ps := p.staticProgramState
+	ps.remainingBudget, ok = ps.remainingBudget.Sub(InitCost(p.staticData.Len()))
 	if !ok {
 		return nil, nil, ErrInsufficientBudget
 	}
@@ -115,7 +121,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 			default:
 			}
 			// Execute next instruction.
-			output := i.Execute(fcRoot, budget)
+			output := i.Execute(fcRoot)
 			fcRoot = output.NewMerkleRoot
 			p.outputChan <- output
 			// Abort if the last output contained an error.

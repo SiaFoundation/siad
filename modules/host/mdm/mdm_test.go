@@ -6,14 +6,16 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
 type (
 	// TestHost is a dummy host for testing which satisfies the Host interface.
 	TestHost struct {
-		sectors map[crypto.Hash][]byte
-		mu      sync.Mutex
+		blockHeight types.BlockHeight
+		sectors     map[crypto.Hash][]byte
+		mu          sync.Mutex
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
@@ -32,6 +34,12 @@ func newTestStorageObligation(locked bool) StorageObligation {
 	return &TestStorageObligation{
 		locked: locked,
 	}
+}
+
+// BlockHeight returns an incremented blockheight every time it's called.
+func (h *TestHost) BlockHeight() types.BlockHeight {
+	h.blockHeight++
+	return h.blockHeight
 }
 
 // ReadSector implements the Host interface by returning a random sector for

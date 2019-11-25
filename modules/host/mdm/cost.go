@@ -32,9 +32,9 @@ func (c Cost) Add(c2 Cost) Cost {
 	}
 }
 
-// Min subtracts a Cost from another Cost. It will return 'false' if that would
+// Sub subtracts a Cost from another Cost. It will return 'false' if that would
 // result in an underflow and 'true' on success.
-func (c Cost) Min(c2 Cost) (Cost, bool) {
+func (c Cost) Sub(c2 Cost) (Cost, bool) {
 	// Helper method that subtracts one number from another and returns 'false'
 	// in case of an underflow.
 	min := func(a, b uint64) (uint64, bool) {

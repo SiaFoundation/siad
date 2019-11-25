@@ -13,7 +13,7 @@ import (
 // TestNewProgramData tests starting and stopping a ProgramData object.
 func TestNewProgramData(t *testing.T) {
 	buf := bytes.NewReader(fastrand.Bytes(10))
-	pd := NewProgramData(buf, uint64(buf.Len()))
+	pd := newProgramData(buf, uint64(buf.Len()))
 	pd.Stop()
 }
 
@@ -22,7 +22,7 @@ func TestNewProgramData(t *testing.T) {
 func TestHash(t *testing.T) {
 	data := fastrand.Bytes(1000)
 	buf := bytes.NewReader(data)
-	pd := NewProgramData(buf, uint64(len(data)))
+	pd := newProgramData(buf, uint64(len(data)))
 	for i := 0; i < 1000; i++ {
 		offset := fastrand.Intn(len(data) - crypto.HashSize + 1)
 		h, err := pd.Hash(uint64(offset))
@@ -41,7 +41,7 @@ func TestHash(t *testing.T) {
 func TestUint64(t *testing.T) {
 	data := fastrand.Bytes(1000)
 	buf := bytes.NewReader(data)
-	pd := NewProgramData(buf, uint64(len(data)))
+	pd := newProgramData(buf, uint64(len(data)))
 	for i := 0; i < 1000; i++ {
 		offset := fastrand.Intn(len(data) - 8 + 1)
 		n, err := pd.Uint64(uint64(offset))
@@ -58,7 +58,7 @@ func TestUint64(t *testing.T) {
 // TestOutOfBounds tests the out-of-bounds check.
 func TestOutOfBounds(t *testing.T) {
 	buf := bytes.NewReader(fastrand.Bytes(8))
-	pd := NewProgramData(buf, 7)
+	pd := newProgramData(buf, 7)
 	_, err := pd.managedBytes(0, 8)
 	if err == nil {
 		t.Fatal("managedBytes should fail")
@@ -70,7 +70,7 @@ func TestOutOfBounds(t *testing.T) {
 // returned.
 func TestEOFWhileReading(t *testing.T) {
 	r := bytes.NewReader(fastrand.Bytes(7))
-	pd := NewProgramData(r, 8)
+	pd := newProgramData(r, 8)
 	cont := make(chan struct{})
 	go func() {
 		<-cont
