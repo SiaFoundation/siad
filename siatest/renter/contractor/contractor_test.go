@@ -1341,7 +1341,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 			return errors.AddContext(err, "ContractStatus API call failed")
 		}
 		if !status.ContractFound || status.Archived {
-			return errors.AddContext(err, "Active contract not being monitored (or arcived) by watchdog")
+			return errors.AddContext(err, "Active contract not being monitored (or archived) by watchdog")
 		}
 		return nil
 	})

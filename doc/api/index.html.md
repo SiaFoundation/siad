@@ -2822,14 +2822,14 @@ ID of the file contract
 
 ```go
 {
-  "archived:                   true, // boolean
-  "formationsweepheight":      1234, // block height,
+  "archived":                  true, // boolean
+  "formationsweepheight":      1234, // block height
   "contractfound":             true, // boolean
   "latestrevisionfound",       55,   // uint64
-  "storageprooffoundatheight": 0,    // block height,
-  "doublespendheight":         0,    // block height,
-  "windowstart":               5000, // block height,
-  "windowend":                 5555, // block height,
+  "storageprooffoundatheight": 0,    // block height
+  "doublespendheight":         0,    // block height
+  "windowstart":               5000, // block height
+  "windowend":                 5555, // block height
 }
 ```
 **archived** | boolean  
