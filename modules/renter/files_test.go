@@ -150,6 +150,10 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = rt.renter.RenameFile(rt.renter.staticFileSystem.FileSiaPath(entry2), siaPath1) // set name to "1"
+	if err != nil {
+		t.Fatal(err)
+	}
 	siapath2 := rt.renter.staticFileSystem.FileSiaPath(entry2)
 	entry2.Close()
 	siapath2 = rt.renter.staticFileSystem.FileSiaPath(entry2)
