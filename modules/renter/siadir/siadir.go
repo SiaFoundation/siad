@@ -1,6 +1,7 @@
 package siadir
 
 import (
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -14,11 +15,8 @@ type (
 	SiaDir struct {
 		metadata Metadata
 
-		// siaPath is the path to the siadir on the sia network
-		siaPath modules.SiaPath
-
-		// rootDir is the path to the root directory on disk
-		rootDir string
+		// path is the path of the SiaDir folder.
+		path string
 
 		// Utility fields
 		deleted bool
@@ -86,6 +84,11 @@ type (
 	}
 )
 
+// mdPath returns the path of the SiaDir's metadata on disk.
+func (sd *SiaDir) mdPath() string {
+	return filepath.Join(sd.path, modules.SiaDirExtension)
+}
+
 // Deleted returns the deleted field of the siaDir
 func (sd *SiaDir) Deleted() bool {
 	sd.mu.Lock()
@@ -100,9 +103,16 @@ func (sd *SiaDir) Metadata() Metadata {
 	return sd.metadata
 }
 
-// SiaPath returns the SiaPath of the SiaDir
-func (sd *SiaDir) SiaPath() modules.SiaPath {
+// Path returns the path of the SiaDir on disk.
+func (sd *SiaDir) Path() string {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
-	return sd.siaPath
+	return sd.path
+}
+
+// MDPath returns the path of the SiaDir's metadata on disk.
+func (sd *SiaDir) MDPath() string {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.mdPath()
 }

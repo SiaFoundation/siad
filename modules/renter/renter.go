@@ -26,7 +26,6 @@ package renter
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -38,9 +37,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -210,12 +208,7 @@ type Renter struct {
 	staticAlerter *modules.GenericAlerter
 
 	// File management.
-	staticFileSet       *siafile.SiaFileSet
-	staticBackupFileSet *siafile.SiaFileSet
-
-	// Directory Management
-	staticDirSet       *siadir.SiaDirSet
-	staticBackupDirSet *siadir.SiaDirSet
+	staticFileSystem *filesystem.FileSystem
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -506,7 +499,7 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 // Additionally a map of host pubkeys to renter contract is returned.  The
 // offline and goodforrenew maps are needed for calculating redundancy and other
 // file metrics.
-func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FileNode) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
 	// Save host keys in map.
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew = make(map[string]bool)
@@ -621,7 +614,7 @@ func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) er
 	}
 	defer r.tg.Done()
 	// Check if file exists and is being tracked.
-	entry, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return err
 	}
@@ -870,18 +863,16 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		cs:               cs,
-		deps:             deps,
-		g:                g,
-		w:                w,
-		hostDB:           hdb,
-		hostContractor:   hc,
-		persistDir:       persistDir,
-		staticAlerter:    modules.NewAlerter("renter"),
-		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
-		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
-		mu:               siasync.New(modules.SafeMutexDelay, 1),
-		tpool:            tpool,
+		cs:             cs,
+		deps:           deps,
+		g:              g,
+		w:              w,
+		hostDB:         hdb,
+		hostContractor: hc,
+		persistDir:     persistDir,
+		staticAlerter:  modules.NewAlerter("renter"),
+		mu:             siasync.New(modules.SafeMutexDelay, 1),
+		tpool:          tpool,
 	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 	r.staticFuseManager = newFuseManager(r)

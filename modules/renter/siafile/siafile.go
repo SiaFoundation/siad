@@ -63,7 +63,7 @@ type (
 		// this siafile. Since we don't know if a file is going to have a partial
 		// chunk we simply keep the megafiles always open and assign them to SiaFiles
 		// with matching redundancy.
-		partialsSiaFile *SiaFileSetEntry
+		partialsSiaFile *SiaFile
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -125,6 +125,28 @@ func (sf *SiaFile) SiaFilePath() string {
 	return sf.siaFilePath
 }
 
+// Lock acquires the SiaFile's mutex for calling Unmanaged exported methods.
+func (sf *SiaFile) Lock() {
+	sf.mu.Lock()
+}
+
+// Unlock releases the SiaFile's mutex.
+func (sf *SiaFile) Unlock() {
+	sf.mu.Unlock()
+}
+
+// UnmanagedSetDeleted sets the deleted field of the SiaFile without
+// holding the lock.
+func (sf *SiaFile) UnmanagedSetDeleted(deleted bool) {
+	sf.deleted = deleted
+}
+
+// UnmanagedSetSiaFilePath sets the siaFilePath field of the SiaFile without
+// holding the lock.
+func (sf *SiaFile) UnmanagedSetSiaFilePath(newSiaFilePath string) {
+	sf.siaFilePath = newSiaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
@@ -144,7 +166,10 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFileSetEntry, disablePartialUpload bool) (*SiaFile, error) {
+func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFile, disablePartialUpload bool) (*SiaFile, error) {
+	// TODO remove this
+	disablePartialUpload = true
+
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))
@@ -617,7 +642,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	// Sanity Check that the number of stuck chunks makes sense
 	expectedStuckChunks := sf.numStuckChunks()
 	if numStuckChunks != expectedStuckChunks {
-		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks)
+		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks, sf.siaFilePath)
 	}
 	return health, stuckHealth, userHealth, userStuckHealth, numStuckChunks
 }

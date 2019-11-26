@@ -1328,7 +1328,6 @@ func TestHostAndRentReload(t *testing.T) {
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
 		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0])
 	}
-
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
 	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)

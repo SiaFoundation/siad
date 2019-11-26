@@ -2,7 +2,9 @@ package renter
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -25,7 +27,7 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 		return nil
 	}()
 
-	return r.staticFileSet.Delete(siaPath)
+	return r.staticFileSystem.DeleteFile(siaPath)
 }
 
 // FileList returns all of the files that the renter has.
@@ -35,7 +37,11 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 	}
 	defer r.tg.Done()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileList(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	fis, _, err := r.staticFileSystem.List(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	if err != nil {
+		return nil, err
+	}
+	return fis, err
 }
 
 // File returns file from siaPath queried by user.
@@ -46,7 +52,11 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	}
 	defer r.tg.Done()
 	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
-	return r.staticFileSet.FileInfo(siaPath, offline, goodForRenew, contracts)
+	fi, err := r.staticFileSystem.FileInfo(siaPath, offline, goodForRenew, contracts)
+	if err != nil {
+		return modules.FileInfo{}, err
+	}
+	return fi, nil
 }
 
 // FileCached returns file from siaPath queried by user, using cached values for
@@ -74,7 +84,7 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	}
 
 	// Rename file
-	err := r.staticFileSet.Rename(currentName, newName)
+	err := r.staticFileSystem.RenameFile(currentName, newName)
 	if err != nil {
 		return err
 	}
@@ -93,7 +103,7 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	err = r.CreateDir(dirSiaPath)
-	if err != siadir.ErrPathOverload && err != nil {
+	if err != filesystem.ErrExists && err != nil {
 		return err
 	}
 	// Call callThreadedBubbleMetadata on the new directory to make sure the
@@ -109,7 +119,7 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
 	}
 	defer r.tg.Done()
 	// Open the file.
-	entry, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return err
 	}

@@ -20,6 +20,7 @@ var (
 	dictionaryLanguage      string // dictionary for seed utils
 	hostContractOutputType  string // output type for host contracts
 	hostVerbose             bool   // display additional host info
+	hostFolderRemoveForce   bool   // force folder remove
 	initForce               bool   // destroy and re-encrypt the wallet on init if it already exists
 	initPassword            bool   // supply a custom password when creating a wallet
 	renterAllContracts      bool   // Show all active and expired contracts
@@ -214,6 +215,7 @@ func main() {
 	hostSectorCmd.AddCommand(hostSectorDeleteCmd)
 	hostCmd.Flags().BoolVarP(&hostVerbose, "verbose", "v", false, "Display detailed host info")
 	hostContractCmd.Flags().StringVarP(&hostContractOutputType, "type", "t", "value", "Select output type")
+	hostFolderRemoveCmd.Flags().BoolVarP(&hostFolderRemoveForce, "force", "f", false, "Force the removal of the folder and its data")
 
 	root.AddCommand(hostdbCmd)
 	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd, hostdbSetFiltermodeCmd)

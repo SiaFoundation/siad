@@ -3,18 +3,13 @@ package siadir
 import (
 	"encoding/json"
 	"io/ioutil"
-	"math"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strings"
-	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -95,15 +90,15 @@ func IsSiaDirUpdate(update writeaheadlog.Update) bool {
 // also make sure that all the parent directories are created and have metadata
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
-func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaDir, error) {
+func New(path, rootPath string, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create path to directory and ensure path contains all metadata
-	updates, err := createDirMetadataAll(siaPath, rootDir)
+	updates, err := createDirMetadataAll(path, rootPath)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create metadata for directory
-	md, update, err := createDirMetadata(siaPath, rootDir)
+	md, update, err := createDirMetadata(path)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +107,7 @@ func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaD
 	sd := &SiaDir{
 		metadata: md,
 		deps:     modules.ProdDependencies,
-		siaPath:  siaPath,
-		rootDir:  rootDir,
+		path:     path,
 		wal:      wal,
 	}
 
@@ -121,14 +115,13 @@ func New(siaPath modules.SiaPath, rootDir string, wal *writeaheadlog.WAL) (*SiaD
 }
 
 // LoadSiaDir loads the directory metadata from disk
-func LoadSiaDir(rootDir string, siaPath modules.SiaPath, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
+func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) (sd *SiaDir, err error) {
 	sd = &SiaDir{
-		deps:    deps,
-		siaPath: siaPath,
-		rootDir: rootDir,
-		wal:     wal,
+		deps: deps,
+		path: path,
+		wal:  wal,
 	}
-	sd.metadata, err = callLoadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(rootDir), modules.ProdDependencies)
+	sd.metadata, err = callLoadSiaDirMetadata(filepath.Join(path, modules.SiaDirExtension), modules.ProdDependencies)
 	return sd, err
 }
 
@@ -158,207 +151,15 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 	return sd.saveDir()
 }
 
-// Delete deletes the SiaDir that belongs to the siaPath
-func (sds *SiaDirSet) Delete(siaPath modules.SiaPath) error {
-	// Prevent new dirs from being opened.
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-	// Lock loaded files to prevent persistence from happening and unlock them when
-	// we are done deleting the dir.
-	var lockedDirs []*siaDirSetEntry
-	defer func() {
-		for _, entry := range lockedDirs {
-			entry.mu.Unlock()
-		}
-	}()
-	for key, entry := range sds.siaDirMap {
-		if strings.HasPrefix(key.String(), siaPath.String()) {
-			entry.mu.Lock()
-			lockedDirs = append(lockedDirs, entry)
-		}
-	}
-	// Grab entry and delete it.
-	entry, err := sds.open(siaPath)
-	if err != nil && err != ErrUnknownPath {
-		return err
-	} else if err == ErrUnknownPath {
-		return nil // nothing to do
-	}
-	defer sds.closeEntry(entry)
-	if err := entry.callDelete(); err != nil {
-		return err
-	}
-	// Deleting the dir was successful. Delete the open dirs. It's sufficient to do
-	// so only in memory to avoid any persistence. They will be removed from the
-	// map by the last thread closing the entry.
-	for _, entry := range lockedDirs {
-		entry.deleted = true
-	}
-	return nil
-}
-
-// DirInfo returns the Directory Information of the siadir
-func (sds *SiaDirSet) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-	return sds.readLockDirInfo(siaPath)
-}
-
-// DirList returns directories stored in the siadir as well as the DirectoryInfo
-// of the siadir
-func (sds *SiaDirSet) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-
-	// Get DirectoryInfo
-	di, err := sds.readLockDirInfo(siaPath)
-	if err != nil {
-		return nil, err
-	}
-	dirs := []modules.DirectoryInfo{di}
-	var dirsMu sync.Mutex
-	loadChan := make(chan string)
-	worker := func() {
-		for path := range loadChan {
-			// Load the dir info.
-			var siaPath modules.SiaPath
-			if err := siaPath.LoadSysPath(sds.staticRootDir, path); err != nil {
-				continue
-			}
-			var dir modules.DirectoryInfo
-			var err error
-			dir, err = sds.readLockDirInfo(siaPath)
-			if os.IsNotExist(err) || err == ErrUnknownPath {
-				continue
-			}
-			if err != nil {
-				continue
-			}
-			dirsMu.Lock()
-			dirs = append(dirs, dir)
-			dirsMu.Unlock()
-		}
-	}
-	// spin up some threads
-	var wg sync.WaitGroup
-	for i := 0; i < dirListRoutines; i++ {
-		wg.Add(1)
-		go func() {
-			worker()
-			wg.Done()
-		}()
-	}
-	// Read Directory
-	folder := siaPath.SiaDirSysPath(sds.staticRootDir)
-	fileInfos, err := ioutil.ReadDir(folder)
-	if err != nil {
-		return nil, err
-	}
-	for _, fi := range fileInfos {
-		// Check for directories
-		if fi.IsDir() {
-			loadChan <- filepath.Join(folder, fi.Name())
-		}
-	}
-	close(loadChan)
-	wg.Wait()
-	return dirs, nil
-}
-
-// NewSiaDir creates a new SiaDir and returns a SiaDirSetEntry
-func (sds *SiaDirSet) NewSiaDir(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-	// Check is SiaDir already exists
-	exists, err := sds.exists(siaPath)
-	if exists {
-		return nil, ErrPathOverload
-	}
-	if !os.IsNotExist(err) && err != nil {
-		return nil, err
-	}
-	sd, err := New(siaPath, sds.staticRootDir, sds.wal)
-	if err != nil {
-		return nil, err
-	}
-	entry := sds.newSiaDirSetEntry(sd)
-	threadUID := randomThreadUID()
-	entry.threadMap[threadUID] = newThreadInfo()
-	sds.siaDirMap[siaPath] = entry
-	return &SiaDirSetEntry{
-		siaDirSetEntry: entry,
-		threadUID:      threadUID,
-	}, nil
-}
-
-// Open returns the siadir from the SiaDirSet for the corresponding key and
-// adds the thread to the entry's threadMap. If the siadir is not in memory it
-// will load it from disk
-func (sds *SiaDirSet) Open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-	return sds.open(siaPath)
-}
-
-// Rename renames a SiaDir on disk atomically by locking all the already loaded,
-// affected dirs and renaming the root.
-// NOTE: This shouldn't be called directly but instead be passed to
-// siafileset.RenameDir as an argument.
-func (sds *SiaDirSet) Rename(oldPath, newPath modules.SiaPath) error {
-	if oldPath.Equals(modules.RootSiaPath()) {
-		return errors.New("can't rename root dir")
-	}
-	if oldPath.Equals(newPath) {
-		return nil // nothing to do
-	}
-	if strings.HasPrefix(newPath.String(), oldPath.String()) {
-		return errors.New("can't rename folder into itself")
-	}
-	// Prevent new dirs from being opened.
-	sds.mu.Lock()
-	defer sds.mu.Unlock()
-	// Lock loaded files to prevent persistence from happening and unlock them when
-	// we are done renaming the dir.
-	var lockedDirs []*siaDirSetEntry
-	defer func() {
-		for _, entry := range lockedDirs {
-			entry.mu.Unlock()
-		}
-	}()
-	for key, entry := range sds.siaDirMap {
-		if strings.HasPrefix(key.String(), oldPath.String()) {
-			entry.mu.Lock()
-			lockedDirs = append(lockedDirs, entry)
-		}
-	}
-	// Rename the target dir.
-	oldPathDisk := oldPath.SiaDirSysPath(sds.staticRootDir)
-	newPathDisk := newPath.SiaDirSysPath(sds.staticRootDir)
-	err := os.Rename(oldPathDisk, newPathDisk) // TODO: use wal
-	if err != nil {
-		return errors.AddContext(err, "failed to rename folder")
-	}
-	// Renaming the target dir was successful. Rename the open dirs.
-	for _, entry := range lockedDirs {
-		sp, err := entry.siaPath.Rebase(oldPath, newPath)
-		if err != nil {
-			build.Critical("Rebasing siapaths shouldn't fail", err)
-			continue
-		}
-		// Update the siapath of the entry and the siaDirMap.
-		delete(sds.siaDirMap, entry.siaPath)
-		entry.siaPath = sp
-		sds.siaDirMap[sp] = entry
-	}
-	return err
-}
-
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
-func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, writeaheadlog.Update, error) {
+func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
-	_, err := os.Stat(siaPath.SiaDirMetadataSysPath(rootDir))
-	if err == nil || !os.IsNotExist(err) {
+	mdPath := filepath.Join(path, modules.SiaDirExtension)
+	_, err := os.Stat(mdPath)
+	if err == nil {
+		return Metadata{}, writeaheadlog.Update{}, os.ErrExist
+	} else if !os.IsNotExist(err) {
 		return Metadata{}, writeaheadlog.Update{}, err
 	}
 
@@ -376,35 +177,40 @@ func createDirMetadata(siaPath modules.SiaPath, rootDir string) (Metadata, write
 		ModTime:       time.Now(),
 		StuckHealth:   DefaultDirHealth,
 	}
-	path := siaPath.SiaDirMetadataSysPath(rootDir)
-	update, err := createMetadataUpdate(path, md)
+	update, err := createMetadataUpdate(mdPath, md)
 	return md, update, err
 }
 
 // createDirMetadataAll creates a path on disk to the provided siaPath and make
 // sure that all the parent directories have metadata files.
-func createDirMetadataAll(siaPath modules.SiaPath, rootDir string) ([]writeaheadlog.Update, error) {
+func createDirMetadataAll(dirPath, rootPath string) ([]writeaheadlog.Update, error) {
 	// Create path to directory
-	if err := os.MkdirAll(siaPath.SiaDirSysPath(rootDir), 0700); err != nil {
+	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return nil, err
+	}
+	if dirPath == rootPath {
+		return []writeaheadlog.Update{}, nil
 	}
 
 	// Create metadata
 	var updates []writeaheadlog.Update
 	var err error
 	for {
-		siaPath, err = siaPath.Dir()
+		dirPath = filepath.Dir(dirPath)
 		if err != nil {
 			return nil, err
 		}
-		_, update, err := createDirMetadata(siaPath, rootDir)
-		if err != nil {
+		if dirPath == string(filepath.Separator) {
+			dirPath = rootPath
+		}
+		_, update, err := createDirMetadata(dirPath)
+		if err != nil && !os.IsExist(err) {
 			return nil, err
 		}
-		if !reflect.DeepEqual(update, writeaheadlog.Update{}) {
+		if !os.IsExist(err) {
 			updates = append(updates, update)
 		}
-		if siaPath.IsRoot() {
+		if dirPath == rootPath {
 			break
 		}
 	}
@@ -431,10 +237,22 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 	return
 }
 
-// callDelete removes the directory from disk and marks it as deleted. Once the
+// Rename renames the SiaDir to targetPath.
+func (sd *SiaDir) rename(targetPath string) error {
+	err := os.Rename(sd.path, targetPath)
+	if err != nil {
+		return err
+	}
+	sd.path = targetPath
+	return nil
+}
+
+// Delete removes the directory from disk and marks it as deleted. Once the
 // directory is deleted, attempting to access the directory will return an
 // error.
-func (sd *SiaDir) callDelete() error {
+func (sd *SiaDir) Delete() error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
 	update := sd.createDeleteUpdate()
 	err := sd.createAndApplyTransaction(update)
 	sd.deleted = true
@@ -450,6 +268,7 @@ func (sd *SiaDir) saveDir() error {
 	return sd.createAndApplyTransaction(metadataUpdate)
 }
 
+<<<<<<< HEAD
 // open will return the siaDirSetEntry in memory or load it from disk
 func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	var entry *siaDirSetEntry
@@ -476,61 +295,16 @@ func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	}, nil
 }
 
-// readLockMetadata returns the metadata of the SiaDir at siaPath. NOTE: The
-// 'readLock' prefix in this case is used to indicate that it's safe to call
-// this method with other 'readLock' methods without locking since is doesn't
-// write to any fields. This guarantee can be made by locking sfs.mu and then
-// spawning multiple threads which call 'readLock' methods in parallel.
-func (sds *SiaDirSet) readLockMetadata(siaPath modules.SiaPath) (Metadata, error) {
-	var entry *siaDirSetEntry
-	entry, exists := sds.siaDirMap[siaPath]
-	if exists {
-		// Get metadata from entry.
-		return entry.Metadata(), nil
-	}
-	// Load metadat from disk.
-	return callLoadSiaDirMetadata(siaPath.SiaDirMetadataSysPath(sds.staticRootDir), modules.ProdDependencies)
+// Rename renames the SiaDir to targetPath.
+func (sd *SiaDir) Rename(targetPath string) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.rename(targetPath)
 }
 
-// readLockDirInfo returns the Directory Information of the siadir. NOTE: The 'readLock'
-// prefix in this case is used to indicate that it's safe to call this method
-// with other 'readLock' methods without locking since is doesn't write to any
-// fields. This guarantee can be made by locking sfs.mu and then spawning
-// multiple threads which call 'readLock' methods in parallel.
-func (sds *SiaDirSet) readLockDirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
-	// Grab the siadir metadata
-	metadata, err := sds.readLockMetadata(siaPath)
-	if err != nil {
-		return modules.DirectoryInfo{}, err
-	}
-	aggregateMaxHealth := math.Max(metadata.AggregateHealth, metadata.AggregateStuckHealth)
-	maxHealth := math.Max(metadata.Health, metadata.StuckHealth)
-	return modules.DirectoryInfo{
-		// Aggregate Fields
-		AggregateHealth:              metadata.AggregateHealth,
-		AggregateLastHealthCheckTime: metadata.AggregateLastHealthCheckTime,
-		AggregateMaxHealth:           aggregateMaxHealth,
-		AggregateMaxHealthPercentage: HealthPercentage(aggregateMaxHealth),
-		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
-		AggregateMostRecentModTime:   metadata.AggregateModTime,
-		AggregateNumFiles:            metadata.AggregateNumFiles,
-		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
-		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
-		AggregateSize:                metadata.AggregateSize,
-		AggregateStuckHealth:         metadata.AggregateStuckHealth,
-
-		// SiaDir Fields
-		Health:              metadata.Health,
-		LastHealthCheckTime: metadata.LastHealthCheckTime,
-		MaxHealth:           maxHealth,
-		MaxHealthPercentage: HealthPercentage(maxHealth),
-		MinRedundancy:       metadata.MinRedundancy,
-		MostRecentModTime:   metadata.ModTime,
-		NumFiles:            metadata.NumFiles,
-		NumStuckChunks:      metadata.NumStuckChunks,
-		NumSubDirs:          metadata.NumSubDirs,
-		SiaPath:             siaPath,
-		DirSize:             metadata.Size,
-		StuckHealth:         metadata.StuckHealth,
-	}, nil
+// SetPath sets the path field of the dir.
+func (sd *SiaDir) SetPath(targetPath string) {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	sd.path = targetPath
 }

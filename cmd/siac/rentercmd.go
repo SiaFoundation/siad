@@ -20,7 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -1583,7 +1583,7 @@ func renterfilesdeletecmd(path string) {
 	if errDir == nil {
 		fmt.Printf("Deleted directory '%v'\n", path)
 		return
-	} else if !strings.Contains(errDir.Error(), siadir.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 		die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
 	}
 	// Unknown file/folder.
@@ -1609,7 +1609,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
-	} else if !strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
 	}
 	die(fmt.Sprintf("Unknown file '%v'", path))

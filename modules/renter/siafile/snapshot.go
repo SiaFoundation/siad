@@ -191,7 +191,7 @@ func (s *Snapshot) UID() SiafileUID {
 }
 
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
+func (sf *SiaFile) Snapshot(sp modules.SiaPath) (*Snapshot, error) {
 	mk := sf.MasterKey()
 
 	//////////////////////////////////////////////////////////////////////////////
@@ -276,9 +276,6 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	// RLock ends here.
 	//////////////////////////////////////////////////////////////////////////////
 
-	sf.staticSiaFileSet.mu.Lock()
-	sp := sf.staticSiaFileSet.siaPath(sf)
-	sf.staticSiaFileSet.mu.Unlock()
 	return &Snapshot{
 		staticChunks:          chunks,
 		staticPartialChunks:   pcs,

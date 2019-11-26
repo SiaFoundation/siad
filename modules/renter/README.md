@@ -65,6 +65,7 @@ responsibilities.
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
  - [Fuse Subsystem](#fuse-subsystem)
+ - [Refresh Paths Subsystem](#refresh-paths-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -689,3 +690,16 @@ code, or whether something is not working because the fuse libraries are being
 used incorrectly. The mocked fuse is an easy way to replicate any desired
 behavior and check for misunderstandings that the programmer may have about how
 the fuse librires are meant to be used.
+
+### Refresh Paths Subsystem
+**Key Files**
+ - [refreshpaths.go](./refreshpaths.go)
+
+The refresh paths subsystem of the renter is a helper subsystem that tracks the
+minimum unique paths that need to be refreshed in order to refresh the entire
+affected portion of the file system.
+
+**Inbound Complexities** 
+ - `callAdd` is used to try and add a new path. 
+ - `callRefreshAll` is used to refresh all the directories corresponding to the
+   unique paths in order to update the filesystem

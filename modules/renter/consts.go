@@ -12,7 +12,7 @@ import (
 const (
 	// persistVersion defines the Sia version that the persistence was
 	// last updated
-	persistVersion = "1.4.0"
+	persistVersion = "1.4.2"
 )
 
 const (
@@ -26,6 +26,7 @@ const (
 // AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
 // with a certain path and health.
 func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
+	siaPath, _ = siaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
 }
 

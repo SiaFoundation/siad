@@ -474,19 +474,19 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 	}
 	defer r.tg.Done()
 	// Lookup the file associated with the nickname.
-	entry, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
 	defer entry.Close()
 
 	// Create the streamer
-	snap, err := entry.Snapshot()
+	snap, err := entry.Snapshot(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
 	s := r.managedStreamer(snap, disableLocalFetch)
-	return r.staticFileSet.SiaPath(entry).String(), s, nil
+	return siaPath.String(), s, nil
 }
 
 // managedStreamer creates a streamer from a siafile snapshot and starts filling
