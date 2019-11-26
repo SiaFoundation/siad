@@ -1208,3 +1208,57 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 		t.Fatal("chunk not marked as fileRecentlySuccessful true")
 	}
 }
+
+// TestRandomStuckFileRegression tests an edge case where no siapath was being
+// returned from managedStuckFile.
+func TestRandomStuckFileRegression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create 1 file at root with all chunks stuck
+	file, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath := rt.renter.staticFileSystem.FileSiaPath(file)
+	err = rt.renter.SetFileStuck(siaPath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the root directories metadata to have a large number of aggregate
+	// stuck chunks. Since there is only 1 stuck chunk this was causing the
+	// likelyhood of the stuck file being chosen to be very low.
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, err := rootDir.Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	md.AggregateNumStuckChunks = 50000
+	md.NumStuckChunks = 1
+	md.NumFiles = 1
+	err = rootDir.UpdateMetadata(md)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stuckSiaPath, err := rt.renter.managedStuckFile(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stuckSiaPath.Equals(siaPath) {
+		t.Fatalf("Stuck siapath should have been the one file in the directory, expected %v got %v", siaPath, stuckSiaPath)
+	}
+}

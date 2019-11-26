@@ -90,7 +90,7 @@ func (fm *FilterMode) FromString(s string) error {
 		*fm = HostDBActiveWhitelist
 	default:
 		*fm = HostDBFilterError
-		return fmt.Errorf("Could not assigned FilterMode from string %v", s)
+		return fmt.Errorf("could not assigned FilterMode from string %v", s)
 	}
 	return nil
 }
@@ -769,7 +769,7 @@ type Renter interface {
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
-	Streamer(siapath SiaPath) (string, Streamer, error)
+	Streamer(siapath SiaPath, disableLocalFetch bool) (string, Streamer, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
@@ -798,12 +798,13 @@ type Streamer interface {
 // RenterDownloadParameters defines the parameters passed to the Renter's
 // Download method.
 type RenterDownloadParameters struct {
-	Async       bool
-	Httpwriter  io.Writer
-	Length      uint64
-	Offset      uint64
-	SiaPath     SiaPath
-	Destination string
+	Async            bool
+	Httpwriter       io.Writer
+	Length           uint64
+	Offset           uint64
+	SiaPath          SiaPath
+	Destination      string
+	DisableDiskFetch bool
 }
 
 // HealthPercentage returns the health in a more human understandable format out

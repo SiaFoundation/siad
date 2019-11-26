@@ -7,6 +7,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
+// Constants related to the host's alerts.
+const (
+	// AlertMSGHostDiskTrouble indicates that one or multiple of a host's disks
+	// are encountering problems
+	AlertMSGHostDiskTrouble = "disk problem detected"
+)
+
 const (
 	// logFile is the name of the file that is used for logging in the contract
 	// manager.

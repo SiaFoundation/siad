@@ -136,11 +136,12 @@ type Host struct {
 	atomicNormalErrors        uint64
 
 	// Dependencies.
-	cs           modules.ConsensusSet
-	g            modules.Gateway
-	tpool        modules.TransactionPool
-	wallet       modules.Wallet
-	dependencies modules.Dependencies
+	cs            modules.ConsensusSet
+	g             modules.Gateway
+	tpool         modules.TransactionPool
+	wallet        modules.Wallet
+	staticAlerter *modules.GenericAlerter
+	dependencies  modules.Dependencies
 	modules.StorageManager
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
@@ -216,7 +217,7 @@ func (h *Host) checkUnlockHash() error {
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, listenerAddress string, persistDir string) (*Host, error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -233,11 +234,12 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 	// Create the host object.
 	h := &Host{
-		cs:           cs,
-		g:            g,
-		tpool:        tpool,
-		wallet:       wallet,
-		dependencies: dependencies,
+		cs:            cs,
+		g:             g,
+		tpool:         tpool,
+		wallet:        wallet,
+		staticAlerter: modules.NewAlerter("host"),
+		dependencies:  dependencies,
 
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
@@ -275,7 +277,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.
-	h.StorageManager, err = contractmanager.New(filepath.Join(persistDir, "contractmanager"))
+	h.StorageManager, err = contractmanager.NewCustomContractManager(smDeps, filepath.Join(persistDir, "contractmanager"))
 	if err != nil {
 		h.log.Println("Could not open the storage manager:", err)
 		return nil, err
@@ -320,12 +322,19 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 // New returns an initialized Host.
 func New(cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(modules.ProdDependencies, cs, g, tpool, wallet, address, persistDir)
+	return newHost(modules.ProdDependencies, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
 }
 
 // NewCustomHost returns an initialized Host using the provided dependencies.
 func NewCustomHost(deps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(deps, cs, g, tpool, wallet, address, persistDir)
+	return newHost(deps, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
+}
+
+// NewCustomTestHost allows passing in both host dependencies and storage
+// manager dependencies. Used solely for testing purposes, to allow dependency
+// injection into the host's submodules.
+func NewCustomTestHost(deps modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
+	return newHost(deps, smDeps, cs, g, tpool, wallet, address, persistDir)
 }
 
 // Close shuts down the host.
@@ -420,6 +429,10 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 
 	h.settings = settings
 	h.revisionNumber++
+
+	// The locked storage collateral was altered, we potentially want to
+	// unregister the insufficient collateral budget alert
+	h.TryUnregisterInsufficientCollateralBudgetAlert()
 
 	err = h.saveSync()
 	if err != nil {

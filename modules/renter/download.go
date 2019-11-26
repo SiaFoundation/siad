@@ -68,6 +68,7 @@ type (
 		destination       downloadDestination // The place to write the downloaded data.
 		destinationType   string              // "file", "buffer", "http stream", etc.
 		destinationString string              // The string to report to the user for the destination.
+		disableLocalFetch bool                // Whether or not the file can be fetched from disk if available.
 		file              *siafile.Snapshot   // The file to download.
 
 		latencyTarget time.Duration // Workers above this latency will be automatically put on standby initially.
@@ -310,6 +311,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 		destination:       dw,
 		destinationType:   destinationType,
 		destinationString: p.Destination,
+		disableLocalFetch: p.DisableDiskFetch,
 		file:              snap,
 
 		latencyTarget: 25e3 * time.Millisecond, // TODO: high default until full latency support is added.
@@ -473,9 +475,10 @@ func (d *download) Start() error {
 			// TODO: There is some sane minimum latency that should actually be
 			// set based on the number of pieces 'n', and the 'n' fastest
 			// workers that we have.
-			staticLatencyTarget: d.staticLatencyTarget + (25 * time.Duration(i-minChunk)), // Increase target by 25ms per chunk.
-			staticNeedsMemory:   params.needsMemory,
-			staticPriority:      params.priority,
+			staticDisableDiskFetch: params.disableLocalFetch,
+			staticLatencyTarget:    d.staticLatencyTarget + (25 * time.Duration(i-minChunk)), // Increase target by 25ms per chunk.
+			staticNeedsMemory:      params.needsMemory,
+			staticPriority:         params.priority,
 
 			completedPieces:   make([]bool, params.file.ErasureCode().NumPieces()),
 			physicalChunkData: make([][]byte, params.file.ErasureCode().NumPieces()),

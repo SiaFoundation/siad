@@ -216,7 +216,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err != nil {
 		return err
 	}
-	s := r.managedStreamer(snap)
+	s := r.managedStreamer(snap, false)
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err

@@ -3,7 +3,6 @@ package renter
 import (
 	"fmt"
 	"io"
-	"os"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -134,23 +133,32 @@ func (uc *unfinishedUploadChunk) chunkComplete() bool {
 	return false
 }
 
+// readDataPieces reads dataPieces from a io.Reader and stores them in a
+// [][]byte ready to be encoded using an ErasureCoder.
+func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][]byte, uint64, error) {
+	dataPieces := make([][]byte, ec.MinPieces())
+	var total uint64
+	for i := range dataPieces {
+		dataPieces[i] = make([]byte, pieceSize)
+		n, err := io.ReadFull(r, dataPieces[i])
+		total += uint64(n)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return nil, 0, errors.AddContext(err, "failed to read chunk from source reader")
+		}
+	}
+	return dataPieces, total, nil
+}
+
 // readLogicalData initializes the chunk's logicalChunkData using data read from
 // r, returning the number of bytes read.
 func (uc *unfinishedUploadChunk) readLogicalData(r io.Reader) (uint64, error) {
 	// Allocate data pieces and fill them with data from r.
-	ec := uc.fileEntry.ErasureCode()
-	dataPieces := make([][]byte, ec.MinPieces())
-	var total uint64
-	for i := range dataPieces {
-		dataPieces[i] = make([]byte, uc.fileEntry.PieceSize())
-		n, err := io.ReadFull(r, dataPieces[i])
-		total += uint64(n)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return total, errors.AddContext(err, "failed to read chunk from source reader")
-		}
+	dataPieces, total, err := readDataPieces(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
+	if err != nil {
+		return 0, err
 	}
 	// Encode the data pieces, forming the chunk's logical data.
-	uc.logicalChunkData, _ = ec.EncodeShards(dataPieces)
+	uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
 	return total, nil
 }
 
@@ -196,9 +204,10 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// Create the download.
 	buf := NewDownloadDestinationBuffer()
 	d, err := r.managedNewDownload(downloadParams{
-		destination:     buf,
-		destinationType: "buffer",
-		file:            snap,
+		destination:       buf,
+		destinationType:   "buffer",
+		disableLocalFetch: false,
+		file:              snap,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
 		length:        downloadLength,
@@ -384,28 +393,8 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		}
 		return nil
 	}
-
-	// Download the chunk if it's not on disk.
-	if chunk.fileEntry.LocalPath() == "" {
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-
-	// Try to read the data from disk. If that fails, fallback to downloading.
-	err := func() error {
-		osFile, err := os.Open(chunk.fileEntry.LocalPath())
-		if err != nil {
-			return err
-		}
-		defer osFile.Close()
-		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
-		_, err = chunk.readLogicalData(sr)
-		return err
-	}()
-	if err != nil {
-		r.log.Debugln("failed to read file, downloading instead:", err)
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-	return nil
+	// Download the chunk if it's not being streamed.
+	return r.managedDownloadLogicalChunkData(chunk)
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any

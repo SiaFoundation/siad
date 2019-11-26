@@ -97,6 +97,10 @@ lint:
 spellcheck:
 	misspell -error .
 
+# staticcheck runs the staticcheck tool
+staticcheck:
+	staticcheck $(pkgs)
+
 # debug builds and installs debug binaries. This will also install the utils.
 debug:
 	GO111MODULE=on go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)

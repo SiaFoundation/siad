@@ -81,8 +81,6 @@ type nodeScanner struct {
 	data persistData
 	// persistFile stores persistData using siaPersist.
 	persistFile string
-
-	testing bool
 }
 
 type persistData struct {
@@ -171,13 +169,13 @@ func newNodeScanner(scannerDirPrefix string) (ns *nodeScanner) {
 	scannerDirPath := filepath.Join(scannerDirPrefix, nodeScannerDirName)
 	scannerGatewayDirPath := filepath.Join(scannerDirPath, "gateway")
 	if _, err := os.Stat(scannerDirPath); os.IsNotExist(err) {
-		err := os.Mkdir(scannerDirPath, 0777)
+		err := os.Mkdir(scannerDirPath, 0750)
 		if err != nil {
 			log.Fatal("Error creating scan directory: ", err)
 		}
 	}
 	if _, err := os.Stat(scannerGatewayDirPath); os.IsNotExist(err) {
-		err := os.Mkdir(scannerGatewayDirPath, 0777)
+		err := os.Mkdir(scannerGatewayDirPath, 0750)
 		if err != nil {
 			log.Fatal("Error creating scanner gateway directory: ", err)
 		}
@@ -283,7 +281,7 @@ func (ns *nodeScanner) startScan() {
 	for {
 		select {
 		case <-printTicker.C:
-			fmt.Printf(ns.getStatsStr())
+			fmt.Println(ns.getStatsStr())
 
 		case <-persistTicker.C:
 			log.Println("Persisting nodes: ", len(ns.data.NodeStats))
@@ -344,7 +342,7 @@ func (ns *nodeScanner) done() bool {
 // close prints out the final set of stats, adds them to the log file, and
 // persists the persisted set one last time.
 func (ns *nodeScanner) close() {
-	fmt.Printf(ns.getStatsStr())
+	fmt.Println(ns.getStatsStr())
 
 	// Append stats to stats file.
 	json.NewEncoder(ns.scanLog).Encode(ns.stats)
