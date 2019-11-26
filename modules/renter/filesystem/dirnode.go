@@ -492,6 +492,26 @@ func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.E
 	return errors.AddContext(err, "NewSiaFile: failed to create file")
 }
 
+// managedNewSiaDir creates the SiaDir with the given dirName as its child.
+func (n *DirNode) managedNewSiaDir(dirName string, rootPath string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	// Check if a file already exists with that name.
+	if _, exists := n.files[dirName]; exists {
+		return ErrExists
+	}
+	// Check that no dir or file exists on disk.
+	_, err := os.Stat(filepath.Join(n.absPath(), dirName+modules.SiaFileExtension))
+	if !os.IsNotExist(err) {
+		return ErrExists
+	}
+	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, n.staticWal)
+	if os.IsExist(err) {
+		return nil
+	}
+	return err
+}
+
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
 func (n *DirNode) managedOpenFile(fileName string) (*FileNode, error) {

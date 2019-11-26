@@ -157,8 +157,8 @@ func TestNewSiaDir(t *testing.T) {
 	}
 }
 
-// TestNewSiaDir tests if creating a new directory using NewSiaDir creates the
-// correct folder structure.
+// TestNewSiaFile tests if creating a new file using NewSiaFiles creates the
+// correct folder structure and file.
 func TestNewSiaFile(t *testing.T) {
 	if testing.Short() && !build.VLONG {
 		t.SkipNow()
@@ -170,19 +170,25 @@ func TestNewSiaFile(t *testing.T) {
 	// Create file /sub/foo/file
 	sp := newSiaPath("sub/foo/file")
 	fs.AddTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp); err != nil {
-		t.Fatal(err)
+	if err := fs.NewSiaDir(sp); err != ErrExists {
+		t.Fatal("err should be ErrExists but was", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, sp.String())); err != nil {
+	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
+		t.Fatal("there should be no dir on disk")
+	}
+	if _, err := os.Stat(filepath.Join(root, sp.String()+modules.SiaFileExtension)); err != nil {
 		t.Fatal(err)
 	}
 	// Create a file in the root dir.
 	sp = newSiaPath("file")
 	fs.AddTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp); err != nil {
-		t.Fatal(err)
+	if err := fs.NewSiaDir(sp); err != ErrExists {
+		t.Fatal("err should be ErrExists but was", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, sp.String())); err != nil {
+	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
+		t.Fatal("there should be no dir on disk")
+	}
+	if _, err := os.Stat(filepath.Join(root, sp.String()+modules.SiaFileExtension)); err != nil {
 		t.Fatal(err)
 	}
 }

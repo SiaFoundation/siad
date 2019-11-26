@@ -584,12 +584,36 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 
 // managedNewSiaDir creates the folder at the specified siaPath.
 func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath) error {
-	dirPath := siaPath.SiaDirSysPath(fs.managedAbsPath())
-	_, err := siadir.New(dirPath, fs.managedAbsPath(), fs.staticWal)
-	if os.IsExist(err) {
-		return nil // nothing to do
+	// If siaPath is the root dir we just create the metadata for it.
+	if siaPath.IsRoot() {
+		fs.mu.Lock()
+		defer fs.mu.Unlock()
+		dirPath := siaPath.SiaDirSysPath(fs.absPath())
+		_, err := siadir.New(dirPath, fs.absPath(), fs.staticWal)
+		if os.IsExist(err) {
+			return nil // nothing to do
+		}
+		return err
 	}
-	return err
+	// If siaPath isn't the root dir we need to grab the parent.
+	parentPath, err := siaPath.Dir()
+	if err != nil {
+		return err
+	}
+	parent, err := fs.managedOpenDir(parentPath.String())
+	if err == ErrNotExist {
+		// If the parent doesn't exist yet we create it.
+		err = fs.managedNewSiaDir(parentPath)
+		if err == nil {
+			parent, err = fs.managedOpenDir(parentPath.String())
+		}
+	}
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	// Create the dir within the parent.
+	return parent.managedNewSiaDir(siaPath.Name(), fs.managedAbsPath())
 }
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
