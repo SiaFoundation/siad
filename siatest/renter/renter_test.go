@@ -3949,7 +3949,7 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	// enough hosts yet to get to the fullRedundancy
 	fullRedundancy := float64(numHost + hostToAdd)
 	expectedRedundancy := float64(numHost)
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 250*time.Millisecond, func() error {
 		file, err := r.File(rf)
 		if err != nil {
 			return err
