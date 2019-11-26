@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -609,7 +610,7 @@ func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, er
 // renter's uploads and repairs
 func (c *Client) RenterUploadsPausePost(duration time.Duration) (err error) {
 	values := url.Values{}
-	values.Set("duration", duration.String())
+	values.Set("duration", fmt.Sprint(uint64(math.Round(duration.Seconds()))))
 	err = c.post("/renter/uploads/pause", values.Encode(), nil)
 	return
 }
