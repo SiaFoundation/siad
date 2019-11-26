@@ -268,32 +268,6 @@ func (sd *SiaDir) saveDir() error {
 	return sd.createAndApplyTransaction(metadataUpdate)
 }
 
-// open will return the siaDirSetEntry in memory or load it from disk
-func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
-	var entry *siaDirSetEntry
-	entry, exists := sds.siaDirMap[siaPath]
-	if !exists {
-		// Try and Load File from disk
-		sd, err := LoadSiaDir(sds.staticRootDir, siaPath, modules.ProdDependencies, sds.wal)
-		if os.IsNotExist(err) {
-			return nil, ErrUnknownPath
-		}
-		if err != nil {
-			return nil, err
-		}
-		entry = sds.newSiaDirSetEntry(sd)
-		sds.siaDirMap[siaPath] = entry
-	}
-	threadUID := randomThreadUID()
-	entry.threadMapMu.Lock()
-	defer entry.threadMapMu.Unlock()
-	entry.threadMap[threadUID] = newThreadInfo()
-	return &SiaDirSetEntry{
-		siaDirSetEntry: entry,
-		threadUID:      threadUID,
-	}, nil
-}
-
 // Rename renames the SiaDir to targetPath.
 func (sd *SiaDir) Rename(targetPath string) error {
 	sd.mu.Lock()

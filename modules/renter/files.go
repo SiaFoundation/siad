@@ -3,7 +3,6 @@ package renter
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -66,7 +65,7 @@ func (r *Renter) FileCached(siaPath modules.SiaPath) (modules.FileInfo, error) {
 		return modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
-	return r.staticFileSet.CachedFileInfo(siaPath)
+	return r.staticFileSystem.CachedFileInfo(siaPath)
 }
 
 // RenameFile takes an existing file and changes the nickname. The original

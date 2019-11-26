@@ -438,7 +438,7 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		NumFiles:            metadata.NumFiles,
 		NumStuckChunks:      metadata.NumStuckChunks,
 		NumSubDirs:          metadata.NumSubDirs,
-		Size:                metadata.Size,
+		DirSize:             metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 		SiaPath:             siaPath,
 	}, nil
