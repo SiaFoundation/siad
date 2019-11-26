@@ -53,7 +53,7 @@ var _ = (fs.NodeLookuper)((*fuseDirnode)(nil))
 var _ = (fs.NodeReaddirer)((*fuseDirnode)(nil))
 var _ = (fs.NodeStatfser)((*fuseDirnode)(nil))
 
-// fuseFilenode is a fuse node for the fs pacakge that covers a siafile.
+// fuseFilenode is a fuse node for the fs package that covers a siafile.
 //
 // Data is fetched using a download streamer. This download streamer needs to be
 // closed when the filehandle is released.
