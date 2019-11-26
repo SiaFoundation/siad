@@ -1562,11 +1562,12 @@ func (api *API) renterUploadsPauseHandler(w http.ResponseWriter, req *http.Reque
 	duration := renter.DefaultPauseDuration
 	var err error
 	if durationStr != "" {
-		duration, err = time.ParseDuration(durationStr)
+		durationInt, err := strconv.ParseUint(durationStr, 10, 64)
 		if err != nil {
 			WriteError(w, Error{"failed to parse duration:" + err.Error()}, http.StatusBadRequest)
 			return
 		}
+		duration = time.Second * time.Duration(durationInt)
 	}
 
 	err = api.renter.PauseRepairsAndUploads(duration)
