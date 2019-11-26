@@ -32,9 +32,6 @@ func TestAnnouncementHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decPubKey.Algorithm != spk.Algorithm {
-		t.Error("decoded announcement has the wrong algorithm on the public key")
-	}
 	if decAddr != addr {
 		t.Error("decoded announcement has the wrong net address")
 	}

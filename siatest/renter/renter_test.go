@@ -1709,7 +1709,7 @@ func TestRenewFailing(t *testing.T) {
 
 		// If the host is the host in the disabled contract, then the test has
 		// passed.
-		if rc.DisabledContracts[0].HostPublicKey.String() != lockedHostPK.String() {
+		if !rc.DisabledContracts[0].HostPublicKey.Equals(lockedHostPK) {
 			return errors.New("Disbled contract host not the locked host")
 		}
 		return nil
@@ -3612,7 +3612,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
 		hostContract := rcg.PassiveContracts[0]
-		if hostContract.HostPublicKey.String() != hpk.String() {
+		if hostContract.HostPublicKey.Equals(hpk) {
 			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil

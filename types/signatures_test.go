@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestEd25519PublicKey tests the Ed25519PublicKey function.
@@ -16,6 +17,47 @@ func TestEd25519PublicKey(t *testing.T) {
 	}
 	if !bytes.Equal(spk.Key, pk[:]) {
 		t.Error("Ed25519PublicKey created key with wrong data")
+	}
+}
+
+// TestSiaPublicKeyEquals tests the functionality of the implementation of
+// Equals on a SiaPublicKey
+func TestSiaPublicKeyEquals(t *testing.T) {
+	var x, y SiaPublicKey
+	key := func() []byte { return fastrand.Bytes(32) }
+	spk := func(algo Specifier, key []byte) SiaPublicKey {
+		return SiaPublicKey{
+			Algorithm: algo,
+			Key:       key,
+		}
+	}
+
+	// same algorithm, same key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEd25519, x.Key)
+	if !x.Equals(y) || !y.Equals(x) {
+		t.Fatal("Expected keys to be equal")
+	}
+
+	// same algorithm, different key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEd25519, key())
+	if x.Equals(y) || y.Equals(x) {
+		t.Fatal("Expected keys not to be equal")
+	}
+
+	// different algorithm, same key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEntropy, x.Key)
+	if x.Equals(y) || y.Equals(x) {
+		t.Fatal("Expected keys not to be equal")
+	}
+
+	// different algorithm, different key
+	x = spk(SignatureEd25519, key())
+	y = spk(SignatureEntropy, key())
+	if x.Equals(y) || y.Equals(x) {
+		t.Fatal("Expected keys not to be equal")
 	}
 }
 

@@ -326,7 +326,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []mo
 			// times.
 			duplicate := false
 			for _, p := range chunks[piece.Chunk].Pieces[piece.Piece] {
-				if p.HostPubKey.String() == pk.String() {
+				if p.HostPubKey.Equals(pk) {
 					duplicate = true
 					break
 				}

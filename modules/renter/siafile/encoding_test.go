@@ -165,9 +165,6 @@ func TestMarshalUnmarshalPubKeyTable(t *testing.T) {
 		if spk.Used != sf.pubKeyTable[i].Used {
 			t.Fatal("Use fields don't match")
 		}
-		if spk.PublicKey.Algorithm != sf.pubKeyTable[i].PublicKey.Algorithm {
-			t.Fatal("Algorithms don't match")
-		}
 		if !spk.PublicKey.Equals(sf.pubKeyTable[i].PublicKey) {
 			t.Fatal("Keys don't match")
 		}
