@@ -268,7 +268,6 @@ func (sd *SiaDir) saveDir() error {
 	return sd.createAndApplyTransaction(metadataUpdate)
 }
 
-<<<<<<< HEAD
 // open will return the siaDirSetEntry in memory or load it from disk
 func (sds *SiaDirSet) open(siaPath modules.SiaPath) (*SiaDirSetEntry, error) {
 	var entry *siaDirSetEntry
