@@ -313,6 +313,11 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 		storedData = float64(ci.StoredData)
 	}
 
+	// Divide by zero mitigation.
+	if allowance.Hosts == 0 {
+		allowance.Hosts = 1
+	}
+
 	// idealDataPerHost is the amount of data that we would have to put on each
 	// host assuming that our storage requirements were spread evenly across
 	// every single host.

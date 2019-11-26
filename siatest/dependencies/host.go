@@ -13,8 +13,11 @@ type HostRejectAllSessionLocks struct {
 // Disrupt will interpret a signal from the host and tell the host to pretend it
 // has no record of the contract.
 func (d *HostRejectAllSessionLocks) Disrupt(s string) bool {
-	if s == "loopLockNoRecordOfThatContract" {
-		return true
-	}
-	return false
+	return s == "loopLockNoRecordOfThatContract"
+}
+
+// NewDependencyHostDiskTrouble creates a new dependency that disrupts storage
+// folder operations due to disk trouble
+func NewDependencyHostDiskTrouble() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("diskTrouble")
 }

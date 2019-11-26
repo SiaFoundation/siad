@@ -542,7 +542,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 
 	// Scan for all allowance fields
 	var hostsSet, renewWindowSet, expectedStorageSet,
-		expectedUploadSet, expectedDownloadSet, expectedRedundancySet bool
+		expectedUploadSet, expectedDownloadSet, expectedRedundancySet, maxPeriodChurnSet bool
 	if f := req.FormValue("funds"); f != "" {
 		funds, ok := scanAmount(f)
 		if !ok {
@@ -618,6 +618,15 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.Allowance.ExpectedRedundancy = expectedRedundancy
 		expectedRedundancySet = true
+	}
+	if mpc := req.FormValue("maxperiodchurn"); mpc != "" {
+		var maxPeriodChurn uint64
+		if _, err := fmt.Sscan(mpc, &maxPeriodChurn); err != nil {
+			WriteError(w, Error{"unable to parse new max churn per period: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxPeriodChurn = maxPeriodChurn
+		maxPeriodChurnSet = true
 	}
 
 	// Validate any allowance changes. Funds and Period are the only required
@@ -703,6 +712,16 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			return
 		} else if settings.Allowance.ExpectedRedundancy == 0 {
 			settings.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+		}
+
+		// If the user set MaxPeriodChurn to 0 return an error, otherwise if
+		// MaxPeriodChurn was not set by the user then set it to the sane
+		// default
+		if settings.Allowance.MaxPeriodChurn == 0 && maxPeriodChurnSet {
+			WriteError(w, Error{contractor.ErrAllowanceZeroMaxPeriodChurn.Error()}, http.StatusBadRequest)
+			return
+		} else if settings.Allowance.MaxPeriodChurn == 0 {
+			settings.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 		}
 	}
 
@@ -1017,6 +1036,12 @@ func (api *API) renterClearDownloadsHandler(w http.ResponseWriter, req *http.Req
 	WriteSuccess(w)
 }
 
+// renterContractorChurnStatus handles the API call to request the churn status
+// from the renter's contractor.
+func (api *API) renterContractorChurnStatus(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	WriteJSON(w, api.renter.ContractorChurnStatus())
+}
+
 // renterDownloadsHandler handles the API call to request the download queue.
 func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	var downloads []DownloadInfo
@@ -1199,6 +1224,7 @@ func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps
 			return
 		} else if hosts != 0 && hosts < requiredHosts {
 			WriteError(w, Error{fmt.Sprintf("insufficient number of hosts, need at least %v but have %v", modules.DefaultAllowance.Hosts, hosts)}, http.StatusBadRequest)
+			return
 		} else {
 			allowance.Hosts = hosts
 		}
@@ -1368,6 +1394,10 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	// If httprespparam is present, this parameter is ignored.
 	asyncparam := req.FormValue("async")
 
+	// disablelocalfetchparam determines whether downloads will be fetched from
+	// disk if available.
+	disablelocalfetchparam := req.FormValue("disablelocalfetch")
+
 	// Parse the offset and length parameters.
 	var offset, length uint64
 	if len(offsetparam) > 0 {
@@ -1400,12 +1430,21 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 		return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
 	}
 
+	var disableLocalFetch bool
+	if disablelocalfetchparam != "" {
+		disableLocalFetch, err = scanBool(disablelocalfetchparam)
+		if err != nil {
+			return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the disablelocalfetch flag")
+		}
+	}
+
 	dp := modules.RenterDownloadParameters{
-		Destination: destination,
-		Async:       async,
-		Length:      length,
-		Offset:      offset,
-		SiaPath:     siaPath,
+		Destination:      destination,
+		DisableDiskFetch: disableLocalFetch,
+		Async:            async,
+		Length:           length,
+		Offset:           offset,
+		SiaPath:          siaPath,
 	}
 	if httpresp {
 		dp.Httpwriter = w
@@ -1421,7 +1460,17 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	fileName, streamer, err := api.renter.Streamer(siaPath)
+	disablelocalfetchparam := req.FormValue("disablelocalfetch")
+	var disableLocalFetch bool
+	if disablelocalfetchparam != "" {
+		disableLocalFetch, err = scanBool(disablelocalfetchparam)
+		if err != nil {
+			err = errors.AddContext(err, "error parsing the disablelocalfetch flag")
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	fileName, streamer, err := api.renter.Streamer(siaPath, disableLocalFetch)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
 			http.StatusInternalServerError)

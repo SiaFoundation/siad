@@ -283,12 +283,16 @@ func renterFilesAndContractSummary() error {
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return err
+		return errors.AddContext(err, "unable to get root dir with RenterGetDir")
 	}
 
 	rc, err := httpClient.RenterContractsGet()
 	if err != nil {
 		return err
+	}
+	redundancyStr := fmt.Sprintf("%.2f", rf.Directories[0].AggregateMinRedundancy)
+	if rf.Directories[0].AggregateMinRedundancy == -1 {
+		redundancyStr = "-"
 	}
 
 	fmt.Printf(`
@@ -296,7 +300,7 @@ func renterFilesAndContractSummary() error {
   Total Stored:   %v
   Min Redundancy: %v
   Contracts:      %v
-`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), rf.Directories[0].AggregateMinRedundancy, len(rc.ActiveContracts))
+`, rf.Directories[0].AggregateNumFiles, filesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts))
 
 	return nil
 }
@@ -432,16 +436,16 @@ func renterallowancecmd() {
 
 	// Show allowance info
 	fmt.Printf(`Allowance:
-	Amount:               %v
-	Period:               %v blocks
-	Renew Window:         %v blocks
-	Hosts:                %v
+  Amount:               %v
+  Period:               %v blocks
+  Renew Window:         %v blocks
+  Hosts:                %v
 
 Expectations for period:
-	Expected Storage:     %v
-	Expected Upload:      %v
-	Expected Download:    %v
-	Expected Redundancy:  %v
+  Expected Storage:     %v
+  Expected Upload:      %v
+  Expected Download:    %v
+  Expected Redundancy:  %v
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
 		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
 
@@ -1443,7 +1447,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		return
 	}
 	// Create destination on disk.
-	if err = os.MkdirAll(destination, 0755); err != nil {
+	if err = os.MkdirAll(destination, 0750); err != nil {
 		err = errors.AddContext(err, "failed to create destination dir")
 		return
 	}
@@ -1624,7 +1628,7 @@ func renterfilesdownload(path, destination string) {
 	// If the download is blocking, display progress as the file downloads.
 	file, err := httpClient.RenterFileGet(siaPath)
 	if err != nil {
-		// Error ignored.
+		die("Error getting file after download has started:", err)
 	}
 
 	failedDownloads := downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})

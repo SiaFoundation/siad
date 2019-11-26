@@ -68,6 +68,16 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
 	return nil
 }
 
+// openAndUpdateDir is a helper method for updating a siadir metadata
+func (rt *renterTester) openAndUpdateDir(siapath modules.SiaPath, metadata siadir.Metadata) error {
+	siadir, err := rt.renter.staticDirSet.Open(siapath)
+	if err != nil {
+		return err
+	}
+	defer siadir.Close()
+	return siadir.UpdateMetadata(metadata)
+}
+
 // TestBubbleHealth tests to make sure that the health of the most in need file
 // in a directory is bubbled up to the right levels and probes the supporting
 // functions as well
@@ -155,21 +165,22 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(modules.RootSiaPath(), metadataUpdate); err != nil {
+	// Create OpenAndUpdateDir helper method
+	if err := rt.openAndUpdateDir(modules.RootSiaPath(), metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	siaPath = subDir1
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	siaPath = subDir1_1
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	// Set health of subDir1/subDir2 to be the worst and set the
 	siaPath = subDir1_2
 	metadataUpdate.Health = 4
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,7 +318,7 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(subDir1_2_1, expectedHealth); err != nil {
+	if err := rt.openAndUpdateDir(subDir1_2_1, expectedHealth); err != nil {
 		t.Fatal(err)
 	}
 	rt.renter.managedBubbleMetadata(siaPath)
@@ -380,7 +391,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(subDir1_2, oldestHealthCheckUpdate); err != nil {
+	if err := rt.openAndUpdateDir(subDir1_2, oldestHealthCheckUpdate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1165,5 +1176,56 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	chunk := rt.renter.uploadHeap.managedPop()
 	if !chunk.fileRecentlySuccessful {
 		t.Fatal("chunk not marked as fileRecentlySuccessful true")
+	}
+}
+
+// TestRandomStuckFileRegression tests an edge case where no siapath was being
+// returned from managedStuckFile.
+func TestRandomStuckFileRegression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create 1 file at root with all chunks stuck
+	file, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath := rt.renter.staticFileSet.SiaPath(file)
+	err = rt.renter.SetFileStuck(siaPath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the root directories metadata to have a large number of aggregate
+	// stuck chunks. Since there is only 1 stuck chunk this was causing the
+	// likelyhood of the stuck file being chosen to be very low.
+	rootDir, err := rt.renter.staticDirSet.Open(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := rootDir.Metadata()
+	md.AggregateNumStuckChunks = 50000
+	md.NumStuckChunks = 1
+	md.NumFiles = 1
+	err = rootDir.UpdateMetadata(md)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stuckSiaPath, err := rt.renter.managedStuckFile(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stuckSiaPath.Equals(siaPath) {
+		t.Fatalf("Stuck siapath should have been the one file in the directory, expected %v got %v", siaPath, stuckSiaPath)
 	}
 }

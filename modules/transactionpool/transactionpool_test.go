@@ -85,13 +85,30 @@ func createTpoolTester(name string) (*tpoolTester, error) {
 		return nil, err
 	}
 
+	// This prevents incorrect signature verification related
+	// failures in the tpool when it is not caught up, but receives
+	// post-ASICHardFork signatures.
+	minHeight := types.MaturityDelay
+	if minHeight < types.ASICHardforkHeight {
+		minHeight = types.ASICHardforkHeight
+	}
+
 	// Mine blocks until there is money in the wallet.
-	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
+	for i := types.BlockHeight(0); i <= minHeight; i++ {
 		b, _ := tpt.miner.FindBlock()
 		err = tpt.cs.AcceptBlock(b)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Don't return until the tpool has synced with the consensus set with the
+	// blocks just mined.
+	var syncedToCS bool
+	for !syncedToCS {
+		tpt.tpool.mu.Lock()
+		syncedToCS = tpt.tpool.blockHeight >= minHeight
+		tpt.tpool.mu.Unlock()
 	}
 
 	return tpt, nil

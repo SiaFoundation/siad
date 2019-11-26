@@ -51,6 +51,7 @@ var (
 		ExpectedUpload:     modules.SectorSize * 5e3,
 		ExpectedDownload:   modules.SectorSize * 5e3,
 		ExpectedRedundancy: 5.0,
+		MaxPeriodChurn:     modules.SectorSize * 5e3,
 	}
 
 	// testGroupBuffer is a buffer channel to control the number of testgroups
@@ -399,7 +400,7 @@ func synchronizationCheck(nodes map[*TestNode]struct{}) error {
 			// If the miner's height is greater than the node's we need to
 			// wait a bit longer for them to sync.
 			if lcg.Height != ncg.Height {
-				return errors.New("blockHeight doesn't match")
+				return fmt.Errorf("blockHeight doesn't match, %v vs %v", lcg.Height, ncg.Height)
 			}
 			// If the miner's height is smaller than the node's we need a
 			// bit longer for them to sync.
@@ -430,6 +431,10 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 	// each renter is supposed to have at least expectedContracts with hosts
 	// from the hosts map.
 	for renter := range renters {
+		if renter.params.SkipSetAllowance {
+			continue
+		}
+
 		numRetries := 0
 		// Get expected number of contracts for this renter.
 		rg, err := renter.RenterGet()
@@ -449,6 +454,7 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 				expectedContracts--
 			}
 		}
+
 		// Check if number of contracts is sufficient.
 		err = Retry(1000, 100*time.Millisecond, func() error {
 			numRetries++

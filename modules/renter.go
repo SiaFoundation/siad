@@ -26,6 +26,7 @@ var (
 		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
 		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
+		MaxPeriodChurn:     uint64(250e9),                                // 250 GB
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
@@ -89,7 +90,7 @@ func (fm *FilterMode) FromString(s string) error {
 		*fm = HostDBActiveWhitelist
 	default:
 		*fm = HostDBFilterError
-		return fmt.Errorf("Could not assigned FilterMode from string %v", s)
+		return fmt.Errorf("could not assigned FilterMode from string %v", s)
 	}
 	return nil
 }
@@ -218,6 +219,13 @@ type Allowance struct {
 
 	// ExpectedRedundancy is the average redundancy of files being uploaded.
 	ExpectedRedundancy float64 `json:"expectedredundancy"`
+
+	// MaxPeriodChurn is maximum amount of contract churn allowed in a single
+	// period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
+
+	// NOTE: If you are changing the allowance struct, you must change or
+	// add compatibility code for the contractor's persistence.
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the
@@ -568,6 +576,16 @@ type ContractorSpending struct {
 	PreviousSpending types.Currency `json:"previousspending"`
 }
 
+// ContractorChurnStatus contains the current churn budgets for the Contractor's
+// churnLimiter and the aggregate churn for the current period.
+type ContractorChurnStatus struct {
+	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
+	// period.
+	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
+	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
+}
+
 // UploadedBackup contains metadata about an uploaded backup.
 type UploadedBackup struct {
 	Name           string
@@ -621,6 +639,9 @@ type Renter interface {
 
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []RenterContract
+
+	// ContractorChurnStatus returns contract churn stats for the current period.
+	ContractorChurnStatus() ContractorChurnStatus
 
 	// ContractUtility provides the contract utility for a given host key.
 	ContractUtility(pk types.SiaPublicKey) (ContractUtility, bool)
@@ -740,7 +761,7 @@ type Renter interface {
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
-	Streamer(siapath SiaPath) (string, Streamer, error)
+	Streamer(siapath SiaPath, disableLocalFetch bool) (string, Streamer, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
@@ -769,10 +790,11 @@ type Streamer interface {
 // RenterDownloadParameters defines the parameters passed to the Renter's
 // Download method.
 type RenterDownloadParameters struct {
-	Async       bool
-	Httpwriter  io.Writer
-	Length      uint64
-	Offset      uint64
-	SiaPath     SiaPath
-	Destination string
+	Async            bool
+	Httpwriter       io.Writer
+	Length           uint64
+	Offset           uint64
+	SiaPath          SiaPath
+	Destination      string
+	DisableDiskFetch bool
 }

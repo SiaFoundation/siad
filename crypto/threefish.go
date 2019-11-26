@@ -9,11 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-const (
-	// threefishOverhead is the number of bytes added by EncryptBytes.
-	threefishOverhead = 0
-)
-
 type (
 	// threefishKey is a key used for encrypting and decrypting data.
 	threefishKey [threefish.KeySize]byte

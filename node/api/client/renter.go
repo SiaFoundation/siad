@@ -79,6 +79,12 @@ func (a *AllowanceRequestPost) WithExpectedRedundancy(expectedRedundancy float64
 	return a
 }
 
+// WithMaxPeriodChurn adds the expected redundancy field to the request.
+func (a *AllowanceRequestPost) WithMaxPeriodChurn(maxPeriodChurn uint64) *AllowanceRequestPost {
+	a.values.Set("maxperiodchurn", fmt.Sprint(maxPeriodChurn))
+	return a
+}
+
 // Send finalizes and sends the request.
 func (a *AllowanceRequestPost) Send() (err error) {
 	if a.sent {
@@ -101,6 +107,13 @@ func escapeSiaPath(siaPath modules.SiaPath) string {
 		escapedSegments = append(escapedSegments, url.PathEscape(segment))
 	}
 	return strings.Join(escapedSegments, "/")
+}
+
+// RenterContractorChurnStatus uses the /renter/contractorchurnstatus endpoint
+// to get the current contractor churn status.
+func (c *Client) RenterContractorChurnStatus() (churnStatus modules.ContractorChurnStatus, err error) {
+	err = c.get("/renter/contractorchurnstatus", &churnStatus)
+	return
 }
 
 // RenterContractCancelPost uses the /renter/contract/cancel endpoint to cancel
@@ -207,10 +220,11 @@ func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a
 // destination on disk.
-func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool) (modules.DownloadID, error) {
+func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool, disableLocalFetch bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
+	values.Set("disablelocalfetch", fmt.Sprint(disableLocalFetch))
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))
@@ -339,12 +353,13 @@ func (c *Client) RenterDownloadsGet() (rdq api.RenterDownloadQueue, err error) {
 
 // RenterDownloadHTTPResponseGet uses the /renter/download endpoint to download
 // a file and return its data.
-func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64) (modules.DownloadID, []byte, error) {
+func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64, disableLocalFetch bool) (modules.DownloadID, []byte, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("httpresp", fmt.Sprint(true))
+	values.Set("disablelocalfetch", fmt.Sprint(disableLocalFetch))
 	h, resp, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
 	if err != nil {
 		return "", nil, err
@@ -382,6 +397,7 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	a = a.WithExpectedUpload(allowance.ExpectedUpload)
 	a = a.WithExpectedDownload(allowance.ExpectedDownload)
 	a = a.WithExpectedRedundancy(allowance.ExpectedRedundancy)
+	a = a.WithMaxPeriodChurn(allowance.MaxPeriodChurn)
 	return a.Send()
 }
 
@@ -439,17 +455,21 @@ func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
 
 // RenterStreamGet uses the /renter/stream endpoint to download data as a
 // stream.
-func (c *Client) RenterStreamGet(siaPath modules.SiaPath) (resp []byte, err error) {
+func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool) (resp []byte, err error) {
+	values := url.Values{}
+	values.Set("disablelocalfetch", fmt.Sprint(disableLocalFetch))
 	sp := escapeSiaPath(siaPath)
-	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s", sp))
+	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s?%s", sp, values.Encode()))
 	return
 }
 
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part
 // of data as a stream.
-func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64) (resp []byte, err error) {
+func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64, disableLocalFetch bool) (resp []byte, err error) {
+	values := url.Values{}
+	values.Set("disablelocalfetch", fmt.Sprint(disableLocalFetch))
 	sp := escapeSiaPath(siaPath)
-	resp, err = c.getRawPartialResponse(fmt.Sprintf("/renter/stream/%s", sp), start, end)
+	resp, err = c.getRawPartialResponse(fmt.Sprintf("/renter/stream/%s?%s", sp, values.Encode()), start, end)
 	return
 }
 

@@ -84,7 +84,8 @@ type Contractor struct {
 	renewedFrom          map[types.FileContractID]types.FileContractID
 	renewedTo            map[types.FileContractID]types.FileContractID
 
-	staticWatchdog *watchdog
+	staticChurnLimiter *churnLimiter
+	staticWatchdog     *watchdog
 }
 
 // Allowance returns the current allowance.
@@ -338,6 +339,7 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
 	}
+	c.staticChurnLimiter = newChurnLimiter(c)
 	c.staticWatchdog = newWatchdog(c)
 
 	// Close the contract set and logger upon shutdown.

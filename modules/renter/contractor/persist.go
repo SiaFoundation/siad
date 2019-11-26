@@ -27,7 +27,9 @@ type contractorPersist struct {
 	RenewedTo            map[string]types.FileContractID `json:"renewedto"`
 	Synced               bool                            `json:"synced"`
 
-	WatchdogData watchdogPersist `json:"watchdogdata"`
+	// Subsystem persistence:
+	ChurnLimiter churnLimiterPersist `json:"churnlimiter"`
+	WatchdogData watchdogPersist     `json:"watchdogdata"`
 }
 
 // persistData returns the data in the Contractor that will be saved to disk.
@@ -64,7 +66,8 @@ func (c *Contractor) persistData() contractorPersist {
 	for _, contract := range c.recoverableContracts {
 		data.RecoverableContracts = append(data.RecoverableContracts, contract)
 	}
-	data.WatchdogData = c.staticWatchdog.persistData()
+	data.ChurnLimiter = c.staticChurnLimiter.callPersistData()
+	data.WatchdogData = c.staticWatchdog.callPersistData()
 	return data
 }
 
@@ -76,16 +79,25 @@ func (c *Contractor) load() error {
 		return err
 	}
 
-	// COMPATv136 if the allowance is not the empty allowance and "Expected"
-	// fields are not set, set them to the default values.
+	// Compatibility code for allowance definition changes.
 	if !reflect.DeepEqual(data.Allowance, modules.Allowance{}) {
+		// COMPATv136 if the allowance is not the empty allowance and "Expected"
+		// fields are not set, set them to the default values.
 		if data.Allowance.ExpectedStorage == 0 && data.Allowance.ExpectedUpload == 0 &&
-			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 {
+			data.Allowance.ExpectedDownload == 0 && data.Allowance.ExpectedRedundancy == 0 &&
+			data.Allowance.MaxPeriodChurn == 0 {
 			// Set the fields to the defaults.
 			data.Allowance.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 			data.Allowance.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 			data.Allowance.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 			data.Allowance.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
+			data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
+		}
+
+		// COMPATv1412 if the allowance is not the empty allowance and
+		// MaxPeriodChurn is 0, set it to the default value.
+		if data.Allowance.MaxPeriodChurn == 0 {
+			data.Allowance.MaxPeriodChurn = modules.DefaultAllowance.MaxPeriodChurn
 		}
 	}
 
@@ -124,10 +136,15 @@ func (c *Contractor) load() error {
 		c.recoverableContracts[contract.ID] = contract
 	}
 
+	c.staticChurnLimiter = newChurnLimiterFromPersist(c, data.ChurnLimiter)
+
 	c.staticWatchdog, err = newWatchdogFromPersist(c, data.WatchdogData)
+	if err != nil {
+		return err
+	}
 	c.staticWatchdog.renewWindow = data.Allowance.RenewWindow
 	c.staticWatchdog.blockHeight = data.BlockHeight
-	return err
+	return nil
 }
 
 // save saves the Contractor persistence data to disk.

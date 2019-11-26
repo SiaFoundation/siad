@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -1069,7 +1070,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath)
+	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1490,6 +1491,202 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if !status.ContractFound {
 			return errors.New("contract not marked as found)")
 		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestContractorChurnLimiter tests that the churnLimiter limits churn in a
+// given period.
+func TestContractorChurnLimiter(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 0,
+		Miners:  1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	miner := tg.Miners()[0]
+
+	maxPeriodChurn := uint64(modules.SectorSize)
+	newRenterDir := filepath.Join(testDir, "renter")
+	renterParams := node.Renter(newRenterDir)
+	minScoreDep := &dependencies.DependencyHighMinHostScore{}
+	renterParams.ContractorDeps = minScoreDep
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.MaxPeriodChurn = maxPeriodChurn
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Upload a file to the renter.
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := 1000 // doesn't matter as long as it's at most sector size.
+	_, _, err = r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Get the size of each contract.
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := rc.ActiveContracts[0].Size
+
+	var i int
+	err = build.Retry(50, 250*time.Millisecond, func() error {
+		if i%5 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		churnStatus, apiErr := r.RenterContractorChurnStatus()
+		if apiErr != nil {
+			return errors.AddContext(apiErr, "ContractorChurnStatus err")
+		}
+		if churnStatus.AggregateCurrentPeriodChurn != 0 {
+			return fmt.Errorf("Expected no churn for this period but got %v", churnStatus.AggregateCurrentPeriodChurn)
+		}
+		if churnStatus.MaxPeriodChurn != maxPeriodChurn {
+			return fmt.Errorf("Expected max churn change to show: %v %v", churnStatus.MaxPeriodChurn, maxPeriodChurn)
+		}
+		rc, err = r.RenterDisabledContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active contracts but got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		}
+		if len(rc.DisabledContracts) != 0 {
+			return fmt.Errorf("expected %v disabled contracts but got %v", 0, len(rc.DisabledContracts))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hosts := tg.Hosts()
+	numHostsShutdown := 1
+
+	// Before shutting down a host, get its pubkey to verify that the correct
+	// contract is getting churned.
+	hostInfo, err := hosts[0].HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostPubKey := hostInfo.PublicKey
+
+	// Shutdown a host to cause churn.
+	err = hosts[0].StopNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that churn is observable through API.
+	expectedChurn := uint64(numHostsShutdown) * size
+	i = 0
+	err = build.Retry(50, 500*time.Millisecond, func() error {
+		if i%5 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		churnStatus, apiErr := r.RenterContractorChurnStatus()
+		if apiErr != nil {
+			return errors.AddContext(apiErr, "ContractorChurnStatus err")
+		}
+		if churnStatus.AggregateCurrentPeriodChurn != expectedChurn {
+			return errors.New("Expected more churn for this period")
+		}
+		rc, err = r.RenterDisabledContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
+			return fmt.Errorf("expected %v active contracts but got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		}
+		if len(rc.DisabledContracts) != 1 {
+			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
+		}
+		churnedHost := rc.DisabledContracts[0].HostPublicKey
+		if churnedHost.Algorithm != hostPubKey.Algorithm || !bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+			return errors.New("wrong host churned")
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine to the beginning of the next period, to reset churn for the period and
+	// to build up remainingChurnBudget.
+	for i := 0; i <= int(siatest.DefaultAllowance.Period); i++ {
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Turn on the renter dependency to simulate more churn. This forces the
+	// minimum allowed score to be very high and causes all hosts to be queue to
+	// the churnLimiter.
+	minScoreDep.ForceHighMinHostScore(true)
+
+	// Check that 1 of the hosts was churned, but that the churn limiter prevented
+	// the other bad scoring hosts from getting churned, because the period limit
+	// was reached.
+	err = build.Retry(50, 500*time.Millisecond, func() error {
+		// Mine blocks to increase remainingChurnBudget.
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+		i++
+
+		churnStatus, apiErr := r.RenterContractorChurnStatus()
+		if apiErr != nil {
+			return errors.AddContext(apiErr, "ContractorChurnStatus err")
+		}
+		if churnStatus.AggregateCurrentPeriodChurn != maxPeriodChurn {
+			return fmt.Errorf("Expected max churn for this period: %v %v", churnStatus.AggregateCurrentPeriodChurn, maxPeriodChurn)
+		}
+		rc, err = r.RenterDisabledContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != 0 {
+			return fmt.Errorf("expected %v active contracts but got %v", 0, len(rc.ActiveContracts))
+		}
+		if len(rc.DisabledContracts) != 1 {
+			return fmt.Errorf("expected %v disabled contracts but got %v", 1, len(rc.DisabledContracts))
+		}
+
+		// Check that a *different* host (i.e. not the offline host) was churned
+		// this time.
+		churnedHost := rc.DisabledContracts[0].HostPublicKey
+		if churnedHost.Algorithm == hostPubKey.Algorithm && bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+			return errors.New("wrong host churned")
+		}
+
 		return nil
 	})
 	if err != nil {
