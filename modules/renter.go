@@ -353,7 +353,7 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	FileMode         os.FileMode       `json:"mode"`    // name chaned to avoid conflict with Mode()
+	FileMode         os.FileMode       `json:"mode"`    // name changed to avoid conflict with Mode()
 	ModificationTime time.Time         `json:"modtime"` // name changed to avoid conflict with ModTime() method
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
