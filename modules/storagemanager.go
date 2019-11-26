@@ -46,6 +46,8 @@ type (
 	// sectors. Sectors are the base unit of storage that gets moved between
 	// renters and hosts, and primarily is stored on the hosts.
 	StorageManager interface {
+		Alerter
+
 		// AddSector will add a sector to the storage manager. If the sector
 		// already exists, a virtual sector will be added, meaning that the
 		// 'sectorData' will be ignored and no new disk space will be consumed.
