@@ -90,7 +90,10 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(names) != 0 {
-		t.Error("there should not be any files in the empty fuse filesystem")
+		t.Error("there should not be any files in the empty fuse filesystem", len(names))
+		for _, name := range names {
+			t.Log(name)
+		}
 	}
 	_, err = fuseRoot.Seek(0, 0)
 	if err != nil {

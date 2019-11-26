@@ -250,7 +250,7 @@ type (
 )
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
-// prefix by the "siafiles" directory.
+// prefix by the user's home directory.
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	if siaPath.IsRoot() {
@@ -1168,20 +1168,18 @@ func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _
 
 // renterFuseMountHandlerPOST handles the API call to /renter/fuse/mount.
 func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	var sp modules.SiaPath
 	spfv := req.FormValue("siapath")
-	// Check the form value for root path before attempting to call
-	// modules.NewSiaPath, as RootSiaPath is considered an edge case at the moment.
-	if spfv == "/" || spfv == "" {
-		sp = modules.RootSiaPath()
-	} else {
-		s, err := modules.NewSiaPath(spfv)
-		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
-		}
-		sp = s
+	siaPath, err := modules.NewSiaPath(spfv)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
+	siaPath, err = rebaseInputSiaPath(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+
 	mount := req.FormValue("mount")
 	var opts modules.MountOptions
 	if req.FormValue("readonly") != "" {
@@ -1192,7 +1190,7 @@ func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 		}
 		opts.ReadOnly = readOnly
 	}
-	if err := api.renter.Mount(mount, sp, opts); err != nil {
+	if err := api.renter.Mount(mount, siaPath, opts); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
@@ -1201,7 +1199,19 @@ func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 // renterFuseUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
 func (api *API) renterFuseUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	if err := api.renter.Unmount(req.FormValue("mount")); err != nil {
+	spfv := req.FormValue("mount")
+	siaPath, err := modules.NewSiaPath(spfv)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	siaPath, err = rebaseInputSiaPath(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	err = api.renter.Unmount(siaPath)
+	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
