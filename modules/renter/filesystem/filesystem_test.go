@@ -3,6 +3,7 @@ package filesystem
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -193,6 +194,19 @@ func TestNewSiaFile(t *testing.T) {
 	}
 }
 
+func (d *DirNode) checkNode(numThreads, numDirs, numFiles int) error {
+	if len(d.threads) != numThreads {
+		return fmt.Errorf("Expected d.threads to have length %v but was %v", numThreads, len(d.threads))
+	}
+	if len(d.directories) != numDirs {
+		return fmt.Errorf("Expected %v subdirectories in the root but got %v", numDirs, len(d.directories))
+	}
+	if len(d.files) != numFiles {
+		return fmt.Errorf("Expected %v files in the root but got %v", numFiles, len(d.files))
+	}
+	return nil
+}
+
 // TestOpenSiaDir confirms that a previoiusly created SiaDir can be opened and
 // that the filesystem tree is extended accordingly in the process.
 func TestOpenSiaDir(t *testing.T) {
@@ -226,28 +240,16 @@ func TestOpenSiaDir(t *testing.T) {
 	}
 	defer sd.Close()
 	// Confirm the integrity of the root node.
-	if len(fs.threads) != 0 {
-		t.Fatalf("Expected fs.threads to have length 0 but was %v", len(fs.threads))
-	}
-	if len(fs.directories) != 2 {
-		t.Fatalf("Expected 2 subdirectories in the root but got %v", len(fs.directories))
-	}
-	if len(fs.files) != 0 {
-		t.Fatalf("Expected 0 files in the root but got %v", len(fs.files))
+	if err := fs.checkNode(0, 2, 0); err != nil {
+		t.Fatal(err)
 	}
 	// Open the root node manually and confirm that they are the same.
 	rootSD, err := fs.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fs.threads) != len(rootSD.threads) {
-		t.Fatal("Number of threads in root doesn't match", len(fs.threads), len(rootSD.threads))
-	}
-	if len(fs.directories) != len(rootSD.directories) {
-		t.Fatal("Number of directories in root doesn't match", len(fs.threads), len(rootSD.threads))
-	}
-	if len(fs.files) != len(rootSD.files) {
-		t.Fatal("Number of files in root doesn't match", len(fs.threads), len(rootSD.threads))
+	if err := fs.checkNode(len(rootSD.threads), len(rootSD.directories), len(rootSD.files)); err != nil {
+		t.Fatal(err)
 	}
 	// Confirm the integrity of the /sub node.
 	subNode, exists := fs.directories["sub"]
@@ -260,14 +262,8 @@ func TestOpenSiaDir(t *testing.T) {
 	if path := filepath.Join(*subNode.parent.path, *subNode.name); path != *subNode.path {
 		t.Fatalf("subNode path should be %v but was %v", path, *subNode.path)
 	}
-	if len(subNode.threads) != 0 {
-		t.Fatalf("expected 0 threads in subNode but got %v", len(subNode.threads))
-	}
-	if len(subNode.directories) != 1 {
-		t.Fatalf("Expected 1 subdirectory in the root but got %v", len(subNode.directories))
-	}
-	if len(subNode.files) != 0 {
-		t.Fatalf("Expected 0 files in the root but got %v", len(subNode.files))
+	if err := subNode.checkNode(0, 1, 0); err != nil {
+		t.Fatal(err)
 	}
 	// Confirm the integrity of the /sub/foo node.
 	fooNode, exists := subNode.directories["foo"]
@@ -280,14 +276,8 @@ func TestOpenSiaDir(t *testing.T) {
 	if path := filepath.Join(*fooNode.parent.path, *fooNode.name); path != *fooNode.path {
 		t.Fatalf("fooNode path should be %v but was %v", path, *fooNode.path)
 	}
-	if len(fooNode.threads) != 1 {
-		t.Fatalf("expected 1 thread in fooNode but got %v", len(fooNode.threads))
-	}
-	if len(fooNode.directories) != 0 {
-		t.Fatalf("Expected 0 subdirectory in the fooNode but got %v", len(fooNode.directories))
-	}
-	if len(fooNode.files) != 0 {
-		t.Fatalf("Expected 0 files in the root but got %v", len(fooNode.files))
+	if err := fooNode.checkNode(1, 0, 0); err != nil {
+		t.Fatal(err)
 	}
 	// Open the newly created dir again.
 	sd2, err := fs.OpenSiaDir(sp)
@@ -321,14 +311,11 @@ func TestOpenSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sdSub.Close()
-	if len(subNode.threads) != 1 || len(sdSub.threads) != 1 {
-		t.Fatal("subNode and sdSub should both have 1 thread registered")
+	if err := subNode.checkNode(1, 1, 0); err != nil {
+		t.Fatal(err)
 	}
-	if len(subNode.directories) != 1 || len(sdSub.directories) != 1 {
-		t.Fatal("subNode and sdSub should both have 1 subdir")
-	}
-	if len(subNode.files) != 0 || len(sdSub.files) != 0 {
-		t.Fatal("subNode and sdSub should both have 0 files")
+	if err := sdSub.checkNode(1, 1, 0); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -404,28 +391,16 @@ func TestOpenSiaFile(t *testing.T) {
 	}
 	// Confirm the integrity of the "sub2" folder.
 	sub2 := sf2.parent
-	if len(sub2.threads) != 0 {
-		t.Fatalf("Expected sub2.threads to have length 0 but was %v", len(sub2.threads))
-	}
-	if len(sub2.directories) != 0 {
-		t.Fatalf("Expected 0 subdirectories in sub2 but got %v", len(sub2.directories))
-	}
-	if len(sub2.files) != 1 {
-		t.Fatalf("Expected 1 file in sub2 but got %v", len(sub2.files))
+	if err := sub2.checkNode(0, 0, 1); err != nil {
+		t.Fatal(err)
 	}
 	if _, exists := sf2.threads[sf2.threadUID]; !exists {
 		t.Fatal("threaduid doesn't exist in threads map")
 	}
 	// Confirm the integrity of the "sub1" folder.
 	sub1 := sub2.parent
-	if len(sub1.threads) != 0 {
-		t.Fatalf("Expected sub1.threads to have length 0 but was %v", len(sub1.threads))
-	}
-	if len(sub1.directories) != 1 {
-		t.Fatalf("Expected 1 subdirectorie in sub1 but got %v", len(sub1.directories))
-	}
-	if len(sub1.files) != 0 {
-		t.Fatalf("Expected 0 files in sub1 but got %v", len(sub1.files))
+	if err := sub1.checkNode(0, 1, 0); err != nil {
+		t.Fatal(err)
 	}
 	if _, exists := sf2.threads[sf2.threadUID]; !exists {
 		t.Fatal("threaduid doesn't exist in threads map")
@@ -466,14 +441,8 @@ func TestCloseSiaDir(t *testing.T) {
 	}
 	// After closing it the thread should be gone.
 	sd.Close()
-	if len(fs.threads) != 0 {
-		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
-	}
-	if len(sd.threads) != 0 {
-		t.Fatalf("There should be 0 threads in sd.threads but got %v", len(sd.threads))
-	}
-	if len(fs.directories) != 0 {
-		t.Fatalf("There should be 0 directories in fs.directories but got %v", len(fs.directories))
+	if err := fs.checkNode(0, 0, 0); err != nil {
+		t.Fatal(err)
 	}
 	// Open the dir again. This time twice.
 	sd1, err := fs.OpenSiaDir(sp)
