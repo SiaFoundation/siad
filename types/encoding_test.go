@@ -449,7 +449,7 @@ func TestSiaPublicKeyLoadString(t *testing.T) {
 	if !bytes.Equal(loadedSPK.Algorithm[:], spk.Algorithm[:]) {
 		t.Error("SiaPublicKey is not loading correctly")
 	}
-	if !bytes.Equal(loadedSPK.Key, spk.Key) {
+	if !loadedSPK.Equals(spk) {
 		t.Log(loadedSPK.Key, spk.Key)
 		t.Error("SiaPublicKey is not loading correctly")
 	}
@@ -536,10 +536,7 @@ func TestSiaPublicKeyUnmarshalJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if spk1.Algorithm != spk2.Algorithm {
-		t.Error("unmarshalled algorithms do not match")
-	}
-	if !bytes.Equal(spk1.Key, spk2.Key) {
+	if !spk1.Equals(spk2) {
 		t.Error("unmarshalled keys do not match")
 	}
 }

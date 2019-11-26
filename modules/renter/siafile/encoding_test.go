@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"bytes"
 	"reflect"
 	"testing"
 	"time"
@@ -169,7 +168,7 @@ func TestMarshalUnmarshalPubKeyTable(t *testing.T) {
 		if spk.PublicKey.Algorithm != sf.pubKeyTable[i].PublicKey.Algorithm {
 			t.Fatal("Algorithms don't match")
 		}
-		if !bytes.Equal(spk.PublicKey.Key, sf.pubKeyTable[i].PublicKey.Key) {
+		if !spk.PublicKey.Equals(sf.pubKeyTable[i].PublicKey) {
 			t.Fatal("Keys don't match")
 		}
 	}

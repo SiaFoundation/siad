@@ -1,7 +1,6 @@
 package contractor
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -1682,8 +1681,8 @@ func TestContractorChurnLimiter(t *testing.T) {
 
 		// Check that a *different* host (i.e. not the offline host) was churned
 		// this time.
-		churnedHost := rc.DisabledContracts[0].HostPublicKey
-		if churnedHost.Algorithm == hostPubKey.Algorithm && bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if churnedHostKey.Equals(hostPubKey) {
 			return errors.New("wrong host churned")
 		}
 
