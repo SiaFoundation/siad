@@ -47,6 +47,9 @@ type fuseDirnode struct {
 // NodeLookuper is necessary to have files added to the filesystem tree.
 //
 // NodeReaddirer is necessary to list the files in a directory.
+//
+// NodeStatfser is necessary to provide information about the filesystem that
+// contains the directory.
 var _ = (fs.NodeAccesser)((*fuseDirnode)(nil))
 var _ = (fs.NodeGetattrer)((*fuseDirnode)(nil))
 var _ = (fs.NodeLookuper)((*fuseDirnode)(nil))
@@ -83,6 +86,9 @@ type fuseFilenode struct {
 // NodeOpener is necessary for opening files to be read.
 //
 // NodeReader is necessary for reading files.
+//
+// NodeStatfser is necessary to provide information about the filesystem that
+// contains the file.
 var _ = (fs.NodeAccesser)((*fuseFilenode)(nil))
 var _ = (fs.NodeFlusher)((*fuseFilenode)(nil))
 var _ = (fs.NodeGetattrer)((*fuseFilenode)(nil))
@@ -359,6 +365,9 @@ func (ffs *fuseFS) setStatfsOut(out *fuse.StatfsOut) error {
 	numFiles := uint64(rootDir.AggregateNumFiles)
 
 	// Compute the amount of storage that's available.
+	//
+	// TODO: Could be more accurate if this value is small based on the amount
+	// of money remaining in the allowance and in the contracts.
 	var availStorage uint64
 	if totalStorage > usedStorage {
 		availStorage = totalStorage - usedStorage
