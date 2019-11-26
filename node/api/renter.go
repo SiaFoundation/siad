@@ -171,6 +171,11 @@ type (
 		Files []modules.FileInfo `json:"files"`
 	}
 
+	// RenterFuseInfo contains information about mounted fuse filesystems.
+	RenterFuseInfo struct {
+		MountPoints []modules.MountInfo `json:"mountPoints"`
+	}
+
 	// RenterLoad lists files that were loaded into the renter.
 	RenterLoad struct {
 		FilesAdded []string `json:"filesadded"`
@@ -241,11 +246,6 @@ type (
 		StartTime            time.Time `json:"starttime"`            // The time when the download was started.
 		StartTimeUnix        int64     `json:"starttimeunix"`        // The time when the download was started in unix format.
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
-	}
-
-	// RenterFuseInfo contains information about mounted fuse filesystems.
-	RenterFuseInfo struct {
-		MountPoints []modules.MountInfo `json:"mountPoints"`
 	}
 )
 
@@ -1161,9 +1161,19 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 
 // renterFuseHandlerGET handles the API call to /renter/fuse.
 func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	WriteJSON(w, RenterFuseInfo{
+	rfi := RenterFuseInfo{
 		MountPoints: api.renter.MountInfo(),
-	})
+	}
+	for i := 0; i < len(rfi.MountPoints); i++ {
+		rebased, err := rfi.MountPoints[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		rfi.MountPoints[i].SiaPath = rebased
+	}
+
+	WriteJSON(w, rfi)
 }
 
 // renterFuseMountHandlerPOST handles the API call to /renter/fuse/mount.
