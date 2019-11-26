@@ -10,6 +10,7 @@ package renter
 // force an unmount.
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -67,6 +68,11 @@ func (fm *fuseManager) managedCloseFuseManager() error {
 		// Attempt to unmount the the mountpoint.
 		umountErr := fm.Unmount(name)
 		if umountErr != nil {
+			fm.mu.Lock()
+			delete(fm.mountPoints, name)
+			fm.mu.Unlock()
+			fm.renter.log.Printf("Unable to unmount %s: %v", name, umountErr)
+			fmt.Printf("Unable to unmount %s: %v - use `umount [mountpoint]` or `fusermount -u [mountpoint]` to unmount manually\n", name, umountErr)
 		}
 		err = errors.Compose(err, errors.AddContext(umountErr, "unable to unmount "+name))
 	}
