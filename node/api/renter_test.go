@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -578,7 +579,7 @@ func TestRenterConflicts(t *testing.T) {
 	// Upload using the same nickname.
 	err = st.stdPostAPI("/renter/upload/foo/bar.sia/test", uploadValues)
 	if err == nil {
-		t.Fatalf("expected %v, got %v", Error{"upload failed: " + siafile.ErrPathOverload.Error()}, err)
+		t.Fatalf("expected %v, got %v", Error{"upload failed: " + filesystem.ErrExists.Error()}, err)
 	}
 
 	// Upload using nickname that conflicts with folder.
@@ -856,7 +857,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
@@ -938,7 +939,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to a name that's already taken.
 	renameValues.Set("newsiapath", "newtest1")
 	err = st.stdPostAPI("/renter/rename/test2", renameValues)
-	if err == nil || err.Error() != siafile.ErrPathOverload.Error() {
+	if err == nil || err.Error() != filesystem.ErrExists.Error() {
 		t.Errorf("expected error to be %v; got %v", siafile.ErrPathOverload, err)
 	}
 }
@@ -1004,10 +1005,9 @@ func TestRenterHandlerDelete(t *testing.T) {
 	if len(files.Files) != 0 {
 		t.Fatalf("renter's list of files should be empty; got %v instead", files)
 	}
-
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 }

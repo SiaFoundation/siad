@@ -2,8 +2,8 @@ package renter
 
 import (
 	"fmt"
-	"io/ioutil"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -112,7 +112,7 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 // to the upload heap as possible
 func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[string]struct{}, offline, goodForRenew map[string]bool) error {
 	// Open File
-	sf, err := r.staticFileSet.Open(siaPath)
+	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to open siafile %v, error: %v", siaPath, err)
 	}
@@ -129,12 +129,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 	defer func() {
 		// Close out remaining file entries
 		for _, chunk := range unfinishedStuckChunks {
-			if err = chunk.fileEntry.Close(); err != nil {
-				// If there is an error log it and append to the other errors so
-				// that we close as many files as possible
-				r.repairLog.Printf("WARN: unable to close %s after adding stuck chunks to repair heap: %v", siaPath.String(), err)
-				allErrors = errors.Compose(allErrors, err)
-			}
+			chunk.fileEntry.Close()
 		}
 	}()
 
@@ -149,12 +144,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 		if !r.uploadHeap.managedPush(chunk) {
 			// Stuck chunk unable to be added. Close the file entry of that
 			// chunk
-			if err = chunk.fileEntry.Close(); err != nil {
-				// If there is an error log it and append to the other errors so
-				// that we close as many files as possible
-				r.repairLog.Printf("WARN: unable to close %s after pushing chunk to upload heap: %v", siaPath.String(), err)
-				allErrors = errors.Compose(allErrors, err)
-			}
+			chunk.fileEntry.Close()
 			continue
 		}
 		stuckChunksAdded++
@@ -248,13 +238,14 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		default:
 		}
 
-		directories, err := r.DirList(siaPath)
+		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+		_, directories, err := r.staticFileSystem.List(siaPath, false, true, offlineMap, goodForRenewMap, contractsMap)
 		if err != nil {
 			return modules.SiaPath{}, err
 		}
 		// Sanity check that there is at least the current directory
 		if len(directories) == 0 {
-			build.Critical("No directories returned from DirList")
+			build.Critical("No directories returned from DirList", siaPath.String())
 		}
 
 		// Check if we are in an empty Directory. This will be the case before
@@ -281,7 +272,6 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 
 		// Get random int
 		rand := fastrand.Intn(int(directories[0].AggregateNumStuckChunks))
-
 		// Use rand to decide which directory to go into. Work backwards over
 		// the slice of directories. Since the first element is the current
 		// directory that means that it is the sum of all the files and
@@ -320,12 +310,15 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	// NOTE: using the aggregate number of stuck chunks assumes that the
 	// directory and the files within the directory are in sync. This is ok to
 	// do as the risks associated with being out of sync are low.
-	siaDir, err := r.staticDirSet.Open(dirSiaPath)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(dirSiaPath)
 	if err != nil {
 		return modules.SiaPath{}, errors.AddContext(err, "unable to open siaDir "+dirSiaPath.String())
 	}
 	defer siaDir.Close()
-	metadata := siaDir.Metadata()
+	metadata, err := siaDir.Metadata()
+	if err != nil {
+		return modules.SiaPath{}, err
+	}
 	aggregateNumStuckChunks := metadata.AggregateNumStuckChunks
 	numStuckChunks := metadata.NumStuckChunks
 	numFiles := metadata.NumFiles
@@ -345,10 +338,9 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 
 	// Read the directory, using ReadDir so we don't read all the siafiles
 	// unless we need to
-	dir := dirSiaPath.SiaDirSysPath(r.staticFilesDir)
-	fileinfos, err := ioutil.ReadDir(dir)
+	fileinfos, err := r.staticFileSystem.ReadDir(dirSiaPath)
 	if err != nil {
-		return modules.SiaPath{}, errors.AddContext(err, "unable to open sys dir: "+dir)
+		return modules.SiaPath{}, errors.AddContext(err, "unable to open siadir: "+dirSiaPath.String())
 	}
 	// Iterate over the fileinfos
 	for _, fi := range fileinfos {
@@ -358,23 +350,18 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 		}
 
 		// Get SiaPath
-		var sp modules.SiaPath
-		fullPath := filepath.Join(dir, fi.Name())
-		err = sp.FromSysPath(fullPath, r.staticFilesDir)
+		sp, err := dirSiaPath.Join(strings.TrimSuffix(fi.Name(), modules.SiaFileExtension))
 		if err != nil {
-			return modules.SiaPath{}, errors.AddContext(err, "unable to get the siapath from the sys path: "+fullPath)
+			return modules.SiaPath{}, errors.AddContext(err, "unable to join the siapath with the file: "+fi.Name())
 		}
 
 		// Open SiaFile, grab the number of stuck chunks and close the file
-		f, err := r.staticFileSet.Open(sp)
+		f, err := r.staticFileSystem.OpenSiaFile(sp)
 		if err != nil {
 			return modules.SiaPath{}, errors.AddContext(err, "could not open siafileset for "+sp.String())
 		}
 		numStuckChunks := int(f.NumStuckChunks())
-		err = f.Close()
-		if err != nil {
-			return modules.SiaPath{}, err
-		}
+		f.Close()
 
 		// Check if stuck
 		if numStuckChunks == 0 {
@@ -402,7 +389,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 // directory SiaPaths
 func (r *Renter) managedSubDirectories(siaPath modules.SiaPath) ([]modules.SiaPath, error) {
 	// Read directory
-	fileinfos, err := ioutil.ReadDir(siaPath.SiaDirSysPath(r.staticFilesDir))
+	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
 	if err != nil {
 		return nil, err
 	}

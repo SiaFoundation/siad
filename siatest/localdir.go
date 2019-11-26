@@ -22,7 +22,7 @@ type LocalDir struct {
 // NewLocalDir creates a new LocalDir
 func (tn *TestNode) NewLocalDir() *LocalDir {
 	fileName := fmt.Sprintf("dir-%s", persist.RandomSuffix())
-	path := filepath.Join(tn.RenterDir(), modules.SiapathRoot, fileName)
+	path := filepath.Join(tn.RenterDir(), modules.FileSystemRoot, fileName)
 	return &LocalDir{
 		path: path,
 	}
