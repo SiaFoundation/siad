@@ -222,19 +222,6 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	return am, nil
 }
 
-// newAccount will create a new account and add it to the list of accounts
-// managed by the account manager, note it is important an account has a valid
-// account index at all times so it gets persisted properly
-func (am *accountManager) newAccount(id string, index uint32) *account {
-	acc := &account{
-		id:           id,
-		index:        index,
-		blockedCalls: make(blockedCallHeap, 0),
-	}
-	am.accounts[id] = acc
-	return acc
-}
-
 // newFingerprintMap will create a new fingerprint map
 func newFingerprintMap(currentBlockHeight types.BlockHeight, bucketBlockRange int) *fingerprintMap {
 	return &fingerprintMap{
@@ -251,14 +238,9 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	currentBlockHeight := am.h.BlockHeight()
 
 	// Ensure the account exists
+	acc := am.managedEnsureAccount(id)
+
 	am.mu.Lock()
-	acc, exists := am.accounts[id]
-	if !exists {
-		am.mu.Unlock()
-		index := am.staticAccountsPersister.callAssignFreeIndex()
-		am.mu.Lock()
-		acc = am.newAccount(id, index)
-	}
 	defer am.mu.Unlock()
 
 	// Verify the deposit does not exceed the ephemeral account maximum balance
@@ -326,9 +308,11 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return err
 	}
 
-	am.mu.Lock()
+	// Ensure the account exists
+	acc := am.managedEnsureAccount(msg.account)
 
 	// Verify if we have processed this withdrawal by checking its fingerprint
+	am.mu.Lock()
 	fingerprint := crypto.HashAll(*msg)
 	if exists := am.fingerprints.has(fingerprint); exists {
 		am.mu.Unlock()
@@ -338,21 +322,13 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	// Save the fingerprint
 	am.fingerprints.save(fingerprint, msg.expiry, currentBlockHeight)
 	if err := am.h.tg.Add(); err != nil {
+		am.mu.Unlock()
 		return ErrWithdrawalCancelled
 	}
 	go func() {
 		defer am.h.tg.Done()
 		am.staticAccountsPersister.callSaveFingerprint(fingerprint, msg.expiry, currentBlockHeight)
 	}()
-
-	// Ensure the account exists
-	acc, exists := am.accounts[msg.account]
-	if !exists {
-		am.mu.Unlock()
-		index := am.staticAccountsPersister.callAssignFreeIndex()
-		am.mu.Lock()
-		acc = am.newAccount(msg.account, index)
-	}
 
 	// If the account balance is insufficient to perform the withdrawal, block
 	// the withdrawal.
@@ -427,6 +403,26 @@ func (am *accountManager) callConsensusChanged() {
 	am.mu.Lock()
 	am.tryRotateFingerprints(currentBlockHeight)
 	am.mu.Unlock()
+}
+
+// managedEnsureAccount will ensure the account with given id exists
+func (am *accountManager) managedEnsureAccount(id string) *account {
+	index := am.staticAccountsPersister.callAssignFreeIndex()
+	am.mu.Lock()
+	acc, exists := am.accounts[id]
+	if !exists {
+		acc = &account{
+			id:           id,
+			index:        index,
+			blockedCalls: make(blockedCallHeap, 0),
+		}
+		am.accounts[id] = acc
+		am.mu.Unlock()
+		return acc
+	}
+	am.mu.Unlock()
+	am.staticAccountsPersister.callReleaseIndex(index)
+	return acc
 }
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
