@@ -139,7 +139,7 @@ func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive,
 	// Prepare a pool of workers.
 	numThreads := 40
 	dirLoadChan := make(chan *DirNode, numThreads)
-	fileLoadChan := make(chan *FileNode, numThreads)
+	fileLoadChan := make(chan func() (*FileNode, error), numThreads)
 	var fisMu, disMu sync.Mutex
 	dirWorker := func() {
 		for sd := range dirLoadChan {
@@ -164,15 +164,17 @@ func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive,
 		}
 	}
 	fileWorker := func() {
-		for sf := range fileLoadChan {
+		for load := range fileLoadChan {
+			sf, err := load()
+			if err != nil {
+				n.staticLog.Debugf("Failed to load file: %v", err)
+			}
 			var fi modules.FileInfo
-			var err error
 			if cached {
 				fi, err = sf.staticCachedInfo(nodeSiaPath(fsRoot, &sf.node))
 			} else {
 				fi, err = sf.managedFileInfo(nodeSiaPath(fsRoot, &sf.node), offlineMap, goodForRenewMap, contractsMap)
 			}
-			sf.Close()
 			if err == ErrNotExist {
 				continue
 			}
@@ -199,7 +201,7 @@ func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive,
 			wg.Done()
 		}()
 	}
-	err := n._managedList(recursive, cached, fileLoadChan, dirLoadChan)
+	err := n.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
 	// Signal the workers that we are done adding work and wait for them to
 	// finish any pending work.
 	close(dirLoadChan)
@@ -214,8 +216,8 @@ func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive,
 	return fis, dis, err
 }
 
-// managedList returns the files and dirs within the SiaDir.
-func (n *DirNode) _managedList(recursive, cached bool, fileLoadChan chan *FileNode, dirLoadChan chan *DirNode) error {
+// managedRecursiveList returns the files and dirs within the SiaDir.
+func (n *DirNode) managedRecursiveList(recursive, cached bool, fileLoadChan chan func() (*FileNode, error), dirLoadChan chan *DirNode) error {
 	// Get DirectoryInfo of dir itself.
 	dirLoadChan <- n.managedCopy()
 	// Read dir.
@@ -223,43 +225,68 @@ func (n *DirNode) _managedList(recursive, cached bool, fileLoadChan chan *FileNo
 	if err != nil {
 		return err
 	}
+	// Separate dirs and files.
+	var dirNames, fileNames []string
 	for _, info := range fis {
 		// Skip non-siafiles and non-dirs.
 		if !info.IsDir() && filepath.Ext(info.Name()) != modules.SiaFileExtension {
 			continue
 		}
-		// Handle dir.
 		if info.IsDir() {
-			// Open the dir.
-			n.mu.Lock()
-			dir, err := n.openDir(info.Name())
-			n.mu.Unlock()
-			if err != nil {
-				return err
-			}
-			// Hand a copy to the worker. It will handle closing it.
-			dirLoadChan <- dir.managedCopy()
-			// Call managedList on the child if 'recursive' was specified.
-			if recursive {
-				err = dir._managedList(recursive, cached, fileLoadChan, dirLoadChan)
-			}
-			dir.Close()
-			if err != nil {
-				return err
-			}
+			dirNames = append(dirNames, info.Name())
 			continue
 		}
-		// Handle file.
-		n.mu.Lock()
-		file, err := n.openFile(strings.TrimSuffix(info.Name(), modules.SiaFileExtension))
-		n.mu.Unlock()
-		if err != nil {
-			n.staticLog.Debugf("managedList failed to open file: %v", err)
-			continue
-		}
-		fileLoadChan <- file.managedCopy()
-		file.Close()
+		fileNames = append(fileNames, strings.TrimSuffix(info.Name(), modules.SiaFileExtension))
 	}
+	// Handle dirs first.
+	for _, dirName := range dirNames {
+		// Open the dir.
+		n.mu.Lock()
+		dir, err := n.openDir(dirName)
+		n.mu.Unlock()
+		if errors.Contains(err, ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		// Hand a copy to the worker. It will handle closing it.
+		dirLoadChan <- dir.managedCopy()
+		// Call managedList on the child if 'recursive' was specified.
+		if recursive {
+			err = dir.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
+		}
+		dir.Close()
+		if err != nil {
+			return err
+		}
+		continue
+	}
+	// Check if there are any files to handle.
+	if len(fileNames) == 0 {
+		return nil
+	}
+	// Handle files by sending a method to load them to the workers. Wee add all
+	// of them to the waitgroup to be able to tell when to release the mutex.
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	var wg sync.WaitGroup
+	wg.Add(len(fileNames))
+	for i := range fileNames {
+		fileName := fileNames[i]
+		f := func() (*FileNode, error) {
+			file, err := n.readonlyOpenFile(fileName)
+			wg.Done()
+			if err != nil {
+				return nil, err
+			}
+			return file, nil // no need to close it since it was created using readonlyOpenFile.
+		}
+		fileLoadChan <- f
+	}
+	// Wait for the workers to finish all calls to `openFile` before releasing the
+	// lock.
+	wg.Wait()
 	return nil
 }
 
@@ -617,15 +644,25 @@ func (n *DirNode) managedOpenFile(fileName string) (*FileNode, error) {
 	return n.openFile(fileName)
 }
 
-// openFile opens a SiaFile and adds it and all of its parents to the filesystem
-// tree.
+// openFile is like readonlyOpenFile but adds the file to the parent.
 func (n *DirNode) openFile(fileName string) (*FileNode, error) {
+	fn, err := n.readonlyOpenFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+	n.files[fileName] = fn
+	return fn.managedCopy(), nil
+}
+
+// readonlyOpenFile opens a SiaFile but doesn't add it to the parent. That's
+// useful for opening nodes which are short-lived and don't need to be closed.
+func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 	fn, exists := n.files[fileName]
 	if exists && fn.Deleted() {
 		return nil, ErrNotExist // don't return a deleted file
 	}
 	if exists {
-		return fn.managedCopy(), nil
+		return fn, nil
 	}
 	// Load file from disk.
 	filePath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
@@ -640,9 +677,8 @@ func (n *DirNode) openFile(fileName string) (*FileNode, error) {
 		node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
 		SiaFile: sf,
 	}
-	n.files[fileName] = fn
 	// Clone the node, give it a new UID and return it.
-	return fn.managedCopy(), nil
+	return fn, nil
 }
 
 // openDir opens the dir with the specified name within the current dir.
