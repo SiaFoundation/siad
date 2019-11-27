@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -61,6 +62,13 @@ const (
 	HostDBDisableFilter
 	HostDBActivateBlacklist
 	HostDBActiveWhitelist
+)
+
+// Filesystem related consts.
+const (
+	// DefaultDirPerm defines the default permissions used for a new dir if no
+	// permissions are supplied.
+	DefaultDirPerm = 0755
 )
 
 // String returns the string value for the FilterMode
@@ -342,6 +350,7 @@ type FileInfo struct {
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
 	ModificationTime time.Time         `json:"modtime"` // Stays as 'modtime' in json for compatibility
+	Mode             os.FileMode       `json:"mode"`
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -781,7 +790,7 @@ type Renter interface {
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
-	CreateDir(siaPath SiaPath) error
+	CreateDir(siaPath SiaPath, mode os.FileMode) error
 
 	// DeleteDir deletes a directory from the renter
 	DeleteDir(siaPath SiaPath) error

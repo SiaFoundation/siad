@@ -113,13 +113,13 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if force {
-		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
+		if err := r.DeleteFile(siaPath); err != nil && err != siafile.ErrUnknownPath {
 			return nil, err
 		}
 	}
 	// If repair is set open the existing file.
 	if repair {
-		entry, err := r.staticFileSystem.OpenSiaFile(up.SiaPath)
+		entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 		if err != nil {
 			return nil, err
 		}
@@ -134,24 +134,13 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 	if numContracts < requiredContracts && build.Release != "testing" {
 		return nil, fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (ec.NumPieces()+ec.MinPieces())/2)
 	}
-	// Create the directory path on disk. Renter directory is already present so
-	// only files not in top level directory need to have directories created
-	dirSiaPath, err := siaPath.Dir()
-	if err != nil {
-		return nil, err
-	}
-	// Create directory
-	err = r.staticFileSystem.NewSiaDir(dirSiaPath)
-	if err != nil && err != filesystem.ErrExists {
-		return nil, err
-	}
 	// Create the Siafile and add to renter
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	err = r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, sk, 0, 0700, up.DisablePartialChunk)
+	err = r.staticFileSystem.NewSiaFile(siaPath, up.Source, up.ErasureCode, sk, 0, defaultFilePerm, up.DisablePartialChunk)
 	if err != nil {
 		return nil, err
 	}
-	return r.staticFileSystem.OpenSiaFile(up.SiaPath)
+	return r.staticFileSystem.OpenSiaFile(siaPath)
 }
 
 // managedUploadStreamFromReader reads from the provided reader until io.EOF is

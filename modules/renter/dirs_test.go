@@ -31,7 +31,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.CreateDir(siaPath)
+	err = rt.renter.CreateDir(siaPath, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.CreateDir(siaPath)
+	err = rt.renter.CreateDir(siaPath, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.CreateDir(siaPath)
+	err = rt.renter.CreateDir(siaPath, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}

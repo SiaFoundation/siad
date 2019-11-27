@@ -1,6 +1,7 @@
 package siadir
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -72,15 +73,16 @@ type (
 
 		// The following fields are information specific to the siadir that is not
 		// an aggregate of the entire sub directory tree
-		Health              float64   `json:"health"`
-		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-		MinRedundancy       float64   `json:"minredundancy"`
-		ModTime             time.Time `json:"modtime"`
-		NumFiles            uint64    `json:"numfiles"`
-		NumStuckChunks      uint64    `json:"numstuckchunks"`
-		NumSubDirs          uint64    `json:"numsubdirs"`
-		Size                uint64    `json:"size"`
-		StuckHealth         float64   `json:"stuckhealth"`
+		Health              float64     `json:"health"`
+		LastHealthCheckTime time.Time   `json:"lasthealthchecktime"`
+		MinRedundancy       float64     `json:"minredundancy"`
+		Mode                os.FileMode `json:"mode"`
+		ModTime             time.Time   `json:"modtime"`
+		NumFiles            uint64      `json:"numfiles"`
+		NumStuckChunks      uint64      `json:"numstuckchunks"`
+		NumSubDirs          uint64      `json:"numsubdirs"`
+		Size                uint64      `json:"size"`
+		StuckHealth         float64     `json:"stuckhealth"`
 	}
 )
 

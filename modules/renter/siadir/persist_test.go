@@ -87,7 +87,7 @@ func newTestDir(rootDir string) (*SiaDir, error) {
 		return nil, err
 	}
 	wal, _ := newTestWAL()
-	return New(modules.RandomSiaPath().SiaDirSysPath(rootPath), rootPath, wal)
+	return New(modules.RandomSiaPath().SiaDirSysPath(rootPath), rootPath, modules.DefaultDirPerm, wal)
 }
 
 // newTestWal is a helper method to create a WAL for testing.

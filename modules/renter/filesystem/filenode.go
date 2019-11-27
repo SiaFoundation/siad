@@ -77,6 +77,13 @@ func (n *FileNode) managedDelete() error {
 	return n.SiaFile.Delete()
 }
 
+// managedMode returns the underlying file's os.FileMode.
+func (n *FileNode) managedMode() os.FileMode {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.SiaFile.Mode()
+}
+
 // managedFileInfo returns the FileInfo of the file node.
 func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	// Build the FileInfo

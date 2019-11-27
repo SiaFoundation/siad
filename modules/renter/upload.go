@@ -80,7 +80,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	}
 	// Try to create the directory. If ErrExists is returned it already
 	// exists.
-	err = r.staticFileSystem.NewSiaDir(dirSiaPath)
+	err = r.staticFileSystem.NewSiaDir(dirSiaPath, modules.DefaultDirPerm)
 	if err != filesystem.ErrExists && err != nil {
 		return errors.AddContext(err, "unable to create sia directory for new file")
 	}

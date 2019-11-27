@@ -2,12 +2,13 @@ package filesystem
 
 import (
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -131,8 +132,90 @@ func (n *DirNode) UpdateMetadata(md siadir.Metadata) error {
 	return sd.UpdateMetadata(md)
 }
 
+// managedList returns the files and dirs within the SiaDir specified by siaPath.
+// offlineMap, goodForRenewMap and contractMap don't need to be provided if
+// 'cached' is set to 'true'.
+func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+	// Prepare a pool of workers.
+	numThreads := 40
+	dirLoadChan := make(chan *DirNode, numThreads)
+	fileLoadChan := make(chan *FileNode, numThreads)
+	var fisMu, disMu sync.Mutex
+	dirWorker := func() {
+		for sd := range dirLoadChan {
+			var di modules.DirectoryInfo
+			var err error
+			if sd.managedAbsPath() == fsRoot {
+				di, err = sd.managedInfo(modules.RootSiaPath())
+			} else {
+				di, err = sd.managedInfo(nodeSiaPath(fsRoot, &sd.node))
+			}
+			sd.Close()
+			if err == ErrNotExist {
+				continue
+			}
+			if err != nil {
+				n.staticLog.Debugf("Failed to get DirectoryInfo of '%v': %v", sd.managedAbsPath(), err)
+				continue
+			}
+			disMu.Lock()
+			dis = append(dis, di)
+			disMu.Unlock()
+		}
+	}
+	fileWorker := func() {
+		for sf := range fileLoadChan {
+			var fi modules.FileInfo
+			var err error
+			if cached {
+				fi, err = sf.staticCachedInfo(nodeSiaPath(fsRoot, &sf.node))
+			} else {
+				fi, err = sf.managedFileInfo(nodeSiaPath(fsRoot, &sf.node), offlineMap, goodForRenewMap, contractsMap)
+			}
+			sf.Close()
+			if err == ErrNotExist {
+				continue
+			}
+			if err != nil {
+				n.staticLog.Debugf("Failed to get FileInfo of '%v': %v", sf.managedAbsPath(), err)
+				continue
+			}
+			fisMu.Lock()
+			fis = append(fis, fi)
+			fisMu.Unlock()
+		}
+	}
+	// Spin the workers up.
+	var wg sync.WaitGroup
+	for i := 0; i < numThreads/2; i++ {
+		wg.Add(1)
+		go func() {
+			dirWorker()
+			wg.Done()
+		}()
+		wg.Add(1)
+		go func() {
+			fileWorker()
+			wg.Done()
+		}()
+	}
+	err := n._managedList(recursive, cached, fileLoadChan, dirLoadChan)
+	// Signal the workers that we are done adding work and wait for them to
+	// finish any pending work.
+	close(dirLoadChan)
+	close(fileLoadChan)
+	wg.Wait()
+	sort.Slice(dis, func(i, j int) bool {
+		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
+	})
+	sort.Slice(fis, func(i, j int) bool {
+		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
+	})
+	return fis, dis, err
+}
+
 // managedList returns the files and dirs within the SiaDir.
-func (n *DirNode) managedList(recursive, cached bool, fileLoadChan chan *FileNode, dirLoadChan chan *DirNode) error {
+func (n *DirNode) _managedList(recursive, cached bool, fileLoadChan chan *FileNode, dirLoadChan chan *DirNode) error {
 	// Get DirectoryInfo of dir itself.
 	dirLoadChan <- n.managedCopy()
 	// Read dir.
@@ -158,7 +241,7 @@ func (n *DirNode) managedList(recursive, cached bool, fileLoadChan chan *FileNod
 			dirLoadChan <- dir.managedCopy()
 			// Call managedList on the child if 'recursive' was specified.
 			if recursive {
-				err = dir.managedList(recursive, cached, fileLoadChan, dirLoadChan)
+				err = dir._managedList(recursive, cached, fileLoadChan, dirLoadChan)
 			}
 			dir.Close()
 			if err != nil {
@@ -200,13 +283,9 @@ func (n *DirNode) managedClose() {
 // managedNewSiaFileFromReader will read a siafile and its chunks from the given
 // reader and add it to the directory. This will always load the file from the
 // given reader.
-func (n *DirNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) error {
-	// Load the file.
-	path := filepath.Join(n.managedAbsPath(), fileName+modules.SiaFileExtension)
-	sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(rs, path, n.staticWal)
-	if err != nil {
-		return err
-	}
+func (n *DirNode) managedNewSiaFileFromExisting(sf *siafile.SiaFile, chunks siafile.Chunks) error {
+	// Get the initial path of the siafile.
+	path := sf.SiaFilePath()
 	// Check if the path is taken.
 	currentPath, exists := n.managedUniquePrefix(path, sf.UID())
 	if exists {
@@ -221,6 +300,7 @@ func (n *DirNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker)
 		return err
 	}
 	// Add the node to the dir.
+	fileName := strings.TrimSuffix(filepath.Base(currentPath), modules.SiaFileExtension)
 	fn := &FileNode{
 		node:    newNode(n, currentPath, fileName, 0, n.staticWal, n.staticLog),
 		SiaFile: sf,
@@ -510,7 +590,7 @@ func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.E
 }
 
 // managedNewSiaDir creates the SiaDir with the given dirName as its child.
-func (n *DirNode) managedNewSiaDir(dirName string, rootPath string) error {
+func (n *DirNode) managedNewSiaDir(dirName string, rootPath string, mode os.FileMode) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Check if a file already exists with that name.
@@ -522,7 +602,7 @@ func (n *DirNode) managedNewSiaDir(dirName string, rootPath string) error {
 	if !os.IsNotExist(err) {
 		return ErrExists
 	}
-	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, n.staticWal)
+	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, mode, n.staticWal)
 	if os.IsExist(err) {
 		return nil
 	}
