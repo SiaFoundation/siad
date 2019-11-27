@@ -100,6 +100,11 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 		return errors.New("fuse must be mounted as read-only")
 	}
 
+	// Get the mountpoint's root from the filesystem.
+	rootDirNode, err := fm.renter.staticFileSystem.OpenSiaDir(sp)
+	if err != nil {
+		return errors.AddContext(err, "unable to open the mounted siapath in the filesystem")
+	}
 	// Create the fuse filesystem object.
 	filesystem := &fuseFS{
 		readOnly: opts.ReadOnly,
@@ -108,8 +113,8 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	// Create the root filesystem object.
 	root := &fuseDirnode{
-		filesystem:    filesystem,
-		staticSiaPath: sp,
+		dirNode:    rootDirNode,
+		filesystem: filesystem,
 	}
 	filesystem.root = root
 
@@ -149,9 +154,14 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 
 	infos := make([]modules.MountInfo, 0, len(fm.mountPoints))
 	for mountPoint, filesystem := range fm.mountPoints {
+		siaPath, err := filesystem.root.dirNode.SiaPath()
+		if err != nil {
+			fm.renter.log.Printf("Unable to load the siapath of a filesystem: %v", err)
+			continue
+		}
 		infos = append(infos, modules.MountInfo{
 			MountPoint: mountPoint,
-			SiaPath:    filesystem.root.staticSiaPath,
+			SiaPath:    siaPath,
 		})
 	}
 	return infos

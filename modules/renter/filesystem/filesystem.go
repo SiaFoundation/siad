@@ -129,6 +129,36 @@ func (n *node) managedAbsPath() string {
 	return n.absPath()
 }
 
+// SiaPath will return the SiaPath of the current node.
+func (n *node) SiaPath() (modules.SiaPath, error) {
+	if *n.name == "" {
+		return modules.RootSiaPath(), nil
+	}
+	base, err := modules.NewSiaPath(*n.name)
+	if err != nil {
+		return modules.SiaPath{}, errors.AddContext(err, "unable to fetch the SiaPath of a node due to error with base name")
+	}
+	next := n.parent
+	for next != nil {
+		var nextParent modules.SiaPath
+		if *next.name == "" {
+			nextParent = modules.RootSiaPath()
+		} else {
+			nextParent, err = modules.NewSiaPath(*next.name)
+			if err != nil {
+				return modules.SiaPath{}, errors.AddContext(err, "unable to fetch the SiaPath of a node due to error with a parent name")
+			}
+		}
+		// TODO: There's got to be some other way to join siapaths.
+		base, err = nextParent.Join(base.String())
+		if err != nil {
+			return modules.SiaPath{}, errors.AddContext(err, "unable to join a parent with the base")
+		}
+		next = next.parent
+	}
+	return base, nil
+}
+
 // New creates a new FileSystem at the specified root path. The folder will be
 // created if it doesn't exist already.
 func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem, error) {

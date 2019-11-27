@@ -10,6 +10,7 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -23,10 +24,7 @@ import (
 // In particular, the Lookup function should be computationally efficient.
 type fuseDirnode struct {
 	fs.Inode
-
-	staticDirInfo       modules.DirectoryInfo
-	staticSiaPath modules.SiaPath
-
+	dirNode    *filesystem.DirNode
 	filesystem *fuseFS
 }
 
@@ -55,14 +53,12 @@ var _ = (fs.NodeStatfser)((*fuseDirnode)(nil))
 // Data is fetched using a download streamer. This download streamer needs to be
 // closed when the filehandle is released.
 type fuseFilenode struct {
-	fs.Inode
-
 	staticFileInfo modules.FileInfo
 	staticSiaPath  modules.SiaPath
 
-	// Not static - the stream is created separately from the node.
-	stream modules.Streamer
-
+	fs.Inode
+	filesystem.FileNode
+	stream     modules.Streamer
 	filesystem *fuseFS
 	mu         sync.Mutex
 }
@@ -92,7 +88,6 @@ var _ = (fs.NodeStatfser)((*fuseFilenode)(nil))
 
 // fuseRoot is the root directory for a mounted fuse filesystem.
 type fuseFS struct {
-	fuseDirnode
 	readOnly bool
 	root     *fuseDirnode
 
@@ -144,18 +139,26 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 // files, this method can be called thousands of times concurrently in a single
 // second. It goes without saying that this method needs to be very fast.
 func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	lookupPath, err := fdn.staticSiaPath.Join(name)
+	siaPath, err := fdn.dirNode.SiaPath()
 	if err != nil {
-		fdn.filesystem.renter.log.Printf("Unable to determine filepath for %v from directory %v: %v", name, fdn.staticSiaPath, err)
+		fdn.filesystem.renter.log.Printf("Unable to get the siapath of a fuse dirnode: %v", err)
 		return nil, errToStatus(err)
 	}
+	lookupPath, err := siaPath.Join(name)
+	if err != nil {
+		fdn.filesystem.renter.log.Printf("Unable to determine filepath for %v from directory %v: %v", name, siaPath, err)
+		return nil, errToStatus(err)
+	}
+
+	// TODO: Replace this with code that fetches the file directly from the dir.
 	fileInfo, fileErr := fdn.filesystem.renter.FileCached(lookupPath)
 	if fileErr == nil {
 		// Convert the file to an inode.
 		filenode := &fuseFilenode{
 			staticFileInfo: fileInfo,
 			staticSiaPath:  lookupPath,
-			filesystem:     fdn.filesystem,
+
+			filesystem: fdn.filesystem,
 		}
 		attrs := fs.StableAttr{
 			Ino:  fileInfo.UID,
@@ -173,34 +176,41 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 		return inode, errToStatus(nil)
 	}
 
-	// Unable to look up a file, might be a dir instead.
-	staticDirInfo, dirErr := fdn.filesystem.renter.staticFileSystem.DirInfo(lookupPath)
+	childDir, dirErr := fdn.dirNode.Dir(name)
 	if dirErr != nil {
-		fdn.filesystem.renter.log.Printf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v", name, fdn.staticSiaPath, fileErr, dirErr)
+		fdn.filesystem.renter.log.Debugf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v", name, siaPath, fileErr, dirErr)
 		return nil, errToStatus(dirErr)
+	}
+	dirInfo, err := childDir.Info()
+	if err != nil {
+		fdn.filesystem.renter.log.Debugf("Unable to fetch info from childDir: %v", err)
+		return nil, errToStatus(err)
 	}
 
 	// We found the directory we want, convert to an inode.
 	dirnode := &fuseDirnode{
-		staticDirInfo:       staticDirInfo,
-		staticSiaPath: lookupPath,
-
+		dirNode:    childDir,
 		filesystem: fdn.filesystem,
 	}
 	attrs := fs.StableAttr{
-		Ino:  dirnode.staticDirInfo.UID,
+		Ino:  dirInfo.UID,
 		Mode: fuse.S_IFDIR,
 	}
-	out.Ino = dirnode.staticDirInfo.UID
-	out.Mode = uint32(staticDirInfo.Mode())
+	out.Ino = dirInfo.UID
+	out.Mode = uint32(dirInfo.Mode())
 	inode := fdn.NewInode(ctx, dirnode, attrs)
 	return inode, errToStatus(nil)
 }
 
 // Getattr returns the attributes of a fuse dir.
 func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	out.Mode = uint32(fdn.staticDirInfo.Mode())
-	out.Ino = fdn.staticDirInfo.UID
+	dirInfo, err := fdn.dirNode.Info()
+	if err != nil {
+		fdn.filesystem.renter.log.Debugf("Unable to fetch info from childDir: %v", err)
+		return errToStatus(err)
+	}
+	out.Mode = uint32(dirInfo.Mode())
+	out.Ino = dirInfo.UID
 	return errToStatus(nil)
 }
 
@@ -264,17 +274,23 @@ func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte,
 // Readdir will return a dirstream that can be used to look at all of the files
 // in the directory.
 func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	siaPath, err := fdn.dirNode.SiaPath()
+	if err != nil {
+		fdn.filesystem.renter.log.Printf("Unable to get the siapath of a fuse dirnode: %v", err)
+		return nil, errToStatus(err)
+	}
+
 	// Load the directory stream from the renter.
 	//
 	// TODO: Should we use the cached file list here?
-	fileinfos, err := fdn.filesystem.renter.FileList(fdn.staticSiaPath, false, false)
+	fileinfos, err := fdn.filesystem.renter.FileList(siaPath, false, false)
 	if err != nil {
-		fdn.filesystem.renter.log.Printf("Unable to get file list for fuse directory %v: %v", fdn.staticSiaPath, err)
+		fdn.filesystem.renter.log.Printf("Unable to get file list for fuse directory %v: %v", siaPath, err)
 		return nil, errToStatus(err)
 	}
-	dirinfos, err := fdn.filesystem.renter.DirList(fdn.staticSiaPath)
+	dirinfos, err := fdn.filesystem.renter.DirList(siaPath)
 	if err != nil {
-		fdn.filesystem.renter.log.Printf("Error fetching dir list for fuse dir %v: %v", fdn.staticSiaPath, err)
+		fdn.filesystem.renter.log.Printf("Error fetching dir list for fuse dir %v: %v", siaPath, err)
 		return nil, errToStatus(err)
 	}
 
@@ -287,7 +303,7 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 		})
 	}
 	for _, di := range dirinfos {
-		if di.SiaPath.String() == fdn.staticSiaPath.String() {
+		if di.SiaPath.String() == siaPath.String() {
 			continue
 		}
 		dirEntries = append(dirEntries, fuse.DirEntry{
@@ -351,9 +367,15 @@ func (ffs *fuseFS) setStatfsOut(out *fuse.StatfsOut) error {
 
 // Statfs will return the statfs fields for this directory.
 func (fdn *fuseDirnode) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall.Errno {
-	err := fdn.filesystem.setStatfsOut(out)
+	siaPath, err := fdn.dirNode.SiaPath()
 	if err != nil {
-		fdn.filesystem.renter.log.Printf("Error fetching statfs for fuse dir %v: %v", fdn.staticSiaPath, err)
+		fdn.filesystem.renter.log.Printf("Unable to get the siapath of a fuse dirnode: %v", err)
+		return errToStatus(err)
+	}
+
+	err = fdn.filesystem.setStatfsOut(out)
+	if err != nil {
+		fdn.filesystem.renter.log.Printf("Error fetching statfs for fuse dir %v: %v", siaPath, err)
 		return errToStatus(err)
 	}
 	return errToStatus(nil)

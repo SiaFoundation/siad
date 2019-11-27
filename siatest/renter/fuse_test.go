@@ -84,6 +84,7 @@ func TestFuse(t *testing.T) {
 	}
 	names, err := fuseRoot.Readdirnames(0)
 	if err != nil {
+		println(err.Error())
 		t.Fatal(err)
 	}
 	if len(names) != 0 {
@@ -257,66 +258,66 @@ func TestFuse(t *testing.T) {
 	// Rename test
 
 	/*
-	// Rename file
-	newSiapth := modules.RandomSiaPath()
-	remoteFile, err = r.Rename(remoteFile, newSiapth)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// Rename file
+		newSiapth := modules.RandomSiaPath()
+		remoteFile, err = r.Rename(remoteFile, newSiapth)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// Remember original siaPath
-	path = remoteFile.SiaPath()
-	fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// Remember original siaPath
+		path = remoteFile.SiaPath()
+		fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// open fuse file
-	// read file
-	fuseFile, err = os.Open(fusePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err = ioutil.ReadAll(fuseFile)
-	if err != nil {
-		t.Error(err)
-	}
-	localFileData, err = localFile.Data()
-	if err != nil {
-		t.Error(err)
-	}
-	if bytes.Compare(data, localFileData) != 0 {
-		t.Error("data from the local file and data from the fuse file do not match")
-	}
+		// open fuse file
+		// read file
+		fuseFile, err = os.Open(fusePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err = ioutil.ReadAll(fuseFile)
+		if err != nil {
+			t.Error(err)
+		}
+		localFileData, err = localFile.Data()
+		if err != nil {
+			t.Error(err)
+		}
+		if bytes.Compare(data, localFileData) != 0 {
+			t.Error("data from the local file and data from the fuse file do not match")
+		}
 
-	// rename file with fuse file open
-	newSiapth = modules.RandomSiaPath()
-	remoteFile, err = r.Rename(remoteFile, newSiapth)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// rename file with fuse file open
+		newSiapth = modules.RandomSiaPath()
+		remoteFile, err = r.Rename(remoteFile, newSiapth)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	path = remoteFile.SiaPath()
-	fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// read file
-	data, err = ioutil.ReadAll(fuseFile)
-	if err != nil {
-		t.Error(err)
-	}
-	localFileData, err = localFile.Data()
-	if err != nil {
-		t.Error(err)
-	}
-	if bytes.Compare(data, localFileData) != 0 {
-		t.Error("data from the local file and data from the fuse file do not match")
-	}
-	err = fuseFile.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+		path = remoteFile.SiaPath()
+		fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// read file
+		data, err = ioutil.ReadAll(fuseFile)
+		if err != nil {
+			t.Error(err)
+		}
+		localFileData, err = localFile.Data()
+		if err != nil {
+			t.Error(err)
+		}
+		if bytes.Compare(data, localFileData) != 0 {
+			t.Error("data from the local file and data from the fuse file do not match")
+		}
+		err = fuseFile.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 	*/
 
 	// End of Rename test

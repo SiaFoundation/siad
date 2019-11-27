@@ -31,6 +31,32 @@ type (
 	}
 )
 
+// Close calls close on the DirNode and also removes the dNode from its parent
+// if it's no longer being used and if it doesn't have any children which are
+// currently in use. This happens iteratively for all parent as long as
+// removing a child resulted in them not having any children left.
+func (n *DirNode) Close() {
+	// If a parent exists, we need to lock it while closing a child.
+	parent := n.node.managedLockWithParent()
+
+	// call private close method.
+	n.closeDirNode()
+
+	// Remove node from parent if there are no more children after this close.
+	removeDir := len(n.threads) == 0 && len(n.directories) == 0 && len(n.files) == 0
+	if parent != nil && removeDir {
+		parent.removeDir(n)
+	}
+
+	// Unlock child and parent.
+	n.mu.Unlock()
+	if parent != nil {
+		parent.mu.Unlock()
+		// Check if the parent needs to be removed from its parent too.
+		parent.managedTryRemoveFromParentsIteratively()
+	}
+}
+
 // Delete is a wrapper for SiaDir.Delete.
 func (n *DirNode) Delete() error {
 	n.mu.Lock()
@@ -42,6 +68,14 @@ func (n *DirNode) Delete() error {
 	return sd.Delete()
 }
 
+// Dir will return a child dir of this directory if it exists.
+func (n *DirNode) Dir(name string) (*DirNode, error) {
+	n.mu.Lock()
+	node, err := n.openDir(name)
+	n.mu.Unlock()
+	return node, errors.AddContext(err, "unable to open child directory")
+}
+
 // DirReader is a wrapper for SiaDir.DirReader.
 func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 	n.mu.Lock()
@@ -51,6 +85,21 @@ func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 		return nil, err
 	}
 	return sd.DirReader()
+}
+
+// Info returns the modules.DirectoryInfo of a directory.
+//
+// TODO: Instead of computing the SiaPath here, it may make more sense to have
+// managedInfo compute the SiaPath.
+//
+// TODO: May just want to build.Critical on an error here?
+func (n *DirNode) Info() (modules.DirectoryInfo, error) {
+	sp, err := n.SiaPath()
+	if err != nil {
+		return modules.DirectoryInfo{}, errors.AddContext(err, "unable to fetch info on DirNode")
+	}
+	info, err := n.managedInfo(sp)
+	return info, errors.AddContext(err, "unable to fetch info on directory")
 }
 
 // Metadata is a wrapper for SiaDir.Metadata.
@@ -264,32 +313,6 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 	}
 	*n.lazySiaDir = sd
 	return sd, nil
-}
-
-// Close calls close on the DirNode and also removes the dNode from its parent
-// if it's no longer being used and if it doesn't have any children which are
-// currently in use. This happens iteratively for all parent as long as
-// removing a child resulted in them not having any children left.
-func (n *DirNode) Close() {
-	// If a parent exists, we need to lock it while closing a child.
-	parent := n.node.managedLockWithParent()
-
-	// call private close method.
-	n.closeDirNode()
-
-	// Remove node from parent if there are no more children after this close.
-	removeDir := len(n.threads) == 0 && len(n.directories) == 0 && len(n.files) == 0
-	if parent != nil && removeDir {
-		parent.removeDir(n)
-	}
-
-	// Unlock child and parent.
-	n.mu.Unlock()
-	if parent != nil {
-		parent.mu.Unlock()
-		// Check if the parent needs to be removed from its parent too.
-		parent.managedTryRemoveFromParentsIteratively()
-	}
 }
 
 // managedTryRemoveFromParentsIteratively will remove the DirNode from its
