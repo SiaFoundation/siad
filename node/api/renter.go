@@ -65,7 +65,7 @@ var (
 
 	//BackupKeySpecifier is the specifier used for deriving the secret used to
 	//encrypt a backup from the RenterSeed.
-	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+	backupKeySpecifier = types.NewSpecifier("backupkey")
 
 	// errNeedBothDataAndParityPieces is the error returned when only one of the
 	// erasure coding parameters is set

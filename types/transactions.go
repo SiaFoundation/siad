@@ -13,9 +13,6 @@ import (
 )
 
 const (
-	// SpecifierLen is the length in bytes of a Specifier.
-	SpecifierLen = 16
-
 	// UnlockHashChecksumSize is the size of the checksum used to verify
 	// human-readable addresses. It is not a crypytographically secure
 	// checksum, it's merely intended to prevent typos. 6 is chosen because it
@@ -29,32 +26,20 @@ const (
 var (
 	ErrTransactionIDWrongLen = errors.New("input has wrong length to be an encoded transaction id")
 
-	SpecifierClaimOutput          = Specifier{'c', 'l', 'a', 'i', 'm', ' ', 'o', 'u', 't', 'p', 'u', 't'}
-	SpecifierFileContract         = Specifier{'f', 'i', 'l', 'e', ' ', 'c', 'o', 'n', 't', 'r', 'a', 'c', 't'}
-	SpecifierFileContractRevision = Specifier{'f', 'i', 'l', 'e', ' ', 'c', 'o', 'n', 't', 'r', 'a', 'c', 't', ' ', 'r', 'e'}
-	SpecifierMinerFee             = Specifier{'m', 'i', 'n', 'e', 'r', ' ', 'f', 'e', 'e'}
-	SpecifierMinerPayout          = Specifier{'m', 'i', 'n', 'e', 'r', ' ', 'p', 'a', 'y', 'o', 'u', 't'}
-	SpecifierSiacoinInput         = Specifier{'s', 'i', 'a', 'c', 'o', 'i', 'n', ' ', 'i', 'n', 'p', 'u', 't'}
-	SpecifierSiacoinOutput        = Specifier{'s', 'i', 'a', 'c', 'o', 'i', 'n', ' ', 'o', 'u', 't', 'p', 'u', 't'}
-	SpecifierSiafundInput         = Specifier{'s', 'i', 'a', 'f', 'u', 'n', 'd', ' ', 'i', 'n', 'p', 'u', 't'}
-	SpecifierSiafundOutput        = Specifier{'s', 'i', 'a', 'f', 'u', 'n', 'd', ' ', 'o', 'u', 't', 'p', 'u', 't'}
-	SpecifierStorageProof         = Specifier{'s', 't', 'o', 'r', 'a', 'g', 'e', ' ', 'p', 'r', 'o', 'o', 'f'}
-	SpecifierStorageProofOutput   = Specifier{'s', 't', 'o', 'r', 'a', 'g', 'e', ' ', 'p', 'r', 'o', 'o', 'f'}
+	SpecifierClaimOutput          = NewSpecifier("claim output")
+	SpecifierFileContract         = NewSpecifier("file contract")
+	SpecifierFileContractRevision = NewSpecifier("file contract re")
+	SpecifierMinerFee             = NewSpecifier("miner fee")
+	SpecifierMinerPayout          = NewSpecifier("miner payout")
+	SpecifierSiacoinInput         = NewSpecifier("siacoin input")
+	SpecifierSiacoinOutput        = NewSpecifier("siacoin output")
+	SpecifierSiafundInput         = NewSpecifier("siafund input")
+	SpecifierSiafundOutput        = NewSpecifier("siafund output")
+	SpecifierStorageProof         = NewSpecifier("storage proof")
+	SpecifierStorageProofOutput   = NewSpecifier("storage proof")
 )
 
 type (
-	// A Specifier is a fixed-length byte-array that serves two purposes. In
-	// the wire protocol, they are used to identify a particular encoding
-	// algorithm, signature algorithm, etc. This allows nodes to communicate on
-	// their own terms; for example, to reduce bandwidth costs, a node might
-	// only accept compressed messages.
-	//
-	// Internally, Specifiers are used to guarantee unique IDs. Various
-	// consensus types have an associated ID, calculated by hashing the data
-	// contained in the type. By prepending the data with Specifier, we can
-	// guarantee that distinct types will never produce the same hash.
-	Specifier [SpecifierLen]byte
-
 	// IDs are used to refer to a type without revealing its contents. They
 	// are constructed by hashing specific fields of the type, along with a
 	// Specifier. While all of these types are hashes, defining type aliases
