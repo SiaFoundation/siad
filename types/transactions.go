@@ -35,7 +35,6 @@ var (
 	SpecifierSiacoinOutput        = NewSpecifier("siacoin output")
 	SpecifierSiafundInput         = NewSpecifier("siafund input")
 	SpecifierSiafundOutput        = NewSpecifier("siafund output")
-	SpecifierStorageProof         = NewSpecifier("storage proof")
 	SpecifierStorageProofOutput   = NewSpecifier("storage proof")
 )
 
