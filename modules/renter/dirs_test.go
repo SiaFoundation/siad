@@ -322,8 +322,8 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	if md.NumSubDirs != di.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, di.NumSubDirs)
 	}
-	if md.Size != di.Size {
-		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, di.Size)
+	if md.Size != di.DirSize {
+		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, di.DirSize)
 	}
 	if md.StuckHealth != di.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)

@@ -294,8 +294,9 @@ type DirectoryInfo struct {
 	NumStuckChunks      uint64    `json:"numstuckchunks"`
 	NumSubDirs          uint64    `json:"numsubdirs"`
 	SiaPath             SiaPath   `json:"siapath"`
-	Size                uint64    `json:"size"`
+	DirSize             uint64    `json:"size"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64   `json:"stuckhealth"`
+	UID                 uint64    `json:"uid"`
 }
 
 // DownloadInfo provides information about a file that has been requested for
@@ -340,7 +341,7 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	ModTime          time.Time         `json:"modtime"`
+	ModificationTime time.Time         `json:"modtime"` // Stays as 'modtime' in json for compatibility
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -349,6 +350,7 @@ type FileInfo struct {
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
+	UID              uint64            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
 	UploadProgress   float64           `json:"uploadprogress"`
 }

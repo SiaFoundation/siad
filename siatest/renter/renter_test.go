@@ -162,14 +162,14 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime.Before(beforeUploadTime) || fi.ChangeTime.After(afterUploadTime) {
 		t.Fatal("ChangeTime was not within the correct interval")
 	}
-	if fi.ModTime.Before(beforeUploadTime) || fi.ModTime.After(afterUploadTime) {
-		t.Fatal("ModTime was not within the correct interval")
+	if fi.ModificationTime.Before(beforeUploadTime) || fi.ModificationTime.After(afterUploadTime) {
+		t.Fatal("ModificationTime was not within the correct interval")
 	}
 
-	// After uploading a file the AccessTime, ChangeTime and ModTime should be
+	// After uploading a file the AccessTime, ChangeTime and ModificationTime should be
 	// the same.
-	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModTime {
-		t.Fatal("AccessTime, ChangeTime and ModTime are not the same")
+	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModificationTime {
+		t.Fatal("AccessTime, ChangeTime and ModificationTime are not the same")
 	}
 
 	// The CreateTime should precede the other timestamps.
@@ -205,8 +205,8 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime != fi2.ChangeTime {
 		t.Fatal("ChangeTime changed after download")
 	}
-	if fi.ModTime != fi2.ModTime {
-		t.Fatal("ModTime changed after download")
+	if fi.ModificationTime != fi2.ModificationTime {
+		t.Fatal("ModificationTime changed after download")
 	}
 
 	// TODO Once we can change the localPath using the API, check that it only
@@ -244,8 +244,8 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi2.AccessTime != fi3.AccessTime {
 		t.Fatal("AccessTime changed after download")
 	}
-	if fi2.ModTime != fi3.ModTime {
-		t.Fatal("ModTime changed after download")
+	if fi2.ModificationTime != fi3.ModificationTime {
+		t.Fatal("ModificationTime changed after download")
 	}
 }
 
@@ -3166,8 +3166,8 @@ func TestSiafileCompatCodeV137(t *testing.T) {
 		if sf.CreateTime.IsZero() {
 			return errors.New("CreateTime wasn't set correctly")
 		}
-		if sf.ModTime.IsZero() {
-			return errors.New("ModTime wasn't set correctly")
+		if sf.ModificationTime.IsZero() {
+			return errors.New("ModificationTime wasn't set correctly")
 		}
 		if sf.Available {
 			return errors.New("File shouldn't be available since we don't know the hosts")

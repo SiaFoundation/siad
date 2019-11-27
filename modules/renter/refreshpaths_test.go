@@ -90,10 +90,8 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
-		if err != nil {
-			t.Fatal(err)
-		}
+		// TODO: Should we check anything here?
+		rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777, up.DisablePartialChunk)
 	}
 
 	// Check the metadata of the root directory. Because we added files by

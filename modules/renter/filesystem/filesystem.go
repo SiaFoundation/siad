@@ -47,7 +47,7 @@ type (
 		staticWal *writeaheadlog.WAL
 		threads   map[threadUID]struct{} // tracks all the threadUIDs of evey copy of the node
 		staticLog *persist.Logger
-		staticUID threadUID
+		staticUID uint64
 		mu        *sync.Mutex
 
 		// fields that differ between copies of the same node.
@@ -63,7 +63,7 @@ func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadl
 		parent:    parent,
 		name:      &name,
 		staticLog: log,
-		staticUID: newThreadUID(),
+		staticUID: newUID(),
 		staticWal: wal,
 		threads:   make(map[threadUID]struct{}),
 		threadUID: uid,
@@ -101,11 +101,24 @@ func newThreadUID() threadUID {
 	return threadUID(fastrand.Uint64n(math.MaxUint64))
 }
 
+// newUID will create a static UID for the node.
+//
+// TODO: replace this with a function that doesn't repeat itself.
+func newUID() uint64 {
+	return fastrand.Uint64n(math.MaxUint64)
+}
+
 // closeNode removes a thread from the node's threads map. This should only be
 // called from within other 'close' methods.
 func (n *node) closeNode() {
 	if _, exists := n.threads[n.threadUID]; !exists {
-		build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
+		// TODO: Re-enable this build.Critical. For some reason we are hitting
+		// it, not sure why, and if it hits while doing FUSE operations it
+		// forces the user to reboot their linux instance to use FUSE again at
+		// the same path.
+		//
+		// build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
+		fmt.Println("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
 	}
 	delete(n.threads, n.threadUID)
 }
@@ -205,9 +218,23 @@ func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 	return di, nil
 }
 
+// DirNodeInfo will return the DirectoryInfo of a siadir given the node. This is
+// more efficient than calling fs.DirInfo.
+func (fs *FileSystem) DirNodeInfo(n *DirNode) (modules.DirectoryInfo, error) {
+	sp := fs.DirSiaPath(n)
+	return n.managedInfo(sp)
+}
+
 // FileInfo returns the File Information of the siafile
 func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	return fs.managedFileInfo(siaPath, false, offline, goodForRenew, contracts)
+}
+
+// FileNodeInfo returns the FileInfo of a siafile given the node for the
+// siafile. This is faster than calling fs.FileInfo.
+func (fs *FileSystem) FileNodeInfo(n *FileNode) (modules.FileInfo, error) {
+	sp := fs.FileSiaPath(n)
+	return n.staticCachedInfo(sp)
 }
 
 // List lists the files and directories within a SiaDir.
