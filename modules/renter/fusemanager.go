@@ -102,12 +102,6 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 
 	// Create the fuse filesystem object.
 	filesystem := &fuseFS{
-		// Start the counter at 2 because 0 and 1 are reserved values.
-		//
-		// TODO: This can one day be deleted.
-		inoCounter: 2,
-		inoMap:     make(map[string]uint64),
-
 		readOnly: opts.ReadOnly,
 
 		renter: fm.renter,
@@ -116,10 +110,6 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	root := &fuseDirnode{
 		filesystem:    filesystem,
 		staticSiaPath: sp,
-
-		// TODO: This will one day need to be fetched using the root inode for
-		// the filesystem, instead of having our own counter.
-		ino: filesystem.inoCounter,
 	}
 	filesystem.root = root
 
@@ -134,23 +124,16 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 
 	// Mount the filesystem.
-	println("calling mount")
 	server, err := fs.Mount(mountPoint, filesystem.root, &fs.Options{
 		MountOptions: fuse.MountOptions{
 			// Debug: true,
 		},
 	})
-	println("mount called")
 	if err != nil {
-		println("mount err")
-		println(err.Error())
 		return errors.AddContext(err, "error calling mount")
 	}
 	filesystem.server = server
 	fm.mountPoints[mountPoint] = filesystem
-	println("mount success")
-	println(mountPoint)
-	println(sp.String())
 
 	return nil
 }
@@ -178,7 +161,6 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 func (fm *fuseManager) Unmount(mountPoint string) error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	println("unmount called ", mountPoint)
 
 	// Grab the filesystem.
 	filesystem, exists := fm.mountPoints[mountPoint]

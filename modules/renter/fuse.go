@@ -24,12 +24,8 @@ import (
 type fuseDirnode struct {
 	fs.Inode
 
-	dirInfo       modules.DirectoryInfo
+	staticDirInfo       modules.DirectoryInfo
 	staticSiaPath modules.SiaPath
-
-	// TODO: This is a temporary variable, won't be needed once we've switched
-	// over to the new filesystem code which provides inodes for us.
-	ino uint64
 
 	filesystem *fuseFS
 }
@@ -96,18 +92,6 @@ var _ = (fs.NodeStatfser)((*fuseFilenode)(nil))
 
 // fuseRoot is the root directory for a mounted fuse filesystem.
 type fuseFS struct {
-	// TODO: inoMap is a temporary hack to get directories to have consistent
-	// inodes between calls to open. We just store all of the directories and
-	// what inodes they got assigned forever.
-	//
-	// The inoMap is really only a safe strategy for RO filesystems, and even
-	// then it's assuming you aren't renaming things after they arrive in fuse.
-	// Really to be correct we need this support at the fs level, luckily
-	// support is on the way.
-	inoCounter uint64
-	inoMap     map[string]uint64
-	inoMu      sync.Mutex
-
 	fuseDirnode
 	readOnly bool
 	root     *fuseDirnode
@@ -155,20 +139,6 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 	return errToStatus(nil)
 }
 
-// uidToIno converts the uid of a file or a folder to an ino that can be used
-// for the fuse system.
-//
-// TODO: Unused, can be deleted.
-/*
-func uidToIno(uid string) uint64 {
-	byteUID := []byte(uid)
-	if len(byteUID) < 8 {
-		build.Critical("uid cannot be parsed correctly", len(uid), uid)
-	}
-	return binary.LittleEndian.Uint64(byteUID)
-}
-*/
-
 // Lookup is a directory call that returns the file in the directory associated
 // with the provided name. When a file browser is opening folders with lots of
 // files, this method can be called thousands of times concurrently in a single
@@ -187,16 +157,15 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 			staticSiaPath:  lookupPath,
 			filesystem:     fdn.filesystem,
 		}
-		ino := fileInfo.UID
 		attrs := fs.StableAttr{
-			Ino:  ino,
+			Ino:  fileInfo.UID,
 			Mode: fuse.S_IFREG,
 		}
 
 		// Set the crticial entry out values.
 		//
 		// TODO: Set more of these, there are like 20 of them.
-		out.Ino = ino
+		out.Ino = fileInfo.UID
 		out.Size = fileInfo.Filesize
 		out.Mode = uint32(fileInfo.Mode())
 
@@ -205,43 +174,33 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	}
 
 	// Unable to look up a file, might be a dir instead.
-	dirInfo, dirErr := fdn.filesystem.renter.staticFileSystem.DirInfo(lookupPath)
+	staticDirInfo, dirErr := fdn.filesystem.renter.staticFileSystem.DirInfo(lookupPath)
 	if dirErr != nil {
 		fdn.filesystem.renter.log.Printf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v", name, fdn.staticSiaPath, fileErr, dirErr)
 		return nil, errToStatus(dirErr)
 	}
 
 	// We found the directory we want, convert to an inode.
-	fdn.filesystem.inoMu.Lock()
-	ino, exists := fdn.filesystem.inoMap[lookupPath.String()]
-	if !exists {
-		fdn.filesystem.inoCounter++
-		ino = fdn.filesystem.inoCounter
-		fdn.filesystem.inoMap[lookupPath.String()] = ino
-	}
-	fdn.filesystem.inoMu.Unlock()
 	dirnode := &fuseDirnode{
-		dirInfo:       dirInfo,
+		staticDirInfo:       staticDirInfo,
 		staticSiaPath: lookupPath,
-
-		ino: ino,
 
 		filesystem: fdn.filesystem,
 	}
 	attrs := fs.StableAttr{
-		Ino:  dirnode.ino,
+		Ino:  dirnode.staticDirInfo.UID,
 		Mode: fuse.S_IFDIR,
 	}
-	out.Ino = dirnode.ino
-	out.Mode = uint32(dirInfo.Mode())
+	out.Ino = dirnode.staticDirInfo.UID
+	out.Mode = uint32(staticDirInfo.Mode())
 	inode := fdn.NewInode(ctx, dirnode, attrs)
 	return inode, errToStatus(nil)
 }
 
 // Getattr returns the attributes of a fuse dir.
 func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	out.Mode = uint32(fdn.dirInfo.Mode())
-	out.Ino = fdn.ino
+	out.Mode = uint32(fdn.staticDirInfo.Mode())
+	out.Ino = fdn.staticDirInfo.UID
 	return errToStatus(nil)
 }
 

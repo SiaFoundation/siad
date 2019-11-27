@@ -199,6 +199,7 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
 		StuckHealth:      md.CachedStuckHealth,
+		UID:              n.staticUID,
 		UploadedBytes:    md.CachedUploadedBytes,
 		UploadProgress:   md.CachedUploadProgress,
 	}

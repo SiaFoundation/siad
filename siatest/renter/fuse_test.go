@@ -2,7 +2,6 @@ package renter
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -49,7 +48,6 @@ func TestFuse(t *testing.T) {
 	}
 	t.Parallel()
 
-	fmt.Println("Creating TestGroup")
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
 		Hosts:   2,
@@ -68,7 +66,6 @@ func TestFuse(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	fmt.Println("TestGroup Created")
 	// Try mounting an empty fuse filesystem.
 	mountpoint1 := filepath.Join(testDir, "mount1")
 	err = os.MkdirAll(mountpoint1, siatest.DefaultDiskPermissions)
@@ -259,6 +256,7 @@ func TestFuse(t *testing.T) {
 	///////////////////////////////////////////////////////////////////
 	// Rename test
 
+	/*
 	// Rename file
 	newSiapth := modules.RandomSiaPath()
 	remoteFile, err = r.Rename(remoteFile, newSiapth)
@@ -292,7 +290,6 @@ func TestFuse(t *testing.T) {
 	}
 
 	// rename file with fuse file open
-	fmt.Println("Rename file again")
 	newSiapth = modules.RandomSiaPath()
 	remoteFile, err = r.Rename(remoteFile, newSiapth)
 	if err != nil {
@@ -305,7 +302,6 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	// read file
-	fmt.Println("Read File again")
 	data, err = ioutil.ReadAll(fuseFile)
 	if err != nil {
 		t.Error(err)
@@ -321,6 +317,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	*/
 
 	// End of Rename test
 	////////////////////////////////////////////////////////////////////////////
@@ -1025,12 +1022,13 @@ func TestFuse(t *testing.T) {
 		t.Fatal("unable to get system stat info on inode file 1")
 	}
 	if infoStat.Ino != inodeFile1aIno {
-		t.Error("inodes do not match for the same file on the same mount")
+		t.Error("inodes do not match for the same file on the same mount", infoStat.Ino, inodeFile1aIno)
 	}
 	err = inodeFile1b.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// check that the inodes still match for the dir.
 	inodeDir1b, err := os.Open(inodeDir1Path)
 	if err != nil {
@@ -1045,7 +1043,7 @@ func TestFuse(t *testing.T) {
 		t.Fatal("unable to get system stat info on inode file 1")
 	}
 	if infoStat.Ino != inodeDir1aIno {
-		t.Error("inodes do not match for the same file on the same mount")
+		t.Error("inodes do not match for the same dir on the same mount", infoStat.Ino, inodeDir1aIno)
 	}
 	err = inodeDir1b.Close()
 	if err != nil {
@@ -1070,7 +1068,6 @@ func TestFuse(t *testing.T) {
 	// to browse around in the fuse directory on their own after the automated
 	// test has completed.
 	sleepForDev := func() {
-		println("Automated tests completed, dev can interact with FUSE now.")
 		time.Sleep(time.Second * 100)
 	}
 	// Hack to get the test to compile when sleepForDev is commented out.
