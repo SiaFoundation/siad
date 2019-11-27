@@ -112,14 +112,16 @@ func errToStatus(err error) syscall.Errno {
 }
 
 // Access reports whether a file can be accessed by the caller.
-func (ffn *fuseFilenode) Access(ctx context.Context, mask uint32) syscall.Errno {
-	// Lazy option: always tell the program that it has access permission.
+func (fdn *fuseDirnode) Access(ctx context.Context, mask uint32) syscall.Errno {
+	// TODO: parse the mask and return a more correct value instead of always
+	// granting permission.
 	return syscall.F_OK
 }
 
 // Access reports whether a file can be accessed by the caller.
-func (fdn *fuseDirnode) Access(ctx context.Context, mask uint32) syscall.Errno {
-	// Lazy option: always tell the program that it has access permission.
+func (ffn *fuseFilenode) Access(ctx context.Context, mask uint32) syscall.Errno {
+	// TODO: parse the mask and return a more correct value instead of always
+	// granting permission.
 	return syscall.F_OK
 }
 

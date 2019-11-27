@@ -1,14 +1,5 @@
 package renter
 
-// TODO: fusemanager is its own subsystem, needs to go in the readme as such.
-// Need to document in the readme that Mounted directories hold a threadgroup
-// until they are unmounted. Calling Stop() on the renter tg will cause all of
-
-// TODO: Currently shutdown will fail silently if someone still has resources
-// that are looking at the fuse directory. Ideally, siad would refuse to
-// shutdown until all fuse resources are cleared up, that or we have some way to
-// force an unmount.
-
 import (
 	"fmt"
 	"sync"
