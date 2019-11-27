@@ -253,6 +253,11 @@ func (ffn *fuseFilenode) Getattr(ctx context.Context, fh fs.FileHandle, out *fus
 }
 
 // Open will open a streamer for the file.
+//
+// TODO: Should have a StreamerNode function that takes a node and opens a
+// stream instead of a siapath, technically if a rename hits at just the right
+// time (between the call to FileSiaPath and the call to Streamer) you can still
+// get unexpected failures.
 func (ffn *fuseFilenode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
