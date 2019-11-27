@@ -134,16 +134,23 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 
 	// Mount the filesystem.
+	println("calling mount")
 	server, err := fs.Mount(mountPoint, filesystem.root, &fs.Options{
 		MountOptions: fuse.MountOptions{
 			// Debug: true,
 		},
 	})
+	println("mount called")
 	if err != nil {
+		println("mount err")
+		println(err.Error())
 		return errors.AddContext(err, "error calling mount")
 	}
 	filesystem.server = server
 	fm.mountPoints[mountPoint] = filesystem
+	println("mount success")
+	println(mountPoint)
+	println(sp.String())
 
 	return nil
 }
@@ -171,6 +178,7 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 func (fm *fuseManager) Unmount(mountPoint string) error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
+	println("unmount called ", mountPoint)
 
 	// Grab the filesystem.
 	filesystem, exists := fm.mountPoints[mountPoint]

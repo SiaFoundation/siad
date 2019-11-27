@@ -1178,11 +1178,17 @@ func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _
 
 // renterFuseMountHandlerPOST handles the API call to /renter/fuse/mount.
 func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var siaPath modules.SiaPath
+	var err error
 	spfv := req.FormValue("siapath")
-	siaPath, err := modules.NewSiaPath(spfv)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	if spfv == "" {
+		siaPath = modules.RootSiaPath()
+	} else {
+		siaPath, err = modules.NewSiaPath(spfv)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 	siaPath, err = rebaseInputSiaPath(siaPath)
 	if err != nil {
@@ -1209,18 +1215,7 @@ func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 // renterFuseUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
 func (api *API) renterFuseUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	spfv := req.FormValue("mount")
-	siaPath, err := modules.NewSiaPath(spfv)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-	err = api.renter.Unmount(siaPath)
+	err := api.renter.Unmount(req.FormValue("mount"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

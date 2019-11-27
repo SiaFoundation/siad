@@ -47,7 +47,7 @@ type (
 		staticWal *writeaheadlog.WAL
 		threads   map[threadUID]struct{} // tracks all the threadUIDs of evey copy of the node
 		staticLog *persist.Logger
-		staticUID threadUID
+		staticUID uint64
 		mu        *sync.Mutex
 
 		// fields that differ between copies of the same node.
@@ -63,7 +63,7 @@ func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadl
 		parent:    parent,
 		name:      &name,
 		staticLog: log,
-		staticUID: newThreadUID(),
+		staticUID: newStaticUID(),
 		staticWal: wal,
 		threads:   make(map[threadUID]struct{}),
 		threadUID: uid,
@@ -99,6 +99,13 @@ func (n *node) managedLockWithParent() *DirNode {
 // threads map of the node.
 func newThreadUID() threadUID {
 	return threadUID(fastrand.Uint64n(math.MaxUint64))
+}
+
+// newStaticUID will create a static UID for the node.
+//
+// TODO: replace this with a function that doesn't repeat itself.
+func newStaticUID() uint64 {
+	return fastrand.Uint64n(math.MaxUint64)
 }
 
 // closeNode removes a thread from the node's threads map. This should only be

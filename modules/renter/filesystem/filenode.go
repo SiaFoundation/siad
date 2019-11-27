@@ -117,6 +117,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
+		UID:              n.staticUID,
 		UploadedBytes:    uploadedBytes,
 		UploadProgress:   uploadProgress,
 	}

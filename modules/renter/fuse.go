@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"encoding/binary"
 	"io"
 	"math"
 	"sync"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -159,13 +157,17 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 
 // uidToIno converts the uid of a file or a folder to an ino that can be used
 // for the fuse system.
+//
+// TODO: Unused, can be deleted.
+/*
 func uidToIno(uid string) uint64 {
 	byteUID := []byte(uid)
 	if len(byteUID) < 8 {
-		build.Critical("empty uid passed in for ino conversion")
+		build.Critical("uid cannot be parsed correctly", len(uid), uid)
 	}
 	return binary.LittleEndian.Uint64(byteUID)
 }
+*/
 
 // Lookup is a directory call that returns the file in the directory associated
 // with the provided name. When a file browser is opening folders with lots of
@@ -185,7 +187,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 			staticSiaPath:  lookupPath,
 			filesystem:     fdn.filesystem,
 		}
-		ino := uidToIno(fileInfo.UID)
+		ino := fileInfo.UID
 		attrs := fs.StableAttr{
 			Ino:  ino,
 			Mode: fuse.S_IFREG,
@@ -251,7 +253,7 @@ func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse
 func (ffn *fuseFilenode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	out.Size = ffn.staticFileInfo.Filesize
 	out.Mode = uint32(ffn.staticFileInfo.Mode()) | syscall.S_IFREG
-	out.Ino = uidToIno(ffn.staticFileInfo.UID)
+	out.Ino = ffn.staticFileInfo.UID
 	return errToStatus(nil)
 }
 

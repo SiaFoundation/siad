@@ -441,6 +441,7 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		DirSize:             metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 		SiaPath:             siaPath,
+		UID:                 n.staticUID,
 	}, nil
 }
 
