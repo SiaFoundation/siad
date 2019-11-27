@@ -113,7 +113,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	// Create the root filesystem object.
 	root := &fuseDirnode{
-		dirNode:    rootDirNode,
+		staticDirNode:    rootDirNode,
 		filesystem: filesystem,
 	}
 	filesystem.root = root
@@ -154,7 +154,7 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 
 	infos := make([]modules.MountInfo, 0, len(fm.mountPoints))
 	for mountPoint, filesystem := range fm.mountPoints {
-		siaPath, err := filesystem.root.dirNode.SiaPath()
+		siaPath, err := filesystem.root.staticDirNode.SiaPath()
 		if err != nil {
 			fm.renter.log.Printf("Unable to load the siapath of a filesystem: %v", err)
 			continue

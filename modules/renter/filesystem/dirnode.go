@@ -87,6 +87,14 @@ func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 	return sd.DirReader()
 }
 
+// File will return a child file of this directory if it exists.
+func (n *DirNode) File(name string) (*FileNode, error) {
+	n.mu.Lock()
+	node, err := n.openFile(name)
+	n.mu.Unlock()
+	return node, errors.AddContext(err, "unable to open child file")
+}
+
 // Info returns the modules.DirectoryInfo of a directory.
 //
 // TODO: Instead of computing the SiaPath here, it may make more sense to have
@@ -96,7 +104,7 @@ func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 func (n *DirNode) Info() (modules.DirectoryInfo, error) {
 	sp, err := n.SiaPath()
 	if err != nil {
-		return modules.DirectoryInfo{}, errors.AddContext(err, "unable to fetch info on DirNode")
+		return modules.DirectoryInfo{}, errors.AddContext(err, "unable to fetch siaPath on DirNode")
 	}
 	info, err := n.managedInfo(sp)
 	return info, errors.AddContext(err, "unable to fetch info on directory")

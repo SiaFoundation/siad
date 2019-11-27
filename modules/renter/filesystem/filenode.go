@@ -60,6 +60,19 @@ func (n *FileNode) Copy() *FileNode {
 	return n.managedCopy()
 }
 
+// Info returns the modules.FileInfo for this file.
+//
+// TODO: Instead of computing the SiaPath here, it may make sense to have
+// managedInfo compute the SiaPath.
+func (n *FileNode) Info() (modules.FileInfo, error) {
+	sp, err := n.SiaPath()
+	if err != nil {
+		return modules.FileInfo{}, errors.AddContext(err, "unable to fetch siaPath on filenode")
+	}
+	info, err := n.staticCachedInfo(sp)
+	return info, errors.AddContext(err, "unable to fetch info on file")
+}
+
 // managedCopy copies a file node and returns the copy.
 func (n *FileNode) managedCopy() *FileNode {
 	n.mu.Lock()

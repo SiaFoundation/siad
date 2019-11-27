@@ -112,7 +112,13 @@ func newStaticUID() uint64 {
 // called from within other 'close' methods.
 func (n *node) closeNode() {
 	if _, exists := n.threads[n.threadUID]; !exists {
-		build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
+		// TODO: Re-enable this build.Critical. For some reason we are hitting
+		// it, not sure why, and if it hits while doing FUSE operations it
+		// forces the user to reboot their linux instance to use FUSE again at
+		// the same path.
+		//
+		// build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
+		fmt.Println("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
 	}
 	delete(n.threads, n.threadUID)
 }
