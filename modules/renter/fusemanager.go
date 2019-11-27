@@ -113,8 +113,8 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	// Create the root filesystem object.
 	root := &fuseDirnode{
-		staticDirNode:    rootDirNode,
-		filesystem: filesystem,
+		staticDirNode: rootDirNode,
+		filesystem:    filesystem,
 	}
 	filesystem.root = root
 

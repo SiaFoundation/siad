@@ -176,7 +176,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 		}
 		// Convert the file to an inode.
 		filenode := &fuseFilenode{
-			filesystem: fdn.filesystem,
+			filesystem:     fdn.filesystem,
 			staticFileNode: fileNode,
 		}
 		attrs := fs.StableAttr{
