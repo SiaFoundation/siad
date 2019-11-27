@@ -328,7 +328,7 @@ func TestRandomHosts(t *testing.T) {
 		if len(rand) != 1 {
 			t.Fatal("wrong number of hosts returned")
 		}
-		if rand[0].PublicKey.Equals(hosts[0].PublicKey) {
+		if !rand[0].PublicKey.Equals(hosts[0].PublicKey) {
 			t.Error("exclude list seems to be excluding the wrong hosts.")
 		}
 

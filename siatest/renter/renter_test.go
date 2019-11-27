@@ -3612,7 +3612,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
 		hostContract := rcg.PassiveContracts[0]
-		if hostContract.HostPublicKey.Equals(hpk) {
+		if !hostContract.HostPublicKey.Equals(hpk) {
 			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil

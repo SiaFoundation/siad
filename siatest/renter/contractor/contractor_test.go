@@ -654,7 +654,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.Equals(c.HostPublicKey) {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
