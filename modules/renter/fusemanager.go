@@ -145,11 +145,7 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 
 	infos := make([]modules.MountInfo, 0, len(fm.mountPoints))
 	for mountPoint, filesystem := range fm.mountPoints {
-		siaPath, err := filesystem.root.staticDirNode.SiaPath()
-		if err != nil {
-			fm.renter.log.Printf("Unable to load the siapath of a filesystem: %v", err)
-			continue
-		}
+		siaPath := filesystem.renter.staticFileSystem.DirSiaPath(filesystem.root.staticDirNode)
 		infos = append(infos, modules.MountInfo{
 			MountPoint: mountPoint,
 			SiaPath:    siaPath,

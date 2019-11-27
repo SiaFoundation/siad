@@ -95,21 +95,6 @@ func (n *DirNode) File(name string) (*FileNode, error) {
 	return node, errors.AddContext(err, "unable to open child file")
 }
 
-// Info returns the modules.DirectoryInfo of a directory.
-//
-// TODO: Instead of computing the SiaPath here, it may make more sense to have
-// managedInfo compute the SiaPath.
-//
-// TODO: May just want to build.Critical on an error here?
-func (n *DirNode) Info() (modules.DirectoryInfo, error) {
-	sp, err := n.SiaPath()
-	if err != nil {
-		return modules.DirectoryInfo{}, errors.AddContext(err, "unable to fetch siaPath on DirNode")
-	}
-	info, err := n.managedInfo(sp)
-	return info, errors.AddContext(err, "unable to fetch info on directory")
-}
-
 // Metadata is a wrapper for SiaDir.Metadata.
 func (n *DirNode) Metadata() (siadir.Metadata, error) {
 	n.mu.Lock()

@@ -155,8 +155,7 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 	// TODO: add the Close() err here.
 	err := errors.Compose(streamErr)
 	if err != nil {
-		siaPath, siaPathErr := ffn.staticFileNode.SiaPath()
-		err = errors.Compose(err, siaPathErr)
+		siaPath := ffn.filesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
 		ffn.filesystem.renter.log.Printf("error when flushing fuse file %v: %v", siaPath, err)
 		return errToStatus(err)
 	}
@@ -170,10 +169,9 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	fileNode, fileErr := fdn.staticDirNode.File(name)
 	if fileErr == nil {
-		fileInfo, err := fileNode.Info()
+		fileInfo, err := fdn.filesystem.renter.staticFileSystem.FileNodeInfo(fileNode)
 		if err != nil {
-			siaPath, siaPathErr := fdn.staticDirNode.SiaPath()
-			err = errors.Compose(err, siaPathErr)
+			siaPath := fdn.filesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
 			fdn.filesystem.renter.log.Printf("Unable to fetch fileinfo on file %v from dir %v: %v", name, siaPath, err)
 			return nil, errToStatus(err)
 		}
@@ -200,11 +198,11 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 
 	childDir, dirErr := fdn.staticDirNode.Dir(name)
 	if dirErr != nil {
-		siaPath, siaPathErr := fdn.staticDirNode.SiaPath()
-		fdn.filesystem.renter.log.Printf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v :: siaPath lookup err %v", name, siaPath, fileErr, dirErr, siaPathErr)
+		siaPath := fdn.filesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
+		fdn.filesystem.renter.log.Printf("Unable to perform lookup on %v in dir %v; file err %v :: dir err %v", name, siaPath, fileErr, dirErr)
 		return nil, errToStatus(dirErr)
 	}
-	dirInfo, err := childDir.Info()
+	dirInfo, err := fdn.filesystem.renter.staticFileSystem.DirNodeInfo(childDir)
 	if err != nil {
 		fdn.filesystem.renter.log.Printf("Unable to fetch info from childDir: %v", err)
 		return nil, errToStatus(err)
@@ -227,7 +225,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 
 // Getattr returns the attributes of a fuse dir.
 func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	dirInfo, err := fdn.staticDirNode.Info()
+	dirInfo, err := fdn.filesystem.renter.staticFileSystem.DirNodeInfo(fdn.staticDirNode)
 	if err != nil {
 		fdn.filesystem.renter.log.Printf("Unable to fetch info from directory: %v", err)
 		return errToStatus(err)
@@ -243,7 +241,7 @@ func (fdn *fuseDirnode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse
 // Getattr should try to minimize lock contention and should run very quickly if
 // possible.
 func (ffn *fuseFilenode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	fileInfo, err := ffn.staticFileNode.Info()
+	fileInfo, err := ffn.filesystem.renter.staticFileSystem.FileNodeInfo(ffn.staticFileNode)
 	if err != nil {
 		ffn.filesystem.renter.log.Printf("Unable to fetch info from file: %v", err)
 	}
@@ -259,12 +257,7 @@ func (ffn *fuseFilenode) Open(ctx context.Context, flags uint32) (fs.FileHandle,
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
 
-	siaPath, err := ffn.staticFileNode.SiaPath()
-	if err != nil {
-		ffn.filesystem.renter.log.Printf("Unable to get siaPath for file: %v", err)
-		return nil, 0, errToStatus(err)
-	}
-
+	siaPath := ffn.filesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
 	_, stream, err := ffn.filesystem.renter.Streamer(siaPath, false)
 	if err != nil {
 		ffn.filesystem.renter.log.Printf("Unable to get stream for file %v: %v", siaPath, err)
@@ -287,8 +280,7 @@ func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte,
 
 	_, err := ffn.stream.Seek(offset, io.SeekStart)
 	if err != nil {
-		siaPath, siaPathErr := ffn.staticFileNode.SiaPath()
-		err = errors.Compose(err, siaPathErr)
+		siaPath := ffn.filesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
 		ffn.filesystem.renter.log.Printf("Error seeking to offset %v during call to Read in file %s: %v", offset, siaPath.String(), err)
 		return nil, errToStatus(err)
 	}
@@ -299,8 +291,7 @@ func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte,
 	// often dropping parts of the tail of the file.
 	n, err := io.ReadFull(ffn.stream, dest)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		siaPath, siaPathErr := ffn.staticFileNode.SiaPath()
-		err = errors.Compose(err, siaPathErr)
+		siaPath := ffn.filesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
 		ffn.filesystem.renter.log.Printf("Error reading from offset %v during call to Read in file %s: %v", offset, siaPath.String(), err)
 		return nil, errToStatus(err)
 	}
@@ -315,12 +306,7 @@ func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte,
 // TODO: Re-write to not need to use the SiaPath, should just be able to get the
 // dirlist off of fuse anyway.
 func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	siaPath, err := fdn.staticDirNode.SiaPath()
-	if err != nil {
-		fdn.filesystem.renter.log.Printf("Unable to get the siapath of a fuse dirnode: %v", err)
-		return nil, errToStatus(err)
-	}
-
+	siaPath := fdn.filesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
 	// Load the directory stream from the renter.
 	//
 	// TODO: Should we use the cached file list here?
@@ -410,8 +396,7 @@ func (ffs *fuseFS) setStatfsOut(out *fuse.StatfsOut) error {
 func (fdn *fuseDirnode) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall.Errno {
 	err := fdn.filesystem.setStatfsOut(out)
 	if err != nil {
-		siaPath, siaPathErr := fdn.staticDirNode.SiaPath()
-		err = errors.Compose(err, siaPathErr)
+		siaPath := fdn.filesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
 		fdn.filesystem.renter.log.Printf("Error fetching statfs for fuse dir %v: %v", siaPath, err)
 		return errToStatus(err)
 	}
@@ -422,8 +407,7 @@ func (fdn *fuseDirnode) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall
 func (ffn *fuseFilenode) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall.Errno {
 	err := ffn.filesystem.setStatfsOut(out)
 	if err != nil {
-		siaPath, siaPathErr := ffn.staticFileNode.SiaPath()
-		err = errors.Compose(err, siaPathErr)
+		siaPath := ffn.filesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
 		ffn.filesystem.renter.log.Printf("Error fetching statfs for fuse file %v: %v", siaPath, err)
 		return errToStatus(err)
 	}

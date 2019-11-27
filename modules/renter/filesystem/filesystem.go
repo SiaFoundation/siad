@@ -135,36 +135,6 @@ func (n *node) managedAbsPath() string {
 	return n.absPath()
 }
 
-// SiaPath will return the SiaPath of the current node.
-func (n *node) SiaPath() (modules.SiaPath, error) {
-	if *n.name == "" {
-		return modules.RootSiaPath(), nil
-	}
-	base, err := modules.NewSiaPath(*n.name)
-	if err != nil {
-		return modules.SiaPath{}, errors.AddContext(err, "unable to fetch the SiaPath of a node due to error with base name")
-	}
-	next := n.parent
-	for next != nil {
-		var nextParent modules.SiaPath
-		if *next.name == "" {
-			nextParent = modules.RootSiaPath()
-		} else {
-			nextParent, err = modules.NewSiaPath(*next.name)
-			if err != nil {
-				return modules.SiaPath{}, errors.AddContext(err, "unable to fetch the SiaPath of a node due to error with a parent name")
-			}
-		}
-		// TODO: There's got to be some other way to join siapaths.
-		base, err = nextParent.Join(base.String())
-		if err != nil {
-			return modules.SiaPath{}, errors.AddContext(err, "unable to join a parent with the base")
-		}
-		next = next.parent
-	}
-	return base, nil
-}
-
 // New creates a new FileSystem at the specified root path. The folder will be
 // created if it doesn't exist already.
 func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem, error) {
@@ -248,9 +218,23 @@ func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 	return di, nil
 }
 
+// DirNodeInfo will return the DirectoryInfo of a siadir given the node. This is
+// more efficient than calling fs.DirInfo.
+func (fs *FileSystem) DirNodeInfo(n *DirNode) (modules.DirectoryInfo, error) {
+	sp := fs.DirSiaPath(n)
+	return n.managedInfo(sp)
+}
+
 // FileInfo returns the File Information of the siafile
 func (fs *FileSystem) FileInfo(siaPath modules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
 	return fs.managedFileInfo(siaPath, false, offline, goodForRenew, contracts)
+}
+
+// FileNodeInfo returns the FileInfo of a siafile given the node for the
+// siafile. This is faster than calling fs.FileInfo.
+func (fs *FileSystem) FileNodeInfo(n *FileNode) (modules.FileInfo, error) {
+	sp := fs.FileSiaPath(n)
+	return n.staticCachedInfo(sp)
 }
 
 // List lists the files and directories within a SiaDir.
