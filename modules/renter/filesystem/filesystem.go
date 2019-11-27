@@ -63,7 +63,7 @@ func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadl
 		parent:    parent,
 		name:      &name,
 		staticLog: log,
-		staticUID: newStaticUID(),
+		staticUID: newUID(),
 		staticWal: wal,
 		threads:   make(map[threadUID]struct{}),
 		threadUID: uid,
@@ -101,10 +101,10 @@ func newThreadUID() threadUID {
 	return threadUID(fastrand.Uint64n(math.MaxUint64))
 }
 
-// newStaticUID will create a static UID for the node.
+// newUID will create a static UID for the node.
 //
 // TODO: replace this with a function that doesn't repeat itself.
-func newStaticUID() uint64 {
+func newUID() uint64 {
 	return fastrand.Uint64n(math.MaxUint64)
 }
 
