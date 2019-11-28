@@ -181,7 +181,6 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		r.log.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
-	defer file.Close()
 	// If the file on disk doesn't have the right size we don't use it
 	// for repairing. This protects in case the user creates a different
 	// file at the same location.
@@ -196,28 +195,33 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		return false
 	}
 	// Fetch the chunk from disk.
-	sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
-	pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
-	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v",
-			localPath, fileName, err)
-		return false
-	}
-	shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
-	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
-			localPath, fileName, err)
-		return false
-	}
-	err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
-	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
-			localPath, fileName, err)
-		return false
-	}
-	// Finalize the recovery and clean up memory.
-	chunk.managedFinalizeRecovery()
-	chunk.returnMemory()
+	go func() {
+		defer file.Close()
+		// Always return the memory for the chunk.
+		defer chunk.returnMemory()
+
+		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
+		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
+		if err != nil {
+			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
+				localPath, fileName, err)
+			return
+		}
+		shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
+		if err != nil {
+			r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
+				localPath, fileName, err)
+			return
+		}
+		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
+		if err != nil {
+			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
+				localPath, fileName, err)
+			return
+		}
+		// Finalize the recovery.
+		chunk.managedFinalizeRecovery()
+	}()
 	return true
 }
 
