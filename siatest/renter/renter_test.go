@@ -990,7 +990,6 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		// Compare File result and Files Results
 		if !reflect.DeepEqual(files[i], rf.File) {
 			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)

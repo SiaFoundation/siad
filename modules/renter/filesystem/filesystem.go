@@ -94,6 +94,11 @@ func (n *node) managedLockWithParent() *DirNode {
 	return parent
 }
 
+// NID returns the node's unique identifier.
+func (n *node) NID() uint64 {
+	return n.staticUID
+}
+
 // newThreadUID returns a random threadUID to be used as the threadUID in the
 // threads map of the node.
 func newThreadUID() threadUID {
