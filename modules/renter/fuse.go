@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -28,6 +29,8 @@ import (
 //
 // In particular, the Lookup function should be computationally efficient.
 type fuseDirnode struct {
+	atomicClosed uint32
+
 	fs.Inode
 	staticDirNode *filesystem.DirNode
 	filesystem    *fuseFS
@@ -62,6 +65,8 @@ var _ = (fs.NodeStatfser)((*fuseDirnode)(nil))
 // Data is fetched using a download streamer. This download streamer needs to be
 // closed when the filehandle is released.
 type fuseFilenode struct {
+	atomicClosed uint32
+
 	fs.Inode
 	filesystem     *fuseFS
 	staticFileNode *filesystem.FileNode
@@ -127,32 +132,35 @@ func (ffn *fuseFilenode) Access(ctx context.Context, mask uint32) syscall.Errno 
 
 // Flush is called when a directory is being closed.
 func (fdn *fuseDirnode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Errno {
-	// TODO: Need to add an error to this return value.
-	fdn.staticDirNode.Close()
+	swapped := atomic.CompareAndSwapUint32(&fdn.atomicClosed, 0, 1)
+	if swapped {
+		// TODO: Check this error.
+		fdn.staticDirNode.Close()
+	}
 	return errToStatus(nil)
 }
 
 // Flush is called when a file is being closed.
 func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Errno {
+	swapped := atomic.CompareAndSwapUint32(&ffn.atomicClosed, 0, 1)
+	if !swapped {
+		return errToStatus(nil)
+	}
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
-
-	// Grab the siapath of this file.
 
 	// If a stream was opened for the file, the stream must now be closed.
 	var streamErr error
 	if ffn.stream != nil {
+		// Need to 'nil' out the stream once 'Flush' has been called because it
+		// can be called multiple times.
 		streamErr = ffn.stream.Close()
 	}
-
-	// Try closing the node.
-	//
-	// TODO: Need to add an error to this function and check it.
-	ffn.staticFileNode.Close()
 
 	// Check all of the errors.
 	//
 	// TODO: add the Close() err here.
+	ffn.staticFileNode.Close()
 	err := errors.Compose(streamErr)
 	if err != nil {
 		siaPath := ffn.filesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
@@ -215,7 +223,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	}
 	attrs := fs.StableAttr{
 		Ino:  dirInfo.UID,
-		Mode: fuse.S_IFDIR,
+		Mode: uint32(dirInfo.Mode()) | fuse.S_IFDIR,
 	}
 	out.Ino = dirInfo.UID
 	out.Mode = uint32(dirInfo.Mode())

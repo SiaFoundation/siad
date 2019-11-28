@@ -317,7 +317,7 @@ func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
 // Mode implements os.FileInfo.
 //
 // TODO: get the real mode
-func (d DirectoryInfo) Mode() os.FileMode { return 0755 }
+func (d DirectoryInfo) Mode() os.FileMode { return d.DirMode }
 
 // ModTime implements os.FileInfo.
 func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
