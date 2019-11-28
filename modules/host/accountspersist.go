@@ -468,12 +468,9 @@ func (fm *fingerprintManager) save(fp crypto.Hash, expiry, currentBlockHeight ty
 
 	threshold := calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
 	if expiry <= threshold {
-		_, err := fm.current.Write(fpBytes)
-		return err
+		return writeAndSync(fm.current, fpBytes)
 	}
-
-	_, err = fm.next.Write(fpBytes)
-	return err
+	return writeAndSync(fm.next, fpBytes)
 }
 
 // close will close all open files
@@ -491,6 +488,17 @@ func calculateBucketThreshold(currentBlockHeight types.BlockHeight, bucketBlockR
 	bbr := uint64(bucketBlockRange)
 	threshold := cbh + (bbr - (cbh % bbr))
 	return types.BlockHeight(threshold)
+}
+
+// writeAndSync will write the given bytes to the file and call sync
+func writeAndSync(file modules.File, b []byte) error {
+	if _, err := file.Write(b); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // syncAndClose will sync and close the given file
