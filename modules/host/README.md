@@ -20,10 +20,6 @@ account.
 
 ## Submodules
 
-This README will provide brief overviews of the submodules, but for more
-detailed descriptions of the inner workings of the submodules the respective
-README files should be reviewed.
-
  - [ContractManager](./contractmanager/README.md)
 
 ### ContractManager
