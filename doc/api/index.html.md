@@ -1242,10 +1242,10 @@ uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
 
 **ephemeralaccountexpiry** | seconds  
-The ephemeral account expiry specifies the maximum amount of time an ephemeral
-account can be inactive before it is considered expired and gets deleted. After
-an account has expired, the account owner has no way of retrieving the funds.
-Setting the expiry to 0 means the account never expires.
+The  maximum amount of time an ephemeral account can be inactive before it is
+considered to be expired and gets deleted. After an account has expired, the
+account owner has no way of retrieving the funds. Setting this value to 0 means
+ephemeral accounts never expire, regardless of how long they have been inactive.
 
 **maxephemeralaccountbalance** | hastings  
 The maximum amount of money that the host will allow a user to deposit into a

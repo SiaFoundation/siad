@@ -63,7 +63,7 @@ Available settings:
      minstorageprice:           currency / TB / Month
      minuploadbandwidthprice:   currency / TB
 
-	 ephemeralaccountexpiry:     seconds
+     ephemeralaccountexpiry:     seconds
      maxephemeralaccountbalance: currency
      maxephemeralaccountrisk:    currency
 
