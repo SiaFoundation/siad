@@ -40,7 +40,7 @@ func newTestFileSystemWithFile(name string) (*FileNode, *FileSystem, error) {
 // testDir creates a testing directory for a filesystem test.
 func testDir(name string) string {
 	dir := build.TempDir(name, filepath.Join("filesystem"))
-	if err := os.MkdirAll(dir, persist.DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(dir, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return dir
@@ -95,7 +95,7 @@ func (fs *FileSystem) AddTestSiaFileWithErr(siaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), persist.DefaultDiskPermissions, false)
+	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), persist.DefaultDiskPermissionsTest, false)
 	if err != nil {
 		return err
 	}
@@ -1035,7 +1035,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	fileSize := uint64(100)
 	source := ""
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	fileMode := os.FileMode(persist.DefaultDiskPermissions)
+	fileMode := os.FileMode(persist.DefaultDiskPermissionsTest)
 
 	// Repeatedly create a SiaFile and delete it while still keeping the entry
 	// around. That should only be possible without errors if the correctly
@@ -1448,7 +1448,7 @@ func TestSiaDirDelete(t *testing.T) {
 		}
 		ec, _ := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
 		up := modules.FileUploadParams{Source: "", SiaPath: fileSP, ErasureCode: ec}
-		err = fs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, persist.DefaultDiskPermissions, up.DisablePartialChunk)
+		err = fs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1517,7 +1517,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	fileSize := uint64(100)
 	source := ""
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	fileMode := os.FileMode(persist.DefaultDiskPermissions)
+	fileMode := os.FileMode(persist.DefaultDiskPermissionsTest)
 
 	// Specify a directory structure for this test.
 	var dirStructure = []string{

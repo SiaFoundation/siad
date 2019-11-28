@@ -12,7 +12,7 @@ import (
 // delete the directory again.
 func tpoolTestDir(testName string) string {
 	path := siatest.TestDir("transactionpool", testName)
-	if err := os.MkdirAll(path, persist.DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return path

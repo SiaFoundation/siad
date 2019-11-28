@@ -50,7 +50,7 @@ func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err := r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, persist.DefaultDiskPermissions, false)
+	err := r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, persist.DefaultDiskPermissionsTest, false)
 	if err != nil {
 		return nil, err
 	}

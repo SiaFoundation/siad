@@ -29,7 +29,7 @@ func TestDir(dirs ...string) string {
 // module.
 func siatestTestDir(testName string) string {
 	path := TestDir("siatest", testName)
-	if err := os.MkdirAll(path, persist.DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return path

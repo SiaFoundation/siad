@@ -126,7 +126,7 @@ func TestSendShareNodesRequests(t *testing.T) {
 // existing set.
 func TestRestartScanner(t *testing.T) {
 	testDir := build.TempDir("SiaNodeScanner-TestRestartScanner")
-	err := os.Mkdir(testDir, persist.DefaultDiskPermissions)
+	err := os.Mkdir(testDir, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal("Error creating testing directory: ", err)
 	}

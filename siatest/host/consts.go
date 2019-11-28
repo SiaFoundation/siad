@@ -12,7 +12,7 @@ import (
 // again.
 func hostTestDir(testName string) string {
 	path := siatest.TestDir("host", testName)
-	if err := os.MkdirAll(path, persist.DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return path

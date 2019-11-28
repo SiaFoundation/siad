@@ -53,7 +53,7 @@ func TestStorageProof(t *testing.T) {
 	const dataSize = 777
 	data := fastrand.Bytes(dataSize)
 	root := crypto.MerkleRoot(data)
-	err = ioutil.WriteFile(filepath.Join(ht.host.persistDir, "foo"), data, persist.DefaultDiskPermissions)
+	err = ioutil.WriteFile(filepath.Join(ht.host.persistDir, "foo"), data, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
