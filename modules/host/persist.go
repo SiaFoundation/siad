@@ -71,6 +71,7 @@ func (h *Host) establishDefaults() error {
 		MinStoragePrice:           defaultStoragePrice,
 		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
 
+		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,
 		MaxEphemeralAccountRisk:    defaultMaxEphemeralAccountRisk,
 	}
@@ -80,11 +81,6 @@ func (h *Host) establishDefaults() error {
 	h.secretKey = sk
 	h.publicKey = types.Ed25519PublicKey(pk)
 
-	// Subscribe to the consensus set.
-	err := h.initConsensusSubscription()
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -202,7 +198,7 @@ func (h *Host) load() error {
 		return err
 	}
 
-	return h.initConsensusSubscription()
+	return nil
 }
 
 // saveSync stores all of the persist data to disk and then syncs to disk.

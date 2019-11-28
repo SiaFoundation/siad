@@ -278,12 +278,6 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		}
 	})
 
-	// Add the account manager subsystem
-	h.staticAccountManager, err = h.newAccountManager()
-	if err != nil {
-		return nil, err
-	}
-
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.
 	h.StorageManager, err = contractmanager.NewCustomContractManager(smDeps, filepath.Join(persistDir, "contractmanager"))
@@ -310,6 +304,18 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 			h.log.Println("Could not save host upon shutdown:", err)
 		}
 	})
+
+	// Add the account manager subsystem
+	h.staticAccountManager, err = h.newAccountManager()
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to the consensus set.
+	err = h.initConsensusSubscription()
+	if err != nil {
+		return nil, err
+	}
 
 	// Ensure the host is consistent by pruning any stale storage obligations.
 	if err := h.PruneStaleStorageObligations(); err != nil {

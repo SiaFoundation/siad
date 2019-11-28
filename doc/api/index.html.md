@@ -978,6 +978,7 @@ fetches status information about the host.
     "minstorageprice":           "231481481481",               // hastings / byte / block
     "minuploadbandwidthprice":   "100000000000000"             // hastings / byte
 
+    "ephemeralaccountexpiry":     "604800",                          // seconds
     "maxephemeralaccountbalance": "2000000000000000000000000000000", // hastings
     "maxephemeralaccountrisk":    "2000000000000000000000000000000", // hastings
   },
@@ -1239,6 +1240,12 @@ higher than the minimum.
 The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
+
+**ephemeralaccountexpiry** | seconds  
+The ephemeral account expiry specifies the maximum amount of time an ephemeral
+account can be inactive before it is considered expired and gets deleted. After
+an account has expired, the account owner has no way of retrieving the funds.
+Setting the expiry to 0 means the account never expires.
 
 **maxephemeralaccountbalance** | hastings  
 The maximum amount of money that the host will allow a user to deposit into a
@@ -1768,7 +1775,8 @@ See [host internal settings](#internalsettings)
  - mincontractprice          
  - mindownloadbandwidthprice  
  - minstorageprice            
- - minuploadbandwidthprice    
+ - minuploadbandwidthprice
+ - ephemeralaccountexpiry    
  - maxephemeralaccountbalance
  - maxephemeralaccountrisk
 

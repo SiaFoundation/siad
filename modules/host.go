@@ -100,6 +100,7 @@ type (
 		MinStoragePrice           types.Currency `json:"minstorageprice"`
 		MinUploadBandwidthPrice   types.Currency `json:"minuploadbandwidthprice"`
 
+		EphemeralAccountExpiry     uint64         `json:"ephemeralaccountexpiry"`
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
 	}

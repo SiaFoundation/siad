@@ -106,16 +106,17 @@ In version `1.4.2`, sia hosting is configured as follows:
 | Setting                    | Value                                           |
 | ---------------------------|-------------------------------------------------|
 | acceptingcontracts         | Yes or No                                       |
-| maxduration                | in weeks, at least 12                           |
 | collateral                 | in SC / TB / Month, 10-1000                     |
 | collateralbudget           | in SC                                           |
+| ephemeralaccountexpiry     | in seconds                                      |
 | maxcollateral              | in SC, max per contract                         |
+| maxduration                | in weeks, at least 12                           |
+| maxephemeralaccountbalance | in SC                                           |
+| maxephemeralaccountrisk    | in SC                                           |
 | mincontractprice           | minimum price in SC per contract                |
 | mindownloadbandwidthprice  | in SC / TB                                      |
 | minstorageprice            | in SC / TB                                      |
 | minuploadbandwidthprice    | in SC / TB                                      |
-| maxephemeralaccountbalance | in SC                                           |
-| maxephemeralaccountrisk    | in SC                                           |
 
 You can call this many times to configure you host before
 announcing. Alternatively, you can manually adjust these parameters

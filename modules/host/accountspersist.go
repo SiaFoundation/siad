@@ -152,7 +152,10 @@ func (ap *accountsPersister) callSaveAccount(index uint32, data *accountData) er
 	location := persist.FixedMetadataSize + int64(uint64(index)*accountSize)
 	_, err = ap.accounts.WriteAt(accBytes, location)
 	if err != nil {
-		return errors.AddContext(err, "could not save account")
+		return errors.AddContext(err, "write at failed")
+	}
+	if err = ap.accounts.Sync(); err != nil {
+		return errors.AddContext(err, "sync failed")
 	}
 
 	return nil

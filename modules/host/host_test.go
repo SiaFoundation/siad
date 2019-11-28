@@ -378,6 +378,9 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
+	if settings.EphemeralAccountExpiry != (defaultEphemeralAccountExpiry) {
+		t.Error("settings retrieval did not return default value")
+	}
 	if !settings.MaxEphemeralAccountBalance.Equals(defaultMaxEphemeralAccountBalance) {
 		t.Error("settings retrieval did not return default value")
 	}

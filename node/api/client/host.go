@@ -52,6 +52,9 @@ const (
 	HostParamMaxReviseBatchSize = HostParam("maxrevisebatchsize")
 	// HostParamNetAddress is the announced netaddress of the host.
 	HostParamNetAddress = HostParam("netaddress")
+	// HostParamEphemeralAccountExpiry is the maximum amount of time an
+	// ephemeral account can be inactive before it expires and gets deleted.
+	HostParamEphemeralAccountExpiry = HostParam("ephemeralaccountexpiry")
 	// HostParamMaxEphemeralAccountBalance is the maximum ephemeral account
 	// balance in hastings
 	HostParamMaxEphemeralAccountBalance = HostParam("maxephemeralaccountbalance")

@@ -49,20 +49,12 @@ var (
 	// Only used for testing purposes
 	errMaxRiskReached = errors.New("errMaxRiskReached")
 
-	// accountExpiryTimeout defines the maximum amount of time an account can be
-	// inactive before it gets pruned
-	accountExpiryTimeout = build.Select(build.Var{
-		Standard: 7 * 24 * time.Hour,
-		Dev:      1 * 24 * time.Minute,
-		Testing:  1 * time.Minute,
-	}).(time.Duration)
-
 	// pruneExpiredAccountsFrequency is the frequency at which the account
 	// manager prunes ephemeral accounts which have been inactive
 	pruneExpiredAccountsFrequency = build.Select(build.Var{
 		Standard: 1 * time.Hour,
 		Dev:      15 * time.Minute,
-		Testing:  5 * time.Second,
+		Testing:  2 * time.Second,
 	}).(time.Duration)
 
 	// blockedCallTimeout is the amount of time after which a blocked withdrawal
@@ -139,13 +131,8 @@ type (
 	// blockedCall represents a pending withdrawal
 	blockedCall struct {
 		withdrawal *withdrawalMessage
-		result     chan blockedCallResult
+		result     chan error
 		priority   int64
-	}
-
-	// blockedCallResult contains the result from a blocked withdrawal
-	blockedCallResult struct {
-		err error
 	}
 
 	// blockedCallHeap is a heap of blocking transactions; the heap is sorted
@@ -237,14 +224,14 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	maxBalance := his.MaxEphemeralAccountBalance
 	currentBlockHeight := am.h.BlockHeight()
 
-	// Ensure the account exists
-	acc := am.managedEnsureAccount(id)
+	// Open the account, if the account id is unknown a new one will get created
+	acc := am.managedOpenAccount(id)
 
 	am.mu.Lock()
-	defer am.mu.Unlock()
 
 	// Verify the deposit does not exceed the ephemeral account maximum balance
 	if acc.depositExceedsMaxBalance(amount, maxBalance) {
+		am.mu.Unlock()
 		return ErrBalanceMaxExceeded
 	}
 
@@ -252,30 +239,29 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	// account balance, effectively fulfilling the withdrawal
 	updatedBalance := acc.balance.Add(amount)
 	for acc.blockedCalls.Len() > 0 {
-		bTxn := acc.blockedCalls.Pop().(*blockedCall)
-
-		if err := bTxn.withdrawal.validateExpiry(currentBlockHeight); err != nil {
-			bTxn.result <- blockedCallResult{err: err}
-			close(bTxn.result)
+		bc := acc.blockedCalls.Pop().(*blockedCall)
+		if err := bc.withdrawal.validateExpiry(currentBlockHeight); err != nil {
+			bc.result <- err
 			continue
 		}
 
-		if updatedBalance.Cmp(bTxn.withdrawal.amount) < 0 {
-			acc.blockedCalls.Push(*bTxn)
+		if updatedBalance.Cmp(bc.withdrawal.amount) < 0 {
+			acc.blockedCalls.Push(*bc)
 			break
 		}
 
-		bTxn.result <- blockedCallResult{}
-		close(bTxn.result)
-		updatedBalance = updatedBalance.Sub(bTxn.withdrawal.amount)
+		close(bc.result)
+		updatedBalance = updatedBalance.Sub(bc.withdrawal.amount)
 	}
 
 	// Update account details
 	acc.balance = updatedBalance
 	acc.lastTxnTime = time.Now().Unix()
 
-	// Persist the account
 	accountData := acc.accountData()
+	am.mu.Unlock()
+
+	// Persist the account
 	err := am.staticAccountsPersister.callSaveAccount(acc.index, accountData)
 	if err != nil {
 		am.h.log.Println("ERROR: could not save account:", id, err)
@@ -308,8 +294,8 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return err
 	}
 
-	// Ensure the account exists
-	acc := am.managedEnsureAccount(msg.account)
+	// Open the account, if the account id is unknown a new one will get created
+	acc := am.managedOpenAccount(msg.account)
 
 	// Verify if we have processed this withdrawal by checking its fingerprint
 	am.mu.Lock()
@@ -336,7 +322,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		tx := blockedCall{
 			withdrawal: msg,
 			priority:   priority,
-			result:     make(chan blockedCallResult),
+			result:     make(chan error),
 		}
 		acc.blockedCalls.Push(tx)
 		am.mu.Unlock()
@@ -405,8 +391,9 @@ func (am *accountManager) callConsensusChanged() {
 	am.mu.Unlock()
 }
 
-// managedEnsureAccount will ensure the account with given id exists
-func (am *accountManager) managedEnsureAccount(id string) *account {
+// managedOpenAccount will return the account for given id. If the id is not
+// known, an account for given id will be created.
+func (am *accountManager) managedOpenAccount(id string) *account {
 	index := am.staticAccountsPersister.callAssignFreeIndex()
 	am.mu.Lock()
 	acc, exists := am.accounts[id]
@@ -429,7 +416,13 @@ func (am *accountManager) managedEnsureAccount(id string) *account {
 // it does this by nullifying the account's balance which frees up the account
 // at that index
 func (am *accountManager) threadedPruneExpiredAccounts() {
-	accountExpiryTimeoutAsInt64 := int64(accountExpiryTimeout)
+	his := am.h.InternalSettings()
+	accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
+
+	// An expiry timeout of 0 means the accounts never expire
+	if accountExpiryTimeout == 0 {
+		return
+	}
 
 	var forceExpire bool
 	if am.h.dependencies.Disrupt("expireEphemeralAccounts") {
@@ -462,7 +455,7 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 				continue
 			}
 
-			if now-acc.lastTxnTime > accountExpiryTimeoutAsInt64 {
+			if now-acc.lastTxnTime > accountExpiryTimeout {
 				am.h.log.Debugf("DEBUG: expiring account %v at %v", id, now)
 				acc.balance = types.ZeroCurrency
 				pruned = append(pruned, acc.index)
@@ -488,12 +481,12 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 
 // blockedWithdrawalResult will block until it receives the withdrawal result,
 // expires after a time out or receives a stop signal
-func (am *accountManager) blockedWithdrawalResult(resultChan chan blockedCallResult) error {
+func (am *accountManager) blockedWithdrawalResult(resultChan chan error) error {
 	for {
 		select {
-		case result := <-resultChan:
-			if result.err != nil {
-				return errors.AddContext(result.err, "blocked withdrawal failed")
+		case err := <-resultChan:
+			if err != nil {
+				return errors.AddContext(err, "blocked withdrawal failed")
 			}
 			return nil
 		case <-time.After(blockedCallTimeout):

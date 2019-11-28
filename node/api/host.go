@@ -227,6 +227,14 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		}
 		settings.MinUploadBandwidthPrice = x
 	}
+	if req.FormValue("ephemeralaccountexpiry") != "" {
+		var x uint64
+		_, err := fmt.Sscan(req.FormValue("ephemeralaccountexpiry"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.EphemeralAccountExpiry = x
+	}
 	if req.FormValue("maxephemeralaccountbalance") != "" {
 		var x types.Currency
 		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountbalance"), &x)

@@ -157,6 +157,11 @@ var (
 	// data.
 	defaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
 
+	// defaultEphemeralAccountExpiry defines the default maximum amount of
+	// time an ephemeral account can be inactive before it expires and gets
+	// deleted.
+	defaultEphemeralAccountExpiry = uint64(604800) // 1 week
+
 	// defaultMaxEphemeralAccountBalance defines the default maximum amount of
 	// money that the host will allow to deposit into a single ephemeral account
 	defaultMaxEphemeralAccountBalance = types.SiacoinPrecision
