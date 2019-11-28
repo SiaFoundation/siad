@@ -3,6 +3,7 @@ package renterhost
 import (
 	"os"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
 
@@ -11,7 +12,7 @@ import (
 // delete the directory again.
 func renterHostTestDir(testName string) string {
 	path := siatest.TestDir("renterhost", testName)
-	if err := os.MkdirAll(path, siatest.DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissions); err != nil {
 		panic(err)
 	}
 	return path

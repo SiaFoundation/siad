@@ -32,7 +32,7 @@ func (tn *TestNode) NewLocalDir() *LocalDir {
 // name
 func (ld *LocalDir) CreateDir(name string) (*LocalDir, error) {
 	path := filepath.Join(ld.path, name)
-	return &LocalDir{path: path}, os.MkdirAll(path, DefaultDiskPermissions)
+	return &LocalDir{path: path}, os.MkdirAll(path, persist.DefaultDiskPermissions)
 }
 
 // Files returns a slice of the files in the LocalDir
@@ -119,7 +119,7 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 // newDir creates a new LocalDir in the current LocalDir
 func (ld *LocalDir) newDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", persist.RandomSuffix()))
-	return &LocalDir{path: path}, os.MkdirAll(path, DefaultDiskPermissions)
+	return &LocalDir{path: path}, os.MkdirAll(path, persist.DefaultDiskPermissions)
 }
 
 // subDirs returns a slice of the sub directories in the LocalDir

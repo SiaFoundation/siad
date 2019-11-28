@@ -10,6 +10,9 @@ import (
 )
 
 const (
+	// DefaultDiskPermissions when creating files or directories.
+	DefaultDiskPermissions = 0750
+
 	// persistDir defines the folder that is used for testing the persist
 	// package.
 	persistDir = "persist"
