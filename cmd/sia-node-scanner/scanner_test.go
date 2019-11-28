@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	siaPersist "gitlab.com/NebulousLabs/Sia/persist"
 )
 
@@ -125,7 +126,7 @@ func TestSendShareNodesRequests(t *testing.T) {
 // existing set.
 func TestRestartScanner(t *testing.T) {
 	testDir := build.TempDir("SiaNodeScanner-TestRestartScanner")
-	err := os.Mkdir(testDir, 0777)
+	err := os.Mkdir(testDir, persist.DefaultDiskPermissions)
 	if err != nil {
 		t.Fatal("Error creating testing directory: ", err)
 	}
