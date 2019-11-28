@@ -76,6 +76,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		so:         so,
 		tg:         &mdm.tg,
 	}
+	defer p.staticData.Stop()
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
