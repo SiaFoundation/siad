@@ -15,6 +15,3 @@ doc/whitepaper.pdf
 # IntelliJ IDEA
 .idea
 sia.iml
-
-# VSCode debug files
-debug.test
