@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 
@@ -315,7 +317,7 @@ func TestUnmarshalAll(t *testing.T) {
 // inverses of each other.
 func TestReadWriteFile(t *testing.T) {
 	// standard
-	os.MkdirAll(build.TempDir("encoding"), 0777)
+	os.MkdirAll(build.TempDir("encoding"), persist.DefaultDiskPermissions)
 	path := build.TempDir("encoding", t.Name())
 	err := WriteFile(path, testStructs[3])
 	if err != nil {
