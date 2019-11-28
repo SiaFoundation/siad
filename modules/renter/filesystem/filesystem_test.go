@@ -149,7 +149,7 @@ func TestNewSiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /sub/foo
 	sp := newSiaPath("sub/foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// The whole path should exist.
@@ -171,7 +171,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create file /sub/foo/file
 	sp := newSiaPath("sub/foo/file")
 	fs.AddTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
@@ -183,7 +183,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create a file in the root dir.
 	sp = newSiaPath("file")
 	fs.AddTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
@@ -219,7 +219,7 @@ func TestOpenSiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /foo
 	sp := newSiaPath("foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -230,7 +230,7 @@ func TestOpenSiaDir(t *testing.T) {
 	defer foo.Close()
 	// Create dir /sub/foo
 	sp = newSiaPath("sub/foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -419,7 +419,7 @@ func TestCloseSiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /sub/foo
 	sp := newSiaPath("sub1/foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -839,7 +839,7 @@ func TestSiaDirRename(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = fs.NewSiaDir(sp)
+		err = fs.NewSiaDir(sp, modules.DefaultDirPerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1429,7 +1429,7 @@ func TestSiaDirDelete(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = fs.NewSiaDir(sp)
+		err = fs.NewSiaDir(sp, modules.DefaultDirPerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1562,7 +1562,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = fs.NewSiaDir(sp)
+		err = fs.NewSiaDir(sp, modules.DefaultDirPerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1666,7 +1666,7 @@ func TestLazySiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /foo
 	sp := newSiaPath("foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -1731,7 +1731,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /sub1/sub2
 	sp := newSiaPath("sub1/sub2")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Prepare a path to "foo"

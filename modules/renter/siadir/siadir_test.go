@@ -201,7 +201,7 @@ func TestUpdateMetadata(t *testing.T) {
 	}
 	siaDirSysPath := siaPath.SiaDirSysPath(rootDir)
 	wal, _ := newTestWAL()
-	siaDir, err := New(siaDirSysPath, rootDir, wal)
+	siaDir, err := New(siaDirSysPath, rootDir, modules.DefaultDirPerm, wal)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -82,7 +82,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	for _, sp := range uniquePaths {
-		err = rt.renter.CreateDir(sp)
+		err = rt.renter.CreateDir(sp, modules.DefaultDirPerm)
 		if err != nil {
 			t.Fatal(err)
 		}

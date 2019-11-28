@@ -90,15 +90,15 @@ func IsSiaDirUpdate(update writeaheadlog.Update) bool {
 // also make sure that all the parent directories are created and have metadata
 // files as well and will return the SiaDir containing the information for the
 // directory that matches the siaPath provided
-func New(path, rootPath string, wal *writeaheadlog.WAL) (*SiaDir, error) {
+func New(path, rootPath string, mode os.FileMode, wal *writeaheadlog.WAL) (*SiaDir, error) {
 	// Create path to directory and ensure path contains all metadata
-	updates, err := createDirMetadataAll(path, rootPath)
+	updates, err := createDirMetadataAll(path, rootPath, mode)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create metadata for directory
-	md, update, err := createDirMetadata(path)
+	md, update, err := createDirMetadata(path, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
-func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
+func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.Update, error) {
 	// Check if metadata file exists
 	mdPath := filepath.Join(path, modules.SiaDirExtension)
 	_, err := os.Stat(mdPath)
@@ -174,6 +174,7 @@ func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
 
 		Health:        DefaultDirHealth,
 		MinRedundancy: DefaultDirRedundancy,
+		Mode:          mode,
 		ModTime:       time.Now(),
 		StuckHealth:   DefaultDirHealth,
 	}
@@ -183,7 +184,7 @@ func createDirMetadata(path string) (Metadata, writeaheadlog.Update, error) {
 
 // createDirMetadataAll creates a path on disk to the provided siaPath and make
 // sure that all the parent directories have metadata files.
-func createDirMetadataAll(dirPath, rootPath string) ([]writeaheadlog.Update, error) {
+func createDirMetadataAll(dirPath, rootPath string, mode os.FileMode) ([]writeaheadlog.Update, error) {
 	// Create path to directory
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return nil, err
@@ -203,7 +204,7 @@ func createDirMetadataAll(dirPath, rootPath string) ([]writeaheadlog.Update, err
 		if dirPath == string(filepath.Separator) {
 			dirPath = rootPath
 		}
-		_, update, err := createDirMetadata(dirPath)
+		_, update, err := createDirMetadata(dirPath, mode)
 		if err != nil && !os.IsExist(err) {
 			return nil, err
 		}
@@ -234,6 +235,11 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 
 	// Parse the json object.
 	err = json.Unmarshal(bytes, &md)
+
+	// CompatV142 check if filemode is set. If not use the default.
+	if md.Mode == 0 {
+		md.Mode = modules.DefaultDirPerm
+	}
 	return
 }
 

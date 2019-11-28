@@ -64,6 +64,13 @@ const (
 	HostDBActiveWhitelist
 )
 
+// Filesystem related consts.
+const (
+	// DefaultDirPerm defines the default permissions used for a new dir if no
+	// permissions are supplied.
+	DefaultDirPerm = 0755
+)
+
 // String returns the string value for the FilterMode
 func (fm FilterMode) String() string {
 	switch fm {
@@ -285,19 +292,20 @@ type DirectoryInfo struct {
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
-	Health              float64   `json:"health"`
-	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
-	MaxHealth           float64   `json:"maxhealth"`
-	MinRedundancy       float64   `json:"minredundancy"`
-	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
-	NumFiles            uint64    `json:"numfiles"`
-	NumStuckChunks      uint64    `json:"numstuckchunks"`
-	NumSubDirs          uint64    `json:"numsubdirs"`
-	SiaPath             SiaPath   `json:"siapath"`
-	DirSize             uint64    `json:"size"` // name chaned to avoid conflict with Size() method
-	StuckHealth         float64   `json:"stuckhealth"`
-	UID                 uint64    `json:"uid"`
+	Health              float64     `json:"health"`
+	LastHealthCheckTime time.Time   `json:"lasthealthchecktime"`
+	MaxHealthPercentage float64     `json:"maxhealthpercentage"`
+	MaxHealth           float64     `json:"maxhealth"`
+	MinRedundancy       float64     `json:"minredundancy"`
+	DirMode             os.FileMode `json:"mode"`
+	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
+	NumFiles            uint64      `json:"numfiles"`
+	NumStuckChunks      uint64      `json:"numstuckchunks"`
+	NumSubDirs          uint64      `json:"numsubdirs"`
+	SiaPath             SiaPath     `json:"siapath"`
+	DirSize             uint64      `json:"size"` // Stays as 'size' in json for compatibility
+	StuckHealth         float64     `json:"stuckhealth"`
+	UID                 uint64      `json:"uid"`
 }
 
 // Name implements os.FileInfo.
@@ -362,8 +370,8 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	FileMode         os.FileMode       `json:"mode"`    // name changed to avoid conflict with Mode()
-	ModificationTime time.Time         `json:"modtime"` // name changed to avoid conflict with ModTime() method
+	ModificationTime time.Time         `json:"modtime"` // Stays as 'modtime' in json for compatibility
+	FileMode         os.FileMode       `json:"mode"`
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -842,7 +850,7 @@ type Renter interface {
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
-	CreateDir(siaPath SiaPath) error
+	CreateDir(siaPath SiaPath, mode os.FileMode) error
 
 	// DeleteDir deletes a directory from the renter
 	DeleteDir(siaPath SiaPath) error

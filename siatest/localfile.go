@@ -107,3 +107,8 @@ func (lf *LocalFile) Path() string {
 func (lf *LocalFile) Size() int {
 	return lf.size
 }
+
+// Stat is a wrapper for os.Stat.
+func (lf *LocalFile) Stat() (os.FileInfo, error) {
+	return os.Stat(lf.path)
+}

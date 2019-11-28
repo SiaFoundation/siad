@@ -75,20 +75,20 @@ func (ld *LocalDir) Name() string {
 // NewFile creates a new LocalFile in the current LocalDir
 func (ld *LocalDir) NewFile(size int) (*LocalFile, error) {
 	fileName := fmt.Sprintf("%dbytes - %s", size, persist.RandomSuffix())
-	return ld.NewFileWithName(fileName, size)
+	return ld.newFile(size, fileName, 0600)
 }
 
 // NewFileWithName creates a new LocalFile in the current LocalDir with the
 // given name and size.
 func (ld *LocalDir) NewFileWithName(name string, size int) (*LocalFile, error) {
-	path := filepath.Join(ld.path, name)
-	bytes := fastrand.Bytes(size)
-	err := ioutil.WriteFile(path, bytes, 0600)
-	return &LocalFile{
-		path:     path,
-		size:     size,
-		checksum: crypto.HashBytes(bytes),
-	}, err
+	return ld.newFile(size, name, 0600)
+}
+
+// NewFileWithMode creates a new LocalFile in the current LocalDir with the
+// given mode and size.
+func (ld *LocalDir) NewFileWithMode(size int, mode os.FileMode) (*LocalFile, error) {
+	fileName := fmt.Sprintf("%dbytes - %s", size, persist.RandomSuffix())
+	return ld.newFile(size, fileName, mode)
 }
 
 // Path creates a new LocalFile in the current LocalDir
@@ -130,6 +130,19 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 func (ld *LocalDir) newDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", persist.RandomSuffix()))
 	return &LocalDir{path: path}, os.MkdirAll(path, DefaultDiskPermissions)
+}
+
+// newFile creates a new LocalF ile in the current LocalDir with the given size,
+// name and mode.
+func (ld *LocalDir) newFile(size int, name string, mode os.FileMode) (*LocalFile, error) {
+	path := filepath.Join(ld.path, name)
+	bytes := fastrand.Bytes(size)
+	err := ioutil.WriteFile(path, bytes, mode)
+	return &LocalFile{
+		path:     path,
+		size:     size,
+		checksum: crypto.HashBytes(bytes),
+	}, err
 }
 
 // subDirs returns a slice of the sub directories in the LocalDir

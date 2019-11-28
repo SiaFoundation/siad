@@ -2,7 +2,6 @@ package renter
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -36,7 +35,16 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 	}
 	defer r.tg.Done()
 	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	fis, _, err := r.staticFileSystem.List(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	if cached {
+
+	}
+	var fis []modules.FileInfo
+	var err error
+	if cached {
+		fis, _, err = r.staticFileSystem.CachedList(siaPath, recursive)
+	} else {
+		fis, _, err = r.staticFileSystem.List(siaPath, recursive, offlineMap, goodForRenewMap, contractsMap)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -95,16 +103,6 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	}
 	go r.callThreadedBubbleMetadata(dirSiaPath)
 
-	// Create directory metadata for new path, ignore errors if siadir already
-	// exists
-	dirSiaPath, err = newName.Dir()
-	if err != nil {
-		return err
-	}
-	err = r.CreateDir(dirSiaPath)
-	if err != filesystem.ErrExists && err != nil {
-		return err
-	}
 	// Call callThreadedBubbleMetadata on the new directory to make sure the
 	// system metadata is updated to reflect the move
 	go r.callThreadedBubbleMetadata(dirSiaPath)
