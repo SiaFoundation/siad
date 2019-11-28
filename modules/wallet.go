@@ -307,6 +307,10 @@ type (
 		// re-encrypting the wallet with the provided key.
 		ChangeKey(masterKey crypto.CipherKey, newKey crypto.CipherKey) error
 
+		// IsMasterKey verifies that the masterKey is the key used to encrypt
+		// the wallet.
+		IsMasterKey(masterKey crypto.CipherKey) (bool, error)
+
 		// ChangeKeyWithSeed is the same as ChangeKey but uses the primary seed
 		// instead of the current masterKey.
 		ChangeKeyWithSeed(seed Seed, newKey crypto.CipherKey) error
