@@ -195,32 +195,41 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		return false
 	}
 	// Fetch the chunk from disk.
-	go func() {
+	go func() (success bool) {
 		defer file.Close()
-		// Always return the memory for the chunk.
-		defer chunk.returnMemory()
+		// Try downloading if serving from disk failed.
+		defer func() {
+			if success {
+				// Return the memory for the chunk on success and finalize the
+				// recovery.
+				chunk.managedFinalizeRecovery()
+				chunk.returnMemory()
+			} else {
+				// If it failed, download it instead.
+				r.managedDistributeDownloadChunkToWorkers(chunk)
+			}
+		}()
 
 		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
 				localPath, fileName, err)
-			return
+			return false
 		}
 		shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
 				localPath, fileName, err)
-			return
+			return false
 		}
 		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
 				localPath, fileName, err)
-			return
+			return false
 		}
-		// Finalize the recovery.
-		chunk.managedFinalizeRecovery()
+		return true
 	}()
 	return true
 }
