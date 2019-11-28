@@ -557,6 +557,7 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		MaxHealth:           maxHealth,
 		MaxHealthPercentage: modules.HealthPercentage(maxHealth),
 		MinRedundancy:       metadata.MinRedundancy,
+		Mode:                metadata.Mode,
 		MostRecentModTime:   metadata.ModTime,
 		NumFiles:            metadata.NumFiles,
 		NumStuckChunks:      metadata.NumStuckChunks,

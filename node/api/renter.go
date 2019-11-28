@@ -1801,7 +1801,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	if m := req.FormValue("mode"); m != "" {
 		mode64, err := strconv.ParseUint(m, 10, 32)
 		if err != nil {
-			WriteError(w, Error{"failed to parse provided mode"}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("failed to parse provided mode '%v'", m)}, http.StatusBadRequest)
 			return
 		}
 		mode = os.FileMode(mode64)
