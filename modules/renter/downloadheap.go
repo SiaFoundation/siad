@@ -15,6 +15,7 @@ import (
 	"container/heap"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -195,13 +196,19 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		return false
 	}
 	// Fetch the chunk from disk.
+	if err := r.tg.Add(); err != nil {
+		return false
+	}
 	go func() (success bool) {
+		defer r.tg.Done()
 		defer file.Close()
 		// Try downloading if serving from disk failed.
 		defer func() {
 			if success {
 				// Return the memory for the chunk on success and finalize the
 				// recovery.
+				atomic.AddUint64(&chunk.download.atomicDataReceived, chunk.staticFetchLength)
+				atomic.AddUint64(&chunk.download.atomicTotalDataTransferred, chunk.staticFetchLength)
 				chunk.managedFinalizeRecovery()
 				chunk.returnMemory()
 			} else {
