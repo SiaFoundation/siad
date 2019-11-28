@@ -300,6 +300,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
+		{"TestDirMode", testDirMode},
 	}
 
 	// Run tests
@@ -4006,5 +4007,75 @@ func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
 	_, err = r.StreamWithDiskFetch(rf, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testDirMode is a subtest that makes sure that various ways of creating a dir
+// all set the correct permissions.
+func testDirMode(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+
+	dirSP, err := modules.NewSiaPath("dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := renter.FilesDir().CreateDir(dirSP.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := dir.NewFile(fileSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// The fileupload should have created a dir. That dir should have the same
+	// permissions as the file.
+	rd, err := renter.RenterGetDir(dirSP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di := rd.Directories[0]
+	fi, err := lf.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if di.Mode != fi.Mode() {
+		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.Mode)
+	}
+	// Test creating dir using endpoint.
+	dir2SP := modules.RandomSiaPath()
+	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
+		t.Fatal(err)
+	}
+	rd, err = renter.RenterGetDir(dir2SP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di = rd.Directories[0]
+	// The created dir should have the default permissions.
+	if di.Mode != modules.DefaultDirPerm {
+		t.Fatalf("Expected folder permissions to be %v but was %v", modules.DefaultDirPerm, di.Mode)
+	}
+	dir3SP := modules.RandomSiaPath()
+	mode := os.FileMode(0777)
+	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
+		t.Fatal(err)
+	}
+	rd, err = renter.RenterGetDir(dir3SP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di = rd.Directories[0]
+	// The created dir should have the specified permissions.
+	if di.Mode != mode {
+		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.Mode)
 	}
 }

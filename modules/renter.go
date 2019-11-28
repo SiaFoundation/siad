@@ -292,19 +292,20 @@ type DirectoryInfo struct {
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
-	Health              float64   `json:"health"`
-	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
-	MaxHealth           float64   `json:"maxhealth"`
-	MinRedundancy       float64   `json:"minredundancy"`
-	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
-	NumFiles            uint64    `json:"numfiles"`
-	NumStuckChunks      uint64    `json:"numstuckchunks"`
-	NumSubDirs          uint64    `json:"numsubdirs"`
-	SiaPath             SiaPath   `json:"siapath"`
-	DirSize             uint64    `json:"size"` // Stays as 'size' in json for compatibility
-	StuckHealth         float64   `json:"stuckhealth"`
-	UID                 uint64    `json:"uid"`
+	Health              float64     `json:"health"`
+	LastHealthCheckTime time.Time   `json:"lasthealthchecktime"`
+	MaxHealthPercentage float64     `json:"maxhealthpercentage"`
+	MaxHealth           float64     `json:"maxhealth"`
+	MinRedundancy       float64     `json:"minredundancy"`
+	Mode                os.FileMode `json:"mode"`
+	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
+	NumFiles            uint64      `json:"numfiles"`
+	NumStuckChunks      uint64      `json:"numstuckchunks"`
+	NumSubDirs          uint64      `json:"numsubdirs"`
+	SiaPath             SiaPath     `json:"siapath"`
+	DirSize             uint64      `json:"size"` // Stays as 'size' in json for compatibility
+	StuckHealth         float64     `json:"stuckhealth"`
+	UID                 uint64      `json:"uid"`
 }
 
 // DownloadInfo provides information about a file that has been requested for
