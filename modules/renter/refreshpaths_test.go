@@ -91,7 +91,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
