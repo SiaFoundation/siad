@@ -398,22 +398,6 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	deposits := 20
 	depositAmount := 100
 
-	// Add a waitgroup to wait for all deposits and withdrawals that are taking
-	// concurrently taking place. Keep track of potential errors using atomics
-	var wg sync.WaitGroup
-	var atomicDepositErrs, atomicWithdrawalErrs uint64
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for d := 0; d < deposits; d++ {
-			time.Sleep(time.Duration(10 * time.Millisecond))
-			if err := am.callDeposit(account, types.NewCurrency64(uint64(depositAmount))); err != nil {
-				atomic.AddUint64(&atomicDepositErrs, 1)
-			}
-		}
-	}()
-
 	buckets := 10
 	withdrawals := deposits * depositAmount
 	withdrawalAmount := 1
@@ -424,6 +408,21 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	for w := 0; w < withdrawals; w++ {
 		msgs[w], sigs[w] = prepareWithdrawal(account, types.NewCurrency64(uint64(withdrawalAmount)), am.h.blockHeight, sk)
 	}
+
+	// Add a waitgroup to wait for all deposits and withdrawals that are taking
+	// concurrently taking place. Keep track of potential errors using atomics
+	var wg sync.WaitGroup
+	var atomicDepositErrs, atomicWithdrawalErrs uint64
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for d := 0; d < deposits; d++ {
+			time.Sleep(time.Duration(10 * time.Millisecond))
+			if err := am.callDeposit(account, types.NewCurrency64(uint64(depositAmount))); err != nil {
+				atomic.AddUint64(&atomicDepositErrs, 1)
+			}
+		}
+	}()
 
 	// Run the withdrawals in 10 separate buckets (ensure that withdrawals do
 	// not exceed numDeposits * depositAmount)
