@@ -236,14 +236,16 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	maxBalance := his.MaxEphemeralAccountBalance
 	currentBlockHeight := am.h.BlockHeight()
 
-	// Fetch the account, create one if it does not exist yet
+	// Fetch a free index in case we need one to create an account with
+	index := am.staticAccountsPersister.callAssignFreeIndex()
 	am.mu.Lock()
 	acc, exists := am.accounts[id]
 	if !exists {
-		am.mu.Unlock()
-		acc = newAccount(id, am.staticAccountsPersister.callAssignFreeIndex())
-		am.mu.Lock()
+		acc = newAccount(id, index)
 		am.accounts[id] = acc
+	} else {
+		// If an account already existed, make sure to release the index
+		defer am.staticAccountsPersister.callReleaseIndex(index)
 	}
 
 	// Verify the deposit does not exceed the ephemeral account maximum balance
@@ -310,14 +312,16 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return err
 	}
 
-	// Fetch the account, create one if it does not exist yet
+	// Fetch a free index in case we need one to create an account with
+	index := am.staticAccountsPersister.callAssignFreeIndex()
 	am.mu.Lock()
 	acc, exists := am.accounts[id]
 	if !exists {
-		am.mu.Unlock()
-		acc = newAccount(id, am.staticAccountsPersister.callAssignFreeIndex())
-		am.mu.Lock()
+		acc = newAccount(id, index)
 		am.accounts[id] = acc
+	} else {
+		// If an account already existed, make sure to release the index
+		defer am.staticAccountsPersister.callReleaseIndex(index)
 	}
 
 	// Verify if we have already processed this withdrawal by checking its
