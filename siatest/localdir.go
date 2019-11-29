@@ -122,7 +122,7 @@ func (ld *LocalDir) newDir() (*LocalDir, error) {
 	return &LocalDir{path: path}, os.MkdirAll(path, DefaultDiskPermissions)
 }
 
-// newFile creates a new LocalF ile in the current LocalDir with the given size,
+// newFile creates a new LocalFile in the current LocalDir with the given size,
 // name and mode.
 func (ld *LocalDir) newFile(size int, name string, mode os.FileMode) (*LocalFile, error) {
 	path := filepath.Join(ld.path, name)

@@ -236,9 +236,13 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 	// Parse the json object.
 	err = json.Unmarshal(bytes, &md)
 
-	// CompatV142 check if filemode is set. If not use the default.
-	if md.Mode == 0 {
+	// CompatV142 check if filemode is set. If not use the default. It's fine
+	// not to persist it right away since it will either be persisted anyway or
+	// we just set the values again the next time we load it and hope that it
+	// gets persisted then.
+	if md.Version == "" && md.Mode == 0 {
 		md.Mode = modules.DefaultDirPerm
+		md.Version = "1.0"
 	}
 	return
 }

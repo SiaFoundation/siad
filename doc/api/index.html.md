@@ -3012,7 +3012,7 @@ Action can be either `create`, `delete` or `rename`.
  **mode** | uint32  
  The mode can be specified in addition to the `create` action to create the
  directory with specific permissions. If not specified, the default
- permissions will be used.
+ permissions 0755 will be used.
 
 ### Response
 

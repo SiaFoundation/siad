@@ -83,6 +83,9 @@ type (
 		NumSubDirs          uint64      `json:"numsubdirs"`
 		Size                uint64      `json:"size"`
 		StuckHealth         float64     `json:"stuckhealth"`
+
+		// Version is the used version of the header file.
+		Version string `json:"version"`
 	}
 )
 
