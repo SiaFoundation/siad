@@ -15,9 +15,17 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// ErrInsufficientBudget is returned if the program has to be aborted due to
-// running out of resources.
-var ErrInsufficientBudget = errors.New("program has insufficient budget to execute")
+// The following errors are returned by `cost.Sub` in case of an underflow.
+// ErrInsufficientBudget is always returned in combination with the error of the
+// corresponding resource.
+var (
+	ErrInsufficientBudget             = errors.New("program has insufficient budget to execute")
+	ErrInsufficientComputeBudget      = errors.New("insufficient 'compute' budget")
+	ErrInsufficientDiskAccessesBudget = errors.New("insufficient 'diskaccess' budget")
+	ErrInsufficientDiskReadBudget     = errors.New("insufficient 'diskread' budget")
+	ErrInsufficientDiskWriteBudget    = errors.New("insufficient 'diskwrite' budget")
+	ErrInsufficientMemoryBudget       = errors.New("insufficient 'memory' budget")
+)
 
 // programState contains some fields needed for the execution of instructions.
 // The program's state is captured when the program is created and remains the
@@ -25,9 +33,11 @@ var ErrInsufficientBudget = errors.New("program has insufficient budget to execu
 type programState struct {
 	// mdm related fields.
 	remainingBudget Cost
+
 	// host related fields
 	blockHeight types.BlockHeight
 	host        Host
+
 	// storage obligation related fields
 	sectorsRemoved   []crypto.Hash
 	sectorsGained    []crypto.Hash
@@ -39,11 +49,6 @@ type programState struct {
 // final instruction is executed, the MDM will create an updated revision of the
 // FileContract which has to be signed by the renter and the host.
 type Program struct {
-	// The contract ID specifies which contract is being modified by the MDM. If
-	// all the instructions in the program are readonly instructions, the
-	// program will execute in readonly mode which means that it will not lock
-	// the contract before executing the instructions. This means that the
-	// contract id field will be ignored.
 	so                 StorageObligation
 	instructions       []instruction
 	staticData         *programData
@@ -82,16 +87,18 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 	defer p.mu.Unlock()
 	// Convert the instructions.
 	var err error
+	var instruction instruction
 	for _, i := range instructions {
 		switch i.Specifier {
 		case modules.SpecifierReadSector:
-			err = p.decodeReadSectorInstruction(i)
+			instruction, err = p.decodeReadSectorInstruction(i)
 		default:
 			err = fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 		}
 		if err != nil {
 			return nil, nil, err
 		}
+		p.instructions = append(p.instructions, instruction)
 	}
 	// Make sure that the contract is locked unless the program we're executing
 	// is a readonly program.
@@ -99,11 +106,10 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		return nil, nil, errors.New("contract needs to be locked for a program with one or more write instructions")
 	}
 	// Make sure the budget covers the initial cost.
-	var ok bool
 	ps := p.staticProgramState
-	ps.remainingBudget, ok = ps.remainingBudget.Sub(InitCost(p.staticData.Len()))
-	if !ok {
-		return nil, nil, ErrInsufficientBudget
+	ps.remainingBudget, err = ps.remainingBudget.Sub(InitCost(p.staticData.Len()))
+	if err != nil {
+		return nil, nil, err
 	}
 	// Execute all the instructions.
 	if err := p.tg.Add(); err != nil {

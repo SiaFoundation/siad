@@ -1,9 +1,6 @@
 package mdm
 
-import (
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
-)
+import "gitlab.com/NebulousLabs/errors"
 
 // Cost describes the cost of executing an instruction on the MDM split up into
 // its individual counterparts.
@@ -13,12 +10,6 @@ type Cost struct {
 	DiskRead     uint64 // bytes read from disk
 	DiskWrite    uint64 // bytes written to disk
 	Memory       uint64 // estimated ram used in bytes
-}
-
-// Currency converts a Cost into a single types.Currency which can then be used
-// to easily determine the actual cost of an instruction or program in SC.
-func (c Cost) Currency(settings modules.HostExternalSettings) types.Currency {
-	panic("not implemented yet")
 }
 
 // Add adds a Cost to another Cost and returns the result.
@@ -32,22 +23,38 @@ func (c Cost) Add(c2 Cost) Cost {
 	}
 }
 
-// Sub subtracts a Cost from another Cost. It will return 'false' if that would
-// result in an underflow and 'true' on success.
-func (c Cost) Sub(c2 Cost) (Cost, bool) {
+// Sub subtracts a Cost from another Cost.
+func (c Cost) Sub(c2 Cost) (cost Cost, err error) {
 	// Helper method that subtracts one number from another and returns 'false'
 	// in case of an underflow.
-	min := func(a, b uint64) (uint64, bool) {
+	sub := func(a, b uint64) (uint64, bool) {
 		return a - b, b <= a
 	}
-	var cost Cost
-	var ok1, ok2, ok3, ok4, ok5 bool
-	cost.Compute, ok1 = min(c.Compute, c2.Compute)
-	cost.DiskAccesses, ok2 = min(c.Compute, c2.Compute)
-	cost.DiskRead, ok3 = min(c.Compute, c2.Compute)
-	cost.DiskWrite, ok4 = min(c.Compute, c2.Compute)
-	cost.Memory, ok5 = min(c.Compute, c2.Compute)
-	return cost, ok1 && ok2 && ok3 && ok4 && ok5
+	var ok bool
+	cost.Compute, ok = sub(c.Compute, c2.Compute)
+	if !ok {
+		err = errors.Extend(err, ErrInsufficientComputeBudget)
+	}
+	cost.DiskAccesses, ok = sub(c.DiskAccesses, c2.DiskAccesses)
+	if !ok {
+		err = errors.Extend(err, ErrInsufficientDiskAccessesBudget)
+	}
+	cost.DiskRead, ok = sub(c.DiskRead, c2.DiskRead)
+	if !ok {
+		err = errors.Extend(err, ErrInsufficientDiskReadBudget)
+	}
+	cost.DiskWrite, ok = sub(c.DiskWrite, c2.DiskWrite)
+	if !ok {
+		err = errors.Extend(err, ErrInsufficientDiskWriteBudget)
+	}
+	cost.Memory, ok = sub(c.Memory, c2.Memory)
+	if !ok {
+		err = errors.Extend(err, ErrInsufficientMemoryBudget)
+	}
+	if err != nil {
+		return Cost{}, errors.Extend(ErrInsufficientBudget, err)
+	}
+	return cost, nil
 }
 
 // InitCost is the cost of instantiating the MDM
