@@ -226,7 +226,7 @@ Host Internal Settings:
 	minstorageprice:           %v / TB / Month
 	minuploadbandwidthprice:   %v / TB
 
-	ephemeralaccountexpiry: %v
+	ephemeralaccountexpiry:     %v
 	maxephemeralaccountbalance: %v
 	maxephemeralaccountrisk:    %v
 

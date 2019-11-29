@@ -50,7 +50,7 @@ var (
 	errMaxRiskReached = errors.New("errMaxRiskReached")
 
 	// pruneExpiredAccountsFrequency is the frequency at which the account
-	// manager prunes ephemeral accounts which have been inactive
+	// manager expires accounts which have been inactive for too long
 	pruneExpiredAccountsFrequency = build.Select(build.Var{
 		Standard: 1 * time.Hour,
 		Dev:      15 * time.Minute,
@@ -90,8 +90,9 @@ type (
 	// The accountManager manages all ephemeral accounts and keeps track of the
 	// fingerprints for withdrawals that have been processed. The account
 	// manager is hooked into the consensus changes and keeps track of the
-	// current blockheight in order to prune the expired fingerprints. It has an
-	// accounts persister that will persist all ephemeral account data to disk
+	// current blockheight, it will prune expired fingerprints when the
+	// blockheight exceeds their epxiry. It has an accounts persister that will
+	// persist all ephemeral account data to disk
 	accountManager struct {
 		accounts                map[string]*account
 		fingerprints            *fingerprintMap
@@ -99,15 +100,15 @@ type (
 
 		// To increase performance, the account manager will persist the account
 		// data in an asynchronous fashion. This will allow users to withdraw
-		// money from an ephemeral account without requiring the user to wait
-		// until the new account balance was successfully persisted. This allows
-		// users to transact with the host with significantly less latency. This
-		// also means that the money that has already been withdrawn is at risk
-		// to the host. An unclean shutdown before the account manager was able
-		// to persist the account balance to disk would allow the user to
-		// withdraw that money twice. To limit this risk to the host, he can set
-		// a maxephemeralaccountrisk, when that amount is reached all
-		// withdrawals lock until the accounts have successfully been persisted.
+		// money from an ephemeral account without having to wait until the new
+		// account balance was successfully persisted. This allows users to
+		// transact with the host with significantly less latency. This also
+		// means that the money that has already been withdrawn is at risk to
+		// the host. An unclean shutdown before the account manager was able to
+		// persist the account balance to disk would allow the user to withdraw
+		// that money twice. To limit this risk to the host, he can set a
+		// maxephemeralaccountrisk, when that amount is reached all withdrawals
+		// lock until the accounts have successfully been persisted.
 		currentRisk types.Currency
 
 		mu sync.Mutex
@@ -122,9 +123,11 @@ type (
 		blockedCalls blockedCallHeap
 
 		// lastTxnTime is the timestamp of the last transaction that occured
-		// involving this ephemeral account. We keep track of this last
-		// transaction timestamp to allow pruning the ephemeral account after
-		// the account expiry timeout.
+		// involving this ephemeral account. A transaction can be either a
+		// deposit or withdrawal from the ephemeral account. We keep track of
+		// this timestamp to allow pruning ephemeral accounts that have been
+		// inactive for too long. The host can configure this expiry using the
+		// ephemeralaccountexpiry setting.
 		lastTxnTime int64
 	}
 
@@ -135,18 +138,18 @@ type (
 		priority   int64
 	}
 
-	// blockedCallHeap is a heap of blocking transactions; the heap is sorted
-	// based on the priority field in the blocked call
+	// blockedCallHeap is a heap of blocking withdrawal calls; the heap is
+	// sorted based on the priority field in the blocked call
 	blockedCallHeap []*blockedCall
 
-	// fingerprintMap holds all fingerprints and serves as a lookup table. It
-	// does so by keeping them in two separate buckets, the current and next
-	// fingerprints. The current fingerprints are the ones which expire before
-	// the current threshold. Fingerprints with a blockheight that is higher
-	// than this threshold are kept in the next bucket. By keeping these in two
-	// separate buckets, we allow pruning the fingerprints which expired in
-	// constant time. When the current blockheight catches up to the current
-	// threshold, the current bucket is thrown away and is replaced by the next.
+	// fingerprintMap keeps track of all the fingerprints and serves as a lookup
+	// table. To make sure these fingerprints are not kept in memory forever,
+	// the account manager will remove them when the current block height
+	// exceeds their expiry block height. It does this by keeping the
+	// fingerprints in two separate maps. When the block height reaches a
+	// certain threshold, which is calculated on the fly using the
+	// bucketBlockRange, the account manager will remove all fingerprints in the
+	// current map and replace them with the fingerprints from the 'next' map.
 	fingerprintMap struct {
 		bucketBlockRange int
 		current          map[crypto.Hash]struct{}
@@ -159,20 +162,20 @@ func (bch blockedCallHeap) Len() int           { return len(bch) }
 func (bch blockedCallHeap) Less(i, j int) bool { return bch[i].priority < bch[j].priority }
 func (bch blockedCallHeap) Swap(i, j int)      { bch[i], bch[j] = bch[j], bch[i] }
 func (bch *blockedCallHeap) Push(x interface{}) {
-	bTxn := x.(blockedCall)
-	*bch = append(*bch, &bTxn)
+	bc := x.(blockedCall)
+	*bch = append(*bch, &bc)
 }
 func (bch *blockedCallHeap) Pop() interface{} {
 	old := *bch
 	n := len(old)
-	bTxn := old[n-1]
+	bc := old[n-1]
 	*bch = old[0 : n-1]
-	return bTxn
+	return bc
 }
 func (bch blockedCallHeap) Value() types.Currency {
 	var total types.Currency
-	for _, bTxn := range bch {
-		total = total.Add(bTxn.withdrawal.amount)
+	for _, bc := range bch {
+		total = total.Add(bc.withdrawal.amount)
 	}
 	return total
 }
@@ -200,13 +203,22 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	am.fingerprints.next = data.fingerprints
 
 	// Close any open file handles if we receive a stop signal
-	am.h.tg.OnStop(func() {
+	am.h.tg.AfterStop(func() {
 		am.staticAccountsPersister.close()
 	})
 
 	go am.threadedPruneExpiredAccounts()
 
 	return am, nil
+}
+
+// newAccount will return a new account object
+func newAccount(id string, index uint32) *account {
+	return &account{
+		id:           id,
+		index:        index,
+		blockedCalls: make(blockedCallHeap, 0),
+	}
 }
 
 // newFingerprintMap will create a new fingerprint map
@@ -224,16 +236,14 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	maxBalance := his.MaxEphemeralAccountBalance
 	currentBlockHeight := am.h.BlockHeight()
 
-	// Fetch a free index in case we need one to create an account with
-	index := am.staticAccountsPersister.callAssignFreeIndex()
+	// Fetch the account, create one if it does not exist yet
 	am.mu.Lock()
 	acc, exists := am.accounts[id]
 	if !exists {
-		acc = am.newAccount(id, index)
+		am.mu.Unlock()
+		acc = newAccount(id, am.staticAccountsPersister.callAssignFreeIndex())
+		am.mu.Lock()
 		am.accounts[id] = acc
-	} else {
-		// If an account already existed, make sure to release the index
-		defer am.staticAccountsPersister.callReleaseIndex(index)
 	}
 
 	// Verify the deposit does not exceed the ephemeral account maximum balance
@@ -257,18 +267,18 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 			break
 		}
 
-		close(bc.result)
 		updatedBalance = updatedBalance.Sub(bc.withdrawal.amount)
+		close(bc.result)
 	}
 
 	// Update account details
 	acc.balance = updatedBalance
 	acc.lastTxnTime = time.Now().Unix()
 
+	// Persist the account
 	accountData := acc.accountData()
 	am.mu.Unlock()
 
-	// Persist the account
 	err := am.staticAccountsPersister.callSaveAccount(acc.index, accountData)
 	if err != nil {
 		am.h.log.Println("ERROR: could not save account:", id, err)
@@ -280,18 +290,18 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 
 // callWithdraw will try to withdraw money from an ephemeral account. If the
 // account balance is insufficient, it will block until either a timeout
-// expires, the account receives sufficient funds or we receive a stop message.
+// expires, the account receives sufficient funds or we receive a stop signal.
 //
-// The caller can specify a priority, which will define the order in which the
-// withdrawals get processed in the event they are blocked.
+// The caller can specify a priority. This priority defines the order in which
+// the withdrawals get processed in the event they are blocked.
 //
 // Note that this function has very intricate locking, be extra cautious when
 // making changes
 func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) error {
-	his := am.h.InternalSettings()
-	maxRisk, amount, id := his.MaxEphemeralAccountRisk, msg.amount, msg.account
+	amount, id := msg.amount, msg.account
+	maxRisk := am.h.InternalSettings().MaxEphemeralAccountRisk
 
-	// Validate the expiry block height & signature
+	// Validate the expiry block height and the signature
 	currentBlockHeight := am.h.BlockHeight()
 	if err := msg.validateExpiry(currentBlockHeight); err != nil {
 		return err
@@ -300,19 +310,18 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return err
 	}
 
-	// Fetch a free index in case we need one to create an account with
-	index := am.staticAccountsPersister.callAssignFreeIndex()
+	// Fetch the account, create one if it does not exist yet
 	am.mu.Lock()
 	acc, exists := am.accounts[id]
 	if !exists {
-		acc = am.newAccount(id, index)
+		am.mu.Unlock()
+		acc = newAccount(id, am.staticAccountsPersister.callAssignFreeIndex())
+		am.mu.Lock()
 		am.accounts[id] = acc
-	} else {
-		// If an account already existed, make sure to release the index
-		defer am.staticAccountsPersister.callReleaseIndex(index)
 	}
 
-	// Verify if we have processed this withdrawal by checking its fingerprint
+	// Verify if we have already processed this withdrawal by checking its
+	// fingerprint
 	fingerprint := crypto.HashAll(*msg)
 	if exists := am.fingerprints.has(fingerprint); exists {
 		am.mu.Unlock()
@@ -333,14 +342,14 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	// If the account balance is insufficient to perform the withdrawal, block
 	// the withdrawal.
 	if acc.balance.Cmp(amount) < 0 {
-		tx := blockedCall{
+		bc := blockedCall{
 			withdrawal: msg,
 			priority:   priority,
 			result:     make(chan error),
 		}
-		acc.blockedCalls.Push(tx)
+		acc.blockedCalls.Push(bc)
 		am.mu.Unlock()
-		return am.blockedWithdrawalResult(tx.result)
+		return am.blockedWithdrawalResult(bc.result)
 	}
 
 	defer am.mu.Unlock()
@@ -348,16 +357,15 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	// Update the account details
 	acc.balance = acc.balance.Sub(amount)
 	acc.lastTxnTime = time.Now().Unix()
-	accountData := acc.accountData()
 
 	// Persist the account data asynchronously
+	accountData := acc.accountData()
 	am.currentRisk = am.currentRisk.Add(amount)
 	maxRiskReached := maxRisk.Cmp(am.currentRisk) < 0
 	awaitPersist := make(chan struct{})
 
-	// Persist the account in a separate goroutine. Ensure we increment the
-	// threadgroup counter before to properly await pending saves if the host
-	// shuts down
+	// Note the threadgropu counter must be inncremented before entering the
+	// goroutine, this to properly await pending saves if the host shuts down
 	if err := am.h.tg.Add(); err != nil {
 		return ErrWithdrawalCancelled
 	}
@@ -385,7 +393,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		<-awaitPersist
 
 		// Disrupt will return a custom error here when the max risk was
-		// reached, we used this for testing purposes only.
+		// reached, for testing purposes only.
 		if am.h.dependencies.Disrupt("errMaxRiskReached") {
 			return errMaxRiskReached
 		}
@@ -396,39 +404,26 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 }
 
 // callConsensusChanged is called by the host whenever it processed a change to
-// the consensus. We use it to rotate the fingerprints as we do so based on the
-// current blockheight
+// the consensus. We use it to remove fingerprints which have been expired.
 func (am *accountManager) callConsensusChanged() {
 	currentBlockHeight := am.h.BlockHeight()
-	am.mu.Lock()
-	am.tryRotateFingerprints(currentBlockHeight)
-	am.mu.Unlock()
-}
-
-// newAccount will return a new account object
-func (am *accountManager) newAccount(id string, index uint32) *account {
-	return &account{
-		id:           id,
-		index:        index,
-		blockedCalls: make(blockedCallHeap, 0),
+	if err := am.managedRotateFingerprints(currentBlockHeight); err != nil {
+		am.h.log.Critical("Could not rotate fingerprints", err)
 	}
 }
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
-// it does this by nullifying the account's balance which frees up the account
-// at that index
+// for too long. It does this by comparing the account's lastTxnTime to the
+// current time. If it exceeds the EphemeralAccountExpiry, the account is
+// considered expired.
 func (am *accountManager) threadedPruneExpiredAccounts() {
 	his := am.h.InternalSettings()
 	accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
+	forceExpire := am.h.dependencies.Disrupt("expireEphemeralAccounts")
 
-	// An expiry timeout of 0 means the accounts never expire
+	// If the host set a timeout of 0, it means the accounts never expire.
 	if accountExpiryTimeout == 0 {
 		return
-	}
-
-	var forceExpire bool
-	if am.h.dependencies.Disrupt("expireEphemeralAccounts") {
-		forceExpire = true
 	}
 
 	for {
@@ -436,16 +431,15 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 
 		// Increment the threadgroup counter but ensure it is decremented within
 		// a single iteration of this loop. If it would be outside of the loop
-		// it'd cause 'Flush' to enter into a deadlock when called
+		// it would cause a deadlock when 'Flush' gets called.
 		if err := am.h.tg.Add(); err != nil {
 			return
 		}
-		am.mu.Lock()
 
+		am.mu.Lock()
 		now := time.Now().Unix()
 		for id, acc := range am.accounts {
 			if forceExpire {
-				am.h.log.Debugf("DEBUG: force expiring account %v", id)
 				delete(am.accounts, id)
 				pruned = append(pruned, acc.index)
 				continue
@@ -457,13 +451,14 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 				pruned = append(pruned, acc.index)
 			}
 		}
-
 		am.mu.Unlock()
-		am.h.tg.Done()
 
+		// Release the indexes outside the lock
 		for _, index := range pruned {
 			am.staticAccountsPersister.callReleaseIndex(index)
 		}
+
+		am.h.tg.Done()
 
 		// Block until next cycle.
 		select {
@@ -476,7 +471,7 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 }
 
 // blockedWithdrawalResult will block until it receives the withdrawal result,
-// expires after a time out or receives a stop signal
+// expires after a timeout, or receives a stop signal
 func (am *accountManager) blockedWithdrawalResult(resultChan chan error) error {
 	for {
 		select {
@@ -493,30 +488,26 @@ func (am *accountManager) blockedWithdrawalResult(resultChan chan error) error {
 	}
 }
 
-// tryRotateFingerprints is a helper method that tries to rotate the
+// managedRotateFingerprints is a helper method that tries to rotate the
 // fingerprints both in-memory and on disk.
-func (am *accountManager) tryRotateFingerprints(currentBlockHeight types.BlockHeight) {
+func (am *accountManager) managedRotateFingerprints(currentBlockHeight types.BlockHeight) error {
+	am.mu.Lock()
 	am.fingerprints.tryRotate(currentBlockHeight)
-
-	if err := am.staticAccountsPersister.tryRotateFingerprintBuckets(currentBlockHeight); err != nil {
-		am.h.log.Println("ERROR: could not rotate fingerprint buckets")
-	}
+	am.mu.Unlock()
+	return am.staticAccountsPersister.callRotateFingerprintBuckets(currentBlockHeight)
 }
 
 // save will add the given fingerprint to the appropriate bucket
 func (fm *fingerprintMap) save(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) {
-	threshold := calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
-
+	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
 	if expiry < threshold {
 		fm.current[fp] = struct{}{}
 		return
 	}
-
 	fm.next[fp] = struct{}{}
 }
 
-// has will return true when the fingerprint was present in either of the two
-// buckets
+// has returns true when the given fingerprint is present in the map
 func (fm *fingerprintMap) has(fp crypto.Hash) bool {
 	_, exists := fm.current[fp]
 	if !exists {
@@ -528,7 +519,7 @@ func (fm *fingerprintMap) has(fp crypto.Hash) bool {
 // tryRotate will rotate the bucket if necessary, depending on the current block
 // height. It swaps the current for the next bucket and reallocates the next
 func (fm *fingerprintMap) tryRotate(currentBlockHeight types.BlockHeight) {
-	threshold := calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
+	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
 
 	// If the current blockheihgt is less than the threshold, we do not need to
 	// rotate the bucket files on the file system
@@ -550,7 +541,7 @@ func (wm *withdrawalMessage) validateExpiry(currentBlockHeight types.BlockHeight
 	}
 
 	// Verify the withdrawal is not too far into the future
-	if wm.expiry >= calculateBucketThreshold(currentBlockHeight, bucketBlockRange)+bucketBlockRange {
+	if wm.expiry >= calculateExpiryThreshold(currentBlockHeight, bucketBlockRange)+bucketBlockRange {
 		return ErrWithdrawalExtremeFuture
 	}
 
@@ -572,7 +563,7 @@ func (wm *withdrawalMessage) validateSignature(sig crypto.Signature) error {
 }
 
 // depositExceedsMaxBalance returns whether or not the deposit would exceed the
-// ephemeraccount max balance, taking the blocked withdrawals into account.
+// ephemer account max balance, taking the blocked withdrawals into account.
 func (a *account) depositExceedsMaxBalance(deposit, maxBalance types.Currency) bool {
 	blocked := a.blockedCalls.Value()
 	if deposit.Cmp(blocked) <= 0 {

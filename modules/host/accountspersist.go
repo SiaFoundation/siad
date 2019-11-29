@@ -29,10 +29,10 @@ const (
 	fingerprintSize = 1 << 6 // 64 bytes
 
 	// filenames for fingerprint buckets
-	fingerprintsCurrFilename = "fingerprints_c.db"
-	fingerprintsNxtFilename  = "fingerprints_n.db"
+	fingerprintsCurrFilename = "fingerprints_curr.db"
+	fingerprintsNxtFilename  = "fingerprints_nxt.db"
 
-	// bucketBlockRange defines the range of blocks a bucket spans
+	// bucketBlockRange defines the range of blocks a fingerprint bucket spans
 	bucketBlockRange = 20
 )
 
@@ -65,8 +65,8 @@ type (
 		h  *Host
 	}
 
-	// accountsPersisterData contains all data that the account manager needs
-	// when it is reloaded
+	// accountsPersisterData contains all data that the accountsPersister saves
+	// to disk
 	accountsPersisterData struct {
 		accounts     map[string]*account
 		fingerprints map[crypto.Hash]struct{}
@@ -76,7 +76,7 @@ type (
 	accountData struct {
 		Id          types.SiaPublicKey
 		Balance     types.Currency
-		lastTxnTime int64
+		LastTxnTime int64
 	}
 
 	// indexLock contains a lock plus a count of the number of threads currently
@@ -118,7 +118,8 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 	return ap, nil
 }
 
-// newFileBucket will create a new bucket for given size and blockheight
+// newFingerprintManager will create a new fingerprint manager, this manager
+// uses two files to store the fingerprints on disk
 func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fingerprintManager, err error) {
 	currPath := filepath.Join(ap.h.persistDir, fingerprintsCurrFilename)
 	nextPath := filepath.Join(ap.h.persistDir, fingerprintsNxtFilename)
@@ -139,7 +140,7 @@ func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fin
 	return fm, nil
 }
 
-// callSaveAccount writes the data for a single ephemeral account to disk
+// callSaveAccount writes the account data to disk
 func (ap *accountsPersister) callSaveAccount(index uint32, data *accountData) error {
 	ap.managedLockIndex(index)
 	defer ap.managedUnlockIndex(index)
@@ -152,10 +153,10 @@ func (ap *accountsPersister) callSaveAccount(index uint32, data *accountData) er
 	location := persist.FixedMetadataSize + int64(uint64(index)*accountSize)
 	_, err = ap.accounts.WriteAt(accBytes, location)
 	if err != nil {
-		return errors.AddContext(err, "write at failed")
+		return errors.AddContext(err, "failed to write to accounts file")
 	}
 	if err = ap.accounts.Sync(); err != nil {
-		return errors.AddContext(err, "sync failed")
+		return errors.AddContext(err, "failed to sync accounts file")
 	}
 
 	return nil
@@ -173,7 +174,7 @@ func (ap *accountsPersister) callSaveFingerprint(fp crypto.Hash, expiry, current
 	return nil
 }
 
-// callLoadData loads the saved account data from disk and returns it
+// callLoadData loads the accounts data from disk and returns it
 func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
@@ -239,6 +240,44 @@ func (ap *accountsPersister) callReleaseIndex(index uint32) {
 	ap.indexBitfields[i] &= mask
 }
 
+// callRotateFingerprintBuckets will rotate the fingerprint bucket files, but
+// only if the current block height exceeds the current bucket's threshold
+func (ap *accountsPersister) callRotateFingerprintBuckets(currentBlockHeight types.BlockHeight) (err error) {
+	ap.mu.Lock()
+	defer ap.mu.Unlock()
+
+	fm := ap.staticFingerprintManager
+	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
+
+	// If the current blockheihgt is less than the calculated threshold, we do
+	// not need to rotate the bucket files on the file system
+	if currentBlockHeight < threshold {
+		return nil
+	}
+
+	// Close the current fingerprint bucket
+	if err = syncAndClose(fm.current); err != nil {
+		ap.h.log.Println("ERROR: could not close current fingerprint bucket")
+		return err
+	}
+
+	// Swap the fingerprints by renaming the next bucket
+	if err = os.Rename(fm.nextPath, fm.currentPath); err != nil {
+		ap.h.log.Println("ERROR: could not rename next fingerprint bucket")
+		return err
+	}
+	fm.current = fm.next
+
+	// Create a new next bucket
+	fm.next, err = ap.openFingerprintBucket(fm.nextPath)
+	if err != nil {
+		ap.h.log.Println("ERROR: could not close current fingerprint bucket")
+		return err
+	}
+
+	return nil
+}
+
 // managedLockAccount grabs a lock on an (account) index.
 func (ap *accountsPersister) managedLockIndex(index uint32) {
 	ap.mu.Lock()
@@ -262,7 +301,7 @@ func (ap *accountsPersister) managedUnlockIndex(index uint32) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 
-	// Release the lock on the sector.
+	// Release the lock on the index.
 	il, exists := ap.indexLocks[index]
 	if !exists {
 		ap.h.log.Critical("Unlock of an account index that is not locked.")
@@ -271,14 +310,15 @@ func (ap *accountsPersister) managedUnlockIndex(index uint32) {
 	il.waiting--
 	il.mu.Unlock()
 
-	// If nobody else is trying to lock the sector, perform garbage collection.
+	// If nobody else is trying to lock the index, perform garbage collection.
 	if il.waiting == 0 {
 		delete(ap.indexLocks, index)
 	}
 }
 
 // buildAccountIndex will initialize bitfields representing all ephemeral
-// accounts, the index is used to recycle account indices
+// accounts, the index is used to recycle account indices when the account
+// expires.
 func (ap *accountsPersister) buildAccountIndex(numAccounts int) {
 	n := numAccounts / 64
 	for i := 0; i < n; i++ {
@@ -291,23 +331,23 @@ func (ap *accountsPersister) buildAccountIndex(numAccounts int) {
 	}
 }
 
-// openAccountsFile wraps openFileWithMetadata and specifies the appropriate
-// metadata header and flags for the accounts file
+// openAccountsFile is a helper method to open the accounts file with
+// appropriate metadata header and flags
 func (ap *accountsPersister) openAccountsFile(path string) (modules.File, error) {
 	// open file in read-write mode and create if it does not exist yet
 	return ap.openFileWithMetadata(path, os.O_RDWR|os.O_CREATE, accountMetadata)
 }
 
-// openFingerprintBucket wraps openFileWithMetadata and specifies the
-// appropriate metadata header and flags for the fingerprints bucket file
+// openFingerprintBucket is a helper method to open a fingerprint bucket with
+// appropriate metadata header and flags
 func (ap *accountsPersister) openFingerprintBucket(path string) (modules.File, error) {
 	// open file in append-only mode and create if it does not exist yet
 	return ap.openFileWithMetadata(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, fingerprintsMetadata)
 
 }
 
-// openFileWithMetadata will open the file at given path and write the metadata
-// header to it if the file did not exist prior to calling this method
+// openFileWithMetadata will open the file at given path. If the file did not
+// exist prior to calling this method, it will write the metadata header to it.
 func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metadata persist.FixedMetadata) (modules.File, error) {
 	_, statErr := os.Stat(path)
 
@@ -334,38 +374,6 @@ func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metada
 	return file, nil
 }
 
-// tryRotateFingerprintBuckets will rotate the fingerprint bucket files, but
-// only if the current block height exceeds the current bucket's threshold
-func (ap *accountsPersister) tryRotateFingerprintBuckets(currentBlockHeight types.BlockHeight) (err error) {
-	fm := ap.staticFingerprintManager
-	threshold := calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
-
-	// If the current blockheihgt is less than the calculated threshold, we do
-	// not need to rotate the bucket files on the file system
-	if currentBlockHeight < threshold {
-		return nil
-	}
-
-	// If it is larger, cleanly close the current fingerprint bucket
-	if err = syncAndClose(fm.current); err != nil {
-		return err
-	}
-
-	// Rename the next bucket to the current bucket
-	if err = os.Rename(fm.nextPath, fm.currentPath); err != nil {
-		return err
-	}
-	fm.current = fm.next
-
-	// Create a new next bucket
-	fm.next, err = ap.openFingerprintBucket(fm.nextPath)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // close will cleanly shutdown the account persister's open file handles
 func (ap *accountsPersister) close() error {
 	return errors.Compose(
@@ -374,7 +382,7 @@ func (ap *accountsPersister) close() error {
 	)
 }
 
-// loadAccounts will load the accounts from the file into the map
+// loadAccounts will read the given file and load the accounts into the map
 func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*account) error {
 	bytes, err := ioutil.ReadFile(file.Name())
 	if err != nil {
@@ -397,7 +405,8 @@ func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*accou
 	return nil
 }
 
-// loadFingerprints will load the fingerprints from the file into the map
+// loadFingerprints will read the file at given path and load the fingerprints
+// into the map
 func (ap *accountsPersister) loadFingerprints(path string, m map[crypto.Hash]struct{}) error {
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -425,7 +434,7 @@ func (a *account) accountData() *accountData {
 	return &accountData{
 		Id:          spk,
 		Balance:     a.balance,
-		lastTxnTime: a.lastTxnTime,
+		LastTxnTime: a.lastTxnTime,
 	}
 }
 
@@ -435,8 +444,8 @@ func (a *accountData) account(index uint32) *account {
 	return &account{
 		id:          a.Id.String(),
 		balance:     a.Balance,
+		lastTxnTime: a.LastTxnTime,
 		index:       index,
-		lastTxnTime: a.lastTxnTime,
 	}
 }
 
@@ -454,7 +463,7 @@ func (a *accountData) bytes() ([]byte, error) {
 	return accBytes, nil
 }
 
-// save will add the given fingerprint to the appropriate bucket
+// save will persist the given fingerprint into the appropriate bucket
 func (fm *fingerprintManager) save(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) (err error) {
 	// Sanity check, ensure the encoded fingerprint is not too large
 	fpMar := encoding.Marshal(fp)
@@ -466,7 +475,7 @@ func (fm *fingerprintManager) save(fp crypto.Hash, expiry, currentBlockHeight ty
 	fpBytes := make([]byte, fingerprintSize)
 	copy(fpBytes, fpMar)
 
-	threshold := calculateBucketThreshold(currentBlockHeight, fm.bucketBlockRange)
+	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
 	if expiry <= threshold {
 		return writeAndSync(fm.current, fpBytes)
 	}
@@ -481,9 +490,9 @@ func (fm *fingerprintManager) close() error {
 	)
 }
 
-// calculateBucketThreshold will calculate the appropriate threshold given the
+// calculateExpiryThreshold will calculate the appropriate threshold given the
 // current blockheight and the bucket block range
-func calculateBucketThreshold(currentBlockHeight types.BlockHeight, bucketBlockRange int) types.BlockHeight {
+func calculateExpiryThreshold(currentBlockHeight types.BlockHeight, bucketBlockRange int) types.BlockHeight {
 	cbh := uint64(currentBlockHeight)
 	bbr := uint64(bucketBlockRange)
 	threshold := cbh + (bbr - (cbh % bbr))

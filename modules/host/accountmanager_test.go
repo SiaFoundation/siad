@@ -382,6 +382,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Prepare a host
 	ht, err := blankHostTester(t.Name())
@@ -396,7 +397,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 
 	// Deposit money into the account in small increments
 	deposits := 20
-	depositAmount := 100
+	depositAmount := 50
 
 	buckets := 10
 	withdrawals := deposits * depositAmount
@@ -485,7 +486,7 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 	// settings would also affect what 'd be a good max attempts
 	his := ht.host.InternalSettings()
 	numAccountsUint, _ := his.MaxEphemeralAccountRisk.Div(his.MaxEphemeralAccountBalance).Uint64()
-	maxAttempts := int(numAccountsUint) * 5
+	maxAttempts := int(numAccountsUint) * 10
 
 	// Keep track of how many times the maxEpheramalAccountRisk was reached. We
 	// assume that it works properly when this number exceeds 1, because this
