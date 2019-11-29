@@ -446,20 +446,14 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 		for id, acc := range am.accounts {
 			if forceExpire {
 				am.h.log.Debugf("DEBUG: force expiring account %v", id)
-				acc.balance = types.ZeroCurrency
-				pruned = append(pruned, acc.index)
-				continue
-			}
-
-			if acc.balance.Equals(types.ZeroCurrency) {
-				am.h.log.Debugf("DEBUG: expiring account %v at %v", id, now)
+				delete(am.accounts, id)
 				pruned = append(pruned, acc.index)
 				continue
 			}
 
 			if now-acc.lastTxnTime > accountExpiryTimeout {
 				am.h.log.Debugf("DEBUG: expiring account %v at %v", id, now)
-				acc.balance = types.ZeroCurrency
+				delete(am.accounts, id)
 				pruned = append(pruned, acc.index)
 			}
 		}
