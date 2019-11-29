@@ -181,7 +181,7 @@ func (bch blockedCallHeap) Value() types.Currency {
 func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	am := &accountManager{
 		accounts:     make(map[string]*account),
-		fingerprints: newFingerprintMap(h.blockHeight, bucketBlockRange),
+		fingerprints: newFingerprintMap(bucketBlockRange),
 		h:            h,
 	}
 
@@ -210,7 +210,7 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 }
 
 // newFingerprintMap will create a new fingerprint map
-func newFingerprintMap(currentBlockHeight types.BlockHeight, bucketBlockRange int) *fingerprintMap {
+func newFingerprintMap(bucketBlockRange int) *fingerprintMap {
 	return &fingerprintMap{
 		bucketBlockRange: bucketBlockRange,
 		current:          make(map[crypto.Hash]struct{}),
@@ -224,10 +224,17 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	maxBalance := his.MaxEphemeralAccountBalance
 	currentBlockHeight := am.h.BlockHeight()
 
-	// Open the account, if the account id is unknown a new one will get created
-	acc := am.managedOpenAccount(id)
-
+	// Fetch a free index in case we need one to create an account with
+	index := am.staticAccountsPersister.callAssignFreeIndex()
 	am.mu.Lock()
+	acc, exists := am.accounts[id]
+	if !exists {
+		acc = am.newAccount(id, index)
+		am.accounts[id] = acc
+	} else {
+		// If an account already existed, make sure to release the index
+		defer am.staticAccountsPersister.callReleaseIndex(index)
+	}
 
 	// Verify the deposit does not exceed the ephemeral account maximum balance
 	if acc.depositExceedsMaxBalance(amount, maxBalance) {
@@ -282,8 +289,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 // making changes
 func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) error {
 	his := am.h.InternalSettings()
-	maxRisk := his.MaxEphemeralAccountRisk
-	amount := msg.amount
+	maxRisk, amount, id := his.MaxEphemeralAccountRisk, msg.amount, msg.account
 
 	// Validate the expiry block height & signature
 	currentBlockHeight := am.h.BlockHeight()
@@ -294,11 +300,19 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return err
 	}
 
-	// Open the account, if the account id is unknown a new one will get created
-	acc := am.managedOpenAccount(msg.account)
+	// Fetch a free index in case we need one to create an account with
+	index := am.staticAccountsPersister.callAssignFreeIndex()
+	am.mu.Lock()
+	acc, exists := am.accounts[id]
+	if !exists {
+		acc = am.newAccount(id, index)
+		am.accounts[id] = acc
+	} else {
+		// If an account already existed, make sure to release the index
+		defer am.staticAccountsPersister.callReleaseIndex(index)
+	}
 
 	// Verify if we have processed this withdrawal by checking its fingerprint
-	am.mu.Lock()
 	fingerprint := crypto.HashAll(*msg)
 	if exists := am.fingerprints.has(fingerprint); exists {
 		am.mu.Unlock()
@@ -391,25 +405,13 @@ func (am *accountManager) callConsensusChanged() {
 	am.mu.Unlock()
 }
 
-// managedOpenAccount will return the account for given id. If the id is not
-// known, an account for given id will be created.
-func (am *accountManager) managedOpenAccount(id string) *account {
-	index := am.staticAccountsPersister.callAssignFreeIndex()
-	am.mu.Lock()
-	acc, exists := am.accounts[id]
-	if !exists {
-		acc = &account{
-			id:           id,
-			index:        index,
-			blockedCalls: make(blockedCallHeap, 0),
-		}
-		am.accounts[id] = acc
-		am.mu.Unlock()
-		return acc
+// newAccount will return a new account object
+func (am *accountManager) newAccount(id string, index uint32) *account {
+	return &account{
+		id:           id,
+		index:        index,
+		blockedCalls: make(blockedCallHeap, 0),
 	}
-	am.mu.Unlock()
-	am.staticAccountsPersister.callReleaseIndex(index)
-	return acc
 }
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive

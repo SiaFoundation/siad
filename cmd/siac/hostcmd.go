@@ -73,7 +73,9 @@ Durations (maxduration and windowsize) must be specified in either blocks (b),
 hours (h), days (d), or weeks (w). A block is approximately 10 minutes, so one
 hour is six blocks, a day is 144 blocks, and a week is 1008 blocks.
 
-Timeouts (ephemeralaccountexpiry) must be specified in either seconds (s), hours (h), days (d), or weeks (w). One hour is 3600 seconds, a day is 86400 seconds, and a week is 604800 seconds.
+Timeouts (ephemeralaccountexpiry) must be specified in either seconds (s),
+hours (h), days (d), or weeks (w). One hour is 3600 seconds, a day is 86400
+seconds, and a week is 604800 seconds.
 
 For a description of each parameter, see doc/API.md.
 

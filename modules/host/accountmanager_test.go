@@ -418,6 +418,13 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	withdrawals := deposits * depositAmount
 	withdrawalAmount := 1
 
+	// Prepare withdrawals and signatures
+	msgs := make([]*withdrawalMessage, withdrawals)
+	sigs := make([]crypto.Signature, withdrawals)
+	for w := 0; w < withdrawals; w++ {
+		msgs[w], sigs[w] = prepareWithdrawal(account, types.NewCurrency64(uint64(withdrawalAmount)), am.h.blockHeight, sk)
+	}
+
 	// Run the withdrawals in 10 separate buckets (ensure that withdrawals do
 	// not exceed numDeposits * depositAmount)
 	for b := 0; b < buckets; b++ {
@@ -425,8 +432,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		go func(bucket int) {
 			defer wg.Done()
 			for i := bucket * (withdrawals / buckets); i < (bucket+1)*(withdrawals/buckets); i++ {
-				msg, sig := prepareWithdrawal(account, types.NewCurrency64(uint64(withdrawalAmount)), am.h.blockHeight, sk)
-				if wErr := callWithdraw(am, msg, sig); wErr != nil {
+				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
 				}

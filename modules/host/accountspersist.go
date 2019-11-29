@@ -368,10 +368,10 @@ func (ap *accountsPersister) tryRotateFingerprintBuckets(currentBlockHeight type
 
 // close will cleanly shutdown the account persister's open file handles
 func (ap *accountsPersister) close() error {
-	err1 := ap.accounts.Sync()
-	err2 := ap.accounts.Close()
-	err3 := ap.staticFingerprintManager.close()
-	return errors.Compose(err1, err2, err3)
+	return errors.Compose(
+		ap.staticFingerprintManager.close(),
+		syncAndClose(ap.accounts),
+	)
 }
 
 // loadAccounts will load the accounts from the file into the map
