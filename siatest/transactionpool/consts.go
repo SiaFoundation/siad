@@ -3,6 +3,7 @@ package transactionpool
 import (
 	"os"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
 
@@ -11,7 +12,7 @@ import (
 // delete the directory again.
 func tpoolTestDir(testName string) string {
 	path := siatest.TestDir("transactionpool", testName)
-	if err := os.MkdirAll(path, siatest.DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return path
