@@ -200,6 +200,9 @@ func TestFuse(t *testing.T) {
 	}
 
 	// Stat the file in the fuse directory.
+	//
+	// TODO: This test doesn't work because the directory wasn't uploaded
+	// directly to Sia, it was created by proxy when the file was uploaded.
 	fuseStat, err := os.Stat(fusePath)
 	if err != nil {
 		t.Fatal(err)
@@ -218,8 +221,12 @@ func TestFuse(t *testing.T) {
 		t.Error("name mismatch")
 	}
 	if fuseStat.Mode() != localStat.Mode() {
-		t.Error("mode mismatch")
+		t.Error("mode mismatch on dir:", fuseStat.Mode(), localStat.Mode())
 	}
+
+	// TODO: Need to check for mode matches on files, not just directories.
+	//
+	// TODO: Should try multiple modes.
 
 	// Statfs the file in the directory, and the directory that contains the
 	// file.
