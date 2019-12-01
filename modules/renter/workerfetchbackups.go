@@ -35,8 +35,7 @@ type fetchBackupsJobResult struct {
 
 // staticCheckFetchBackupsExtortion will check whether the pricing to fetch the
 // backups for this worker exceeds any of the extortion limits placed on the
-// worker. True is returned if the check determines that the worker should not
-// proceed due to extortion pricing.
+// worker.
 func staticCheckFetchBackupsExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
