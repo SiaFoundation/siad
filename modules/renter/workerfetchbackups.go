@@ -72,8 +72,6 @@ func (w *worker) callQueueFetchBackupsJob() chan fetchBackupsJobResult {
 
 // managedKillFetchBackupsJobs will throw an error for all queued backup jobs,
 // as they will not complete due to the worker being shut down.
-//
-// TODO: Need to write testing around the kill functions for workers.
 func (w *worker) managedKillFetchBackupsJobs() {
 	w.staticFetchBackupsJobQueue.mu.Lock()
 	for _, job := range w.staticFetchBackupsJobQueue.queue {
