@@ -4,8 +4,31 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
+
+// staticCheckUploadExtortion will check whether the pricing to download for
+// this worker exceeds any of the extortion limits placed on the worker. 
+func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the RPC base price is too high.
+	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+		return errors.New("rpc base price of host is too high - extortion protection enabled")
+	}
+	// Check whether the sector access price is too high.
+	if allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+		return errors.New("sector access price of host is too high - extortion protection enabled")
+	}
+	if allowance.MaxStoragePrice.Cmp(hostSettings.StoragePrice) <= 0 {
+		return errors.New("storage price of host is too high - extortion protection enabled")
+	}
+	if allowance.MaxUploadBandwidthPrice.Cmp(hostSettings.UploadBandwidthPrice) <= 0 {
+		return errors.New("upload bandwidth price of host is too high - extortion protection enabled")
+	}
+
+	return nil
+}
 
 // managedDropChunk will remove a worker from the responsibility of tracking a chunk.
 //
@@ -112,6 +135,17 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		return true
 	}
 	defer e.Close()
+
+	// Check for extortion pricing.
+	allowance := w.renter.hostContractor.Allowance()
+	hostSettings := e.HostSettings()
+	err = staticCheckUploadExtortion(allowance, hostSettings)
+	if err != nil {
+		failureErr := fmt.Errorf("extortion protection enabled for upload: %v", err)
+		w.renter.log.Debugln(failureErr)
+		w.managedUploadFailed(uc, pieceIndex, failureErr)
+		return true
+	}
 
 	// Perform the upload, and update the failure stats based on the success of
 	// the upload attempt.
