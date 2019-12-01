@@ -37,14 +37,19 @@ type Session interface {
 	// EndHeight returns the height at which the contract ends.
 	EndHeight() types.BlockHeight
 
-	// Upload revises the underlying contract to store the new data. It
-	// returns the Merkle root of the data.
-	Upload(data []byte) (crypto.Hash, error)
-
 	// Replace replaces the sector at the specified index with data. The old
 	// sector is swapped to the end of the contract data, and is deleted if the
 	// trim flag is set.
 	Replace(data []byte, sectorIndex uint64, trim bool) (crypto.Hash, error)
+
+	// HostSettings will return the currently active host settings for a
+	// session, which allows the workers to check for extortion and determine
+	// whether or not an operation should continue.
+	HostSettings() modules.HostExternalSettings
+
+	// Upload revises the underlying contract to store the new data. It
+	// returns the Merkle root of the data.
+	Upload(data []byte) (crypto.Hash, error)
 }
 
 // A hostSession modifies a Contract via the renter-host RPC loop. It
@@ -180,6 +185,11 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 		return crypto.Hash{}, err
 	}
 	return sectorRoot, nil
+}
+
+// HostSettings returns the currently active host settings for the session.
+func (hs *hostSession) HostSettings() modules.HostExternalSettings {
+	return hs.session.HostSettings()
 }
 
 // Session returns a Session object that can be used to upload, modify, and

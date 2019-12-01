@@ -111,6 +111,11 @@ func (s *Session) Unlock() error {
 	return s.writeRequest(modules.RPCLoopUnlock, nil)
 }
 
+// HostSettings returns the currently active host settings of the session.
+func (s *Session) HostSettings() modules.HostExternalSettings {
+	return s.host.HostExternalSettings
+}
+
 // Settings calls the Settings RPC, returning the host's reported settings.
 func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	extendDeadline(s.conn, modules.NegotiateSettingsTime)
