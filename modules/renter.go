@@ -219,7 +219,7 @@ type Allowance struct {
 	//
 	// When set to zero, the contractor will not consider itself to be a
 	// viewnode.
-	ViewContractInitialPrice types.Currency
+	ViewContractInitialPrice types.Currency `json:"viewcontractinitialprice"`
 
 	// ExpectedStorage is the amount of data that we expect to have in a contract.
 	ExpectedStorage uint64 `json:"expectedstorage"`

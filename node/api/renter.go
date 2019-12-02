@@ -632,6 +632,14 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		settings.Allowance.RenewWindow = types.BlockHeight(renewWindow)
 		renewWindowSet = true
 	}
+	if vcipStr := req.FormValue("viewcontractinitialprice"); vcipStr != "" {
+		vcip, ok := scanAmount(vcipStr)
+		if !ok {
+			WriteError(w, Error{"unable to parse viewcontractinitialprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.ViewContractInitialPrice = vcip
+	}
 	if es := req.FormValue("expectedstorage"); es != "" {
 		var expectedStorage uint64
 		if _, err := fmt.Sscan(es, &expectedStorage); err != nil {
@@ -676,6 +684,54 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.Allowance.MaxPeriodChurn = maxPeriodChurn
 		maxPeriodChurnSet = true
+	}
+	if str := req.FormValue("maxrpcprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxrpcprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxRPCPrice = price
+	}
+	if str := req.FormValue("maxcontractprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxcontractprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxContractPrice = price
+	}
+	if str := req.FormValue("maxdownloadbandwidthprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxdownloadbandwidthprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxDownloadBandwidthPrice = price
+	}
+	if str := req.FormValue("maxsectoraccessprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxsectoraccessprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxSectorAccessPrice = price
+	}
+	if str := req.FormValue("maxstorageprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxstorageprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxStoragePrice = price
+	}
+	if str := req.FormValue("maxuploadbandwidthprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxuploadbandwidthprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxUploadBandwidthPrice = price
 	}
 
 	// Validate any allowance changes. Funds and Period are the only required
