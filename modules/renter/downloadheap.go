@@ -274,7 +274,7 @@ LOOP:
 			} else if !nextChunk.staticDisableDiskFetch && nextChunk.renterFile.LocalPath() != "" {
 				// If the local path is set and we still weren't able to load
 				// the chunk from disk, set the localpath to "" for safety.
-				entry, err := r.staticFileSet.Open(nextChunk.renterFile.SiaPath())
+				entry, err := r.staticFileSystem.OpenSiaFile(nextChunk.renterFile.SiaPath())
 				if err == nil {
 					err = entry.SetLocalPath("")
 					entry.Close()

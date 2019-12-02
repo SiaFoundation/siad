@@ -105,9 +105,17 @@ const (
 	// renter's persistent data.
 	RenterDir = "renter"
 
-	// SiapathRoot is the name of the directory that is used to store the
+	// FileSystemRoot is the name of the directory that is used as the root of
+	// the renter's filesystem.
+	FileSystemRoot = "fs"
+
+	// HomeFolderRoot is the name of the directory that is used to store all of
+	// the user accessible data.
+	HomeFolderRoot = "home"
+
+	// UserRoot is the name of the directory that is used to store the
 	// renter's siafiles.
-	SiapathRoot = "siafiles"
+	UserRoot = "user"
 
 	// BackupRoot is the name of the directory that is used to store the renter's
 	// snapshot siafiles.
@@ -797,4 +805,22 @@ type RenterDownloadParameters struct {
 	SiaPath          SiaPath
 	Destination      string
 	DisableDiskFetch bool
+}
+
+// HealthPercentage returns the health in a more human understandable format out
+// of 100%
+//
+// The percentage is out of 1.25, this is to account for the RepairThreshold of
+// 0.25 and assumes that the worst health is 1.5. Since we do not repair until
+// the health is worse than the RepairThreshold, a health of 0 - 0.25 is full
+// health. Likewise, a health that is greater than 1.25 is essentially 0 health.
+func HealthPercentage(health float64) float64 {
+	healthPercent := 100 * (1.25 - health)
+	if healthPercent > 100 {
+		healthPercent = 100
+	}
+	if healthPercent < 0 {
+		healthPercent = 0
+	}
+	return healthPercent
 }
