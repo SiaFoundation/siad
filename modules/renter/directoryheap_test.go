@@ -197,10 +197,10 @@ func TestPushSubDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath1); err != nil {
+	if err := rt.renter.CreateDir(siaPath1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath2); err != nil {
+	if err := rt.renter.CreateDir(siaPath2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,16 +315,16 @@ func TestNextExploredDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create Directories
-	if err := rt.renter.CreateDir(siaPath1_1); err != nil {
+	if err := rt.renter.CreateDir(siaPath1_1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath1_2); err != nil {
+	if err := rt.renter.CreateDir(siaPath1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath2_1); err != nil {
+	if err := rt.renter.CreateDir(siaPath2_1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath2_2); err != nil {
+	if err := rt.renter.CreateDir(siaPath2_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 
