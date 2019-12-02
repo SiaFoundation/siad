@@ -327,6 +327,8 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		c.mu.Unlock()
 		return types.ZeroCurrency, modules.RenterContract{}, errors.New("called managedNewContract but allowance wasn't set")
 	}
+	allowance := c.allowance
+	hostSettings := host.HostExternalSettings
 	period := c.allowance.Period
 	c.mu.Unlock()
 
@@ -337,6 +339,12 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
+	}
+
+	// Check for extortion.
+	err := staticCheckFormExtortion(allowance, hostSettings)
+	if err != nil {
+		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract - extortion protection enabled")
 	}
 
 	// get an address to use for negotiation
@@ -468,6 +476,20 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
+// staticCheckFormExtortion will check whether the pricing to download for
+// this worker exceeds any of the extortion limits placed on the worker.
+func staticCheckFormExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the RPC base price is too high.
+	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+		return errors.New("rpc base price of host is too high - extortion protection enabled")
+	}
+	if allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
+		return errors.New("contract price of host is too high - extortion protection enabled")
+	}
+
+	return nil
+}
+
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
@@ -506,6 +528,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
+	}
+
+	// Check for extortion on the renewal.
+	err = staticCheckFormExtortion(c.allowance, host.HostExternalSettings)
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "unable to renew - extortion protection enabled")
 	}
 
 	// get an address to use for negotiation
@@ -624,13 +652,10 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.log.Debugln("Contract does not seem to exist")
 		return types.ZeroCurrency, errors.New("contract no longer exists")
 	}
-	// Return the contract if it's not useful for renewing.
-	oldUtility, ok := c.managedContractUtility(id)
-	if !ok || !oldUtility.GoodForRenew {
-		c.log.Printf("Contract %v slated for renew is marked not good for renew: %v /%v",
-			id, ok, oldUtility.GoodForRenew)
-		c.staticContracts.Return(oldContract)
-		return types.ZeroCurrency, errors.New("contract is marked not good for renew")
+	oldUtility, exists := c.managedContractUtility(id)
+	if !exists {
+		c.log.Printf("Contract %v slated for renew could not be found in the utility lookup", id)
+		return types.ZeroCurrency, errors.New("contract utility could not be found")
 	}
 
 	// Perform the actual renew. If the renew fails, return the
@@ -1057,6 +1082,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
 			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
+			registerLowFundsAlert = true
 			continue
 		}
 
@@ -1083,6 +1109,8 @@ func (c *Contractor) threadedContractMaintenance() {
 
 	// Count the number of contracts which are good for uploading, and then make
 	// more as needed to fill the gap.
+	//
+	// TODO: Exits early here - need to do the viewnode check.
 	uploadContracts := 0
 	for _, id := range c.staticContracts.IDs() {
 		if cu, ok := c.managedContractUtility(id); ok && cu.GoodForUpload {
