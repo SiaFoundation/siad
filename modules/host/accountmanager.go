@@ -1,6 +1,8 @@
 package host
 
 import (
+	"math"
+	"math/bits"
 	"sync"
 	"time"
 
@@ -8,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -98,6 +101,13 @@ type (
 		fingerprints            *fingerprintMap
 		staticAccountsPersister *accountsPersister
 
+		// The accountIndex keeps track of every account index using a bitfield.
+		// The index specifies at what location the account is persisted on
+		// disk. When a new account is opened, it will be assigned a free index.
+		// When an account expires, its index will be recycled and become
+		// available.
+		index *accountIndex
+
 		// To increase performance, the account manager will persist the account
 		// data in an asynchronous fashion. This will allow users to withdraw
 		// money from an ephemeral account without having to wait until the new
@@ -109,7 +119,8 @@ type (
 		// that money twice. To limit this risk to the host, he can set a
 		// maxephemeralaccountrisk, when that amount is reached all withdrawals
 		// lock until the accounts have successfully been persisted.
-		currentRisk types.Currency
+		currentRisk     types.Currency
+		currentRiskCond *sync.Cond
 
 		mu sync.Mutex
 		h  *Host
@@ -129,6 +140,14 @@ type (
 		// inactive for too long. The host can configure this expiry using the
 		// ephemeralaccountexpiry setting.
 		lastTxnTime int64
+	}
+
+	// accountIndex keeps track of account indexes. It will assign a free index
+	// when a new account needs to be created. If an account expires it will
+	// recycle its index.
+	accountIndex struct {
+		bitfields []uint64
+		deleting  map[uint32]string
 	}
 
 	// blockedCall represents a pending withdrawal
@@ -185,8 +204,10 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	am := &accountManager{
 		accounts:     make(map[string]*account),
 		fingerprints: newFingerprintMap(bucketBlockRange),
+		index:        &accountIndex{deleting: make(map[uint32]string)},
 		h:            h,
 	}
+	am.currentRiskCond = sync.NewCond(&am.mu)
 
 	// Create the accounts persister
 	am.staticAccountsPersister, err = h.newAccountsPersister(am)
@@ -194,13 +215,16 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 		return nil, err
 	}
 
-	// Load the persisted accounts data onto the account manager
-	data, err := am.staticAccountsPersister.callLoadData()
-	if err != nil {
+	// Load the persisted accounts data from disk
+	var data *accountsPersisterData
+	if data, err = am.staticAccountsPersister.callLoadData(); err != nil {
 		return nil, err
 	}
 	am.accounts = data.accounts
 	am.fingerprints.next = data.fingerprints
+
+	// Build the account index
+	am.index.buildIndex(am.accounts)
 
 	// Close any open file handles if we receive a stop signal
 	am.h.tg.AfterStop(func() {
@@ -212,15 +236,6 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	return am, nil
 }
 
-// newAccount will return a new account object
-func newAccount(id string, index uint32) *account {
-	return &account{
-		id:           id,
-		index:        index,
-		blockedCalls: make(blockedCallHeap, 0),
-	}
-}
-
 // newFingerprintMap will create a new fingerprint map
 func newFingerprintMap(bucketBlockRange int) *fingerprintMap {
 	return &fingerprintMap{
@@ -230,68 +245,42 @@ func newFingerprintMap(bucketBlockRange int) *fingerprintMap {
 	}
 }
 
-// callDeposit will deposit the given amount into the account
+// callDeposit will deposit the given amount into the account.
 func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 	his := am.h.InternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
 	currentBlockHeight := am.h.BlockHeight()
 
-	// Fetch a free index in case we need one to create an account with
-	index := am.staticAccountsPersister.callAssignFreeIndex()
 	am.mu.Lock()
-	acc, exists := am.accounts[id]
-	if !exists {
-		acc = newAccount(id, index)
-		am.accounts[id] = acc
-	} else {
-		// If an account already existed, make sure to release the index
-		defer am.staticAccountsPersister.callReleaseIndex(index)
-	}
+	defer am.mu.Unlock()
+
+	// Open the account, this will create one if one does not exist yet
+	acc := am.openAccount(id)
 
 	// Verify the deposit does not exceed the ephemeral account maximum balance
 	if acc.depositExceedsMaxBalance(amount, maxBalance) {
-		am.mu.Unlock()
 		return ErrBalanceMaxExceeded
 	}
 
-	// Range over the blocked withdrawals and subtract it from the updated
-	// account balance, effectively fulfilling the withdrawal
-	updatedBalance := acc.balance.Add(amount)
-	for acc.blockedCalls.Len() > 0 {
-		bc := acc.blockedCalls.Pop().(*blockedCall)
-		if err := bc.withdrawal.validateExpiry(currentBlockHeight); err != nil {
-			bc.result <- err
-			continue
-		}
-
-		if updatedBalance.Cmp(bc.withdrawal.amount) < 0 {
-			acc.blockedCalls.Push(*bc)
-			break
-		}
-
-		updatedBalance = updatedBalance.Sub(bc.withdrawal.amount)
-		close(bc.result)
-	}
-
-	// Update account details
-	acc.balance = updatedBalance
+	// Update the account details
+	acc.balance = acc.balance.Add(amount)
 	acc.lastTxnTime = time.Now().Unix()
 
-	// Persist the account
-	accountData := acc.accountData()
-	am.mu.Unlock()
+	// Unblock any blocked calls now that the account is potentially solvent
+	// enough to process them
+	acc.unblockBlockedCalls(currentBlockHeight)
 
-	err := am.staticAccountsPersister.callSaveAccount(acc.index, accountData)
-	if err != nil {
-		am.h.log.Println("ERROR: could not save account:", id, err)
+	// Persist the account
+	if err := am.staticAccountsPersister.callSaveAccount(acc.accountData(), acc.index); err != nil {
 		return ErrAccountPersist
 	}
 
 	return nil
 }
 
-// callWithdraw will try to withdraw money from an ephemeral account. If the
-// account balance is insufficient, it will block until either a timeout
+// callWithdraw will try to withdraw money from an ephemeral account.
+//
+// If the account balance is insufficient, it will block until either a timeout
 // expires, the account receives sufficient funds or we receive a stop signal.
 //
 // The caller can specify a priority. This priority defines the order in which
@@ -300,32 +289,39 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) error {
 // Note that this function has very intricate locking, be extra cautious when
 // making changes
 func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) error {
+	his := am.h.InternalSettings()
+	maxRisk := his.MaxEphemeralAccountRisk
 	amount, id := msg.amount, msg.account
-	maxRisk := am.h.InternalSettings().MaxEphemeralAccountRisk
 
-	// Validate the expiry block height and the signature
+	// Validate the message's expiry and signature
 	currentBlockHeight := am.h.BlockHeight()
-	if err := msg.validateExpiry(currentBlockHeight); err != nil {
-		return err
-	}
-	if err := msg.validateSignature(sig); err != nil {
+	if err := msg.validate(currentBlockHeight, sig); err != nil {
 		return err
 	}
 
-	// Fetch a free index in case we need one to create an account with
-	index := am.staticAccountsPersister.callAssignFreeIndex()
+	// If the current risk exceeds the max risk, wait until the background
+	// persist threads have completed and risk is lowered
+	for am.managedCurrentRiskExceedsMaxRisk(maxRisk) {
+		if am.h.dependencies.Disrupt("errMaxRiskReached") {
+			return errMaxRiskReached
+		} // signal max risk is reached for testing purposes
+
+		done := make(chan error)
+		go func() {
+			am.currentRiskCond.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			continue
+		case <-time.After(blockedCallTimeout):
+			return ErrWithdrawalCancelled
+		}
+	}
 	am.mu.Lock()
-	acc, exists := am.accounts[id]
-	if !exists {
-		acc = newAccount(id, index)
-		am.accounts[id] = acc
-	} else {
-		// If an account already existed, make sure to release the index
-		defer am.staticAccountsPersister.callReleaseIndex(index)
-	}
 
-	// Verify if we have already processed this withdrawal by checking its
-	// fingerprint
+	// Verify the fingerprint has not been processed before
 	fingerprint := crypto.HashAll(*msg)
 	if exists := am.fingerprints.has(fingerprint); exists {
 		am.mu.Unlock()
@@ -342,6 +338,9 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		defer am.h.tg.Done()
 		am.staticAccountsPersister.callSaveFingerprint(fingerprint, msg.expiry, currentBlockHeight)
 	}()
+
+	// Open the account, create if it does not exist yet
+	acc := am.openAccount(id)
 
 	// If the account balance is insufficient to perform the withdrawal, block
 	// the withdrawal.
@@ -362,47 +361,28 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	acc.balance = acc.balance.Sub(amount)
 	acc.lastTxnTime = time.Now().Unix()
 
-	// Persist the account data asynchronously
-	accountData := acc.accountData()
 	am.currentRisk = am.currentRisk.Add(amount)
-	maxRiskReached := maxRisk.Cmp(am.currentRisk) < 0
-	awaitPersist := make(chan struct{})
+	accountData := acc.accountData()
 
-	// Note the threadgropu counter must be inncremented before entering the
-	// goroutine, this to properly await pending saves if the host shuts down
+	// Persist the account data asynchronously
 	if err := am.h.tg.Add(); err != nil {
 		return ErrWithdrawalCancelled
 	}
 	go func() {
 		defer am.h.tg.Done()
 
-		// Disrupt will add latency to the persist by sleeping for the
-		// predefined duration, this causes currentRisk to build up so we are
-		// able to reach maxRisk in tests
 		_ = am.h.dependencies.Disrupt("errMaxRiskReached")
 
-		if err := am.staticAccountsPersister.callSaveAccount(acc.index, accountData); err != nil {
-			am.h.log.Println(errors.AddContext(err, "couldn't save account"))
+		if err := am.staticAccountsPersister.callSaveAccount(accountData, acc.index); err != nil {
+			am.h.log.Println("Failed to save account", err)
 		}
-
-		close(awaitPersist)
 
 		am.mu.Lock()
 		am.currentRisk = am.currentRisk.Sub(amount)
 		am.mu.Unlock()
+
+		am.currentRiskCond.Broadcast()
 	}()
-
-	// If we have reached the max risk, await the persist
-	if maxRiskReached {
-		<-awaitPersist
-
-		// Disrupt will return a custom error here when the max risk was
-		// reached, for testing purposes only.
-		if am.h.dependencies.Disrupt("errMaxRiskReached") {
-			return errMaxRiskReached
-		}
-		return nil
-	}
 
 	return nil
 }
@@ -431,36 +411,49 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 	}
 
 	for {
-		var pruned []uint32
-
-		// Increment the threadgroup counter but ensure it is decremented within
-		// a single iteration of this loop. If it would be outside of the loop
-		// it would cause a deadlock when 'Flush' gets called.
+		// Note: threadgroup counter must be inside for loop. If not, calling
+		// 'Flush' on the threadgroup would deadlock.
 		if err := am.h.tg.Add(); err != nil {
 			return
 		}
 
+		// Loop all accounts and expire the ones that have been inactive for too
+		// long. Keep track of it using the index.
 		am.mu.Lock()
 		now := time.Now().Unix()
 		for id, acc := range am.accounts {
 			if forceExpire {
-				delete(am.accounts, id)
-				pruned = append(pruned, acc.index)
+				am.index.deleting[acc.index] = id
 				continue
 			}
 
 			if now-acc.lastTxnTime > accountExpiryTimeout {
 				am.h.log.Debugf("DEBUG: expiring account %v at %v", id, now)
-				delete(am.accounts, id)
-				pruned = append(pruned, acc.index)
+				am.index.deleting[acc.index] = id
 			}
 		}
 		am.mu.Unlock()
 
-		// Release the indexes outside the lock
-		for _, index := range pruned {
-			am.staticAccountsPersister.callReleaseIndex(index)
+		// Call deleteAccount on the persister for all accounts that expired.
+		var deleted []uint32
+		for index := range am.index.deleting {
+			if err := am.staticAccountsPersister.callDeleteAccount(index); err != nil {
+				am.h.log.Println("ERROR: account could not be deleted")
+				continue
+			}
+			deleted = append(deleted, index)
 		}
+
+		// Once successfully removed from disk, delete the account and free up
+		// its index
+		am.mu.Lock()
+		for _, index := range deleted {
+			id := am.index.deleting[index]
+			delete(am.accounts, id)
+			delete(am.index.deleting, index)
+			am.index.releaseIndex(index)
+		}
+		am.mu.Unlock()
 
 		am.h.tg.Done()
 
@@ -501,6 +494,86 @@ func (am *accountManager) managedRotateFingerprints(currentBlockHeight types.Blo
 	return am.staticAccountsPersister.callRotateFingerprintBuckets(currentBlockHeight)
 }
 
+// openAccount will return a new account object
+func (am *accountManager) openAccount(id string) *account {
+	acc, exists := am.accounts[id]
+	if !exists {
+		acc = &account{
+			id:           id,
+			index:        am.index.assignFreeIndex(),
+			blockedCalls: make(blockedCallHeap, 0),
+		}
+		am.accounts[id] = acc
+	}
+	return acc
+}
+
+func (am *accountManager) managedCurrentRiskExceedsMaxRisk(max types.Currency) bool {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	return am.currentRisk.Cmp(max) >= 0
+}
+
+// assignFreeIndex will return the next available account index
+func (ai *accountIndex) assignFreeIndex() uint32 {
+	var i, pos int = 0, -1
+
+	// Go through all bitmaps in random order to find a free index
+	full := ^uint64(0)
+	for i := range fastrand.Perm(len(ai.bitfields)) {
+		if ai.bitfields[i] != full {
+			pos = bits.TrailingZeros(uint(^ai.bitfields[i]))
+			break
+		}
+	}
+
+	// Add a new bitfield if all account indices are taken
+	if pos == -1 {
+		pos = 0
+		ai.bitfields = append(ai.bitfields, 1<<uint(pos))
+	} else {
+		ai.bitfields[i] |= (1 << uint(pos))
+	}
+
+	// Calculate the index my multiplying the bitfield index by 64 (seeing as
+	// the bitfields are of type uint64) and adding the position
+	index := uint32((i * 64) + pos)
+
+	return index
+}
+
+// releaseIndex will unset the bit corresponding to given index
+func (ai *accountIndex) releaseIndex(index uint32) {
+	i := index / 64
+	pos := index % 64
+	var mask uint64 = ^(1 << pos)
+	ai.bitfields[i] &= mask
+}
+
+// buildAccountIndex will initialize bitfields representing all ephemeral
+// accounts, the index is used to recycle account indices when the account
+// expires.
+func (ai *accountIndex) buildIndex(accounts map[string]*account) {
+	var maxIndex uint32
+	for _, acc := range accounts {
+		if acc.index > maxIndex {
+			maxIndex = acc.index
+		}
+	}
+
+	// Add empty bitfields
+	n := int(math.Floor(float64(maxIndex)/64)) + 1
+	for i := 0; i < n; i++ {
+		ai.bitfields = append(ai.bitfields, uint64(0))
+	}
+
+	for _, acc := range accounts {
+		i := acc.index / 64
+		pos := acc.index % 64
+		ai.bitfields[i] = ai.bitfields[i] << uint(pos)
+	}
+}
+
 // save will add the given fingerprint to the appropriate bucket
 func (fm *fingerprintMap) save(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) {
 	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
@@ -534,6 +607,15 @@ func (fm *fingerprintMap) tryRotate(currentBlockHeight types.BlockHeight) {
 	// If it is, we swap the current and next buckets and recreate next
 	fm.current = fm.next
 	fm.next = make(map[crypto.Hash]struct{})
+}
+
+// validate is a helper function that composes validateExpiry and
+// validateSignature
+func (wm *withdrawalMessage) validate(currentBlockHeight types.BlockHeight, sig crypto.Signature) error {
+	return errors.Compose(
+		wm.validateExpiry(currentBlockHeight),
+		wm.validateSignature(sig),
+	)
 }
 
 // validateExpiry returns an error if the withdrawal message is either already
@@ -576,4 +658,24 @@ func (a *account) depositExceedsMaxBalance(deposit, maxBalance types.Currency) b
 
 	updatedBalance := a.balance.Add(deposit.Sub(blocked))
 	return updatedBalance.Cmp(maxBalance) > 0
+}
+
+// depositExceedsMaxBalance returns whether or not the deposit would exceed the
+// ephemer account max balance, taking the blocked withdrawals into account.
+func (a *account) unblockBlockedCalls(currentBlockHeight types.BlockHeight) {
+	for a.blockedCalls.Len() > 0 {
+		bc := a.blockedCalls.Pop().(*blockedCall)
+		if err := bc.withdrawal.validateExpiry(currentBlockHeight); err != nil {
+			bc.result <- err // signal failure
+			continue
+		}
+
+		if a.balance.Cmp(bc.withdrawal.amount) < 0 {
+			a.blockedCalls.Push(*bc)
+			break
+		} // requeue if balance is insufficient
+
+		a.balance = a.balance.Sub(bc.withdrawal.amount)
+		close(bc.result)
+	}
 }

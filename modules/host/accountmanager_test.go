@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestAccountCallDeposit verifies we can deposit into an ephemeral account
@@ -253,13 +254,13 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight-1, sk)
 	err = callWithdraw(am, msg, sig)
-	if err != ErrWithdrawalExpired {
+	if !errors.Contains(err, ErrWithdrawalExpired) {
 		t.Fatal("Expected withdrawal expired error", err)
 	}
 }
 
-// TestAccountWithdrawalExpired verifies a withdrawal with an expiry in the
-// extreme future is not accepted
+// TestAccountWithdrawalExtremeFuture verifies a withdrawal with an expiry in
+// the extreme future is not accepted
 func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -287,12 +288,13 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+(2*bucketBlockRange)+1, sk)
 	err = callWithdraw(am, msg, sig)
-	if err != ErrWithdrawalExtremeFuture {
+
+	if !errors.Contains(err, ErrWithdrawalExtremeFuture) {
 		t.Fatal("Expected withdrawal extreme future error", err)
 	}
 }
 
-// TestAccountWithdrawalExpired verifies a withdrawal with an invalid signature is not accepted
+// TestAccountWithdrawalInvalidSignature verifies a withdrawal with an invalid signature is not accepted
 func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -322,7 +324,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	_, sig2 := prepareWithdrawal(spk1.String(), diff, am.h.blockHeight+5, sk2)
 
 	err = callWithdraw(am, msg1, sig2)
-	if err != ErrWithdrawalInvalidSignature {
+	if !errors.Contains(err, ErrWithdrawalInvalidSignature) {
 		t.Fatal("Expected withdrawal invalid signature error", err)
 	}
 }

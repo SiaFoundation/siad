@@ -2,7 +2,6 @@ package host
 
 import (
 	"io/ioutil"
-	"math/bits"
 	"os"
 	"path/filepath"
 	"sync"
@@ -15,10 +14,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
+	// accountsOffset is the offset at which accounts are written to disk, this
+	// offset ensures that accounts never cross the 512byte boundary. Seeing as
+	// the metadata is 32 bytes and the accounts are 128 bytes in size, we need
+	// to offset all accounts by 96 bytes.
+	accountsOffset = 96 // bytes
+
 	// accountSize is the fixed account size in bytes
 	accountSize = 1 << 7 // 128 bytes
 
@@ -58,8 +62,7 @@ type (
 		accounts                 modules.File
 		staticFingerprintManager *fingerprintManager
 
-		indexLocks     map[uint32]*indexLock
-		indexBitfields []uint64
+		indexLocks map[uint32]*indexLock
 
 		mu sync.Mutex
 		h  *Host
@@ -133,6 +136,7 @@ func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fin
 	if fm.current, err = ap.openFingerprintBucket(fm.currentPath); err != nil {
 		return nil, errors.AddContext(err, "could not open fingerprint bucket")
 	}
+
 	if fm.next, err = ap.openFingerprintBucket(fm.nextPath); err != nil {
 		return nil, errors.AddContext(err, "could not open fingerprint bucket")
 	}
@@ -140,26 +144,30 @@ func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fin
 	return fm, nil
 }
 
-// callSaveAccount writes the account data to disk
-func (ap *accountsPersister) callSaveAccount(index uint32, data *accountData) error {
-	ap.managedLockIndex(index)
-	defer ap.managedUnlockIndex(index)
-
+func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) error {
+	// Get the account data bytes (performs sanity check)
 	accBytes, err := data.bytes()
 	if err != nil {
 		return err
 	}
 
-	location := persist.FixedMetadataSize + int64(uint64(index)*accountSize)
-	_, err = ap.accounts.WriteAt(accBytes, location)
-	if err != nil {
-		return errors.AddContext(err, "failed to write to accounts file")
-	}
-	if err = ap.accounts.Sync(); err != nil {
-		return errors.AddContext(err, "failed to sync accounts file")
-	}
+	// Acquire a lock on the index and write the data to disk
+	ap.managedLockIndex(index)
+	err = writeAtAndSync(ap.accounts, accBytes, location(index))
+	ap.managedUnlockIndex(index, false)
 
-	return nil
+	return errors.AddContext(err, "failed to save account")
+}
+
+func (ap *accountsPersister) callDeleteAccount(index uint32) error {
+	// Overwrite the account with 0 bytes
+	accBytes := make([]byte, accountSize)
+
+	// Acquire a lock on the index and write the data to disk
+	ap.managedLockIndex(index)
+	err := writeAtAndSync(ap.accounts, accBytes, location(index))
+	ap.managedUnlockIndex(index, true)
+	return errors.AddContext(err, "failed to delete account")
 }
 
 // callSaveFingerprint writes the fingerprint to disk
@@ -184,7 +192,6 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 	if err := ap.loadAccounts(ap.accounts, accounts); err != nil {
 		return nil, err
 	}
-	ap.buildAccountIndex(len(accounts))
 
 	// Load all fingerprints
 	fingerprints := make(map[crypto.Hash]struct{})
@@ -196,48 +203,6 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 	}
 
 	return &accountsPersisterData{accounts: accounts, fingerprints: fingerprints}, nil
-}
-
-// callAssignFreeIndex will return the next available account index
-func (ap *accountsPersister) callAssignFreeIndex() uint32 {
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
-
-	var i, pos int = 0, -1
-
-	// Go through all bitmaps in random order to find a free index
-	full := ^uint64(0)
-	for i := range fastrand.Perm(len(ap.indexBitfields)) {
-		if ap.indexBitfields[i] != full {
-			pos = bits.TrailingZeros(uint(^ap.indexBitfields[i]))
-			break
-		}
-	}
-
-	// Add a new bitfield if all account indices are taken
-	if pos == -1 {
-		pos = 0
-		ap.indexBitfields = append(ap.indexBitfields, 1<<uint(pos))
-	} else {
-		ap.indexBitfields[i] = ap.indexBitfields[i] << uint(pos)
-	}
-
-	// Calculate the index my multiplying the bitfield index by 64 (seeing as
-	// the bitfields are of type uint64) and adding the position
-	index := uint32((i * 64) + pos)
-
-	return index
-}
-
-// callReleaseIndex will unset the bit corresponding to given index
-func (ap *accountsPersister) callReleaseIndex(index uint32) {
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
-
-	i := index / 64
-	pos := index % 64
-	var mask uint64 = ^(1 << pos)
-	ap.indexBitfields[i] &= mask
 }
 
 // callRotateFingerprintBuckets will rotate the fingerprint bucket files, but
@@ -297,7 +262,7 @@ func (ap *accountsPersister) managedLockIndex(index uint32) {
 }
 
 // managedLockAccount releases a lock on an (account) index.
-func (ap *accountsPersister) managedUnlockIndex(index uint32) {
+func (ap *accountsPersister) managedUnlockIndex(index uint32, forceDelete bool) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 
@@ -311,23 +276,8 @@ func (ap *accountsPersister) managedUnlockIndex(index uint32) {
 	il.mu.Unlock()
 
 	// If nobody else is trying to lock the index, perform garbage collection.
-	if il.waiting == 0 {
+	if forceDelete || il.waiting == 0 {
 		delete(ap.indexLocks, index)
-	}
-}
-
-// buildAccountIndex will initialize bitfields representing all ephemeral
-// accounts, the index is used to recycle account indices when the account
-// expires.
-func (ap *accountsPersister) buildAccountIndex(numAccounts int) {
-	n := numAccounts / 64
-	for i := 0; i < n; i++ {
-		ap.indexBitfields = append(ap.indexBitfields, ^uint64(0))
-	}
-
-	r := numAccounts % 64
-	if r > 0 {
-		ap.indexBitfields = append(ap.indexBitfields, (1<<uint(r))-1)
 	}
 }
 
@@ -388,18 +338,23 @@ func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*accou
 	if err != nil {
 		return errors.AddContext(err, "could not read accounts file")
 	}
+	nBytes := int64(len(bytes))
 
-	var accIndex uint32 = 0
-	for i := persist.FixedMetadataSize; i < len(bytes); i += accountSize {
+	var index uint32
+	for ; ; index++ {
+		accLocation := location(index)
+		if accLocation >= nBytes {
+			break
+		}
+		accBytes := bytes[accLocation : accLocation+accountSize]
+
 		var data accountData
-		if err := encoding.Unmarshal(bytes[i:i+accountSize], data); err != nil {
-			// No cause for error, just log it
-			ap.h.log.Debugln("ERROR: could not decode account", err)
+		if err := encoding.Unmarshal(accBytes, &data); err != nil {
 			continue
 		}
-		account := data.account(accIndex)
+
+		account := data.account(index)
 		m[account.id] = account
-		accIndex++
 	}
 
 	return nil
@@ -452,7 +407,7 @@ func (a *accountData) account(index uint32) *account {
 // bytes returns the account data as an array of bytes.
 func (a *accountData) bytes() ([]byte, error) {
 	// Sanity check, ensure the encoded account data is not too large
-	accMar := encoding.Marshal(a)
+	accMar := encoding.Marshal(*a)
 	if len(accMar) > accountSize {
 		build.Critical(errors.New("ERROR: ephemeral account size is larger than the expected size"))
 		return nil, ErrAccountPersist
@@ -510,10 +465,28 @@ func writeAndSync(file modules.File, b []byte) error {
 	return nil
 }
 
+// writeAndSync will write the given bytes to the file at given location and
+// call sync
+func writeAtAndSync(file modules.File, b []byte, location int64) error {
+	if _, err := file.WriteAt(b, location); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // syncAndClose will sync and close the given file
 func syncAndClose(file modules.File) error {
 	return errors.Compose(
 		file.Sync(),
 		file.Close(),
 	)
+}
+
+// location is a helper method that returns the location of the account at given
+// index
+func location(index uint32) int64 {
+	return persist.FixedMetadataSize + accountsOffset + int64(uint64(index)*accountSize)
 }

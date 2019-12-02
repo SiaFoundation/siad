@@ -56,6 +56,9 @@ func TestAccountsReload(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Important, reload the accountmanager to avoid looking at old data
+	am = ht.host.staticAccountManager
+
 	// Verify the account balances were reloaded properly
 	for id, expected := range accounts {
 		reloaded := getAccountBalance(am, id)
