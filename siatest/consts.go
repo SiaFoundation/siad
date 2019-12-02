@@ -13,9 +13,6 @@ const (
 	// 8 tests can be run in parallel and the testgroup creation is throttled to
 	// 1 at a time
 	NumberOfParallelGroups = 1
-
-	// DefaultDiskPermissions when creating files or directories.
-	DefaultDiskPermissions = 0750
 )
 
 // ChunkSize is a helper method to calculate the size of a chunk depending on

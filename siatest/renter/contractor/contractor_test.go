@@ -1,7 +1,6 @@
 package contractor
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/sync"
@@ -655,7 +655,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
@@ -799,7 +799,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
@@ -914,10 +914,10 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
 	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
-	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
+	if err := os.MkdirAll(filepath.Dir(newPath), persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(newPath, siaFile, 0777); err != nil {
+	if err := ioutil.WriteFile(newPath, siaFile, persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
 
@@ -965,7 +965,7 @@ func TestRenterContractRecovery(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.StartHeight != c.StartHeight {
@@ -1628,8 +1628,8 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
 		}
-		churnedHost := rc.DisabledContracts[0].HostPublicKey
-		if churnedHost.Algorithm != hostPubKey.Algorithm || !bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if !churnedHostKey.Equals(hostPubKey) {
 			return errors.New("wrong host churned")
 		}
 
@@ -1682,8 +1682,8 @@ func TestContractorChurnLimiter(t *testing.T) {
 
 		// Check that a *different* host (i.e. not the offline host) was churned
 		// this time.
-		churnedHost := rc.DisabledContracts[0].HostPublicKey
-		if churnedHost.Algorithm == hostPubKey.Algorithm && bytes.Equal(churnedHost.Key, hostPubKey.Key) {
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if churnedHostKey.Equals(hostPubKey) {
 			return errors.New("wrong host churned")
 		}
 

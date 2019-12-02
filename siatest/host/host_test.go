@@ -51,7 +51,7 @@ func TestHostGetPubKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(pk.Key, hg.PublicKey.Key) {
+	if !pk.Equals(hg.PublicKey) {
 		t.Log("HostGet PubKey:", hg.PublicKey)
 		t.Log("Server PubKey:", pk)
 		t.Fatal("Public Keys don't match")

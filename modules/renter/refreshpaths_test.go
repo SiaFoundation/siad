@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -90,14 +91,14 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Check the metadata of the root directory. Because we added files by
-	// directly calling the staticFileSet, a bubble should not have been
+	// directly calling the staticFileSystem, a bubble should not have been
 	// triggered and therefore the number of total files should be 0
 	di, err := rt.renter.DirList(modules.RootSiaPath())
 	if err != nil {
