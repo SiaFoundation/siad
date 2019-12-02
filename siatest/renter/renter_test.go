@@ -1,8 +1,10 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"net/url"
@@ -300,6 +302,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
+		{"TestDownloadFromSiaFile", testDownloadFromSiaFile},
 	}
 
 	// Run tests
@@ -1104,6 +1107,59 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// testDownloadFromSiaFile tests downloading a file using the /renter/stream
+// endpoint using a SiaFile from outside the renter's filesystem directly.
+func testDownloadFromSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Download the file once to compare the contents later.
+	data, err := renter.Stream(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stop the renter.
+	if err := renter.StopNode(); err != nil {
+		t.Fatal(err)
+	}
+	// Move the .sia file to a temporary location.
+	srcPath := filepath.Join(renter.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, localFile.FileName()+modules.SiaFileExtension)
+	dstPath := filepath.Join(renter.Dir, localFile.FileName()+modules.SiaFileExtension)
+	srcFile, err1 := os.Open(srcPath)
+	dstFile, err2 := os.Create(dstPath)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Compose(srcFile.Close(), dstFile.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(srcPath); err != nil {
+		t.Fatal(err)
+	}
+	// Start the renter again.
+	if err := renter.StartNode(); err != nil {
+		t.Fatal(err)
+	}
+	// Download the file by stream.
+	resp, err := renter.RenterStreamLocalGet(dstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(resp, data) {
+		t.Fatal("Downloaded data doesn't match expected data")
 	}
 }
 

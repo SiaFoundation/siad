@@ -463,6 +463,15 @@ func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool
 	return
 }
 
+// RenterStreamLocalGet uses the /renter/stream endpoint to download data as a
+// stream using an existing SiaFile on disk.
+func (c *Client) RenterStreamLocalGet(path string) (resp []byte, err error) {
+	values := url.Values{}
+	values.Set("localpath", path)
+	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream?%s", values.Encode()))
+	return
+}
+
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part
 // of data as a stream.
 func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64, disableLocalFetch bool) (resp []byte, err error) {

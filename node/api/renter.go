@@ -1555,41 +1555,43 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 
 // renterStreamHandler handles downloads from the /renter/stream endpoint
 func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	var fileName string
-	var streamer modules.Streamer
-	var err error
-	sp := ps.ByName("siapath")
-	lp := ps.ByName("localpath")
-	if (sp == "" && lp == "") || (sp != "" && lp != "") {
-		WriteError(w, Error{"Have to specify either siapath or localpath"}, http.StatusBadRequest)
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	if sp != "" {
-		siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	siaPath, err = rebaseInputSiaPath(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	disablelocalfetchparam := req.FormValue("disablelocalfetch")
+	var disableLocalFetch bool
+	if disablelocalfetchparam != "" {
+		disableLocalFetch, err = scanBool(disablelocalfetchparam)
 		if err != nil {
+			err = errors.AddContext(err, "error parsing the disablelocalfetch flag")
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
 		}
-		siaPath, err = rebaseInputSiaPath(siaPath)
-		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
-		}
-		disablelocalfetchparam := req.FormValue("disablelocalfetch")
-		var disableLocalFetch bool
-		if disablelocalfetchparam != "" {
-			disableLocalFetch, err = scanBool(disablelocalfetchparam)
-			if err != nil {
-				err = errors.AddContext(err, "error parsing the disablelocalfetch flag")
-				WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-				return
-			}
-		}
-		fileName, streamer, err = api.renter.Streamer(siaPath, disableLocalFetch)
 	}
-	if lp != "" {
-		fileName, streamer, err = api.renter.StreamerFromSiafile(lp)
+	fileName, streamer, err := api.renter.Streamer(siaPath, disableLocalFetch)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
+			http.StatusInternalServerError)
+		return
 	}
+	defer streamer.Close()
+	http.ServeContent(w, req, fileName, time.Time{}, streamer)
+}
+
+func (api *API) renterStreamFromSiaFileHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	lp := req.FormValue("localpath")
+	if lp == "" {
+		WriteError(w, Error{"Have to specify either localpath"}, http.StatusBadRequest)
+		return
+	}
+	fileName, streamer, err := api.renter.StreamerFromSiafile(lp)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
 			http.StatusInternalServerError)
