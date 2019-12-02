@@ -31,18 +31,20 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		}
 
 		name := fd.Name.String()
-		if ast.IsExported(name) ||
-			firstWordIs(name, "managed") ||
-			firstWordIs(name, "threaded") ||
-			firstWordIs(name, "call") {
-			return // these methods manage their own locking
+		if ast.IsExported(name) || managesOwnLocking(name) {
+			return
 		}
 
+		// check for calls to Lock, or other methods that may call Lock
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
 			if ce, ok := n.(*ast.CallExpr); ok {
-				if se, ok := ce.Fun.(*ast.SelectorExpr); ok && se.Sel.Name == "Lock" {
-					if t := pass.TypesInfo.Types[se.X].Type; t != nil && strings.HasSuffix(t.String(), "Mutex") {
-						pass.Reportf(n.Pos(), "unprivileged method %s locks mutex", name)
+				if se, ok := ce.Fun.(*ast.SelectorExpr); ok {
+					if se.Sel.Name == "Lock" {
+						if t := pass.TypesInfo.Types[se.X].Type; t != nil && strings.HasSuffix(t.String(), "Mutex") {
+							pass.Reportf(n.Pos(), "unprivileged method %s locks mutex", name)
+						}
+					} else if managesOwnLocking(se.Sel.Name) {
+						pass.Reportf(n.Pos(), "unprivileged method %s calls privileged method %s", name, se.Sel.Name)
 					}
 				}
 			}
@@ -52,10 +54,17 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
+// managesOwnLocking returns whether a method manages its own locking.
+func managesOwnLocking(name string) bool {
+	return firstWordIs(name, "managed") ||
+		firstWordIs(name, "threaded") ||
+		firstWordIs(name, "call")
+}
+
 // firstWordIs returns true if name begins with prefix, followed by an uppercase
 // letter. For example, firstWordIs("startsUpper", "starts") == true, but
 // firstWordIs("starts", "starts") == false.
 func firstWordIs(name, prefix string) bool {
 	suffix := strings.TrimPrefix(name, prefix)
-	return len(suffix) > 0 && ast.IsExported(suffix)
+	return len(suffix) != len(name) && len(suffix) > 0 && ast.IsExported(suffix)
 }
