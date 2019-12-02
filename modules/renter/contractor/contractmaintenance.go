@@ -476,15 +476,45 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-// staticCheckFormExtortion will check whether the pricing to download for
-// this worker exceeds any of the extortion limits placed on the worker.
+// staticCheckFormExtortion will check whether the pricing for forming this
+// contract triggers any extortion warnings.
 func staticCheckFormExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
 		return errors.New("rpc base price of host is too high - extortion protection enabled")
 	}
+	// Check whether the form contract price is too high.
 	if allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
 		return errors.New("contract price of host is too high - extortion protection enabled")
+	}
+
+	return nil
+}
+
+// staticCheckViewContractExtortion will check whether the pricing for creating
+// a view contract with this host triggers any extortion warnings.
+func staticCheckViewContractExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the RPC base price is too high.
+	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+		return errors.New("rpc base price of host is too high - extortion protection enabled")
+	}
+	// Check whether the form contract price is too high.
+	if allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
+		return errors.New("contract price of host is too high - extortion protection enabled")
+	}
+	// Check whether the form contract price does not leave enough room for
+	// uploads and downloads. At least half of the viewcontract's funds need to
+	// remain for download bandwidth.
+	if allowance.ViewContractInitialPrice.Div64(2).Cmp(hostSettings.ContractPrice) <= 0 {
+		return errors.New("contract price of host does not leave room for activies - extortion protection enabled")
+	}
+	// Check whether the download bandwidth price is too high.
+	if allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
+		return errors.New("download bandwidth price of host is too high - extortion protection enabled")
+	}
+	// Check whether the sector access price is too high.
+	if allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+		return errors.New("sector accesss price of host is too high - extortion protection enabled")
 	}
 
 	return nil
@@ -1109,8 +1139,6 @@ func (c *Contractor) threadedContractMaintenance() {
 
 	// Count the number of contracts which are good for uploading, and then make
 	// more as needed to fill the gap.
-	//
-	// TODO: Exits early here - need to do the viewnode check.
 	uploadContracts := 0
 	for _, id := range c.staticContracts.IDs() {
 		if cu, ok := c.managedContractUtility(id); ok && cu.GoodForUpload {
@@ -1120,7 +1148,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.mu.RLock()
 	neededContracts := int(c.allowance.Hosts) - uploadContracts
 	c.mu.RUnlock()
-	if neededContracts <= 0 {
+	if neededContracts <= 0 && allowance.ViewContractInitialPrice.IsZero() {
 		c.log.Debugln("do not seem to need more contracts")
 		return
 	}
@@ -1158,6 +1186,11 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
+		// If no more contracts are needed, break.
+		if neededContracts <= 0 {
+			break
+		}
+
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1219,10 +1252,96 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("Unable to save the contractor:", err)
 		}
 
-		// Quit the loop if we've replaced all needed contracts.
-		neededContracts--
-		if neededContracts <= 0 {
+		// Soft sleep before making the next contract.
+		select {
+		case <-c.tg.StopChan():
+			return
+		case <-c.interruptMaintenance:
+			return
+		default:
+		}
+	}
+
+	// Viewnodes will need to form additional contracts with any hosts that they
+	// do not currently have contracts with. All other nodes can exit here.
+	if allowance.ViewContractInitialPrice.IsZero() {
+		return
+	}
+
+	// Get a full list of active hosts from the hostdb.
+	allHosts, err := c.hdb.ActiveHosts()
+	if err != nil {
+		c.log.Printf("Error fetching list of active hosts when attempting to form view contracts: %v", err)
+	}
+	// Get a list of all current contracts.
+	allContracts = c.staticContracts.ViewAll()
+	currentContracts:= make(map[string]struct{})
+	for _, contract := range allContracts {
+		if contract.Utility.GoodForRenew {
+			currentContracts[contract.HostPublicKey.String()] = struct{}{}
+		}
+	}
+	for _, host := range allHosts {
+		// Check if there is already a contract with this host.
+		_, exists := currentContracts[host.PublicKey.String()]
+		if exists {
+			continue
+		}
+
+		// Check that the price settings of the host are acceptable.
+		hostSettings := host.HostExternalSettings
+		err := staticCheckViewContractExtortion(allowance, hostSettings)
+		if err != nil {
+			c.log.Debugf("skipping forming a view contract with a host - extortion protection enabled: %v", err)
+			continue
+		}
+
+		// Check that the wallet is unlocked.
+		unlocked, err := c.wallet.Unlocked()
+		if !unlocked || err != nil {
+			registerWalletLockedDuringMaintenance = true
+			c.log.Println("contractor is attempting to establish new contracts with hosts, however the wallet is locked")
+			return
+		}
+
+		// Determine if there is enough money to form a new contract.
+		if fundsRemaining.Cmp(allowance.ViewContractInitialPrice) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+			registerLowFundsAlert = true
+			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
+		}
+
+		// If we are using a custom resolver we need to replace the domain name
+		// with 127.0.0.1 to be able to form contracts.
+		if c.staticDeps.Disrupt("customResolver") {
+			port := host.NetAddress.Port()
+			host.NetAddress = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
+		}
+
+		// Attempt forming a contract with this host.
+		start := time.Now()
+		fundsSpent, newContract, err := c.managedNewContract(host, allowance.ViewContractInitialPrice, endHeight)
+		if err != nil {
+			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
+			continue
+		}
+		fundsRemaining = fundsRemaining.Sub(fundsSpent)
+		c.log.Println("A view contract has been formed with a host:", newContract.ID)
+
+		// Add this contract to the contractor and save.
+		err = c.managedAcquireAndUpdateContractUtility(newContract.ID, modules.ContractUtility{
+			GoodForUpload: false,
+			GoodForRenew:  true,
+		})
+		if err != nil {
+			c.log.Println("Failed to update the contract utilities", err)
+			return
+		}
+		c.mu.Lock()
+		err = c.save()
+		c.mu.Unlock()
+		if err != nil {
+			c.log.Println("Unable to save the contractor:", err)
 		}
 
 		// Soft sleep before making the next contract.

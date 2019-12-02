@@ -48,7 +48,6 @@ type Contractor struct {
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
 	maintenanceLock      siasync.TryMutex
-	viewnode             bool
 
 	// Only one thread should be scanning the blockchain for recoverable
 	// contracts at a time.

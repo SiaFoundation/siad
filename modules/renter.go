@@ -214,6 +214,13 @@ type Allowance struct {
 	Period      types.BlockHeight `json:"period"`
 	RenewWindow types.BlockHeight `json:"renewwindow"`
 
+	// ViewContractInitialPrice establishes the amount of money that the
+	// viewnode will put in to a brand new view contract.
+	//
+	// When set to zero, the contractor will not consider itself to be a
+	// viewnode.
+	ViewContractInitialPrice types.Currency
+
 	// ExpectedStorage is the amount of data that we expect to have in a contract.
 	ExpectedStorage uint64 `json:"expectedstorage"`
 
