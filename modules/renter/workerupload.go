@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"time"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // staticCheckUploadExtortion will check whether the pricing to download for
-// this worker exceeds any of the extortion limits placed on the worker. 
+// this worker exceeds any of the extortion limits placed on the worker.
 func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {

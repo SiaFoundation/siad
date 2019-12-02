@@ -1275,7 +1275,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	// Get a list of all current contracts.
 	allContracts = c.staticContracts.ViewAll()
-	currentContracts:= make(map[string]struct{})
+	currentContracts := make(map[string]struct{})
 	for _, contract := range allContracts {
 		if contract.Utility.GoodForRenew {
 			currentContracts[contract.HostPublicKey.String()] = struct{}{}

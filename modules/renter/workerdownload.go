@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // segmentsForRecovery calculates the first segment and how many segments we
@@ -43,7 +43,7 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules
 }
 
 // staticCheckDownloadExtortion will check whether the pricing to download for
-// this worker exceeds any of the extortion limits placed on the worker. 
+// this worker exceeds any of the extortion limits placed on the worker.
 func staticCheckDownloadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {

@@ -441,13 +441,32 @@ func renterallowancecmd() {
   Renew Window:         %v blocks
   Hosts:                %v
 
+Viewnode Per-Contract Budget: %v
+
 Expectations for period:
   Expected Storage:     %v
   Expected Upload:      %v
   Expected Download:    %v
   Expected Redundancy:  %v
-`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
-		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
+
+Price Protections:
+  MaxRPCPrice: %v per million requests
+  MaxContractPrice: %v
+  MaxDownloadBandwidthPrice: %v per TB
+  MaxSectorAccessPrice: %v per million accesses
+  MaxStoragePrice: %v per TB per Month
+  MaxUploadBandwidthPrice: %v per TB
+`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
+		allowance.Hosts, currencyUnits(allowance.ViewContractInitialPrice),
+		filesizeUnits(allowance.ExpectedStorage),
+		filesizeUnits(allowance.ExpectedUpload),
+		filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy,
+		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
+		currencyUnits(allowance.MaxContractPrice),
+		currencyUnits(allowance.MaxDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
+		currencyUnits(allowance.MaxSectorAccessPrice.Mul64(1e6)),
+		currencyUnits(allowance.MaxStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
+		currencyUnits(allowance.MaxUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)))
 
 	// Show detailed current Period spending metrics
 	renterallowancespending(rg)
@@ -535,7 +554,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	if allowanceHosts != "" {
 		hosts, err := strconv.Atoi(allowanceHosts)
 		if err != nil {
-			die("Could not parse host count")
+			die("Could not parse host count:", err)
 		}
 		req = req.WithHosts(uint64(hosts))
 		changedFields++
@@ -544,7 +563,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	if allowanceRenewWindow != "" {
 		rw, err := parsePeriod(allowanceRenewWindow)
 		if err != nil {
-			die("Could not parse renew window")
+			die("Could not parse renew window:", err)
 		}
 		var renewWindow types.BlockHeight
 		_, err = fmt.Sscan(rw, &renewWindow)
@@ -552,6 +571,20 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 			die("Could not parse renew window:", err)
 		}
 		req = req.WithRenewWindow(renewWindow)
+		changedFields++
+	}
+	// parse viewcontractinitialprice
+	if allowanceViewContractInitialPrice != "" {
+		priceStr, err := parseCurrency(allowanceViewContractInitialPrice)
+		if err != nil {
+			die("Could not parse view contract initial price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read view contract initial price:", err)
+		}
+		req = req.WithViewContractInitialPrice(price)
 		changedFields++
 	}
 	// parse expectedStorage
@@ -605,6 +638,91 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		req = req.WithExpectedRedundancy(expectedRedundancy)
 		changedFields++
 	}
+	// parse maxrpcprice
+	if allowanceMaxRPCPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxRPCPrice)
+		if err != nil {
+			die("Could not parse max rpc price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read max rpc price:", err)
+		}
+		req = req.WithMaxRPCPrice(price)
+		changedFields++
+	}
+	// parse maxcontractprice
+	if allowanceMaxContractPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxContractPrice)
+		if err != nil {
+			die("Could not parse max contract price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read max contract price:", err)
+		}
+		req = req.WithMaxContractPrice(price)
+		changedFields++
+	}
+	// parse maxdownloadbandwidthprice
+	if allowanceMaxDownloadBandwidthPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxDownloadBandwidthPrice)
+		if err != nil {
+			die("Could not parse max download bandwidth price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read max download bandwidth price:", err)
+		}
+		req = req.WithMaxDownloadBandwidthPrice(price)
+		changedFields++
+	}
+	// parse maxsectoraccessprice
+	if allowanceMaxSectorAccessPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxSectorAccessPrice)
+		if err != nil {
+			die("Could not parse max sector access price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read max sector access price:", err)
+		}
+		req = req.WithMaxSectorAccessPrice(price)
+		changedFields++
+	}
+	// parse maxstorageprice
+	if allowanceMaxStoragePrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxStoragePrice)
+		if err != nil {
+			die("Could not parse max storage price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read max storage price:", err)
+		}
+		req = req.WithMaxStoragePrice(price)
+		changedFields++
+	}
+	// parse maxuploadbandwidthprice
+	if allowanceMaxUploadBandwidthPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxUploadBandwidthPrice)
+		if err != nil {
+			die("Could not parse max upload bandwidth price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read max upload bandwidth price:", err)
+		}
+		req = req.WithMaxUploadBandwidthPrice(price)
+		changedFields++
+	}
+
 	// check if any fields were updated.
 	if changedFields == 0 {
 		// If no fields were set then walk the user through the interactive
