@@ -49,7 +49,7 @@ var (
 	// stopped in the midst of a withdrawal process
 	ErrWithdrawalCancelled = errors.New("ephemeral account withdrawal cancelled due to a shutdown")
 
-	// Only used for testing purposes
+	// Used for testing purposes
 	errMaxRiskReached = errors.New("errMaxRiskReached")
 
 	// pruneExpiredAccountsFrequency is the frequency at which the account
@@ -132,6 +132,14 @@ type (
 		id           string
 		balance      types.Currency
 		blockedCalls blockedCallHeap
+
+		// pendingRisk keeps track of how much of the account balance is
+		// unsaved. We need to keep track of this on a per account basis,
+		// because there is only one background thread saving an account,
+		// meanwhile its balance can get updated by other threads. We need
+		// pendingRisk to know what to subtract from the currentRisk once the
+		// account is saved.
+		pendingRisk types.Currency
 
 		// lastTxnTime is the timestamp of the last transaction that occured
 		// involving this ephemeral account. A transaction can be either a
@@ -341,34 +349,22 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		am.mu.Unlock()
 		return am.blockedWithdrawalResult(bc.result)
 	}
-	defer am.mu.Unlock()
 
 	// Update the account details
 	acc.balance = acc.balance.Sub(amount)
 	acc.lastTxnTime = time.Now().Unix()
 
-	accountData := acc.accountData()
+	// Update outstanding risk
 	am.currentRisk = am.currentRisk.Add(amount)
-
-	// Persist the account data asynchronously
-	if err := am.h.tg.Add(); err != nil {
-		return ErrWithdrawalCancelled
+	acc.pendingRisk = acc.pendingRisk.Add(amount)
+	if acc.pendingRisk.Equals(amount) {
+		// Ensure that only one background thread is saving this account. This
+		// enables us to update the account balance while we wait on the
+		// persister.
+		go am.threadedSaveAccount(id)
 	}
 
-	go func() {
-		defer am.h.tg.Done()
-
-		_ = am.h.dependencies.Disrupt("errMaxRiskReached")
-		if err := am.staticAccountsPersister.callSaveAccount(accountData, acc.index); err != nil {
-			am.h.log.Println("Failed to save account", err)
-		}
-
-		am.mu.Lock()
-		am.currentRisk = am.currentRisk.Sub(amount)
-		am.currentRiskCond.Broadcast()
-		am.mu.Unlock()
-	}()
-
+	am.mu.Unlock()
 	return nil
 }
 
@@ -379,6 +375,57 @@ func (am *accountManager) callConsensusChanged() {
 	if err := am.managedRotateFingerprints(currentBlockHeight); err != nil {
 		am.h.log.Critical("Could not rotate fingerprints", err)
 	}
+}
+
+// threadedSaveAccount will save the account with given id. There is only ever
+// one background thread per account running. This is ensured by the account's
+// pendingRisk, only if that increases from 0 -> something, a goroutine is
+// scheduled to save the account.
+func (am *accountManager) threadedSaveAccount(id string) {
+	if err := am.h.tg.Add(); err != nil {
+		return
+	}
+	defer am.h.tg.Done()
+
+	// Acquire a lock and gather the data we are about to persist
+	am.mu.Lock()
+	acc, exists := am.accounts[id]
+	if !exists {
+		am.mu.Unlock()
+		return
+	}
+	_, deleting := am.index.deleting[acc.index]
+	if deleting {
+		am.currentRisk = am.currentRisk.Sub(acc.pendingRisk)
+		am.mu.Unlock()
+		return
+	}
+	pendingRisk := acc.pendingRisk
+	accountData := acc.accountData()
+	am.mu.Unlock()
+
+	// Persist the data
+	_ = am.h.dependencies.Disrupt("errMaxRiskReached")
+	if err := am.staticAccountsPersister.callSaveAccount(accountData, acc.index); err != nil {
+		am.h.log.Println("Failed to save account", err)
+	}
+
+	// Reacquire the lock and update the pendingRisk and currentRisk. Broadcast
+	// this update to the currentRisk so pending calls unblock.
+	am.mu.Lock()
+	am.currentRisk = am.currentRisk.Sub(pendingRisk)
+	am.currentRiskCond.Broadcast()
+	acc, exists = am.accounts[id]
+	if !exists {
+		am.mu.Unlock()
+		return
+	}
+
+	acc.pendingRisk = acc.pendingRisk.Sub(pendingRisk)
+	if !acc.pendingRisk.Equals(types.ZeroCurrency) {
+		go am.threadedSaveAccount(id)
+	}
+	am.mu.Unlock()
 }
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
@@ -575,6 +622,7 @@ func (ai *accountIndex) buildIndex(accounts map[string]*account) {
 		ai.bitfields = append(ai.bitfields, uint64(0))
 	}
 
+	// Range over the accounts and flip their index bit
 	for _, acc := range accounts {
 		i := acc.index / 64
 		pos := acc.index % 64
@@ -674,14 +722,15 @@ func (a *account) unblockBlockedCalls(currentBlockHeight types.BlockHeight) {
 	for a.blockedCalls.Len() > 0 {
 		bc := a.blockedCalls.Pop().(*blockedCall)
 		if err := bc.withdrawal.validateExpiry(currentBlockHeight); err != nil {
-			bc.result <- err // signal failure
+			bc.result <- err
 			continue
 		}
 
+		// requeue if balance is insufficient
 		if a.balance.Cmp(bc.withdrawal.amount) < 0 {
 			a.blockedCalls.Push(*bc)
 			break
-		} // requeue if balance is insufficient
+		}
 
 		a.balance = a.balance.Sub(bc.withdrawal.amount)
 		close(bc.result)
