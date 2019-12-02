@@ -771,6 +771,12 @@ type Renter interface {
 	// resource.
 	Streamer(siapath SiaPath, disableLocalFetch bool) (string, Streamer, error)
 
+	// StreamerFromSiafile create a io.ReadSeeker that can be used to stream
+	// downloads from the Sia network using a SiaFile which is not part of the
+	// renter. Should only be called on siafiles outside of the renter's
+	// filesystem root.
+	StreamerFromSiafile(path string) (string, Streamer, error)
+
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
