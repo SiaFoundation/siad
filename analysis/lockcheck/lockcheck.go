@@ -53,7 +53,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 }
 
 // firstWordIs returns true if name begins with prefix, followed by an uppercase
-// letter. For example, firstWordIs("firstWordIs", "starts") == true, but
+// letter. For example, firstWordIs("startsUpper", "starts") == true, but
 // firstWordIs("starts", "starts") == false.
 func firstWordIs(name, prefix string) bool {
 	suffix := strings.TrimPrefix(name, prefix)
