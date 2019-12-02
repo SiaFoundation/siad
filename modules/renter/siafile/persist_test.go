@@ -5,10 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,12 +127,14 @@ func customTestFileAndWAL(siaFilePath, source string, rc modules.ErasureCoder, s
 	if partialsSiaFile.numChunks > 0 {
 		panic(fmt.Sprint("partialsSiaFile shouldn't have any chunks but had ", partialsSiaFile.numChunks))
 	}
+	/* PARTIAL TODO:
 	partialsEntry := &SiaFileSetEntry{
-		dummyEntry(partialsSiaFile),
+		partialsSiaFile,
 		uint64(fastrand.Intn(math.MaxInt32)),
 	}
+	*/
 	// Create the file.
-	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, partialsEntry, false)
+	sf, err := New(siaFilePath, source, wal, rc, sk, fileSize, fileMode, nil, false)
 	if err != nil {
 		panic(err)
 	}
@@ -417,7 +419,7 @@ func TestDelete(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	entry, _, _ := newTestSiaFileSetWithFile()
+	entry := newTestFile()
 	// Delete file.
 	if err := entry.Delete(); err != nil {
 		t.Fatal("Failed to delete file", err)
@@ -440,18 +442,11 @@ func TestRename(t *testing.T) {
 	t.Parallel()
 
 	// Create SiaFileSet with SiaFile
-	entry, sfs, _ := newTestSiaFileSetWithFile()
+	entry := newTestFile()
 
 	// Create new paths for the file.
-	sfs.mu.Lock()
-	oldSiaPathStr := sfs.siaPath(entry.siaFileSetEntry).String()
-	sfs.mu.Unlock()
-	newSiaPath, err := modules.NewSiaPath(oldSiaPathStr + "1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	newSiaFilePath := newSiaPath.SiaFileSysPath(sfs.staticSiaFileDir)
-	oldSiaFilePath := entry.siaFilePath
+	oldSiaFilePath := entry.SiaFilePath()
+	newSiaFilePath := strings.TrimSuffix(entry.SiaFilePath(), modules.SiaFileExtension) + "_renamed" + modules.SiaFileExtension
 
 	// Rename file
 	if err := entry.Rename(newSiaFilePath); err != nil {
@@ -473,12 +468,9 @@ func TestRename(t *testing.T) {
 	if entry.siaFilePath != newSiaFilePath {
 		t.Fatal("SiaFilePath wasn't updated correctly")
 	}
-	sfs.mu.Lock()
-	siaPath := sfs.siaPath(entry.siaFileSetEntry)
-	if !siaPath.Equals(newSiaPath) {
-		t.Fatal("SiaPath wasn't updated correctly", siaPath, newSiaPath)
+	if entry.SiaFilePath() != newSiaFilePath {
+		t.Fatal("SiaPath wasn't updated correctly", entry.SiaFilePath(), newSiaFilePath)
 	}
-	sfs.mu.Unlock()
 }
 
 // TestApplyUpdates tests a variety of functions that are used to apply
@@ -894,6 +886,7 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
+	t.Skip("skip until partial chunks are enabled")
 
 	// Create two SiaFiles with partial chunks and link them by giving the second
 	// one the same partials siafile as the first one.

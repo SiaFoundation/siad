@@ -17,6 +17,9 @@ const (
 	// FixedMetadataSize is the size of the FixedMetadata header in bytes
 	FixedMetadataSize = 32
 
+	// DefaultDiskPermissionsTest when creating files or directories in tests.
+	DefaultDiskPermissionsTest = 0750
+
 	// persistDir defines the folder that is used for testing the persist
 	// package.
 	persistDir = "persist"

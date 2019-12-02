@@ -241,7 +241,7 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 // setup was successful.
 func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
 	// Lookup the file associated with the nickname.
-	entry, err := r.staticFileSet.Open(p.SiaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 	}
 
 	// Prepare snapshot.
-	snap, err := entry.Snapshot()
+	snap, err := entry.Snapshot(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}

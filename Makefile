@@ -32,6 +32,7 @@ pkgs = ./build \
 	./modules/miner \
 	./modules/renter \
 	./modules/renter/contractor \
+	./modules/renter/filesystem \
 	./modules/renter/hostdb \
 	./modules/renter/hostdb/hosttree \
 	./modules/renter/proto \

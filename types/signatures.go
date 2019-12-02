@@ -155,6 +155,11 @@ func Ed25519PublicKey(pk crypto.PublicKey) SiaPublicKey {
 	}
 }
 
+// Equals compares two SiaPublicKey types for equality
+func (x SiaPublicKey) Equals(y SiaPublicKey) bool {
+	return x.Algorithm == y.Algorithm && bytes.Equal(x.Key, y.Key)
+}
+
 // UnlockHash calculates the root hash of a Merkle tree of the
 // UnlockConditions object. The leaves of this tree are formed by taking the
 // hash of the timelock, the hash of the public keys (one leaf each), and the

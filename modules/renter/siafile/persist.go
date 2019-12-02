@@ -45,26 +45,26 @@ func LoadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL)
 // from disk but also the chunks which it returns separately. This is useful if
 // the file is read from a buffer in-memory and the chunks can't be read from
 // disk later.
-func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, []chunk, error) {
+func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeaheadlog.WAL) (*SiaFile, Chunks, error) {
 	sf, err := LoadSiaFileFromReader(r, path, wal)
 	if err != nil {
-		return nil, nil, err
+		return nil, Chunks{}, err
 	}
 	// Load chunks from reader.
 	var chunks []chunk
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
 		if _, err := r.Read(chunkBytes); err != nil && err != io.EOF {
-			return nil, nil, errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
+			return nil, Chunks{}, errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
 		}
 		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
 		if err != nil {
-			return nil, nil, errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
+			return nil, Chunks{}, errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
 		}
 		chunk.Index = int(chunkIndex)
 		chunks = append(chunks, chunk)
 	}
-	return sf, chunks, nil
+	return sf, Chunks{chunks}, nil
 }
 
 // LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
@@ -147,7 +147,7 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updat
 
 // SetPartialsSiaFile sets the partialsSiaFile field of the SiaFile. This is
 // usually done for non-partials SiaFiles after loading them from disk.
-func (sf *SiaFile) SetPartialsSiaFile(partialsSiaFile *SiaFileSetEntry) {
+func (sf *SiaFile) SetPartialsSiaFile(partialsSiaFile *SiaFile) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	sf.partialsSiaFile = partialsSiaFile

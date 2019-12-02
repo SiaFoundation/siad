@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -578,7 +579,7 @@ func TestRenterConflicts(t *testing.T) {
 	// Upload using the same nickname.
 	err = st.stdPostAPI("/renter/upload/foo/bar.sia/test", uploadValues)
 	if err == nil {
-		t.Fatalf("expected %v, got %v", Error{"upload failed: " + siafile.ErrPathOverload.Error()}, err)
+		t.Fatalf("expected %v, got %v", Error{"upload failed: " + filesystem.ErrExists.Error()}, err)
 	}
 
 	// Upload using nickname that conflicts with folder.
@@ -856,7 +857,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
@@ -938,7 +939,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to a name that's already taken.
 	renameValues.Set("newsiapath", "newtest1")
 	err = st.stdPostAPI("/renter/rename/test2", renameValues)
-	if err == nil || err.Error() != siafile.ErrPathOverload.Error() {
+	if err == nil || err.Error() != filesystem.ErrExists.Error() {
 		t.Errorf("expected error to be %v; got %v", siafile.ErrPathOverload, err)
 	}
 }
@@ -1004,10 +1005,9 @@ func TestRenterHandlerDelete(t *testing.T) {
 	if len(files.Files) != 0 {
 		t.Fatalf("renter's list of files should be empty; got %v instead", files)
 	}
-
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 }
@@ -1472,8 +1472,8 @@ func TestContractorHostRemoval(t *testing.T) {
 	if len(rc.ActiveContracts) != 2 {
 		t.Fatal("wrong contract count")
 	}
-	rc1Host := rc.ActiveContracts[0].HostPublicKey.String()
-	rc2Host := rc.ActiveContracts[1].HostPublicKey.String()
+	rc1Host := rc.ActiveContracts[0].HostPublicKey
+	rc2Host := rc.ActiveContracts[1].HostPublicKey
 
 	// Add 3 new hosts that will be competing with the expensive hosts.
 	stH2, err := blankServerTester(t.Name() + " - Host 2")
@@ -1545,8 +1545,8 @@ func TestContractorHostRemoval(t *testing.T) {
 			return errors.New("couldn't get renter stats")
 		}
 		hostMap := make(map[string]struct{})
-		hostMap[rc1Host] = struct{}{}
-		hostMap[rc2Host] = struct{}{}
+		hostMap[rc1Host.String()] = struct{}{}
+		hostMap[rc2Host.String()] = struct{}{}
 		for _, contract := range rc.ActiveContracts {
 			_, exists := hostMap[contract.HostPublicKey.String()]
 			if !exists {
@@ -1644,7 +1644,7 @@ func TestContractorHostRemoval(t *testing.T) {
 			if !exists {
 				unseen++
 				tracker[contract.ID] = struct{}{}
-				if contract.HostPublicKey.String() == rc1Host || contract.HostPublicKey.String() == rc2Host {
+				if contract.HostPublicKey.Equals(rc1Host) || contract.HostPublicKey.Equals(rc2Host) {
 					return errors.New("the wrong contracts are being renewed")
 				}
 			}
@@ -1715,10 +1715,10 @@ func TestContractorHostRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rc.ActiveContracts[0].HostPublicKey.String() == rc1Host || rc.ActiveContracts[0].HostPublicKey.String() == rc2Host {
+	if rc.ActiveContracts[0].HostPublicKey.Equals(rc1Host) || rc.ActiveContracts[0].HostPublicKey.Equals(rc2Host) {
 		t.Error("renter is renewing the wrong contracts", rc.ActiveContracts[0].HostPublicKey.String())
 	}
-	if rc.ActiveContracts[1].HostPublicKey.String() == rc1Host || rc.ActiveContracts[1].HostPublicKey.String() == rc2Host {
+	if rc.ActiveContracts[1].HostPublicKey.Equals(rc1Host) || rc.ActiveContracts[1].HostPublicKey.Equals(rc2Host) {
 		t.Error("renter is renewing the wrong contracts", rc.ActiveContracts[1].HostPublicKey.String())
 	}
 	// The renewing process should not have resulted in additional data being

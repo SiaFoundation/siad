@@ -115,9 +115,10 @@ func (c *Client) HostStorageFoldersAddPost(path string, size uint64) (err error)
 
 // HostStorageFoldersRemovePost uses the /host/storage/folders/remove api
 // endpoint to remove a storage folder from a host.
-func (c *Client) HostStorageFoldersRemovePost(path string) (err error) {
+func (c *Client) HostStorageFoldersRemovePost(path string, force bool) (err error) {
 	values := url.Values{}
 	values.Set("path", path)
+	values.Set("force", strconv.FormatBool(force))
 	err = c.post("/host/storage/folders/remove", values.Encode(), nil)
 	return
 }

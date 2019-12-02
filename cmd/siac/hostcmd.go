@@ -114,7 +114,7 @@ Available output types:
 		Use:   "remove [path]",
 		Short: "Remove a storage folder from the host",
 		Long: `Remove a storage folder from the host. Note that this does not delete any
-data; it will instead be distributed across the remaining storage folders.`,
+data; it will instead be distributed across the remaining storage folders unless the force flag is used.`,
 
 		Run: wrap(hostfolderremovecmd),
 	}
@@ -508,7 +508,27 @@ func hostfolderaddcmd(path, size string) {
 
 // hostfolderremovecmd removes a folder from the host.
 func hostfolderremovecmd(path string) {
-	err := httpClient.HostStorageFoldersRemovePost(abs(path))
+
+	// Ask for confirm for dangerous --force flag
+	if hostFolderRemoveForce {
+		fmt.Println(`Forced removing will completely destroy your renter's data,
+	and you will lose your locked collateral.`)
+	again:
+		fmt.Print("Do you want to continue? [y/n] ")
+		var resp string
+		fmt.Scanln(&resp)
+		switch strings.ToLower(resp) {
+		case "y", "yes":
+			// continue below
+		case "n", "no":
+			return
+		default:
+			goto again
+		}
+	}
+
+	err := httpClient.HostStorageFoldersRemovePost(abs(path), hostFolderRemoveForce)
+
 	if err != nil {
 		die("Could not remove folder:", err)
 	}
