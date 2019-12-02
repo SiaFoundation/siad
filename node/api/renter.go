@@ -304,7 +304,7 @@ func (api *API) renterBackupsHandlerGET(w http.ResponseWriter, req *http.Request
 outer:
 	for _, c := range api.renter.Contracts() {
 		for _, h := range syncedHosts {
-			if c.HostPublicKey.String() == h.String() {
+			if c.HostPublicKey.Equals(h) {
 				continue outer
 			}
 		}
