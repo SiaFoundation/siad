@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -52,7 +53,7 @@ func TestStorageProof(t *testing.T) {
 	const dataSize = 777
 	data := fastrand.Bytes(dataSize)
 	root := crypto.MerkleRoot(data)
-	err = ioutil.WriteFile(filepath.Join(ht.host.persistDir, "foo"), data, 0777)
+	err = ioutil.WriteFile(filepath.Join(ht.host.persistDir, "foo"), data, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
