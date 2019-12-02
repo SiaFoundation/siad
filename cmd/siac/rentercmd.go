@@ -450,21 +450,21 @@ Expectations for period:
   Expected Redundancy:  %v
 
 Price Protections:
-  MaxRPCPrice: %v per million requests
-  MaxContractPrice: %v
+  MaxRPCPrice:               %v per billion requests
+  MaxContractPrice:          %v
   MaxDownloadBandwidthPrice: %v per TB
-  MaxSectorAccessPrice: %v per million accesses
-  MaxStoragePrice: %v per TB per Month
-  MaxUploadBandwidthPrice: %v per TB
+  MaxSectorAccessPrice:      %v per billion accesses
+  MaxStoragePrice:           %v per TB per Month
+  MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
 		allowance.Hosts, currencyUnits(allowance.ViewContractInitialPrice),
 		filesizeUnits(allowance.ExpectedStorage),
 		filesizeUnits(allowance.ExpectedUpload),
 		filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy,
-		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
+		currencyUnits(allowance.MaxRPCPrice.Mul64(1e9)),
 		currencyUnits(allowance.MaxContractPrice),
 		currencyUnits(allowance.MaxDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
-		currencyUnits(allowance.MaxSectorAccessPrice.Mul64(1e6)),
+		currencyUnits(allowance.MaxSectorAccessPrice.Mul64(1e9)),
 		currencyUnits(allowance.MaxStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
 		currencyUnits(allowance.MaxUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)))
 
@@ -649,6 +649,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			die("could not read max rpc price:", err)
 		}
+		price = price.Div64(1e9)
 		req = req.WithMaxRPCPrice(price)
 		changedFields++
 	}
@@ -677,6 +678,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			die("could not read max download bandwidth price:", err)
 		}
+		price = price.Div(modules.BytesPerTerabyte)
 		req = req.WithMaxDownloadBandwidthPrice(price)
 		changedFields++
 	}
@@ -691,6 +693,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			die("could not read max sector access price:", err)
 		}
+		price = price.Div64(1e9)
 		req = req.WithMaxSectorAccessPrice(price)
 		changedFields++
 	}
@@ -705,6 +708,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			die("could not read max storage price:", err)
 		}
+		price = price.Div(modules.BlockBytesPerMonthTerabyte)
 		req = req.WithMaxStoragePrice(price)
 		changedFields++
 	}
@@ -719,6 +723,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			die("could not read max upload bandwidth price:", err)
 		}
+		price = price.Div(modules.BytesPerTerabyte)
 		req = req.WithMaxUploadBandwidthPrice(price)
 		changedFields++
 	}

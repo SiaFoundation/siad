@@ -105,7 +105,7 @@ func (a *AllowanceRequestPost) WithMaxContractPrice(price types.Currency) *Allow
 
 // WithMaxDownloadBandwidthPrice adds the maxdownloadbandwidthprice field to the request.
 func (a *AllowanceRequestPost) WithMaxDownloadBandwidthPrice(price types.Currency) *AllowanceRequestPost {
-	a.values.Set("maxdownloadbandwidth", price.String())
+	a.values.Set("maxdownloadbandwidthprice", price.String())
 	return a
 }
 

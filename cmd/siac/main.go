@@ -277,7 +277,7 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxRPCPrice, "max-rpc-price", "", "the maximum rpc base price that is allowed for a host")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxContractPrice, "max-contract-price", "", "the maximum price that the renter will pay to form a contract with a host")
-	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxDownloadBandwidthPrice, "max-download-price", "", "the maximum price that the renter will pay to download from a host")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxDownloadBandwidthPrice, "max-download-bandwidth-price", "", "the maximum price that the renter will pay to download from a host")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxSectorAccessPrice, "max-sector-access-price", "", "the maximum price that the renter will pay to access a sector on a host")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxStoragePrice, "max-storage-price", "", "the maximum price that the renter will pay to store data on a host")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxUploadBandwidthPrice, "max-upload-bandwidth-price", "", "the maximum price that the renter will pay to upload data to a host")
