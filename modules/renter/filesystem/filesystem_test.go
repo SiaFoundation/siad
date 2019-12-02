@@ -40,7 +40,7 @@ func newTestFileSystemWithFile(name string) (*FileNode, *FileSystem, error) {
 // testDir creates a testing directory for a filesystem test.
 func testDir(name string) string {
 	dir := build.TempDir(name, filepath.Join("filesystem"))
-	if err := os.MkdirAll(dir, 0777); err != nil {
+	if err := os.MkdirAll(dir, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return dir
@@ -95,7 +95,7 @@ func (fs *FileSystem) AddTestSiaFileWithErr(siaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), 0777, false)
+	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), persist.DefaultDiskPermissionsTest, false)
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func TestNewSiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /sub/foo
 	sp := newSiaPath("sub/foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// The whole path should exist.
@@ -171,7 +171,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create file /sub/foo/file
 	sp := newSiaPath("sub/foo/file")
 	fs.AddTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
@@ -183,7 +183,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create a file in the root dir.
 	sp = newSiaPath("file")
 	fs.AddTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
@@ -219,7 +219,7 @@ func TestOpenSiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /foo
 	sp := newSiaPath("foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -230,7 +230,7 @@ func TestOpenSiaDir(t *testing.T) {
 	defer foo.Close()
 	// Create dir /sub/foo
 	sp = newSiaPath("sub/foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -419,7 +419,7 @@ func TestCloseSiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /sub/foo
 	sp := newSiaPath("sub1/foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -839,7 +839,7 @@ func TestSiaDirRename(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = fs.NewSiaDir(sp)
+		err = fs.NewSiaDir(sp, modules.DefaultDirPerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1035,7 +1035,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	fileSize := uint64(100)
 	source := ""
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	fileMode := os.FileMode(0777)
+	fileMode := os.FileMode(persist.DefaultDiskPermissionsTest)
 
 	// Repeatedly create a SiaFile and delete it while still keeping the entry
 	// around. That should only be possible without errors if the correctly
@@ -1429,7 +1429,7 @@ func TestSiaDirDelete(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = fs.NewSiaDir(sp)
+		err = fs.NewSiaDir(sp, modules.DefaultDirPerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1448,7 +1448,7 @@ func TestSiaDirDelete(t *testing.T) {
 		}
 		ec, _ := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
 		up := modules.FileUploadParams{Source: "", SiaPath: fileSP, ErasureCode: ec}
-		err = fs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, 0777, up.DisablePartialChunk)
+		err = fs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1517,7 +1517,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	fileSize := uint64(100)
 	source := ""
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
-	fileMode := os.FileMode(0777)
+	fileMode := os.FileMode(persist.DefaultDiskPermissionsTest)
 
 	// Specify a directory structure for this test.
 	var dirStructure = []string{
@@ -1562,7 +1562,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = fs.NewSiaDir(sp)
+		err = fs.NewSiaDir(sp, modules.DefaultDirPerm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1666,7 +1666,7 @@ func TestLazySiaDir(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /foo
 	sp := newSiaPath("foo")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
@@ -1731,7 +1731,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create dir /sub1/sub2
 	sp := newSiaPath("sub1/sub2")
-	if err := fs.NewSiaDir(sp); err != nil {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Prepare a path to "foo"

@@ -3,6 +3,7 @@ package consensus
 import (
 	"os"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
 
@@ -11,7 +12,7 @@ import (
 // directory again.
 func consensusTestDir(testName string) string {
 	path := siatest.TestDir("consensus", testName)
-	if err := os.MkdirAll(path, siatest.DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return path
