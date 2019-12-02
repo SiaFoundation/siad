@@ -1,5 +1,7 @@
 package types
 
+import "unicode/utf8"
+
 // SpecifierLen is the length in bytes of a Specifier.
 const SpecifierLen = 16
 
@@ -18,10 +20,24 @@ type Specifier [SpecifierLen]byte
 // NewSpecifier returns a specifier for given name, a specifier can only be 16
 // bytes so we panic if the given name is too long.
 func NewSpecifier(name string) Specifier {
+	if !isASCII(name) {
+		panic("ERROR: specifier has to be ASCII")
+	}
 	if len(name) > 16 {
 		panic("ERROR: specifier max length exceeded")
 	}
 	var s Specifier
 	copy(s[:], name)
 	return s
+}
+
+// isASCII returns whether or not the given string contains only ASCII
+// characters
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
 }
