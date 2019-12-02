@@ -214,6 +214,10 @@ var (
 		Standard: uint64(1 << 22), // 4 MiB
 		Testing:  uint64(1 << 12), // 4 KiB
 	}).(uint64)
+
+	// StreamDownloadSize is the size of downloaded in a single streaming download
+	// request.
+	StreamDownloadSize = uint64(1 << 16) // 64 KiB
 )
 
 type (

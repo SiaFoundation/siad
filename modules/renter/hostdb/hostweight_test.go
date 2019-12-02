@@ -36,8 +36,10 @@ var (
 			Collateral:    types.NewCurrency64(250).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
 			MaxCollateral: types.NewCurrency64(750).Mul(types.SiacoinPrecision),
 
-			ContractPrice: types.NewCurrency64(5).Mul(types.SiacoinPrecision),
-			StoragePrice:  types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
+			BaseRPCPrice:      types.SiacoinPrecision.Mul64(100).Div64(1e9),
+			ContractPrice:     types.NewCurrency64(5).Mul(types.SiacoinPrecision),
+			SectorAccessPrice: types.SiacoinPrecision.Mul64(2).Div64(1e6),
+			StoragePrice:      types.NewCurrency64(100).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte),
 
 			Version: build.Version,
 		},
@@ -513,5 +515,49 @@ func TestHostWeightConstants(t *testing.T) {
 	weight = hdb.weightFunc(entry).Score()
 	if weight.Cmp(types.NewCurrency64(1e9)) < 0 {
 		t.Error("weight is not sufficiently high for hosts")
+	}
+}
+
+// TestHostWeightExtraPriceAdjustment tests the affects of changing
+// BaseRPCPrice and SectorAccessPrice on the score.
+func TestHostWeightExtraPriceAdjustments(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	hdb := bareHostDB()
+
+	allowance := DefaultTestAllowance
+	hdb.SetAllowance(allowance)
+	entry := DefaultHostDBEntry
+	defaultScore := hdb.weightFunc(entry).Score()
+
+	// Increasing Base RPC Price should decrease the score.
+	entry.BaseRPCPrice = DefaultHostDBEntry.BaseRPCPrice.Mul64(2)
+	higherBasePrice := hdb.weightFunc(entry).Score()
+	if defaultScore.Cmp(higherBasePrice) <= 0 {
+		t.Fatal("Expected score decrease with higher base price.")
+	}
+
+	// Increasing Base RPC Price should decrease the score.
+	entry.BaseRPCPrice = DefaultHostDBEntry.BaseRPCPrice.Mul64(10)
+	highestBasePrice := hdb.weightFunc(entry).Score()
+	if higherBasePrice.Cmp(highestBasePrice) <= 0 {
+		t.Fatal("Expected score decrease with higher base price.")
+	}
+
+	// Increasing SectorAccessPrice should decrease the score.
+	entry = DefaultHostDBEntry
+	entry.SectorAccessPrice = DefaultHostDBEntry.SectorAccessPrice.Mul64(2)
+	higherSectorPrice := hdb.weightFunc(entry).Score()
+	if defaultScore.Cmp(higherSectorPrice) <= 0 {
+		t.Fatal("Expected score decrease with higher sector access price")
+	}
+
+	// Increasing SectorAccessPrice should decrease the score.
+	entry = DefaultHostDBEntry
+	entry.SectorAccessPrice = DefaultHostDBEntry.SectorAccessPrice.Mul64(10)
+	highestSectorPrice := hdb.weightFunc(entry).Score()
+	if higherSectorPrice.Cmp(highestSectorPrice) <= 0 {
+		t.Fatal("Expected score decrease with higher sector access price")
 	}
 }
