@@ -1455,11 +1455,15 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if err != nil {
 			return err
 		}
+
 		if status.ContractFound {
 			return errors.New("contract marked as found)")
 		}
 		if status.WindowStart == 0 || status.WindowEnd == 0 {
 			return errors.New("contract status does not contain proper window values")
+		}
+		if status.Archived {
+			return errors.New("premature archival")
 		}
 		return nil
 	})
@@ -1531,7 +1535,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		}
 
 		// Check that the status is equal to the old copy.
-		newStatus.Archived = true // the only value that should be different.
+		contractStatus.Archived = true // the only value that should be different.
 		if !reflect.DeepEqual(newStatus, contractStatus) {
 			return errors.New("Expected contract status to be otherwise the same")
 		}
