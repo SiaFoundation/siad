@@ -298,7 +298,7 @@ type DirectoryInfo struct {
 	MaxHealthPercentage float64     `json:"maxhealthpercentage"`
 	MaxHealth           float64     `json:"maxhealth"`
 	MinRedundancy       float64     `json:"minredundancy"`
-	DirMode             os.FileMode `json:"mode"`
+	DirMode             os.FileMode `json:"mode"` // Field is called DirMode for fuse compatibility
 	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
 	NumFiles            uint64      `json:"numfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
@@ -352,7 +352,7 @@ type FileInfo struct {
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
 	ModificationTime time.Time         `json:"modtime"` // Stays as 'modtime' in json for compatibility
-	FileMode         os.FileMode       `json:"mode"`
+	FileMode         os.FileMode       `json:"mode"`    // Field is called FileMode for fuse compatibility
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`

@@ -62,7 +62,7 @@ func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadl
 		parent:    parent,
 		name:      &name,
 		staticLog: log,
-		staticUID: newUID(),
+		staticUID: newInode(),
 		staticWal: wal,
 		threads:   make(map[threadUID]struct{}),
 		threadUID: uid,
@@ -95,7 +95,7 @@ func (n *node) managedLockWithParent() *DirNode {
 }
 
 // NID returns the node's unique identifier.
-func (n *node) NID() uint64 {
+func (n *node) Inode() uint64 {
 	return n.staticUID
 }
 
@@ -105,10 +105,10 @@ func newThreadUID() threadUID {
 	return threadUID(fastrand.Uint64n(math.MaxUint64))
 }
 
-// newUID will create a static UID for the node.
+// newInode will create a unique identifier for a filesystem node.
 //
 // TODO: replace this with a function that doesn't repeat itself.
-func newUID() uint64 {
+func newInode() uint64 {
 	return fastrand.Uint64n(math.MaxUint64)
 }
 
