@@ -352,7 +352,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var errors []error = make([]error, 0)
+	var errors []error
 	for i := 0; i < 1e3; i++ {
 		diff := types.NewCurrency64(1)
 		msg, sig := prepareWithdrawal(account, diff, am.h.blockHeight+5, sk)

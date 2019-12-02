@@ -299,27 +299,15 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return err
 	}
 
-	// If the current risk exceeds the max risk, wait until the background
-	// persist threads have completed and risk is lowered
-	for am.managedCurrentRiskExceedsMaxRisk(maxRisk) {
-		if am.h.dependencies.Disrupt("errMaxRiskReached") {
-			return errMaxRiskReached
-		} // signal max risk is reached for testing purposes
-
-		done := make(chan error)
-		go func() {
-			am.currentRiskCond.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			continue
-		case <-time.After(blockedCallTimeout):
-			return ErrWithdrawalCancelled
-		}
-	}
 	am.mu.Lock()
+
+	// If the currentRisk exceeds the maxRisk, we block. This block is lifted
+	// when the persist threads have successfully persisted account data to
+	// disk, lowering outstanding risk.
+	if err := am.blockedMaxRiskReached(maxRisk); err != nil {
+		am.mu.Unlock()
+		return err
+	}
 
 	// Verify the fingerprint has not been processed before
 	fingerprint := crypto.HashAll(*msg)
@@ -342,8 +330,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	// Open the account, create if it does not exist yet
 	acc := am.openAccount(id)
 
-	// If the account balance is insufficient to perform the withdrawal, block
-	// the withdrawal.
+	// If the account balance is insufficient, block the withdrawal.
 	if acc.balance.Cmp(amount) < 0 {
 		bc := blockedCall{
 			withdrawal: msg,
@@ -354,34 +341,32 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		am.mu.Unlock()
 		return am.blockedWithdrawalResult(bc.result)
 	}
-
 	defer am.mu.Unlock()
 
 	// Update the account details
 	acc.balance = acc.balance.Sub(amount)
 	acc.lastTxnTime = time.Now().Unix()
 
-	am.currentRisk = am.currentRisk.Add(amount)
 	accountData := acc.accountData()
+	am.currentRisk = am.currentRisk.Add(amount)
 
 	// Persist the account data asynchronously
 	if err := am.h.tg.Add(); err != nil {
 		return ErrWithdrawalCancelled
 	}
+
 	go func() {
 		defer am.h.tg.Done()
 
 		_ = am.h.dependencies.Disrupt("errMaxRiskReached")
-
 		if err := am.staticAccountsPersister.callSaveAccount(accountData, acc.index); err != nil {
 			am.h.log.Println("Failed to save account", err)
 		}
 
 		am.mu.Lock()
 		am.currentRisk = am.currentRisk.Sub(amount)
-		am.mu.Unlock()
-
 		am.currentRiskCond.Broadcast()
+		am.mu.Unlock()
 	}()
 
 	return nil
@@ -485,6 +470,35 @@ func (am *accountManager) blockedWithdrawalResult(resultChan chan error) error {
 	}
 }
 
+// blockedMaxRiskReached will block until it the curentRisk drops below the
+// allow maximum, or until we receive a timeout.
+func (am *accountManager) blockedMaxRiskReached(maxRisk types.Currency) error {
+	done := make(chan error)
+	for am.currentRisk.Cmp(maxRisk) >= 0 {
+		go func() {
+			if err := am.h.tg.Add(); err != nil {
+				done <- err
+				return
+			}
+			defer am.h.tg.Done()
+			am.currentRiskCond.Wait()
+			close(done)
+		}()
+
+		select {
+		case err := <-done:
+			// signal max risk is reached for testing purposes
+			if am.h.dependencies.Disrupt("errMaxRiskReached") {
+				return errMaxRiskReached
+			}
+			return err
+		case <-time.After(blockedCallTimeout):
+			return ErrWithdrawalCancelled
+		}
+	}
+	return nil
+}
+
 // managedRotateFingerprints is a helper method that tries to rotate the
 // fingerprints both in-memory and on disk.
 func (am *accountManager) managedRotateFingerprints(currentBlockHeight types.BlockHeight) error {
@@ -506,12 +520,6 @@ func (am *accountManager) openAccount(id string) *account {
 		am.accounts[id] = acc
 	}
 	return acc
-}
-
-func (am *accountManager) managedCurrentRiskExceedsMaxRisk(max types.Currency) bool {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-	return am.currentRisk.Cmp(max) >= 0
 }
 
 // assignFreeIndex will return the next available account index
