@@ -21,19 +21,19 @@ func Test(t *testing.T) {
 
 	func (a *api) httpHandlerBasicFail(w http.ResponseWriter, req *http.Request) {
 		WriteSuccess(w) // want "http.Responsewriter passed to more than one function"
-		WriteError(w) // OK
+		WriteError(w)
 	}
 
 	func (a *api) httpHandlerIf(w http.ResponseWriter, req *http.Request) {
 		if true {
 			WriteError(w) // want "http.Responsewriter passed to more than one function"
 		}
-		WriteSuccess(w) // OK
+		WriteSuccess(w)
 	}
 
 	func (a *api) httpHandlerIfRet(w http.ResponseWriter, req *http.Request) {
 		if true {
-			WriteError(w) // OK
+			WriteError(w)
 			return
 		}
 		WriteSuccess(w) // OK
@@ -41,7 +41,7 @@ func Test(t *testing.T) {
 
 	func (a *api) httpHandlerIfElse(w http.ResponseWriter, req *http.Request) {
 		if true {
-			WriteError(w) // OK
+			WriteError(w)
 		} else {
 			WriteSuccess(w) // OK
 		}
@@ -49,21 +49,21 @@ func Test(t *testing.T) {
 
 	func (a *api) httpHandlerIfElseFail(w http.ResponseWriter, req *http.Request) {
 		if true {
-			WriteError(w) // OK
+			WriteError(w)
 			return
 		} else {
 			WriteSuccess(w) // want "http.Responsewriter passed to more than one function"
 		}
-		WriteSuccess(w) // OK
+		WriteSuccess(w)
 	}
 
 	func (a *api) httpHandlerMultipleIfs(w http.ResponseWriter, req *http.Request) {
 		if true {
-			WriteError(w) // OK
+			WriteError(w)
 			return
 		}
 		if true {
-			WriteError(w) // OK
+			WriteError(w)
 			return
 		}
 		WriteSuccess(w) // OK
