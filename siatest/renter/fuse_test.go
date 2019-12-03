@@ -625,74 +625,51 @@ func TestFuse(t *testing.T) {
 		t.Error("Fuse mode mismatch:", customFileFuseInfo.Mode(), customFilePerm)
 	}
 
-	/*
-		///////////////////////////////////////////////////////////////////
-		// Rename test
-
-		// Rename file
-		newSiapth := modules.RandomSiaPath()
-		remoteFile, err = r.Rename(remoteFile, newSiapth)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Remember original siaPath
-		path = remoteFile.SiaPath()
-		fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// open fuse file
-		// read file
-		fuseFile, err = os.Open(fusePath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		data, err = ioutil.ReadAll(fuseFile)
-		if err != nil {
-			t.Error(err)
-		}
-		localFileData, err = localFile.Data()
-		if err != nil {
-			t.Error(err)
-		}
-		if bytes.Compare(data, localFileData) != 0 {
-			t.Error("data from the local file and data from the fuse file do not match")
-		}
-
-		// rename file with fuse file open
-		newSiapth = modules.RandomSiaPath()
-		remoteFile, err = r.Rename(remoteFile, newSiapth)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		path = remoteFile.SiaPath()
-		fusePath, err = siaPathToFusePath(path, modules.RootSiaPath(), mountpoint1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// read file
-		data, err = ioutil.ReadAll(fuseFile)
-		if err != nil {
-			t.Error(err)
-		}
-		localFileData, err = localFile.Data()
-		if err != nil {
-			t.Error(err)
-		}
-		if bytes.Compare(data, localFileData) != 0 {
-			t.Error("data from the local file and data from the fuse file do not match")
-		}
-		err = fuseFile.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// End of Rename test
-		////////////////////////////////////////////////////////////////////////////
-	*/
+	// Perform a test where a file is renamed while it is open in fuse.
+	// Downloading the file after the rename should continue to be successful.
+	// We can rename the file that was created in the custom mode test.
+	//
+	// Read all of the data, ensure a match between this file and the real file.
+	fuseData, err := ioutil.ReadFile(customFileFusePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceData, err := ioutil.ReadFile(customFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fuseData, sourceData) {
+		t.Error("custom mode data and source data do not match")
+	}
+	// Open the custom file in fuse. Note that for this test to provide proper
+	// regression coverage, the streamer shouldn't be opened until after the
+	// rename, because once the streamer is open the impact of a rename is going
+	// to be different.
+	fuseFile, err = os.Open(customFileFusePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rename the custom file while it is open.
+	customFileRenamedSiaPath, err := customDirSiaPath.Join("custom-file-1-renamed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterRenamePost(customFileSiaPath, customFileRenamedSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamedFuseData, err := ioutil.ReadAll(fuseFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(renamedFuseData, sourceData) {
+		t.Error("data mismatch after file was renamed")
+	}
+	// Close the fuseFile.
+	err = fuseFile.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Check that the read-only flag is being respected.
 	newFuseFilePath := localfd2Path + "-new"
