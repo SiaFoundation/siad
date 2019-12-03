@@ -3551,7 +3551,7 @@ responses](#standard-responses).
 > curl example
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/export/myfile?httpresp=true"
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/export/myfile?httpresp=true" > ./myfile.shared
 ```
 
 exports the file or folder with the given siapath. Currently only exporting a
@@ -3688,7 +3688,7 @@ curl -A "Sia-Agent" "localhost:9980/renter/stream" --data <previously-exported-s
 > which means setting the "Range" field in the http header.  
 
 ```go
-curl -A "Sia-Agent" -H "Range: bytes=0-1023" "localhost:9980/renter/stream" --data <previously-esported-siafile>
+curl -A "Sia-Agent" -H "Range: bytes=0-1023" "localhost:9980/renter/stream" --data-binary @myfile.shared
 ```
 
 downloads an exported file using http streaming. This call blocks until the
