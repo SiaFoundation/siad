@@ -2,12 +2,13 @@ package filesystem
 
 import (
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -31,6 +32,32 @@ type (
 	}
 )
 
+// Close calls close on the DirNode and also removes the dNode from its parent
+// if it's no longer being used and if it doesn't have any children which are
+// currently in use. This happens iteratively for all parent as long as
+// removing a child resulted in them not having any children left.
+func (n *DirNode) Close() {
+	// If a parent exists, we need to lock it while closing a child.
+	parent := n.node.managedLockWithParent()
+
+	// call private close method.
+	n.closeDirNode()
+
+	// Remove node from parent if there are no more children after this close.
+	removeDir := len(n.threads) == 0 && len(n.directories) == 0 && len(n.files) == 0
+	if parent != nil && removeDir {
+		parent.removeDir(n)
+	}
+
+	// Unlock child and parent.
+	n.mu.Unlock()
+	if parent != nil {
+		parent.mu.Unlock()
+		// Check if the parent needs to be removed from its parent too.
+		parent.managedTryRemoveFromParentsIteratively()
+	}
+}
+
 // Delete is a wrapper for SiaDir.Delete.
 func (n *DirNode) Delete() error {
 	n.mu.Lock()
@@ -42,6 +69,14 @@ func (n *DirNode) Delete() error {
 	return sd.Delete()
 }
 
+// Dir will return a child dir of this directory if it exists.
+func (n *DirNode) Dir(name string) (*DirNode, error) {
+	n.mu.Lock()
+	node, err := n.openDir(name)
+	n.mu.Unlock()
+	return node, errors.AddContext(err, "unable to open child directory")
+}
+
 // DirReader is a wrapper for SiaDir.DirReader.
 func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 	n.mu.Lock()
@@ -51,6 +86,14 @@ func (n *DirNode) DirReader() (*siadir.DirReader, error) {
 		return nil, err
 	}
 	return sd.DirReader()
+}
+
+// File will return a child file of this directory if it exists.
+func (n *DirNode) File(name string) (*FileNode, error) {
+	n.mu.Lock()
+	node, err := n.openFile(name)
+	n.mu.Unlock()
+	return node, errors.AddContext(err, "unable to open child file")
 }
 
 // Metadata is a wrapper for SiaDir.Metadata.
@@ -89,8 +132,92 @@ func (n *DirNode) UpdateMetadata(md siadir.Metadata) error {
 	return sd.UpdateMetadata(md)
 }
 
-// managedList returns the files and dirs within the SiaDir.
-func (n *DirNode) managedList(recursive, cached bool, fileLoadChan chan *FileNode, dirLoadChan chan *DirNode) error {
+// managedList returns the files and dirs within the SiaDir specified by siaPath.
+// offlineMap, goodForRenewMap and contractMap don't need to be provided if
+// 'cached' is set to 'true'.
+func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+	// Prepare a pool of workers.
+	numThreads := 40
+	dirLoadChan := make(chan *DirNode, numThreads)
+	fileLoadChan := make(chan func() (*FileNode, error), numThreads)
+	var fisMu, disMu sync.Mutex
+	dirWorker := func() {
+		for sd := range dirLoadChan {
+			var di modules.DirectoryInfo
+			var err error
+			if sd.managedAbsPath() == fsRoot {
+				di, err = sd.managedInfo(modules.RootSiaPath())
+			} else {
+				di, err = sd.managedInfo(nodeSiaPath(fsRoot, &sd.node))
+			}
+			sd.Close()
+			if err == ErrNotExist {
+				continue
+			}
+			if err != nil {
+				n.staticLog.Debugf("Failed to get DirectoryInfo of '%v': %v", sd.managedAbsPath(), err)
+				continue
+			}
+			disMu.Lock()
+			dis = append(dis, di)
+			disMu.Unlock()
+		}
+	}
+	fileWorker := func() {
+		for load := range fileLoadChan {
+			sf, err := load()
+			if err != nil {
+				n.staticLog.Debugf("Failed to load file: %v", err)
+			}
+			var fi modules.FileInfo
+			if cached {
+				fi, err = sf.staticCachedInfo(nodeSiaPath(fsRoot, &sf.node))
+			} else {
+				fi, err = sf.managedFileInfo(nodeSiaPath(fsRoot, &sf.node), offlineMap, goodForRenewMap, contractsMap)
+			}
+			if err == ErrNotExist {
+				continue
+			}
+			if err != nil {
+				n.staticLog.Debugf("Failed to get FileInfo of '%v': %v", sf.managedAbsPath(), err)
+				continue
+			}
+			fisMu.Lock()
+			fis = append(fis, fi)
+			fisMu.Unlock()
+		}
+	}
+	// Spin the workers up.
+	var wg sync.WaitGroup
+	for i := 0; i < numThreads/2; i++ {
+		wg.Add(1)
+		go func() {
+			dirWorker()
+			wg.Done()
+		}()
+		wg.Add(1)
+		go func() {
+			fileWorker()
+			wg.Done()
+		}()
+	}
+	err := n.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
+	// Signal the workers that we are done adding work and wait for them to
+	// finish any pending work.
+	close(dirLoadChan)
+	close(fileLoadChan)
+	wg.Wait()
+	sort.Slice(dis, func(i, j int) bool {
+		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
+	})
+	sort.Slice(fis, func(i, j int) bool {
+		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
+	})
+	return fis, dis, err
+}
+
+// managedRecursiveList returns the files and dirs within the SiaDir.
+func (n *DirNode) managedRecursiveList(recursive, cached bool, fileLoadChan chan func() (*FileNode, error), dirLoadChan chan *DirNode) error {
 	// Get DirectoryInfo of dir itself.
 	dirLoadChan <- n.managedCopy()
 	// Read dir.
@@ -98,43 +225,68 @@ func (n *DirNode) managedList(recursive, cached bool, fileLoadChan chan *FileNod
 	if err != nil {
 		return err
 	}
+	// Separate dirs and files.
+	var dirNames, fileNames []string
 	for _, info := range fis {
 		// Skip non-siafiles and non-dirs.
 		if !info.IsDir() && filepath.Ext(info.Name()) != modules.SiaFileExtension {
 			continue
 		}
-		// Handle dir.
 		if info.IsDir() {
-			// Open the dir.
-			n.mu.Lock()
-			dir, err := n.openDir(info.Name())
-			n.mu.Unlock()
-			if err != nil {
-				return err
-			}
-			// Hand a copy to the worker. It will handle closing it.
-			dirLoadChan <- dir.managedCopy()
-			// Call managedList on the child if 'recursive' was specified.
-			if recursive {
-				err = dir.managedList(recursive, cached, fileLoadChan, dirLoadChan)
-			}
-			dir.Close()
-			if err != nil {
-				return err
-			}
+			dirNames = append(dirNames, info.Name())
 			continue
 		}
-		// Handle file.
-		n.mu.Lock()
-		file, err := n.openFile(strings.TrimSuffix(info.Name(), modules.SiaFileExtension))
-		n.mu.Unlock()
-		if err != nil {
-			n.staticLog.Debugf("managedList failed to open file: %v", err)
-			continue
-		}
-		fileLoadChan <- file.managedCopy()
-		file.Close()
+		fileNames = append(fileNames, strings.TrimSuffix(info.Name(), modules.SiaFileExtension))
 	}
+	// Handle dirs first.
+	for _, dirName := range dirNames {
+		// Open the dir.
+		n.mu.Lock()
+		dir, err := n.openDir(dirName)
+		n.mu.Unlock()
+		if errors.Contains(err, ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		// Hand a copy to the worker. It will handle closing it.
+		dirLoadChan <- dir.managedCopy()
+		// Call managedList on the child if 'recursive' was specified.
+		if recursive {
+			err = dir.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
+		}
+		dir.Close()
+		if err != nil {
+			return err
+		}
+		continue
+	}
+	// Check if there are any files to handle.
+	if len(fileNames) == 0 {
+		return nil
+	}
+	// Handle files by sending a method to load them to the workers. Wee add all
+	// of them to the waitgroup to be able to tell when to release the mutex.
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	var wg sync.WaitGroup
+	wg.Add(len(fileNames))
+	for i := range fileNames {
+		fileName := fileNames[i]
+		f := func() (*FileNode, error) {
+			file, err := n.readonlyOpenFile(fileName)
+			wg.Done()
+			if err != nil {
+				return nil, err
+			}
+			return file, nil // no need to close it since it was created using readonlyOpenFile.
+		}
+		fileLoadChan <- f
+	}
+	// Wait for the workers to finish all calls to `openFile` before releasing the
+	// lock.
+	wg.Wait()
 	return nil
 }
 
@@ -158,13 +310,9 @@ func (n *DirNode) managedClose() {
 // managedNewSiaFileFromReader will read a siafile and its chunks from the given
 // reader and add it to the directory. This will always load the file from the
 // given reader.
-func (n *DirNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker) error {
-	// Load the file.
-	path := filepath.Join(n.managedAbsPath(), fileName+modules.SiaFileExtension)
-	sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(rs, path, n.staticWal)
-	if err != nil {
-		return err
-	}
+func (n *DirNode) managedNewSiaFileFromExisting(sf *siafile.SiaFile, chunks siafile.Chunks) error {
+	// Get the initial path of the siafile.
+	path := sf.SiaFilePath()
 	// Check if the path is taken.
 	currentPath, exists := n.managedUniquePrefix(path, sf.UID())
 	if exists {
@@ -179,6 +327,7 @@ func (n *DirNode) managedNewSiaFileFromReader(fileName string, rs io.ReadSeeker)
 		return err
 	}
 	// Add the node to the dir.
+	fileName := strings.TrimSuffix(filepath.Base(currentPath), modules.SiaFileExtension)
 	fn := &FileNode{
 		node:    newNode(n, currentPath, fileName, 0, n.staticWal, n.staticLog),
 		SiaFile: sf,
@@ -264,32 +413,6 @@ func (n *DirNode) siaDir() (*siadir.SiaDir, error) {
 	}
 	*n.lazySiaDir = sd
 	return sd, nil
-}
-
-// Close calls close on the DirNode and also removes the dNode from its parent
-// if it's no longer being used and if it doesn't have any children which are
-// currently in use. This happens iteratively for all parent as long as
-// removing a child resulted in them not having any children left.
-func (n *DirNode) Close() {
-	// If a parent exists, we need to lock it while closing a child.
-	parent := n.node.managedLockWithParent()
-
-	// call private close method.
-	n.closeDirNode()
-
-	// Remove node from parent if there are no more children after this close.
-	removeDir := len(n.threads) == 0 && len(n.directories) == 0 && len(n.files) == 0
-	if parent != nil && removeDir {
-		parent.removeDir(n)
-	}
-
-	// Unlock child and parent.
-	n.mu.Unlock()
-	if parent != nil {
-		parent.mu.Unlock()
-		// Check if the parent needs to be removed from its parent too.
-		parent.managedTryRemoveFromParentsIteratively()
-	}
 }
 
 // managedTryRemoveFromParentsIteratively will remove the DirNode from its
@@ -434,13 +557,15 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		MaxHealth:           maxHealth,
 		MaxHealthPercentage: modules.HealthPercentage(maxHealth),
 		MinRedundancy:       metadata.MinRedundancy,
+		DirMode:             metadata.Mode,
 		MostRecentModTime:   metadata.ModTime,
 		NumFiles:            metadata.NumFiles,
 		NumStuckChunks:      metadata.NumStuckChunks,
 		NumSubDirs:          metadata.NumSubDirs,
-		Size:                metadata.Size,
+		DirSize:             metadata.Size,
 		StuckHealth:         metadata.StuckHealth,
 		SiaPath:             siaPath,
+		UID:                 n.staticUID,
 	}, nil
 }
 
@@ -493,7 +618,7 @@ func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.E
 }
 
 // managedNewSiaDir creates the SiaDir with the given dirName as its child.
-func (n *DirNode) managedNewSiaDir(dirName string, rootPath string) error {
+func (n *DirNode) managedNewSiaDir(dirName string, rootPath string, mode os.FileMode) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	// Check if a file already exists with that name.
@@ -505,7 +630,7 @@ func (n *DirNode) managedNewSiaDir(dirName string, rootPath string) error {
 	if !os.IsNotExist(err) {
 		return ErrExists
 	}
-	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, n.staticWal)
+	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, mode, n.staticWal)
 	if os.IsExist(err) {
 		return nil
 	}
@@ -520,15 +645,25 @@ func (n *DirNode) managedOpenFile(fileName string) (*FileNode, error) {
 	return n.openFile(fileName)
 }
 
-// openFile opens a SiaFile and adds it and all of its parents to the filesystem
-// tree.
+// openFile is like readonlyOpenFile but adds the file to the parent.
 func (n *DirNode) openFile(fileName string) (*FileNode, error) {
+	fn, err := n.readonlyOpenFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+	n.files[fileName] = fn
+	return fn.managedCopy(), nil
+}
+
+// readonlyOpenFile opens a SiaFile but doesn't add it to the parent. That's
+// useful for opening nodes which are short-lived and don't need to be closed.
+func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 	fn, exists := n.files[fileName]
 	if exists && fn.Deleted() {
 		return nil, ErrNotExist // don't return a deleted file
 	}
 	if exists {
-		return fn.managedCopy(), nil
+		return fn, nil
 	}
 	// Load file from disk.
 	filePath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
@@ -543,9 +678,8 @@ func (n *DirNode) openFile(fileName string) (*FileNode, error) {
 		node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
 		SiaFile: sf,
 	}
-	n.files[fileName] = fn
 	// Clone the node, give it a new UID and return it.
-	return fn.managedCopy(), nil
+	return fn, nil
 }
 
 // openDir opens the dir with the specified name within the current dir.

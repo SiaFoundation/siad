@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -162,14 +163,14 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime.Before(beforeUploadTime) || fi.ChangeTime.After(afterUploadTime) {
 		t.Fatal("ChangeTime was not within the correct interval")
 	}
-	if fi.ModTime.Before(beforeUploadTime) || fi.ModTime.After(afterUploadTime) {
-		t.Fatal("ModTime was not within the correct interval")
+	if fi.ModificationTime.Before(beforeUploadTime) || fi.ModificationTime.After(afterUploadTime) {
+		t.Fatal("ModificationTime was not within the correct interval")
 	}
 
-	// After uploading a file the AccessTime, ChangeTime and ModTime should be
+	// After uploading a file the AccessTime, ChangeTime and ModificationTime should be
 	// the same.
-	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModTime {
-		t.Fatal("AccessTime, ChangeTime and ModTime are not the same")
+	if fi.AccessTime != fi.ChangeTime || fi.ChangeTime != fi.ModificationTime {
+		t.Fatal("AccessTime, ChangeTime and ModificationTime are not the same")
 	}
 
 	// The CreateTime should precede the other timestamps.
@@ -205,8 +206,8 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi.ChangeTime != fi2.ChangeTime {
 		t.Fatal("ChangeTime changed after download")
 	}
-	if fi.ModTime != fi2.ModTime {
-		t.Fatal("ModTime changed after download")
+	if fi.ModificationTime != fi2.ModificationTime {
+		t.Fatal("ModificationTime changed after download")
 	}
 
 	// TODO Once we can change the localPath using the API, check that it only
@@ -244,8 +245,8 @@ func testSiafileTimestamps(t *testing.T, tg *siatest.TestGroup) {
 	if fi2.AccessTime != fi3.AccessTime {
 		t.Fatal("AccessTime changed after download")
 	}
-	if fi2.ModTime != fi3.ModTime {
-		t.Fatal("ModTime changed after download")
+	if fi2.ModificationTime != fi3.ModificationTime {
+		t.Fatal("ModificationTime changed after download")
 	}
 }
 
@@ -300,6 +301,8 @@ func TestRenterFour(t *testing.T) {
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
+		{"TestDownloadFromSiaFile", testDownloadFromSiaFile},
+		{"TestDirMode", testDirMode},
 	}
 
 	// Run tests
@@ -990,7 +993,6 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		// Compare File result and Files Results
 		if !reflect.DeepEqual(files[i], rf.File) {
 			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
@@ -1104,6 +1106,52 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// testDownloadFromSiaFile tests downloading a file using the /renter/stream
+// endpoint using a SiaFile from outside the renter's filesystem directly.
+func testDownloadFromSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	localFile, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Export the file into memory.
+	exportedSF, err := renter.RenterExportSiafile(remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download the file once to compare the contents later.
+	data, err := renter.Stream(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stop the renter.
+	if err := renter.StopNode(); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the .sia file to ensure that the file is not known to the renter.
+	path := filepath.Join(renter.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, localFile.FileName()+modules.SiaFileExtension)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	// Start the renter again.
+	if err := renter.StartNode(); err != nil {
+		t.Fatal(err)
+	}
+	// Download the file by stream.
+	resp, err := renter.RenterStreamFromSiaFile(exportedSF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(resp, data) {
+		t.Fatal("Downloaded data doesn't match expected data")
 	}
 }
 
@@ -1710,7 +1758,7 @@ func TestRenewFailing(t *testing.T) {
 
 		// If the host is the host in the disabled contract, then the test has
 		// passed.
-		if rc.DisabledContracts[0].HostPublicKey.String() != lockedHostPK.String() {
+		if !rc.DisabledContracts[0].HostPublicKey.Equals(lockedHostPK) {
 			return errors.New("Disbled contract host not the locked host")
 		}
 		return nil
@@ -3166,8 +3214,8 @@ func TestSiafileCompatCodeV137(t *testing.T) {
 		if sf.CreateTime.IsZero() {
 			return errors.New("CreateTime wasn't set correctly")
 		}
-		if sf.ModTime.IsZero() {
-			return errors.New("ModTime wasn't set correctly")
+		if sf.ModificationTime.IsZero() {
+			return errors.New("ModificationTime wasn't set correctly")
 		}
 		if sf.Available {
 			return errors.New("File shouldn't be available since we don't know the hosts")
@@ -3681,7 +3729,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
 		hostContract := rcg.PassiveContracts[0]
-		if hostContract.HostPublicKey.String() != hpk.String() {
+		if !hostContract.HostPublicKey.Equals(hpk) {
 			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil
@@ -4006,5 +4054,75 @@ func testDownloadServedFromDisk(t *testing.T, tg *siatest.TestGroup) {
 	_, err = r.StreamWithDiskFetch(rf, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testDirMode is a subtest that makes sure that various ways of creating a dir
+// all set the correct permissions.
+func testDirMode(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renter := tg.Renters()[0]
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+
+	dirSP, err := modules.NewSiaPath("dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := renter.FilesDir().CreateDir(dirSP.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf, err := dir.NewFile(fileSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// The fileupload should have created a dir. That dir should have the same
+	// permissions as the file.
+	rd, err := renter.RenterGetDir(dirSP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di := rd.Directories[0]
+	fi, err := lf.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if di.DirMode != fi.Mode() {
+		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.DirMode)
+	}
+	// Test creating dir using endpoint.
+	dir2SP := modules.RandomSiaPath()
+	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
+		t.Fatal(err)
+	}
+	rd, err = renter.RenterGetDir(dir2SP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di = rd.Directories[0]
+	// The created dir should have the default permissions.
+	if di.DirMode != modules.DefaultDirPerm {
+		t.Fatalf("Expected folder permissions to be %v but was %v", modules.DefaultDirPerm, di.DirMode)
+	}
+	dir3SP := modules.RandomSiaPath()
+	mode := os.FileMode(0777)
+	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
+		t.Fatal(err)
+	}
+	rd, err = renter.RenterGetDir(dir3SP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	di = rd.Directories[0]
+	// The created dir should have the specified permissions.
+	if di.DirMode != mode {
+		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.DirMode)
 	}
 }

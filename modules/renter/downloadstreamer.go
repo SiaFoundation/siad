@@ -488,6 +488,16 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 	return siaPath.String(), s, nil
 }
 
+// StreamerFromSnapshot creates a streamer from an existing snapshot. Since this
+// is used for downloading external siafiles we disable local fetch by default.
+func (r *Renter) StreamerFromSnapshot(reader io.Reader) (modules.Streamer, error) {
+	snapshot, err := siafile.SnapshotFromReader(modules.RootSiaPath(), reader)
+	if err != nil {
+		return nil, err
+	}
+	return r.managedStreamer(snapshot, true), nil
+}
+
 // managedStreamer creates a streamer from a siafile snapshot and starts filling
 // its cache.
 func (r *Renter) managedStreamer(snapshot *siafile.Snapshot, disableLocalFetch bool) modules.Streamer {

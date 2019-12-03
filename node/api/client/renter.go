@@ -1,9 +1,11 @@
 package client
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,10 @@ import (
 )
 
 type (
+	// ExportedSiafile is a helper type for a raw exported SiaFile to ensure
+	// additional type safety when using exported Siafiles.
+	ExportedSiafile []byte
+
 	// AllowanceRequestPost is a helper type to be able to build an allowance
 	// request.
 	AllowanceRequestPost struct {
@@ -505,6 +511,20 @@ func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool
 	return
 }
 
+// RenterStreamFromSiaFile uses the /renter/stream endpoint to download data as a
+// stream using an existing SiaFile on disk.
+func (c *Client) RenterStreamFromSiaFile(sf ExportedSiafile) (resp []byte, err error) {
+	resp, err = c.postRawResponse("/renter/stream", bytes.NewReader(sf))
+	return
+}
+
+// RenterExportSiafile exports the SiaFile at the given path.
+func (c *Client) RenterExportSiafile(siaPath modules.SiaPath) (ExportedSiafile, error) {
+	sp := escapeSiaPath(siaPath)
+	_, resp, err := c.getRawResponse(fmt.Sprintf("/renter/export/%v?httpresp=true", sp))
+	return ExportedSiafile(resp), err
+}
+
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part
 // of data as a stream.
 func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64, disableLocalFetch bool) (resp []byte, err error) {
@@ -592,6 +612,14 @@ func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPa
 func (c *Client) RenterDirCreatePost(siaPath modules.SiaPath) (err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.post(fmt.Sprintf("/renter/dir/%s", sp), "action=create", nil)
+	return
+}
+
+// RenterDirCreateWithModePost uses the /renter/dir/ endpoint to create a
+// directory for the renter with the specified permissions.
+func (c *Client) RenterDirCreateWithModePost(siaPath modules.SiaPath, mode os.FileMode) (err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.post(fmt.Sprintf("/renter/dir/%s?mode=%d", sp, mode), "action=create", nil)
 	return
 }
 

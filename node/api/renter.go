@@ -1,6 +1,8 @@
 package api
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -304,7 +306,7 @@ func (api *API) renterBackupsHandlerGET(w http.ResponseWriter, req *http.Request
 outer:
 	for _, c := range api.renter.Contracts() {
 		for _, h := range syncedHosts {
-			if c.HostPublicKey.String() == h.String() {
+			if c.HostPublicKey.Equals(h) {
 				continue outer
 			}
 		}
@@ -1641,6 +1643,63 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 	http.ServeContent(w, req, fileName, time.Time{}, streamer)
 }
 
+//renterStreamFromSiaFileHandler handles streaming a file using a zipped
+//siafile.
+func (api *API) renterStreamFromSiaFileHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	gzr, err := gzip.NewReader(req.Body)
+	if err != nil {
+		WriteError(w, Error{"Failed to create gzip reader from body" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	defer gzr.Close()
+	tr := tar.NewReader(gzr)
+	// Get first file in archive.
+	header, err := tr.Next()
+	if err != nil {
+		WriteError(w, Error{"Failed to extract file from archive" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Read the file.
+	streamer, err := api.renter.StreamerFromSnapshot(tr)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
+			http.StatusInternalServerError)
+		return
+	}
+	defer streamer.Close()
+	http.ServeContent(w, req, header.Name, time.Time{}, streamer)
+}
+
+// renterExportHandler handles the API to export a siafile or siadir as an
+// archive to either the http response body or a file.
+// TODO: support exporting to disk.
+func (api *API) renterExportHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	siaPath, err = rebaseInputSiaPath(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Parse the httpresp parameter.
+	httpresp, err := scanBool(req.FormValue("httpresp"))
+	if err != nil {
+		WriteError(w, Error{"httpresp parameter could not be parsed:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	if !httpresp {
+		WriteError(w, Error{"httpresp=false is not supported yet"}, http.StatusBadRequest)
+		return
+	}
+	if err := api.renter.Export(w, siaPath); err != nil {
+		WriteError(w, Error{"Exporting the file/folder failed:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+}
+
 // renterUploadHandler handles the API call to upload a file.
 func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Get the source path.
@@ -1852,6 +1911,16 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		WriteError(w, Error{"you must set the action you wish to execute"}, http.StatusInternalServerError)
 		return
 	}
+	// Parse mode
+	mode := os.FileMode(modules.DefaultDirPerm)
+	if m := req.FormValue("mode"); m != "" {
+		mode64, err := strconv.ParseUint(m, 10, 32)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to parse provided mode '%v'", m)}, http.StatusBadRequest)
+			return
+		}
+		mode = os.FileMode(mode64)
+	}
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -1864,7 +1933,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	}
 	if action == "create" {
 		// Call the renter to create directory
-		err := api.renter.CreateDir(siaPath)
+		err := api.renter.CreateDir(siaPath, mode)
 		if err != nil {
 			WriteError(w, Error{"failed to create directory: " + err.Error()}, http.StatusInternalServerError)
 			return
