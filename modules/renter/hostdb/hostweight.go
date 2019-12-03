@@ -244,7 +244,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	contractExpectedDownloadRPCs := contractExpectedDownload.Div64(modules.StreamDownloadSize)
 	extraDownloadRPCCost := contractExpectedDownloadRPCs.Mul(extraCostsPerRPC)
 
-	contractExpectedUploadRPCs := contractExpectedUpload.Div64(modules.StreamDownloadSize)
+	contractExpectedUploadRPCs := contractExpectedUpload.Div64(modules.StreamUploadSize)
 	extraUploadRPCCost := contractExpectedUploadRPCs.Mul(extraCostsPerRPC)
 
 	// Calculate the hostCollateral the renter would expect the host to put

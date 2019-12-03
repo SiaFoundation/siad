@@ -136,6 +136,14 @@ const (
 	// estimated blockchain size of a transaction set used by the host to
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
+
+	// StreamDownloadSize is the size of downloaded in a single streaming download
+	// request.
+	StreamDownloadSize = uint64(1 << 16) // 64 KiB
+
+	// StreamUploadSize is the size of downloaded in a single streaming upload
+	// request.
+	StreamUploadSize = uint64(1 << 16) // 64 KiB
 )
 
 type (
