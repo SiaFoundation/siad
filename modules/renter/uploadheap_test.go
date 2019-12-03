@@ -628,3 +628,27 @@ func TestUploadHeapMaps(t *testing.T) {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", 0, remainingChunks)
 	}
 }
+
+// TestUploadHeapPauseChan makes sure that sequential calls to pause and resume
+// won't cause panics for closing a closed channel
+func TestUploadHeapPauseChan(t *testing.T) {
+	// Initial UploadHeap with the pauseChan initialized such that the uploads
+	// and repairs are not paused
+	uh := uploadHeap{
+		pauseChan: make(chan struct{}),
+	}
+	close(uh.pauseChan)
+	if uh.managedIsPaused() {
+		t.Error("Repairs and Uploads should not be paused")
+	}
+
+	// Call resume on an initialized heap
+	uh.managedResume()
+
+	// Call Pause twice in a row
+	uh.managedPause(DefaultPauseDuration)
+	uh.managedPause(DefaultPauseDuration)
+	// Call Resume twice in a row
+	uh.managedResume()
+	uh.managedResume()
+}

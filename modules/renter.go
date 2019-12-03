@@ -786,6 +786,13 @@ type Renter interface {
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
 
+	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
+	// duration
+	PauseRepairsAndUploads(duration time.Duration) error
+
+	// ResumeRepairsAndUploads resumes the renter's repairs and uploads
+	ResumeRepairsAndUploads() error
+
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.

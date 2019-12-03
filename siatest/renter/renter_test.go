@@ -299,6 +299,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
+		{"TestPauseAndResumeRepairAndUploads", testPauseAndResumeRepairAndUploads},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
 		{"TestDirMode", testDirMode},
 	}
@@ -3971,6 +3972,123 @@ func testNextPeriod(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if nextPeriod != currentPeriod+period {
 		t.Fatalf("expected next period to be %v but got %v", currentPeriod+period, nextPeriod)
+	}
+}
+
+// testPauseAndResumeRepairAndUploads tests that the Renter's API endpoint to
+// pause and resume the repair and uploads works as intended
+func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+	numHost := len(tg.Hosts())
+	hostToAdd := 2
+
+	// Pause Repairs And Uploads with a high duration to ensure that the uploads
+	// and repairs don't start before we want them to
+	err := r.RenterUploadsPausePost(time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try and Upload a file, the upload post should succeed but the upload
+	// progress of the file should never increase because the uploads are
+	// paused
+	_, rf, err := r.UploadNewFile(100, 1, uint64(numHost+hostToAdd-1), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		file, err := r.File(rf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file.UploadProgress != 0 {
+			t.Fatal("UploadProgress is increasing, expected it to stay at 0:", file.UploadProgress)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Resume Repair
+	err = r.RenterUploadsResumePost()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm Upload resumes and gets to the expected redundancy. There aren't
+	// enough hosts yet to get to the fullRedundancy
+	fullRedundancy := float64(numHost + hostToAdd)
+	expectedRedundancy := float64(numHost)
+	err = build.Retry(100, 250*time.Millisecond, func() error {
+		file, err := r.File(rf)
+		if err != nil {
+			return err
+		}
+		if file.Redundancy < expectedRedundancy {
+			return fmt.Errorf("redundancy should be %v but was %v", expectedRedundancy, file.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pause the repairs and uploads again
+	err = r.RenterUploadsPausePost(time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Update renter's allowance to require making contracts with the new hosts
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
+	allowance.Hosts = uint64(numHost + hostToAdd)
+	err = r.RenterPostAllowance(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add hosts so upload can get to full redundancy
+	_, err = tg.AddNodeN(node.HostTemplate, hostToAdd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm upload still hasn't reach full redundancy because repairs are
+	// paused
+	for i := 0; i < 5; i++ {
+		file, err := r.File(rf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file.Redundancy == fullRedundancy {
+			t.Fatalf("File Redundancy %v has reached full redundancy %v but shouldn't have", file.Redundancy, fullRedundancy)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Resume Repair and Upload by calling pause again with a very should time
+	// duration so the repairs and uploads restart on their own
+	err = r.RenterUploadsPausePost(time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm file gets to full Redundancy
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		file, err := r.File(rf)
+		if err != nil {
+			return err
+		}
+		if file.Redundancy < fullRedundancy {
+			return fmt.Errorf("redundancy should be %v but was %v", fullRedundancy, file.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"strconv"
@@ -611,6 +612,22 @@ func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.
 // determine if the renter is ready for upload.
 func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, err error) {
 	err = c.get("/renter/uploadready", &rur)
+	return
+}
+
+// RenterUploadsPausePost uses the /renter/uploads/pause endpoint to pause the
+// renter's uploads and repairs
+func (c *Client) RenterUploadsPausePost(duration time.Duration) (err error) {
+	values := url.Values{}
+	values.Set("duration", fmt.Sprint(uint64(math.Round(duration.Seconds()))))
+	err = c.post("/renter/uploads/pause", values.Encode(), nil)
+	return
+}
+
+// RenterUploadsResumePost uses the /renter/uploads/resume endpoint to resume
+// the renter's uploads and repairs
+func (c *Client) RenterUploadsResumePost() (err error) {
+	err = c.post("/renter/uploads/resume", "", nil)
 	return
 }
 
