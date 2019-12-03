@@ -310,5 +310,5 @@ func SnapshotFromReader(sp modules.SiaPath, r io.Reader) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sf.readlockSnapshot(sp, chunks)
+	return sf.readlockSnapshot(sp, chunks.chunks)
 }

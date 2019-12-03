@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -64,6 +63,12 @@ type (
 		// chunk we simply keep the megafiles always open and assign them to SiaFiles
 		// with matching redundancy.
 		partialsSiaFile *SiaFile
+	}
+
+	// Chunks is an exported version of a chunk slice.. It exists for
+	// convenience to make sure the caller has an exported type to pass around.
+	Chunks struct {
+		chunks []chunk
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -323,7 +328,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Get the index of the host in the public key table.
 	tableIndex := -1
 	for i, hpk := range sf.pubKeyTable {
-		if hpk.PublicKey.Algorithm == pk.Algorithm && bytes.Equal(hpk.PublicKey.Key, pk.Key) {
+		if hpk.PublicKey.Equals(pk) {
 			tableIndex = i
 			break
 		}
@@ -465,14 +470,14 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 
 // SaveWithChunks saves the file's header to disk and appends the raw chunks provided at
 // the end of the file.
-func (sf *SiaFile) SaveWithChunks(chunks []chunk) error {
+func (sf *SiaFile) SaveWithChunks(chunks Chunks) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return errors.AddContext(err, "failed to create header updates")
 	}
-	for _, chunk := range chunks {
+	for _, chunk := range chunks.chunks {
 		updates = append(updates, sf.saveChunkUpdate(chunk))
 	}
 	return sf.createAndApplyTransaction(updates...)

@@ -78,12 +78,6 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	if err != nil {
 		return err
 	}
-	// Try to create the directory. If ErrExists is returned it already
-	// exists.
-	err = r.staticFileSystem.NewSiaDir(dirSiaPath)
-	if err != filesystem.ErrExists && err != nil {
-		return errors.AddContext(err, "unable to create sia directory for new file")
-	}
 
 	// Create the Siafile and add to renter
 	err = r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(sourceInfo.Size()), sourceInfo.Mode(), up.DisablePartialChunk)

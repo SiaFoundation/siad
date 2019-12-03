@@ -370,7 +370,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			if err != nil {
 				return err
 			}
-			err := r.staticFileSystem.NewSiaDir(siaPath)
+			err := r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
 			if err == filesystem.ErrExists {
 				// .siadir exists already
 				continue

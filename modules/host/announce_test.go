@@ -1,7 +1,6 @@
 package host
 
 import (
-	"bytes"
 	"net"
 	"testing"
 
@@ -90,7 +89,7 @@ func TestHostAnnounce(t *testing.T) {
 	if af.netAddresses[0] != ht.host.autoAddress {
 		t.Error("announcement has wrong address")
 	}
-	if !bytes.Equal(af.publicKeys[0].Key, ht.host.publicKey.Key) {
+	if !af.publicKeys[0].Equals(ht.host.publicKey) {
 		t.Error("announcement has wrong host key")
 	}
 }
@@ -133,7 +132,7 @@ func TestHostAnnounceAddress(t *testing.T) {
 	if af.netAddresses[0] != addr {
 		t.Error("announcement has wrong address")
 	}
-	if !bytes.Equal(af.publicKeys[0].Key, ht.host.publicKey.Key) {
+	if !af.publicKeys[0].Equals(ht.host.publicKey) {
 		t.Error("announcement has wrong host key")
 	}
 }
