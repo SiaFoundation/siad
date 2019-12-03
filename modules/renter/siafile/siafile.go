@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -329,7 +328,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Get the index of the host in the public key table.
 	tableIndex := -1
 	for i, hpk := range sf.pubKeyTable {
-		if hpk.PublicKey.Algorithm == pk.Algorithm && bytes.Equal(hpk.PublicKey.Key, pk.Key) {
+		if hpk.PublicKey.Equals(pk) {
 			tableIndex = i
 			break
 		}

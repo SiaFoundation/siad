@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -68,7 +69,7 @@ func TestFuse(t *testing.T) {
 
 	// Try mounting an empty fuse filesystem.
 	mountpoint1 := filepath.Join(testDir, "mount1")
-	err = os.MkdirAll(mountpoint1, siatest.DefaultDiskPermissions)
+	err = os.MkdirAll(mountpoint1, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +656,7 @@ func TestFuse(t *testing.T) {
 	}
 
 	// Try to create a directory in the read-only fuse system.
-	err = os.Mkdir(newFuseFilePath, siatest.DefaultDiskPermissions)
+	err = os.Mkdir(newFuseFilePath, persist.DefaultDiskPermissionsTest)
 	if err == nil {
 		t.Fatal("should not be able to make a directory in a read-only fuse system")
 	}
@@ -671,7 +672,7 @@ func TestFuse(t *testing.T) {
 	// dirs and files again (so multiple copies are open at once) and check that
 	// the inodes all match.
 	inodeMount := filepath.Join(testDir, "inodeMount")
-	err = os.MkdirAll(inodeMount, siatest.DefaultDiskPermissions)
+	err = os.MkdirAll(inodeMount, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -812,7 +813,7 @@ func TestFuse(t *testing.T) {
 			// Create a mountpoint specific to the thread.
 			threadMountName := "threadmount" + strconv.Itoa(id)
 			threadMount := filepath.Join(testDir, threadMountName)
-			err = os.MkdirAll(threadMount, siatest.DefaultDiskPermissions)
+			err = os.MkdirAll(threadMount, persist.DefaultDiskPermissionsTest)
 			if err != nil {
 				err = errors.AddContext(err, "unable to create mountpoint")
 				errMu.Lock()

@@ -23,7 +23,7 @@ type LocalDir struct {
 func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
 	fileName := fmt.Sprintf("dir-%s", persist.RandomSuffix())
 	path := filepath.Join(tn.RenterDir(), fileName)
-	err := os.MkdirAll(path, DefaultDiskPermissions)
+	err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to make local directory for new local dir")
 	}
@@ -36,7 +36,7 @@ func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
 // name.
 func (ld *LocalDir) CreateDir(name string) (*LocalDir, error) {
 	path := filepath.Join(ld.path, name)
-	err := os.MkdirAll(path, DefaultDiskPermissions)
+	err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to os.MkdirAll a directory")
 	}
@@ -129,10 +129,10 @@ func (ld *LocalDir) PopulateDir(files, dirs, levels uint) error {
 // newDir creates a new LocalDir in the current LocalDir
 func (ld *LocalDir) newDir() (*LocalDir, error) {
 	path := filepath.Join(ld.path, fmt.Sprintf("dir-%s", persist.RandomSuffix()))
-	return &LocalDir{path: path}, os.MkdirAll(path, DefaultDiskPermissions)
+	return &LocalDir{path: path}, os.MkdirAll(path, persist.DefaultDiskPermissionsTest)
 }
 
-// newFile creates a new LocalF ile in the current LocalDir with the given size,
+// newFile creates a new LocalFile in the current LocalDir with the given size,
 // name and mode.
 func (ld *LocalDir) newFile(size int, name string, mode os.FileMode) (*LocalFile, error) {
 	path := filepath.Join(ld.path, name)

@@ -1710,7 +1710,7 @@ func TestRenewFailing(t *testing.T) {
 
 		// If the host is the host in the disabled contract, then the test has
 		// passed.
-		if rc.DisabledContracts[0].HostPublicKey.String() != lockedHostPK.String() {
+		if !rc.DisabledContracts[0].HostPublicKey.Equals(lockedHostPK) {
 			return errors.New("Disbled contract host not the locked host")
 		}
 		return nil
@@ -3681,7 +3681,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
 		hostContract := rcg.PassiveContracts[0]
-		if hostContract.HostPublicKey.String() != hpk.String() {
+		if !hostContract.HostPublicKey.Equals(hpk) {
 			return errors.New("Passive contract doesn't belong to the host")
 		}
 		return nil
@@ -4046,8 +4046,8 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if di.Mode() != fi.Mode() {
-		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.Mode())
+	if di.DirMode != fi.Mode() {
+		t.Fatalf("Expected folder permissions to be %v but was %v", fi.Mode(), di.DirMode)
 	}
 	// Test creating dir using endpoint.
 	dir2SP := modules.RandomSiaPath()
@@ -4060,8 +4060,8 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	}
 	di = rd.Directories[0]
 	// The created dir should have the default permissions.
-	if di.Mode() != modules.DefaultDirPerm {
-		t.Fatalf("Expected folder permissions to be %v but was %v", modules.DefaultDirPerm, di.Mode())
+	if di.DirMode != modules.DefaultDirPerm {
+		t.Fatalf("Expected folder permissions to be %v but was %v", modules.DefaultDirPerm, di.DirMode)
 	}
 	dir3SP := modules.RandomSiaPath()
 	mode := os.FileMode(0777)
@@ -4074,7 +4074,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	}
 	di = rd.Directories[0]
 	// The created dir should have the specified permissions.
-	if di.Mode() != mode {
-		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.Mode())
+	if di.DirMode != mode {
+		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.DirMode)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -350,13 +351,13 @@ func (tn *TestNode) initRootDirs() error {
 	tn.downloadDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), "downloads"),
 	}
-	if err := os.MkdirAll(tn.downloadDir.path, DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(tn.downloadDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	tn.filesDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), "uploads"),
 	}
-	if err := os.MkdirAll(tn.filesDir.path, DefaultDiskPermissions); err != nil {
+	if err := os.MkdirAll(tn.filesDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	return nil

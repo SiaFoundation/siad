@@ -46,6 +46,13 @@ func (c *Client) WalletChangePasswordWithSeedPost(seed modules.Seed, newPassword
 	return c.WalletChangePasswordPost(seedStr, newPassword)
 }
 
+// WalletVerifyPasswordGet uses the /wallet/verifypassword endpoint to check
+// the wallet's password.
+func (c *Client) WalletVerifyPasswordGet(password string) (wvpg api.WalletVerifyPasswordGET, err error) {
+	err = c.get(fmt.Sprintf("/wallet/verifypassword?password=%v", password), &wvpg)
+	return
+}
+
 // WalletInitPost uses the /wallet/init endpoint to initialize and encrypt a
 // wallet
 func (c *Client) WalletInitPost(password string, force bool) (wip api.WalletInitPOST, err error) {
