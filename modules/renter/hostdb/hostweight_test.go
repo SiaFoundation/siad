@@ -546,7 +546,7 @@ func TestHostWeightExtraPriceAdjustments(t *testing.T) {
 	}
 
 	// Increasing SectorAccessPrice should decrease the score.
-	entry = DefaultHostDBEntry
+	entry = DefaultHostDBEntry // reset entry
 	entry.SectorAccessPrice = DefaultHostDBEntry.SectorAccessPrice.Mul64(2)
 	higherSectorPrice := hdb.weightFunc(entry).Score()
 	if defaultScore.Cmp(higherSectorPrice) <= 0 {
@@ -554,7 +554,6 @@ func TestHostWeightExtraPriceAdjustments(t *testing.T) {
 	}
 
 	// Increasing SectorAccessPrice should decrease the score.
-	entry = DefaultHostDBEntry
 	entry.SectorAccessPrice = DefaultHostDBEntry.SectorAccessPrice.Mul64(10)
 	highestSectorPrice := hdb.weightFunc(entry).Score()
 	if higherSectorPrice.Cmp(highestSectorPrice) <= 0 {
