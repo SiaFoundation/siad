@@ -3612,11 +3612,6 @@ responses](#standard-responses).
 curl -A "Sia-Agent" "localhost:9980/renter/stream/myfile"
 ```  
 
-> Stream the whole file from a local .sia file.  
-```go
-curl -A "Sia-Agent" "localhost:9980/renter/stream?localpath=%2Fhome%2Ffoo%2Fbar.sia"
-```  
-
 > The file can be streamed partially by using standard partial http requests
 > which means setting the "Range" field in the http header.  
 
@@ -3637,12 +3632,7 @@ number of files you are steaming.
 ### Path Parameters
 ### REQUIRED
 **siapath** | string  
-Path to the file in the renter on the network has to be specified if
-`localpath` wasn't specified.
-
-**localpath** | string  
-Path to the .sia file on disk. Has to be specified if `siapath` wasn't
-specified.
+Path to the file in the renter on the network.
 
 ### OPTIONAL
 **disablelocalfetch** | boolean  

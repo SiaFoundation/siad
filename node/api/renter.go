@@ -1,6 +1,8 @@
 package api
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -1585,20 +1587,61 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 	http.ServeContent(w, req, fileName, time.Time{}, streamer)
 }
 
+//renterStreamFromSiaFileHandler handles streaming a file using a zipped
+//siafile.
 func (api *API) renterStreamFromSiaFileHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	lp := req.FormValue("localpath")
-	if lp == "" {
-		WriteError(w, Error{"Have to specify either localpath"}, http.StatusBadRequest)
+	gzr, err := gzip.NewReader(req.Body)
+	if err != nil {
+		WriteError(w, Error{"Failed to create gzip reader from body" + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	fileName, streamer, err := api.renter.StreamerFromSiafile(lp)
+	defer gzr.Close()
+	tr := tar.NewReader(gzr)
+	// Get first file in archive.
+	header, err := tr.Next()
+	if err != nil {
+		WriteError(w, Error{"Failed to extract file from archive" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Read the file.
+	streamer, err := api.renter.StreamerFromSnapshot(tr)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to create download streamer: %v", err)},
 			http.StatusInternalServerError)
 		return
 	}
 	defer streamer.Close()
-	http.ServeContent(w, req, fileName, time.Time{}, streamer)
+	http.ServeContent(w, req, header.Name, time.Time{}, streamer)
+}
+
+// renterExportHandler handles the API to export a siafile or siadir as an
+// archive to either the http response body or a file.
+// TODO: support exporting to disk.
+func (api *API) renterExportHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	siaPath, err = rebaseInputSiaPath(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Parse the httpresp parameter.
+	httpresp, err := scanBool(req.FormValue("httpresp"))
+	if err != nil {
+		WriteError(w, Error{"httpresp parameter could not be parsed:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	if !httpresp {
+		WriteError(w, Error{"httpresp=false is not supported yet"}, http.StatusBadRequest)
+		return
+	}
+	if err := api.renter.Export(w, siaPath); err != nil {
+		WriteError(w, Error{"Exporting the file/folder failed:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
 }
 
 // renterUploadHandler handles the API call to upload a file.

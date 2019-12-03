@@ -235,14 +235,7 @@ func (sf *SiaFile) LocalPath() string {
 
 // MasterKey returns the masterkey used to encrypt the file.
 func (sf *SiaFile) MasterKey() crypto.CipherKey {
-	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
-	if err != nil {
-		// This should never happen since the constructor of the SiaFile takes
-		// a CipherKey as an argument which guarantees that it is already a
-		// valid key.
-		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
-	}
-	return sk
+	return sf.staticMasterKey()
 }
 
 // Metadata returns the SiaFile's metadata, resolving any fields related to
@@ -426,6 +419,18 @@ func (sf *SiaFile) numStuckChunks() uint64 {
 // staticChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticMetadata.staticErasureCode.MinPieces())
+}
+
+// staticMasterKey returns the masterkey used to encrypt the file.
+func (sf *SiaFile) staticMasterKey() crypto.CipherKey {
+	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
+	if err != nil {
+		// This should never happen since the constructor of the SiaFile takes
+		// a CipherKey as an argument which guarantees that it is already a
+		// valid key.
+		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
+	}
+	return sk
 }
 
 // uniqueID creates a random unique SiafileUID.

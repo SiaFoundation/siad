@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"io"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -489,18 +488,14 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 	return siaPath.String(), s, nil
 }
 
-// StreamerFromSiafile creates a streamer from an existing snapshot. Since this
+// StreamerFromSnapshot creates a streamer from an existing snapshot. Since this
 // is used for downloading external siafiles we disable local fetch by default.
-func (r *Renter) StreamerFromSiafile(path string) (string, modules.Streamer, error) {
-	sf, err := siafile.LoadSiaFile(path, r.wal)
+func (r *Renter) StreamerFromSnapshot(reader io.Reader) (modules.Streamer, error) {
+	snapshot, err := siafile.SnapshotFromReader(modules.RootSiaPath(), reader)
 	if err != nil {
-		return "", nil, errors.AddContext(err, "StreamerFromSiafile: failed to load siafile")
+		return nil, err
 	}
-	snap, err := sf.Snapshot(modules.RootSiaPath())
-	if err != nil {
-		return "", nil, errors.AddContext(err, "StreamerFromSiafile: failed to create snapshot")
-	}
-	return filepath.Base(path), r.managedStreamer(snap, true), nil
+	return r.managedStreamer(snapshot, true), nil
 }
 
 // managedStreamer creates a streamer from a siafile snapshot and starts filling

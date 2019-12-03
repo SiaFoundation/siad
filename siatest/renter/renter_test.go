@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
 	"net/url"
@@ -1123,6 +1122,11 @@ func testDownloadFromSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
+	// Export the file into memory.
+	exportedSF, err := renter.RenterExportSiafile(remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Download the file once to compare the contents later.
 	data, err := renter.Stream(remoteFile)
 	if err != nil {
@@ -1132,21 +1136,9 @@ func testDownloadFromSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.StopNode(); err != nil {
 		t.Fatal(err)
 	}
-	// Move the .sia file to a temporary location.
-	srcPath := filepath.Join(renter.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, localFile.FileName()+modules.SiaFileExtension)
-	dstPath := filepath.Join(renter.Dir, localFile.FileName()+modules.SiaFileExtension)
-	srcFile, err1 := os.Open(srcPath)
-	dstFile, err2 := os.Create(dstPath)
-	if err := errors.Compose(err1, err2); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		t.Fatal(err)
-	}
-	if err := errors.Compose(srcFile.Close(), dstFile.Close()); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(srcPath); err != nil {
+	// Delete the .sia file to ensure that the file is not known to the renter.
+	path := filepath.Join(renter.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, localFile.FileName()+modules.SiaFileExtension)
+	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
 	// Start the renter again.
@@ -1154,7 +1146,7 @@ func testDownloadFromSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the file by stream.
-	resp, err := renter.RenterStreamLocalGet(dstPath)
+	resp, err := renter.RenterStreamFromSiaFile(exportedSF)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -632,6 +632,10 @@ type Renter interface {
 	// nil, the backup will be encrypted using the provided secret.
 	CreateBackup(dst string, secret []byte) error
 
+	// Export creates an exported file or folder of the file or folder at the
+	// specified path.
+	Export(w io.Writer, siaPath SiaPath) error
+
 	// LoadBackup loads the siafiles of a previously created backup into the
 	// renter. If the backup is encrypted, secret will be used to decrypt it.
 	// Otherwise the argument is ignored.
@@ -771,11 +775,10 @@ type Renter interface {
 	// resource.
 	Streamer(siapath SiaPath, disableLocalFetch bool) (string, Streamer, error)
 
-	// StreamerFromSiafile create a io.ReadSeeker that can be used to stream
+	// StreamerFromSnapshot create a io.ReadSeeker that can be used to stream
 	// downloads from the Sia network using a SiaFile which is not part of the
-	// renter. Should only be called on siafiles outside of the renter's
-	// filesystem root.
-	StreamerFromSiafile(path string) (string, Streamer, error)
+	// renter.
+	StreamerFromSnapshot(reader io.Reader) (Streamer, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error

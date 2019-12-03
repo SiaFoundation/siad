@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/url"
@@ -16,6 +17,10 @@ import (
 )
 
 type (
+	// ExportedSiafile is a helper type for a raw exported SiaFile to ensure
+	// additional type safety when using exported Siafiles.
+	ExportedSiafile []byte
+
 	// AllowanceRequestPost is a helper type to be able to build an allowance
 	// request.
 	AllowanceRequestPost struct {
@@ -463,13 +468,18 @@ func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool
 	return
 }
 
-// RenterStreamLocalGet uses the /renter/stream endpoint to download data as a
+// RenterStreamFromSiaFile uses the /renter/stream endpoint to download data as a
 // stream using an existing SiaFile on disk.
-func (c *Client) RenterStreamLocalGet(path string) (resp []byte, err error) {
-	values := url.Values{}
-	values.Set("localpath", path)
-	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream?%s", values.Encode()))
+func (c *Client) RenterStreamFromSiaFile(sf ExportedSiafile) (resp []byte, err error) {
+	resp, err = c.postRawResponse("/renter/stream", bytes.NewReader(sf))
 	return
+}
+
+// RenterExportSiafile exports the SiaFile at the given path.
+func (c *Client) RenterExportSiafile(siaPath modules.SiaPath) (ExportedSiafile, error) {
+	sp := escapeSiaPath(siaPath)
+	_, resp, err := c.getRawResponse(fmt.Sprintf("/renter/export/%v?httpresp=true", sp))
+	return ExportedSiafile(resp), err
 }
 
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part
