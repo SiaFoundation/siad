@@ -223,7 +223,7 @@ func (fdn *fuseDirnode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	}
 	attrs := fs.StableAttr{
 		Ino:  dirInfo.UID,
-		Mode: uint32(dirInfo.Mode()) | fuse.S_IFDIR,
+		Mode: fuse.S_IFDIR,
 	}
 	out.Ino = dirInfo.UID
 	out.Mode = uint32(dirInfo.Mode())
