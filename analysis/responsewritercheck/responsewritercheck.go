@@ -26,17 +26,12 @@ var Analyzer = &analysis.Analyzer{
 	},
 }
 
-// Implementation of ast.Visitor
-type visitor struct {
-	condition func(n ast.Node) bool
-	result    *[]ast.Node
-}
+// VisitorFunc is an adapter for the ast.Visitor interface. It allows passing in
+// anonymous functions that adhere to the Visitor interface.
+type VistorFunc func(n ast.Node) ast.Visitor
 
-func (v visitor) Visit(n ast.Node) ast.Visitor {
-	if v.condition(n) {
-		*v.result = append(*v.result, n)
-	}
-	return v
+func (f VistorFunc) Visit(n ast.Node) ast.Visitor {
+	return f(n)
 }
 
 // responsewritercheck reports a failure when an HTTP handler passes the
@@ -67,12 +62,14 @@ func run(pass *analysis.Pass) (interface{}, error) {
 func runFunc(pass *analysis.Pass, fd *ast.FuncDecl, responseWriter *types.Var) {
 	// Find all expression staments that use the http.ResponseWriter
 	var usages []ast.Node
-	ast.Walk(visitor{
-		condition: func(n ast.Node) bool {
-			return passesArgument(pass.TypesInfo, n, responseWriter)
-		},
-		result: &usages,
-	}, fd.Body)
+	var v ast.Visitor
+	v = VistorFunc(func(node ast.Node) ast.Visitor {
+		if passesArgument(pass.TypesInfo, node, responseWriter) {
+			usages = append(usages, node)
+		}
+		return v
+	})
+	ast.Walk(v, fd.Body)
 
 	// Obtain the CFG
 	cfgs := pass.ResultOf[ctrlflow.Analyzer].(*ctrlflow.CFGs)
