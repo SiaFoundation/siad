@@ -18,10 +18,11 @@ import (
 
 const (
 	// accountsOffset is the offset at which accounts are written to disk, this
-	// offset ensures that accounts never cross the 512byte boundary. Seeing as
-	// the metadata is 32 bytes and the accounts are 128 bytes in size, we need
-	// to offset all accounts by 96 bytes.
-	accountsOffset = 96 // bytes
+	// offset ensures that an account never cross the 512 bytes boundary
+	// (traditionally the size of a sector on disk) when it is written at its
+	// location. Seeing as the metadata is 32 bytes and the accounts are 128
+	// bytes in size, we need to offset the first account by 96 bytes.
+	accountsOffset = 96
 
 	// accountSize is the fixed account size in bytes
 	accountSize = 1 << 7 // 128 bytes
@@ -57,7 +58,8 @@ var (
 )
 
 type (
-	// accountsPersister is a subsystem that will persist all account data
+	// accountsPersister is a subsystem that will persist data for the account
+	// manager. This includes all ephemeral account data and fingerprints.
 	accountsPersister struct {
 		accounts                 modules.File
 		staticFingerprintManager *fingerprintManager
@@ -68,14 +70,13 @@ type (
 		h  *Host
 	}
 
-	// accountsPersisterData contains all data that the accountsPersister saves
-	// to disk
+	// accountsPersisterData contains all accounts data and fingerprints
 	accountsPersisterData struct {
 		accounts     map[string]*account
 		fingerprints map[crypto.Hash]struct{}
 	}
 
-	// accountData contains all data persisted for a single account
+	// accountData contains all data persisted for a single ephemeral account
 	accountData struct {
 		Id          types.SiaPublicKey
 		Balance     types.Currency
@@ -121,22 +122,17 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 	return ap, nil
 }
 
-// newFingerprintManager will create a new fingerprint manager, this manager
-// uses two files to store the fingerprints on disk
+// newFingerprintManager will create a fingerprint manager, this manager uses
+// two files to store the fingerprints on disk
 func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fingerprintManager, err error) {
-	currPath := filepath.Join(ap.h.persistDir, fingerprintsCurrFilename)
-	nextPath := filepath.Join(ap.h.persistDir, fingerprintsNxtFilename)
+	fm := &fingerprintManager{bucketBlockRange: bucketBlockRange}
 
-	fm := &fingerprintManager{
-		bucketBlockRange: bucketBlockRange,
-		currentPath:      currPath,
-		nextPath:         nextPath,
-	}
-
+	fm.currentPath = filepath.Join(ap.h.persistDir, fingerprintsCurrFilename)
 	if fm.current, err = ap.openFingerprintBucket(fm.currentPath); err != nil {
 		return nil, errors.AddContext(err, "could not open fingerprint bucket")
 	}
 
+	fm.nextPath = filepath.Join(ap.h.persistDir, fingerprintsNxtFilename)
 	if fm.next, err = ap.openFingerprintBucket(fm.nextPath); err != nil {
 		return nil, errors.AddContext(err, "could not open fingerprint bucket")
 	}
@@ -144,30 +140,29 @@ func (ap *accountsPersister) newFingerprintManager(bucketBlockRange int) (_ *fin
 	return fm, nil
 }
 
+// callSaveAccount will persist the given account data at given index
 func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) error {
+	ap.managedLockIndex(index)
+	defer ap.managedUnlockIndex(index)
+
 	// Get the account data bytes (performs sanity check)
 	accBytes, err := data.bytes()
 	if err != nil {
 		return err
 	}
 
-	// Acquire a lock on the index and write the data to disk
-	ap.managedLockIndex(index)
-	err = writeAtAndSync(ap.accounts, accBytes, location(index))
-	ap.managedUnlockIndex(index, false)
-
-	return errors.AddContext(err, "failed to save account")
+	// Write the data to disk
+	return errors.AddContext(writeAtAndSync(ap.accounts, accBytes, location(index)), "failed to save account")
 }
 
+// callDeleteAccount will delete the account on disk by writing empty data to it
 func (ap *accountsPersister) callDeleteAccount(index uint32) error {
+	ap.managedLockIndex(index)
+	defer ap.managedUnlockIndex(index)
+
 	// Overwrite the account with 0 bytes
 	accBytes := make([]byte, accountSize)
-
-	// Acquire a lock on the index and write the data to disk
-	ap.managedLockIndex(index)
-	err := writeAtAndSync(ap.accounts, accBytes, location(index))
-	ap.managedUnlockIndex(index, true)
-	return errors.AddContext(err, "failed to delete account")
+	return errors.AddContext(writeAtAndSync(ap.accounts, accBytes, location(index)), "failed to delete account")
 }
 
 // callSaveFingerprint writes the fingerprint to disk
@@ -175,11 +170,8 @@ func (ap *accountsPersister) callSaveFingerprint(fp crypto.Hash, expiry, current
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 
-	if err := ap.staticFingerprintManager.save(fp, expiry, currentBlockHeight); err != nil {
-		return errors.AddContext(err, "could not save fingerprint")
-	}
-
-	return nil
+	// Write fingerprint to disk
+	return errors.AddContext(ap.staticFingerprintManager.save(fp, expiry, currentBlockHeight), "could not save fingerprint")
 }
 
 // callLoadData loads the accounts data from disk and returns it
@@ -187,7 +179,7 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 
-	// Load accounts & build the accounts index
+	// Load accounts
 	accounts := make(map[string]*account)
 	if err := ap.loadAccounts(ap.accounts, accounts); err != nil {
 		return nil, err
@@ -262,7 +254,7 @@ func (ap *accountsPersister) managedLockIndex(index uint32) {
 }
 
 // managedLockAccount releases a lock on an (account) index.
-func (ap *accountsPersister) managedUnlockIndex(index uint32, forceDelete bool) {
+func (ap *accountsPersister) managedUnlockIndex(index uint32) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 
@@ -276,7 +268,7 @@ func (ap *accountsPersister) managedUnlockIndex(index uint32, forceDelete bool) 
 	il.mu.Unlock()
 
 	// If nobody else is trying to lock the index, perform garbage collection.
-	if forceDelete || il.waiting == 0 {
+	if il.waiting == 0 {
 		delete(ap.indexLocks, index)
 	}
 }
@@ -350,11 +342,17 @@ func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*accou
 
 		var data accountData
 		if err := encoding.Unmarshal(accBytes, &data); err != nil {
-			continue
+			ap.h.log.Critical(errors.New("could not decode account data"))
+			continue // not much we can do here besides log this critical event
 		}
 
-		account := data.account(index)
-		m[account.id] = account
+		// deleted accounts will decode into an account with 0 as LastTxnTime,
+		// we want to skip those so that index becomes free and eventually gets
+		// overwritten
+		if data.LastTxnTime > 0 {
+			account := data.account(index)
+			m[account.id] = account
+		}
 	}
 
 	return nil
@@ -371,9 +369,8 @@ func (ap *accountsPersister) loadFingerprints(path string, m map[crypto.Hash]str
 	for i := persist.FixedMetadataSize; i < len(bytes); i += fingerprintSize {
 		var fp crypto.Hash
 		if err := encoding.Unmarshal(bytes[i:i+fingerprintSize], &fp); err != nil {
-			// No cause for error, just log it
-			ap.h.log.Debugln("ERROR: could not decode fingerprint", err)
-			continue
+			ap.h.log.Critical(errors.New("could not decode account data"))
+			continue // not much we can do here besides log this critical event
 		}
 		m[fp] = struct{}{}
 	}
@@ -397,10 +394,11 @@ func (a *account) accountData() *accountData {
 // keep in memory
 func (a *accountData) account(index uint32) *account {
 	return &account{
-		id:          a.Id.String(),
-		balance:     a.Balance,
-		lastTxnTime: a.LastTxnTime,
-		index:       index,
+		id:           a.Id.String(),
+		balance:      a.Balance,
+		lastTxnTime:  a.LastTxnTime,
+		index:        index,
+		blockedCalls: make(blockedCallHeap, 0),
 	}
 }
 
@@ -409,10 +407,11 @@ func (a *accountData) bytes() ([]byte, error) {
 	// Sanity check, ensure the encoded account data is not too large
 	accMar := encoding.Marshal(*a)
 	if len(accMar) > accountSize {
-		build.Critical(errors.New("ERROR: ephemeral account size is larger than the expected size"))
+		build.Critical(errors.New("ephemeral account size is larger than the expected size"))
 		return nil, ErrAccountPersist
 	}
 
+	// copy bytes into an array of appropriate size
 	accBytes := make([]byte, accountSize)
 	copy(accBytes, accMar)
 	return accBytes, nil
@@ -423,15 +422,16 @@ func (fm *fingerprintManager) save(fp crypto.Hash, expiry, currentBlockHeight ty
 	// Sanity check, ensure the encoded fingerprint is not too large
 	fpMar := encoding.Marshal(fp)
 	if len(fpMar) > fingerprintSize {
-		build.Critical(errors.New("ERROR: fingerprint size is larger than the expected size"))
+		build.Critical(errors.New("fingerprint size is larger than the expected size"))
 		return ErrAccountPersist
 	}
 
+	// copy bytes into an array of appropriate size
 	fpBytes := make([]byte, fingerprintSize)
 	copy(fpBytes, fpMar)
 
-	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
-	if expiry <= threshold {
+	// write into bucket depending on it's expiry
+	if expiry < calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange) {
 		return writeAndSync(fm.current, fpBytes)
 	}
 	return writeAndSync(fm.next, fpBytes)
