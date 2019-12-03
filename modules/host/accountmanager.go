@@ -419,13 +419,13 @@ func (am *accountManager) threadedSaveAccount(id string) {
 	_ = am.h.dependencies.Disrupt("errMaxRiskReached")
 	if err := am.staticAccountsPersister.callSaveAccount(accountData, acc.index); err != nil {
 		am.h.log.Println("Failed to save account", err)
+		return
 	}
 
 	// Reacquire the lock and update the pendingRisk and currentRisk. Broadcast
 	// this update to the currentRisk so pending calls unblock.
 	am.mu.Lock()
 	am.currentRisk = am.currentRisk.Sub(pendingRisk)
-	am.currentRiskCond.Broadcast()
 	acc, exists = am.accounts[id]
 	if !exists {
 		am.mu.Unlock()
@@ -433,10 +433,14 @@ func (am *accountManager) threadedSaveAccount(id string) {
 	}
 
 	acc.pendingRisk = acc.pendingRisk.Sub(pendingRisk)
-	if !acc.pendingRisk.Equals(types.ZeroCurrency) {
+	riskPending := !acc.pendingRisk.Equals(types.ZeroCurrency)
+	am.mu.Unlock()
+
+	am.currentRiskCond.Broadcast()
+
+	if riskPending {
 		go am.threadedSaveAccount(id)
 	}
-	am.mu.Unlock()
 }
 
 // threadedSaveFingerprint will persist the fingerprint data
@@ -542,29 +546,12 @@ func (am *accountManager) blockedWithdrawalResult(resultChan chan error) error {
 // blockedMaxRiskReached will block until it the curentRisk drops below the
 // allow maximum, or until we receive a timeout.
 func (am *accountManager) blockedMaxRiskReached(maxRisk types.Currency) error {
-	done := make(chan error)
 	for am.currentRisk.Cmp(maxRisk) >= 0 {
-		go func() {
-			if err := am.h.tg.Add(); err != nil {
-				done <- err
-				return
-			}
-			defer am.h.tg.Done()
-			am.currentRiskCond.Wait()
-			close(done)
-		}()
+		am.currentRiskCond.Wait()
 
-		select {
-		case err := <-done:
-			// signal max risk is reached for testing purposes
-			if am.h.dependencies.Disrupt("errMaxRiskReached") {
-				return errMaxRiskReached
-			}
-			return err
-		case <-time.After(blockedCallTimeout):
-			return ErrWithdrawalCancelled
-		case <-am.h.tg.StopChan():
-			return ErrWithdrawalCancelled
+		// signal max risk is reached for testing purposes
+		if am.h.dependencies.Disrupt("errMaxRiskReached") {
+			return errMaxRiskReached
 		}
 	}
 	return nil
