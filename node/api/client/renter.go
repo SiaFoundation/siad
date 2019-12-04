@@ -471,9 +471,12 @@ func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool
 
 // RenterStreamFromSiaFile uses the /renter/stream endpoint to download data as a
 // stream using an existing SiaFile on disk.
-func (c *Client) RenterStreamFromSiaFile(sf ExportedSiafile) (resp []byte, err error) {
-	resp, err = c.postRawResponse("/renter/stream", bytes.NewReader(sf))
-	return
+func (c *Client) RenterStreamFromSiaFile(sf ExportedSiafile) (filename string, resp []byte, err error) {
+	header, resp, err := c.postRawResponse("/renter/stream", bytes.NewReader(sf))
+	if err != nil {
+		return "", nil, err
+	}
+	return header.Get("Content-Name"), resp, nil
 }
 
 // RenterExportSiafile exports the SiaFile at the given path.
@@ -549,7 +552,7 @@ func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, da
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
 	values.Set("stream", strconv.FormatBool(true))
-	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err
 }
 
@@ -561,7 +564,7 @@ func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPa
 	values := url.Values{}
 	values.Set("repair", strconv.FormatBool(true))
 	values.Set("stream", strconv.FormatBool(true))
-	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err
 }
 

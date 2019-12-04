@@ -1146,12 +1146,15 @@ func testDownloadFromSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the file by stream.
-	resp, err := renter.RenterStreamFromSiaFile(exportedSF)
+	fileName, resp, err := renter.RenterStreamFromSiaFile(exportedSF)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(resp, data) {
 		t.Fatal("Downloaded data doesn't match expected data")
+	}
+	if localFile.FileName() != fileName {
+		t.Fatalf("expected filename to be %v but was %v", localFile.FileName(), fileName)
 	}
 }
 
