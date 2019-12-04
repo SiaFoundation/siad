@@ -168,6 +168,7 @@ func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive,
 			sf, err := load()
 			if err != nil {
 				n.staticLog.Debugf("Failed to load file: %v", err)
+				continue
 			}
 			var fi modules.FileInfo
 			if cached {

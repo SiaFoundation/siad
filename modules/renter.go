@@ -145,6 +145,14 @@ const (
 	// estimated blockchain size of a transaction set used by the host to
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
+
+	// StreamDownloadSize is the size of downloaded in a single streaming download
+	// request.
+	StreamDownloadSize = uint64(1 << 16) // 64 KiB
+
+	// StreamUploadSize is the size of downloaded in a single streaming upload
+	// request.
+	StreamUploadSize = uint64(1 << 16) // 64 KiB
 )
 
 type (
@@ -837,6 +845,13 @@ type Renter interface {
 	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
+
+	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
+	// duration
+	PauseRepairsAndUploads(duration time.Duration) error
+
+	// ResumeRepairsAndUploads resumes the renter's repairs and uploads
+	ResumeRepairsAndUploads() error
 
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed

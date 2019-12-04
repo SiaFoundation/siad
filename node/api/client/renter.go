@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"strconv"
@@ -639,6 +640,22 @@ func (c *Client) RenterFuseUnmount(mount string) (err error) {
 	values := url.Values{}
 	values.Set("mount", mount)
 	err = c.post("/renter/fuse/unmount", values.Encode(), nil)
+	return
+}
+
+// RenterUploadsPausePost uses the /renter/uploads/pause endpoint to pause the
+// renter's uploads and repairs
+func (c *Client) RenterUploadsPausePost(duration time.Duration) (err error) {
+	values := url.Values{}
+	values.Set("duration", fmt.Sprint(uint64(math.Round(duration.Seconds()))))
+	err = c.post("/renter/uploads/pause", values.Encode(), nil)
+	return
+}
+
+// RenterUploadsResumePost uses the /renter/uploads/resume endpoint to resume
+// the renter's uploads and repairs
+func (c *Client) RenterUploadsResumePost() (err error) {
+	err = c.post("/renter/uploads/resume", "", nil)
 	return
 }
 
