@@ -166,20 +166,31 @@ type Gateway struct {
 type gatewayID [8]byte
 
 // addToBlacklist adds addresses to the Gateway's blacklist
-func (g *Gateway) addToBlacklist(addresses []modules.NetAddress) error {
+func (g *Gateway) addToBlacklist(addresses []string) error {
 	// Add addresses to the blacklist and disconnect from them
 	var err error
 	for _, addr := range addresses {
-		p, exists := g.peers[addr]
-		if exists {
-			err = errors.Compose(err, p.sess.Close())
+		// Check Gateway peer map for address
+		for peerAddr, peer := range g.peers {
+			// If the address corresponds with a peer, close the peer session
+			// and remove the peer from the peer map
+			if peerAddr.Host() == addr {
+				err = errors.Compose(err, peer.sess.Close())
+				delete(g.peers, peerAddr)
+			}
+		}
+		// Check Gateway node map for address
+		for nodeAddr := range g.nodes {
+			// If the address corresponds with a node remove the node from the
+			// node map to prevent the node from being re-connected while
+			// looking for a replacement peer
+			if nodeAddr.Host() == addr {
+				delete(g.nodes, nodeAddr)
+			}
 		}
 
-		// Peer is removed from the peer list as well as the node list, to prevent
-		// the node from being re-connected while looking for a replacement peer.
-		delete(g.peers, addr)
-		delete(g.nodes, addr)
-		g.blacklist[addr.Host()] = struct{}{}
+		// Add address to the blacklist
+		g.blacklist[addr] = struct{}{}
 	}
 	return errors.Compose(err, g.saveSync())
 }
@@ -220,7 +231,7 @@ func (g *Gateway) Address() modules.NetAddress {
 }
 
 // AddToBlacklist adds addresses to the Gateway's blacklist
-func (g *Gateway) AddToBlacklist(addresses []modules.NetAddress) error {
+func (g *Gateway) AddToBlacklist(addresses []string) error {
 	if err := g.threads.Add(); err != nil {
 		return err
 	}
@@ -282,7 +293,7 @@ func (g *Gateway) RateLimits() (int64, int64) {
 }
 
 // RemoveFromBlacklist removes addresses from the Gateway's blacklist
-func (g *Gateway) RemoveFromBlacklist(addresses []modules.NetAddress) error {
+func (g *Gateway) RemoveFromBlacklist(addresses []string) error {
 	if err := g.threads.Add(); err != nil {
 		return err
 	}
@@ -292,13 +303,13 @@ func (g *Gateway) RemoveFromBlacklist(addresses []modules.NetAddress) error {
 
 	// Remove addresses from the blacklist
 	for _, addr := range addresses {
-		delete(g.blacklist, addr.Host())
+		delete(g.blacklist, addr)
 	}
 	return g.saveSync()
 }
 
 // SetBlacklist sets the blacklist of the gateway
-func (g *Gateway) SetBlacklist(addresses []modules.NetAddress) error {
+func (g *Gateway) SetBlacklist(addresses []string) error {
 	if err := g.threads.Add(); err != nil {
 		return err
 	}

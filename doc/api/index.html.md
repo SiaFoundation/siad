@@ -854,9 +854,9 @@ fetches the list of blacklisted addresses.
 {
 "blacklist":
 [
-"123.456.789.0",  // string
-"123.456.789.0",  // string
-"123.456.789.0",  // string
+"123.123.123.123",  // string
+"123.123.123.123",  // string
+"123.123.123.123",  // string
 ],
 }
 ```
@@ -867,7 +867,7 @@ blacklist is a list of blacklisted address
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.123.123.123","123.123.123.123","123.123.123.123"]}' "localhost:9980/gateway/blacklist"
 ```
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"

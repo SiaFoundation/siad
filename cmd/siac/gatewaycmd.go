@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -37,10 +38,9 @@ var (
 		Use:   "append [address]",
 		Short: "Append a new address to the blacklisted peers list",
 		Long: `Add a new address to the list of blacklisted peers.
-Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
-ipaddresses or domain names.
+Accepts a comma-separated list of ipaddresses or domain names.
 
-For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
+For example: siac gateway blacklist remove 123.123.123.123,111.222.111.222,mysiahost.duckdns.org`,
 		Run: wrap(gatewayblacklistappendcmd),
 	}
 
@@ -160,11 +160,8 @@ func gatewayblacklistcmd() {
 // `siac gateway blacklist append`
 // Adds one or more new hosts to the gateway's blacklist
 func gatewayblacklistappendcmd(addrString string) {
-	netAddrs, err := parseBlacklistNetAddresses(addrString)
-	if err != nil {
-		die("Could not append the peer to the gateway blacklist", err)
-	}
-	err = httpClient.GatewayAppendBlacklistPost(netAddrs)
+	peers := strings.Split(addrString, ",")
+	err := httpClient.GatewayAppendBlacklistPost(peers)
 	if err != nil {
 		die("Could not append the peer to the gateway blacklist", err)
 	}
@@ -175,11 +172,8 @@ func gatewayblacklistappendcmd(addrString string) {
 // `siac gateway blacklist remove`
 // Removes one or more hosts from the gateway's blacklist
 func gatewayblacklistremovecmd(addrString string) {
-	netAddrs, err := parseBlacklistNetAddresses(addrString)
-	if err != nil {
-		die("Could not remove the peer from the gateway blacklist", err)
-	}
-	err = httpClient.GatewayRemoveBlacklistPost(netAddrs)
+	peers := strings.Split(addrString, ",")
+	err := httpClient.GatewayRemoveBlacklistPost(peers)
 	if err != nil {
 		die("Could not remove the peer from the gateway blacklist", err)
 	}
@@ -190,11 +184,8 @@ func gatewayblacklistremovecmd(addrString string) {
 // `siac gateway blacklist set`
 // Sets the gateway blacklist to the hosts passed in via a comma-separated list
 func gatewayblacklistsetcmd(addrString string) {
-	netAddrs, err := parseBlacklistNetAddresses(addrString)
-	if err != nil {
-		die("Could not set the gateway blacklist", err)
-	}
-	err = httpClient.GatewaySetBlacklistPost(netAddrs)
+	peers := strings.Split(addrString, ",")
+	err := httpClient.GatewaySetBlacklistPost(peers)
 	if err != nil {
 		die("Could not set the gateway blacklist", err)
 	}
