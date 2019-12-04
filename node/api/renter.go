@@ -1667,6 +1667,7 @@ func (api *API) renterStreamFromSiaFileHandler(w http.ResponseWriter, req *http.
 		return
 	}
 	defer streamer.Close()
+	w.Header().Set("Content-Name", strings.TrimSuffix(header.Name, modules.SiaFileExtension))
 	http.ServeContent(w, req, header.Name, time.Time{}, streamer)
 }
 
