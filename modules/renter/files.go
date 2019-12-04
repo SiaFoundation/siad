@@ -2,8 +2,6 @@ package renter
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
-
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // DeleteFile removes a file entry from the renter and deletes its data from
