@@ -1753,22 +1753,6 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 
-	// Wait for the redundancy to reach 2.
-	expectedRedundancy := 2.0
-	err = build.Retry(50, 250*time.Millisecond, func() error {
-		fileInfo, err := renter.File(remoteFile)
-		if err != nil {
-			return err
-		}
-		if fileInfo.Redundancy < expectedRedundancy {
-			return errors.New(fmt.Sprintf("Expected redundancy of %f", expectedRedundancy))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Downloading the file should be succesful.
 	if _, _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("File download failed", err)
@@ -1797,9 +1781,6 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a set of contract IDs to save.
-	contractIDs := make(map[types.FileContractID]struct{})
-
 	// Check that the renter has made 2 contracts with the new hosts.
 	i := 0
 	err = build.Retry(100, 250*time.Millisecond, func() error {
@@ -1817,12 +1798,7 @@ func TestContractorHostRemoval(t *testing.T) {
 			return err
 		}
 		for _, contract := range rc.ActiveContracts {
-			contractIDs[contract.ID] = struct{}{} // save the contracts for later.
-			if _, ok := initialHostPubKeys[contract.HostPublicKey.String()]; ok {
-				continue
-			}
-			_, ok := newHostPubKeys[contract.HostPublicKey.String()]
-			if !ok {
+			if _, ok := initialHostPubKeys[contract.HostPublicKey.String()]; !ok {
 				newHostPubKeys[contract.HostPublicKey.String()] = struct{}{}
 			}
 		}
@@ -1835,7 +1811,18 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create a set of contract IDs to save.
+	contractIDs := make(map[types.FileContractID]struct{})
+	rc, err = renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range rc.ActiveContracts {
+		contractIDs[contract.ID] = struct{}{}
+	}
+
 	// Wait for the redundancy to reach 2.
+	expectedRedundancy := 2.0
 	err = build.Retry(50, 250*time.Millisecond, func() error {
 		fileInfo, err := renter.File(remoteFile)
 		if err != nil {
