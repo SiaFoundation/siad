@@ -2068,9 +2068,15 @@ func renterfusemountcmd(path, siaPathStr string) {
 	// to update the help string of the command to indicate that mounting will
 	// mount in read-write mode.
 	path = abs(path)
-	siaPath, err := modules.NewSiaPath(siaPathStr)
-	if err != nil {
-		die("Unable to parse the siapath that should be mounted:", err)
+	var siaPath modules.SiaPath
+	var err error
+	if siaPathStr == "" || siaPathStr == "/" {
+		siaPath = modules.RootSiaPath()
+	} else {
+		siaPath, err = modules.NewSiaPath(siaPathStr)
+		if err != nil {
+			die("Unable to parse the siapath that should be mounted:", err)
+		}
 	}
 	err = httpClient.RenterFuseMount(path, siaPath, true)
 	if err != nil {
