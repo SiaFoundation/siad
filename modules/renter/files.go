@@ -82,11 +82,6 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	}
 	defer r.tg.Done()
 
-	// Special case: do not allow the user to rename to root.
-	if newName.IsRoot() {
-		return errors.New("cannot rename a file to the root directory")
-	}
-
 	// Rename file
 	err := r.staticFileSystem.RenameFile(currentName, newName)
 	if err != nil {
