@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/monitor"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -58,8 +58,6 @@ func (p *peer) open() (modules.PeerConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Monitor bandwidth on conn
-	conn = connmonitor.NewMonitoredConn(conn, p.m)
 	// Apply the local ratelimit.
 	conn = ratelimit.NewRLConn(conn, p.rl, nil)
 	// Apply the global ratelimit.
@@ -72,8 +70,6 @@ func (p *peer) accept() (modules.PeerConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Monitor bandwidth on conn
-	conn = connmonitor.NewMonitoredConn(conn, p.m)
 	return &peerConn{conn, p.NetAddress}, nil
 }
 
@@ -471,6 +467,9 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 		return err
 	}
 	g.log.Debugln("Created conn; remote and local addr", conn.RemoteAddr(), conn.LocalAddr())
+
+	// Monitor bandwidth on conn
+	conn = connmonitor.NewMonitoredConn(conn, g.m)
 
 	// Perform peer initialization.
 	remoteVersion, err := connectVersionHandshake(conn, build.Version)

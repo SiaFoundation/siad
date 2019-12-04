@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -55,6 +56,9 @@ func (g *Gateway) staticPingNode(addr modules.NetAddress) error {
 		return err
 	}
 	defer conn.Close()
+
+	// Monitor bandwidth on conn
+	conn = connmonitor.NewMonitoredConn(conn, g.m)
 
 	// Read the node's version.
 	remoteVersion, err := connectVersionHandshake(conn, build.Version)

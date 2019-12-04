@@ -629,7 +629,6 @@ func TestConnectRejectsVersions(t *testing.T) {
 			if err != nil {
 				panic(fmt.Sprintf("test #%d failed: %s", testIndex, err))
 			}
-
 			remoteVersion, err := acceptVersionHandshake(conn, tt.version)
 			if err != nil {
 				panic(fmt.Sprintf("test #%d failed: %s", testIndex, err))
