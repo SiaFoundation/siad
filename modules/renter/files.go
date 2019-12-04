@@ -34,12 +34,12 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
-	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 	var fis []modules.FileInfo
 	var err error
 	if cached {
 		fis, _, err = r.staticFileSystem.CachedList(siaPath, recursive)
 	} else {
+		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		fis, _, err = r.staticFileSystem.List(siaPath, recursive, offlineMap, goodForRenewMap, contractsMap)
 	}
 	if err != nil {

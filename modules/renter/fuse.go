@@ -321,9 +321,7 @@ func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte,
 func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	siaPath := fdn.staticFilesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
 	// Load the directory stream from the renter.
-	//
-	// TODO: Should we use the cached file list here?
-	fileinfos, err := fdn.staticFilesystem.renter.FileList(siaPath, false, false)
+	fileinfos, err := fdn.staticFilesystem.renter.FileList(siaPath, false, true)
 	if err != nil {
 		fdn.staticFilesystem.renter.log.Printf("Unable to get file list for fuse directory %v: %v", siaPath, err)
 		return nil, errToStatus(err)
