@@ -518,7 +518,7 @@ func TestHostDBAndRenterDownloadDynamicIPs(t *testing.T) {
 
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +600,7 @@ func TestHostDBAndRenterDownloadDynamicIPs(t *testing.T) {
 	}
 
 	// Try downloading the file.
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +627,7 @@ func TestHostDBAndRenterDownloadDynamicIPs(t *testing.T) {
 		}
 	}
 	err = build.Retry(100, time.Millisecond*100, func() error {
-		err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+		err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 		if err != nil {
 			return err
 		}
@@ -827,7 +827,7 @@ func TestHostDBAndRenterUploadDynamicIPs(t *testing.T) {
 
 	// Try downloading the second file.
 	downpath2 := filepath.Join(st.dir, "testdown2.dat")
-	err = st.stdGetAPI("/renter/download/test2?destination=" + downpath2)
+	err = st.stdGetAPI("/renter/download/test2?disablelocalfetch=true&destination=" + downpath2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -862,7 +862,7 @@ func TestHostDBAndRenterUploadDynamicIPs(t *testing.T) {
 
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -880,7 +880,7 @@ func TestHostDBAndRenterUploadDynamicIPs(t *testing.T) {
 	}
 
 	// Try downloading the second file.
-	err = st.stdGetAPI("/renter/download/test2?destination=" + downpath2)
+	err = st.stdGetAPI("/renter/download/test2?disablelocalfetch=true&destination=" + downpath2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1056,7 +1056,7 @@ func TestHostDBAndRenterFormDynamicIPs(t *testing.T) {
 
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1090,7 +1090,7 @@ func TestHostDBAndRenterFormDynamicIPs(t *testing.T) {
 	}
 
 	// Try downloading the file.
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1191,7 +1191,7 @@ func TestHostDBAndRenterRenewDynamicIPs(t *testing.T) {
 
 	// Try downloading the file.
 	downpath := filepath.Join(st.dir, "testdown.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1286,7 +1286,7 @@ func TestHostDBAndRenterRenewDynamicIPs(t *testing.T) {
 	}
 
 	// Try downloading the file.
-	err = st.stdGetAPI("/renter/download/test?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -63,7 +62,13 @@ type (
 		// this siafile. Since we don't know if a file is going to have a partial
 		// chunk we simply keep the megafiles always open and assign them to SiaFiles
 		// with matching redundancy.
-		partialsSiaFile *SiaFileSetEntry
+		partialsSiaFile *SiaFile
+	}
+
+	// Chunks is an exported version of a chunk slice.. It exists for
+	// convenience to make sure the caller has an exported type to pass around.
+	Chunks struct {
+		chunks []chunk
 	}
 
 	// chunk represents a single chunk of a file on disk
@@ -123,6 +128,28 @@ func (sf *SiaFile) SiaFilePath() string {
 	return sf.siaFilePath
 }
 
+// Lock acquires the SiaFile's mutex for calling Unmanaged exported methods.
+func (sf *SiaFile) Lock() {
+	sf.mu.Lock()
+}
+
+// Unlock releases the SiaFile's mutex.
+func (sf *SiaFile) Unlock() {
+	sf.mu.Unlock()
+}
+
+// UnmanagedSetDeleted sets the deleted field of the SiaFile without
+// holding the lock.
+func (sf *SiaFile) UnmanagedSetDeleted(deleted bool) {
+	sf.deleted = deleted
+}
+
+// UnmanagedSetSiaFilePath sets the siaFilePath field of the SiaFile without
+// holding the lock.
+func (sf *SiaFile) UnmanagedSetSiaFilePath(newSiaFilePath string) {
+	sf.siaFilePath = newSiaFilePath
+}
+
 // UnmarshalSia implements the encoding.SiaUnmarshaler interface.
 func (hpk *HostPublicKey) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
@@ -142,7 +169,10 @@ func (c *chunk) numPieces() (numPieces int) {
 }
 
 // New create a new SiaFile.
-func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFileSetEntry, disablePartialUpload bool) (*SiaFile, error) {
+func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules.ErasureCoder, masterKey crypto.CipherKey, fileSize uint64, fileMode os.FileMode, partialsSiaFile *SiaFile, disablePartialUpload bool) (*SiaFile, error) {
+	// TODO remove this
+	disablePartialUpload = true
+
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	zeroHealth := float64(1 + erasureCode.MinPieces()/(erasureCode.NumPieces()-erasureCode.MinPieces()))
@@ -296,7 +326,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// Get the index of the host in the public key table.
 	tableIndex := -1
 	for i, hpk := range sf.pubKeyTable {
-		if hpk.PublicKey.Algorithm == pk.Algorithm && bytes.Equal(hpk.PublicKey.Key, pk.Key) {
+		if hpk.PublicKey.Equals(pk) {
 			tableIndex = i
 			break
 		}
@@ -438,14 +468,14 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 
 // SaveWithChunks saves the file's header to disk and appends the raw chunks provided at
 // the end of the file.
-func (sf *SiaFile) SaveWithChunks(chunks []chunk) error {
+func (sf *SiaFile) SaveWithChunks(chunks Chunks) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return errors.AddContext(err, "failed to create header updates")
 	}
-	for _, chunk := range chunks {
+	for _, chunk := range chunks.chunks {
 		updates = append(updates, sf.saveChunkUpdate(chunk))
 	}
 	return sf.createAndApplyTransaction(updates...)
@@ -615,7 +645,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	// Sanity Check that the number of stuck chunks makes sense
 	expectedStuckChunks := sf.numStuckChunks()
 	if numStuckChunks != expectedStuckChunks {
-		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks)
+		build.Critical("WARN: the number of stuck chunks found does not match metadata", numStuckChunks, expectedStuckChunks, sf.siaFilePath)
 	}
 	return health, stuckHealth, userHealth, userStuckHealth, numStuckChunks
 }

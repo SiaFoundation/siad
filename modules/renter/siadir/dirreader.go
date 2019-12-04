@@ -38,8 +38,7 @@ func (sd *SiaDir) DirReader() (*DirReader, error) {
 		return nil, errors.New("can't copy deleted SiaDir")
 	}
 	// Open file.
-	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-	f, err := os.Open(path)
+	f, err := os.Open(sd.mdPath())
 	if err != nil {
 		sd.mu.Unlock()
 		return nil, err

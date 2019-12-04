@@ -1,7 +1,6 @@
 package hostdb
 
 import (
-	"bytes"
 	"io/ioutil"
 	"math"
 	"net"
@@ -317,7 +316,7 @@ func TestRandomHosts(t *testing.T) {
 		if len(rand) != 1 {
 			t.Fatal("wrong number of hosts returned")
 		}
-		if rand[0].PublicKey.String() != hosts[0].PublicKey.String() {
+		if !rand[0].PublicKey.Equals(hosts[0].PublicKey) {
 			t.Error("exclude list seems to be excluding the wrong hosts.")
 		}
 
@@ -329,7 +328,7 @@ func TestRandomHosts(t *testing.T) {
 		if len(rand) != 1 {
 			t.Fatal("wrong number of hosts returned")
 		}
-		if rand[0].PublicKey.String() != hosts[0].PublicKey.String() {
+		if !rand[0].PublicKey.Equals(hosts[0].PublicKey) {
 			t.Error("exclude list seems to be excluding the wrong hosts.")
 		}
 
@@ -711,7 +710,7 @@ func TestCheckForIPViolations(t *testing.T) {
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 0 && !badHosts[0].Equals(entry3.PublicKey) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 
@@ -724,7 +723,7 @@ func TestCheckForIPViolations(t *testing.T) {
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 0 && !badHosts[0].Equals(entry3.PublicKey) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 
@@ -738,7 +737,7 @@ func TestCheckForIPViolations(t *testing.T) {
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 1 || !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 1 || !badHosts[0].Equals(entry3.PublicKey) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 }

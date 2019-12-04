@@ -59,7 +59,7 @@ func (rt *renterTester) addRenter(r *Renter) error {
 // createZeroByteFileOnDisk creates a 0 byte file on disk so that a Stat of the
 // local path won't return an error
 func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
-	path := filepath.Join(rt.renter.staticFilesDir, persist.RandomSuffix())
+	path := filepath.Join(rt.renter.staticFileSystem.Root(), persist.RandomSuffix())
 	err := ioutil.WriteFile(path, []byte{}, 0600)
 	if err != nil {
 		return "", err

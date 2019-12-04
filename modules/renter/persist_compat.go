@@ -14,7 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -270,7 +270,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 			continue
 		}
 		// Skip siafiles and contracts folders.
-		if fi.Name() == modules.SiapathRoot || fi.Name() == "contracts" {
+		if fi.Name() == modules.FileSystemRoot || fi.Name() == "contracts" {
 			continue
 		}
 		// Delete the folder.
@@ -283,7 +283,7 @@ func (r *Renter) compatV137ConvertSiaFiles(tracking map[string]v137TrackedFile, 
 
 // v137FileToSiaFile converts a legacy file to a SiaFile. Fields that can't be
 // populated using the legacy file remain blank.
-func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*siafile.SiaFileSetEntry, error) {
+func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []modules.RenterContract) (*filesystem.FileNode, error) {
 	// Create a mapping of contract ids to host keys.
 	contracts := r.hostContractor.Contracts()
 	idToPk := make(map[types.FileContractID]types.SiaPublicKey)
@@ -323,7 +323,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []mo
 			// times.
 			duplicate := false
 			for _, p := range chunks[piece.Chunk].Pieces[piece.Piece] {
-				if p.HostPubKey.String() == pk.String() {
+				if p.HostPubKey.Equals(pk) {
 					duplicate = true
 					break
 				}
@@ -338,7 +338,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []mo
 		}
 	}
 	fileData.Chunks = chunks
-	return r.staticFileSet.NewFromLegacyData(fileData)
+	return r.staticFileSystem.NewSiaFileFromLegacyData(fileData)
 }
 
 // compatV137LoadSiaFilesFromReader reads .sia data from reader and registers
@@ -386,7 +386,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			if err != nil {
 				return nil, err
 			}
-			exists := r.staticFileSet.Exists(siaPath)
+			exists, _ := r.staticFileSystem.FileExists(siaPath)
 			if !exists {
 				break
 			}
@@ -404,23 +404,6 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if ok {
 			repairPath = tf.RepairPath
 		}
-		// Create and add a siadir to the SiaDirSet if one has not been created
-		siaPath, err := modules.NewSiaPath(f.name)
-		if err != nil {
-			return nil, err
-		}
-		dirSiaPath, err := siaPath.Dir()
-		if err != nil {
-			return nil, err
-		}
-		sd, errDir := r.staticDirSet.NewSiaDir(dirSiaPath)
-		if errDir != nil && errDir != siadir.ErrPathOverload {
-			errDir = errors.AddContext(errDir, "unable to create new sia dir")
-			return nil, errors.Compose(err, errDir)
-		}
-		if errDir != siadir.ErrPathOverload {
-			err = errors.Compose(err, sd.Close())
-		}
 		// v137FileToSiaFile adds siafile to the SiaFileSet so it does not need to
 		// be returned here
 		entry, err := r.v137FileToSiaFile(f, repairPath, oldContracts)
@@ -428,9 +411,44 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			return nil, errors.AddContext(err, "unable to transform old file to new file")
 		}
 		names[i] = f.name
-		err = errors.Compose(err, entry.Close())
+		entry.Close()
 	}
 	return names, err
+}
+
+// convertPersistVersionFrom140To142 upgrades a legacy persist file to the next
+// version, converting the old filesystem to the new one.
+func (r *Renter) convertPersistVersionFrom140To142(path string) error {
+	metadata := persist.Metadata{
+		Header:  settingsMetadata.Header,
+		Version: persistVersion140,
+	}
+	var p persistence
+	err := persist.LoadJSON(metadata, &p, path)
+	if err != nil {
+		return errors.AddContext(err, "could not load json")
+	}
+	// Rename siafiles folder to fs/home/user and snapshots to fs/snapshots.
+	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
+	newHomePath := modules.HomeSiaPath().SiaDirSysPath(fsRoot)
+	newSiaFilesPath := modules.UserSiaPath().SiaDirSysPath(fsRoot)
+	newSnapshotsPath := modules.SnapshotsSiaPath().SiaDirSysPath(fsRoot)
+	if err := os.MkdirAll(newHomePath, 0700); err != nil {
+		return errors.AddContext(err, "failed to create new home dir")
+	}
+	if err := os.Rename(filepath.Join(r.persistDir, "siafiles"), newSiaFilesPath); err != nil && !os.IsNotExist(err) {
+		return errors.AddContext(err, "failed to rename legacy siafiles folder")
+	}
+	if err := os.Rename(filepath.Join(r.persistDir, "snapshots"), newSnapshotsPath); err != nil && !os.IsNotExist(err) {
+		return errors.AddContext(err, "failed to rename legacy snapshots dir")
+	}
+	// Save metadata with updated version
+	metadata.Version = persistVersion142
+	err = persist.SaveJSON(metadata, p, path)
+	if err != nil {
+		return errors.AddContext(err, "could not save json")
+	}
+	return nil
 }
 
 // convertPersistVersionFrom133To140 upgrades a legacy persist file to the next

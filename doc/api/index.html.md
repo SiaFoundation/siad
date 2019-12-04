@@ -1386,6 +1386,11 @@ responses](#standard-responses).
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/announce"
 ```
+> curl example with a custom netaddress
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/host/announce?netaddress=siahost.example.net"
+```
 
 Announce the host to the network as a source of storage. Generally only needs to
 be called once.
@@ -3003,6 +3008,12 @@ Action can be either `create`, `delete` or `rename`.
  **newsiapath** | string  
  The new siapath of the renamed folder. Only required for the `rename` action.
 
+ ### OPTIONAL
+ **mode** | uint32  
+ The mode can be specified in addition to the `create` action to create the
+ directory with specific permissions. If not specified, the default
+ permissions 0755 will be used.
+
 ### Response
 
 standard success or error response. See [standard
@@ -3473,6 +3484,10 @@ If httresp is true, the data will be written to the http response.
 If async is true, the http request will be non blocking. Can't be used with
 httpresp.
 
+**disablelocalfetch** | boolean  
+If disablelocalfetch is true, downloads won't be served from disk even if the
+file is available locally.
+
 **length** | bytes  
 Length of the requested data. Has to be <= filesize-offset.  
 
@@ -3625,6 +3640,11 @@ number of files you are steaming.
 **siapath** | string  
 Path to the file in the renter on the network.
 
+### OPTIONAL
+**disablelocalfetch** | boolean  
+If disablelocalfetch is true, downloads won't be served from disk even if the
+file is available locally.
+
 ### Response
 
 standard success or error response. See [standard
@@ -3755,6 +3775,45 @@ The number of data pieces to use when erasure coding the file.
 
 **paritypieces** | int  
 The number of parity pieces to use when erasure coding the file.
+
+## /renter/uploads/pause [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "duration=10m" "localhost:9980/renter/uploads/pause"
+```
+
+This endpoint will pause any future uploads or repairs for the duration
+requested. Any in progress chunks will finish. This can be used to free up
+the workers to exclusively focus on downloads. Since this will pause file
+repairs it is advised to not pause for too long. If no duration is supplied
+then the default duration of 600 seconds will be used. If the uploads are
+already paused, additional calls to pause the uploads will result in the
+duration of the pause to be reset to the duration supplied as opposed to
+pausing for an additional length of time.
+
+### Path Parameters
+#### OPTIONAL 
+**duration** | string  
+duration is how long the repairs and uploads will be paused in seconds. If no
+duration is supplied the default pause duration will be used.
+
+### Response
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /renter/uploads/resume [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/uploads/resume"
+```
+
+This endpoint will resume uploads and repairs.
+
+### Response
+standard success or error response. See [standard
+responses](#standard-responses).
 
 ## /renter/validatesiapath/*siapath* [POST]
 > curl example  
@@ -5027,6 +5086,33 @@ Unlock hash (i.e. wallet address) whose transactions are being requested.
 ```
 **valid**  
 valid indicates if the address supplied to :addr is a valid UnlockHash.  
+
+## /wallet/verifypassword [GET]
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/wallet/verifypassword?password=<password>"
+```
+
+Takes a password and verifies if it is the valid password used to encrypt the
+wallet.
+
+### Path Parameters
+#### REQUIRED
+**password** | string  
+Password being checked.  
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "valid": true,
+}
+```
+**valid** | boolean  
+valid indicates if the password supplied is the password used to encrypte the
+wallet.  
 
 ## /wallet/watch [GET]
 > curl example  

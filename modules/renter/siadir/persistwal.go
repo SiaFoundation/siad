@@ -32,7 +32,6 @@ func createMetadataUpdate(path string, metadata Metadata) (writeaheadlog.Update,
 	if err != nil {
 		return writeaheadlog.Update{}, err
 	}
-
 	// Create update
 	return writeaheadlog.Update{
 		Name:         updateMetadataName,
@@ -140,8 +139,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	}
 
 	// Open the file
-	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-	file, err := sd.deps.OpenFile(siaDirPath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
+	file, err := sd.deps.OpenFile(sd.mdPath(), os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}
@@ -207,7 +205,7 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeleteName,
-		Instructions: []byte(sd.siaPath.SiaDirSysPath(sd.rootDir)),
+		Instructions: []byte(sd.path),
 	}
 }
 
@@ -221,9 +219,8 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 	}
 
 	// Sanity check path belongs to siadir
-	siaDirPath := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-	if path != siaDirPath {
-		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, siaDirPath))
+	if path != sd.mdPath() {
+		build.Critical(fmt.Sprintf("can't apply update for file %s to SiaDir %s", path, sd.path))
 		return nil
 	}
 
@@ -240,6 +237,5 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 
 // saveMetadataUpdate saves the metadata of the SiaDir
 func (sd *SiaDir) saveMetadataUpdate() (writeaheadlog.Update, error) {
-	path := sd.siaPath.SiaDirMetadataSysPath(sd.rootDir)
-	return createMetadataUpdate(path, sd.metadata)
+	return createMetadataUpdate(sd.mdPath(), sd.metadata)
 }

@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/sync"
@@ -654,7 +655,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
@@ -798,7 +799,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
@@ -906,17 +907,17 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 
 	// Copy the siafile to the new location.
-	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
 	siaFile, err := ioutil.ReadFile(oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
-	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
-	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
+	if err := os.MkdirAll(filepath.Dir(newPath), persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(newPath, siaFile, 0777); err != nil {
+	if err := ioutil.WriteFile(newPath, siaFile, persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
 
@@ -964,7 +965,7 @@ func TestRenterContractRecovery(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.StartHeight != c.StartHeight {
@@ -1069,7 +1070,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath)
+	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1582,9 +1583,18 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Shutdown a hosts to cause churn.
 	hosts := tg.Hosts()
 	numHostsShutdown := 1
+
+	// Before shutting down a host, get its pubkey to verify that the correct
+	// contract is getting churned.
+	hostInfo, err := hosts[0].HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostPubKey := hostInfo.PublicKey
+
+	// Shutdown a host to cause churn.
 	err = hosts[0].StopNode()
 	if err != nil {
 		t.Fatal(err)
@@ -1618,6 +1628,11 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
 		}
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if !churnedHostKey.Equals(hostPubKey) {
+			return errors.New("wrong host churned")
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -1664,6 +1679,14 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", 1, len(rc.DisabledContracts))
 		}
+
+		// Check that a *different* host (i.e. not the offline host) was churned
+		// this time.
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if churnedHostKey.Equals(hostPubKey) {
+			return errors.New("wrong host churned")
+		}
+
 		return nil
 	})
 	if err != nil {

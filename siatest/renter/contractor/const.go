@@ -3,6 +3,7 @@ package contractor
 import (
 	"os"
 
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
 
@@ -11,7 +12,7 @@ import (
 // delete the directory again.
 func contractorTestDir(testName string) string {
 	path := siatest.TestDir("renter/contractor", testName)
-	if err := os.MkdirAll(path, 0777); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return path

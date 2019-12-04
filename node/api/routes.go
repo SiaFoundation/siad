@@ -119,6 +119,8 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
 		router.GET("/renter/uploadready", api.renterUploadReadyHandler)
+		router.POST("/renter/uploads/pause", RequirePassword(api.renterUploadsPauseHandler, requiredPassword))
+		router.POST("/renter/uploads/resume", RequirePassword(api.renterUploadsResumeHandler, requiredPassword))
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 
@@ -174,6 +176,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/wallet/verify/address/:addr", api.walletVerifyAddressHandler)
 		router.POST("/wallet/unlock", RequirePassword(api.walletUnlockHandler, requiredPassword))
 		router.POST("/wallet/changepassword", RequirePassword(api.walletChangePasswordHandler, requiredPassword))
+		router.GET("/wallet/verifypassword", RequirePassword(api.walletVerifyPasswordHandler, requiredPassword))
 		router.GET("/wallet/unlockconditions/:addr", RequirePassword(api.walletUnlockConditionsHandlerGET, requiredPassword))
 		router.POST("/wallet/unlockconditions", RequirePassword(api.walletUnlockConditionsHandlerPOST, requiredPassword))
 		router.GET("/wallet/unspent", RequirePassword(api.walletUnspentHandler, requiredPassword))

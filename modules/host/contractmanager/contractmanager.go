@@ -26,15 +26,14 @@ package contractmanager
 // it's a rare situation, but it should be addressed eventually.
 
 import (
-	"errors"
 	"path/filepath"
 	"sync/atomic"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // ContractManager is responsible for managing contracts that the host has with
@@ -94,16 +93,17 @@ type ContractManager struct {
 	lockedSectors map[sectorID]*sectorLock
 
 	// Utilities.
-	dependencies modules.Dependencies
-	log          *persist.Logger
-	persistDir   string
-	tg           siasync.ThreadGroup
-	wal          writeAheadLog
+	dependencies  modules.Dependencies
+	staticAlerter *modules.GenericAlerter
+	log           *persist.Logger
+	persistDir    string
+	tg            siasync.ThreadGroup
+	wal           writeAheadLog
 }
 
 // Close will cleanly shutdown the contract manager.
 func (cm *ContractManager) Close() error {
-	return build.ExtendErr("error while stopping contract manager", cm.tg.Stop())
+	return errors.AddContext(cm.tg.Stop(), "error while stopping contract manager")
 }
 
 // newContractManager returns a contract manager that is ready to be used with
@@ -117,6 +117,8 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 
 		dependencies: dependencies,
 		persistDir:   persistDir,
+
+		staticAlerter: modules.NewAlerter("contractmanager"),
 	}
 	cm.wal.cm = cm
 	cm.tg.AfterStop(func() {
@@ -127,26 +129,26 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	var err error
 	defer func() {
 		if err != nil {
-			err1 := build.ExtendErr("error during contract manager startup", err)
-			err2 := build.ExtendErr("error while stopping a partially started contract manager", cm.tg.Stop())
-			err = build.ComposeErrors(err1, err2)
+			err1 := errors.Extend(err, errors.New("error during contract manager startup"))
+			err2 := errors.Extend(err, errors.AddContext(cm.tg.Stop(), "error while stopping a partially started contract manager"))
+			err = errors.Compose(err1, err2)
 		}
 	}()
 
 	// Create the perist directory if it does not yet exist.
 	err = dependencies.MkdirAll(cm.persistDir, 0700)
 	if err != nil {
-		return nil, build.ExtendErr("error while creating the persist directory for the contract manager", err)
+		return nil, errors.AddContext(err, "error while creating the persist directory for the contract manager")
 	}
 
 	// Logger is always the first thing initialized.
 	cm.log, err = dependencies.NewLogger(filepath.Join(cm.persistDir, logFile))
 	if err != nil {
-		return nil, build.ExtendErr("error while creating the logger for the contract manager", err)
+		return nil, errors.AddContext(err, "error while creating the logger for the contract manager")
 	}
 	// Set up the clean shutdown of the logger.
 	cm.tg.AfterStop(func() {
-		err = build.ComposeErrors(cm.log.Close(), err)
+		err = errors.Compose(cm.log.Close(), err)
 	})
 
 	// Load the atomic state of the contract manager. Unclean shutdown may have
@@ -155,14 +157,14 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	err = cm.loadSettings()
 	if err != nil {
 		cm.log.Println("ERROR: Unable to load contract manager settings:", err)
-		return nil, build.ExtendErr("error while loading contract manager atomic data", err)
+		return nil, errors.AddContext(err, "error while loading contract manager atomic data")
 	}
 
 	// Load the WAL, repairing any corruption caused by unclean shutdown.
 	err = cm.wal.load()
 	if err != nil {
 		cm.log.Println("ERROR: Unable to load the contract manager write-ahead-log:", err)
-		return nil, build.ExtendErr("error while loading the WAL at startup", err)
+		return nil, errors.AddContext(err, "error while loading the WAL at startup")
 	}
 	// Upon shudown, unload all of the files.
 	cm.tg.AfterStop(func() {
@@ -205,7 +207,7 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	err = cm.wal.spawnSyncLoop()
 	if err != nil {
 		cm.log.Println("ERROR: Unable to spawn the contract manager synchronization loop:", err)
-		return nil, build.ExtendErr("error while spawning contract manager sync loop", err)
+		return nil, errors.AddContext(err, "error while spawning contract manager sync loop")
 	}
 
 	// Spin up the thread that continuously looks for missing storage folders
@@ -223,4 +225,14 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 // New returns a new ContractManager.
 func New(persistDir string) (*ContractManager, error) {
 	return newContractManager(new(modules.ProductionDependencies), persistDir)
+}
+
+// NewCustomContractManager returns a ContractManager with custom dependencies.
+func NewCustomContractManager(dependencies modules.Dependencies, persistDir string) (*ContractManager, error) {
+	return newContractManager(dependencies, persistDir)
+}
+
+// Alerts implements the modules.Alerter interface for the contract manager
+func (cm *ContractManager) Alerts() []modules.Alert {
+	return cm.staticAlerter.Alerts()
 }

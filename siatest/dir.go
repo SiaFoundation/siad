@@ -3,6 +3,8 @@ package siatest
 import (
 	"os"
 	"path/filepath"
+
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 var (
@@ -27,7 +29,7 @@ func TestDir(dirs ...string) string {
 // module.
 func siatestTestDir(testName string) string {
 	path := TestDir("siatest", testName)
-	if err := os.MkdirAll(path, 0777); err != nil {
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
 	return path

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -17,8 +18,9 @@ func TestSnapshot(t *testing.T) {
 	t.Parallel()
 
 	// Create a random file for testing and create a snapshot from it.
-	sf := dummyEntry(newTestFile())
-	snap, err := sf.Snapshot()
+	sf := newTestFile()
+	sp := modules.RandomSiaPath()
+	snap, err := sf.Snapshot(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,11 +61,9 @@ func TestSnapshot(t *testing.T) {
 		!reflect.DeepEqual(sf.pubKeyTable, snap.staticPubKeyTable) {
 		t.Error("pubkeytables don't match", sf.pubKeyTable, snap.staticPubKeyTable)
 	}
-	sf.staticSiaFileSet.mu.Lock()
-	if sf.staticSiaFileSet.siaPath(sf) != snap.staticSiaPath {
+	if sp != snap.staticSiaPath {
 		t.Error("siapaths don't match")
 	}
-	sf.staticSiaFileSet.mu.Unlock()
 	// Compare the pieces.
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
 		sfPieces, err := sf.Pieces(uint64(chunk.Index))
@@ -109,8 +109,7 @@ func BenchmarkSnapshot10GB(b *testing.B) {
 // snapshots of Siafiles with different sizes.
 func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 	// Create the file.
-	siafile := newBlankTestFile()
-	sf := dummyEntry(siafile)
+	sf := newBlankTestFile()
 	rc := sf.staticMetadata.staticErasureCode
 	// Add a host key to the table.
 	sf.addRandomHostKeys(1)
@@ -127,7 +126,7 @@ func benchmarkSnapshot(b *testing.B, fileSize uint64) {
 
 	// Create snapshots as fast as possible.
 	for i := 0; i < b.N; i++ {
-		_, err := sf.Snapshot()
+		_, err := sf.Snapshot(modules.RootSiaPath())
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -20,7 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -436,16 +436,16 @@ func renterallowancecmd() {
 
 	// Show allowance info
 	fmt.Printf(`Allowance:
-	Amount:               %v
-	Period:               %v blocks
-	Renew Window:         %v blocks
-	Hosts:                %v
+  Amount:               %v
+  Period:               %v blocks
+  Renew Window:         %v blocks
+  Hosts:                %v
 
 Expectations for period:
-	Expected Storage:     %v
-	Expected Upload:      %v
-	Expected Download:    %v
-	Expected Redundancy:  %v
+  Expected Storage:     %v
+  Expected Upload:      %v
+  Expected Download:    %v
+  Expected Redundancy:  %v
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, filesizeUnits(allowance.ExpectedStorage),
 		filesizeUnits(allowance.ExpectedUpload), filesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
 
@@ -1447,7 +1447,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		return
 	}
 	// Create destination on disk.
-	if err = os.MkdirAll(destination, 0755); err != nil {
+	if err = os.MkdirAll(destination, 0750); err != nil {
 		err = errors.AddContext(err, "failed to create destination dir")
 		return
 	}
@@ -1562,7 +1562,7 @@ func renterfilesdeletecmd(path string) {
 	if errDir == nil {
 		fmt.Printf("Deleted directory '%v'\n", path)
 		return
-	} else if !strings.Contains(errDir.Error(), siadir.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 		die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
 	}
 	// Unknown file/folder.
@@ -1588,7 +1588,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
-	} else if !strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
 	}
 	die(fmt.Sprintf("Unknown file '%v'", path))
@@ -1628,7 +1628,7 @@ func renterfilesdownload(path, destination string) {
 	// If the download is blocking, display progress as the file downloads.
 	file, err := httpClient.RenterFileGet(siaPath)
 	if err != nil {
-		// Error ignored.
+		die("Error getting file after download has started:", err)
 	}
 
 	failedDownloads := downloadprogress([]trackedFile{{siaPath: siaPath, dst: destination}})

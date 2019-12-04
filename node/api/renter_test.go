@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -140,7 +141,7 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	downpath := filepath.Join(st.dir, fname)
 	defer os.Remove(downpath)
 
-	dlURL := fmt.Sprintf("/renter/download/%s?offset=%d&length=%d", ulSiaPath, offset, length)
+	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&offset=%d&length=%d", ulSiaPath, offset, length)
 
 	var downbytes bytes.Buffer
 
@@ -223,7 +224,7 @@ func TestRenterDownloadError(t *testing.T) {
 	// don't wait for the upload to complete, try to download immediately to
 	// intentionally cause a download error
 	downpath := filepath.Join(st.dir, "down.dat")
-	expectedErr := st.getAPI("/renter/download/test.dat?destination="+downpath, nil)
+	expectedErr := st.getAPI("/renter/download/test.dat?disablelocalfetch=true&destination="+downpath, nil)
 	if expectedErr == nil {
 		t.Fatal("download unexpectedly succeeded")
 	}
@@ -300,7 +301,7 @@ func runDownloadParamTest(t *testing.T, length, offset, filesize int) error {
 	// Download the original file from offset 40 and length 10.
 	fname := "offsetsinglechunk.dat"
 	downpath := filepath.Join(st.dir, fname)
-	dlURL := fmt.Sprintf("/renter/download/%s?destination=%s", ulSiaPath, downpath)
+	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&destination=%s", ulSiaPath, downpath)
 	dlURL += fmt.Sprintf("&length=%d", length)
 	dlURL += fmt.Sprintf("&offset=%d", offset)
 	return st.getAPI(dlURL, nil)
@@ -347,7 +348,7 @@ func TestRenterDownloadAsyncAndHttpRespError(t *testing.T) {
 
 	// Download the original file from offset 40 and length 10.
 	fname := "offsetsinglechunk.dat"
-	dlURL := fmt.Sprintf("/renter/download/%s?destination=%s&async=true&httpresp=true", ulSiaPath, fname)
+	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&destination=%s&async=true&httpresp=true", ulSiaPath, fname)
 	err := st.getAPI(dlURL, nil)
 	if err == nil {
 		t.Fatalf("/download not prompting error when only passing both async and httpresp fields.")
@@ -386,7 +387,7 @@ func TestRenterDownloadAsyncAndNotDestinationError(t *testing.T) {
 	defer st.server.Close()
 
 	// Download the original file from offset 40 and length 10.
-	dlURL := fmt.Sprintf("/renter/download/%s?async=true", ulSiaPath)
+	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&async=true", ulSiaPath)
 	err := st.getAPI(dlURL, nil)
 	if err == nil {
 		t.Fatal("/download not prompting error when async is specified but destination is empty.")
@@ -407,7 +408,7 @@ func TestRenterDownloadHttpRespAndDestinationError(t *testing.T) {
 
 	// Download the original file from offset 40 and length 10.
 	fname := "test.dat"
-	dlURL := fmt.Sprintf("/renter/download/%s?destination=%shttpresp=true", ulSiaPath, fname)
+	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&destination=%shttpresp=true", ulSiaPath, fname)
 	err := st.getAPI(dlURL, nil)
 	if err == nil {
 		t.Fatal("/download not prompting error when httpresp is specified and destination is non-empty.")
@@ -428,7 +429,7 @@ func TestRenterAsyncDownloadError(t *testing.T) {
 	// don't wait for the upload to complete, try to download immediately to
 	// intentionally cause a download error
 	downpath := filepath.Join(st.dir, "asyncdown.dat")
-	st.getAPI("/renter/downloadasync/test.dat?destination="+downpath, nil)
+	st.getAPI("/renter/downloadasync/test.dat?disablelocalfetch=true&destination="+downpath, nil)
 
 	// verify the file has an error
 	var rdq RenterDownloadQueue
@@ -456,7 +457,7 @@ func TestRenterAsyncDownload(t *testing.T) {
 
 	// Download the file asynchronously.
 	downpath := filepath.Join(st.dir, "asyncdown.dat")
-	err := st.getAPI("/renter/downloadasync/test.dat?destination="+downpath, nil)
+	err := st.getAPI("/renter/downloadasync/test.dat?disablelocalfetch=true&destination="+downpath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +579,7 @@ func TestRenterConflicts(t *testing.T) {
 	// Upload using the same nickname.
 	err = st.stdPostAPI("/renter/upload/foo/bar.sia/test", uploadValues)
 	if err == nil {
-		t.Fatalf("expected %v, got %v", Error{"upload failed: " + siafile.ErrPathOverload.Error()}, err)
+		t.Fatalf("expected %v, got %v", Error{"upload failed: " + filesystem.ErrExists.Error()}, err)
 	}
 
 	// Upload using nickname that conflicts with folder.
@@ -813,7 +814,7 @@ func TestRenterLoadNonexistent(t *testing.T) {
 
 	// Try downloading a nonexistent file.
 	downpath := filepath.Join(st.dir, "dnedown.dat")
-	err = st.stdGetAPI("/renter/download/dne?destination=" + downpath)
+	err = st.stdGetAPI("/renter/download/dne?disablelocalfetch=true&destination=" + downpath)
 	if err == nil {
 		t.Error("should not be able to download non-existent file")
 	}
@@ -856,7 +857,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues := url.Values{}
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 
@@ -921,7 +922,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
 		t.Fatal("upload is not succeeding:", rf.Files[0])
 	}
-	err = st.stdGetAPI("/renter/download/newtest1?destination=" + filepath.Join(st.dir, "testdown2.dat"))
+	err = st.stdGetAPI("/renter/download/newtest1?disablelocalfetch=true&destination=" + filepath.Join(st.dir, "testdown2.dat"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -938,7 +939,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to a name that's already taken.
 	renameValues.Set("newsiapath", "newtest1")
 	err = st.stdPostAPI("/renter/rename/test2", renameValues)
-	if err == nil || err.Error() != siafile.ErrPathOverload.Error() {
+	if err == nil || err.Error() != filesystem.ErrExists.Error() {
 		t.Errorf("expected error to be %v; got %v", siafile.ErrPathOverload, err)
 	}
 }
@@ -1004,10 +1005,9 @@ func TestRenterHandlerDelete(t *testing.T) {
 	if len(files.Files) != 0 {
 		t.Fatalf("renter's list of files should be empty; got %v instead", files)
 	}
-
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
-	if err == nil || err.Error() != siafile.ErrUnknownPath.Error() {
+	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
 		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
 	}
 }
@@ -1131,26 +1131,26 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 
 	// Use a relative destination, which should fail.
 	downloadPath := "test1.dat"
-	if err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath); err.Error() != renterDownloadAbsoluteError {
+	if err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath); err.Error() != renterDownloadAbsoluteError {
 		t.Fatal(err)
 	}
 
 	// Relative destination stepping backwards should also fail.
 	downloadPath = "../test1.dat"
-	if err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath); err.Error() != renterDownloadAbsoluteError {
+	if err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath); err.Error() != renterDownloadAbsoluteError {
 		t.Fatal(err)
 	}
 
 	// Long relative destination should also fail (just missing leading slash).
 	downloadPath = filepath.Join(st.dir[1:], "test1.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath)
 	if err == nil {
 		t.Fatal("expecting an error")
 	}
 
 	// Full destination should succeed.
 	downloadPath = filepath.Join(st.dir, "test1.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath)
 	if err != nil {
 		t.Fatal("expecting an error")
 	}
@@ -1451,7 +1451,7 @@ func TestContractorHostRemoval(t *testing.T) {
 
 	// verify we can download
 	downloadPath := filepath.Join(st.dir, "test-downloaded-verify.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1472,8 +1472,8 @@ func TestContractorHostRemoval(t *testing.T) {
 	if len(rc.ActiveContracts) != 2 {
 		t.Fatal("wrong contract count")
 	}
-	rc1Host := rc.ActiveContracts[0].HostPublicKey.String()
-	rc2Host := rc.ActiveContracts[1].HostPublicKey.String()
+	rc1Host := rc.ActiveContracts[0].HostPublicKey
+	rc2Host := rc.ActiveContracts[1].HostPublicKey
 
 	// Add 3 new hosts that will be competing with the expensive hosts.
 	stH2, err := blankServerTester(t.Name() + " - Host 2")
@@ -1545,8 +1545,8 @@ func TestContractorHostRemoval(t *testing.T) {
 			return errors.New("couldn't get renter stats")
 		}
 		hostMap := make(map[string]struct{})
-		hostMap[rc1Host] = struct{}{}
-		hostMap[rc2Host] = struct{}{}
+		hostMap[rc1Host.String()] = struct{}{}
+		hostMap[rc2Host.String()] = struct{}{}
 		for _, contract := range rc.ActiveContracts {
 			_, exists := hostMap[contract.HostPublicKey.String()]
 			if !exists {
@@ -1644,7 +1644,7 @@ func TestContractorHostRemoval(t *testing.T) {
 			if !exists {
 				unseen++
 				tracker[contract.ID] = struct{}{}
-				if contract.HostPublicKey.String() == rc1Host || contract.HostPublicKey.String() == rc2Host {
+				if contract.HostPublicKey.Equals(rc1Host) || contract.HostPublicKey.Equals(rc2Host) {
 					return errors.New("the wrong contracts are being renewed")
 				}
 			}
@@ -1668,7 +1668,7 @@ func TestContractorHostRemoval(t *testing.T) {
 	// Try again to download the file we uploaded. It should still be
 	// retrievable.
 	downloadPath2 := filepath.Join(st.dir, "test-downloaded-verify-2.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath2)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1715,10 +1715,10 @@ func TestContractorHostRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rc.ActiveContracts[0].HostPublicKey.String() == rc1Host || rc.ActiveContracts[0].HostPublicKey.String() == rc2Host {
+	if rc.ActiveContracts[0].HostPublicKey.Equals(rc1Host) || rc.ActiveContracts[0].HostPublicKey.Equals(rc2Host) {
 		t.Error("renter is renewing the wrong contracts", rc.ActiveContracts[0].HostPublicKey.String())
 	}
-	if rc.ActiveContracts[1].HostPublicKey.String() == rc1Host || rc.ActiveContracts[1].HostPublicKey.String() == rc2Host {
+	if rc.ActiveContracts[1].HostPublicKey.Equals(rc1Host) || rc.ActiveContracts[1].HostPublicKey.Equals(rc2Host) {
 		t.Error("renter is renewing the wrong contracts", rc.ActiveContracts[1].HostPublicKey.String())
 	}
 	// The renewing process should not have resulted in additional data being
@@ -1743,7 +1743,7 @@ func TestContractorHostRemoval(t *testing.T) {
 	// Try again to download the file we uploaded. It should still be
 	// retrievable.
 	downloadPath3 := filepath.Join(st.dir, "test-downloaded-verify-3.dat")
-	err = st.stdGetAPI("/renter/download/test?destination=" + downloadPath3)
+	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downloadPath3)
 	if err != nil {
 		t.Error("Final download has failed:", err)
 	}

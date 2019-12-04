@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -16,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -349,13 +351,13 @@ func (tn *TestNode) initRootDirs() error {
 	tn.downloadDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), "downloads"),
 	}
-	if err := os.MkdirAll(tn.downloadDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.downloadDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	tn.filesDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
+		path: filepath.Join(tn.RenterDir(), modules.FileSystemRoot),
 	}
-	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.filesDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	return nil
@@ -370,4 +372,37 @@ func (tn *TestNode) SiaPath(path string) modules.SiaPath {
 		build.Critical("This shouldn't happen", err)
 	}
 	return sp
+}
+
+// IsAlertRegistered returns an error if the given alert is not found
+func (tn *TestNode) IsAlertRegistered(a modules.Alert) error {
+	return build.Retry(10, 100*time.Millisecond, func() error {
+		dag, err := tn.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.Equals(a) {
+				return nil
+			}
+		}
+		return errors.New("alert is not registered")
+	})
+}
+
+// IsAlertUnregistered returns an error if the given alert is still found
+func (tn *TestNode) IsAlertUnregistered(a modules.Alert) error {
+	return build.Retry(10, 100*time.Millisecond, func() error {
+		dag, err := tn.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+
+		for _, alert := range dag.Alerts {
+			if alert.Equals(a) {
+				return errors.New("alert is registered")
+			}
+		}
+		return nil
+	})
 }

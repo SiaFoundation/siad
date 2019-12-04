@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// Constants related to the host's alerts.
+const (
+	// AlertMSGHostInsufficientCollateral indicates that a host has insufficient
+	// collateral budget remaining
+	AlertMSGHostInsufficientCollateral = "host has insufficient collateral budget"
+)
+
 const (
 	// defaultMaxDuration defines the maximum number of blocks into the future
 	// that the host will accept for the duration of an incoming file contract
