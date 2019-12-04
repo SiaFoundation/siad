@@ -195,9 +195,9 @@ func (fm *fuseManager) Unmount(mountPoint string) error {
 	// Use a threadgroup Add to prevent this from being called after shutdown -
 	// during shutdown the renter will be self-unmounting everything and
 	// multiple threads attempting unmounts can cause complications.
-	err = fm.renter.tg.Add()
+	err := fm.renter.tg.Add()
 	if err != nil {
-		return errors.Extend(err, "unable to unmount")
+		return errors.AddContext(err, "unable to unmount")
 	}
 	return fm.managedUnmount(mountPoint)
 }
