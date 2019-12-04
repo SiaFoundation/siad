@@ -296,12 +296,12 @@ func TestRenterFour(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
 		{"TestPauseAndResumeRepairAndUploads", testPauseAndResumeRepairAndUploads},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
 		{"TestDirMode", testDirMode},
+		{"TestEscapeSiaPath", testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
 	// Run tests
