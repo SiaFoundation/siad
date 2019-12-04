@@ -206,6 +206,16 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 // managedVerifyNewContract checks that an incoming file contract matches the host's
 // expectations for a valid contract.
 func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK crypto.PublicKey, eSettings modules.HostExternalSettings) error {
+	// Register the HostInsufficientCollateral alert if necessary.
+	var registerHostInsufficientCollateral bool
+	defer func() {
+		if registerHostInsufficientCollateral {
+			h.staticAlerter.RegisterAlert(modules.AlertIDHostInsufficientCollateral, AlertMSGHostInsufficientCollateral, "", modules.SeverityWarning)
+		} else {
+			h.staticAlerter.UnregisterAlert(modules.AlertIDHostInsufficientCollateral)
+		}
+	}()
+
 	// Check that the transaction set is not empty.
 	if len(txnSet) < 1 {
 		return extendErr("zero-length transaction set: ", errEmptyObject)
@@ -248,7 +258,7 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 		return errLongDuration
 	}
 
-	// ValidProofOutputs shoud have 2 outputs (renter + host) and missed
+	// ValidProofOutputs should have 2 outputs (renter + host) and missed
 	// outputs should have 3 (renter + host + void)
 	if len(fc.ValidProofOutputs) != 2 || len(fc.MissedProofOutputs) != 3 {
 		return errBadContractOutputCounts
@@ -280,6 +290,7 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 	// Check that the host has enough room in the collateral budget to add this
 	// collateral.
 	if lockedStorageCollateral.Add(expectedCollateral).Cmp(iSettings.CollateralBudget) > 0 {
+		registerHostInsufficientCollateral = true
 		return errCollateralBudgetExceeded
 	}
 

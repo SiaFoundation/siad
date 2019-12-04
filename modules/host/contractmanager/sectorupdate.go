@@ -368,12 +368,25 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 
 // AddSector will add a sector to the contract manager.
 func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error {
+	var registerHostDiskTrouble bool
+	defer func() {
+		if registerHostDiskTrouble {
+			cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
+		}
+	}()
+
 	// Prevent shutdown until this function completes.
 	err := cm.tg.Add()
 	if err != nil {
 		return err
 	}
 	defer cm.tg.Done()
+
+	// Allow disk trouble simulation, for testing purposes
+	if cm.dependencies.Disrupt("diskTrouble") {
+		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
+		return errDiskTrouble
+	}
 
 	// Hold a sector lock throughout the duration of the function, but release
 	// before syncing.
@@ -389,6 +402,9 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 		err = cm.wal.managedAddVirtualSector(id, location)
 	} else {
 		err = cm.wal.managedAddPhysicalSector(id, sectorData, 1)
+	}
+	if err == errDiskTrouble {
+		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
 	}
 	if err != nil {
 		cm.log.Println("ERROR: Unable to add sector:", err)

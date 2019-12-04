@@ -32,6 +32,7 @@ pkgs = ./build \
 	./modules/miner \
 	./modules/renter \
 	./modules/renter/contractor \
+	./modules/renter/filesystem \
 	./modules/renter/hostdb \
 	./modules/renter/hostdb/hosttree \
 	./modules/renter/proto \
@@ -89,6 +90,10 @@ lint:
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck:
 	misspell -error .
+
+# staticcheck runs the staticcheck tool
+staticcheck:
+	staticcheck $(pkgs)
 
 # debug builds and installs debug binaries. This will also install the utils.
 debug:

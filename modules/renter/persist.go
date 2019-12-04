@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -53,6 +54,7 @@ var (
 	persistVersion040 = "0.4"
 	persistVersion133 = "1.3.3"
 	persistVersion140 = "1.4.0"
+	persistVersion142 = "1.4.2"
 )
 
 type (
@@ -95,6 +97,11 @@ func (r *Renter) managedLoadSettings() error {
 		err = r.convertPersistVersionFrom133To140(filepath.Join(r.persistDir, PersistFilename), oldContracts)
 		if err != nil {
 			r.log.Println("WARNING: 133 to 140 renter upgrade failed", err)
+		}
+		// Then upgrade from 140 to 142.
+		err = r.convertPersistVersionFrom140To142(filepath.Join(r.persistDir, PersistFilename))
+		if err != nil {
+			r.log.Println("WARNING: 140 to 142 renter upgrade failed", err)
 			// Nothing left to try.
 			return err
 		}
@@ -113,18 +120,15 @@ func (r *Renter) managedLoadSettings() error {
 // managedInitPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) managedInitPersist() error {
-	// Create the persist and files directories if they do not yet exist.
+	// Create the persist and filesystem directories if they do not yet exist.
 	//
 	// Note: the os package needs to be used here instead of the renter's
 	// CreateDir method because the staticDirSet has not been initialized yet.
 	// The directory is needed before the staticDirSet can be initialized
 	// because the wal needs the directory to be created and the staticDirSet
 	// needs the wal.
-	err := os.MkdirAll(r.staticFilesDir, 0700)
-	if err != nil {
-		return err
-	}
-	err = os.MkdirAll(r.staticBackupsDir, 0700)
+	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
+	err := os.MkdirAll(fsRoot, 0700)
 	if err != nil {
 		return err
 	}
@@ -189,16 +193,34 @@ func (r *Renter) managedInitPersist() error {
 		}
 	}
 
+	// Create the filesystem.
+	fs, err := filesystem.New(fsRoot, r.log, wal)
+	if err != nil {
+		return err
+	}
+
 	// Initialize the wal, staticFileSet and the staticDirSet. With the
 	// staticDirSet finish the initialization of the files directory
 	r.wal = wal
-	r.staticFileSet = siafile.NewSiaFileSet(r.staticFilesDir, wal)
-	r.staticDirSet = siadir.NewSiaDirSet(r.staticFilesDir, wal)
-	r.staticBackupFileSet = siafile.NewSiaFileSet(r.staticBackupsDir, wal)
-	r.staticBackupDirSet = siadir.NewSiaDirSet(r.staticBackupsDir, wal)
-	if err := r.staticDirSet.InitRootDir(); err != nil {
+	r.staticFileSystem = fs
+
+	// Load the prior persistence structures.
+	if err := r.managedLoadSettings(); err != nil {
+		return errors.AddContext(err, "failed to load renter's persistence structrue")
+	}
+
+	// Create the essential dirs in the filesystem.
+	err = fs.NewSiaDir(modules.HomeSiaPath(), modules.DefaultDirPerm)
+	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
-	// Load the prior persistence structures.
-	return r.managedLoadSettings()
+	err = fs.NewSiaDir(modules.UserSiaPath(), modules.DefaultDirPerm)
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.SnapshotsSiaPath(), modules.DefaultDirPerm)
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	return nil
 }

@@ -23,6 +23,7 @@ type (
 		staticMode            os.FileMode
 		staticPubKeyTable     []HostPublicKey
 		staticSiaPath         modules.SiaPath
+		staticLocalPath       string
 		staticPartialChunks   []PartialChunkInfo
 		staticUID             SiafileUID
 	}
@@ -139,6 +140,11 @@ func (s *Snapshot) IsIncompletePartialChunk(chunkIndex uint64) bool {
 	return s.staticPartialChunks[idx].Status < CombinedChunkStatusCompleted
 }
 
+// LocalPath returns the localPath used to repair the file.
+func (s *Snapshot) LocalPath() string {
+	return s.staticLocalPath
+}
+
 // MasterKey returns the masterkey used to encrypt the file.
 func (s *Snapshot) MasterKey() crypto.CipherKey {
 	return s.staticMasterKey
@@ -185,7 +191,7 @@ func (s *Snapshot) UID() SiafileUID {
 }
 
 // Snapshot creates a snapshot of the SiaFile.
-func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
+func (sf *SiaFile) Snapshot(sp modules.SiaPath) (*Snapshot, error) {
 	mk := sf.MasterKey()
 
 	//////////////////////////////////////////////////////////////////////////////
@@ -264,14 +270,12 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 	uid := sf.staticMetadata.UniqueID
 	hasPartial := sf.staticMetadata.HasPartialChunk
 	pcs := sf.staticMetadata.PartialChunks
+	localPath := sf.staticMetadata.LocalPath
 	sf.mu.RUnlock()
 	//////////////////////////////////////////////////////////////////////////////
 	// RLock ends here.
 	//////////////////////////////////////////////////////////////////////////////
 
-	sf.staticSiaFileSet.mu.Lock()
-	sp := sf.staticSiaFileSet.siaPath(sf)
-	sf.staticSiaFileSet.mu.Unlock()
 	return &Snapshot{
 		staticChunks:          chunks,
 		staticPartialChunks:   pcs,
@@ -283,6 +287,7 @@ func (sf *siaFileSetEntry) Snapshot() (*Snapshot, error) {
 		staticMode:            mode,
 		staticPubKeyTable:     pkt,
 		staticSiaPath:         sp,
+		staticLocalPath:       localPath,
 		staticUID:             uid,
 	}, nil
 }

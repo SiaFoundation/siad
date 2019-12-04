@@ -64,6 +64,7 @@ responsibilities.
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
+ - [Refresh Paths Subsystem](#refresh-paths-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -265,6 +266,10 @@ as well.
 Some downloads, in particular downloads issued by the repair code, have
 already had their memory allocated. These downloads get to skip the heap and
 go straight for the workers.
+
+Before we distribute a download to workers, we check the `localPath` of the
+file to see if it available on disk. If it is, and `disableLocalFetch` isn't
+set, we load the download from disk instead of distributing it to workers.
 
 When a download is distributed to workers, it is given to every single worker
 without checking whether that worker is appropriate for the download. Each
@@ -643,3 +648,17 @@ it up by finding a stuck chunk.
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
+
+### Refresh Paths Subsystem
+**Key Files**
+ - [refreshpaths.go](./refreshpaths.go)
+
+The refresh paths subsystem of the renter is a helper subsystem that tracks the
+minimum unique paths that need to be refreshed in order to refresh the entire
+affected portion of the file system.
+
+**Inbound Complexities** 
+ - `callAdd` is used to try and add a new path. 
+ - `callRefreshAll` is used to refresh all the directories corresponding to the
+   unique paths in order to update the filesystem
+   
