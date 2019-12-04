@@ -138,21 +138,26 @@ var (
 	renterFuseCmd = &cobra.Command{
 		Use:   "fuse",
 		Short: "Perform fuse actions.",
-		Long:  "Mount and unmount Sia directories using filesystem-in-userspace.",
+		Long:  "List the set of fuse directories that are mounted",
 		Run:   wrap(renterfusecmd),
 	}
 
 	renterFuseMountCmd = &cobra.Command{
 		Use:   "mount [path] [siapath]",
 		Short: "Mount a Sia folder to your disk",
-		Long:  "Mount a Sia folder to your disk. Applications will be able to see this folder as though it is a normal part of your filesystem. Currently experimental, and read-only. When Sia is ready to support read-write fuse mounting, siac will be updated to mount in read-write mode as the default. If you must guarantee that read-only mode is used, you must use the API.",
+		Long:  `Mount a Sia folder to your disk. Applications will be able to see this folder
+as though it is a normal part of your filesystem.  Currently experimental, and
+read-only. When Sia is ready to support read-write fuse mounting, siac will be
+updated to mount in read-write mode as the default. If you must guarantee that
+read-only mode is used, you must use the API.`,
 		Run:   wrap(renterfusemountcmd),
 	}
 
 	renterFuseUnmountCmd = &cobra.Command{
 		Use:   "unmount [path]",
 		Short: "Unmount a Sia folder",
-		Long:  "Unmount a Sia folder that has previously been mounted. Unmount by specifying the local path where the Sia folder is mounted.",
+		Long:  `Unmount a Sia folder that has previously been mounted. Unmount by specifying the
+local path where the Sia folder is mounted.`,
 		Run:   wrap(renterfuseunmountcmd),
 	}
 
@@ -180,10 +185,12 @@ var (
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
-		Long: `Display the estimated prices of storing files, retrieving files, and creating a set of contracts.
+		Long: `Display the estimated prices of storing files, retrieving files, and creating a
+set of contracts.
 
-An allowance can be provided for a more accurate estimate, if no allowance is provided the current set allowance will be used,
-and if no allowance is set an allowance of 500SC, 12w period, 50 hosts, and 4w renew window will be used.`,
+An allowance can be provided for a more accurate estimate, if no allowance is
+provided the current set allowance will be used, and if no allowance is set an
+allowance of 500SC, 12w period, 50 hosts, and 4w renew window will be used.`,
 		Run: renterpricescmd,
 	}
 
@@ -208,8 +215,8 @@ setting. To update only certain fields, pass in those values with the
 corresponding field flag, for example '--amount 500SC'.
 
 Allowance can be automatically renewed periodically. If the current
-blockheight + the renew window >= the end height the contract,
-then the contract is renewed automatically.
+blockheight + the renew window >= the end height the contract, then the contract
+is renewed automatically.
 
 Note that setting the allowance will cause siad to immediately begin forming
 contracts! You should only set the allowance once you are fully synced and you
