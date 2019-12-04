@@ -116,7 +116,7 @@ func errToStatus(err error) syscall.Errno {
 	return syscall.EIO
 }
 
-// Access reports whether a file can be accessed by the caller.
+// Access reports whether a directory can be accessed by the caller.
 func (fdn *fuseDirnode) Access(ctx context.Context, mask uint32) syscall.Errno {
 	// TODO: parse the mask and return a more correct value instead of always
 	// granting permission.
