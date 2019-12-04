@@ -301,7 +301,7 @@ func TestRenterFour(t *testing.T) {
 		{"TestPauseAndResumeRepairAndUploads", testPauseAndResumeRepairAndUploads},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
 		{"TestDirMode", testDirMode},
-		{"TestEscapeSiaPath", testEscapeSiaPath}, // moving to end because of how many files it uploads
+		{"TestEscapeSiaPath", testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
 	// Run tests
