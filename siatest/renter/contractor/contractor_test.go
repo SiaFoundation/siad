@@ -1856,16 +1856,9 @@ func TestContractorHostRemoval(t *testing.T) {
 	}
 
 	// Mine into the next period to trigger a renew.
-	rg, err := renter.RenterGet()
+	err = siatest.RenewContractsByRenewWindow(renter, tg)
 	if err != nil {
 		t.Fatal(err)
-	}
-	cg, err := miner.ConsensusGet()
-	for i := cg.Height; i <= rg.NextPeriod+1; i++ {
-		err = miner.MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
 	}
 
 	// Check that 2 contracts were renewed, but not with the initial hosts.
