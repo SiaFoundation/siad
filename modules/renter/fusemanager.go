@@ -10,6 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var errNothingMounted = errors.New("nothing mounted at that path")
+
 // A fuseManager manages mounted fuse filesystems.
 type fuseManager struct {
 	mountPoints map[string]*fuseFS
@@ -57,13 +59,21 @@ func (fm *fuseManager) managedCloseFuseManager() error {
 		fm.mu.Unlock()
 
 		// Attempt to unmount the the mountpoint.
-		umountErr := fm.Unmount(name)
-		if umountErr != nil {
+		umountErr := fm.managedUnmount(name)
+		if umountErr != nil && !errors.Contains(err, errNothingMounted) {
+			// If managedUnmount returns an error, then there was no call to
+			// r.tg.Done(). Need to call r.tg.Done() for this mount point so
+			// that shutdown can complete, also need to delete it from the map
+			// so this doesn't lock into an infinite loop.
 			fm.mu.Lock()
 			delete(fm.mountPoints, name)
 			fm.mu.Unlock()
+			fm.renter.tg.Done()
 			fm.renter.log.Printf("Unable to unmount %s: %v", name, umountErr)
 			fmt.Printf("Unable to unmount %s: %v - use `umount [mountpoint]` or `fusermount -u [mountpoint]` to unmount manually\n", name, umountErr)
+		}
+		if errors.Contains(err, errNothingMounted) {
+			fm.renter.log.Critical("Nothing mounted at the provided mountpoint, even though something was mounted at the beginning of shutdown.", name)
 		}
 		err = errors.Compose(err, errors.AddContext(umountErr, "unable to unmount "+name))
 	}
@@ -154,15 +164,17 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 	return infos
 }
 
-// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
-func (fm *fuseManager) Unmount(mountPoint string) error {
+// managedUnmount will attempt to unmount the provided mount point. Each mounted
+// directory has a 'tg.Add()' open. managedUnmount will only call 'tg.Done' if
+// the unmount is successful.
+func (fm *fuseManager) managedUnmount(mountPoint string) error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
 	// Grab the filesystem.
 	filesystem, exists := fm.mountPoints[mountPoint]
 	if !exists {
-		return errors.New("nothing mounted at that path")
+		return errNothingMounted
 	}
 
 	// Unmount the filesystem.
@@ -176,4 +188,16 @@ func (fm *fuseManager) Unmount(mountPoint string) error {
 	fm.renter.tg.Done()
 
 	return nil
+}
+
+// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+func (fm *fuseManager) Unmount(mountPoint string) error {
+	// Use a threadgroup Add to prevent this from being called after shutdown -
+	// during shutdown the renter will be self-unmounting everything and
+	// multiple threads attempting unmounts can cause complications.
+	err = fm.renter.tg.Add()
+	if err != nil {
+		return errors.Extend(err, "unable to unmount")
+	}
+	return fm.managedUnmount(mountPoint)
 }
