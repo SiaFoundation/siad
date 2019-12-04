@@ -1,10 +1,5 @@
 package renter
 
-// TODO: I'm not sure that we are properly closing the DirNodes and FileNodes
-// that we open when the filesystem returns, potentially building up a lot of
-// garbage. Need to have some way to test that when fuse drops a file, the
-// corresponding file in the renter's filesystem is being dropped.
-
 import (
 	"context"
 	"io"
