@@ -155,14 +155,36 @@ func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) er
 	return errors.AddContext(writeAtAndSync(ap.accounts, accBytes, location(index)), "failed to save account")
 }
 
-// callDeleteAccount will delete the account on disk by writing empty data to it
-func (ap *accountsPersister) callDeleteAccount(index uint32) error {
-	ap.managedLockIndex(index)
-	defer ap.managedUnlockIndex(index)
+// callBatchDeleteAccount will batch delete the accounts on disk by writing
+// empty data to it
+func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted []uint32, err error) {
+	var wg sync.WaitGroup
+	results := make([]error, len(indexes))
+	zeroBytes := make([]byte, accountSize)
 
-	// Overwrite the account with 0 bytes
-	accBytes := make([]byte, accountSize)
-	return errors.AddContext(writeAtAndSync(ap.accounts, accBytes, location(index)), "failed to delete account")
+	// Overwrite the accounts with 0 bytes in parallel
+	for n, index := range indexes {
+		wg.Add(1)
+		go func(n int, index uint32) {
+			defer wg.Done()
+			ap.managedLockIndex(index)
+			defer ap.managedUnlockIndex(index)
+			results[n] = writeAtAndSync(ap.accounts, zeroBytes, location(index))
+		}(n, index)
+	}
+	wg.Wait()
+
+	// Process the results, append the successes and compose the errors of the
+	// ones that failed to be deleted
+	for n, rErr := range results {
+		if rErr != nil {
+			err = errors.Compose(err, rErr)
+			continue
+		}
+		deleted = append(deleted, indexes[n])
+	}
+	err = errors.AddContext(err, "batch delete account failed")
+	return
 }
 
 // callSaveFingerprint writes the fingerprint to disk
