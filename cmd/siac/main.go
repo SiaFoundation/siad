@@ -245,7 +245,8 @@ func main() {
 		renterSetLocalPathCmd, renterFilesUploadCmd, renterUploadsCmd,
 		renterExportCmd, renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
-		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd)
+		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd,
+		renterFuseCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -267,6 +268,8 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
+
+	renterFuseCmd.AddCommand(renterFuseMountCmd, renterFuseUnmountCmd)
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)

@@ -615,6 +615,34 @@ func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, er
 	return
 }
 
+// RenterFuse uses the /renter/fuse endpoint to return information about the
+// current fuse mount point.
+func (c *Client) RenterFuse() (fi api.RenterFuseInfo, err error) {
+	err = c.get("/renter/fuse", &fi)
+	return
+}
+
+// RenterFuseMount uses the /renter/fuse/mount endpoint to mount a fuse
+// filesystem serving the provided siapath.
+func (c *Client) RenterFuseMount(mount string, siaPath modules.SiaPath, readOnly bool) (err error) {
+	sp := escapeSiaPath(siaPath)
+	values := url.Values{}
+	values.Set("siapath", sp)
+	values.Set("mount", mount)
+	values.Set("readonly", strconv.FormatBool(readOnly))
+	err = c.post("/renter/fuse/mount", values.Encode(), nil)
+	return
+}
+
+// RenterFuseUnmount uses the /renter/fuse/unmount endpoint to unmount the
+// currently-mounted fuse filesystem.
+func (c *Client) RenterFuseUnmount(mount string) (err error) {
+	values := url.Values{}
+	values.Set("mount", mount)
+	err = c.post("/renter/fuse/unmount", values.Encode(), nil)
+	return
+}
+
 // RenterUploadsPausePost uses the /renter/uploads/pause endpoint to pause the
 // renter's uploads and repairs
 func (c *Client) RenterUploadsPausePost(duration time.Duration) (err error) {

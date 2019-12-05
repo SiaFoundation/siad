@@ -1,8 +1,10 @@
 package renter
 
 import (
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"os"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // CreateDir creates a directory for the renter
@@ -43,5 +45,10 @@ func (r *Renter) RenameDir(oldPath, newPath modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+
+	// Special case: do not allow a user to rename a dir to root.
+	if newPath.IsRoot() {
+		return errors.New("cannot rename a file to the root directory")
+	}
 	return r.staticFileSystem.RenameDir(oldPath, newPath)
 }

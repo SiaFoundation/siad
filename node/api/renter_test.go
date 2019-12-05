@@ -903,8 +903,8 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Try renaming to an empty string.
 	renameValues.Set("newsiapath", "")
 	err = st.stdPostAPI("/renter/rename/test1", renameValues)
-	if err == nil || err.Error() != modules.ErrEmptySiaPath.Error() {
-		t.Fatalf("expected error to be %v; got %v", modules.ErrEmptySiaPath, err)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrEmptySiaPath.Error()) {
+		t.Fatalf("expected error to contain %v; got %v", modules.ErrEmptySiaPath, err)
 	}
 
 	// Rename the file.
