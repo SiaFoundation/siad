@@ -1821,18 +1821,7 @@ func TestContractorHostRemoval(t *testing.T) {
 		contractIDs[contract.ID] = struct{}{}
 	}
 
-	// Wait for the redundancy to reach 2.
-	expectedRedundancy := 2.0
-	err = build.Retry(50, 250*time.Millisecond, func() error {
-		fileInfo, err := renter.File(remoteFile)
-		if err != nil {
-			return err
-		}
-		if fileInfo.Redundancy < expectedRedundancy {
-			return errors.New(fmt.Sprintf("Expected redundancy of %f", expectedRedundancy))
-		}
-		return nil
-	})
+	err = renter.WaitForUploadHealth(remoteFile)
 	if err != nil {
 		t.Fatal(err)
 	}
