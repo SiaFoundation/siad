@@ -272,14 +272,16 @@ type ContractUtility struct {
 }
 
 // ContractWatchStatus provides information about the status of a contract in
-// the renter's watchdog. If the contract has been double-spent, the fields
-// other than DoubleSpendHeight are not up-to-date.
+// the renter's watchdog.
 type ContractWatchStatus struct {
+	Archived                  bool              `json:"archived"`
 	FormationSweepHeight      types.BlockHeight `json:"formationsweepheight"`
 	ContractFound             bool              `json:"contractfound"`
 	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
 	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
 	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
+	WindowStart               types.BlockHeight `json:"windowstart"`
+	WindowEnd                 types.BlockHeight `json:"windowend"`
 }
 
 // DirectoryInfo provides information about a siadir

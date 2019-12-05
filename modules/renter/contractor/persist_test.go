@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -61,6 +62,20 @@ func TestSaveLoad(t *testing.T) {
 	}
 	c.staticWatchdog.contracts = map[types.FileContractID]*fileContractStatus{
 		{1}: expectedFileContractStatus,
+	}
+
+	expectedArchivedContract := modules.ContractWatchStatus{
+		Archived:                  true,
+		FormationSweepHeight:      11,
+		ContractFound:             true,
+		LatestRevisionFound:       3883889,
+		StorageProofFoundAtHeight: 12312,
+		DoubleSpendHeight:         12333333,
+		WindowStart:               1111111231209,
+		WindowEnd:                 123808900,
+	}
+	c.staticWatchdog.archivedContracts = map[types.FileContractID]modules.ContractWatchStatus{
+		{2}: expectedArchivedContract,
 	}
 
 	c.oldContracts = map[types.FileContractID]modules.RenterContract{
@@ -262,6 +277,16 @@ func TestSaveLoad(t *testing.T) {
 	}
 	if contract.windowEnd != expectedFileContractStatus.windowEnd {
 		t.Fatal("watchdog not restored properly", contract)
+	}
+	if len(c.staticWatchdog.archivedContracts) != 1 {
+		t.Fatal("watchdog not restored properly", c.staticWatchdog.archivedContracts)
+	}
+	archivedContract, ok := c.staticWatchdog.archivedContracts[types.FileContractID{2}]
+	if !ok {
+		t.Fatal("watchdog not restored properly", c.staticWatchdog.archivedContracts)
+	}
+	if !reflect.DeepEqual(archivedContract, expectedArchivedContract) {
+		t.Fatal("Archived contract not restored properly", archivedContract)
 	}
 
 	// Check churnLimiter state.
