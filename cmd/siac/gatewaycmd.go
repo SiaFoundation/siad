@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -35,34 +34,32 @@ var (
 	}
 
 	gatewayBlacklistAppendCmd = &cobra.Command{
-		Use:   "append [address]",
+		Use:   "append [ip] [ip] [ip] [ip] ...",
 		Short: "Append a new address to the blacklisted peers list",
 		Long: `Add a new address to the list of blacklisted peers.
-Accepts a comma-separated list of ipaddresses or domain names.
+Accepts a list of ipaddresses or domain names as individual inputs.
 
-For example: siac gateway blacklist remove 123.123.123.123,111.222.111.222,mysiahost.duckdns.org`,
+For example: siac gateway blacklist append 123.123.123.123 111.222.111.222 mysiahost.duckdns.org`,
 		Run: wrap(gatewayblacklistappendcmd),
 	}
 
 	gatewayBlacklistRemoveCmd = &cobra.Command{
-		Use:   "remove [address]",
+		Use:   "remove [ip] [ip] [ip] [ip] ...",
 		Short: "Remove a peer from the list of blacklisted peers",
 		Long: `Remove one or more peers from the list of blacklisted peers.
-Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
-ipaddresses or domain names.
+Accepts a list of ipaddresses or domain names as individual inputs.
 
-For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
+For example: siac gateway blacklist remove 123.123.123.123 111.222.111.222 mysiahost.duckdns.org`,
 		Run: wrap(gatewayblacklistremovecmd),
 	}
 
 	gatewayBlacklistSetCmd = &cobra.Command{
-		Use:   "set [address],[address]",
+		Use:   "set [ip] [ip] [ip] [ip] ...",
 		Short: "Set the blacklisted peers list",
 		Long: `Set the blacklisted peers list.
-Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
-ipaddresses or domain names.
+Accepts a list of ipaddresses or domain names as individual inputs.
 
-For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
+For example: siac gateway blacklist set 123.123.123.123 111.222.111.222 mysiahost.duckdns.org`,
 		Run: wrap(gatewayblacklistsetcmd),
 	}
 
@@ -159,37 +156,34 @@ func gatewayblacklistcmd() {
 // gatewayblacklistappendcmd is the handler for the command
 // `siac gateway blacklist append`
 // Adds one or more new hosts to the gateway's blacklist
-func gatewayblacklistappendcmd(addrString string) {
-	peers := strings.Split(addrString, ",")
-	err := httpClient.GatewayAppendBlacklistPost(peers)
+func gatewayblacklistappendcmd(addresses []string) {
+	err := httpClient.GatewayAppendBlacklistPost(addresses)
 	if err != nil {
 		die("Could not append the peer to the gateway blacklist", err)
 	}
-	fmt.Println(addrString, "sucessfully added to the gateway blacklist")
+	fmt.Println(addresses, "successfully added to the gateway blacklist")
 }
 
 // gatewayblacklistremovecmd is the handler for the command
 // `siac gateway blacklist remove`
 // Removes one or more hosts from the gateway's blacklist
-func gatewayblacklistremovecmd(addrString string) {
-	peers := strings.Split(addrString, ",")
-	err := httpClient.GatewayRemoveBlacklistPost(peers)
+func gatewayblacklistremovecmd(addresses []string) {
+	err := httpClient.GatewayRemoveBlacklistPost(addresses)
 	if err != nil {
 		die("Could not remove the peer from the gateway blacklist", err)
 	}
-	fmt.Println(addrString, "was sucessfully removed from the gateway blacklist")
+	fmt.Println(addresses, "was successfully removed from the gateway blacklist")
 }
 
 // gatewayblacklistsetcmd is the handler for the command
 // `siac gateway blacklist set`
 // Sets the gateway blacklist to the hosts passed in via a comma-separated list
-func gatewayblacklistsetcmd(addrString string) {
-	peers := strings.Split(addrString, ",")
-	err := httpClient.GatewaySetBlacklistPost(peers)
+func gatewayblacklistsetcmd(addresses []string) {
+	err := httpClient.GatewaySetBlacklistPost(addresses)
 	if err != nil {
 		die("Could not set the gateway blacklist", err)
 	}
-	fmt.Println(addrString, "was sucessfully set as the gateway blacklist")
+	fmt.Println(addresses, "was successfully set as the gateway blacklist")
 }
 
 // gatewaylistcmd is the handler for the command `siac gateway list`.
