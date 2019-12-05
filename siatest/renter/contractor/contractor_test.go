@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -1738,6 +1739,207 @@ func TestContractorChurnLimiter(t *testing.T) {
 
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestContractorHostRemoval checks that the contractor properly migrates away
+// from low quality hosts when there are higher quality hosts available.
+func TestContractorHostRemoval(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+
+	// Start 2 hosts.
+	numInitialHosts := 2
+	groupParams := siatest.GroupParams{
+		Hosts:   numInitialHosts,
+		Miners:  1,
+		Renters: 0,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	hosts := tg.Hosts()
+	miner := tg.Miners()[0]
+
+	// Raise prices significantly for each host.
+	hostPrice := types.SiacoinPrecision.Mul64(5000) // 5 KS
+	for _, host := range hosts {
+		err = host.HostModifySettingPost(client.HostParamMinContractPrice, hostPrice)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	newRenterDir := filepath.Join(testDir, "renter")
+	renterParams := node.Renter(newRenterDir)
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Funds = hostPrice.Mul64(100)
+	renterParams.Allowance.Hosts = uint64(numInitialHosts)
+	// Set a high period churn so churn limiter does not do much in this test.
+	renterParams.Allowance.MaxPeriodChurn = renterParams.Allowance.MaxPeriodChurn * 10000000
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Upload a file.
+	fileSize := 100
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Downloading the file should be succesful.
+	if _, _, err := renter.DownloadByStream(remoteFile); err != nil {
+		t.Fatal("File download failed", err)
+	}
+
+	// Get the host pubkeys.
+	initialHostPubKeys := make(map[string]struct{})
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) != numInitialHosts {
+		t.Fatal("Active contract count should equal number of hosts")
+	}
+	for _, contract := range rc.ActiveContracts {
+		initialHostPubKeys[contract.HostPublicKey.String()] = struct{}{}
+	}
+	if len(initialHostPubKeys) != numInitialHosts {
+		t.Fatal("expected to find all initial host pub keys")
+	}
+
+	// Add 3 new hosts that will be competing with the expensive hosts.
+	numNewHosts := 3
+	_, err = tg.AddNodeN(node.HostTemplate, numNewHosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the renter has made 2 contracts with the new hosts.
+	i := 0
+	err = build.Retry(100, 250*time.Millisecond, func() error {
+		if i%3 == 0 {
+			err = miner.MineBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		newHostPubKeys := make(map[string]struct{})
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		for _, contract := range rc.ActiveContracts {
+			if _, ok := initialHostPubKeys[contract.HostPublicKey.String()]; !ok {
+				newHostPubKeys[contract.HostPublicKey.String()] = struct{}{}
+			}
+		}
+		if len(newHostPubKeys) != 2 {
+			return errors.New("expected 2 contracts with new hosts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a set of contract IDs to save.
+	contractIDs := make(map[types.FileContractID]struct{})
+	rc, err = renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range rc.ActiveContracts {
+		contractIDs[contract.ID] = struct{}{}
+	}
+
+	err = renter.WaitForUploadHealth(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Block until data has been uploaded to new contracts.
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+
+		for _, contract := range rc.ActiveContracts {
+			if contract.Size != modules.SectorSize {
+				return fmt.Errorf("Each contrat should have 1 sector: %v - %v", contract.Size, contract.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine into the next period to trigger a renew.
+	err = siatest.RenewContractsByRenewWindow(renter, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that 2 contracts were renewed, but not with the initial hosts.
+	i = 0
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		if i%3 == 0 {
+			err = miner.MineBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+
+		// Count the number of contracts that were not seen in the previous
+		// batch of contracts, and check that the new contracts are not with the
+		// expensive hosts.
+		if len(rc.ActiveContracts) != 2 {
+			return errors.New("Expected 2 contracts")
+		}
+
+		for _, contract := range rc.ActiveContracts {
+			_, exists := contractIDs[contract.ID]
+			if exists {
+				return errors.New("expected only new contracts to be active")
+			}
+			if _, ok := initialHostPubKeys[contract.HostPublicKey.String()]; ok {
+				return errors.New("contracts with the wrong hosts are being renewed")
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the whole file again as a sanity check.
+	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
 	}
