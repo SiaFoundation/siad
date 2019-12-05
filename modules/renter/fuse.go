@@ -255,22 +255,20 @@ func (ffn *fuseFilenode) Getattr(ctx context.Context, fh fs.FileHandle, out *fus
 
 // Open will open a streamer for the file.
 //
-// TODO: Should have a StreamerNode function that takes a node and opens a
-// stream instead of a siapath, technically if a rename hits at just the right
-// time (between the call to FileSiaPath and the call to Streamer) you can still
-// get unexpected failures.
+// TODO: Currently 'Open' returns '0' for the fuseFlags. I was unable to figure
+// out from the documentation what the flags are supposed to represent. So far,
+// this has not seemed to cause problems.
 func (ffn *fuseFilenode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	ffn.mu.Lock()
 	defer ffn.mu.Unlock()
 
-	siaPath := ffn.staticFilesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
-	_, stream, err := ffn.staticFilesystem.renter.Streamer(siaPath, false)
+	stream, err := ffn.staticFilesystem.renter.StreamerByNode(ffn.staticFileNode, false)
 	if err != nil {
+		siaPath := ffn.staticFilesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
 		ffn.staticFilesystem.renter.log.Printf("Unable to get stream for file %v: %v", siaPath, err)
 		return nil, 0, errToStatus(err)
 	}
 	ffn.stream = stream
-
 	return ffn, 0, errToStatus(nil)
 }
 

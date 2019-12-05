@@ -199,5 +199,6 @@ func (fm *fuseManager) Unmount(mountPoint string) error {
 	if err != nil {
 		return errors.AddContext(err, "unable to unmount")
 	}
+	defer fm.renter.tg.Done()
 	return fm.managedUnmount(mountPoint)
 }

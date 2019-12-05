@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -473,20 +474,40 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 		return "", nil, err
 	}
 	defer r.tg.Done()
+
 	// Lookup the file associated with the nickname.
-	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
+	node, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
-	defer entry.Close()
+	defer node.Close()
 
 	// Create the streamer
-	snap, err := entry.Snapshot(siaPath)
+	snap, err := node.Snapshot(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
 	s := r.managedStreamer(snap, disableLocalFetch)
 	return siaPath.String(), s, nil
+}
+
+// StreamerByNode will open a streamer for the renter, taking a FileNode as
+// input instead of a siapath. This is important for fuse, which has filenodes
+// that could be getting renamed before the streams are opened.
+func (r *Renter) StreamerByNode(node *filesystem.FileNode, disableLocalFetch bool) (modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	// Grab the current SiaPath of the FileNode and then create a snapshot.
+	sp := r.staticFileSystem.FileSiaPath(node)
+	snap, err := node.Snapshot(sp)
+	if err != nil {
+		return nil, err
+	}
+	s := r.managedStreamer(snap, disableLocalFetch)
+	return s, nil
 }
 
 // managedStreamer creates a streamer from a siafile snapshot and starts filling
