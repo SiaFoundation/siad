@@ -11,12 +11,15 @@ import (
 // updateSiaDirHealth is a helper method to update the health and the aggregate
 // health of a siadir
 func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) error {
-	siaDir, err := r.staticDirSet.Open(siaPath)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return err
 	}
 	defer siaDir.Close()
-	metadata := siaDir.Metadata()
+	metadata, err := siaDir.Metadata()
+	if err != nil {
+		return err
+	}
 	metadata.Health = health
 	metadata.AggregateHealth = aggregateHealth
 	err = siaDir.UpdateMetadata(metadata)
@@ -181,9 +184,9 @@ func TestPushSubDirectories(t *testing.T) {
 
 	// Create a test directory with the following healths
 	//
-	// root/ 1
-	// root/SubDir1/ 2
-	// root/SubDir2/ 3
+	// / 1
+	// /SubDir1/ 2
+	// /SubDir2/ 3
 
 	// Create directory tree
 	siaPath1, err := modules.NewSiaPath("SubDir1")
@@ -194,10 +197,10 @@ func TestPushSubDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath1); err != nil {
+	if err := rt.renter.CreateDir(siaPath1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath2); err != nil {
+	if err := rt.renter.CreateDir(siaPath2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -215,7 +218,7 @@ func TestPushSubDirectories(t *testing.T) {
 	// Make sure we are starting with an empty heap
 	rt.renter.directoryHeap.managedReset()
 
-	// Add root sub directories
+	// Add siafiles sub directories
 	d := &directory{
 		siaPath: modules.RootSiaPath(),
 	}
@@ -225,7 +228,7 @@ func TestPushSubDirectories(t *testing.T) {
 	}
 
 	// Heap should have a length of 2
-	if rt.renter.directoryHeap.managedLen() != 2 {
+	if rt.renter.directoryHeap.managedLen() != 4 {
 		t.Fatal("Heap should have length of 2 but was", rt.renter.directoryHeap.managedLen())
 	}
 
@@ -312,16 +315,16 @@ func TestNextExploredDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create Directories
-	if err := rt.renter.CreateDir(siaPath1_1); err != nil {
+	if err := rt.renter.CreateDir(siaPath1_1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath1_2); err != nil {
+	if err := rt.renter.CreateDir(siaPath1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath2_1); err != nil {
+	if err := rt.renter.CreateDir(siaPath2_1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(siaPath2_2); err != nil {
+	if err := rt.renter.CreateDir(siaPath2_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -372,7 +375,7 @@ func TestNextExploredDirectory(t *testing.T) {
 		t.Fatal("No directory popped off heap")
 	}
 
-	// Directory should be root/SubDir2/SubDir2
+	// Directory should be root/home/siafiles/SubDir2/SubDir2
 	if !d.siaPath.Equals(siaPath2_2) {
 		t.Fatalf("Expected directory %v but found %v", siaPath2_2.String(), d.siaPath.String())
 	}
@@ -395,7 +398,7 @@ func TestNextExploredDirectory(t *testing.T) {
 		t.Fatal("No directory popped off heap")
 	}
 
-	// Directory should be root/SubDir1/SubDir2
+	// Directory should be root/homes/siafiles/SubDir1/SubDir2
 	if !d.siaPath.Equals(siaPath1_2) {
 		t.Fatalf("Expected directory %v but found %v", siaPath1_2.String(), d.siaPath.String())
 	}

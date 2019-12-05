@@ -169,13 +169,13 @@ func newNodeScanner(scannerDirPrefix string) (ns *nodeScanner) {
 	scannerDirPath := filepath.Join(scannerDirPrefix, nodeScannerDirName)
 	scannerGatewayDirPath := filepath.Join(scannerDirPath, "gateway")
 	if _, err := os.Stat(scannerDirPath); os.IsNotExist(err) {
-		err := os.Mkdir(scannerDirPath, 0777)
+		err := os.Mkdir(scannerDirPath, 0750)
 		if err != nil {
 			log.Fatal("Error creating scan directory: ", err)
 		}
 	}
 	if _, err := os.Stat(scannerGatewayDirPath); os.IsNotExist(err) {
-		err := os.Mkdir(scannerGatewayDirPath, 0777)
+		err := os.Mkdir(scannerGatewayDirPath, 0750)
 		if err != nil {
 			log.Fatal("Error creating scanner gateway directory: ", err)
 		}

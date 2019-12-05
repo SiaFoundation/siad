@@ -106,7 +106,7 @@ Available output types:
 		Use:   "remove [path]",
 		Short: "Remove a storage folder from the host",
 		Long: `Remove a storage folder from the host. Note that this does not delete any
-data; it will instead be distributed across the remaining storage folders.`,
+data; it will instead be distributed across the remaining storage folders unless the force flag is used.`,
 
 		Run: wrap(hostfolderremovecmd),
 	}
@@ -249,8 +249,8 @@ RPC Stats:
 			es.Version,
 
 			yesNo(is.AcceptingContracts), periodUnits(is.MaxDuration),
-			filesizeUnits(is.MaxDownloadBatchSize),
-			filesizeUnits(is.MaxReviseBatchSize), netaddr,
+			modules.FilesizeUnits(is.MaxDownloadBatchSize),
+			modules.FilesizeUnits(is.MaxReviseBatchSize), netaddr,
 			is.WindowSize/6,
 
 			currencyUnits(is.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)),
@@ -296,8 +296,8 @@ RPC Stats:
 `,
 			connectabilityString,
 
-			filesizeUnits(totalstorage),
-			filesizeUnits(totalstorage-storageremaining), price,
+			modules.FilesizeUnits(totalstorage),
+			modules.FilesizeUnits(totalstorage-storageremaining), price,
 			periodUnits(is.MaxDuration),
 
 			yesNo(is.AcceptingContracts), currencyUnits(totalPotentialRevenue),
@@ -329,7 +329,7 @@ RPC Stats:
 	for _, folder := range sg.Folders {
 		curSize := int64(folder.Capacity - folder.CapacityRemaining)
 		pctUsed := 100 * (float64(curSize) / float64(folder.Capacity))
-		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", filesizeUnits(uint64(curSize)), filesizeUnits(folder.Capacity), pctUsed, folder.Path)
+		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", modules.FilesizeUnits(uint64(curSize)), modules.FilesizeUnits(folder.Capacity), pctUsed, folder.Path)
 	}
 	w.Flush()
 }
@@ -485,7 +485,27 @@ func hostfolderaddcmd(path, size string) {
 
 // hostfolderremovecmd removes a folder from the host.
 func hostfolderremovecmd(path string) {
-	err := httpClient.HostStorageFoldersRemovePost(abs(path))
+
+	// Ask for confirm for dangerous --force flag
+	if hostFolderRemoveForce {
+		fmt.Println(`Forced removing will completely destroy your renter's data,
+	and you will lose your locked collateral.`)
+	again:
+		fmt.Print("Do you want to continue? [y/n] ")
+		var resp string
+		fmt.Scanln(&resp)
+		switch strings.ToLower(resp) {
+		case "y", "yes":
+			// continue below
+		case "n", "no":
+			return
+		default:
+			goto again
+		}
+	}
+
+	err := httpClient.HostStorageFoldersRemovePost(abs(path), hostFolderRemoveForce)
+
 	if err != nil {
 		die("Could not remove folder:", err)
 	}

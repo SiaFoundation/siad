@@ -3,13 +3,13 @@ package renter
 import (
 	"fmt"
 	"io"
-	"os"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -25,7 +25,7 @@ type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
 	id        uploadChunkID
-	fileEntry *siafile.SiaFileSetEntry
+	fileEntry *filesystem.FileNode
 	threadUID int
 
 	// Information about the chunk, namely where it exists within the file.
@@ -197,7 +197,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Prepare snapshot.
-	snap, err := chunk.fileEntry.Snapshot()
+	snap, err := chunk.fileEntry.Snapshot(r.staticFileSystem.FileSiaPath(chunk.fileEntry))
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	d, err := r.managedNewDownload(downloadParams{
 		destination:       buf,
 		destinationType:   "buffer",
-		disableLocalFetch: true, // no need to try load it from disk.
+		disableLocalFetch: false,
 		file:              snap,
 
 		latencyTarget: 200e3, // No need to rush latency on repair downloads.
@@ -393,47 +393,8 @@ func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) erro
 		}
 		return nil
 	}
-
-	// Download the chunk if it's not on disk.
-	if chunk.fileEntry.LocalPath() == "" {
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-
-	// Try to read the data from disk. If that fails, fallback to downloading.
-	err := func() error {
-		osFile, err := os.Open(chunk.fileEntry.LocalPath())
-		if os.IsNotExist(err) {
-			// If the file doesn't exist we set the path to an empty string.
-			// This is an additional protection in case the user creates a
-			// different file at the same path later which would cause a
-			// corruption.
-			err = errors.Compose(err, chunk.fileEntry.SetLocalPath(""))
-		}
-		if err != nil {
-			return err
-		}
-		defer osFile.Close()
-		// If the file on disk doesn't have the right size we don't use it
-		// for repairing. This protects in case the user creates a different
-		// file at the same location.
-		fi, err := osFile.Stat()
-		if err != nil {
-			return err
-		}
-		if err == nil && uint64(fi.Size()) != chunk.fileEntry.Size() {
-			failedRepairErr := fmt.Errorf("failed to repair from disk due to filesize not matching %v != %v",
-				fi.Size(), chunk.fileEntry.Size())
-			return errors.Compose(failedRepairErr, chunk.fileEntry.SetLocalPath(""))
-		}
-		sr := io.NewSectionReader(osFile, chunk.offset, int64(chunk.length))
-		_, err = chunk.readLogicalData(sr)
-		return err
-	}()
-	if err != nil {
-		r.log.Debugln("failed to read file, downloading instead:", err)
-		return r.managedDownloadLogicalChunkData(chunk)
-	}
-	return nil
+	// Download the chunk if it's not being streamed.
+	return r.managedDownloadLogicalChunkData(chunk)
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any
@@ -498,10 +459,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.managedUpdateUploadChunkStuckStatus(uc)
 		// Close the file entry unless disrupted.
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
-			err := uc.fileEntry.Close()
-			if err != nil {
-				r.repairLog.Printf("WARN: file not closed after chunk upload complete: %v %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
-			}
+			uc.fileEntry.Close()
 		}
 		// Remove the chunk from the repairingChunks map
 		r.uploadHeap.managedMarkRepairDone(uc.id)
@@ -526,12 +484,12 @@ func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) 
 	// Update chunk stuck status
 	err := uc.fileEntry.SetStuck(uc.index, stuck)
 	if err != nil {
-		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", r.staticFileSet.SiaPath(uc.fileEntry), err)
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaFilePath(), err)
 	}
 	// Close SiaFile
-	err = uc.fileEntry.Close()
+	uc.fileEntry.Close()
 	if err != nil {
-		return fmt.Errorf("WARN: unable to close siafile %v", r.staticFileSet.SiaPath(uc.fileEntry))
+		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaFilePath())
 	}
 	// Signal garbage collector to free memory.
 	uc.physicalChunkData = nil
@@ -590,7 +548,7 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		// Add file to the successful stuck repair stack if there are still
 		// stuck chunks to repair
 		if uc.fileEntry.NumStuckChunks() > 0 {
-			r.stuckStack.managedPush(r.staticFileSet.SiaPath(uc.fileEntry))
+			r.stuckStack.managedPush(r.staticFileSystem.FileSiaPath(uc.fileEntry))
 		}
 		// Signal the stuck loop that the chunk was successfully repaired
 		select {

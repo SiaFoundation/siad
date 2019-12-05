@@ -3,7 +3,9 @@ package client
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -553,6 +555,14 @@ func (c *Client) RenterDirCreatePost(siaPath modules.SiaPath) (err error) {
 	return
 }
 
+// RenterDirCreateWithModePost uses the /renter/dir/ endpoint to create a
+// directory for the renter with the specified permissions.
+func (c *Client) RenterDirCreateWithModePost(siaPath modules.SiaPath, mode os.FileMode) (err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.post(fmt.Sprintf("/renter/dir/%s?mode=%d", sp, mode), "action=create", nil)
+	return
+}
+
 // RenterDirDeletePost uses the /renter/dir/ endpoint to delete a directory for the
 // renter
 func (c *Client) RenterDirDeletePost(siaPath modules.SiaPath) (err error) {
@@ -602,6 +612,22 @@ func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.
 // determine if the renter is ready for upload.
 func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, err error) {
 	err = c.get("/renter/uploadready", &rur)
+	return
+}
+
+// RenterUploadsPausePost uses the /renter/uploads/pause endpoint to pause the
+// renter's uploads and repairs
+func (c *Client) RenterUploadsPausePost(duration time.Duration) (err error) {
+	values := url.Values{}
+	values.Set("duration", fmt.Sprint(uint64(math.Round(duration.Seconds()))))
+	err = c.post("/renter/uploads/pause", values.Encode(), nil)
+	return
+}
+
+// RenterUploadsResumePost uses the /renter/uploads/resume endpoint to resume
+// the renter's uploads and repairs
+func (c *Client) RenterUploadsResumePost() (err error) {
+	err = c.post("/renter/uploads/resume", "", nil)
 	return
 }
 

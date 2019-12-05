@@ -138,6 +138,13 @@ type (
 		Valid bool `json:"valid"`
 	}
 
+	// WalletVerifyPasswordGET contains a bool indicating if the password passed
+	// to /wallet/verifypassword is the password being used to encrypt the
+	// wallet.
+	WalletVerifyPasswordGET struct {
+		Valid bool `json:"valid"`
+	}
+
 	// WalletWatchPOST contains the set of addresses to add or remove from the
 	// watch set.
 	WalletWatchPOST struct {
@@ -379,7 +386,7 @@ func (api *API) walletInitSeedHandler(w http.ResponseWriter, req *http.Request, 
 
 // walletSeedHandler handles API calls to /wallet/seed.
 func (api *API) walletSeedHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Get the seed using the ditionary + phrase
+	// Get the seed using the dictionary + phrase
 	dictID := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictID == "" {
 		dictID = "english"
@@ -433,7 +440,7 @@ func (api *API) walletSiagkeyHandler(w http.ResponseWriter, req *http.Request, _
 	WriteError(w, Error{"error when calling /wallet/siagkey: " + modules.ErrBadEncryptionKey.Error()}, http.StatusBadRequest)
 }
 
-// walletLockHanlder handles API calls to /wallet/lock.
+// walletLockHandler handles API calls to /wallet/lock.
 func (api *API) walletLockHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	err := api.wallet.Lock()
 	if err != nil {
@@ -566,7 +573,7 @@ func (api *API) walletSiafundsHandler(w http.ResponseWriter, req *http.Request, 
 
 // walletSweepSeedHandler handles API calls to /wallet/sweep/seed.
 func (api *API) walletSweepSeedHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Get the seed using the ditionary + phrase
+	// Get the seed using the dictionary + phrase
 	dictID := mnemonics.DictionaryID(req.FormValue("dictionary"))
 	if dictID == "" {
 		dictID = "english"
@@ -733,6 +740,20 @@ func (api *API) walletChangePasswordHandler(w http.ResponseWriter, req *http.Req
 	}
 	WriteError(w, Error{"error when calling /wallet/changepassword: " + err.Error()}, http.StatusBadRequest)
 	return
+}
+
+// walletVerifyPasswordHandler handles API calls to /wallet/verifypassword
+func (api *API) walletVerifyPasswordHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	password := req.FormValue("password")
+	key := crypto.NewWalletKey(crypto.HashObject(password))
+	valid, err := api.wallet.IsMasterKey(key)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, WalletVerifyPasswordGET{
+		Valid: valid,
+	})
 }
 
 // walletVerifyAddressHandler handles API calls to /wallet/verify/address/:addr.

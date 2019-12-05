@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -63,6 +64,14 @@ const (
 	HostDBActiveWhitelist
 )
 
+// Filesystem related consts.
+const (
+	// DefaultDirPerm defines the default permissions used for a new dir if no
+	// permissions are supplied. Changing this value is a compatibility issue
+	// since users expect dirs to have these permissions.
+	DefaultDirPerm = 0755
+)
+
 // String returns the string value for the FilterMode
 func (fm FilterMode) String() string {
 	switch fm {
@@ -105,9 +114,17 @@ const (
 	// renter's persistent data.
 	RenterDir = "renter"
 
-	// SiapathRoot is the name of the directory that is used to store the
+	// FileSystemRoot is the name of the directory that is used as the root of
+	// the renter's filesystem.
+	FileSystemRoot = "fs"
+
+	// HomeFolderRoot is the name of the directory that is used to store all of
+	// the user accessible data.
+	HomeFolderRoot = "home"
+
+	// UserRoot is the name of the directory that is used to store the
 	// renter's siafiles.
-	SiapathRoot = "siafiles"
+	UserRoot = "user"
 
 	// BackupRoot is the name of the directory that is used to store the renter's
 	// snapshot siafiles.
@@ -128,6 +145,14 @@ const (
 	// estimated blockchain size of a transaction set used by the host to
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
+
+	// StreamDownloadSize is the size of downloaded in a single streaming download
+	// request.
+	StreamDownloadSize = uint64(1 << 16) // 64 KiB
+
+	// StreamUploadSize is the size of downloaded in a single streaming upload
+	// request.
+	StreamUploadSize = uint64(1 << 16) // 64 KiB
 )
 
 type (
@@ -247,14 +272,16 @@ type ContractUtility struct {
 }
 
 // ContractWatchStatus provides information about the status of a contract in
-// the renter's watchdog. If the contract has been double-spent, the fields
-// other than DoubleSpendHeight are not up-to-date.
+// the renter's watchdog.
 type ContractWatchStatus struct {
+	Archived                  bool              `json:"archived"`
 	FormationSweepHeight      types.BlockHeight `json:"formationsweepheight"`
 	ContractFound             bool              `json:"contractfound"`
 	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
 	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
 	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
+	WindowStart               types.BlockHeight `json:"windowstart"`
+	WindowEnd                 types.BlockHeight `json:"windowend"`
 }
 
 // DirectoryInfo provides information about a siadir
@@ -276,18 +303,20 @@ type DirectoryInfo struct {
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
-	Health              float64   `json:"health"`
-	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
-	MaxHealth           float64   `json:"maxhealth"`
-	MinRedundancy       float64   `json:"minredundancy"`
-	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
-	NumFiles            uint64    `json:"numfiles"`
-	NumStuckChunks      uint64    `json:"numstuckchunks"`
-	NumSubDirs          uint64    `json:"numsubdirs"`
-	SiaPath             SiaPath   `json:"siapath"`
-	Size                uint64    `json:"size"`
-	StuckHealth         float64   `json:"stuckhealth"`
+	Health              float64     `json:"health"`
+	LastHealthCheckTime time.Time   `json:"lasthealthchecktime"`
+	MaxHealthPercentage float64     `json:"maxhealthpercentage"`
+	MaxHealth           float64     `json:"maxhealth"`
+	MinRedundancy       float64     `json:"minredundancy"`
+	DirMode             os.FileMode `json:"mode"` // Field is called DirMode for fuse compatibility
+	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
+	NumFiles            uint64      `json:"numfiles"`
+	NumStuckChunks      uint64      `json:"numstuckchunks"`
+	NumSubDirs          uint64      `json:"numsubdirs"`
+	SiaPath             SiaPath     `json:"siapath"`
+	DirSize             uint64      `json:"size"` // Stays as 'size' in json for compatibility
+	StuckHealth         float64     `json:"stuckhealth"`
+	UID                 uint64      `json:"uid"`
 }
 
 // DownloadInfo provides information about a file that has been requested for
@@ -332,7 +361,8 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	ModTime          time.Time         `json:"modtime"`
+	ModificationTime time.Time         `json:"modtime"` // Stays as 'modtime' in json for compatibility
+	FileMode         os.FileMode       `json:"mode"`    // Field is called FileMode for fuse compatibility
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -758,6 +788,13 @@ type Renter interface {
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
 
+	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
+	// duration
+	PauseRepairsAndUploads(duration time.Duration) error
+
+	// ResumeRepairsAndUploads resumes the renter's repairs and uploads
+	ResumeRepairsAndUploads() error
+
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
@@ -771,7 +808,7 @@ type Renter interface {
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
-	CreateDir(siaPath SiaPath) error
+	CreateDir(siaPath SiaPath, mode os.FileMode) error
 
 	// DeleteDir deletes a directory from the renter
 	DeleteDir(siaPath SiaPath) error
@@ -797,4 +834,22 @@ type RenterDownloadParameters struct {
 	SiaPath          SiaPath
 	Destination      string
 	DisableDiskFetch bool
+}
+
+// HealthPercentage returns the health in a more human understandable format out
+// of 100%
+//
+// The percentage is out of 1.25, this is to account for the RepairThreshold of
+// 0.25 and assumes that the worst health is 1.5. Since we do not repair until
+// the health is worse than the RepairThreshold, a health of 0 - 0.25 is full
+// health. Likewise, a health that is greater than 1.25 is essentially 0 health.
+func HealthPercentage(health float64) float64 {
+	healthPercent := 100 * (1.25 - health)
+	if healthPercent > 100 {
+		healthPercent = 100
+	}
+	if healthPercent < 0 {
+		healthPercent = 0
+	}
+	return healthPercent
 }

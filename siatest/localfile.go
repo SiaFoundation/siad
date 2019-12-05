@@ -102,3 +102,8 @@ func (lf *LocalFile) Move() error {
 func (lf *LocalFile) Path() string {
 	return lf.path
 }
+
+// Stat is a wrapper for os.Stat.
+func (lf *LocalFile) Stat() (os.FileInfo, error) {
+	return os.Stat(lf.path)
+}
