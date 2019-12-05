@@ -270,7 +270,7 @@ func main() {
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
-	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
+	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
 
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
