@@ -45,6 +45,14 @@ func (f *Foo) nonlocking() {
 	f.i++ // OK
 }
 
+func (f *Foo) callsUnprivileged() {
+	f.bar() // OK
+}
+
+func (f *Foo) callsPrivileged() {
+	f.managedBar() // want "unprivileged method callsPrivileged calls privileged method managedBar"
+}
+
 `}
 	dir, cleanup, err := analysistest.WriteFiles(files)
 	if err != nil {
