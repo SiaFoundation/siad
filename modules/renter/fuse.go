@@ -127,12 +127,12 @@ func (ffn *fuseFilenode) Access(ctx context.Context, mask uint32) syscall.Errno 
 
 // Flush is called when a directory is being closed.
 func (fdn *fuseDirnode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Errno {
-	swapped := atomic.CompareAndSwapUint32(&fdn.atomicClosed, 0, 1)
-	if swapped {
-		// TODO: Check this error.
-		fdn.staticDirNode.Close()
+	var err error
+	notYetClosed := atomic.CompareAndSwapUint32(&fdn.atomicClosed, 0, 1)
+	if notYetClosed {
+		err = fdn.staticDirNode.Close()
 	}
-	return errToStatus(nil)
+	return errToStatus(err)
 }
 
 // Flush is called when a file is being closed.
@@ -153,10 +153,8 @@ func (ffn *fuseFilenode) Flush(ctx context.Context, fh fs.FileHandle) syscall.Er
 	}
 
 	// Check all of the errors.
-	//
-	// TODO: add the Close() err here.
-	ffn.staticFileNode.Close()
-	err := errors.Compose(streamErr)
+	closeErr := ffn.staticFileNode.Close()
+	err := errors.Compose(streamErr, closeErr)
 	if err != nil {
 		siaPath := ffn.staticFilesystem.renter.staticFileSystem.FileSiaPath(ffn.staticFileNode)
 		ffn.staticFilesystem.renter.log.Printf("error when flushing fuse file %v: %v", siaPath, err)

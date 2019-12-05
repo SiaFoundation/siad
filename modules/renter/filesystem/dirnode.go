@@ -36,7 +36,7 @@ type (
 // if it's no longer being used and if it doesn't have any children which are
 // currently in use. This happens iteratively for all parent as long as
 // removing a child resulted in them not having any children left.
-func (n *DirNode) Close() {
+func (n *DirNode) Close() error {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
 
@@ -56,6 +56,8 @@ func (n *DirNode) Close() {
 		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
+
+	return nil
 }
 
 // Delete is a wrapper for SiaDir.Delete.
