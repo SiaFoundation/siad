@@ -168,17 +168,30 @@ func passesArgument(info *types.Info, n ast.Node, v *types.Var) bool {
 	if n == nil {
 		return false
 	}
+
+	var es *ast.ExprStmt
 	switch d := n.(type) {
 	case *ast.ExprStmt:
-		if ce, ok := d.X.(*ast.CallExpr); ok {
-			for _, arg := range ce.Args {
-				if ident, ok := arg.(*ast.Ident); ok {
-					if info.Uses[ident] == v {
-						return true
-					}
-				}
-			}
-		}
+		es = d
+	default:
+		return false
 	}
+
+	ce, ok := es.X.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	for _, arg := range ce.Args {
+		ident, ok := arg.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		if info.Uses[ident] == v {
+			return true
+		}
+
+	}
+
 	return false
 }

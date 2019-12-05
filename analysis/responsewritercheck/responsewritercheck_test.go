@@ -6,7 +6,10 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-func Test(t *testing.T) {
+// TestResponseWriterCheck tests the responsewritercheck analyzer. It will
+// ensure that HTTP handlers do not pass the http.ResponseWriter to more than
+// one function
+func TestResponseWriterCheck(t *testing.T) {
 	files := map[string]string{"a/a.go": `package a
 
 	import "net/http"
