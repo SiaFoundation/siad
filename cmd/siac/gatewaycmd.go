@@ -34,7 +34,7 @@ var (
 	}
 
 	gatewayBlacklistAppendCmd = &cobra.Command{
-		Use:   "append [ip] [ip] [ip] [ip] ...",
+		Use:   "append [ip] [ip] [ip] [ip]",
 		Short: "Append a new address to the blacklisted peers list",
 		Long: `Add a new address to the list of blacklisted peers.
 Accepts a list of ipaddresses or domain names as individual inputs.
@@ -44,7 +44,7 @@ For example: siac gateway blacklist append 123.123.123.123 111.222.111.222 mysia
 	}
 
 	gatewayBlacklistRemoveCmd = &cobra.Command{
-		Use:   "remove [ip] [ip] [ip] [ip] ...",
+		Use:   "remove [ip] [ip] [ip] [ip]",
 		Short: "Remove a peer from the list of blacklisted peers",
 		Long: `Remove one or more peers from the list of blacklisted peers.
 Accepts a list of ipaddresses or domain names as individual inputs.
@@ -54,7 +54,7 @@ For example: siac gateway blacklist remove 123.123.123.123 111.222.111.222 mysia
 	}
 
 	gatewayBlacklistSetCmd = &cobra.Command{
-		Use:   "set [ip] [ip] [ip] [ip] ...",
+		Use:   "set [ip] [ip] [ip] [ip]",
 		Short: "Set the blacklisted peers list",
 		Long: `Set the blacklisted peers list.
 Accepts a list of ipaddresses or domain names as individual inputs.
@@ -156,7 +156,7 @@ func gatewayblacklistcmd() {
 // gatewayblacklistappendcmd is the handler for the command
 // `siac gateway blacklist append`
 // Adds one or more new hosts to the gateway's blacklist
-func gatewayblacklistappendcmd(addresses []string) {
+func gatewayblacklistappendcmd(addresses ...string) {
 	err := httpClient.GatewayAppendBlacklistPost(addresses)
 	if err != nil {
 		die("Could not append the peer to the gateway blacklist", err)
@@ -167,7 +167,7 @@ func gatewayblacklistappendcmd(addresses []string) {
 // gatewayblacklistremovecmd is the handler for the command
 // `siac gateway blacklist remove`
 // Removes one or more hosts from the gateway's blacklist
-func gatewayblacklistremovecmd(addresses []string) {
+func gatewayblacklistremovecmd(addresses ...string) {
 	err := httpClient.GatewayRemoveBlacklistPost(addresses)
 	if err != nil {
 		die("Could not remove the peer from the gateway blacklist", err)
@@ -178,7 +178,7 @@ func gatewayblacklistremovecmd(addresses []string) {
 // gatewayblacklistsetcmd is the handler for the command
 // `siac gateway blacklist set`
 // Sets the gateway blacklist to the hosts passed in via a comma-separated list
-func gatewayblacklistsetcmd(addresses []string) {
+func gatewayblacklistsetcmd(addresses ...string) {
 	err := httpClient.GatewaySetBlacklistPost(addresses)
 	if err != nil {
 		die("Could not set the gateway blacklist", err)
