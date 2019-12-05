@@ -151,6 +151,10 @@ func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) er
 		return err
 	}
 
+	// disrupt will introduce a sleep here causing slow persist leading to
+	// maxRisk being reached
+	_ = ap.h.dependencies.Disrupt("errMaxRiskReached")
+
 	// Write the data to disk
 	return errors.AddContext(writeAtAndSync(ap.accounts, accBytes, location(index)), "failed to save account")
 }
@@ -416,11 +420,11 @@ func (a *account) accountData() *accountData {
 // keep in memory
 func (a *accountData) account(index uint32) *account {
 	return &account{
-		id:           a.Id.String(),
-		balance:      a.Balance,
-		lastTxnTime:  a.LastTxnTime,
-		index:        index,
-		blockedCalls: make(blockedCallHeap, 0),
+		id:                 a.Id.String(),
+		balance:            a.Balance,
+		lastTxnTime:        a.LastTxnTime,
+		index:              index,
+		blockedWithdrawals: make(blockedWithdrawalHeap, 0),
 	}
 }
 

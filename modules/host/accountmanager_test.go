@@ -483,59 +483,57 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 	}
 	am := ht.host.staticAccountManager
 
-	// Use the maxEphemeralAccountBalance in combination with
-	// maxephemeralaccountrisk to figure a good maxAttempts, changing these host
-	// settings would also affect what 'd be a good max attempts
 	his := ht.host.InternalSettings()
-	numAccountsUint, _ := his.MaxEphemeralAccountRisk.Div(his.MaxEphemeralAccountBalance).Uint64()
-	maxAttempts := int(numAccountsUint) * 10
+	maxRisk := his.MaxEphemeralAccountRisk
+	maxBalance := his.MaxEphemeralAccountBalance
+
+	// Use maxBalance in combination with maxRisk (and multiply by 2 to be sure)
+	// to figure out a good amount of parallel accounts necessary to trigger
+	// maxRisk to be reached.
+	buckets, _ := maxRisk.Div(maxBalance).Mul64(2).Uint64()
+
+	// Prepare the accounts
+	accountSKs := make([]crypto.SecretKey, buckets)
+	accountPKs := make([]string, buckets)
+	for i := 0; i < int(buckets); i++ {
+		sk, spk := prepareAccount()
+		accountSKs[i] = sk
+		accountPKs[i] = spk.String()
+	}
+
+	// Fund all acounts to the max
+	for _, acc := range accountPKs {
+		if err = am.callDeposit(acc, maxBalance); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cbh := am.h.blockHeight
 
 	// Keep track of how many times the maxEpheramalAccountRisk was reached. We
 	// assume that it works properly when this number exceeds 1, because this
 	// means that it was also successful in decreasing the current risk when
 	// the persist was successful
 	var atomicMaxRiskReached uint64
-
 	var wg sync.WaitGroup
-	for maxAttempts > 0 {
+
+	for i := 0; i < int(buckets); i++ {
 		wg.Add(1)
-
-		// Make an account and deposit the max balance into it
-		sk, spk := prepareAccount()
-		account := spk.String()
-		if err = am.callDeposit(account, his.MaxEphemeralAccountBalance); err != nil {
-			t.Fatal(err)
-		}
-
-		// Prepare a withdrawal
-		msg, sig := prepareWithdrawal(account, his.MaxEphemeralAccountBalance, am.h.blockHeight, sk)
-
-		go func() {
+		go func(i int) {
 			defer wg.Done()
+			accPK := accountPKs[i]
+			accSK := accountSKs[i]
+			msg, sig := prepareWithdrawal(accPK, maxBalance, cbh, accSK)
 			if wErr := callWithdraw(am, msg, sig); wErr == errMaxRiskReached {
 				atomic.AddUint64(&atomicMaxRiskReached, 1)
 			}
-		}()
-
-		// Escape early
-		maxRiskReached := atomic.LoadUint64(&atomicMaxRiskReached) > 1
-		if maxRiskReached {
-			break
-		}
-
-		maxAttempts--
+		}(i)
 	}
-
 	wg.Wait()
-	if err := ht.host.tg.Stop(); err != nil {
-		t.Fatal(err)
-	}
 
-	maxRiskReached := atomic.LoadUint64(&atomicMaxRiskReached) > 1
-	if !maxRiskReached {
+	if atomic.LoadUint64(&atomicMaxRiskReached) == 0 {
 		t.Fatal("Max ephemeral account balance risk was not reached")
 	}
-
 }
 
 // callWithdraw will perform the withdrawal using a timestamp for the priority
