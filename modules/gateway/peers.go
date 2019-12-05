@@ -468,9 +468,6 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 	}
 	g.log.Debugln("Created conn; remote and local addr", conn.RemoteAddr(), conn.LocalAddr())
 
-	// Monitor bandwidth on conn
-	conn = connmonitor.NewMonitoredConn(conn, g.m)
-
 	// Perform peer initialization.
 	remoteVersion, err := connectVersionHandshake(conn, build.Version)
 	if err != nil {

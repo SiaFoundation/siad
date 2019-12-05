@@ -65,6 +65,8 @@ gitlab.com/NebulousLabs/merkletree v0.0.0-20190207030457-bc4a11e31a0d h1:ObC0V0W
 gitlab.com/NebulousLabs/merkletree v0.0.0-20190207030457-bc4a11e31a0d/go.mod h1:xItahGeKIkh9BQfxDEX6O3eWxOxbLBPX738sXm0uVaQ=
 gitlab.com/NebulousLabs/monitor v0.0.0-20191109031941-72461aa791aa h1:07PSXLGBSAUXC1l/mtlXq9YV3sy+6rszsgD8wjs+nMg=
 gitlab.com/NebulousLabs/monitor v0.0.0-20191109031941-72461aa791aa/go.mod h1:QxXtb5hIp2xQkfb+lzBDIqQIGEj22U7AkYCXO3hkhqc=
+gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a h1:fs891phmYZrVdaCVPXfHGDMpV5LWPKvnOMjx70EpJkw=
+gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a/go.mod h1:QxXtb5hIp2xQkfb+lzBDIqQIGEj22U7AkYCXO3hkhqc=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20180716154200-1308156c2eaf h1:B0oWvYNYeov4s6nzoVPN4qxdAanrlR9mx552axpnXmg=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20180716154200-1308156c2eaf/go.mod h1:vowDA1cdvtWW678ugB7L/yKT2pCN37aH6zYp9NF5Isc=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c h1:psW9YBmnyKKCddPncr7mwJCx6n7FzlIs1EWIiSo7fyQ=

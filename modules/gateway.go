@@ -2,6 +2,7 @@ package modules
 
 import (
 	"net"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 )
@@ -133,7 +134,7 @@ type (
 		Alerter
 
 		// BandwidthCounters returns the Gateway's upload and download bandwidth
-		BandwidthCounters() (uint64, uint64, error)
+		BandwidthCounters() (uint64, uint64, time.Time, error)
 
 		// Connect establishes a persistent connection to a peer.
 		Connect(NetAddress) error

@@ -106,7 +106,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/monitor"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
@@ -233,13 +233,14 @@ func (g *Gateway) AddToBlacklist(addresses []modules.NetAddress) error {
 }
 
 // BandwidthCounters returns the Gateway's upload and download bandwidth
-func (g *Gateway) BandwidthCounters() (uint64, uint64, error) {
+func (g *Gateway) BandwidthCounters() (uint64, uint64, time.Time, error) {
 	if err := g.threads.Add(); err != nil {
-		return 0, 0, err
+		return 0, 0, time.Time{}, err
 	}
 	defer g.threads.Done()
 	writeBytes, readBytes := g.m.Counts()
-	return writeBytes, readBytes, nil
+	startTime := g.m.StartTime()
+	return writeBytes, readBytes, startTime, nil
 }
 
 // Blacklist returns the Gateway's blacklist
