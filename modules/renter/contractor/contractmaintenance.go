@@ -986,7 +986,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
 		sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 		percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
-		if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundRenewalThreshold && !c.staticDeps.Disrupt("disableRenew") {
+		if (contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundRenewalThreshold) && !c.staticDeps.Disrupt("disableRenew") {
 			// Renew the contract with double the amount of funds that the
 			// contract had previously. The reason that we double the funding
 			// instead of doing anything more clever is that we don't know what
