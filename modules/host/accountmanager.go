@@ -422,7 +422,9 @@ func (am *accountManager) threadedSaveAccount(id string) {
 		return
 	}
 
-	// Call save account
+	// Call save account (disrupt if triggered will introduce a sleep here,
+	// simulating a slow persist which allows maxRisk to be reached)
+	_ = am.h.dependencies.Disrupt("errMaxRiskReached")
 	persister := am.staticAccountsPersister
 	if err := persister.callSaveAccount(data, index); err != nil {
 		am.h.log.Println("Failed to save account", err)
@@ -696,7 +698,7 @@ func (fm *fingerprintMap) add(fp crypto.Hash, expiry, currentBlockHeight types.B
 		return errors.New("duplicate fingerprint")
 	}
 
-	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
+	threshold := calculateExpiryThreshold(currentBlockHeight)
 	if expiry < threshold {
 		fm.current[fp] = struct{}{}
 		return nil
@@ -721,7 +723,7 @@ func (fm *fingerprintMap) has(fp crypto.Hash) bool {
 // reallocate the next bucket. This effectively removes all fingerprints in the
 // current bucket.
 func (fm *fingerprintMap) tryRotate(currentBlockHeight types.BlockHeight) {
-	threshold := calculateExpiryThreshold(currentBlockHeight, fm.bucketBlockRange)
+	threshold := calculateExpiryThreshold(currentBlockHeight)
 
 	// If the current blockheihgt is still less than the threshold, we wait
 	if currentBlockHeight < threshold {
@@ -752,7 +754,7 @@ func (wm *withdrawalMessage) validateExpiry(currentBlockHeight types.BlockHeight
 	}
 
 	// Verify the withdrawal is not too far into the future
-	if wm.expiry >= calculateExpiryThreshold(currentBlockHeight, bucketBlockRange)+bucketBlockRange {
+	if wm.expiry >= calculateExpiryThreshold(currentBlockHeight)+bucketBlockRange {
 		return ErrWithdrawalExtremeFuture
 	}
 
