@@ -32,8 +32,8 @@ type (
 	// GatewayBlacklistPOST contains the information needed to set the Blacklist
 	// of the gateway
 	GatewayBlacklistPOST struct {
-		Action    string               `json:"action"`
-		Addresses []modules.NetAddress `json:"addresses"`
+		Action    string   `json:"action"`
+		Addresses []string `json:"addresses"`
 	}
 
 	// GatewayBlacklistGET contains the Blacklist of the gateway

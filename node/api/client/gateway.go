@@ -67,7 +67,7 @@ func (c *Client) GatewayBlacklistGet() (gbg api.GatewayBlacklistGET, err error) 
 
 // GatewayAppendBlacklistPost uses the /gateway/blacklist endpoint to append
 // addresses to the Gateway's blacklist
-func (c *Client) GatewayAppendBlacklistPost(addresses []modules.NetAddress) (err error) {
+func (c *Client) GatewayAppendBlacklistPost(addresses []string) (err error) {
 	gbp := api.GatewayBlacklistPOST{
 		Action:    "append",
 		Addresses: addresses,
@@ -82,7 +82,7 @@ func (c *Client) GatewayAppendBlacklistPost(addresses []modules.NetAddress) (err
 
 // GatewayRemoveBlacklistPost uses the /gateway/blacklist endpoint to remove
 // addresses from the Gateway's blacklist
-func (c *Client) GatewayRemoveBlacklistPost(addresses []modules.NetAddress) (err error) {
+func (c *Client) GatewayRemoveBlacklistPost(addresses []string) (err error) {
 	gbp := api.GatewayBlacklistPOST{
 		Action:    "remove",
 		Addresses: addresses,
@@ -97,7 +97,7 @@ func (c *Client) GatewayRemoveBlacklistPost(addresses []modules.NetAddress) (err
 
 // GatewaySetBlacklistPost uses the /gateway/blacklist endpoint to set the
 // Gateway's blacklist
-func (c *Client) GatewaySetBlacklistPost(addresses []modules.NetAddress) (err error) {
+func (c *Client) GatewaySetBlacklistPost(addresses []string) (err error) {
 	gbp := api.GatewayBlacklistPOST{
 		Action:    "set",
 		Addresses: addresses,
