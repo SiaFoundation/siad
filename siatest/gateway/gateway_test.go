@@ -270,3 +270,79 @@ func TestGatewayOfflineAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestGatewayBandwidth checks that the Gateway's bandwidth is being monitored
+func TestGatewayBandwidth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create two Gateways
+	testDir := gatewayTestDir(t.Name())
+	gateway1, err := siatest.NewCleanNode(node.Gateway(testDir + "/gateway1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := gateway1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	gateway2, err := siatest.NewCleanNode(node.Gateway(testDir + "/gateway1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := gateway2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Both gateways should have no bandwidth usage
+	gbg1, err := gateway1.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg1.Download != 0 || gbg1.Upload != 0 {
+		t.Log("Download:", gbg1.Download)
+		t.Log("Upload:", gbg1.Upload)
+		t.Fatal("Expected Gateway 1 to have no bandwidth usage")
+	}
+	gbg2, err := gateway2.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg2.Download != 0 || gbg2.Upload != 0 {
+		t.Log("Download:", gbg2.Download)
+		t.Log("Upload:", gbg2.Upload)
+		t.Fatal("Expected Gateway 2 to have no bandwidth usage")
+	}
+
+	// Connect the gateways
+	err = gateway1.GatewayConnectPost(gateway2.GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// After connecting the gateways, both gateways should have used some upload
+	// and download bandwidth
+	gbg1, err = gateway1.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg1.Download == 0 || gbg1.Upload == 0 {
+		t.Log("Download:", gbg1.Download)
+		t.Log("Upload:", gbg1.Upload)
+		t.Fatal("Expected Gateway 1 to have bandwidth usage after connecting with a peer")
+	}
+	gbg2, err = gateway2.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg2.Download == 0 || gbg2.Upload == 0 {
+		t.Log("Download:", gbg2.Download)
+		t.Log("Upload:", gbg2.Upload)
+		t.Fatal("Expected Gateway 2 to have bandwidth usage after connecting with a peer")
+	}
+}

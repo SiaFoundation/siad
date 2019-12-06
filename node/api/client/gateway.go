@@ -18,6 +18,12 @@ var (
 	ErrPeerExists = errors.New("already connected to this peer")
 )
 
+// GatewayBandwidthGet requests the /gateway/bandwidth api resource
+func (c *Client) GatewayBandwidthGet() (gbg api.GatewayBandwidthGET, err error) {
+	err = c.get("/gateway/bandwidth", &gbg)
+	return
+}
+
 // GatewayConnectPost uses the /gateway/connect/:address endpoint to connect to
 // the gateway at address
 func (c *Client) GatewayConnectPost(address modules.NetAddress) (err error) {
