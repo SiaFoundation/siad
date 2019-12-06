@@ -216,7 +216,12 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 				r.managedDistributeDownloadChunkToWorkers(chunk)
 			}
 		}()
-
+		// Check if download was already aborted.
+		select {
+		case <-chunk.download.completeChan:
+			return false
+		default:
+		}
 		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {

@@ -173,6 +173,11 @@ type (
 		Files []modules.FileInfo `json:"files"`
 	}
 
+	// RenterFuseInfo contains information about mounted fuse filesystems.
+	RenterFuseInfo struct {
+		MountPoints []modules.MountInfo `json:"mountPoints"`
+	}
+
 	// RenterLoad lists files that were loaded into the renter.
 	RenterLoad struct {
 		FilesAdded []string `json:"filesadded"`
@@ -247,7 +252,7 @@ type (
 )
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
-// prefix by the "siafiles" directory.
+// prefix by the user's home directory.
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	if siaPath.IsRoot() {
@@ -1212,6 +1217,70 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 	})
 }
 
+// renterFuseHandlerGET handles the API call to /renter/fuse.
+func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	rfi := RenterFuseInfo{
+		MountPoints: api.renter.MountInfo(),
+	}
+	for i := 0; i < len(rfi.MountPoints); i++ {
+		rebased, err := rfi.MountPoints[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		rfi.MountPoints[i].SiaPath = rebased
+	}
+
+	WriteJSON(w, rfi)
+}
+
+// renterFuseMountHandlerPOST handles the API call to /renter/fuse/mount.
+func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var siaPath modules.SiaPath
+	var err error
+	spfv := req.FormValue("siapath")
+	if spfv == "" {
+		siaPath = modules.RootSiaPath()
+	} else {
+		siaPath, err = modules.NewSiaPath(spfv)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	siaPath, err = rebaseInputSiaPath(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	mount := req.FormValue("mount")
+	var opts modules.MountOptions
+	if req.FormValue("readonly") != "" {
+		readOnly, err := scanBool(req.FormValue("readonly"))
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		opts.ReadOnly = readOnly
+	}
+	if err := api.renter.Mount(mount, siaPath, opts); err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterFuseUnmountHandlerPOST handles the API call to /renter/fuse/unmount.
+func (api *API) renterFuseUnmountHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	err := api.renter.Unmount(req.FormValue("mount"))
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
 // renterRecoveryScanHandlerPOST handles the API call to /renter/recoveryscan.
 func (api *API) renterRecoveryScanHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	if err := api.renter.InitRecoveryScan(); err != nil {
@@ -1781,6 +1850,40 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 		DataPieces:         dataPieces,
 		ParityPieces:       parityPieces,
 	})
+}
+
+// renterUploadsPauseHandler handles the api call to pause the renter's uploads,
+// this includes repairs
+func (api *API) renterUploadsPauseHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	durationStr := req.FormValue("duration")
+	duration := renter.DefaultPauseDuration
+	var err error
+	if durationStr != "" {
+		durationInt, err := strconv.ParseUint(durationStr, 10, 64)
+		if err != nil {
+			WriteError(w, Error{"failed to parse duration:" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		duration = time.Second * time.Duration(durationInt)
+	}
+
+	err = api.renter.PauseRepairsAndUploads(duration)
+	if err != nil {
+		WriteError(w, Error{"failed to pause uploads:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// renterUploadsResumeHandler handles the api call to resume the renter's
+// uploads, this includes repairs
+func (api *API) renterUploadsResumeHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	err := api.renter.ResumeRepairsAndUploads()
+	if err != nil {
+		WriteError(w, Error{"failed to resume uploads:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }
 
 // renterUploadStreamHandler handles the API call to upload a file using a

@@ -5,6 +5,8 @@ go 1.12
 require (
 	github.com/coreos/bbolt v1.3.2
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
+	github.com/hanwen/go-fuse v1.0.1-0.20190720155834-4dd6878445ae
+	github.com/hanwen/go-fuse/v2 v2.0.2
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
 	github.com/julienschmidt/httprouter v1.2.0
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0

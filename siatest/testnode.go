@@ -355,7 +355,7 @@ func (tn *TestNode) initRootDirs() error {
 		return err
 	}
 	tn.filesDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), modules.FileSystemRoot),
+		path: filepath.Join(tn.RenterDir(), "uploads"),
 	}
 	if err := os.MkdirAll(tn.filesDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err

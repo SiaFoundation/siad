@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -93,12 +94,9 @@ func (s *streamer) managedFillCache() bool {
 	if cacheOffset <= streamOffset && cacheOffset+cacheLen == fileSize {
 		return false
 	}
-	// If partial downloads are supported and the stream offset is in the first
-	// half of the cache, then no fetching is required.
-	//
-	// An extra check that there is any data in the cache needs to be made so
-	// that the cache fill function runs immediately after initialization.
-	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset-cacheOffset < cacheLen/2 {
+	// If partial downloads are supported and more than half of the target cache
+	// size is remaining, then no fetching is required.
+	if partialDownloadsSupported && cacheOffset <= streamOffset && streamOffset < (cacheOffset+cacheLen-(targetCacheSize/2)) {
 		return false
 	}
 	// If partial downloads are not supported, the full chunk containing the
@@ -158,7 +156,7 @@ func (s *streamer) managedFillCache() bool {
 		// consumed, so that the cache remains the same size after we drop all
 		// of the consumed bytes and extend the cache with new data.
 		fetchOffset = cacheOffset + cacheLen
-		fetchLen = targetCacheSize - (streamOffset - cacheOffset)
+		fetchLen = targetCacheSize - (cacheOffset + cacheLen - streamOffset)
 	}
 
 	// Finally, check if the fetchOffset and fetchLen goes beyond the boundaries
@@ -441,6 +439,10 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 	if newOffset < 0 {
 		return s.offset, errors.New("cannot seek to negative offset")
 	}
+	// If the Seek is a no-op, do not invalidate the cache.
+	if newOffset == s.offset {
+		return 0, nil
+	}
 
 	// Reset the target cache size upon seek to be the default again. This is in
 	// place because some programs will rapidly consume the cache to build up
@@ -472,15 +474,16 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 		return "", nil, err
 	}
 	defer r.tg.Done()
+
 	// Lookup the file associated with the nickname.
-	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
+	node, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
-	defer entry.Close()
+	defer node.Close()
 
 	// Create the streamer
-	snap, err := entry.Snapshot(siaPath)
+	snap, err := node.Snapshot(siaPath)
 	if err != nil {
 		return "", nil, err
 	}
@@ -496,6 +499,25 @@ func (r *Renter) StreamerFromSnapshot(reader io.Reader) (modules.Streamer, error
 		return nil, err
 	}
 	return r.managedStreamer(snapshot, true), nil
+}
+
+// StreamerByNode will open a streamer for the renter, taking a FileNode as
+// input instead of a siapath. This is important for fuse, which has filenodes
+// that could be getting renamed before the streams are opened.
+func (r *Renter) StreamerByNode(node *filesystem.FileNode, disableLocalFetch bool) (modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	// Grab the current SiaPath of the FileNode and then create a snapshot.
+	sp := r.staticFileSystem.FileSiaPath(node)
+	snap, err := node.Snapshot(sp)
+	if err != nil {
+		return nil, err
+	}
+	s := r.managedStreamer(snap, disableLocalFetch)
+	return s, nil
 }
 
 // managedStreamer creates a streamer from a siafile snapshot and starts filling

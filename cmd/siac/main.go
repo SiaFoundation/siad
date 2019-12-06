@@ -253,7 +253,7 @@ func main() {
 		renterExportCmd, renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
 		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd,
-		renterShareCmd)
+		renterShareCmd, renterFuseCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -283,8 +283,11 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxStoragePrice, "max-storage-price", "", "the maximum price that the renter will pay to store data on a host")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxUploadBandwidthPrice, "max-upload-bandwidth-price", "", "the maximum price that the renter will pay to upload data to a host")
 
+	renterFuseCmd.AddCommand(renterFuseMountCmd, renterFuseUnmountCmd)
+
 	root.AddCommand(gatewayCmd)
-	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)
+	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
+	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
 
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
