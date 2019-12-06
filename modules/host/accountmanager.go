@@ -341,7 +341,13 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	if err := am.fingerprints.add(fingerprint, msg.expiry, cbh); err != nil {
 		return ErrWithdrawalSpent
 	}
-	go am.threadedSaveFingerprint(fingerprint, msg.expiry, cbh)
+	if err := am.h.tg.Add(); err != nil {
+		return ErrWithdrawalCancelled
+	}
+	go func() {
+		defer am.h.tg.Done()
+		am.threadedSaveFingerprint(fingerprint, msg.expiry, cbh)
+	}()
 
 	// Open the account, create if it does not exist yet
 	acc := am.openAccount(id)
@@ -485,12 +491,9 @@ func (am *accountManager) threadedSaveAccount(id string) {
 }
 
 // threadedSaveFingerprint will persist the fingerprint data
+// Note that the caller adds this thread to the threadgroup. If the add is done
+// inside the goroutine, we risk losing a fingerprint if the host shuts down.
 func (am *accountManager) threadedSaveFingerprint(fp crypto.Hash, expiry, cbh types.BlockHeight) {
-	if err := am.h.tg.Add(); err != nil {
-		return
-	}
-	defer am.h.tg.Done()
-
 	if err := am.staticAccountsPersister.callSaveFingerprint(fp, expiry, cbh); err != nil {
 		am.h.log.Critical("Could not save fingerprint", err)
 	}
