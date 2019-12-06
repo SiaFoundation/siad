@@ -384,11 +384,11 @@ func utilsuploadedsizecmd(path string) {
 Lost space: %v
     +%v%% empty space used for scaling every file up to %v
 `,
-		filesizeUnits(diskSize),
-		filesizeUnits(siaSize),
-		filesizeUnits(siaSize-diskSize),
+		modules.FilesizeUnits(diskSize),
+		modules.FilesizeUnits(siaSize),
+		modules.FilesizeUnits(siaSize-diskSize),
 		lostPercent,
-		filesizeUnits(minFileSize))
+		modules.FilesizeUnits(minFileSize))
 
 	if uploadedsizeUtilVerbose { // print only if -v or --verbose used
 		fmt.Printf(`
@@ -397,8 +397,8 @@ Files: %v
     Median: %v
 `,
 			len(fileSizes),
-			filesizeUnits(calculateAverageUint64(fileSizes)),
-			filesizeUnits(calculateMedianUint64(fileSizes)))
+			modules.FilesizeUnits(calculateAverageUint64(fileSizes)),
+			modules.FilesizeUnits(calculateMedianUint64(fileSizes)))
 	}
 }
 
