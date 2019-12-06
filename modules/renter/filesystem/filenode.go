@@ -35,7 +35,7 @@ func (n *FileNode) managedClose() {
 // parent if it's no longer being used and if it doesn't have any children which
 // are currently in use. This happens iteratively for all parent as long as
 // removing a child resulted in them not having any children left.
-func (n *FileNode) Close() {
+func (n *FileNode) Close() error {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
 
@@ -53,6 +53,8 @@ func (n *FileNode) Close() {
 		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
+
+	return nil
 }
 
 // Copy copies a file node and returns the copy.
@@ -124,6 +126,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
+		UID:              n.staticUID,
 		UploadedBytes:    uploadedBytes,
 		UploadProgress:   uploadProgress,
 	}
@@ -205,6 +208,7 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
 		StuckHealth:      md.CachedStuckHealth,
+		UID:              n.staticUID,
 		UploadedBytes:    md.CachedUploadedBytes,
 		UploadProgress:   md.CachedUploadProgress,
 	}
