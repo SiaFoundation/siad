@@ -1152,7 +1152,9 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Debugln("do not seem to need more contracts")
 		return
 	}
-	c.log.Println("need more contracts:", neededContracts)
+	if neededContracts > 0 {
+		c.log.Println("need more contracts:", neededContracts)
+	}
 
 	// Assemble two exclusion lists. The first one includes all hosts that we
 	// already have contracts with and the second one includes all hosts we
@@ -1277,9 +1279,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	allContracts = c.staticContracts.ViewAll()
 	currentContracts := make(map[string]struct{})
 	for _, contract := range allContracts {
-		if contract.Utility.GoodForRenew {
-			currentContracts[contract.HostPublicKey.String()] = struct{}{}
-		}
+		currentContracts[contract.HostPublicKey.String()] = struct{}{}
 	}
 	for _, host := range allHosts {
 		// Check if there is already a contract with this host.
