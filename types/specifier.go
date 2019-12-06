@@ -23,7 +23,7 @@ func NewSpecifier(name string) Specifier {
 	if !isASCII(name) {
 		panic("ERROR: specifier has to be ASCII")
 	}
-	if len(name) > 16 {
+	if len(name) > SpecifierLen {
 		panic("ERROR: specifier max length exceeded")
 	}
 	var s Specifier
