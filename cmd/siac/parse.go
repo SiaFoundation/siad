@@ -26,7 +26,8 @@ var (
 	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
 )
 
-// filesize returns a string that displays a filesize in human-readable units.
+// filesizeUnits returns a string that displays a filesize in human-readable
+// units.
 func filesizeUnits(size uint64) string {
 	if size == 0 {
 		return "0  B"
