@@ -9,6 +9,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -19,6 +21,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -121,6 +125,14 @@ party integrations such as Duplicati`,
 		Long: `Attempts to brute force a partial Sia seed.  Accepts a 27 or 28 word
 seed and returns a valid 28 or 29 word seed`,
 		Run: wrap(utilsbruteforceseed),
+	}
+
+	utilsUploadedsizeCmd = &cobra.Command{
+		Use:   "uploadedsize [path]",
+		Short: "calculate a folder's size on Sia",
+		Long: `Calculates a given folder size on Sia and the lost space caused by 
+files are rounded up to the minimum chunks size.`,
+		Run: wrap(utilsuploadedsizecmd),
 	}
 )
 
@@ -317,4 +329,108 @@ func utilsbruteforceseed() {
 		}
 	}
 	fmt.Printf("\nNo valid seed found :(\n")
+}
+
+// utilsuploadedsizecmd is the handler for the command `utils uploadedsize [path] [flags]`
+// It estimates the 'on Sia' size of the given directory
+func utilsuploadedsizecmd(path string) {
+	var fileSizes []uint64
+	if fileExists(path) {
+		fi, err := os.Stat(path)
+		if err != nil {
+			fmt.Println("Error: could not determine the file size")
+			return
+		}
+		fileSizes = append(fileSizes, uint64(fi.Size()))
+	} else {
+		err := filepath.Walk( // export all file sizes to fileSizes slice (recursive)
+			path,
+			func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if !info.IsDir() {
+					fileSizes = append(fileSizes, uint64(info.Size()))
+				}
+				return nil
+			})
+		if err != nil {
+			fmt.Println("Error walking directory:", err)
+			return
+		}
+	}
+
+	var diskSize, siaSize, lostPercent uint64
+	minFileSize := siatest.ChunkSize(uint64(renter.DefaultDataPieces), crypto.TypeDefaultRenter)
+
+	for _, size := range fileSizes { // Calc variables here
+		diskSize += size
+
+		// Round file size to 40MiB chunks
+		numChunks := uint64(size / minFileSize)
+		if size%minFileSize != 0 {
+			numChunks++
+		}
+		siaSize += numChunks * minFileSize
+	}
+
+	if diskSize != 0 {
+		lostPercent = uint64(float64(siaSize)/float64(diskSize)*100) - 100
+	}
+	fmt.Printf(`Size on
+    Disk: %v
+    Sia:  %v
+
+Lost space: %v
+    +%v%% empty space used for scaling every file up to %v
+`,
+		filesizeUnits(diskSize),
+		filesizeUnits(siaSize),
+		filesizeUnits(siaSize-diskSize),
+		lostPercent,
+		filesizeUnits(minFileSize))
+
+	if uploadedsizeUtilVerbose { // print only if -v or --verbose used
+		fmt.Printf(`
+Files: %v
+    Average: %v
+    Median: %v
+`,
+			len(fileSizes),
+			filesizeUnits(calculateAverageUint64(fileSizes)),
+			filesizeUnits(calculateMedianUint64(fileSizes)))
+	}
+}
+
+// calculateAverageUint64 calculates the average of a uint64 slice and returns the average as a uint64
+func calculateAverageUint64(input []uint64) uint64 {
+	total := uint64(0)
+	if len(input) == 0 {
+		return 0
+	}
+	for _, v := range input {
+		total += v
+	}
+	return total / uint64(len(input))
+}
+
+// calculateMedianUint64 calculates the median of a uint64 slice and returns the median as a uint64
+func calculateMedianUint64(mm []uint64) uint64 {
+	sort.Slice(mm, func(i, j int) bool { return mm[i] < mm[j] }) // sort the numbers
+
+	mNumber := len(mm) / 2
+
+	if len(mm)%2 == 0 {
+		return mm[mNumber]
+	}
+
+	return (mm[mNumber-1] + mm[mNumber]) / 2
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
 }

@@ -18,6 +18,7 @@ import (
 var (
 	// Flags.
 	dictionaryLanguage      string // dictionary for seed utils
+	uploadedsizeUtilVerbose bool   // display additional info for "utils upload-size"
 	hostContractOutputType  string // output type for host contracts
 	hostVerbose             bool   // display additional host info
 	hostFolderRemoveForce   bool   // force folder remove
@@ -279,8 +280,10 @@ func main() {
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
-		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd, utilsBruteForceSeedCmd)
+		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd, utilsBruteForceSeedCmd,
+		utilsUploadedsizeCmd)
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
+	utilsUploadedsizeCmd.Flags().BoolVarP(&uploadedsizeUtilVerbose, "verbose", "v", false, "Display more information")
 	root.AddCommand(utilsCmd)
 
 	// initialize client
