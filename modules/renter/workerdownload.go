@@ -46,16 +46,28 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules
 // this worker exceeds any of the extortion limits placed on the worker.
 func staticCheckDownloadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
-	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
 		return errors.New("rpc base price of host is too high - extortion protection enabled")
 	}
 	// Check whether the download bandwidth price is too high.
-	if allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
 		return errors.New("download bandwidth price of host is too high - extortion protection enabled")
 	}
 	// Check whether the sector access price is too high.
-	if allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
 		return errors.New("sector access price of host is too high - extortion protection enabled")
+	}
+
+	// Check that the combined prices make sense in the context of the overall
+	// allowance.
+	singleDownloadCost := hostSettings.SectorAccessPrice + hostSettings.BaseRPCPrice + (hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
+	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
+	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
+	quarterCost := allowanceDownloadCost.Div64(4)
+	// If there is not enough allowance to cover one quarter of the bandwidth
+	// requirements, consider this host for extortion.
+	if quarterCost.Cmp(allowance.Funds) >= 0 {
+		return errors.New("combined pricing of the host exceeds what the renter is willing to pay - extortion protection enabled")
 	}
 
 	return nil
