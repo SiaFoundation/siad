@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -84,6 +85,42 @@ func (a *AllowanceRequestPost) WithExpectedRedundancy(expectedRedundancy float64
 // WithMaxPeriodChurn adds the expected redundancy field to the request.
 func (a *AllowanceRequestPost) WithMaxPeriodChurn(maxPeriodChurn uint64) *AllowanceRequestPost {
 	a.values.Set("maxperiodchurn", fmt.Sprint(maxPeriodChurn))
+	return a
+}
+
+// WithMaxRPCPRice adds the maxrpcprice field to the request.
+func (a *AllowanceRequestPost) WithMaxRPCPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxrpcprice", price.String())
+	return a
+}
+
+// WithMaxContractPrice adds the maxcontract field to the request.
+func (a *AllowanceRequestPost) WithMaxContractPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxcontractprice", price.String())
+	return a
+}
+
+// WithMaxDownloadBandwidthPrice adds the maxdownloadbandwidthprice field to the request.
+func (a *AllowanceRequestPost) WithMaxDownloadBandwidthPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxdownloadbandwidthprice", price.String())
+	return a
+}
+
+// WithMaxSectorAccessPrice adds the maxsectoraccessprice field to the request.
+func (a *AllowanceRequestPost) WithMaxSectorAccessPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxsectoraccessprice", price.String())
+	return a
+}
+
+// WithMaxStoragePrice adds the maxstorageprice field to the request.
+func (a *AllowanceRequestPost) WithMaxStoragePrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxstorageprice", price.String())
+	return a
+}
+
+// WithMaxUploadBandwidthPrice adds the maxuploadbandwidthprice field to the request.
+func (a *AllowanceRequestPost) WithMaxUploadBandwidthPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxuploadbandwidthprice", price.String())
 	return a
 }
 
