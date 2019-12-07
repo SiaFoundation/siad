@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // segmentsForRecovery calculates the first segment and how many segments we
@@ -39,6 +40,25 @@ func segmentsForRecovery(chunkFetchOffset, chunkFetchLength uint64, rs modules.E
 func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules.ErasureCoder) (uint64, uint64) {
 	segmentIndex, numSegments := segmentsForRecovery(chunkFetchOffset, chunkFetchLength, rs)
 	return uint64(segmentIndex * crypto.SegmentSize), uint64(numSegments * crypto.SegmentSize)
+}
+
+// staticCheckDownloadExtortion will check whether the pricing to download for
+// this worker exceeds any of the extortion limits placed on the worker.
+func staticCheckDownloadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the RPC base price is too high.
+	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+		return errors.New("rpc base price of host is too high - extortion protection enabled")
+	}
+	// Check whether the download bandwidth price is too high.
+	if allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
+		return errors.New("download bandwidth price of host is too high - extortion protection enabled")
+	}
+	// Check whether the sector access price is too high.
+	if allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+		return errors.New("sector access price of host is too high - extortion protection enabled")
+	}
+
+	return nil
 }
 
 // managedPerformDownloadChunkJob will perform some download work if any is
@@ -76,6 +96,17 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 		return true
 	}
 	defer d.Close()
+
+	// Before performing the download, check for extortion pricing.
+	allowance := w.renter.hostContractor.Allowance()
+	hostSettings := d.HostSettings()
+	err = staticCheckDownloadExtortion(allowance, hostSettings)
+	if err != nil {
+		w.renter.log.Debugln("worker downloader is not being used because extortion was detected:", err)
+		udc.managedUnregisterWorker(w)
+		return true
+	}
+
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
 	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
