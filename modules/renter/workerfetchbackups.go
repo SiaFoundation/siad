@@ -33,6 +33,26 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
+// staticCheckFetchBackupsExtortion will check whether the pricing to fetch the
+// backups for this worker exceeds any of the extortion limits placed on the
+// worker.
+func staticCheckFetchBackupsExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the RPC base price is too high.
+	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+		return errors.New("rpc base price of host is too high - extortion protection enabled")
+	}
+	// Check whether the download bandwidth price is too high.
+	if allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
+		return errors.New("download bandwidth price of host is too high - extortion protection enabled")
+	}
+	// Check whether the sector access price is too high.
+	if allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+		return errors.New("sector access price of host is too high - extortion protection enabled")
+	}
+
+	return nil
+}
+
 // callQueueFetchBackupsJob will add the fetch backups job to the worker's
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
@@ -51,8 +71,6 @@ func (w *worker) callQueueFetchBackupsJob() chan fetchBackupsJobResult {
 
 // managedKillFetchBackupsJobs will throw an error for all queued backup jobs,
 // as they will not complete due to the worker being shut down.
-//
-// TODO: Need to write testing around the Kill functions for workers.
 func (w *worker) managedKillFetchBackupsJobs() {
 	w.staticFetchBackupsJobQueue.mu.Lock()
 	for _, job := range w.staticFetchBackupsJobQueue.queue {
@@ -92,6 +110,18 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 		return true
 	}
 	defer session.Close()
+
+	// Check for extortion before completeing the job.
+	allowance := w.renter.hostContractor.Allowance()
+	hostSettings := session.HostSettings()
+	err = staticCheckFetchBackupsExtortion(allowance, hostSettings)
+	if err != nil {
+		result := fetchBackupsJobResult{
+			err: errors.AddContext(err, "extortion check failed for fetch backups job"),
+		}
+		resultChan <- result
+		return true
+	}
 
 	backups, err := w.renter.callFetchHostBackups(session)
 	result := fetchBackupsJobResult{
