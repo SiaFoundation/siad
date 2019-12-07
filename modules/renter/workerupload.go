@@ -4,8 +4,49 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
+
+// staticCheckUploadExtortion looks at the current renter allowance and the
+// active settings for a host and determines whether an upload should be halted
+// due to extortion.
+//
+// NOTE: Currently this function treats all uploads as being the stream upload
+// size and assumes that data is actually being appended to the host. As the
+// worker gains more modification actions on the host, this check can be split
+// into different checks that vary based on the operation being performed.
+func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the base RPC price is too high.
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+		return errors.New("rpc base price of host is too high - extortion protection enabled")
+	}
+	// Check whether the sector access price is too high.
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+		return errors.New("sector access price of host is too high - extortion protection enabled")
+	}
+	// Check whether the storage price is too high.
+	if !allowance.MaxStoragePrice.IsZero() && allowance.MaxStoragePrice.Cmp(hostSettings.StoragePrice) <= 0 {
+		return errors.New("storage price of host is too high - extortion protection enabled")
+	}
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(hostSettings.UploadBandwidthPrice) <= 0 {
+		return errors.New("upload bandwidth price of host is too high - extortion protection enabled")
+	}
+
+	// Check that the combined prices make sense in the context of the overall
+	// allowance.
+	singleUploadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamUploadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.StreamUploadSize))
+	fullCostPerByte := singleUploadCost.Div64(modules.StreamUploadSize)
+	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
+	quarterCost := allowanceStorageCost.Div64(4)
+	if quarterCost.Cmp(allowance.Funds) >= 0 {
+		return errors.New("combined pricing of host exceeds what the renter is willing to pay for storage - extortion protection enabled")
+	}
+
+	return nil
+}
 
 // managedDropChunk will remove a worker from the responsibility of tracking a chunk.
 //
@@ -112,6 +153,17 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		return true
 	}
 	defer e.Close()
+
+	// Before performing the upload, check for extortion pricing.
+	allowance := w.renter.hostContractor.Allowance()
+	hostSettings := e.HostSettings()
+	err = staticCheckUploadExtortion(allowance, hostSettings)
+	if err != nil {
+		failureErr := errors.AddContext(err, "worker uploader is not being used because extortion was detected")
+		w.renter.log.Debugln(failureErr)
+		w.managedUploadFailed(uc, pieceIndex, failureErr)
+		return true
+	}
 
 	// Perform the upload, and update the failure stats based on the success of
 	// the upload attempt.

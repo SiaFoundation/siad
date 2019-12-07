@@ -54,7 +54,7 @@ func staticCheckFetchBackupsExtortion(allowance modules.Allowance, hostSettings 
 	// allowance. Because fetching backups is both a rare and more critical
 	// process, there is a higher tolerance for overpriced hosts versus standard
 	// downloads.
-	singleDownloadCost := hostSettings.SectorAccessPrice + hostSettings.BaseRPCPrice + (hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
+	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
 	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
 	quarterCost := allowanceDownloadCost.Div64(20)

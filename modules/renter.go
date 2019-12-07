@@ -225,6 +225,10 @@ type (
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
+//
+// NOTE: If the allowance max price fields are ever extended, all of the
+// extortion checks throughout the worker code and contract formation code also
+// need to be extended.
 type Allowance struct {
 	Funds       types.Currency    `json:"funds"`
 	Hosts       uint64            `json:"hosts"`

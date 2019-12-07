@@ -60,7 +60,7 @@ func staticCheckDownloadExtortion(allowance modules.Allowance, hostSettings modu
 
 	// Check that the combined prices make sense in the context of the overall
 	// allowance.
-	singleDownloadCost := hostSettings.SectorAccessPrice + hostSettings.BaseRPCPrice + (hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
+	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
 	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
 	quarterCost := allowanceDownloadCost.Div64(4)
