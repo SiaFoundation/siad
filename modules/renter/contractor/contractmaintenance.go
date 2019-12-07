@@ -480,11 +480,11 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 // contract triggers any extortion warnings.
 func staticCheckFormContractExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
-	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
 		return errors.New("rpc base price of host is too high - extortion protection enabled")
 	}
 	// Check whether the form contract price is too high.
-	if allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
+	if !allowance.MaxContractPrice.IsZero() && allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
 		return errors.New("contract price of host is too high - extortion protection enabled")
 	}
 
