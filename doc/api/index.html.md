@@ -789,6 +789,35 @@ Max upload speed permitted in bytes per second
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /gateway/bandwidth [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/gateway/bandwidth"
+```
+
+returns the total upload and download bandwidth usage for the gateway
+
+### JSON Response
+```go
+{
+  "download":  12345                                  // bytes
+  "upload":    12345                                  // bytes
+  "starttime": "2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
+}
+```
+
+**download** | bytes  
+the total number of bytes that have been downloaded by the gateway since the
+starttime.
+
+**upload** | bytes  
+the total number of bytes that have been uploaded by the gateway since the
+starttime.
+
+**starttime** | Unix timestamp  
+the time at which the gateway started monitoring the bandwidth, since the
+bandwidth is not currently persisted this will be startup timestamp.
+
 ## /gateway/connect/:*netaddress* [POST]
 > curl example  
 
@@ -854,9 +883,9 @@ fetches the list of blacklisted addresses.
 {
 "blacklist":
 [
-"123.456.789.0",  // string
-"123.456.789.0",  // string
-"123.456.789.0",  // string
+"123.123.123.123",  // string
+"123.123.123.123",  // string
+"123.123.123.123",  // string
 ],
 }
 ```
@@ -867,7 +896,7 @@ blacklist is a list of blacklisted address
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.123.123.123","123.123.123.123","123.123.123.123"]}' "localhost:9980/gateway/blacklist"
 ```
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"

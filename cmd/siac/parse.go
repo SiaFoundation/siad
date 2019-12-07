@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -25,25 +24,6 @@ var (
 	// parsed into a rate limit unit
 	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
 )
-
-// parseBlacklistNetAddresses is a helper function for sanitizing a string of
-// gateway peers and returning them as a []modules.NetAddress
-func parseBlacklistNetAddresses(addrString string) ([]modules.NetAddress, error) {
-	if addrString == "" {
-		return nil, errors.New("blank address string provided")
-	}
-	peers := strings.Split(addrString, ",")
-	var netAddrs []modules.NetAddress
-	for _, p := range peers {
-		// Append a port if one isn't provided.  A port is expected by the API but
-		// gets ignored by the daemon.
-		if len(strings.Split(p, ":")) == 1 {
-			p = p + ":9981"
-		}
-		netAddrs = append(netAddrs, modules.NetAddress(p))
-	}
-	return netAddrs, nil
-}
 
 // parseFilesize converts strings of form 10GB to a size in bytes. Fractional
 // sizes are truncated at the byte size.

@@ -101,9 +101,9 @@ func TestGatewayBlacklist(t *testing.T) {
 	}
 
 	// Set the Gateways's blacklist
-	addr1 := modules.NetAddress("123.123.123.123:0")
-	addr2 := modules.NetAddress("456.456.456.456:0")
-	addresses := []modules.NetAddress{addr1, addr2}
+	addr1 := "123.123.123.123"
+	addr2 := "456.456.456.456"
+	addresses := []string{addr1, addr2}
 	err = gateway.GatewaySetBlacklistPost(addresses)
 	if err != nil {
 		t.Fatal(err)
@@ -121,18 +121,18 @@ func TestGatewayBlacklist(t *testing.T) {
 	blacklistMap[blacklist.Blacklist[0]] = struct{}{}
 	blacklistMap[blacklist.Blacklist[1]] = struct{}{}
 	for _, addr := range addresses {
-		if _, ok := blacklistMap[addr.Host()]; !ok {
-			t.Fatalf("Did not find %v in the blacklist", addr.Host())
+		if _, ok := blacklistMap[addr]; !ok {
+			t.Fatalf("Did not find %v in the blacklist", addr)
 		}
 	}
 
 	// Append an address to the gateway
-	addr3 := modules.NetAddress("789.789.789.789:0")
-	err = gateway.GatewayAppendBlacklistPost([]modules.NetAddress{})
+	addr3 := "789.789.789.789"
+	err = gateway.GatewayAppendBlacklistPost([]string{})
 	if err == nil {
 		t.Fatal("Should return an error if trying to append no addresses")
 	}
-	err = gateway.GatewayAppendBlacklistPost([]modules.NetAddress{addr3})
+	err = gateway.GatewayAppendBlacklistPost([]string{addr3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,16 +149,16 @@ func TestGatewayBlacklist(t *testing.T) {
 	blacklistMap[blacklist.Blacklist[0]] = struct{}{}
 	blacklistMap[blacklist.Blacklist[1]] = struct{}{}
 	blacklistMap[blacklist.Blacklist[2]] = struct{}{}
-	if _, ok := blacklistMap[addr3.Host()]; !ok {
-		t.Fatalf("Address %v not found in blacklist %v", addr3.Host(), blacklist)
+	if _, ok := blacklistMap[addr3]; !ok {
+		t.Fatalf("Address %v not found in blacklist %v", addr3, blacklist)
 	}
 
 	// Remove some from the blacklist
-	err = gateway.GatewayRemoveBlacklistPost([]modules.NetAddress{})
+	err = gateway.GatewayRemoveBlacklistPost([]string{})
 	if err == nil {
 		t.Fatal("Should be an error if submitting remove without a list of addresses")
 	}
-	err = gateway.GatewayRemoveBlacklistPost([]modules.NetAddress{modules.NetAddress(addr1)})
+	err = gateway.GatewayRemoveBlacklistPost([]string{addr1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,13 +172,13 @@ func TestGatewayBlacklist(t *testing.T) {
 		t.Fatalf("Expected blacklist to be %v, got %v", len(addresses), blacklist)
 	}
 	for _, addr := range blacklist.Blacklist {
-		if addr == addr1.Host() {
-			t.Fatalf("Found %v in the blacklist even though it should have been removed", addr1.Host())
+		if addr == addr1 {
+			t.Fatalf("Found %v in the blacklist even though it should have been removed", addr1)
 		}
 	}
 
 	// Reset the blacklist
-	err = gateway.GatewaySetBlacklistPost([]modules.NetAddress{})
+	err = gateway.GatewaySetBlacklistPost([]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,5 +268,81 @@ func TestGatewayOfflineAlert(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestGatewayBandwidth checks that the Gateway's bandwidth is being monitored
+func TestGatewayBandwidth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create two Gateways
+	testDir := gatewayTestDir(t.Name())
+	gateway1, err := siatest.NewCleanNode(node.Gateway(testDir + "/gateway1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := gateway1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	gateway2, err := siatest.NewCleanNode(node.Gateway(testDir + "/gateway1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := gateway2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Both gateways should have no bandwidth usage
+	gbg1, err := gateway1.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg1.Download != 0 || gbg1.Upload != 0 {
+		t.Log("Download:", gbg1.Download)
+		t.Log("Upload:", gbg1.Upload)
+		t.Fatal("Expected Gateway 1 to have no bandwidth usage")
+	}
+	gbg2, err := gateway2.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg2.Download != 0 || gbg2.Upload != 0 {
+		t.Log("Download:", gbg2.Download)
+		t.Log("Upload:", gbg2.Upload)
+		t.Fatal("Expected Gateway 2 to have no bandwidth usage")
+	}
+
+	// Connect the gateways
+	err = gateway1.GatewayConnectPost(gateway2.GatewayAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// After connecting the gateways, both gateways should have used some upload
+	// and download bandwidth
+	gbg1, err = gateway1.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg1.Download == 0 || gbg1.Upload == 0 {
+		t.Log("Download:", gbg1.Download)
+		t.Log("Upload:", gbg1.Upload)
+		t.Fatal("Expected Gateway 1 to have bandwidth usage after connecting with a peer")
+	}
+	gbg2, err = gateway2.GatewayBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gbg2.Download == 0 || gbg2.Upload == 0 {
+		t.Log("Download:", gbg2.Download)
+		t.Log("Upload:", gbg2.Upload)
+		t.Fatal("Expected Gateway 2 to have bandwidth usage after connecting with a peer")
 	}
 }

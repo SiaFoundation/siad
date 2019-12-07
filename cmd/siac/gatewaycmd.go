@@ -34,36 +34,42 @@ var (
 	}
 
 	gatewayBlacklistAppendCmd = &cobra.Command{
-		Use:   "append [address]",
-		Short: "Append a new address to the blacklisted peers list",
-		Long: `Add a new address to the list of blacklisted peers.
-Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
-ipaddresses or domain names.
+		Use:   "append [ip] [ip] [ip] [ip]...",
+		Short: "Adds new ip address(es) to the gateway blacklist.",
+		Long: `Adds new ip address(es) to the gateway blacklist.
+Accepts a list of ip addresses or domain names as individual inputs.
 
-For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
-		Run: wrap(gatewayblacklistappendcmd),
+For example: siac gateway blacklist append 123.123.123.123 111.222.111.222 mysiahost.duckdns.org`,
+		Run: gatewayblacklistappendcmd,
+	}
+
+	gatewayBlacklistClearCmd = &cobra.Command{
+		Use:   "clear",
+		Short: "Clear the blacklisted peers list",
+		Long: `Clear the blacklisted peers list.
+	
+	For example: siac gateway blacklist clear`,
+		Run: gatewayblacklistclearcmd,
 	}
 
 	gatewayBlacklistRemoveCmd = &cobra.Command{
-		Use:   "remove [address]",
-		Short: "Remove a peer from the list of blacklisted peers",
-		Long: `Remove one or more peers from the list of blacklisted peers.
-Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
-ipaddresses or domain names.
+		Use:   "remove [ip] [ip] [ip] [ip]...",
+		Short: "Remove ip address(es) from the gateway blacklist.",
+		Long: `Remove ip address(es) from the gateway blacklist.
+Accepts a list of ip addresses or domain names as individual inputs.
 
-For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
-		Run: wrap(gatewayblacklistremovecmd),
+For example: siac gateway blacklist remove 123.123.123.123 111.222.111.222 mysiahost.duckdns.org`,
+		Run: gatewayblacklistremovecmd,
 	}
 
 	gatewayBlacklistSetCmd = &cobra.Command{
-		Use:   "set [address],[address]",
-		Short: "Set the blacklisted peers list",
-		Long: `Set the blacklisted peers list.
-Accepts a comma-separated list of host:ip pairs, or a comma-separated list of
-ipaddresses or domain names.
+		Use:   "set [ip] [ip] [ip] [ip]...",
+		Short: "Set the gateway's blacklist",
+		Long: `Set the gateway's blacklist.
+Accepts a list of ip addresses or domain names as individual inputs.
 
-For example: siac gateway blacklist remove 123.123.123.123:9981,111.222.111.222,mysiahost.duckdns.org:9981`,
-		Run: wrap(gatewayblacklistsetcmd),
+For example: siac gateway blacklist set 123.123.123.123 111.222.111.222 mysiahost.duckdns.org`,
+		Run: gatewayblacklistsetcmd,
 	}
 
 	gatewayConnectCmd = &cobra.Command{
@@ -143,13 +149,13 @@ func gatewaycmd() {
 }
 
 // gatewayblacklistcmd is the handler for the command `siac gateway blacklist`
-// Prints the hosts on the gateway blacklist
+// Prints the ip addresses on the gateway blacklist
 func gatewayblacklistcmd() {
 	gbg, err := httpClient.GatewayBlacklistGet()
 	if err != nil {
 		die("Could not get gateway blacklist", err)
 	}
-	fmt.Println(len(gbg.Blacklist), "peers currently on the gateway blacklist")
+	fmt.Println(len(gbg.Blacklist), "ip addresses currently on the gateway blacklist")
 	for _, ip := range gbg.Blacklist {
 		fmt.Println(ip)
 	}
@@ -158,47 +164,61 @@ func gatewayblacklistcmd() {
 
 // gatewayblacklistappendcmd is the handler for the command
 // `siac gateway blacklist append`
-// Adds one or more new hosts to the gateway's blacklist
-func gatewayblacklistappendcmd(addrString string) {
-	netAddrs, err := parseBlacklistNetAddresses(addrString)
-	if err != nil {
-		die("Could not append the peer to the gateway blacklist", err)
+// Adds one or more new ip addresses to the gateway's blacklist
+func gatewayblacklistappendcmd(cmd *cobra.Command, addresses []string) {
+	if len(addresses) == 0 {
+		fmt.Println("No IP addresses submitted to append")
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
 	}
-	err = httpClient.GatewayAppendBlacklistPost(netAddrs)
+	err := httpClient.GatewayAppendBlacklistPost(addresses)
 	if err != nil {
-		die("Could not append the peer to the gateway blacklist", err)
+		die("Could not append the ip addresses(es) to the gateway blacklist", err)
 	}
-	fmt.Println(addrString, "sucessfully added to the gateway blacklist")
+	fmt.Println(addresses, "successfully added to the gateway blacklist")
+}
+
+// gatewayblacklistclearcmd is the handler for the command
+// `siac gateway blacklist clear`
+// Clears the gateway blacklist
+func gatewayblacklistclearcmd(cmd *cobra.Command, addresses []string) {
+	err := httpClient.GatewaySetBlacklistPost(addresses)
+	if err != nil {
+		die("Could not clear the gateway blacklist", err)
+	}
+	fmt.Println("successfully cleared the gateway blacklist")
 }
 
 // gatewayblacklistremovecmd is the handler for the command
 // `siac gateway blacklist remove`
-// Removes one or more hosts from the gateway's blacklist
-func gatewayblacklistremovecmd(addrString string) {
-	netAddrs, err := parseBlacklistNetAddresses(addrString)
-	if err != nil {
-		die("Could not remove the peer from the gateway blacklist", err)
+// Removes one or more ip addresses from the gateway's blacklist
+func gatewayblacklistremovecmd(cmd *cobra.Command, addresses []string) {
+	if len(addresses) == 0 {
+		fmt.Println("No IP addresses submitted to remove")
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
 	}
-	err = httpClient.GatewayRemoveBlacklistPost(netAddrs)
+	err := httpClient.GatewayRemoveBlacklistPost(addresses)
 	if err != nil {
-		die("Could not remove the peer from the gateway blacklist", err)
+		die("Could not remove the ip address(es) from the gateway blacklist", err)
 	}
-	fmt.Println(addrString, "was sucessfully removed from the gateway blacklist")
+	fmt.Println(addresses, "was successfully removed from the gateway blacklist")
 }
 
 // gatewayblacklistsetcmd is the handler for the command
 // `siac gateway blacklist set`
-// Sets the gateway blacklist to the hosts passed in via a comma-separated list
-func gatewayblacklistsetcmd(addrString string) {
-	netAddrs, err := parseBlacklistNetAddresses(addrString)
+// Sets the gateway blacklist to the ip addresses passed in
+func gatewayblacklistsetcmd(cmd *cobra.Command, addresses []string) {
+	if len(addresses) == 0 {
+		fmt.Println("No IP addresses submitted")
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+	err := httpClient.GatewaySetBlacklistPost(addresses)
 	if err != nil {
 		die("Could not set the gateway blacklist", err)
 	}
-	err = httpClient.GatewaySetBlacklistPost(netAddrs)
-	if err != nil {
-		die("Could not set the gateway blacklist", err)
-	}
-	fmt.Println(addrString, "was sucessfully set as the gateway blacklist")
+	fmt.Println(addresses, "was successfully set as the gateway blacklist")
 }
 
 // gatewaylistcmd is the handler for the command `siac gateway list`.
