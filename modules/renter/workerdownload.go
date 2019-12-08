@@ -62,6 +62,13 @@ func staticCheckDownloadExtortion(allowance modules.Allowance, hostSettings modu
 		return errors.New(errStr)
 	}
 
+	// If there is no allowance, general extortion checks have to be disabled,
+	// because there is no baseline for understanding what might count as
+	// extortion.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
 	// Check that the combined prices make sense in the context of the overall
 	// allowance.
 	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))

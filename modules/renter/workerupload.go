@@ -39,6 +39,13 @@ func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings module
 		return errors.New(errStr)
 	}
 
+	// If there is no allowance, general extortion checks have to be disabled,
+	// because there is no baseline for understanding what might count as
+	// extortion.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
 	// Check that the combined prices make sense in the context of the overall
 	// allowance.
 	singleUploadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamUploadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.StreamUploadSize))

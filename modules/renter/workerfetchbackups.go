@@ -50,6 +50,13 @@ func staticCheckFetchBackupsExtortion(allowance modules.Allowance, hostSettings 
 		return errors.New("sector access price of host is too high - extortion protection enabled")
 	}
 
+	// If there is no allowance, general extortion checks have to be disabled,
+	// because there is no baseline for understanding what might count as
+	// extortion.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
 	// Check that the combined prices make sense in the context of the overall
 	// allowance. Because fetching backups is both a rare and more critical
 	// process, there is a higher tolerance for overpriced hosts versus standard

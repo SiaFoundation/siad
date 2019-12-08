@@ -684,13 +684,6 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		t.Log("Contracts in total:", len(rc.Contracts))
 		t.Fatal(err)
 	}
-	// TODO: Currently, the allowance is not recovered by the recovery process,
-	// so we need to set it manually after recovery. This step can be removed
-	// once the recovery process also recovers the allowance.
-	err = r.RenterPostAllowance(siatest.DefaultAllowance)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Download the whole file again to see if all roots were recovered.
 	_, _, err = r.DownloadByStream(rf)
@@ -834,13 +827,6 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 	if err != nil {
 		rc, _ = r.RenterContractsGet()
 		t.Log("Contracts in total:", len(rc.Contracts))
-		t.Fatal(err)
-	}
-	// TODO: Currently, the allowance is not recovered by the recovery process,
-	// so we need to set it manually after recovery. This step can be removed
-	// once the recovery process also recovers the allowance.
-	err = r.RenterPostAllowance(siatest.DefaultAllowance)
-	if err != nil {
 		t.Fatal(err)
 	}
 
