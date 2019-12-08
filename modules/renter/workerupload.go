@@ -20,22 +20,22 @@ import (
 func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
-		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", allowance.MaxRPCPrice, hostSettings.BaseRPCPrice)
+		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
 		return errors.New(errStr)
 	}
 	// Check whether the sector access price is too high.
 	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
-		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", allowance.MaxSectorAccessPrice, hostSettings.SectorAccessPrice)
+		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
 		return errors.New(errStr)
 	}
 	// Check whether the storage price is too high.
 	if !allowance.MaxStoragePrice.IsZero() && allowance.MaxStoragePrice.Cmp(hostSettings.StoragePrice) <= 0 {
-		errStr := fmt.Sprintf("storage price of host is %v, which is above the maximum allowed by the allowance: %v", allowance.MaxStoragePrice, hostSettings.StoragePrice)
+		errStr := fmt.Sprintf("storage price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.StoragePrice, allowance.MaxStoragePrice)
 		return errors.New(errStr)
 	}
 	// Check whether the upload bandwidth price is too high.
 	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(hostSettings.UploadBandwidthPrice) <= 0 {
-		errStr := fmt.Sprintf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", allowance.MaxUploadBandwidthPrice, hostSettings.UploadBandwidthPrice)
+		errStr := fmt.Sprintf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.UploadBandwidthPrice, allowance.MaxUploadBandwidthPrice)
 		return errors.New(errStr)
 	}
 
