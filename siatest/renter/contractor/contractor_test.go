@@ -178,7 +178,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	// Start a new renter with the same seed but disable contract recovery.
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
-	renterParams.Allowance = modules.DefaultAllowance
+	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = 2
 	renterParams.PrimarySeed = seed
 	renterParams.ContractorDeps = &dependencies.DependencyDisableContractRecovery{}
@@ -684,6 +684,14 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		t.Log("Contracts in total:", len(rc.Contracts))
 		t.Fatal(err)
 	}
+	// TODO: Currently, the allowance is not recovered by the recovery process,
+	// so we need to set it manually after recovery. This step can be removed
+	// once the recovery process also recovers the allowance.
+	err = r.RenterPostAllowance(siatest.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Download the whole file again to see if all roots were recovered.
 	_, _, err = r.DownloadByStream(rf)
 	if err != nil {
@@ -828,6 +836,14 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.Log("Contracts in total:", len(rc.Contracts))
 		t.Fatal(err)
 	}
+	// TODO: Currently, the allowance is not recovered by the recovery process,
+	// so we need to set it manually after recovery. This step can be removed
+	// once the recovery process also recovers the allowance.
+	err = r.RenterPostAllowance(siatest.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Download the whole file again to see if all roots were recovered.
 	_, _, err = r.DownloadByStream(rf)
 	if err != nil {

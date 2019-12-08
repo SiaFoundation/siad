@@ -40,18 +40,21 @@ type (
 )
 
 var (
-	// DefaultAllowance is the allowance used for the group's renters
+	// DefaultAllowance is the allowance used for the group's renters.
+	//
+	// Note: the default allowance needs to be close enough in practice to what
+	// the host default settings are that extortion protection does not kick in.
 	DefaultAllowance = modules.Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(1e3),
 		Hosts:       5,
 		Period:      50,
 		RenewWindow: 24,
 
-		ExpectedStorage:    modules.SectorSize * 50e3,
-		ExpectedUpload:     modules.SectorSize * 5e3,
-		ExpectedDownload:   modules.SectorSize * 5e3,
+		ExpectedStorage:    modules.SectorSize * 5e3,
+		ExpectedUpload:     modules.SectorSize * 500,
+		ExpectedDownload:   modules.SectorSize * 500,
 		ExpectedRedundancy: 5.0,
-		MaxPeriodChurn:     modules.SectorSize * 5e3,
+		MaxPeriodChurn:     modules.SectorSize * 500,
 	}
 
 	// testGroupBuffer is a buffer channel to control the number of testgroups
