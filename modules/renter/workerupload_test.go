@@ -10,12 +10,14 @@ import (
 // TestCheckUploadExtortion checks that the upload extortion checker is
 // correctly detecting extortion from a host.
 func TestCheckUploadExtortion(t *testing.T) {
+	oneCurrency := types.NewCurrency64(1)
+
 	// minAllowance contians only the fields necessary to test the extortion
 	// function. The min allowance doesn't include any of the max prices,
 	// because the function will ignore them if they are not set.
 	minAllowance := modules.Allowance{
-		Funds:  types.SiacoinPrecision, // One siacoin.
-		Period: 1,                      // 1 block.
+		Funds:  types.SiacoinPrecision.Sub(oneCurrency), // One siacoin, plus a tiny bit for the '>' vs. the '>='
+		Period: 1,                                       // 1 block.
 
 		ExpectedStorage: modules.StreamUploadSize, // 1 stream upload operation.
 	}
@@ -33,7 +35,7 @@ func TestCheckUploadExtortion(t *testing.T) {
 
 	err := staticCheckUploadExtortion(minAllowance, minHostSettings)
 	if err == nil {
-		t.Fatal("expecting extortion check to fail")
+		t.Fatal("expecting extortion check to fail:", err)
 	}
 
 	// Drop the host prices one field at a time.
@@ -65,7 +67,6 @@ func TestCheckUploadExtortion(t *testing.T) {
 	// Set min settings on the allowance that are just below that should be
 	// acceptable.
 	maxAllowance := minAllowance
-	oneCurrency := types.NewCurrency64(1)
 	maxAllowance.Funds = maxAllowance.Funds.Add(oneCurrency)
 	maxAllowance.MaxRPCPrice = types.SiacoinPrecision.Add(oneCurrency)
 	maxAllowance.MaxContractPrice = oneCurrency
@@ -82,7 +83,7 @@ func TestCheckUploadExtortion(t *testing.T) {
 
 	// Should fail if the MaxRPCPrice is dropped.
 	failAllowance := maxAllowance
-	failAllowance.MaxRPCPrice = types.SiacoinPrecision
+	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
 	err = staticCheckUploadExtortion(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting extortion check to fail")
@@ -90,7 +91,7 @@ func TestCheckUploadExtortion(t *testing.T) {
 
 	// Should fail if the MaxSectorAccessPrice is dropped.
 	failAllowance = maxAllowance
-	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision
+	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Sub(oneCurrency)
 	err = staticCheckUploadExtortion(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting extortion check to fail")
@@ -98,7 +99,7 @@ func TestCheckUploadExtortion(t *testing.T) {
 
 	// Should fail if the MaxStoragePrice is dropped.
 	failAllowance = maxAllowance
-	failAllowance.MaxStoragePrice = types.SiacoinPrecision.Div64(modules.StreamUploadSize)
+	failAllowance.MaxStoragePrice = types.SiacoinPrecision.Div64(modules.StreamUploadSize).Sub(oneCurrency)
 	err = staticCheckUploadExtortion(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting extortion check to fail")
@@ -106,7 +107,7 @@ func TestCheckUploadExtortion(t *testing.T) {
 
 	// Should fail if the MaxUploadBandwidthPrice is dropped.
 	failAllowance = maxAllowance
-	failAllowance.MaxUploadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamUploadSize)
+	failAllowance.MaxUploadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamUploadSize).Sub(oneCurrency)
 	err = staticCheckUploadExtortion(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting extortion check to fail")

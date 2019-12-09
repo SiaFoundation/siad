@@ -19,22 +19,22 @@ import (
 // into different checks that vary based on the operation being performed.
 func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
 		return errors.New(errStr)
 	}
 	// Check whether the sector access price is too high.
-	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) < 0 {
 		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
 		return errors.New(errStr)
 	}
 	// Check whether the storage price is too high.
-	if !allowance.MaxStoragePrice.IsZero() && allowance.MaxStoragePrice.Cmp(hostSettings.StoragePrice) <= 0 {
+	if !allowance.MaxStoragePrice.IsZero() && allowance.MaxStoragePrice.Cmp(hostSettings.StoragePrice) < 0 {
 		errStr := fmt.Sprintf("storage price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.StoragePrice, allowance.MaxStoragePrice)
 		return errors.New(errStr)
 	}
 	// Check whether the upload bandwidth price is too high.
-	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(hostSettings.UploadBandwidthPrice) <= 0 {
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(hostSettings.UploadBandwidthPrice) < 0 {
 		errStr := fmt.Sprintf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.UploadBandwidthPrice, allowance.MaxUploadBandwidthPrice)
 		return errors.New(errStr)
 	}
@@ -51,9 +51,9 @@ func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings module
 	singleUploadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamUploadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.StreamUploadSize))
 	fullCostPerByte := singleUploadCost.Div64(modules.StreamUploadSize)
 	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
-	quarterCost := allowanceStorageCost.Div64(4)
-	if quarterCost.Cmp(allowance.Funds) >= 0 {
-		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - extortion protection enabled", quarterCost, allowance.Funds)
+	reducedCost := allowanceStorageCost.Div64(4)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - extortion protection enabled", reducedCost, allowance.Funds)
 		return errors.New(errStr)
 	}
 
