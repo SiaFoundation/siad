@@ -733,7 +733,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max upload bandwidth price:", err)
+			die("Could not read max upload bandwidth price:", err)
 		}
 		price = price.Div(modules.BytesPerTerabyte)
 		req = req.WithMaxUploadBandwidthPrice(price)
