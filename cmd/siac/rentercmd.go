@@ -659,7 +659,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max rpc price:", err)
+			die("Could not read max rpc price:", err)
 		}
 		price = price.Div64(1e6)
 		req = req.WithMaxRPCPrice(price)
