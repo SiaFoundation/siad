@@ -9,6 +9,13 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// uploadGougingFractionDenom sets the gouging fraction to 1/4 based on the
+	// idea that the user should be able to hit at least some fraction of their
+	// desired upload volume using some fraction of hosts.
+	uploadGougingFractionDenom = 4
+)
+
 // staticCheckUploadGouging looks at the current renter allowance and the
 // active settings for a host and determines whether an upload should be halted
 // due to price gouging.
@@ -60,7 +67,7 @@ func staticCheckUploadGouging(allowance modules.Allowance, hostSettings modules.
 	singleUploadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamUploadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.StreamUploadSize))
 	fullCostPerByte := singleUploadCost.Div64(modules.StreamUploadSize)
 	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
-	reducedCost := allowanceStorageCost.Div64(4)
+	reducedCost := allowanceStorageCost.Div64(uploadGougingFractionDenom)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
 		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
 		return errors.New(errStr)

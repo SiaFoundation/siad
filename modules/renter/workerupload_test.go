@@ -16,8 +16,11 @@ func TestCheckUploadGouging(t *testing.T) {
 	// function. The min allowance doesn't include any of the max prices,
 	// because the function will ignore them if they are not set.
 	minAllowance := modules.Allowance{
-		Funds:  types.SiacoinPrecision.Sub(oneCurrency), // One siacoin, plus a tiny bit for the '>' vs. the '>='
-		Period: 1,                                       // 1 block.
+		// Funds is set such that the tests come out to an easy, round number.
+		// One siacoin is multiplied by the number of elements that are checked
+		// for gouging, and then divided by the gounging denominator.
+		Funds:  types.SiacoinPrecision.Mul64(4).Div64(uploadGougingFractionDenom).Sub(oneCurrency),
+		Period: 1, // 1 block.
 
 		ExpectedStorage: modules.StreamUploadSize, // 1 stream upload operation.
 	}

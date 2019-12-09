@@ -20,6 +20,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+const (
+	// fetchBackupsGougingFractionDenom sets the fraction to 1/100 because
+	// fetching backups is important, so there is less sensitivity to gouging.
+	// Also, this is a rare operation.
+	fetchBackupsGougingFractionDenom = 100
+)
+
 // fetchBackupsJobQueue is the primary structure for managing fetch backup jobs
 // from the worker.
 type fetchBackupsJobQueue struct {
@@ -73,14 +80,10 @@ func staticCheckFetchBackupsGouging(allowance modules.Allowance, hostSettings mo
 	// is determined on a case-by-case basis. If the host is too expensive to
 	// even satisfy a faction of the user's total desired resource consumption,
 	// the host is block for price gouging.
-	//
-	// In the case of fetching backups, the fraction 1/100 is used because
-	// fetching backups is important, so there is less sensitivity to gouging.
-	// Also, this is a rare operation.
 	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
 	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
-	reducedCost := allowanceDownloadCost.Div64(100)
+	reducedCost := allowanceDownloadCost.Div64(fetchBackupsGougingFractionDenom)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
 		errStr := fmt.Sprintf("combined fetch backups pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
 		return errors.New(errStr)
