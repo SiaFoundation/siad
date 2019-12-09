@@ -137,7 +137,7 @@ func (n *DirNode) UpdateMetadata(md siadir.Metadata) error {
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
 // offlineMap, goodForRenewMap and contractMap don't need to be provided if
 // 'cached' is set to 'true'.
-func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
 	// Prepare a pool of workers.
 	numThreads := 40
 	dirLoadChan := make(chan *DirNode, numThreads)

@@ -306,24 +306,15 @@ func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte,
 
 // Readdir will return a dirstream that can be used to look at all of the files
 // in the directory.
-//
-// TODO: Re-write to not need to use the SiaPath, should just be able to get the
-// dirlist off of fuse anyway.
 func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	siaPath := fdn.staticFilesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
-	// Load the directory stream from the renter.
-	fileinfos, err := fdn.staticFilesystem.renter.FileList(siaPath, false, true)
+	fileinfos, dirinfos, err := fdn.staticFilesystem.renter.staticFileSystem.CachedListOnNode(fdn.staticDirNode, false)
 	if err != nil {
-		fdn.staticFilesystem.renter.log.Printf("Unable to get file list for fuse directory %v: %v", siaPath, err)
-		return nil, errToStatus(err)
-	}
-	dirinfos, err := fdn.staticFilesystem.renter.DirList(siaPath)
-	if err != nil {
-		fdn.staticFilesystem.renter.log.Printf("Error fetching dir list for fuse dir %v: %v", siaPath, err)
+		siaPath := fdn.staticFilesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
+		fdn.staticFilesystem.renter.log.Printf("Unable to get file and directory list for fuse directory %v: %v", siaPath, err)
 		return nil, errToStatus(err)
 	}
 
-	// Convert the fileinfos to []fuse.DirEntry
+	// Convert the fileinfos and dirinfos to []fuse.DirEntry
 	dirEntries := make([]fuse.DirEntry, 0, len(fileinfos)+len(dirinfos))
 	for _, fi := range fileinfos {
 		dirEntries = append(dirEntries, fuse.DirEntry{
@@ -331,8 +322,9 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 			Name: fi.Name(),
 		})
 	}
-	for _, di := range dirinfos {
-		if di.SiaPath.String() == siaPath.String() {
+	for i, di := range dirinfos {
+		// Skip the first directory if any are returned.
+		if i == 0 {
 			continue
 		}
 		dirEntries = append(dirEntries, fuse.DirEntry{
