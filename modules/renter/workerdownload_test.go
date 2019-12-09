@@ -177,7 +177,7 @@ func TestCheckDownloadGouging(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Set min settings on the allowance that are just below that should be
+	// Set min settings on the allowance that are just below what should be
 	// acceptable.
 	maxAllowance := minAllowance
 	maxAllowance.Funds = maxAllowance.Funds.Add(oneCurrency)
