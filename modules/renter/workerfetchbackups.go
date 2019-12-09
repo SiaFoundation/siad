@@ -41,15 +41,15 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
-// staticCheckFetchBackupsGouging looks at the current renter allowance and the
-// active settings for a host and determines whether an backup fetch should be
-// halted due to price gouging.
+// checkFetchBackupsGouging looks at the current renter allowance and the active
+// settings for a host and determines whether an backup fetch should be halted
+// due to price gouging.
 //
 // NOTE: Currently this function treats all downloads being the stream download
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func staticCheckFetchBackupsGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+func checkFetchBackupsGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
@@ -153,7 +153,7 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 	// Check for price gouging before completing the job.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := session.HostSettings()
-	err = staticCheckFetchBackupsGouging(allowance, hostSettings)
+	err = checkFetchBackupsGouging(allowance, hostSettings)
 	if err != nil {
 		result := fetchBackupsJobResult{
 			err: errors.AddContext(err, "price gouging check failed for fetch backups job"),

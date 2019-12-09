@@ -16,15 +16,15 @@ const (
 	uploadGougingFractionDenom = 4
 )
 
-// staticCheckUploadGouging looks at the current renter allowance and the
-// active settings for a host and determines whether an upload should be halted
-// due to price gouging.
+// checkUploadGouging looks at the current renter allowance and the active
+// settings for a host and determines whether an upload should be halted due to
+// price gouging.
 //
 // NOTE: Currently this function treats all uploads as being the stream upload
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func staticCheckUploadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+func checkUploadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
@@ -181,7 +181,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	// Before performing the upload, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := e.HostSettings()
-	err = staticCheckUploadGouging(allowance, hostSettings)
+	err = checkUploadGouging(allowance, hostSettings)
 	if err != nil {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
 		w.renter.log.Debugln(failureErr)

@@ -342,7 +342,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	}
 
 	// Check for price gouging.
-	err := staticCheckFormContractGouging(allowance, hostSettings)
+	err := checkFormContractGouging(allowance, hostSettings)
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract due to price gouging detection")
 	}
@@ -476,9 +476,9 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-// staticCheckFormContractGouging will check whether the pricing for forming
+// checkFormContractGouging will check whether the pricing for forming
 // this contract triggers any price gouging warnings.
-func staticCheckFormContractGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		return errors.New("rpc base price of host is too high - price gouging protection enabled")
@@ -532,7 +532,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 
 	// Check for price gouging on the renewal.
-	err = staticCheckFormContractGouging(c.allowance, host.HostExternalSettings)
+	err = checkFormContractGouging(c.allowance, host.HostExternalSettings)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "unable to renew - price gouging protection enabled")
 	}

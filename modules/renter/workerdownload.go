@@ -52,15 +52,15 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules
 	return uint64(segmentIndex * crypto.SegmentSize), uint64(numSegments * crypto.SegmentSize)
 }
 
-// staticCheckDownloadGouging looks at the current renter allowance and the
-// active settings for a host and determines whether a backup fetch should be
-// halted due to price gouging.
+// checkDownloadGouging looks at the current renter allowance and the active
+// settings for a host and determines whether a backup fetch should be halted
+// due to price gouging.
 //
 // NOTE: Currently this function treats all downloads being the stream download
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func staticCheckDownloadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
@@ -142,7 +142,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	// Before performing the download, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := d.HostSettings()
-	err = staticCheckDownloadGouging(allowance, hostSettings)
+	err = checkDownloadGouging(allowance, hostSettings)
 	if err != nil {
 		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
 		udc.managedUnregisterWorker(w)
