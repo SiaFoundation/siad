@@ -14,6 +14,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// downloadGougingFractionDenom sets the fraction to 1/4 because the renter
+	// should have enough money to download at least a fraction of the amount of
+	// data they intend to download. In practice, this ends up being a farily
+	// weak gouging filter because a massive portion of the allowance tends to
+	// be assigned to storage, and this does not account for that.
+	downloadGougingFractionDenom = 4
+)
+
 // segmentsForRecovery calculates the first segment and how many segments we
 // need in total to recover the requested data.
 func segmentsForRecovery(chunkFetchOffset, chunkFetchLength uint64, rs modules.ErasureCoder) (uint64, uint64) {
@@ -43,42 +52,51 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules
 	return uint64(segmentIndex * crypto.SegmentSize), uint64(numSegments * crypto.SegmentSize)
 }
 
-// staticCheckDownloadExtortion will check whether the pricing to download for
-// this worker exceeds any of the extortion limits placed on the worker.
-func staticCheckDownloadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
-	// Check whether the RPC base price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
-		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", allowance.MaxRPCPrice, hostSettings.BaseRPCPrice)
+// staticCheckDownloadGouging looks at the current renter allowance and the
+// active settings for a host and determines whether an backup fetch should be
+// halted due to price gouging.
+//
+// NOTE: Currently this function treats all downloads being the stream download
+// size and assumes that data is actually being appended to the host. As the
+// worker gains more modification actions on the host, this check can be split
+// into different checks that vary based on the operation being performed.
+func staticCheckDownloadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the base RPC price is too high.
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
+		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
 		return errors.New(errStr)
 	}
 	// Check whether the download bandwidth price is too high.
-	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
-		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", allowance.MaxDownloadBandwidthPrice, hostSettings.DownloadBandwidthPrice)
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) < 0 {
+		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.DownloadBandwidthPrice, allowance.MaxDownloadBandwidthPrice)
 		return errors.New(errStr)
 	}
 	// Check whether the sector access price is too high.
-	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
-		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", allowance.MaxSectorAccessPrice, hostSettings.SectorAccessPrice)
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) < 0 {
+		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
 		return errors.New(errStr)
 	}
 
-	// If there is no allowance, general extortion checks have to be disabled,
-	// because there is no baseline for understanding what might count as
-	// extortion.
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
 	if allowance.Funds.IsZero() {
 		return nil
 	}
 
 	// Check that the combined prices make sense in the context of the overall
-	// allowance.
+	// allowance. The general idea is to compute the total cost of performing
+	// the same action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached. The fraction
+	// is determined on a case-by-case basis. If the host is too expensive to
+	// even satisfy a faction of the user's total desired resource consumption,
+	// the host is block for price gouging.
 	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
 	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
-	quarterCost := allowanceDownloadCost.Div64(4)
-	// If there is not enough allowance to cover one quarter of the bandwidth
-	// requirements, consider this host for extortion.
-	if quarterCost.Cmp(allowance.Funds) >= 0 {
-		errStr := fmt.Sprintf("combined download pricing of host yields %v, which is more than the renter is willing to pay for a download: %v - extortion protection enabled", quarterCost, allowance.Funds)
+	reducedCost := allowanceDownloadCost.Div64(downloadGougingFractionDenom)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined download pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
 		return errors.New(errStr)
 	}
 
@@ -121,12 +139,12 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	}
 	defer d.Close()
 
-	// Before performing the download, check for extortion pricing.
+	// Before performing the download, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := d.HostSettings()
-	err = staticCheckDownloadExtortion(allowance, hostSettings)
+	err = staticCheckDownloadGouging(allowance, hostSettings)
 	if err != nil {
-		w.renter.log.Debugln("worker downloader is not being used because extortion was detected:", err)
+		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
 		udc.managedUnregisterWorker(w)
 		return true
 	}
