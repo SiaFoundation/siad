@@ -9,15 +9,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// staticCheckUploadExtortion looks at the current renter allowance and the
+// staticCheckUploadGouging looks at the current renter allowance and the
 // active settings for a host and determines whether an upload should be halted
-// due to extortion.
+// due to price gouging.
 //
 // NOTE: Currently this function treats all uploads as being the stream upload
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+func staticCheckUploadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the base RPC price is too high.
 	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
 		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
@@ -39,21 +39,23 @@ func staticCheckUploadExtortion(allowance modules.Allowance, hostSettings module
 		return errors.New(errStr)
 	}
 
-	// If there is no allowance, general extortion checks have to be disabled,
-	// because there is no baseline for understanding what might count as
-	// extortion.
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
 	if allowance.Funds.IsZero() {
 		return nil
 	}
 
 	// Check that the combined prices make sense in the context of the overall
 	// allowance.
+	//
+	// The general idea is that a host is marked for
 	singleUploadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamUploadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.StreamUploadSize))
 	fullCostPerByte := singleUploadCost.Div64(modules.StreamUploadSize)
 	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
 	reducedCost := allowanceStorageCost.Div64(4)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - extortion protection enabled", reducedCost, allowance.Funds)
+		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
 		return errors.New(errStr)
 	}
 
@@ -166,12 +168,12 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	}
 	defer e.Close()
 
-	// Before performing the upload, check for extortion pricing.
+	// Before performing the upload, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := e.HostSettings()
-	err = staticCheckUploadExtortion(allowance, hostSettings)
+	err = staticCheckUploadGouging(allowance, hostSettings)
 	if err != nil {
-		failureErr := errors.AddContext(err, "worker uploader is not being used because extortion was detected")
+		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return true
