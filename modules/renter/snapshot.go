@@ -33,11 +33,11 @@ type snapshotEntry struct {
 var (
 	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
-	snapshotKeySpecifier = types.Specifier{'s', 'n', 'a', 'p', 's', 'h', 'o', 't'}
+	snapshotKeySpecifier = types.NewSpecifier("snapshot")
 
 	// snapshotTableSpecifier is the specifier used to identify a snapshot entry
 	// table stored in a sector.
-	snapshotTableSpecifier = types.Specifier{'S', 'n', 'a', 'p', 's', 'h', 'o', 't', 'T', 'a', 'b', 'l', 'e'}
+	snapshotTableSpecifier = types.NewSpecifier("SnapshotTable")
 )
 
 // calcSnapshotUploadProgress calculates the upload progress of a snapshot.
