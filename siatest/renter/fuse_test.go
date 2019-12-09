@@ -140,7 +140,7 @@ func TestFuse(t *testing.T) {
 	}
 
 	// Upload a file to the renter.
-	localFile, remoteFile, err := r.UploadNewFileBlocking(100, 1, 1, false)
+	localFile, remoteFile, err := r.UploadNewFileBlocking(1<<16, 1, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestFuse(t *testing.T) {
 		t.Error("expecting non-zero block size")
 	}
 	if dirStat.Blocks == dirStat.Bfree {
-		t.Error("expecting statfs to suggest that some of the renter space has been consumed")
+		t.Error("expecting statfs to suggest that some of the renter space has been consumed", dirStat.Blocks, dirStat.Bfree)
 	}
 	if dirStat.Files != 1 {
 		t.Error("expecting the filesystem to be reporting one file")

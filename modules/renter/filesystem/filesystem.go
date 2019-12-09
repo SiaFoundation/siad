@@ -201,6 +201,12 @@ func (fs *FileSystem) CachedList(siaPath modules.SiaPath, recursive bool) ([]mod
 	return fs.managedList(siaPath, recursive, true, nil, nil, nil)
 }
 
+// CachedListOnNode will return the files and directories within a given siadir
+// node.
+func (fs *FileSystem) CachedListOnNode(d *DirNode, recursive bool) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
+	return d.managedList(fs.managedAbsPath(), recursive, true, nil, nil, nil)
+}
+
 // DeleteDir deletes a dir from the filesystem. The dir will be marked as
 // 'deleted' which should cause all remaining instances of the dir to be close
 // shortly. Only when all instances of the dir are closed it will be removed
@@ -550,7 +556,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 		return nil, nil, errors.AddContext(err, "failed to open folder specified by FileList")
 	}
 	defer dir.Close()
-	return dir.managedList(fs.managedAbsPath(), siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	return dir.managedList(fs.managedAbsPath(), recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // managedNewSiaDir creates the folder at the specified siaPath.

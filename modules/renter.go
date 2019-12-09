@@ -47,7 +47,7 @@ var (
 	}).(int)
 	// BackupKeySpecifier is a specifier that is hashed with the wallet seed to
 	// create a key for encrypting backups.
-	BackupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+	BackupKeySpecifier = types.NewSpecifier("backupkey")
 )
 
 // FilterMode is the helper type for the enum constants for the HostDB filter

@@ -55,9 +55,9 @@ var (
 	// type are always treated as invalid; see Consensus.md for more details.
 
 	// SignatureEd25519 is a specifier for Ed22519
-	SignatureEd25519 = Specifier{'e', 'd', '2', '5', '5', '1', '9'}
+	SignatureEd25519 = NewSpecifier("ed25519")
 	// SignatureEntropy is a specifier for entropy
-	SignatureEntropy = Specifier{'e', 'n', 't', 'r', 'o', 'p', 'y'}
+	SignatureEntropy = NewSpecifier("entropy")
 )
 
 type (
