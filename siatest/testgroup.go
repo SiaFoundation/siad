@@ -43,7 +43,8 @@ var (
 	// DefaultAllowance is the allowance used for the group's renters.
 	//
 	// Note: the default allowance needs to be close enough in practice to what
-	// the host default settings are that extortion protection does not kick in.
+	// the host default settings are that price gouging protection does not kick
+	// in.
 	DefaultAllowance = modules.Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(1e3),
 		Hosts:       5,

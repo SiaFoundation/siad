@@ -226,8 +226,8 @@ type (
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
 //
-// NOTE: If the allowance max price fields are ever extended, all of the
-// extortion checks throughout the worker code and contract formation code also
+// NOTE: If the allowance max price fields are ever extended, all of the price
+// gouging checks throughout the worker code and contract formation code also
 // need to be extended.
 type Allowance struct {
 	Funds       types.Currency    `json:"funds"`
@@ -253,7 +253,7 @@ type Allowance struct {
 	// period.
 	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
 
-	// The following fields provide extortion protection for the user. By
+	// The following fields provide price gouging protection for the user. By
 	// setting a particular maximum price for each mechanism that a host can use
 	// to charge users, the workers know to avoid hosts that go outside of the
 	// safety range.
