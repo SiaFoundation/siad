@@ -396,9 +396,19 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 // callConsensusChanged is called by the host whenever it processed a change to
 // the consensus. We use it to remove fingerprints which have been expired.
 func (am *accountManager) callConsensusChanged() {
-	currentBlockHeight := am.h.BlockHeight()
-	if err := am.managedRotateFingerprints(currentBlockHeight); err != nil {
-		am.h.log.Critical("Could not rotate fingerprints", err)
+	cbh := am.h.BlockHeight()
+
+	// If the current blockheihgt is equal to the minimum block height of the
+	// current bucket range, we want to rotate the buckets.
+	if min, _ := currentBucketRange(cbh); min == cbh {
+		am.mu.Lock()
+		am.fingerprints.rotate()
+		am.mu.Unlock()
+
+		err := am.staticAccountsPersister.callRotateFingerprintBuckets()
+		if err != nil {
+			am.h.log.Critical("Could not rotate fingerprints", err)
+		}
 	}
 }
 
@@ -606,15 +616,6 @@ func (am *accountManager) managedAccountInfo(id string) (*accountData, uint32, t
 	return acc.accountData(), acc.index, acc.pendingRisk, true
 }
 
-// managedRotateFingerprints is a helper method that tries to rotate the
-// fingerprints both in-memory and on disk.
-func (am *accountManager) managedRotateFingerprints(cbh types.BlockHeight) error {
-	am.mu.Lock()
-	am.fingerprints.tryRotate(cbh)
-	am.mu.Unlock()
-	return am.staticAccountsPersister.callRotateFingerprintBuckets(cbh)
-}
-
 // openAccount will return a new account object
 func (am *accountManager) openAccount(id string) *account {
 	acc, exists := am.accounts[id]
@@ -697,8 +698,8 @@ func (fm *fingerprintMap) add(fp crypto.Hash, expiry, currentBlockHeight types.B
 		return errors.New("duplicate fingerprint")
 	}
 
-	threshold := calculateExpiryThreshold(currentBlockHeight)
-	if expiry < threshold {
+	_, max := currentBucketRange(currentBlockHeight)
+	if expiry < max {
 		fm.current[fp] = struct{}{}
 		return nil
 	}
@@ -716,21 +717,10 @@ func (fm *fingerprintMap) has(fp crypto.Hash) bool {
 	return exists
 }
 
-// tryRotate will prune an entire bucket of fingerprints if the current block
-// height has caught up with the expiry threshold of the 'current' bucket. When
-// this happens, the current and next bucket are simply swapped, and we
-// reallocate the next bucket. This effectively removes all fingerprints in the
-// current bucket.
-func (fm *fingerprintMap) tryRotate(currentBlockHeight types.BlockHeight) {
-	threshold := calculateExpiryThreshold(currentBlockHeight)
-
-	// If the current blockheihgt is still less than the threshold, we wait
-	if currentBlockHeight < threshold {
-		return
-	}
-
-	// Otherwise, we rotate by swapping the current and next bucket, and
-	// reallocating the next bucket
+// rotate will swap the current fingerprints with the next fingerprints and
+// recreate the next fingerprints map. This effectively removes all fingerprints
+// in the current bucket.
+func (fm *fingerprintMap) rotate() {
 	fm.current = fm.next
 	fm.next = make(map[crypto.Hash]struct{})
 }
@@ -753,7 +743,8 @@ func (wm *withdrawalMessage) validateExpiry(currentBlockHeight types.BlockHeight
 	}
 
 	// Verify the withdrawal is not too far into the future
-	if wm.expiry >= calculateExpiryThreshold(currentBlockHeight)+bucketBlockRange {
+	_, max := currentBucketRange(currentBlockHeight)
+	if wm.expiry >= max+bucketBlockRange {
 		return ErrWithdrawalExtremeFuture
 	}
 

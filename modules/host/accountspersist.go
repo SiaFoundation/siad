@@ -221,14 +221,7 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 
 // callRotateFingerprintBuckets will rotate the fingerprint bucket files, but
 // only if the current block height exceeds the current bucket's threshold
-func (ap *accountsPersister) callRotateFingerprintBuckets(currentBlockHeight types.BlockHeight) (err error) {
-	// If the current blockheihgt is less than the calculated threshold, we do
-	// not need to rotate the bucket files on the file system
-	threshold := calculateExpiryThreshold(currentBlockHeight)
-	if currentBlockHeight < threshold {
-		return nil
-	}
-
+func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
 
@@ -444,7 +437,8 @@ func (fm *fingerprintManager) save(fp crypto.Hash, expiry, currentBlockHeight ty
 	}
 
 	// write into bucket depending on it's expiry
-	if expiry < calculateExpiryThreshold(currentBlockHeight) {
+	_, max := currentBucketRange(currentBlockHeight)
+	if expiry < max {
 		return writeAndSync(fm.current, fpBytes)
 	}
 	return writeAndSync(fm.next, fpBytes)
@@ -458,13 +452,16 @@ func (fm *fingerprintManager) close() error {
 	)
 }
 
-// calculateExpiryThreshold will calculate the appropriate threshold given the
-// current blockheight and the bucket block range
-func calculateExpiryThreshold(currentBlockHeight types.BlockHeight) types.BlockHeight {
+// currentBucketRange will calculate the range (in blockheight) that defines the
+// boundaries of the current bucket. This is non-inclusive, so max is outside
+// the bucket, [min,max)
+func currentBucketRange(currentBlockHeight types.BlockHeight) (min, max types.BlockHeight) {
 	cbh := uint64(currentBlockHeight)
 	bbr := uint64(bucketBlockRange)
 	threshold := cbh + (bbr - (cbh % bbr))
-	return types.BlockHeight(threshold)
+	min = types.BlockHeight(threshold - bucketBlockRange)
+	max = types.BlockHeight(threshold)
+	return
 }
 
 // writeAndSync will write the given bytes to the file and call sync
