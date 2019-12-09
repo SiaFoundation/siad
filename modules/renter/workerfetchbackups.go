@@ -130,7 +130,7 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 	}
 	defer session.Close()
 
-	// Check for extortion before completeing the job.
+	// Check for extortion before completing the job.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := session.HostSettings()
 	err = staticCheckFetchBackupsExtortion(allowance, hostSettings)

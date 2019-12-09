@@ -242,7 +242,7 @@ type (
 	// are the values that the renter will request from the host in order to
 	// build its database.
 	//
-	// NOTE: Anytime the pricing is extended for the HostExtrenalSettings, the
+	// NOTE: Anytime the pricing is extended for the HostExternalSettings, the
 	// Allowance also needs to be extended to support manually setting a maximum
 	// reasonable price.
 	HostExternalSettings struct {

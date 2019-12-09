@@ -659,7 +659,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max rpc price:", err)
+			die("Could not read max rpc price:", err)
 		}
 		price = price.Div64(1e6)
 		req = req.WithMaxRPCPrice(price)
@@ -674,7 +674,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max contract price:", err)
+			die("Could not read max contract price:", err)
 		}
 		req = req.WithMaxContractPrice(price)
 		changedFields++
@@ -688,7 +688,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max download bandwidth price:", err)
+			die("Could not read max download bandwidth price:", err)
 		}
 		price = price.Div(modules.BytesPerTerabyte)
 		req = req.WithMaxDownloadBandwidthPrice(price)
@@ -703,7 +703,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max sector access price:", err)
+			die("Could not read max sector access price:", err)
 		}
 		price = price.Div64(1e6)
 		req = req.WithMaxSectorAccessPrice(price)
@@ -718,7 +718,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max storage price:", err)
+			die("Could not read max storage price:", err)
 		}
 		price = price.Div(modules.BlockBytesPerMonthTerabyte)
 		req = req.WithMaxStoragePrice(price)
@@ -733,7 +733,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read max upload bandwidth price:", err)
+			die("Could not read max upload bandwidth price:", err)
 		}
 		price = price.Div(modules.BytesPerTerabyte)
 		req = req.WithMaxUploadBandwidthPrice(price)

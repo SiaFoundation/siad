@@ -255,7 +255,7 @@ type Allowance struct {
 
 	// The following fields provide extortion protection for the user. By
 	// setting a particular maximum price for each mechanism that a host can use
-	// to charge users, the workers know to avoid hosts that  go outside of the
+	// to charge users, the workers know to avoid hosts that go outside of the
 	// safety range.
 	//
 	// The intention is that if the fields are not set, a reasonable value will
