@@ -10,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
@@ -383,7 +382,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 
 	// Ensure that only one background thread is saving this account. This
 	// enables us to update the account balance while we wait on the persister.
-	if acc.pendingRisk.Equals(types.ZeroCurrency) {
+	if acc.pendingRisk.IsZero() {
 		go am.threadedSaveAccount(id)
 	}
 
@@ -480,7 +479,7 @@ func (am *accountManager) threadedSaveAccount(id string) {
 		// Ensure that only one background thread is saving this account. This
 		// enables us to update the account balance while we wait on the
 		// persister.
-		if acc.pendingRisk.Equals(types.ZeroCurrency) {
+		if acc.pendingRisk.IsZero() {
 			go am.threadedSaveAccount(id)
 		}
 		acc.pendingRisk = acc.pendingRisk.Add(amount)
@@ -509,18 +508,17 @@ func (am *accountManager) threadedSaveFingerprint(fp crypto.Hash, expiry, cbh ty
 // Note: threadgroup counter must be inside for loop. If not, calling 'Flush'
 // on the threadgroup would deadlock.
 func (am *accountManager) threadedPruneExpiredAccounts() {
-	his := am.h.InternalSettings()
-
-	// If the host set a timeout of 0, it means the accounts never expire.
-	accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
-	if accountExpiryTimeout == 0 {
-		return
-	}
-
 	// Disrupt can trigger forceful expirys for testing purposes
 	forceExpire := am.h.dependencies.Disrupt("expireEphemeralAccounts")
 
 	for {
+		// If the host set a timeout of 0, it means the accounts never expire.
+		his := am.h.InternalSettings()
+		accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
+		if accountExpiryTimeout == 0 {
+			return
+		}
+
 		func() {
 			if err := am.h.tg.Add(); err != nil {
 				return
@@ -626,6 +624,7 @@ func (am *accountManager) openAccount(id string) *account {
 			index:              am.index.assignFreeIndex(),
 			blockedWithdrawals: make(blockedWithdrawalHeap, 0),
 		}
+		// fmt.Println("assigning index:", acc.index)
 		am.accounts[id] = acc
 	}
 	return acc
@@ -637,7 +636,7 @@ func (ai *accountIndex) assignFreeIndex() uint32 {
 
 	// Go through all bitmaps in random order to find a free index
 	full := ^uint64(0)
-	for i := range fastrand.Perm(len(ai.bitfield)) {
+	for i = range ai.bitfield {
 		if ai.bitfield[i] != full {
 			pos = bits.TrailingZeros(uint(^ai.bitfield[i]))
 			break
@@ -648,6 +647,7 @@ func (ai *accountIndex) assignFreeIndex() uint32 {
 	if pos == -1 {
 		pos = 0
 		ai.bitfield = append(ai.bitfield, 1<<uint(pos))
+		i = len(ai.bitfield) - 1
 	} else {
 		ai.bitfield[i] |= (1 << uint(pos))
 	}
@@ -655,7 +655,6 @@ func (ai *accountIndex) assignFreeIndex() uint32 {
 	// Calculate the index by multiplying the bitfield index by 64 (seeing as
 	// the bitfields are of type uint64) and adding the position
 	index := uint32((i * 64) + pos)
-
 	return index
 }
 

@@ -13,6 +13,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+type TestAcc struct {
+	id string
+	sk crypto.SecretKey
+}
+
 // TestAccountCallDeposit verifies we can deposit into an ephemeral account
 func TestAccountCallDeposit(t *testing.T) {
 	if testing.Short() {
@@ -43,10 +48,30 @@ func TestAccountCallDeposit(t *testing.T) {
 	if !after.Sub(before).Equals(diff) {
 		t.Fatal("Deposit was not credited")
 	}
+}
+
+// TestAccountMaxBalance verifies we can never deposit more than the account max
+// balance into an ephemeral account
+func TestAccountMaxBalance(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// Prepare an account
+	_, spk := prepareAccount()
+	accountID := spk.String()
 
 	// Verify the deposit can not exceed the max account balance
-	maxAccountBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
-	err = am.callDeposit(accountID, maxAccountBalance)
+	maxBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
+	exceedingBalance := maxBalance.Add(types.NewCurrency64(1))
+	err = am.callDeposit(accountID, exceedingBalance)
 	if err != ErrBalanceMaxExceeded {
 		t.Fatal(err)
 	}
@@ -109,7 +134,7 @@ func TestAccountCallWithdraw(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		time.Sleep(100 * time.Millisecond) // ensure deposit is after withdraw
+		time.Sleep(100 * time.Millisecond) // ensure withdrawal blocks
 		if err := am.callDeposit(accountID, deposit); err != nil {
 			atomic.AddUint64(&atomicErrs, 1)
 		}
@@ -123,7 +148,6 @@ func TestAccountCallWithdraw(t *testing.T) {
 	if !balance.Equals(expected) {
 		t.Fatal("Account balance was incorrect after spend", balance.HumanString())
 	}
-
 }
 
 // TestAccountCallWithdrawTimeout verifies withdrawals timeout eventually
@@ -294,7 +318,8 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	}
 }
 
-// TestAccountWithdrawalInvalidSignature verifies a withdrawal with an invalid signature is not accepted
+// TestAccountWithdrawalInvalidSignature verifies a withdrawal with an invalid
+// signature is not accepted
 func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -372,7 +397,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	}
 
 	balance := getAccountBalance(am, account)
-	if !balance.Equals(types.ZeroCurrency) {
+	if !balance.IsZero() {
 		t.Fatal("Unexpected account balance after withdrawals")
 	}
 }
@@ -457,7 +482,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 
 	// Account balance should be zero..
 	balance := getAccountBalance(am, account)
-	if !balance.Equals(types.ZeroCurrency) {
+	if !balance.IsZero() {
 		t.Log(balance.String())
 		t.Fatal("Unexpected account balance")
 	}
@@ -533,6 +558,111 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 
 	if atomic.LoadUint64(&atomicMaxRiskReached) == 0 {
 		t.Fatal("Max ephemeral account balance risk was not reached")
+	}
+}
+
+// TestAccountIndexRecycling ensures that the account index of expired accounts
+// properly recycle and are re-distributed among new accounts
+func TestAccountIndexRecycling(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a host & update its settings to expire accounts after 2s
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hIS := ht.host.InternalSettings()
+	hIS.EphemeralAccountExpiry = 2
+	err = ht.host.SetInternalSettings(hIS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	numAcc := 100
+	accToIndex := make(map[string]uint32, numAcc)
+
+	// deposit is a helper function to deposit 1H into the given account
+	deposit := func(id string) {
+		err := am.callDeposit(id, types.NewCurrency64(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// expire is a helper function that decides if an account should expire or
+	// not. We expire all accounts where index%10==0
+	expire := func(id string) bool {
+		index, ok := accToIndex[id]
+		if !ok {
+			t.Fatal("Unexpected failure, account id unknown")
+		}
+		return index%10 == 0
+	}
+
+	// Prepare a number of accounts
+	for i := 0; i < numAcc; i++ {
+		_, pk := prepareAccount()
+		id := pk.String()
+		deposit(id)
+		_, accToIndex[id], _, _ = am.managedAccountInfo(id)
+	}
+
+	// Keep accounts alive past the expire frequency by periodically depositing
+	// into the account
+	doneChan := make(chan struct{})
+	keepAliveFreq := time.Second
+	go func() {
+		for {
+			select {
+			case <-doneChan:
+				return
+			case <-time.After(keepAliveFreq):
+				for id := range accToIndex {
+					if !expire(id) {
+						deposit(id)
+					}
+				}
+			}
+		}
+	}()
+	// provide ample time for accounts to expire
+	time.Sleep(pruneExpiredAccountsFrequency * 3)
+	doneChan <- struct{}{}
+
+	// Verify that only accounts which have been inactive for longer than the
+	// account expiry threshold are expired
+	for id, index := range accToIndex {
+		_, _, _, exists := am.managedAccountInfo(id)
+		if expire(id) && exists {
+			t.Logf("Expected account at index %d to be expired\n", index)
+			t.Fatal("PruneExpiredAccount failure")
+		} else if !expire(id) && !exists {
+			t.Logf("Expected account at index %d to be active\n", index)
+			t.Fatal("PruneExpiredAccount failure")
+		}
+	}
+
+	// For every expired index we want to create a new account, and verify that
+	// the new account has recycled the index
+	expired := make(map[uint32]bool)
+	for id, index := range accToIndex {
+		if expire(id) {
+			expired[index] = true
+			continue
+		}
+	}
+	for i := len(expired); i > 0; i-- {
+		_, pk := prepareAccount()
+		deposit(pk.String())
+		_, newIndex, _, _ := am.managedAccountInfo(pk.String())
+		if _, ok := expired[newIndex]; !ok {
+			t.Fatal("New account did not reuse a recycled index")
+		}
+		delete(expired, newIndex)
 	}
 }
 
