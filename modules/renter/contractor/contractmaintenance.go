@@ -1057,6 +1057,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 {
 			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
+			registerLowFundsAlert = true
 			continue
 		}
 
