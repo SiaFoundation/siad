@@ -79,7 +79,7 @@ func staticCheckFetchBackupsGouging(allowance modules.Allowance, hostSettings mo
 	// consumption established by the allowance has been reached. The fraction
 	// is determined on a case-by-case basis. If the host is too expensive to
 	// even satisfy a faction of the user's total desired resource consumption,
-	// the host is block for price gouging.
+	// the action will be blocked for price gouging.
 	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
 	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
