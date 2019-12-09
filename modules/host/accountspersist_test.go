@@ -48,11 +48,7 @@ func TestAccountsReload(t *testing.T) {
 	}
 
 	// Reload the host
-	err = ht.host.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host, err = New(ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	err = reloadHost(ht)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,14 +103,12 @@ func TestFingerprintsReload(t *testing.T) {
 	}
 
 	// Reload the host
-	err = ht.host.Close()
+	err = reloadHost(ht)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht.host, err = New(ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	// Important, reload the accountmanager to avoid looking at old data
 	am = ht.host.staticAccountManager
 
 	// Verify fingerprints got reloaded
@@ -185,6 +179,12 @@ func TestFingerprintsRotate(t *testing.T) {
 		t.Fatal("Unexpected error, expected ErrWithdrawalSpent but got:", err)
 	}
 
+	// Flush the host's threadgroup (this awaits the asynchronous persist of the
+	// fingerprints - which is necessary for this test to pass)
+	if err = ht.host.tg.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Verify we have the fingerprints on disk by using the persister
 	data, err := am.staticAccountsPersister.callLoadData()
 	if err != nil {
@@ -242,6 +242,22 @@ func TestFingerprintsRotate(t *testing.T) {
 	if !(has1 == false && has2 == true) {
 		t.Fatal("Unexpected contents of fingerprint buckets on disk")
 	}
+}
+
+// reloadHost will close the given host and reload it on the given host tester
+func reloadHost(ht *hostTester) error {
+	err := ht.host.Close()
+	if err != nil {
+		return err
+	}
+
+	host, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	if err != nil {
+		return err
+	}
+	ht.host = host
+
+	return nil
 }
 
 // getAccountBalance will return the balance for given account
