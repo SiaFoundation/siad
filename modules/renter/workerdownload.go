@@ -53,7 +53,7 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules
 }
 
 // staticCheckDownloadGouging looks at the current renter allowance and the
-// active settings for a host and determines whether an backup fetch should be
+// active settings for a host and determines whether a backup fetch should be
 // halted due to price gouging.
 //
 // NOTE: Currently this function treats all downloads being the stream download
