@@ -36,7 +36,7 @@ func TestCheckUploadGouging(t *testing.T) {
 		StoragePrice:         types.SiacoinPrecision.Div64(modules.StreamUploadSize),
 	}
 
-	err := staticCheckUploadGouging(minAllowance, minHostSettings)
+	err := checkUploadGouging(minAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail:", err)
 	}
@@ -44,25 +44,25 @@ func TestCheckUploadGouging(t *testing.T) {
 	// Drop the host prices one field at a time.
 	newHostSettings := minHostSettings
 	newHostSettings.BaseRPCPrice = minHostSettings.BaseRPCPrice.Mul64(100).Div64(101)
-	err = staticCheckUploadGouging(minAllowance, newHostSettings)
+	err = checkUploadGouging(minAllowance, newHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.SectorAccessPrice = minHostSettings.SectorAccessPrice.Mul64(100).Div64(101)
-	err = staticCheckUploadGouging(minAllowance, newHostSettings)
+	err = checkUploadGouging(minAllowance, newHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.UploadBandwidthPrice = minHostSettings.UploadBandwidthPrice.Mul64(100).Div64(101)
-	err = staticCheckUploadGouging(minAllowance, newHostSettings)
+	err = checkUploadGouging(minAllowance, newHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.StoragePrice = minHostSettings.StoragePrice.Mul64(100).Div64(101)
-	err = staticCheckUploadGouging(minAllowance, newHostSettings)
+	err = checkUploadGouging(minAllowance, newHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestCheckUploadGouging(t *testing.T) {
 	maxAllowance.MaxUploadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamUploadSize).Add(oneCurrency)
 
 	// The max allowance should have no issues with price gouging.
-	err = staticCheckUploadGouging(maxAllowance, minHostSettings)
+	err = checkUploadGouging(maxAllowance, minHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestCheckUploadGouging(t *testing.T) {
 	// Should fail if the MaxRPCPrice is dropped.
 	failAllowance := maxAllowance
 	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = staticCheckUploadGouging(failAllowance, minHostSettings)
+	err = checkUploadGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
@@ -95,7 +95,7 @@ func TestCheckUploadGouging(t *testing.T) {
 	// Should fail if the MaxSectorAccessPrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = staticCheckUploadGouging(failAllowance, minHostSettings)
+	err = checkUploadGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
@@ -103,7 +103,7 @@ func TestCheckUploadGouging(t *testing.T) {
 	// Should fail if the MaxStoragePrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxStoragePrice = types.SiacoinPrecision.Div64(modules.StreamUploadSize).Sub(oneCurrency)
-	err = staticCheckUploadGouging(failAllowance, minHostSettings)
+	err = checkUploadGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
@@ -111,7 +111,7 @@ func TestCheckUploadGouging(t *testing.T) {
 	// Should fail if the MaxUploadBandwidthPrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxUploadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamUploadSize).Sub(oneCurrency)
-	err = staticCheckUploadGouging(failAllowance, minHostSettings)
+	err = checkUploadGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}

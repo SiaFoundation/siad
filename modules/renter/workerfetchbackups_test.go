@@ -34,7 +34,7 @@ func TestCheckFetchBackupsGouging(t *testing.T) {
 		SectorAccessPrice:      types.SiacoinPrecision,
 	}
 
-	err := staticCheckFetchBackupsGouging(minAllowance, minHostSettings)
+	err := checkFetchBackupsGouging(minAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail:", err)
 	}
@@ -42,19 +42,19 @@ func TestCheckFetchBackupsGouging(t *testing.T) {
 	// Drop the host prices one field at a time.
 	newHostSettings := minHostSettings
 	newHostSettings.BaseRPCPrice = minHostSettings.BaseRPCPrice.Mul64(100).Div64(101)
-	err = staticCheckFetchBackupsGouging(minAllowance, newHostSettings)
+	err = checkFetchBackupsGouging(minAllowance, newHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.DownloadBandwidthPrice = minHostSettings.DownloadBandwidthPrice.Mul64(100).Div64(101)
-	err = staticCheckFetchBackupsGouging(minAllowance, newHostSettings)
+	err = checkFetchBackupsGouging(minAllowance, newHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newHostSettings = minHostSettings
 	newHostSettings.SectorAccessPrice = minHostSettings.SectorAccessPrice.Mul64(100).Div64(101)
-	err = staticCheckFetchBackupsGouging(minAllowance, newHostSettings)
+	err = checkFetchBackupsGouging(minAllowance, newHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestCheckFetchBackupsGouging(t *testing.T) {
 	maxAllowance.MaxUploadBandwidthPrice = oneCurrency
 
 	// The max allowance should have no issues with price gouging.
-	err = staticCheckFetchBackupsGouging(maxAllowance, minHostSettings)
+	err = checkFetchBackupsGouging(maxAllowance, minHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestCheckFetchBackupsGouging(t *testing.T) {
 	// Should fail if the MaxRPCPrice is dropped.
 	failAllowance := maxAllowance
 	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = staticCheckFetchBackupsGouging(failAllowance, minHostSettings)
+	err = checkFetchBackupsGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
@@ -87,7 +87,7 @@ func TestCheckFetchBackupsGouging(t *testing.T) {
 	// Should fail if the MaxDownloadBandwidthPrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxDownloadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamDownloadSize).Sub(oneCurrency)
-	err = staticCheckFetchBackupsGouging(failAllowance, minHostSettings)
+	err = checkFetchBackupsGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
@@ -95,7 +95,7 @@ func TestCheckFetchBackupsGouging(t *testing.T) {
 	// Should fail if the MaxSectorAccessPrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = staticCheckFetchBackupsGouging(failAllowance, minHostSettings)
+	err = checkFetchBackupsGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}

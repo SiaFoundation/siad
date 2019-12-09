@@ -41,7 +41,7 @@ func TestCheckFormContractGouging(t *testing.T) {
 	maxAllowance.MaxUploadBandwidthPrice = oneCurrency
 
 	// The max allowance should have no issues with price gouging.
-	err := staticCheckFormContractGouging(maxAllowance, minHostSettings)
+	err := checkFormContractGouging(maxAllowance, minHostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestCheckFormContractGouging(t *testing.T) {
 	// Should fail if the MaxRPCPrice is dropped.
 	failAllowance := maxAllowance
 	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = staticCheckFormContractGouging(failAllowance, minHostSettings)
+	err = checkFormContractGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
@@ -57,7 +57,7 @@ func TestCheckFormContractGouging(t *testing.T) {
 	// Should fail if the MaxContractPrice is dropped.
 	failAllowance = maxAllowance
 	failAllowance.MaxContractPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = staticCheckFormContractGouging(failAllowance, minHostSettings)
+	err = checkFormContractGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
