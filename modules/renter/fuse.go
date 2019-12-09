@@ -322,11 +322,9 @@ func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errn
 			Name: fi.Name(),
 		})
 	}
-	for i, di := range dirinfos {
-		// Skip the first directory if any are returned.
-		if i == 0 {
-			continue
-		}
+	// Skip the first directory, as the first directory is always the self
+	// directory.
+	for _, di := range dirinfos[1:] {
 		dirEntries = append(dirEntries, fuse.DirEntry{
 			Mode: uint32(di.Mode()) | fuse.S_IFDIR,
 			Name: di.Name(),
