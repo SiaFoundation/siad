@@ -341,10 +341,10 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		host.MaxCollateral = maxCollateral
 	}
 
-	// Check for extortion.
-	err := staticCheckFormContractExtortion(allowance, hostSettings)
+	// Check for price gouging.
+	err := staticCheckFormContractGouging(allowance, hostSettings)
 	if err != nil {
-		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract - extortion protection enabled")
+		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract due to price gouging detection")
 	}
 
 	// get an address to use for negotiation
@@ -476,16 +476,16 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-// staticCheckFormContractExtortion will check whether the pricing for forming this
-// contract triggers any extortion warnings.
-func staticCheckFormContractExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+// staticCheckFormContractGouging will check whether the pricing for forming
+// this contract triggers any price gouging warnings.
+func staticCheckFormContractGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
-		return errors.New("rpc base price of host is too high - extortion protection enabled")
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
+		return errors.New("rpc base price of host is too high - price gouging protection enabled")
 	}
 	// Check whether the form contract price is too high.
-	if !allowance.MaxContractPrice.IsZero() && allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
-		return errors.New("contract price of host is too high - extortion protection enabled")
+	if !allowance.MaxContractPrice.IsZero() && allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) < 0 {
+		return errors.New("contract price of host is too high - price gouging protection enabled")
 	}
 
 	return nil
@@ -531,10 +531,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		host.MaxCollateral = maxCollateral
 	}
 
-	// Check for extortion on the renewal.
-	err = staticCheckFormContractExtortion(c.allowance, host.HostExternalSettings)
+	// Check for price gouging on the renewal.
+	err = staticCheckFormContractGouging(c.allowance, host.HostExternalSettings)
 	if err != nil {
-		return modules.RenterContract{}, errors.AddContext(err, "unable to renew - extortion protection enabled")
+		return modules.RenterContract{}, errors.AddContext(err, "unable to renew - price gouging protection enabled")
 	}
 
 	// get an address to use for negotiation
