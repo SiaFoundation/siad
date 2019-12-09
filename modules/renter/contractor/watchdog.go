@@ -245,7 +245,7 @@ func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
 // archiveContract archives the file contract. Include a non-zero double spend
 // height if the reason for archival is that the contract was double-spent.
 func (w *watchdog) archiveContract(fcID types.FileContractID, doubleSpendHeight types.BlockHeight) {
-	w.contractor.log.Debugln("Archiving contract: ", fcID)
+	w.contractor.log.Println("Archiving contract: ", fcID)
 	contractData, ok := w.contracts[fcID]
 	if !ok {
 		return
@@ -439,7 +439,7 @@ func (w *watchdog) findDependencySpends(txn types.Transaction) {
 		// Try removing this transaction from the set.
 		prunedFormationTxnSet, err := removeTxnFromSet(txn, txnSet)
 		if err != nil {
-			w.contractor.log.Debugln("Error removing txn from set, inputs were double-spent:", err, fcID)
+			w.contractor.log.Println("Error removing txn from set, inputs were double-spent:", err, fcID)
 
 			//  Signal to the contractor that this contract's inputs were
 			//  double-spent and that it should be removed.
@@ -640,7 +640,7 @@ func (w *watchdog) addDependencyToContractFormationSet(fcID types.FileContractID
 func (w *watchdog) callCheckContracts() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.contractor.log.Debugln("Checking contracts", w.blockHeight)
+	w.contractor.log.Debugln("Watchdog checking contracts at height:", w.blockHeight)
 
 	for fcID, contractData := range w.contracts {
 		if !contractData.contractFound {
@@ -686,7 +686,7 @@ func (w *watchdog) checkUnconfirmedContract(fcID types.FileContractID, contractD
 	}
 
 	if (w.blockHeight >= contractData.formationSweepHeight) || (setSize > modules.TransactionSetSizeLimit) {
-		w.contractor.log.Debugln("Sweeping inputs: ", w.blockHeight, contractData.formationSweepHeight)
+		w.contractor.log.Println("Sweeping inputs: ", w.blockHeight, contractData.formationSweepHeight)
 		// TODO: Add parent transactions if the renter's own dependencies are
 		// causing this to be triggered.
 		w.sweepContractInputs(fcID, contractData)
