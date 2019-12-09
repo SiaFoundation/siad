@@ -12,6 +12,7 @@ package renter
 // least use a helper method from the snapshot subsystem.
 
 import (
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -33,40 +34,56 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
-// staticCheckFetchBackupsExtortion will check whether the pricing to fetch the
-// backups for this worker exceeds any of the extortion limits placed on the
-// worker.
-func staticCheckFetchBackupsExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
-	// Check whether the RPC base price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
-		return errors.New("rpc base price of host is too high - extortion protection enabled")
+// staticCheckFetchBackupsGouging looks at the current renter allowance and the
+// active settings for a host and determines whether an backup fetch should be
+// halted due to price gouging.
+//
+// NOTE: Currently this function treats all downloads being the stream download
+// size and assumes that data is actually being appended to the host. As the
+// worker gains more modification actions on the host, this check can be split
+// into different checks that vary based on the operation being performed.
+func staticCheckFetchBackupsGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the base RPC price is too high.
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
+		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
+		return errors.New(errStr)
 	}
 	// Check whether the download bandwidth price is too high.
-	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
-		return errors.New("download bandwidth price of host is too high - extortion protection enabled")
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) < 0 {
+		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.DownloadBandwidthPrice, allowance.MaxDownloadBandwidthPrice)
+		return errors.New(errStr)
 	}
 	// Check whether the sector access price is too high.
-	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
-		return errors.New("sector access price of host is too high - extortion protection enabled")
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) < 0 {
+		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
+		return errors.New(errStr)
 	}
 
-	// If there is no allowance, general extortion checks have to be disabled,
-	// because there is no baseline for understanding what might count as
-	// extortion.
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
 	if allowance.Funds.IsZero() {
 		return nil
 	}
 
 	// Check that the combined prices make sense in the context of the overall
-	// allowance. Because fetching backups is both a rare and more critical
-	// process, there is a higher tolerance for overpriced hosts versus standard
-	// downloads.
+	// allowance. The general idea is to compute the total cost of performing
+	// the same action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached. The fraction
+	// is determined on a case-by-case basis. If the host is too expensive to
+	// even satisfy a faction of the user's total desired resource consumption,
+	// the host is block for price gouging.
+	//
+	// In the case of fetching backups, the fraction 1/100 is used because
+	// fetching backups is important, so there is less sensitivity to gouging.
+	// Also, this is a rare operation.
 	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
 	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
-	quarterCost := allowanceDownloadCost.Div64(20)
-	if quarterCost.Cmp(allowance.Funds) >= 0 {
-		return errors.New("combined pricing of the host exceeds what the renter is willing to pay - extortion protection enabled")
+	reducedCost := allowanceDownloadCost.Div64(100)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined fetch backups pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		return errors.New(errStr)
 	}
 
 	return nil
@@ -130,13 +147,13 @@ func (w *worker) managedPerformFetchBackupsJob() bool {
 	}
 	defer session.Close()
 
-	// Check for extortion before completing the job.
+	// Check for price gouging before completing the job.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := session.HostSettings()
-	err = staticCheckFetchBackupsExtortion(allowance, hostSettings)
+	err = staticCheckFetchBackupsGouging(allowance, hostSettings)
 	if err != nil {
 		result := fetchBackupsJobResult{
-			err: errors.AddContext(err, "extortion check failed for fetch backups job"),
+			err: errors.AddContext(err, "price gouging check failed for fetch backups job"),
 		}
 		resultChan <- result
 		return true

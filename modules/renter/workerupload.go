@@ -47,9 +47,16 @@ func staticCheckUploadGouging(allowance modules.Allowance, hostSettings modules.
 	}
 
 	// Check that the combined prices make sense in the context of the overall
-	// allowance.
+	// allowance. The general idea is to compute the total cost of performing
+	// the same action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached. The fraction
+	// is determined on a case-by-case basis. If the host is too expensive to
+	// even satisfy a faction of the user's total desired resource consumption,
+	// the host is block for price gouging.
 	//
-	// The general idea is that a host is marked for
+	// In the case of uploading, the fraction 1/4 is chosen based on the idea
+	// that the user should be able to hit at least some fraction of their
+	// desired upload volume using some fraction of hosts.
 	singleUploadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamUploadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.StreamUploadSize))
 	fullCostPerByte := singleUploadCost.Div64(modules.StreamUploadSize)
 	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
