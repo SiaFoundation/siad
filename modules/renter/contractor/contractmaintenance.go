@@ -342,7 +342,7 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	}
 
 	// Check for extortion.
-	err := staticCheckFormExtortion(allowance, hostSettings)
+	err := staticCheckFormContractExtortion(allowance, hostSettings)
 	if err != nil {
 		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract - extortion protection enabled")
 	}
@@ -476,9 +476,9 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-// staticCheckFormExtortion will check whether the pricing for forming this
+// staticCheckFormContractExtortion will check whether the pricing for forming this
 // contract triggers any extortion warnings.
-func staticCheckFormExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+func staticCheckFormContractExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
 	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
 		return errors.New("rpc base price of host is too high - extortion protection enabled")
@@ -561,7 +561,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 
 	// Check for extortion on the renewal.
-	err = staticCheckFormExtortion(c.allowance, host.HostExternalSettings)
+	err = staticCheckFormContractExtortion(c.allowance, host.HostExternalSettings)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "unable to renew - extortion protection enabled")
 	}
