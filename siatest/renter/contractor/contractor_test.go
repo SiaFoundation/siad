@@ -1139,6 +1139,44 @@ func TestLowAllowanceAlert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Add a renter which won't be able to renew a contract due to low funds.
+	renterParams = node.Renter(filepath.Join(testDir, "renter_refresh"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Period = 10
+	renterParams.Allowance.RenewWindow = 5
+	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRefreshFail{}
+	nodes, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter = nodes[0]
+	// Wait for the alert to be registered.
+	numRetries = 0
+	err = build.Retry(100, 600*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		dag, err := renter.DaemonAlertsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, alert := range dag.Alerts {
+			if alert.Msg == contractor.AlertMSGAllowanceLowFunds {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("alert wasn't registered")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Add a renter which won't be able to form a contract due to low funds.
 	renterParams = node.Renter(filepath.Join(testDir, "renter_form"))
 	renterParams.SkipSetAllowance = true
