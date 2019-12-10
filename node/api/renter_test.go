@@ -858,7 +858,7 @@ func TestRenterHandlerRename(t *testing.T) {
 	renameValues.Set("newsiapath", "newdne")
 	err = st.stdPostAPI("/renter/rename/dne", renameValues)
 	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
-		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
+		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
 	}
 
 	// Set an allowance for the renter, allowing a contract to be formed.
@@ -1008,7 +1008,7 @@ func TestRenterHandlerDelete(t *testing.T) {
 	// Try deleting a nonexistent file.
 	err = st.stdPostAPI("/renter/delete/dne", url.Values{})
 	if err == nil || err.Error() != filesystem.ErrNotExist.Error() {
-		t.Errorf("Expected '%v' got '%v'", siafile.ErrUnknownPath, err)
+		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
 	}
 }
 

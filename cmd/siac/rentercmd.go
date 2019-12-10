@@ -21,7 +21,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -1582,7 +1581,7 @@ func renterfilesdeletecmd(path string) {
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
-	} else if !strings.Contains(errFile.Error(), siafile.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) {
 		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Try to delete folder.
@@ -1609,7 +1608,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err == nil {
 		renterfilesdownload(path, destination)
 		return
-	} else if !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
 	_, err = httpClient.RenterGetDir(siaPath)
