@@ -98,7 +98,7 @@ type (
 
 		// The accountIndex keeps track of all account indexes. The account
 		// index decides the location at which the account is stored on disk.
-		index *accountIndex
+		index accountIndex
 
 		// To increase performance of withdrawals, the account manager will
 		// persist the account data in an asynchronous fashion. This will allow
@@ -148,12 +148,10 @@ type (
 		lastTxnTime int64
 	}
 
-	// accountIndex uses a bitfield to keeps track of account indexes. It will
+	// accountIndex is a bitfield to keeps track of account indexes. It will
 	// assign a free index when a new account needs to be created. It will
 	// recycle the indexes of accounts that have expired.
-	accountIndex struct {
-		bitfield []uint64
-	}
+	accountIndex []uint64
 
 	// blockedWithdrawal represents a withdrawal call that is pending.
 	blockedWithdrawal struct {
@@ -206,15 +204,11 @@ func (bwh blockedWithdrawalHeap) Value() types.Currency {
 
 // newAccountManager returns a new account manager ready for use by the host
 func (h *Host) newAccountManager() (_ *accountManager, err error) {
-	ai := &accountIndex{
-		bitfield: make([]uint64, 0),
-	}
-
 	am := &accountManager{
 		accounts:           make(map[string]*account),
 		fingerprints:       newFingerprintMap(bucketBlockRange),
 		blockedWithdrawals: make([]*blockedWithdrawal, 0),
-		index:              ai,
+		index:              make([]uint64, 0),
 		h:                  h,
 	}
 
@@ -260,19 +254,19 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) (err err
 	maxBalance := his.MaxEphemeralAccountBalance
 	currentBlockHeight := am.h.BlockHeight()
 
+	// Defer a call to save the account here, outside the lock
 	var index uint32
 	var data *accountData
-
-	// Defer a call to save the account here, outside the lock
-	am.mu.Lock()
 	defer func() {
 		if err == nil {
 			pErr := am.staticAccountsPersister.callSaveAccount(data, index)
 			if pErr != nil {
-				err = ErrAccountPersist
+				err = errors.Extend(pErr, ErrAccountPersist)
 			}
 		}
 	}()
+
+	am.mu.Lock()
 	defer am.mu.Unlock()
 
 	// Open the account, this will create one if one does not exist yet
@@ -338,10 +332,10 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	// Save the fingerprint in memory, if it is known an error is returned. If
 	// the save was successful, call persist asynchronously.
 	if err := am.fingerprints.add(fingerprint, msg.expiry, cbh); err != nil {
-		return ErrWithdrawalSpent
+		return errors.Extend(err, ErrWithdrawalSpent)
 	}
 	if err := am.h.tg.Add(); err != nil {
-		return ErrWithdrawalCancelled
+		return errors.Extend(err, ErrWithdrawalCancelled)
 	}
 	go func() {
 		defer am.h.tg.Done()
@@ -449,7 +443,7 @@ func (am *accountManager) threadedSaveAccount(id string) {
 	acc, exists := am.accounts[id]
 	if exists {
 		acc.pendingRisk = acc.pendingRisk.Sub(pendingRisk)
-		if acc.pendingRisk.Cmp(types.ZeroCurrency) > 0 {
+		if !acc.pendingRisk.IsZero() {
 			go am.threadedSaveAccount(id)
 		}
 	}
@@ -637,9 +631,9 @@ func (ai *accountIndex) assignFreeIndex() uint32 {
 
 	// Go through all bitmaps in random order to find a free index
 	full := ^uint64(0)
-	for i = range ai.bitfield {
-		if ai.bitfield[i] != full {
-			pos = bits.TrailingZeros(uint(^ai.bitfield[i]))
+	for i = range *ai {
+		if (*ai)[i] != full {
+			pos = bits.TrailingZeros(uint(^(*ai)[i]))
 			break
 		}
 	}
@@ -647,10 +641,10 @@ func (ai *accountIndex) assignFreeIndex() uint32 {
 	// Add a new bitfield if all bitfields are full, otherwise flip the bit
 	if pos == -1 {
 		pos = 0
-		ai.bitfield = append(ai.bitfield, 1<<uint(pos))
-		i = len(ai.bitfield) - 1
+		*ai = append(*ai, 1<<uint(pos))
+		i = len(*ai) - 1
 	} else {
-		ai.bitfield[i] |= (1 << uint(pos))
+		(*ai)[i] |= (1 << uint(pos))
 	}
 
 	// Calculate the index by multiplying the bitfield index by 64 (seeing as
@@ -664,7 +658,7 @@ func (ai *accountIndex) releaseIndex(index uint32) {
 	i := index / 64
 	pos := index % 64
 	var mask uint64 = ^(1 << pos)
-	ai.bitfield[i] &= mask
+	(*ai)[i] &= mask
 }
 
 // buildAccountIndex will initialize bitfields representing all ephemeral
@@ -681,14 +675,14 @@ func (ai *accountIndex) buildIndex(accounts map[string]*account) {
 	// Add empty bitfields to accomodate all account indexes
 	n := int(math.Floor(float64(maxIndex)/64)) + 1
 	for i := 0; i < n; i++ {
-		ai.bitfield = append(ai.bitfield, uint64(0))
+		*ai = append(*ai, uint64(0))
 	}
 
 	// Range over the accounts and flip the bit corresponding to their index
 	for _, acc := range accounts {
 		i := acc.index / 64
 		pos := acc.index % 64
-		ai.bitfield[i] = ai.bitfield[i] << uint(pos)
+		(*ai)[i] = (*ai)[i] << uint(pos)
 	}
 }
 
@@ -760,7 +754,7 @@ func (wm *withdrawalMessage) validateSignature(hash crypto.Hash, sig crypto.Sign
 
 	err := crypto.VerifyHash(hash, pk, sig)
 	if err != nil {
-		return ErrWithdrawalInvalidSignature
+		return errors.Extend(err, ErrWithdrawalInvalidSignature)
 	}
 	return nil
 }

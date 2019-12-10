@@ -18,12 +18,6 @@ import (
 )
 
 const (
-	// accountsOffset is the offset at which accounts are written to disk. This
-	// offset ensures that account data never crosses the 512 bytes boundary,
-	// traditionally the size of a sector on disk. Seeing as the metadata is 32
-	// bytes and the accounts are 128 bytes in size, the offset is 96 bytes.
-	accountsOffset = 96
-
 	// accountSize is the fixed account size in bytes
 	accountSize = 1 << 7 // 128 bytes
 
@@ -31,14 +25,19 @@ const (
 	accountsFilename = "accounts.txt"
 
 	// fingerprintSize is the fixed fingerprint size in bytes
-	fingerprintSize = 1 << 6 // 64 bytes
+	fingerprintSize = 1 << 5 // 32 bytes
 
 	// filenames for fingerprint buckets
-	fingerprintsCurrFilename = "fingerprints_curr.db"
-	fingerprintsNxtFilename  = "fingerprints_nxt.db"
+	fingerprintsCurrFilename = "fingerprintsbucket_current.db"
+	fingerprintsNxtFilename  = "fingerprintsbucket_next.db"
 
 	// bucketBlockRange defines the range of blocks a fingerprint bucket spans
 	bucketBlockRange = 20
+
+	// sectorSize is (traditionally) the size of a sector on disk in bytes.
+	// It is used to perform a sanity check that verifies if this is a multiple
+	// of the account size
+	sectorSize = 512
 )
 
 var (
@@ -102,6 +101,10 @@ type (
 
 // newAccountsPersister returns a new account persister
 func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, err error) {
+	if sectorSize%accountSize != 0 {
+		h.log.Critical(errors.New("Sanity check failure: we expected the sector size to be a multiple of the account size to ensure persisting an account never crosses the sector boundary on disk."))
+	}
+
 	ap := &accountsPersister{
 		indexLocks: make(map[uint32]*indexLock),
 		h:          h,
@@ -512,5 +515,11 @@ func safeEncode(obj interface{}, expectedSize int) ([]byte, error) {
 // location is a helper method that returns the location of the account at given
 // index
 func location(index uint32) int64 {
-	return persist.FixedMetadataSize + accountsOffset + int64(uint64(index)*accountSize)
+	// metadataPadding is the amount of bytes we pad the metadata with. We pad
+	// metadata to ensure writing an account to disk never crosses the 512 bytes
+	// boundary, traditionally the size of a sector on disk. Seeing as the
+	// sector size is a multiple of the account size we pad the metadata until
+	// it's as large as a single account
+	metadataPadding := int64(accountSize - persist.FixedMetadataSize)
+	return persist.FixedMetadataSize + metadataPadding + int64(uint64(index)*accountSize)
 }

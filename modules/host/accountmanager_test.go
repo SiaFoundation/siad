@@ -244,7 +244,7 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	}
 
 	err = callWithdraw(am, msg, sig)
-	if err != ErrWithdrawalSpent {
+	if !errors.Contains(err, ErrWithdrawalSpent) {
 		t.Fatal("Expected withdrawal spent error", err)
 	}
 }

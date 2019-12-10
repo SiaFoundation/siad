@@ -172,10 +172,10 @@ func TestFingerprintsRotate(t *testing.T) {
 
 	// Vefify we have the fingerprints in memory by perform the same withdrawal
 	// and asserting errWithdrawalSpent
-	if err = callWithdraw(am, msg1, sig1); err != ErrWithdrawalSpent {
+	if err = callWithdraw(am, msg1, sig1); !errors.Contains(err, ErrWithdrawalSpent) {
 		t.Fatal("Unexpected error, expected ErrWithdrawalSpent but got:", err)
 	}
-	if err = callWithdraw(am, msg2, sig2); err != ErrWithdrawalSpent {
+	if err = callWithdraw(am, msg2, sig2); !errors.Contains(err, ErrWithdrawalSpent) {
 		t.Fatal("Unexpected error, expected ErrWithdrawalSpent but got:", err)
 	}
 
