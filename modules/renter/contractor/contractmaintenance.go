@@ -39,7 +39,7 @@ type (
 // marks down the host score, and marks the contract as !GoodForRenew and
 // !GoodForUpload.
 func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeight types.BlockHeight) {
-	c.log.Debugln("Watchdog found a double-spend: ", fcID, blockHeight)
+	c.log.Println("Watchdog found a double-spend: ", fcID, blockHeight)
 
 	// Mark the contract as double-spent. This will cause the contract to be
 	// excluded in period spending.
