@@ -36,6 +36,10 @@ type watchdog struct {
 	// in here.
 	contracts map[types.FileContractID]*fileContractStatus
 
+	// archivedContracts are contracts that have expired and are stored for
+	// archival purposes.
+	archivedContracts map[types.FileContractID]modules.ContractWatchStatus
+
 	// outputDependencies maps Siacoin outputs to the file contracts that are
 	// dependent on them. When a contract is first submitted to the watchdog to be
 	// monitored, the outputDependencies created for that contract are the
@@ -115,6 +119,7 @@ func newWatchdog(contractor *Contractor) *watchdog {
 	renewWindow := contractor.Allowance().RenewWindow
 	return &watchdog{
 		contracts:          make(map[types.FileContractID]*fileContractStatus),
+		archivedContracts:  make(map[types.FileContractID]modules.ContractWatchStatus),
 		outputDependencies: make(map[types.SiacoinOutputID]map[types.FileContractID]struct{}),
 
 		renewWindow: renewWindow,
@@ -126,22 +131,8 @@ func newWatchdog(contractor *Contractor) *watchdog {
 	}
 }
 
-// ContractStatus returns the status of a contract in the watchdog. If the
-// contract has been double-spent, the fields other than DoubleSpendHeight are
-// not up-to-date.
+// ContractStatus returns the status of a contract in the watchdog.
 func (c *Contractor) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
-	c.mu.RLock()
-	height, doubleSpent := c.doubleSpentContracts[fcID]
-	c.mu.RUnlock()
-
-	// double-spent contracts are no longer accounted for in the watchdog's
-	// internal state so the only meaningful information we can give is that it
-	// was double-spent.
-	if doubleSpent {
-		return modules.ContractWatchStatus{
-			DoubleSpendHeight: height,
-		}, true
-	}
 	return c.staticWatchdog.managedContractStatus(fcID)
 }
 
@@ -251,14 +242,27 @@ func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
 	}()
 }
 
-// deleteContract removes all data about this contract from the watchdog.
-func (w *watchdog) deleteContract(fcID types.FileContractID) {
-	w.contractor.log.Debugln("Deleting contract: ", fcID)
+// archiveContract archives the file contract. Include a non-zero double spend
+// height if the reason for archival is that the contract was double-spent.
+func (w *watchdog) archiveContract(fcID types.FileContractID, doubleSpendHeight types.BlockHeight) {
+	w.contractor.log.Println("Archiving contract: ", fcID)
 	contractData, ok := w.contracts[fcID]
-	if ok {
-		for oid := range contractData.parentOutputs {
-			w.removeOutputDependency(oid, fcID)
-		}
+	if !ok {
+		return
+
+	}
+	for oid := range contractData.parentOutputs {
+		w.removeOutputDependency(oid, fcID)
+	}
+	w.archivedContracts[fcID] = modules.ContractWatchStatus{
+		Archived:                  true,
+		FormationSweepHeight:      contractData.formationSweepHeight,
+		ContractFound:             contractData.contractFound,
+		LatestRevisionFound:       contractData.revisionFound,
+		StorageProofFoundAtHeight: contractData.storageProofFound,
+		DoubleSpendHeight:         doubleSpendHeight,
+		WindowStart:               contractData.windowStart,
+		WindowEnd:                 contractData.windowEnd,
 	}
 	delete(w.contracts, fcID)
 }
@@ -435,11 +439,11 @@ func (w *watchdog) findDependencySpends(txn types.Transaction) {
 		// Try removing this transaction from the set.
 		prunedFormationTxnSet, err := removeTxnFromSet(txn, txnSet)
 		if err != nil {
-			w.contractor.log.Debugln("Error removing txn from set, inputs were double-spent:", err, fcID)
+			w.contractor.log.Println("Error removing txn from set, inputs were double-spent:", err, fcID)
 
 			//  Signal to the contractor that this contract's inputs were
 			//  double-spent and that it should be removed.
-			w.deleteContract(fcID)
+			w.archiveContract(fcID, w.blockHeight)
 			go w.contractor.callNotifyDoubleSpend(fcID, w.blockHeight)
 		} else {
 			w.contractor.log.Debugln("Removed transaction from set for: ", fcID, len(prunedFormationTxnSet))
@@ -636,7 +640,7 @@ func (w *watchdog) addDependencyToContractFormationSet(fcID types.FileContractID
 func (w *watchdog) callCheckContracts() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.contractor.log.Debugln("Checking contracts", w.blockHeight)
+	w.contractor.log.Debugln("Watchdog checking contracts at height:", w.blockHeight)
 
 	for fcID, contractData := range w.contracts {
 		if !contractData.contractFound {
@@ -660,7 +664,7 @@ func (w *watchdog) callCheckContracts() {
 				// TODO: ++ host / send signal back to watchee
 				w.contractor.log.Debugln("did find proof", fcID)
 			}
-			w.deleteContract(fcID)
+			w.archiveContract(fcID, 0)
 		}
 	}
 }
@@ -682,7 +686,7 @@ func (w *watchdog) checkUnconfirmedContract(fcID types.FileContractID, contractD
 	}
 
 	if (w.blockHeight >= contractData.formationSweepHeight) || (setSize > modules.TransactionSetSizeLimit) {
-		w.contractor.log.Debugln("Sweeping inputs: ", w.blockHeight, contractData.formationSweepHeight)
+		w.contractor.log.Println("Sweeping inputs: ", w.blockHeight, contractData.formationSweepHeight)
 		// TODO: Add parent transactions if the renter's own dependencies are
 		// causing this to be triggered.
 		w.sweepContractInputs(fcID, contractData)
@@ -796,19 +800,27 @@ func (w *watchdog) sweepContractInputs(fcID types.FileContractID, contractData *
 
 // managedContractStatus returns the status of a contract in the watchdog if it
 // exists.
-func (w *watchdog) managedContractStatus(fcID types.FileContractID) (contractStatus modules.ContractWatchStatus, ok bool) {
+func (w *watchdog) managedContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	contractData, ok := w.contracts[fcID]
-	if !ok {
-		return contractStatus, false
+	contractStatus, ok := w.archivedContracts[fcID]
+	if ok {
+		return contractStatus, true
 	}
 
-	contractStatus.FormationSweepHeight = contractData.formationSweepHeight
-	contractStatus.LatestRevisionFound = contractData.revisionFound
-	contractStatus.ContractFound = contractData.contractFound
-	contractStatus.StorageProofFoundAtHeight = contractData.storageProofFound
+	contractData, ok := w.contracts[fcID]
+	if !ok {
+		return modules.ContractWatchStatus{}, false
+	}
 
-	return contractStatus, true
+	return modules.ContractWatchStatus{
+		Archived:                  false,
+		FormationSweepHeight:      contractData.formationSweepHeight,
+		ContractFound:             contractData.contractFound,
+		LatestRevisionFound:       contractData.revisionFound,
+		StorageProofFoundAtHeight: contractData.storageProofFound,
+		WindowStart:               contractData.windowStart,
+		WindowEnd:                 contractData.windowEnd,
+	}, true
 }

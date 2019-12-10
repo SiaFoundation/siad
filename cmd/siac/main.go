@@ -18,6 +18,7 @@ import (
 var (
 	// Flags.
 	dictionaryLanguage      string // dictionary for seed utils
+	uploadedsizeUtilVerbose bool   // display additional info for "utils upload-size"
 	hostContractOutputType  string // output type for host contracts
 	hostVerbose             bool   // display additional host info
 	hostFolderRemoveForce   bool   // force folder remove
@@ -245,7 +246,8 @@ func main() {
 		renterSetLocalPathCmd, renterFilesUploadCmd, renterUploadsCmd,
 		renterExportCmd, renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
-		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd)
+		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd,
+		renterFuseCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -268,15 +270,20 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
 
+	renterFuseCmd.AddCommand(renterFuseMountCmd, renterFuseUnmountCmd)
+
 	root.AddCommand(gatewayCmd)
-	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)
+	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
+	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
 
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
-		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd, utilsBruteForceSeedCmd)
+		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd, utilsBruteForceSeedCmd,
+		utilsUploadedsizeCmd)
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
+	utilsUploadedsizeCmd.Flags().BoolVarP(&uploadedsizeUtilVerbose, "verbose", "v", false, "Display more information")
 	root.AddCommand(utilsCmd)
 
 	// initialize client

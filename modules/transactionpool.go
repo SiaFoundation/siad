@@ -49,7 +49,7 @@ var (
 	// standard Sia protocol. This will prevent these transactions from being
 	// rejected by the IsStandard set of rules, but also means that the data
 	// will never be used within the formal Sia protocol.
-	PrefixNonSia = types.Specifier{'N', 'o', 'n', 'S', 'i', 'a'}
+	PrefixNonSia = types.NewSpecifier("NonSia")
 
 	// TransactionPoolDir is the name of the directory that is used to store
 	// the transaction pool's persistent data.

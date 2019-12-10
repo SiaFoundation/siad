@@ -47,7 +47,7 @@ var (
 	}).(int)
 	// BackupKeySpecifier is a specifier that is hashed with the wallet seed to
 	// create a key for encrypting backups.
-	BackupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+	BackupKeySpecifier = types.NewSpecifier("backupkey")
 )
 
 // FilterMode is the helper type for the enum constants for the HostDB filter
@@ -145,6 +145,14 @@ const (
 	// estimated blockchain size of a transaction set used by the host to
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
+
+	// StreamDownloadSize is the size of downloaded in a single streaming download
+	// request.
+	StreamDownloadSize = uint64(1 << 16) // 64 KiB
+
+	// StreamUploadSize is the size of downloaded in a single streaming upload
+	// request.
+	StreamUploadSize = uint64(1 << 16) // 64 KiB
 )
 
 type (
@@ -264,14 +272,16 @@ type ContractUtility struct {
 }
 
 // ContractWatchStatus provides information about the status of a contract in
-// the renter's watchdog. If the contract has been double-spent, the fields
-// other than DoubleSpendHeight are not up-to-date.
+// the renter's watchdog.
 type ContractWatchStatus struct {
+	Archived                  bool              `json:"archived"`
 	FormationSweepHeight      types.BlockHeight `json:"formationsweepheight"`
 	ContractFound             bool              `json:"contractfound"`
 	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
 	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
 	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
+	WindowStart               types.BlockHeight `json:"windowstart"`
+	WindowEnd                 types.BlockHeight `json:"windowend"`
 }
 
 // DirectoryInfo provides information about a siadir
@@ -308,6 +318,26 @@ type DirectoryInfo struct {
 	StuckHealth         float64     `json:"stuckhealth"`
 	UID                 uint64      `json:"uid"`
 }
+
+// Name implements os.FileInfo.
+func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
+
+// Size implements os.FileInfo.
+func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
+
+// Mode implements os.FileInfo.
+//
+// TODO: get the real mode
+func (d DirectoryInfo) Mode() os.FileMode { return d.DirMode }
+
+// ModTime implements os.FileInfo.
+func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
+
+// IsDir implements os.FileInfo.
+func (d DirectoryInfo) IsDir() bool { return true }
+
+// Sys implements os.FileInfo.
+func (d DirectoryInfo) Sys() interface{} { return nil }
 
 // DownloadInfo provides information about a file that has been requested for
 // download.
@@ -361,9 +391,28 @@ type FileInfo struct {
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
+	UID              uint64            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
 	UploadProgress   float64           `json:"uploadprogress"`
 }
+
+// Name implements os.FileInfo.
+func (f FileInfo) Name() string { return f.SiaPath.Name() }
+
+// Size implements os.FileInfo.
+func (f FileInfo) Size() int64 { return int64(f.Filesize) }
+
+// Mode implements os.FileInfo.
+func (f FileInfo) Mode() os.FileMode { return f.FileMode }
+
+// ModTime implements os.FileInfo.
+func (f FileInfo) ModTime() time.Time { return f.ModificationTime }
+
+// IsDir implements os.FileInfo.
+func (f FileInfo) IsDir() bool { return false }
+
+// Sys implements os.FileInfo.
+func (f FileInfo) Sys() interface{} { return nil }
 
 // A HostDBEntry represents one host entry in the Renter's host DB. It
 // aggregates the host's external settings and metrics with its public key.
@@ -427,6 +476,12 @@ type HostScoreBreakdown struct {
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
 	UptimeAdjustment           float64 `json:"uptimeadjustment"`
 	VersionAdjustment          float64 `json:"versionadjustment"`
+}
+
+// MountInfo contains information about a mounted FUSE filesystem.
+type MountInfo struct {
+	MountPoint string  `json:"mountpoint"`
+	SiaPath    SiaPath `json:"siapath"`
 }
 
 // RenterPriceEstimation contains a bunch of files estimating the costs of
@@ -497,6 +552,11 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 	}
 	*mrs = umrs
 	return nil
+}
+
+// MountOptions specify various settings of a FUSE filesystem mount.
+type MountOptions struct {
+	ReadOnly bool
 }
 
 // RecoverableContract is a types.FileContract as it appears on the blockchain
@@ -670,6 +730,16 @@ type Renter interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
+	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
+	// available via the local filesystem.
+	Mount(mountPoint string, sp SiaPath, opts MountOptions) error
+
+	// MountInfo returns the list of currently mounted FUSE filesystems.
+	MountInfo() []MountInfo
+
+	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
+	Unmount(mountPoint string) error
+
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() (ContractorSpending, error)
@@ -777,6 +847,13 @@ type Renter interface {
 	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
+
+	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
+	// duration
+	PauseRepairsAndUploads(duration time.Duration) error
+
+	// ResumeRepairsAndUploads resumes the renter's repairs and uploads
+	ResumeRepairsAndUploads() error
 
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed

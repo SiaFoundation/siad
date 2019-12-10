@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"math/big"
 	"os"
 	"strconv"
@@ -29,16 +28,6 @@ var (
 	// parsed into a rate limit unit
 	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
 )
-
-// filesize returns a string that displays a filesize in human-readable units.
-func filesizeUnits(size uint64) string {
-	if size == 0 {
-		return "0  B"
-	}
-	sizes := []string{" B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
-	i := int(math.Log10(float64(size)) / 3)
-	return fmt.Sprintf("%.*f %s", i, float64(size)/math.Pow10(3*i), sizes[i])
-}
 
 // parseFilesize converts strings of form 10GB to a size in bytes. Fractional
 // sizes are truncated at the byte size.

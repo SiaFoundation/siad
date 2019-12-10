@@ -243,32 +243,35 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	cs               modules.ConsensusSet
-	deps             modules.Dependencies
-	g                modules.Gateway
-	w                modules.Wallet
-	hostContractor   hostContractor
-	hostDB           hostDB
-	log              *persist.Logger
-	persist          persistence
-	persistDir       string
-	memoryManager    *memoryManager
-	mu               *siasync.RWMutex
-	repairLog        *persist.Logger
-	tg               threadgroup.ThreadGroup
-	tpool            modules.TransactionPool
-	wal              *writeaheadlog.WAL
-	staticWorkerPool *workerPool
+	cs                modules.ConsensusSet
+	deps              modules.Dependencies
+	g                 modules.Gateway
+	w                 modules.Wallet
+	hostContractor    hostContractor
+	hostDB            hostDB
+	log               *persist.Logger
+	persist           persistence
+	persistDir        string
+	staticFilesDir    string
+	staticBackupsDir  string
+	memoryManager     *memoryManager
+	mu                *siasync.RWMutex
+	repairLog         *persist.Logger
+	staticFuseManager *fuseManager
+	tg                threadgroup.ThreadGroup
+	tpool             modules.TransactionPool
+	wal               *writeaheadlog.WAL
+	staticWorkerPool  *workerPool
 }
 
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
+	// TODO: Is this check needed?
 	if r == nil {
 		return nil
 	}
-	r.tg.Stop()
-	r.hostDB.Close()
-	return r.hostContractor.Close()
+
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -794,6 +797,22 @@ func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
 }
 
+// MountInfo returns the list of currently mounted fusefilesystems.
+func (r *Renter) MountInfo() []modules.MountInfo {
+	return r.staticFuseManager.MountInfo()
+}
+
+// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+// the local filesystem.
+func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
+	return r.staticFuseManager.Mount(mountPoint, sp, opts)
+}
+
+// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+func (r *Renter) Unmount(mountPoint string) error {
+	return r.staticFuseManager.Unmount(mountPoint)
+}
+
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
@@ -836,6 +855,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
 			stuckChunkSuccess: make(chan struct{}, 1),
+
+			pauseChan: make(chan struct{}),
 		},
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
@@ -855,7 +876,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}
+	close(r.uploadHeap.pauseChan)
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.

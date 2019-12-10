@@ -45,8 +45,6 @@ a new siadir is created.
  - `UpdateMetadata`
 
 **Inbound Complexities**
- - `callLoadSiaDirMetadata` is used to load the directory metadata from disk
-    - `SiaDirSet.readLockMetadata` will use this method to load the metadata from disk
  - `callDelete` deletes a SiaDir from disk
     - `SiaDirSet.Delete` uses `callDelete`
  - `LoadSiaDir` loads a SiaDir from disk
@@ -90,8 +88,6 @@ will hand out the existing object, otherwise it will try to load it from disk.
  - `Rename`
 
 **Outbound Complexities**
- - `readLockMetadata` will use `callLoadSiaDirMetadata` to load the metadata
-   from disk
  - `Delete` will use `callDelete` to delete the SiaDir once it has been acquired
    in the set
  - `open` calls `LoadSiaDir` to load the SiaDir from disk
