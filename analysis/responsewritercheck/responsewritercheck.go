@@ -97,7 +97,8 @@ func runFunc(pass *analysis.Pass, fd *ast.FuncDecl, responseWriter *types.Var) {
 			}
 		}
 
-		if found := search(pass.TypesInfo, defBlock.Succs, responseWriter); found != nil {
+		visited := make(map[*cfg.Block]bool)
+		if found := search(pass.TypesInfo, visited, defBlock.Succs, responseWriter); found != nil {
 			pass.Reportf(stmt.Pos(), "http.Responsewriter passed to more than one function")
 		}
 	}
@@ -135,14 +136,19 @@ func isHTTPResponseWriter(info *types.Info, f *ast.Field) bool {
 
 // search will walk the CFG path of successor blocks looking for nodes that pass
 // the given variable as argument
-func search(info *types.Info, blocks []*cfg.Block, v *types.Var) ast.Node {
+func search(info *types.Info, visited map[*cfg.Block]bool, blocks []*cfg.Block, v *types.Var) ast.Node {
 	for _, b := range blocks {
+		if visited[b] {
+			continue
+		}
+		visited[b] = true
+
 		for _, n := range b.Nodes {
 			if passesArgument(info, n, v) {
 				return n
 			}
 		}
-		if rec := search(info, b.Succs, v); rec != nil {
+		if rec := search(info, visited, b.Succs, v); rec != nil {
 			return rec
 		}
 	}
