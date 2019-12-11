@@ -63,10 +63,6 @@ var (
 		Testing:  types.BlockHeight(1),
 	}).(types.BlockHeight)
 
-	//BackupKeySpecifier is the specifier used for deriving the secret used to
-	//encrypt a backup from the RenterSeed.
-	backupKeySpecifier = types.NewSpecifier("backupkey")
-
 	// errNeedBothDataAndParityPieces is the error returned when only one of the
 	// erasure coding parameters is set
 	errNeedBothDataAndParityPieces = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
@@ -375,7 +371,7 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
@@ -420,7 +416,7 @@ func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
@@ -453,7 +449,7 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
@@ -486,7 +482,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
