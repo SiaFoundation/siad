@@ -65,7 +65,7 @@ var (
 
 	//BackupKeySpecifier is the specifier used for deriving the secret used to
 	//encrypt a backup from the RenterSeed.
-	backupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+	backupKeySpecifier = types.NewSpecifier("backupkey")
 
 	// errNeedBothDataAndParityPieces is the error returned when only one of the
 	// erasure coding parameters is set
@@ -681,6 +681,54 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		}
 		settings.Allowance.MaxPeriodChurn = maxPeriodChurn
 		maxPeriodChurnSet = true
+	}
+	if str := req.FormValue("maxrpcprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxrpcprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxRPCPrice = price
+	}
+	if str := req.FormValue("maxcontractprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxcontractprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxContractPrice = price
+	}
+	if str := req.FormValue("maxdownloadbandwidthprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxdownloadbandwidthprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxDownloadBandwidthPrice = price
+	}
+	if str := req.FormValue("maxsectoraccessprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxsectoraccessprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxSectorAccessPrice = price
+	}
+	if str := req.FormValue("maxstorageprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxstorageprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxStoragePrice = price
+	}
+	if str := req.FormValue("maxuploadbandwidthprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxuploadbandwidthprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxUploadBandwidthPrice = price
 	}
 
 	// Validate any allowance changes. Funds and Period are the only required

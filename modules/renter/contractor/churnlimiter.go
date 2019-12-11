@@ -296,7 +296,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		}
 	}
 
-	// Process the suggested updates throught the churn limiter.
+	// Process the suggested updates through the churn limiter.
 	err = c.staticChurnLimiter.managedProcessSuggestedUpdates(suggestedUpdateQueue)
 	if err != nil {
 		return errors.AddContext(err, "churnLimiter processSuggestedUpdates err")
