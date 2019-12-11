@@ -916,15 +916,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
-	r.staticAlerter.RegisterAlert(modules.AlertID("1TestCritical"), "This is a critical alert", "", modules.SeverityCritical)
-	r.staticAlerter.RegisterAlert(modules.AlertID("1TestError"), "This is a Error alert", "", modules.SeverityError)
-	r.staticAlerter.RegisterAlert(modules.AlertID("1TestWarning"), "This is a Warnign alert", "", modules.SeverityWarning)
-	r.staticAlerter.RegisterAlert(modules.AlertID("2TestCritical"), "This is a critical alert", "", modules.SeverityCritical)
-	r.staticAlerter.RegisterAlert(modules.AlertID("2TestError"), "This is a Error alert", "", modules.SeverityError)
-	r.staticAlerter.RegisterAlert(modules.AlertID("2TestWarning"), "This is a Warnign alert", "", modules.SeverityWarning)
-	r.staticAlerter.RegisterAlert(modules.AlertID("3TestCritical"), "This is a critical alert", "", modules.SeverityCritical)
-	r.staticAlerter.RegisterAlert(modules.AlertID("3TestError"), "This is a Error alert", "", modules.SeverityError)
-	r.staticAlerter.RegisterAlert(modules.AlertID("3TestWarning"), "This is a Warnign alert", "", modules.SeverityWarning)
 	return r, nil
 }
 

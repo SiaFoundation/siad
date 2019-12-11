@@ -82,10 +82,10 @@ func alertscmd() {
 				alertCount++
 				fmt.Printf(`
 ------------------
-Module:   %s
-Severity: %s
-Message:  %s
-Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
 			}
 		}
 	}

@@ -346,7 +346,7 @@ func main() {
 		}
 		if numCriticalAlerts > 0 {
 			fmt.Println("------------------")
-			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n", numCriticalAlerts)
+			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", numCriticalAlerts)
 		}
 	}
 
