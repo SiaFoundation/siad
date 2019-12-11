@@ -84,7 +84,7 @@ type (
 	// release API endpoint. Only the fields relevant to updating are
 	// included.
 	gitlabRelease struct {
-		TagName string `json:"name"`
+		Name string `json:"name"`
 	}
 
 	// SiaConstants is a struct listing all of the constants in use.
@@ -252,7 +252,7 @@ func (api *API) daemonUpdateHandlerGET(w http.ResponseWriter, _ *http.Request, _
 		WriteError(w, Error{Message: "Failed to fetch latest release: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	latestVersion := release.TagName[1:] // delete leading 'v'
+	latestVersion := release.Name[1:] // delete leading 'v'
 	WriteJSON(w, UpdateInfo{
 		Available: build.VersionCmp(latestVersion, build.Version) > 0,
 		Version:   latestVersion,
@@ -269,7 +269,7 @@ func (api *API) daemonUpdateHandlerPOST(w http.ResponseWriter, _ *http.Request, 
 		WriteError(w, Error{Message: "Failed to fetch latest release: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	err = updateToRelease(release.TagName)
+	err = updateToRelease(release.Name)
 	if err != nil {
 		if rerr := update.RollbackError(err); rerr != nil {
 			WriteError(w, Error{Message: "Serious error: Failed to rollback from bad update: " + rerr.Error()}, http.StatusInternalServerError)

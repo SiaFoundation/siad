@@ -304,7 +304,7 @@ type ContractWatchStatus struct {
 	ContractFound             bool              `json:"contractfound"`
 	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
 	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
-	DoubleSpendHeight         types.BlockHeight `json:"doublespentatblockheight"`
+	DoubleSpendHeight         types.BlockHeight `json:"doublespendheight"`
 	WindowStart               types.BlockHeight `json:"windowstart"`
 	WindowEnd                 types.BlockHeight `json:"windowend"`
 }
@@ -333,13 +333,13 @@ type DirectoryInfo struct {
 	MaxHealthPercentage float64     `json:"maxhealthpercentage"`
 	MaxHealth           float64     `json:"maxhealth"`
 	MinRedundancy       float64     `json:"minredundancy"`
-	DirMode             os.FileMode `json:"mode"` // Field is called DirMode for fuse compatibility
+	DirMode             os.FileMode `json:"mode,siamismatch"` // Field is called DirMode for fuse compatibility
 	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
 	NumFiles            uint64      `json:"numfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
 	SiaPath             SiaPath     `json:"siapath"`
-	DirSize             uint64      `json:"size"` // Stays as 'size' in json for compatibility
+	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
 	UID                 uint64      `json:"uid"`
 }
@@ -406,8 +406,8 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	ModificationTime time.Time         `json:"modtime"` // Stays as 'modtime' in json for compatibility
-	FileMode         os.FileMode       `json:"mode"`    // Field is called FileMode for fuse compatibility
+	ModificationTime time.Time         `json:"modtime,siamismatch"` // Stays as 'modtime' in json for compatibility
+	FileMode         os.FileMode       `json:"mode,siamismatch"`    // Field is called FileMode for fuse compatibility
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -497,7 +497,7 @@ type HostScoreBreakdown struct {
 	CollateralAdjustment       float64 `json:"collateraladjustment"`
 	DurationAdjustment         float64 `json:"durationadjustment"`
 	InteractionAdjustment      float64 `json:"interactionadjustment"`
-	PriceAdjustment            float64 `json:"pricesmultiplier"`
+	PriceAdjustment            float64 `json:"pricesmultiplier,siamismatch"`
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
 	UptimeAdjustment           float64 `json:"uptimeadjustment"`
 	VersionAdjustment          float64 `json:"versionadjustment"`
@@ -528,10 +528,10 @@ type RenterPriceEstimation struct {
 
 // RenterSettings control the behavior of the Renter.
 type RenterSettings struct {
-	Allowance         Allowance `json:"allowance"`
-	IPViolationsCheck bool      `json:"ipviolationcheck"`
-	MaxUploadSpeed    int64     `json:"maxuploadspeed"`
-	MaxDownloadSpeed  int64     `json:"maxdownloadspeed"`
+	Allowance        Allowance `json:"allowance"`
+	IPViolationCheck bool      `json:"ipviolationcheck"`
+	MaxUploadSpeed   int64     `json:"maxuploadspeed"`
+	MaxDownloadSpeed int64     `json:"maxdownloadspeed"`
 }
 
 // HostDBScans represents a sortable slice of scans.
@@ -668,7 +668,7 @@ type ContractorSpending struct {
 	Unspent types.Currency `json:"unspent"`
 	// ContractSpendingDeprecated was renamed to TotalAllocated and always has the
 	// same value as TotalAllocated.
-	ContractSpendingDeprecated types.Currency `json:"contractspending"`
+	ContractSpendingDeprecated types.Currency `json:"contractspending,siamismatch"`
 	// WithheldFunds are the funds from the previous period that are tied up
 	// in contracts and have not been released yet
 	WithheldFunds types.Currency `json:"withheldfunds"`

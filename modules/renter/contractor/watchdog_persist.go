@@ -15,19 +15,19 @@ type watchdogPersist struct {
 
 // fileContractStatusPersist defines what information from fileContractStatus is persisted.
 type fileContractStatusPersist struct {
-	FormationSweepHeight types.BlockHeight `json:"FormationSweepHeight,omitempty"`
-	ContractFound        bool              `json:"ContractFound,omitempty"`
-	RevisionFound        uint64            `json:"RevisionFound,omitempty"`
-	StorageProofFound    types.BlockHeight `json:"StorageProofFound,omitempty"`
+	FormationSweepHeight types.BlockHeight `json:"formationsweepheight,omitempty"`
+	ContractFound        bool              `json:"contractfound,omitempty"`
+	RevisionFound        uint64            `json:"revisionfound,omitempty"`
+	StorageProofFound    types.BlockHeight `json:"storageprooffound,omitempty"`
 
-	FormationTxnSet []types.Transaction     `json:"FormationTxnSet,omitempty"`
-	ParentOutputs   []types.SiacoinOutputID `json:"ParentOutputs,omitempty"`
+	FormationTxnSet []types.Transaction     `json:"formationtxnset,omitempty"`
+	ParentOutputs   []types.SiacoinOutputID `json:"parentoutputs,omitempty"`
 
-	SweepTxn     types.Transaction   `json:"SweepTransaction,omitempty"`
-	SweepParents []types.Transaction `json:"SweepParents,omitempty"`
+	SweepTxn     types.Transaction   `json:"sweeptxn,omitempty"`
+	SweepParents []types.Transaction `json:"sweepparents,omitempty"`
 
-	WindowStart types.BlockHeight `json:"ExpirationWindowStart"`
-	WindowEnd   types.BlockHeight `json:"ExpirationWindowEnd"`
+	WindowStart types.BlockHeight `json:"windowstart"`
+	WindowEnd   types.BlockHeight `json:"windowend"`
 }
 
 // persistData returns the data that will be saved to disk for
