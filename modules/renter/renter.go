@@ -579,7 +579,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 
 	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+	r.hostDB.SetIPViolationCheck(s.IPViolationCheck)
 
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
@@ -777,10 +777,10 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	return modules.RenterSettings{
-		Allowance:         r.hostContractor.Allowance(),
-		IPViolationsCheck: enabled,
-		MaxDownloadSpeed:  download,
-		MaxUploadSpeed:    upload,
+		Allowance:        r.hostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
 	}, nil
 }
 
