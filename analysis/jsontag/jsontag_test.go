@@ -23,6 +23,8 @@ type Foo struct {
 
 	StaticH     int "json:\"h,omitempty\"" // OK
 	DeprecatedI int "json:\"iDeprecated,siamismatch\"" // OK
+
+	j int "json:\"j,string,foo,bar\"" // OK
 }
 
 `}

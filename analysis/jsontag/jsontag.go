@@ -13,10 +13,13 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
+// Doc is the CLI help text for the jsontag analyzer.
 const Doc = `check that json struct field tags conform to conventions.
 
 siad json fields are always lowercase, and should match the Go field name.`
 
+// Analyzer defines the jsontag analysis tool, allowing it to be used with the
+// analysis framework.
 var Analyzer = &analysis.Analyzer{
 	Name:             "jsontag",
 	Doc:              Doc,
@@ -25,6 +28,7 @@ var Analyzer = &analysis.Analyzer{
 	Run:              run,
 }
 
+// run analyzes Go source code, reporting any violations of the jsontag checks.
 func run(pass *analysis.Pass) (interface{}, error) {
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
@@ -57,6 +61,8 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
+// removeOpts removes any "options" from a JSON struct tag, leaving only the
+// field name.
 func removeOpts(tag string) string {
 	if i := strings.IndexByte(tag, ','); i != -1 {
 		tag = tag[:i]
@@ -64,6 +70,8 @@ func removeOpts(tag string) string {
 	return tag
 }
 
+// matchesField checks whether the name of a JSON struct tag matches the name of
+// the Go struct field it is attached to.
 func matchesField(tag, field string) bool {
 	tag, field = strings.ToLower(tag), strings.ToLower(field)
 
@@ -73,6 +81,7 @@ func matchesField(tag, field string) bool {
 	return tag == field
 }
 
+// isLowercase checks whether a tag name is entirely lowercase.
 func isLowercase(tag string) bool {
 	return tag == strings.ToLower(tag)
 }
