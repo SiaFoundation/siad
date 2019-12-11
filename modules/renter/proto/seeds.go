@@ -19,6 +19,10 @@ const (
 	FCSignedIdentiferSize = 80 // 32 bytes identifier, 32 bytes signature, 16 bytes prefix
 )
 
+// ErrCSIDoesNotMatchSeed is returned when a ContractSignedIdentifier was not
+// created with the current seed used by the renter.
+var ErrCSIDoesNotMatchSeed = errors.New("CSI signature bytes not equal")
+
 // Declaration of individual seed types for additional type safety.
 type (
 	// identifierSeed is the seed used to derive identifiers for file contracts.
@@ -204,7 +208,7 @@ func (csi ContractSignedIdentifier) IsValid(renterSeed EphemeralRenterSeed, txn 
 	signature := sk.EncryptBytes(append(identifier[:], make([]byte, 32)...))[:32]
 	// Compare the signatures.
 	if !bytes.Equal(signature, csi[48:80]) {
-		return types.SiaPublicKey{}, false, errors.New("signature bytes not equal")
+		return types.SiaPublicKey{}, false, ErrCSIDoesNotMatchSeed
 	}
 	// Decrypt the hostKey.
 	hk, err := sk.DecryptBytes(hostKey)
