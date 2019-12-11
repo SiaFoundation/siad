@@ -66,7 +66,6 @@ func alertscmd() {
 		fmt.Println("Could not get daemon alerts:", err)
 		return
 	}
-	fmt.Println("There are", len(al.Alerts), "alerts")
 	alertCount := 0
 	for sev := 2; sev > 0; sev-- { // print the alerts in order of warning, error
 		for _, a := range al.Alerts {

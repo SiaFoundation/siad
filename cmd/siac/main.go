@@ -330,20 +330,19 @@ func main() {
 
 	// Check for Critical Alerts
 	alerts, err := httpClient.DaemonAlertsGet()
-	if err != nil {
-		fmt.Println("Unable to fetch alerts")
-		os.Exit(exitCodeGeneral)
-	}
-	for _, a := range alerts.Alerts {
-		if a.Severity != modules.SeverityCritical {
-			continue
+	if err == nil {
+		for _, a := range alerts.Alerts {
+			if a.Severity != modules.SeverityCritical {
+				continue
+			}
+			fmt.Printf(`------------------
+			Module:   %s
+			Severity: %s
+			Message:  %s
+			Cause:    %s
+			`, a.Module, a.Severity.String(), a.Msg, a.Cause)
 		}
-		fmt.Printf(`------------------
-Module:   %s
-Severity: %s
-Message:  %s
-Cause:    %s
-`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+		fmt.Println() // for formatting, creating a space before all future commands
 	}
 
 	// run
