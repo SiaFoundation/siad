@@ -1946,3 +1946,86 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestWatchdogExtraDependencyRegression reproduces a bug in a previous version
+// of the watchdog in which change outputs created in a file contract
+// transaction and spent in another file contract transaction were incorrectly
+// interpreted as double-spends.
+func TestWatchdogExtraDependencyRegression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	groupParams := siatest.GroupParams{
+		Hosts:   0,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	renter := tg.Renters()[0]
+
+	// Recreate the regression setup by consolidating the entire wallet balance
+	// into 1 UTXO for the renter. This causes the dependencies for file
+	// transactions to be much more closesly related.
+	wg, err := renter.WalletGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	balance := wg.ConfirmedSiacoinBalance.Add(wg.UnconfirmedIncomingSiacoins).Sub(wg.UnconfirmedOutgoingSiacoins)
+
+	// Generate a new address and send all the siacoins to it.
+	addressGet, err := renter.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get a fee estimate and send the consolidation txn.
+	feeGet, err := renter.TransactionPoolFeeGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fee := feeGet.Maximum.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	_, err = renter.WalletSiacoinsPost(balance.Sub(fee), addressGet.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Bring up 5 hosts and check that contracts are formed properly.
+	_, err = tg.AddNodeN(node.HostTemplate, 5)
+	if err != nil {
+		t.Fatal("Failed to create a new host", err)
+	}
+
+	// Get the set of active contracts.
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine 10 blocks to confirm transactions and check that the watchdog hasn't
+	// marked anything as double-spent.
+	for i := 0; i < 10; i++ {
+		err := tg.Miners()[0].MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, contract := range rc.ActiveContracts {
+		status, err := renter.RenterContractStatus(contract.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status.DoubleSpendHeight != 0 {
+			t.Fatal("Found unexpected double spends")
+		}
+	}
+}
