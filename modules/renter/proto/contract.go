@@ -510,7 +510,7 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 		if seekErr != nil {
 			return contractHeader{}, errors.AddContext(errors.Compose(err, seekErr), "unable to reset file when attempting legacy decode")
 		}
-		header, v1412DecodeErr = contractHeaderDecodeV1412ToV142(f, decodeMaxSize)
+		header, v1412DecodeErr = contractHeaderDecodeV1412ToV1420(f, decodeMaxSize)
 		if v1412DecodeErr != nil {
 			return contractHeader{}, errors.AddContext(errors.Compose(err, v1412DecodeErr), "unable to decode contract header")
 		}
@@ -724,7 +724,7 @@ func unmarshalHeader(b []byte, u *updateSetHeader) error {
 	// Try unmarshaling the header.
 	if err := encoding.Unmarshal(b, u); err != nil {
 		// Try unmarshalling the update
-		v132Err := updateSetHeaderUnmarshalV132ToV142(b, u)
+		v132Err := updateSetHeaderUnmarshalV132ToV1420(b, u)
 		if v132Err != nil {
 			return errors.AddContext(errors.Compose(err, v132Err), "unable to unmarshal update set header")
 		}
