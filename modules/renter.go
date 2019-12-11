@@ -278,6 +278,12 @@ type Allowance struct {
 	MaxUploadBandwidthPrice   types.Currency `json:"maxuploadbandwidthprice"`
 }
 
+// Active returns true if and only if this allowance has been set in the
+// contractor.
+func (a Allowance) Active() bool {
+	return a.Period != 0
+}
+
 // ContractUtility contains metrics internal to the contractor that reflect the
 // utility of a given contract.
 type ContractUtility struct {

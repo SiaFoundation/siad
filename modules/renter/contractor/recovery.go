@@ -119,7 +119,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 			defer fastrand.Read(rs[:])
 			// Validate the identifier.
 			hostKey, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
-			if err != nil {
+			if err != nil && !errors.Contains(err, proto.ErrCSIDoesNotMatchSeed) {
 				c.log.Println("WARN: error validating the identifier:", err)
 				continue
 			}
