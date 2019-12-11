@@ -1,3 +1,5 @@
+// +build !windows
+
 package renter
 
 // fusemock_test.go implements an entire filesystem for the fuse library that
