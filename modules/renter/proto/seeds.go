@@ -21,7 +21,7 @@ const (
 
 // ErrCSIDoesNotMatchSeed is returned when a ContractSignedIdentifier was not
 // created with the current seed used by the renter.
-var ErrCSIDoesNotMatchSeed = errors.New("CSI signature bytes not equal")
+var ErrCSIDoesNotMatchSeed = errors.New("ContractSignedIdentifier signature bytes not equal")
 
 // Declaration of individual seed types for additional type safety.
 type (
