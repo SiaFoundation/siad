@@ -899,7 +899,7 @@ type Renter interface {
 	// StreamerFromSnapshot create a io.ReadSeeker that can be used to stream
 	// downloads from the Sia network using a SiaFile which is not part of the
 	// renter.
-	StreamerFromSnapshot(reader io.Reader) (Streamer, error)
+	StreamerFromSnapshot(reader io.Reader) (Streamer, SiaPath, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error

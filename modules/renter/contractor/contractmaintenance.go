@@ -476,7 +476,6 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
-
 // staticCheckViewContractExtortion will check whether the pricing for creating
 // a view contract with this host triggers any extortion warnings.
 //

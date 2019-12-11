@@ -126,6 +126,8 @@ func (sp SiaPath) AddSuffix(suffix uint) SiaPath {
 
 // Dir returns the directory of the SiaPath
 func (sp SiaPath) Dir() (SiaPath, error) {
+	// TODO: Is this cross-platform safe? Should always use the linux method to
+	// get the dir, this may be broken on windows?
 	str := filepath.Dir(sp.Path)
 	if str == "." {
 		return RootSiaPath(), nil
@@ -176,6 +178,7 @@ func (sp SiaPath) MarshalJSON() ([]byte, error) {
 
 // Name returns the name of the file.
 func (sp SiaPath) Name() string {
+	// TODO: Is this cross-OS safe? Will it work on Windows?
 	_, name := filepath.Split(sp.Path)
 	return name
 }
