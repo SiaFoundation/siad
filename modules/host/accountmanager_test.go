@@ -1,7 +1,11 @@
 package host
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,11 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
-
-type TestAcc struct {
-	id string
-	sk crypto.SecretKey
-}
 
 // TestAccountCallDeposit verifies we can deposit into an ephemeral account
 func TestAccountCallDeposit(t *testing.T) {
@@ -38,7 +37,7 @@ func TestAccountCallDeposit(t *testing.T) {
 	// Deposit money into it
 	diff := types.NewCurrency64(100)
 	before := getAccountBalance(am, accountID)
-	err = am.callDeposit(accountID, diff)
+	err = callDeposit(am, accountID, diff)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +47,8 @@ func TestAccountCallDeposit(t *testing.T) {
 	if !after.Sub(before).Equals(diff) {
 		t.Fatal("Deposit was not credited")
 	}
+
+	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountMaxBalance verifies we can never deposit more than the account max
@@ -71,10 +72,12 @@ func TestAccountMaxBalance(t *testing.T) {
 	// Verify the deposit can not exceed the max account balance
 	maxBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
 	exceedingBalance := maxBalance.Add(types.NewCurrency64(1))
-	err = am.callDeposit(accountID, exceedingBalance)
+	err = callDeposit(am, accountID, exceedingBalance)
 	if err != ErrBalanceMaxExceeded {
 		t.Fatal(err)
 	}
+
+	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountCallWithdraw verifies we can spend from an ephemeral account
@@ -95,7 +98,7 @@ func TestAccountCallWithdraw(t *testing.T) {
 	accountID := spk.String()
 
 	// Fund the account
-	err = am.callDeposit(accountID, types.NewCurrency64(10))
+	err = callDeposit(am, accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +120,8 @@ func TestAccountCallWithdraw(t *testing.T) {
 		t.Fatal("Account balance was incorrect after spend")
 	}
 
+	// Overspend, followed by a deposit to verify the account properly blocks
+	// to await the deposit and then resolves.
 	overSpend := types.NewCurrency64(7)
 	deposit := types.NewCurrency64(3)
 	expected := current.Add(deposit).Sub(overSpend)
@@ -128,6 +133,7 @@ func TestAccountCallWithdraw(t *testing.T) {
 		defer wg.Done()
 		msg, sig = prepareWithdrawal(accountID, overSpend, am.h.blockHeight, sk)
 		if err := callWithdraw(am, msg, sig); err != nil {
+			// t.Log(err)
 			atomic.AddUint64(&atomicErrs, 1)
 		}
 	}()
@@ -135,11 +141,13 @@ func TestAccountCallWithdraw(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		time.Sleep(100 * time.Millisecond) // ensure withdrawal blocks
-		if err := am.callDeposit(accountID, deposit); err != nil {
+		if err := callDeposit(am, accountID, deposit); err != nil {
+			// t.Log(err)
 			atomic.AddUint64(&atomicErrs, 1)
 		}
 	}()
 	wg.Wait()
+
 	if atomic.LoadUint64(&atomicErrs) != 0 {
 		t.Fatal("Unexpected error occurred during blocked withdrawal")
 	}
@@ -148,6 +156,8 @@ func TestAccountCallWithdraw(t *testing.T) {
 	if !balance.Equals(expected) {
 		t.Fatal("Account balance was incorrect after spend", balance.HumanString())
 	}
+
+	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountCallWithdrawTimeout verifies withdrawals timeout eventually
@@ -173,6 +183,8 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	if err := callWithdraw(am, msg, sig); err != ErrBalanceInsufficient {
 		t.Fatal("Unexpected error: ", err)
 	}
+
+	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountExpiry verifies accounts expire and get pruned
@@ -193,7 +205,7 @@ func TestAccountExpiry(t *testing.T) {
 	accountID := spk.String()
 
 	// Deposit some money into the account
-	err = am.callDeposit(accountID, types.NewCurrency64(10))
+	err = callDeposit(am, accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +242,7 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	accountID := spk.String()
 
 	// Fund the account
-	err = am.callDeposit(accountID, types.NewCurrency64(10))
+	err = callDeposit(am, accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +281,7 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	accountID := spk.String()
 
 	// Fund the account
-	err = am.callDeposit(accountID, types.NewCurrency64(10))
+	err = callDeposit(am, accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +315,7 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	accountID := spk.String()
 
 	// Fund the account
-	err = am.callDeposit(accountID, types.NewCurrency64(10))
+	err = callDeposit(am, accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +347,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 
 	// Prepare an account and fund it
 	sk1, spk1 := prepareAccount()
-	err = am.callDeposit(spk1.String(), types.NewCurrency64(10))
+	err = callDeposit(am, spk1.String(), types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,6 +366,289 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	}
 }
 
+// TestAccountRiskBenchmark benches the account manager and tries to reach max
+// risk. If it can reach max risk it prints the configuration that managed to
+// reach it.
+func TestAccountRiskBenchmark(t *testing.T) {
+	t.SkipNow()
+
+	// Create a host with the maxrisk dependency. This will ensure the host
+	// returns errMaxRiskReached when a withdraw is blocked because maxrisk is
+	// reached. We use this to be aware that maxrisk is reached. The latency is
+	// set to zero to ensure we do not add unwanted latency when persisting data
+	// to disk.
+	deps := dependencies.NewHostMaxEphemeralAccountRiskReached(0)
+	ht, err := newMockHostTester(deps, t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// These atomics cause the test to stop, if we encounter errors we want to
+	// stop, if we encounter max risk we have succeeded in our goal to push the
+	// account manager to reaching max risk.
+	var atomicMaxRiskReached uint64
+	var atomicWithdrawalErrs uint64
+	var atomicTestErrs uint64
+
+	// Mine a block every second to ensure we rotate the fingerprints and
+	// prevent this benchmark from consuming GBs of memory. This is also
+	// necessary to test if fingerprint rotation causes the account manager to
+	// grind to a halt.
+	atomicBlockHeight := uint64(ht.host.blockHeight)
+	doneChan := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-doneChan:
+				break
+			case <-time.After(time.Second):
+				if _, err := ht.miner.AddBlock(); err != nil {
+					atomic.AddUint64(&atomicTestErrs, 1)
+					break
+				}
+				atomic.AddUint64(&atomicBlockHeight, 1)
+				continue
+			}
+		}
+	}()
+
+	// The benchmark configuration has 3 variables, #accounts, #withdrawals and
+	// #threads. The number of accounts will be fixed for this benchmark, the
+	// number of withdrawals and threads are multiplied by a factor as long as
+	// max risk is not reached.
+	acc := 100
+	withdrawals := 1000
+	threads := 16
+
+	// Grab some settings
+	his := ht.host.InternalSettings()
+	maxBalance := his.MaxEphemeralAccountBalance
+	maxRisk := his.MaxEphemeralAccountRisk
+	withdrawalSize := maxBalance.Div64(5000)
+
+	// Prepare the accounts
+	accountIDs := make([]string, acc)
+	accountSKs := make([]crypto.SecretKey, acc)
+	accountBal := maxBalance
+	for a := 0; a < acc; a++ {
+		sk, spk := prepareAccount()
+		accountIDs[a] = spk.String()
+		accountSKs[a] = sk
+		err = callDeposit(am, accountIDs[a], accountBal)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Spin up a routine that periodically refills the accounts with the amount
+	// that has been withdrawn, we do this to ensure a "safe" deposit that never
+	// reaches the max balance, and also ensures we always perfectly top off the
+	// account.
+	atomicWithdrawn := make([]uint64, acc)
+	go func() {
+		for {
+			select {
+			case <-doneChan:
+				break
+			case <-time.After(200 * time.Millisecond):
+				for a := 0; a < acc; a++ {
+					deposit := atomic.LoadUint64(&atomicWithdrawn[a])
+					if err := callDeposit(am, accountIDs[a], types.NewCurrency64(deposit)); err != nil {
+						atomic.AddUint64(&atomicTestErrs, 1)
+						return
+					}
+					atomic.StoreUint64(&atomicWithdrawn[a], 0)
+				}
+			}
+		}
+	}()
+
+	// Spin a goroutine that logs the current withdrawal count every second.
+	// This is mostly to verify we have not run into a deadlock when this
+	// benchmark runs into the high figures.
+	var atomicWithdrawals uint64
+	go func() {
+		for {
+			select {
+			case <-doneChan:
+				break
+			case <-time.After(1 * time.Second):
+				fmt.Printf("# withdrawals: %v\n", atomic.LoadUint64(&atomicWithdrawals))
+			}
+		}
+	}()
+
+	// Keep running until maxrisk is reached
+	for {
+		atomic.StoreUint64(&atomicWithdrawals, 0) // reset counter
+
+		// Log the configuration
+		fmt.Printf("- - - - \nConfiguration:\nAccounts: %d\nWithdrawals: %d\nThreads: %d\n\n", acc, withdrawals, threads)
+
+		var wg sync.WaitGroup
+		for th := 0; th < threads; th++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for w := 0; w < withdrawals/threads; w++ {
+					randIndex := rand.Intn(len(accountIDs))
+					msg, sig := prepareWithdrawal(accountIDs[randIndex], withdrawalSize, types.BlockHeight(atomic.LoadUint64(&atomicBlockHeight)+bucketBlockRange/2), accountSKs[randIndex])
+
+					withdrawn, _ := withdrawalSize.Uint64()
+					atomic.AddUint64(&atomicWithdrawn[randIndex], withdrawn)
+
+					wErr := callWithdraw(am, msg, sig)
+					if wErr == errMaxRiskReached {
+						atomic.StoreUint64(&atomicMaxRiskReached, 1)
+					} else if wErr == ErrBalanceInsufficient {
+						if dErr := callDeposit(am, accountIDs[randIndex], maxBalance); dErr != nil {
+							atomic.AddUint64(&atomicWithdrawalErrs, 1)
+							t.Log(wErr)
+							break
+						}
+					} else if wErr != nil {
+						atomic.AddUint64(&atomicWithdrawalErrs, 1)
+						t.Log(wErr)
+						break
+					}
+					atomic.AddUint64(&atomicWithdrawals, 1)
+				}
+			}()
+		}
+		wg.Wait()
+
+		if atomic.LoadUint64(&atomicTestErrs) > 0 ||
+			atomic.LoadUint64(&atomicWithdrawalErrs) > 0 ||
+			atomic.LoadUint64(&atomicMaxRiskReached) != 0 {
+			break
+		}
+
+		am.mu.Lock()
+		fmt.Printf("Current Risk: %v\n", am.currentRisk.HumanString())
+		fmt.Printf("Max Risk: %v\n\n", maxRisk.HumanString())
+		am.mu.Unlock()
+
+		withdrawals *= 10
+		threads *= 2
+	}
+	doneChan <- struct{}{}
+
+	numErrors := atomic.LoadUint64(&atomicWithdrawalErrs)
+	if numErrors > 0 {
+		t.Fatalf("%v withdrawals errors\n", numErrors)
+	}
+
+	maxRiskReached := atomic.LoadUint64(&atomicMaxRiskReached) == 1
+	if maxRiskReached {
+		t.Log("MaxRisk was reached")
+	}
+}
+
+// TestAccountWithdrawalBenchmark benches the withdrawals by running a couple of
+// configurations (#accounts,#withdrawals,#threads). This is added for debugging
+// purposes, the test is therefore skipped.
+func TestAccountWithdrawalBenchmark(t *testing.T) {
+	t.SkipNow()
+
+	percentiles := []float64{80, 95, 98, 99, 99.7, 99.8, 99.9}
+
+	// Configurations (#accounts,#withdrawals,#threads)
+	configurations := [][]int{
+		[]int{100, 100000, 16},
+		[]int{100, 100000, 32},
+		[]int{100, 100000, 64},
+		[]int{100, 200000, 128},
+		[]int{100, 500000, 256},
+	}
+
+	// Prepare a host
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	var atomicWithdrawalErrs uint64
+	for _, config := range configurations {
+		acc, withdrawals, threads := config[0], config[1], config[2]
+
+		// Log the configuration
+		fmt.Printf("Configuration:\nAccounts: %d\nWithdrawals: %d\nThreads: %d\n\n", acc, withdrawals, threads)
+
+		// Prepare the accounts
+		accountIDs := make([]string, acc)
+		accountSKs := make([]crypto.SecretKey, acc)
+		accountBal := types.NewCurrency64(uint64(withdrawals))
+		for a := 0; a < acc; a++ {
+			sk, spk := prepareAccount()
+			accountIDs[a] = spk.String()
+			accountSKs[a] = sk
+			err = callDeposit(am, accountIDs[a], accountBal)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Prepare withdrawals and signatures
+		oneCurr := types.NewCurrency64(1)
+		msgs := make([][]*withdrawalMessage, threads)
+		sigs := make([][]crypto.Signature, threads)
+		for t := 0; t < threads; t++ {
+			msgs[t] = make([]*withdrawalMessage, withdrawals/threads)
+			sigs[t] = make([]crypto.Signature, withdrawals/threads)
+			for w := 0; w < withdrawals/threads; w++ {
+				randIndex := rand.Intn(len(accountIDs))
+				msgs[t][w], sigs[t][w] = prepareWithdrawal(accountIDs[randIndex], oneCurr, am.h.blockHeight, accountSKs[randIndex])
+			}
+		}
+
+		// Run the withdrawals in separate threads
+		var wg sync.WaitGroup
+		timings := make([][]int64, threads)
+		start := time.Now()
+		for th := 0; th < threads; th++ {
+			timings[th] = make([]int64, 0)
+			wg.Add(1)
+			go func(thread int) {
+				defer wg.Done()
+				for i := 0; i < withdrawals/threads; i++ {
+					start := time.Now()
+					if wErr := callWithdraw(am, msgs[thread][i], sigs[thread][i]); wErr != nil {
+						atomic.AddUint64(&atomicWithdrawalErrs, 1)
+						t.Log(wErr)
+					}
+					timeInMS := time.Since(start).Microseconds()
+					timings[thread] = append(timings[thread], timeInMS)
+				}
+			}(th)
+		}
+		wg.Wait()
+		elapsed := time.Since(start)
+
+		// Collect all timings in a single slice
+		all := make([]int64, 0)
+		for _, tpt := range timings {
+			all = append(all, tpt...)
+		}
+		sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
+
+		// Print the result
+		for _, pc := range percentiles {
+			atIndex := int(math.Round((pc/100)*float64(withdrawals+1))) - 1
+			fmt.Printf("%v%% are below %vµs\n", pc, all[atIndex])
+		}
+
+		fmt.Printf("Finished in %vms\n\n\n", elapsed.Milliseconds())
+		fmt.Println("- - - - - - - - - - - - - - - - - - - - - - - - ")
+	}
+
+	withdrawalErrors := atomic.LoadUint64(&atomicWithdrawalErrs)
+	if withdrawalErrors != 0 {
+		t.Fatal("Benchmarks can not be trusted on account of errors during the withdrawals")
+	}
+}
+
 // TestAccountWithdrawalMultiple will deposit a large sum and make a lot of
 // small withdrawals
 func TestAccountWithdrawalMultiple(t *testing.T) {
@@ -369,37 +664,54 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	}
 	am := ht.host.staticAccountManager
 
+	withdrawals := int(1e3)
+	threads := 10
+
 	// Prepare an account and fund it
 	sk, spk := prepareAccount()
 	account := spk.String()
-	err = am.callDeposit(account, types.NewCurrency64(1e3))
+	err = callDeposit(am, account, types.NewCurrency64(uint64(withdrawals)))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var errors []error
-	for i := 0; i < 1e3; i++ {
-		diff := types.NewCurrency64(1)
-		msg, sig := prepareWithdrawal(account, diff, am.h.blockHeight+5, sk)
-
-		err = callWithdraw(am, msg, sig)
-		if err != nil {
-			t.Log(err.Error())
-			errors = append(errors, err)
-		}
+	// Prepare withdrawals and signatures
+	msgs := make([]*withdrawalMessage, withdrawals)
+	sigs := make([]crypto.Signature, withdrawals)
+	for w := 0; w < int(withdrawals); w++ {
+		msgs[w], sigs[w] = prepareWithdrawal(account, types.NewCurrency64(1), am.h.blockHeight, sk)
 	}
 
-	if len(errors) > 0 {
-		t.Fatal("One or multiple withdrawals failed:")
-		for _, e := range errors {
-			t.Log(e.Error())
-		}
+	// Run the withdrawals in 10 separate buckets (ensure that withdrawals do
+	// not exceed numDeposits * depositAmount)
+	var wg sync.WaitGroup
+	var atomicWithdrawalErrs uint64
+	for b := 0; b < threads; b++ {
+		wg.Add(1)
+		go func(bucket int) {
+			defer wg.Done()
+			for i := bucket * (withdrawals / threads); i < (bucket+1)*(withdrawals/threads); i++ {
+				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
+					atomic.AddUint64(&atomicWithdrawalErrs, 1)
+					t.Log(wErr)
+				}
+			}
+		}(b)
+	}
+	wg.Wait()
+
+	// Verify all withdrawals were successful
+	withdrawalErrors := atomic.LoadUint64(&atomicWithdrawalErrs)
+	if withdrawalErrors != 0 {
+		t.Fatal("Unexpected error during withdrawals")
 	}
 
 	balance := getAccountBalance(am, account)
 	if !balance.IsZero() {
 		t.Fatal("Unexpected account balance after withdrawals")
 	}
+
+	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountWithdrawalBlockMultiple will deposit a large sum in increments,
@@ -446,7 +758,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		defer wg.Done()
 		for d := 0; d < deposits; d++ {
 			time.Sleep(time.Duration(10 * time.Millisecond))
-			if err := am.callDeposit(account, types.NewCurrency64(uint64(depositAmount))); err != nil {
+			if err := callDeposit(am, account, types.NewCurrency64(uint64(depositAmount))); err != nil {
 				atomic.AddUint64(&atomicDepositErrs, 1)
 			}
 		}
@@ -486,6 +798,8 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		t.Log(balance.String())
 		t.Fatal("Unexpected account balance")
 	}
+
+	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountMaxEphemeralAccountRisk tests the behaviour when the amount of
@@ -528,7 +842,7 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 
 	// Fund all acounts to the max
 	for _, acc := range accountPKs {
-		if err = am.callDeposit(acc, maxBalance); err != nil {
+		if err = callDeposit(am, acc, maxBalance); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -559,6 +873,8 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 	if atomic.LoadUint64(&atomicMaxRiskReached) == 0 {
 		t.Fatal("Max ephemeral account balance risk was not reached")
 	}
+
+	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountIndexRecycling ensures that the account index of expired accounts
@@ -567,7 +883,6 @@ func TestAccountIndexRecycling(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
 	// Prepare a host & update its settings to expire accounts after 2s
 	ht, err := blankHostTester(t.Name())
@@ -585,22 +900,24 @@ func TestAccountIndexRecycling(t *testing.T) {
 	numAcc := 100
 	accToIndex := make(map[string]uint32, numAcc)
 
-	// deposit is a helper function to deposit 1H into the given account
+	// deposit is a helper function to deposit 1H into the given account, this
+	// acts as a keepalive for the account
 	deposit := func(id string) {
-		err := am.callDeposit(id, types.NewCurrency64(1))
+		err := callDeposit(am, id, types.NewCurrency64(1))
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// expire is a helper function that decides if an account should expire or
-	// not. We expire all accounts where index%10==0
+	// not. These indexes are deterministic but are random locations in the
+	// 64 bit field.
 	expire := func(id string) bool {
 		index, ok := accToIndex[id]
 		if !ok {
 			t.Fatal("Unexpected failure, account id unknown")
 		}
-		return index%10 == 0
+		return index > 0 && index%7 == 0
 	}
 
 	// Prepare a number of accounts
@@ -608,7 +925,11 @@ func TestAccountIndexRecycling(t *testing.T) {
 		_, pk := prepareAccount()
 		id := pk.String()
 		deposit(id)
-		_, accToIndex[id], _, _ = am.managedAccountInfo(id)
+		pi, exists := am.managedAccountPersistInfo(id)
+		if !exists {
+			t.Fatal("Unexpected failure, account id unknown")
+		}
+		accToIndex[id] = pi.index
 	}
 
 	// Keep accounts alive past the expire frequency by periodically depositing
@@ -629,14 +950,14 @@ func TestAccountIndexRecycling(t *testing.T) {
 			}
 		}
 	}()
+
 	// provide ample time for accounts to expire
-	time.Sleep(pruneExpiredAccountsFrequency * 3)
-	doneChan <- struct{}{}
+	time.Sleep(pruneExpiredAccountsFrequency * 2)
 
 	// Verify that only accounts which have been inactive for longer than the
 	// account expiry threshold are expired
 	for id, index := range accToIndex {
-		_, _, _, exists := am.managedAccountInfo(id)
+		_, exists := am.managedAccountPersistInfo(id)
 		if expire(id) && exists {
 			t.Logf("Expected account at index %d to be expired\n", index)
 			t.Fatal("PruneExpiredAccount failure")
@@ -655,20 +976,82 @@ func TestAccountIndexRecycling(t *testing.T) {
 			continue
 		}
 	}
+
 	for i := len(expired); i > 0; i-- {
 		_, pk := prepareAccount()
 		deposit(pk.String())
-		_, newIndex, _, _ := am.managedAccountInfo(pk.String())
+		pi, exists := am.managedAccountPersistInfo(pk.String())
+		if !exists {
+			t.Fatal("Unexpected failure, account id unknown")
+		}
+		newIndex := pi.index
 		if _, ok := expired[newIndex]; !ok {
-			t.Fatal("New account did not reuse a recycled index")
+			t.Log(managedAccountIndexCheck(am))
+			t.Fatalf("Account has index %v, instead of reusing a recycled index", newIndex)
 		}
 		delete(expired, newIndex)
+	}
+
+	doneChan <- struct{}{}
+}
+
+// managedCurrentRisk will return the current risk
+func managedCurrentRisk(am *accountManager) types.Currency {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	return am.currentRisk
+}
+
+// managedAccountIndexCheck is a sanity check performed on the account manager
+// to detect duplicate index, this should never occur and is only used for
+// testing/debugging purposes
+func managedAccountIndexCheck(am *accountManager) string {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	var msgs []string
+	counts := make(map[uint32]int)
+	for _, acc := range am.accounts {
+		counts[acc.index]++
+		if counts[acc.index] != 1 {
+			msgs = append(msgs, fmt.Sprintf("duplicate index: %d", acc.index))
+		}
+	}
+
+	if len(msgs) > 0 {
+		return strings.Join(msgs, "\n")
+	}
+	return "No duplicate indexes found"
+}
+
+// testZeroCurrentRiskAfterShutdown verifies current risk is 0 after cleanly
+// shutting down the host
+func testZeroCurrentRiskAfterShutdown(host *Host, t *testing.T) {
+	am := host.staticAccountManager
+	err := host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentRisk := managedCurrentRisk(am)
+	if !currentRisk.IsZero() {
+		t.Fatalf("[%s] Current risk is %s after clean shutdown of host", t.Name(), currentRisk.HumanString())
 	}
 }
 
 // callWithdraw will perform the withdrawal using a timestamp for the priority
 func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signature) error {
 	return am.callWithdraw(msg, sig, time.Now().UnixNano())
+}
+
+// callDeposit will perform the deposit and immediately follow it up with a
+// commit, this commit will be called when the FC is fsynced to disk, in tests
+// we ignore that for most test cases
+func callDeposit(am *accountManager, id string, amount types.Currency) error {
+	err := am.callDeposit(id, amount)
+	if err != ErrBalanceMaxExceeded {
+		am.callCommitDeposit(amount)
+	}
+	return err
 }
 
 // prepareWithdrawal prepares a withdrawal message, signs it using the provided

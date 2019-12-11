@@ -61,9 +61,16 @@ type (
 	// manager. This includes all ephemeral account data and the fingerprints of
 	// the withdrawal messages.
 	accountsPersister struct {
-		accounts     modules.File
-		fingerprints *fingerprintManager
-		indexLocks   map[uint32]*indexLock
+		accounts modules.File
+
+		// fingerprints are stored using the fingerprint manager, it has it's
+		// own mutex to avoid lock contention when releasing the indexLock.
+		// Benchmarks have shown that the releasing of the index locks has to be
+		// in a separate domain from the fingerprints.
+		fingerprints   *fingerprintManager
+		fingerprintsMu sync.Mutex
+
+		indexLocks map[uint32]*indexLock
 
 		mu sync.Mutex
 		h  *Host
@@ -154,7 +161,8 @@ func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) er
 	}
 
 	// Write the data to disk
-	return errors.AddContext(writeAtAndSync(ap.accounts, accBytes, location(index)), "failed to save account")
+	_, err = ap.accounts.WriteAt(accBytes, location(index))
+	return errors.AddContext(err, "failed to save account")
 }
 
 // callBatchDeleteAccount will overwrite the accounts at given indexes with
@@ -171,7 +179,7 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 			defer wg.Done()
 			ap.managedLockIndex(index)
 			defer ap.managedUnlockIndex(index)
-			results[n] = writeAtAndSync(ap.accounts, zeroBytes, location(index))
+			_, results[n] = ap.accounts.WriteAt(zeroBytes, location(index))
 		}(n, index)
 	}
 	wg.Wait()
@@ -191,9 +199,10 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 
 // callSaveFingerprint writes the fingerprint to disk
 func (ap *accountsPersister) callSaveFingerprint(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) error {
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
-	return errors.AddContext(ap.fingerprints.save(fp, expiry, currentBlockHeight), "could not save fingerprint")
+	ap.fingerprintsMu.Lock()
+	defer ap.fingerprintsMu.Unlock()
+	return errors.AddContext(ap.fingerprints.save(fp, expiry,
+		currentBlockHeight), "could not save fingerprint")
 }
 
 // callLoadData loads the accounts data from disk and returns it
@@ -225,8 +234,8 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 // callRotateFingerprintBuckets will rotate the fingerprint bucket files, but
 // only if the current block height exceeds the current bucket's threshold
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
+	ap.fingerprintsMu.Lock()
+	defer ap.fingerprintsMu.Unlock()
 
 	// Close the current fingerprint files, this syncs the files before closing
 	fm := ap.fingerprints
@@ -442,9 +451,11 @@ func (fm *fingerprintManager) save(fp crypto.Hash, expiry, currentBlockHeight ty
 	// write into bucket depending on it's expiry
 	_, max := currentBucketRange(currentBlockHeight)
 	if expiry < max {
-		return writeAndSync(fm.current, fpBytes)
+		_, err := fm.current.Write(fpBytes)
+		return err
 	}
-	return writeAndSync(fm.next, fpBytes)
+	_, err = fm.next.Write(fpBytes)
+	return err
 }
 
 // close will close the current and next bucket file
@@ -465,29 +476,6 @@ func currentBucketRange(currentBlockHeight types.BlockHeight) (min, max types.Bl
 	min = types.BlockHeight(threshold - bucketBlockRange)
 	max = types.BlockHeight(threshold)
 	return
-}
-
-// writeAndSync will write the given bytes to the file and call sync
-func writeAndSync(file modules.File, b []byte) error {
-	if _, err := file.Write(b); err != nil {
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// writeAndSync will write the given bytes to the file at given location and
-// call sync
-func writeAtAndSync(file modules.File, b []byte, location int64) error {
-	if _, err := file.WriteAt(b, location); err != nil {
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		return err
-	}
-	return nil
 }
 
 // syncAndClose will sync and close the given file
