@@ -46,7 +46,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			if !ok {
 				continue
 			}
-			if strings.Contains(tag, ",siamismatch") {
+			if strings.Contains(tag, "siamismatch") {
 				continue
 			}
 			tag = removeOpts(tag)
