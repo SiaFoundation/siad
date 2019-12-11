@@ -2069,18 +2069,16 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	// Check for file first
-	if renterListFile {
-		rf, err := httpClient.RenterFileGet(sp)
-		if err != nil {
-			die("Could not get file:", err)
-		}
-
+	rf, err := httpClient.RenterFileGet(sp)
+	if err == nil {
 		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
 		writeFile(w, rf.File)
 		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		w.Flush()
 		return
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		die(fmt.Sprintf("Error getting file %v: %v", path, err))
 	}
 
 	// Get dirs with their corresponding files.
