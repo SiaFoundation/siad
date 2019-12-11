@@ -5,7 +5,9 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -2010,35 +2012,6 @@ func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
 	return
 }
 
-// writeFile is a helper for renterfileslistcmd to write the file info to the
-// tabwriter in order to be displayed
-func writeFile(w *tabwriter.Writer, file modules.FileInfo) {
-	name := file.SiaPath.Name()
-	fmt.Fprintf(w, "  %s", name)
-	fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(file.Filesize))
-	if renterListVerbose {
-		availableStr := yesNo(file.Available)
-		renewingStr := yesNo(file.Renewing)
-		redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
-		if file.Redundancy == -1 {
-			redundancyStr = "-"
-		}
-		healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
-		uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
-		if file.UploadProgress == -1 {
-			uploadProgressStr = "-"
-		}
-		onDiskStr := yesNo(file.OnDisk)
-		recoverableStr := yesNo(file.Recoverable)
-		stuckStr := yesNo(file.Stuck)
-		fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", availableStr, modules.FilesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
-	}
-	if !renterListVerbose && !file.Available {
-		fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
-	}
-	fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
-}
-
 // renterfileslistcmd is the handler for the command `siac renter list`.
 // Lists files known to the renter on the network.
 func renterfileslistcmd(cmd *cobra.Command, args []string) {
@@ -2065,17 +2038,19 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Create Writter
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	// Check for file first
 	if !sp.IsRoot() {
 		rf, err := httpClient.RenterFileGet(sp)
 		if err == nil {
-			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
-			fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
-			writeFile(w, rf.File)
-			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
-			w.Flush()
+			fmt.Println()
+			json, err := json.MarshalIndent(rf.File, "", "  ")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fmt.Println(string(json))
+			fmt.Println()
 			return
 		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 			die(fmt.Sprintf("Error getting file %v: %v", path, err))
@@ -2096,6 +2071,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
 	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
 	if renterListVerbose {
@@ -2125,7 +2101,30 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		// Print files.
 		sort.Sort(bySiaPathFile(dir.files))
 		for _, file := range dir.files {
-			writeFile(w, file)
+			name := file.SiaPath.Name()
+			fmt.Fprintf(w, "  %s", name)
+			fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(file.Filesize))
+			if renterListVerbose {
+				availableStr := yesNo(file.Available)
+				renewingStr := yesNo(file.Renewing)
+				redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
+				if file.Redundancy == -1 {
+					redundancyStr = "-"
+				}
+				healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
+				uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
+				if file.UploadProgress == -1 {
+					uploadProgressStr = "-"
+				}
+				onDiskStr := yesNo(file.OnDisk)
+				recoverableStr := yesNo(file.Recoverable)
+				stuckStr := yesNo(file.Stuck)
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", availableStr, modules.FilesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+			}
+			if !renterListVerbose && !file.Available {
+				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
+			}
+			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
 		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 	}
