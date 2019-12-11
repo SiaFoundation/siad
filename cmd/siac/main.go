@@ -54,8 +54,9 @@ var (
 
 var (
 	// Globals.
-	rootCmd    *cobra.Command // Root command cobra object, used by bash completion cmd.
-	httpClient client.Client
+	rootCmd           *cobra.Command // Root command cobra object, used by bash completion cmd.
+	httpClient        client.Client
+	numCriticalAlerts int
 )
 
 // Exit codes.
@@ -335,14 +336,18 @@ func main() {
 			if a.Severity != modules.SeverityCritical {
 				continue
 			}
+			numCriticalAlerts++
 			fmt.Printf(`------------------
-			Module:   %s
-			Severity: %s
-			Message:  %s
-			Cause:    %s
-			`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s
+`, a.Module, a.Severity.String(), a.Msg, a.Cause)
 		}
-		fmt.Println() // for formatting, creating a space before all future commands
+		if numCriticalAlerts > 0 {
+			fmt.Println("------------------")
+			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n", numCriticalAlerts)
+		}
 	}
 
 	// run

@@ -66,6 +66,11 @@ func alertscmd() {
 		fmt.Println("Could not get daemon alerts:", err)
 		return
 	}
+	if len(al.Alerts) == numCriticalAlerts {
+		// Return since critical alerts are already displayed
+		return
+	}
+	fmt.Printf("\n  There are %v non Critical alerts\n", len(al.Alerts)-numCriticalAlerts)
 	alertCount := 0
 	for sev := 2; sev > 0; sev-- { // print the alerts in order of warning, error
 		for _, a := range al.Alerts {
@@ -74,16 +79,17 @@ func alertscmd() {
 					fmt.Println("Only the first 1000 alerts are displayed in siac")
 					return
 				}
-				alertCount += 1
-				fmt.Printf(`------------------
+				alertCount++
+				fmt.Printf(`
+------------------
 Module:   %s
 Severity: %s
 Message:  %s
-Cause:    %s
-`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
 			}
 		}
 	}
+	fmt.Printf("\n------------------\n\n")
 }
 
 // version prints the version of siac and siad.
