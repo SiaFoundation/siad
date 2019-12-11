@@ -3,7 +3,6 @@
 package responsewritercheck
 
 import (
-	"fmt"
 	"go/ast"
 	"go/types"
 
@@ -14,8 +13,8 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
-const debug = false
-
+// Analyzer defines the responsewritercheck analysis tool, allowing it to be
+// used with the analysis framework.
 var Analyzer = &analysis.Analyzer{
 	Name: "responsewritercheck",
 	Doc:  "reports instances where HTTP handlers pass the http.Responsewriter to more than one function",
@@ -30,6 +29,7 @@ var Analyzer = &analysis.Analyzer{
 // anonymous functions that adhere to the Visitor interface.
 type VistorFunc func(n ast.Node) ast.Visitor
 
+// Visit implements ast.Visitor by calling f.
 func (f VistorFunc) Visit(n ast.Node) ast.Visitor {
 	return f(n)
 }
@@ -59,6 +59,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
+// runFunc checks the usage of responseWriter within fd.
 func runFunc(pass *analysis.Pass, fd *ast.FuncDecl, responseWriter *types.Var) {
 	// Find all expression staments that use the http.ResponseWriter
 	var usages []ast.Node
@@ -74,11 +75,6 @@ func runFunc(pass *analysis.Pass, fd *ast.FuncDecl, responseWriter *types.Var) {
 	// Obtain the CFG
 	cfgs := pass.ResultOf[ctrlflow.Analyzer].(*ctrlflow.CFGs)
 	g := cfgs.FuncDecl(fd)
-
-	if debug {
-		fmt.Printf("Func \"%s\" CFG:\n", fd.Name.String())
-		fmt.Println(g.Format(pass.Fset))
-	}
 
 	// Loop over all statements and:
 	// - find the block in which it was defined
