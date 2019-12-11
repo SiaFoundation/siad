@@ -1712,8 +1712,8 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 	http.ServeContent(w, req, fileName, time.Time{}, streamer)
 }
 
-//renterStreamFromSiaFileHandler handles streaming a file using a zipped
-//siafile.
+// renterStreamFromSiaFileHandler handles streaming a file using a zipped
+// siafile.
 func (api *API) renterStreamFromSiaFileHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	gzr, err := gzip.NewReader(req.Body)
 	if err != nil {
