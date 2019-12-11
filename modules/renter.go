@@ -278,7 +278,7 @@ type Allowance struct {
 	MaxUploadBandwidthPrice   types.Currency `json:"maxuploadbandwidthprice"`
 }
 
-// Active returns true if and only if this allowance hsa been set in the
+// Active returns true if and only if this allowance has been set in the
 // contractor.
 func (a Allowance) Active() bool {
 	return a.Period != 0
