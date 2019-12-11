@@ -189,20 +189,20 @@ var (
 	PrefixFileContractIdentifier = types.NewSpecifier("FCIdentifier")
 
 	// RPCDownload is the specifier for downloading a file from a host.
-	RPCDownload = types.NewSpecifier("Download2")
+	RPCDownload = types.NewSpecifier("Download" + string(2))
 
 	// RPCFormContract is the specifier for forming a contract with a host.
-	RPCFormContract = types.NewSpecifier("FormContract2")
+	RPCFormContract = types.NewSpecifier("FormContract" + string(2))
 
 	// RPCRenewContract is the specifier to renewing an existing contract.
-	RPCRenewContract = types.NewSpecifier("RenewContract2")
+	RPCRenewContract = types.NewSpecifier("RenewContract" + string(2))
 
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.
-	RPCReviseContract = types.NewSpecifier("ReviseContract2")
+	RPCReviseContract = types.NewSpecifier("ReviseContract" + string(2))
 
 	// RPCSettings is the specifier for requesting settings from the host.
-	RPCSettings = types.NewSpecifier("Settings2")
+	RPCSettings = types.NewSpecifier("Settings" + string(2))
 
 	// SectorSize defines how large a sector should be in bytes. The sector
 	// size needs to be a power of two to be compatible with package
@@ -242,7 +242,7 @@ type (
 	// are the values that the renter will request from the host in order to
 	// build its database.
 	//
-	// NOTE: Anytime the pricing is extended for the HostExtrenalSettings, the
+	// NOTE: Anytime the pricing is extended for the HostExternalSettings, the
 	// Allowance also needs to be extended to support manually setting a maximum
 	// reasonable price.
 	HostExternalSettings struct {
@@ -363,8 +363,8 @@ var (
 	RPCLoopRenewContract = types.NewSpecifier("LoopRenew")
 	RPCLoopSectorRoots   = types.NewSpecifier("LoopSectorRoots")
 	RPCLoopSettings      = types.NewSpecifier("LoopSettings")
-	RPCLoopUnlock        = types.NewSpecifier("RPCLoopUnlock")
-	RPCLoopWrite         = types.NewSpecifier("RPCLoopWrite")
+	RPCLoopUnlock        = types.NewSpecifier("LoopUnlock")
+	RPCLoopWrite         = types.NewSpecifier("LoopWrite")
 )
 
 // RPC ciphers

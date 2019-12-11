@@ -43,8 +43,8 @@ type Session interface {
 	Replace(data []byte, sectorIndex uint64, trim bool) (crypto.Hash, error)
 
 	// HostSettings will return the currently active host settings for a
-	// session, which allows the workers to check for extortion and determine
-	// whether or not an operation should continue.
+	// session, which allows the workers to check for price gouging and
+	// determine whether or not an operation should continue.
 	HostSettings() modules.HostExternalSettings
 
 	// Upload revises the underlying contract to store the new data. It
