@@ -98,7 +98,7 @@ func (a *AllowanceRequestPost) WithMaxPeriodChurn(maxPeriodChurn uint64) *Allowa
 	return a
 }
 
-// WithMaxRPCPRice adds the maxrpcprice field to the request.
+// WithMaxRPCPrice adds the maxrpcprice field to the request.
 func (a *AllowanceRequestPost) WithMaxRPCPrice(price types.Currency) *AllowanceRequestPost {
 	a.values.Set("maxrpcprice", price.String())
 	return a

@@ -1734,10 +1734,8 @@ func (api *API) renterStreamFromSiaFileHandler(w http.ResponseWriter, req *http.
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	fullBody2 := make([]byte, len(fullBody))
-	copy(fullBody2, fullBody)
-	gzipBuf := bytes.NewBuffer(fullBody)
-	siafileBuf := bytes.NewBuffer(fullBody2)
+	gzipBuf := bytes.NewReader(fullBody)
+	siafileBuf := bytes.NewReader(fullBody)
 
 	// Try gzip in a func.
 	gzipErr := func() error {
