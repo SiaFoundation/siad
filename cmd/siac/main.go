@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/errors"
@@ -326,6 +327,24 @@ func main() {
 
 		}
 	})
+
+	// Check for Critical Alerts
+	alerts, err := httpClient.DaemonAlertsGet()
+	if err != nil {
+		fmt.Println("Unable to fetch alerts")
+		os.Exit(exitCodeGeneral)
+	}
+	for _, a := range alerts.Alerts {
+		if a.Severity != modules.SeverityCritical {
+			continue
+		}
+		fmt.Printf(`------------------
+Module:   %s
+Severity: %s
+Message:  %s
+Cause:    %s
+`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+	}
 
 	// run
 	if err := root.Execute(); err != nil {
