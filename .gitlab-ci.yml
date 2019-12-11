@@ -1,5 +1,7 @@
 default:
-  image: golang:1.12
+  ## Run tests with most recent golang version to take advantage of any perf
+  ## improvements.
+  image: golang:latest
   before_script:
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
@@ -17,10 +19,22 @@ lint:
     paths:
       - .cache
   script: 
-    - go get github.com/golangci/golangci-lint/cmd/golangci-lint
-    - .cache/bin/golangci-lint run --disable-all --enable=vet --enable=gofmt --deadline=600s ./...
+    ## This is the recommended way to install golang-ci lint.
+    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.21.0
+    - ./bin/golangci-lint run --disable-all --enable=vet --enable=gofmt --deadline=600s ./...
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
     - make test
+
+build:
+  stage: lint
+  ## go 1.13 is the minimum accepted version for building Sia.
+  image: golang:1.13
+  artifacts:
+    name: "Binaries"
+    paths:
+      - $CI_PROJECT_DIR/artifacts
+  script:
+    - ./build.sh
 
 legacy-tests:
   stage: test
@@ -42,7 +56,7 @@ package-tests:
   except:
     - schedules
   script: 
-    - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
+    - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
 
 siatest-tests:
   stage: test
@@ -65,6 +79,8 @@ siatest-renter-tests:
     paths:
       - .cache
   script:
+    - apt-get update
+    - apt-get install -y fuse
     - make test-long run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
@@ -93,7 +109,7 @@ package-tests-nightly:
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
   script: 
-    - make test-vlong run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
+    - make test-vlong run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 siatest-tests-nightly:
@@ -123,16 +139,3 @@ siatest-renter--tests-nightly:
   script:
     - make test-vlong run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-
-deploy:
-  stage: deploy
-  only:
-    refs:
-      - master@NebulousLabs/Sia
-  artifacts:
-    name: "Binaries"
-    paths:
-      - $CI_PROJECT_DIR/artifacts
-  script: 
-    - ./deploy.sh "$NIGHTLY_SIGNING_KEY"
-    - cp -R ./artifacts $CI_PROJECT_DIR/artifacts

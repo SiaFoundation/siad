@@ -19,20 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// dummyEntry wraps a SiaFile into a siaFileSetEntry.
-func dummyEntry(s *SiaFile) *siaFileSetEntry {
-	return &siaFileSetEntry{
-		SiaFile: s,
-		staticSiaFileSet: &SiaFileSet{
-			staticSiaFileDir: filepath.Dir(s.SiaFilePath()),
-			siaFileMap:       make(map[SiafileUID]*siaFileSetEntry),
-			siapathToUID:     make(map[modules.SiaPath]SiafileUID),
-			wal:              nil,
-		},
-		threadMap: make(map[uint64]threadInfo),
-	}
-}
-
 // randomChunk is a helper method for testing that creates a random chunk.
 func randomChunk() chunk {
 	numPieces := 30
@@ -68,12 +54,20 @@ func randomPiece() piece {
 // chunk, this is a no-op. The combined chunk will be stored in the provided
 // 'dir'.
 func setCombinedChunkOfTestFile(sf *SiaFile) error {
+	if true {
+		// PARTIAL TODO: remove when partial chunks are enabled again
+		return nil
+	}
 	return setCustomCombinedChunkOfTestFile(sf, fastrand.Intn(2)+1)
 }
 
 // setCustomCombinedChunkOfTestFile sets either 1 or 2 combined chunks of a
 // SiaFile for testing and changes its status to completed.
 func setCustomCombinedChunkOfTestFile(sf *SiaFile, numCombinedChunks int) error {
+	if true {
+		// PARTIAL TODO: remove when partial chunks are enabled again
+		return nil
+	}
 	if numCombinedChunks != 1 && numCombinedChunks != 2 {
 		return errors.New("numCombinedChunks should be 1 or 2")
 	}
@@ -356,9 +350,12 @@ func TestFileHealth(t *testing.T) {
 	if err := setCustomCombinedChunkOfTestFile(f, 1); err != nil {
 		t.Fatal(err)
 	}
-	if f.PartialChunks()[0].Status != CombinedChunkStatusCompleted {
-		t.Fatal("File has wrong combined chunk status")
-	}
+	/*
+		PARTIAL TODO
+			if f.PartialChunks()[0].Status != CombinedChunkStatusCompleted {
+				t.Fatal("File has wrong combined chunk status")
+			}
+	*/
 	for i := 0; i < 2; i++ {
 		host := fmt.Sprintln("host", i)
 		spk := types.SiaPublicKey{}
@@ -930,10 +927,7 @@ func TestStuckChunks(t *testing.T) {
 	t.Parallel()
 
 	// Create siafile
-	sf, sfs, err := newTestSiaFileSetWithFile()
-	if err != nil {
-		t.Fatal(err)
-	}
+	sf := newTestFile()
 
 	// Mark every other chunk as stuck
 	expectedStuckChunks := 0
@@ -956,20 +950,8 @@ func TestStuckChunks(t *testing.T) {
 		t.Fatalf("Wrong number of stuck chunks, got %v expected %v", numStuckChunks, expectedStuckChunks)
 	}
 
-	// Close file and confirm it and its partialsSiaFile are out of memory
-	siaPath := sfs.SiaPath(sf)
-	if err = sf.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if len(sfs.siaFileMap) != 0 {
-		t.Fatal("File not removed from memory")
-	}
-	if len(sfs.siapathToUID) != 0 {
-		t.Fatal("File not removed from uid map")
-	}
-
 	// Load siafile from disk
-	sf, err = sfs.Open(siaPath)
+	sf, err := LoadSiaFile(sf.SiaFilePath(), sf.wal)
 	if err != nil {
 		t.Fatal(err)
 	}

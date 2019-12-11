@@ -36,6 +36,10 @@ type Editor interface {
 
 	// Close terminates the connection to the host.
 	Close() error
+
+	// HostSettings returns the host settings that are currently active for the
+	// underlying session.
+	HostSettings() modules.HostExternalSettings
 }
 
 // A hostEditor modifies a Contract by calling the revise RPC on a host. It
@@ -95,6 +99,12 @@ func (he *hostEditor) Close() error {
 	delete(he.contractor.editors, he.id)
 	he.contractor.mu.Unlock()
 	return he.editor.Close()
+}
+
+// HostSettings returns the host settings that are currently active for the
+// underlying session.
+func (he *hostEditor) HostSettings() modules.HostExternalSettings {
+	return he.editor.HostSettings()
 }
 
 // Upload negotiates a revision that adds a sector to a file contract.

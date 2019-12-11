@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -34,10 +35,7 @@ type (
 
 // NewFromLegacyData creates a new SiaFile from data that was previously loaded
 // from a legacy file.
-func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) {
-	sfs.mu.Lock()
-	defer sfs.mu.Unlock()
-
+func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) (*SiaFile, error) {
 	// Legacy master keys are always twofish keys.
 	mk, err := crypto.NewSiaKey(crypto.TypeTwofish, fd.MasterKey[:])
 	if err != nil {
@@ -45,15 +43,7 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 	}
 	currentTime := time.Now()
 	ecType, ecParams := marshalErasureCoder(fd.ErasureCode)
-	siaPath, err := modules.NewSiaPath(fd.Name)
-	if err != nil {
-		return &SiaFileSetEntry{}, err
-	}
 	zeroHealth := float64(1 + fd.ErasureCode.MinPieces()/(fd.ErasureCode.NumPieces()-fd.ErasureCode.MinPieces()))
-	partialsSiaFile, err := sfs.openPartialsSiaFile(fd.ErasureCode, true)
-	if err != nil {
-		return nil, err
-	}
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
@@ -79,11 +69,10 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			StaticPieceSize:         fd.PieceSize,
 			UniqueID:                SiafileUID(fd.UID),
 		},
-		deps:            modules.ProdDependencies,
-		deleted:         fd.Deleted,
-		partialsSiaFile: partialsSiaFile,
-		siaFilePath:     siaPath.SiaFileSysPath(sfs.staticSiaFileDir),
-		wal:             sfs.wal,
+		deps:        modules.ProdDependencies,
+		deleted:     fd.Deleted,
+		siaFilePath: siaFilePath,
+		wal:         wal,
 	}
 	// Update cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
@@ -124,16 +113,6 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 			}
 		}
 	}
-	entry, err := sfs.newSiaFileSetEntry(file)
-	if err != nil {
-		return nil, err
-	}
-	threadUID := randomThreadUID()
-	entry.threadMap[threadUID] = newThreadInfo()
-	sfse := &SiaFileSetEntry{
-		siaFileSetEntry: entry,
-		threadUID:       threadUID,
-	}
 
 	// Save file to disk.
 	if err := file.saveFile(chunks); err != nil {
@@ -142,5 +121,5 @@ func (sfs *SiaFileSet) NewFromLegacyData(fd FileData) (*SiaFileSetEntry, error) 
 
 	// Update the cached fields for progress and uploaded bytes.
 	_, _, err = file.UploadProgressAndBytes()
-	return sfse, err
+	return file, err
 }

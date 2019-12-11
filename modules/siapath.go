@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -65,6 +66,34 @@ func RootSiaPath() SiaPath {
 	return SiaPath{}
 }
 
+// HomeSiaPath returns a siapath to /home
+func HomeSiaPath() SiaPath {
+	sp, err := RootSiaPath().Join(HomeFolderRoot)
+	if err != nil {
+		build.Critical(err)
+	}
+	return sp
+}
+
+// UserSiaPath returns a siapath to /home/user
+func UserSiaPath() SiaPath {
+	sp := HomeSiaPath()
+	sp, err := sp.Join(UserRoot)
+	if err != nil {
+		build.Critical(err)
+	}
+	return sp
+}
+
+// SnapshotsSiaPath returns a siapath to /snapshots
+func SnapshotsSiaPath() SiaPath {
+	sp, err := RootSiaPath().Join(BackupRoot)
+	if err != nil {
+		build.Critical(err)
+	}
+	return sp
+}
+
 // CombinedSiaFilePath returns the SiaPath to a hidden siafile which is used to
 // store chunks that contain pieces of multiple siafiles.
 func CombinedSiaFilePath(ec ErasureCoder) SiaPath {
@@ -114,8 +143,8 @@ func (sp SiaPath) IsRoot() bool {
 	return sp.Path == ""
 }
 
-// Join joins the string to the end of the SiaPath with a "/" and returns
-// the new SiaPath
+// Join joins the string to the end of the SiaPath with a "/" and returns the
+// new SiaPath.
 func (sp SiaPath) Join(s string) (SiaPath, error) {
 	if s == "" {
 		return SiaPath{}, errors.New("cannot join an empty string to a siapath")

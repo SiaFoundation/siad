@@ -17,7 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
@@ -52,7 +52,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {
-		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != filesystem.ErrNotExist {
 			return errors.AddContext(err, "unable to delete existing file")
 		}
 	}
@@ -78,21 +78,16 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	if err != nil {
 		return err
 	}
-	// Try to create the directory. If ErrPathOverload is returned it already
-	// exists.
-	siaDirEntry, err := r.staticDirSet.NewSiaDir(dirSiaPath)
-	if err != siadir.ErrPathOverload && err != nil {
-		return errors.AddContext(err, "unable to create sia directory for new file")
-	} else if err == nil {
-		siaDirEntry.Close()
-	}
 
 	// Create the Siafile and add to renter
-	entry, err := r.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(sourceInfo.Size()), sourceInfo.Mode())
+	err = r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(sourceInfo.Size()), sourceInfo.Mode(), up.DisablePartialChunk)
 	if err != nil {
 		return errors.AddContext(err, "could not create a new sia file")
 	}
-	defer entry.Close()
+	entry, err := r.staticFileSystem.OpenSiaFile(up.SiaPath)
+	if err != nil {
+		return errors.AddContext(err, "could not open the new sia file")
+	}
 
 	// No need to upload zero-byte files.
 	if sourceInfo.Size() == 0 {
@@ -111,7 +106,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	nilMap := make(map[string]bool)
 	// Send the upload to the repair loop.
 	hosts := r.managedRefreshHostsAndWorkers()
-	r.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
+	r.callBuildAndPushChunks([]*filesystem.FileNode{entry}, hosts, targetUnstuckChunks, nilMap, nilMap)
 	select {
 	case r.uploadHeap.newUploads <- struct{}{}:
 	default:

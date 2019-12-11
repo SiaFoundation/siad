@@ -40,18 +40,22 @@ type (
 )
 
 var (
-	// DefaultAllowance is the allowance used for the group's renters
+	// DefaultAllowance is the allowance used for the group's renters.
+	//
+	// Note: the default allowance needs to be close enough in practice to what
+	// the host default settings are that price gouging protection does not kick
+	// in.
 	DefaultAllowance = modules.Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(1e3),
 		Hosts:       5,
 		Period:      50,
 		RenewWindow: 24,
 
-		ExpectedStorage:    modules.SectorSize * 50e3,
-		ExpectedUpload:     modules.SectorSize * 5e3,
-		ExpectedDownload:   modules.SectorSize * 5e3,
+		ExpectedStorage:    modules.SectorSize * 5e3,
+		ExpectedUpload:     modules.SectorSize * 500,
+		ExpectedDownload:   modules.SectorSize * 500,
 		ExpectedRedundancy: 5.0,
-		MaxPeriodChurn:     modules.SectorSize * 5e3,
+		MaxPeriodChurn:     modules.SectorSize * 500,
 	}
 
 	// testGroupBuffer is a buffer channel to control the number of testgroups
@@ -431,6 +435,10 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 	// each renter is supposed to have at least expectedContracts with hosts
 	// from the hosts map.
 	for renter := range renters {
+		if renter.params.SkipSetAllowance {
+			continue
+		}
+
 		numRetries := 0
 		// Get expected number of contracts for this renter.
 		rg, err := renter.RenterGet()
@@ -450,6 +458,7 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 				expectedContracts--
 			}
 		}
+
 		// Check if number of contracts is sufficient.
 		err = Retry(1000, 100*time.Millisecond, func() error {
 			numRetries++

@@ -39,7 +39,7 @@ type (
 // marks down the host score, and marks the contract as !GoodForRenew and
 // !GoodForUpload.
 func (c *Contractor) callNotifyDoubleSpend(fcID types.FileContractID, blockHeight types.BlockHeight) {
-	c.log.Debugln("Watchdog found a double-spend: ", fcID, blockHeight)
+	c.log.Println("Watchdog found a double-spend: ", fcID, blockHeight)
 
 	// Mark the contract as double-spent. This will cause the contract to be
 	// excluded in period spending.
@@ -327,6 +327,8 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		c.mu.Unlock()
 		return types.ZeroCurrency, modules.RenterContract{}, errors.New("called managedNewContract but allowance wasn't set")
 	}
+	allowance := c.allowance
+	hostSettings := host.HostExternalSettings
 	period := c.allowance.Period
 	c.mu.Unlock()
 
@@ -337,6 +339,12 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
+	}
+
+	// Check for price gouging.
+	err := checkFormContractGouging(allowance, hostSettings)
+	if err != nil {
+		return types.ZeroCurrency, modules.RenterContract{}, errors.AddContext(err, "unable to form a contract due to price gouging detection")
 	}
 
 	// get an address to use for negotiation
@@ -468,6 +476,21 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
+// checkFormContractGouging will check whether the pricing for forming
+// this contract triggers any price gouging warnings.
+func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the RPC base price is too high.
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
+		return errors.New("rpc base price of host is too high - price gouging protection enabled")
+	}
+	// Check whether the form contract price is too high.
+	if !allowance.MaxContractPrice.IsZero() && allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) < 0 {
+		return errors.New("contract price of host is too high - price gouging protection enabled")
+	}
+
+	return nil
+}
+
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
@@ -506,6 +529,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// cap host.MaxCollateral
 	if host.MaxCollateral.Cmp(maxCollateral) > 0 {
 		host.MaxCollateral = maxCollateral
+	}
+
+	// Check for price gouging on the renewal.
+	err = checkFormContractGouging(c.allowance, host.HostExternalSettings)
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "unable to renew - price gouging protection enabled")
 	}
 
 	// get an address to use for negotiation
@@ -624,13 +653,10 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.log.Debugln("Contract does not seem to exist")
 		return types.ZeroCurrency, errors.New("contract no longer exists")
 	}
-	// Return the contract if it's not useful for renewing.
-	oldUtility, ok := c.managedContractUtility(id)
-	if !ok || !oldUtility.GoodForRenew {
-		c.log.Printf("Contract %v slated for renew is marked not good for renew: %v /%v",
-			id, ok, oldUtility.GoodForRenew)
-		c.staticContracts.Return(oldContract)
-		return types.ZeroCurrency, errors.New("contract is marked not good for renew")
+	oldUtility, exists := c.managedContractUtility(id)
+	if !exists {
+		c.log.Printf("Contract %v slated for renew could not be found in the utility lookup", id)
+		return types.ZeroCurrency, errors.New("contract utility could not be found")
 	}
 
 	// Perform the actual renew. If the renew fails, return the
@@ -931,7 +957,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		sectorBandwidthPrice := sectorUploadBandwidthPrice.Add(sectorDownloadBandwidthPrice)
 		sectorPrice := sectorStoragePrice.Add(sectorBandwidthPrice)
 		percentRemaining, _ := big.NewRat(0, 1).SetFrac(contract.RenterFunds.Big(), contract.TotalCost.Big()).Float64()
-		if contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundRenewalThreshold && !c.staticDeps.Disrupt("disableRenew") {
+		lowFundsRefresh := c.staticDeps.Disrupt("LowFundsRefresh")
+		if lowFundsRefresh || ((contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0 || percentRemaining < MinContractFundRenewalThreshold) && !c.staticDeps.Disrupt("disableRenew")) {
 			// Renew the contract with double the amount of funds that the
 			// contract had previously. The reason that we double the funding
 			// instead of doing anything more clever is that we don't know what
@@ -1055,8 +1082,9 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		// Skip this renewal if we don't have enough funds remaining.
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
-		if renewal.amount.Cmp(fundsRemaining) > 0 {
+		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRefresh") {
 			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
+			registerLowFundsAlert = true
 			continue
 		}
 
@@ -1130,6 +1158,11 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
+		// If no more contracts are needed, break.
+		if neededContracts <= 0 {
+			break
+		}
+
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1159,6 +1192,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			continue
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
+		neededContracts--
 
 		sb, err := c.hdb.ScoreBreakdown(host)
 		if err == nil {
@@ -1189,12 +1223,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.mu.Unlock()
 		if err != nil {
 			c.log.Println("Unable to save the contractor:", err)
-		}
-
-		// Quit the loop if we've replaced all needed contracts.
-		neededContracts--
-		if neededContracts <= 0 {
-			break
 		}
 
 		// Soft sleep before making the next contract.

@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/sync"
@@ -175,7 +178,7 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	// Start a new renter with the same seed but disable contract recovery.
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
-	renterParams.Allowance = modules.DefaultAllowance
+	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = 2
 	renterParams.PrimarySeed = seed
 	renterParams.ContractorDeps = &dependencies.DependencyDisableContractRecovery{}
@@ -654,7 +657,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
@@ -681,6 +684,7 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		t.Log("Contracts in total:", len(rc.Contracts))
 		t.Fatal(err)
 	}
+
 	// Download the whole file again to see if all roots were recovered.
 	_, _, err = r.DownloadByStream(rf)
 	if err != nil {
@@ -798,7 +802,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.EndHeight != c.EndHeight {
@@ -825,6 +829,7 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.Log("Contracts in total:", len(rc.Contracts))
 		t.Fatal(err)
 	}
+
 	// Download the whole file again to see if all roots were recovered.
 	_, _, err = r.DownloadByStream(rf)
 	if err != nil {
@@ -906,17 +911,17 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 
 	// Copy the siafile to the new location.
-	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
 	siaFile, err := ioutil.ReadFile(oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
-	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.SiapathRoot, lf.FileName()+modules.SiaFileExtension)
-	if err := os.MkdirAll(filepath.Dir(newPath), 0777); err != nil {
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
+	if err := os.MkdirAll(filepath.Dir(newPath), persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(newPath, siaFile, 0777); err != nil {
+	if err := ioutil.WriteFile(newPath, siaFile, persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
 
@@ -964,7 +969,7 @@ func TestRenterContractRecovery(t *testing.T) {
 			if !exists {
 				return errors.New(fmt.Sprint("Recovered unknown contract", c.ID))
 			}
-			if contract.HostPublicKey.String() != c.HostPublicKey.String() {
+			if !contract.HostPublicKey.Equals(c.HostPublicKey) {
 				return errors.New("public keys don't match")
 			}
 			if contract.StartHeight != c.StartHeight {
@@ -1069,7 +1074,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath)
+	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1111,6 +1116,44 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renter := nodes[0]
 	// Wait for the alert to be registered.
 	numRetries := 0
+	err = build.Retry(100, 600*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		dag, err := renter.DaemonAlertsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found bool
+		for _, alert := range dag.Alerts {
+			if alert.Msg == contractor.AlertMSGAllowanceLowFunds {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("alert wasn't registered")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a renter which won't be able to renew a contract due to low funds.
+	renterParams = node.Renter(filepath.Join(testDir, "renter_refresh"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Period = 10
+	renterParams.Allowance.RenewWindow = 5
+	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRefreshFail{}
+	nodes, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter = nodes[0]
+	// Wait for the alert to be registered.
+	numRetries = 0
 	err = build.Retry(100, 600*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			if err := tg.Miners()[0].MineBlock(); err != nil {
@@ -1313,8 +1356,9 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		t.Fatal(err)
 	}
 
-	allowance := modules.DefaultAllowance
+	allowance := siatest.DefaultAllowance
 	allowance.Hosts = 1
+	allowance.Period = 200
 	if err := renter.RenterPostAllowance(allowance); err != nil {
 		t.Fatal(err)
 	}
@@ -1338,8 +1382,8 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if err != nil {
 			return errors.AddContext(err, "ContractStatus API call failed")
 		}
-		if !status.ContractFound {
-			return errors.AddContext(err, "Active contract not being monitored by watchdog")
+		if !status.ContractFound || status.Archived {
+			return errors.AddContext(err, "Active contract not being monitored (or archived) by watchdog")
 		}
 		return nil
 	})
@@ -1453,14 +1497,26 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if err != nil {
 			return err
 		}
+
 		if status.ContractFound {
 			return errors.New("contract marked as found)")
+		}
+		if status.WindowStart == 0 || status.WindowEnd == 0 {
+			return errors.New("contract status does not contain proper window values")
+		}
+		if status.Archived {
+			return errors.New("premature archival")
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Save the window end height, and a copy of the contract status to test
+	// contract archival in the watchdog.
+	var windowEnd types.BlockHeight
+	var contractStatus modules.ContractWatchStatus
 
 	// Let the watchdog send transactions now.
 	toggleDep.DisableWatchdogBroadcast(false)
@@ -1477,6 +1533,8 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		if err != nil {
 			return err
 		}
+		windowEnd = status.WindowEnd
+		contractStatus = status
 
 		// A valid sweep will appear as a double-spend.  This is guaranteed to be
 		// the renter watchdog because the host is offline and because the renter's
@@ -1489,6 +1547,39 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		}
 		if !status.ContractFound {
 			return errors.New("contract not marked as found)")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine past the storage window.
+	minerCG, err := reorgMiner.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := minerCG.Height; i < windowEnd+10; i++ {
+		if err := reorgMiner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that the contract is marked as archived.
+	err = build.Retry(50, 250*time.Millisecond, func() error {
+		newStatus, err := renter.RenterContractStatus(fcID)
+		if err != nil {
+			return err
+		}
+
+		if !newStatus.Archived {
+			return errors.New("Expected contract to be archived")
+		}
+
+		// Check that the status is equal to the old copy.
+		contractStatus.Archived = true // the only value that should be different.
+		if !reflect.DeepEqual(newStatus, contractStatus) {
+			return errors.New("Expected contract status to be otherwise the same")
 		}
 		return nil
 	})
@@ -1582,9 +1673,18 @@ func TestContractorChurnLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Shutdown a hosts to cause churn.
 	hosts := tg.Hosts()
 	numHostsShutdown := 1
+
+	// Before shutting down a host, get its pubkey to verify that the correct
+	// contract is getting churned.
+	hostInfo, err := hosts[0].HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostPubKey := hostInfo.PublicKey
+
+	// Shutdown a host to cause churn.
 	err = hosts[0].StopNode()
 	if err != nil {
 		t.Fatal(err)
@@ -1618,6 +1718,11 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
 		}
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if !churnedHostKey.Equals(hostPubKey) {
+			return errors.New("wrong host churned")
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -1664,8 +1769,217 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if len(rc.DisabledContracts) != 1 {
 			return fmt.Errorf("expected %v disabled contracts but got %v", 1, len(rc.DisabledContracts))
 		}
+
+		// Check that a *different* host (i.e. not the offline host) was churned
+		// this time.
+		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
+		if churnedHostKey.Equals(hostPubKey) {
+			return errors.New("wrong host churned")
+		}
+
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestContractorHostRemoval checks that the contractor properly migrates away
+// from low quality hosts when there are higher quality hosts available.
+func TestContractorHostRemoval(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+
+	// Start 2 hosts.
+	numInitialHosts := 2
+	groupParams := siatest.GroupParams{
+		Hosts:   numInitialHosts,
+		Miners:  1,
+		Renters: 0,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	hosts := tg.Hosts()
+	miner := tg.Miners()[0]
+
+	// Raise prices significantly for each host.
+	hostPrice := types.SiacoinPrecision.Mul64(5000) // 5 KS
+	for _, host := range hosts {
+		err = host.HostModifySettingPost(client.HostParamMinContractPrice, hostPrice)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	newRenterDir := filepath.Join(testDir, "renter")
+	renterParams := node.Renter(newRenterDir)
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Funds = hostPrice.Mul64(100)
+	renterParams.Allowance.Hosts = uint64(numInitialHosts)
+	// Set a high period churn so churn limiter does not do much in this test.
+	renterParams.Allowance.MaxPeriodChurn = renterParams.Allowance.MaxPeriodChurn * 10000000
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Upload a file.
+	fileSize := 100
+	dataPieces := uint64(1)
+	parityPieces := uint64(1)
+	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+
+	// Downloading the file should be succesful.
+	if _, _, err := renter.DownloadByStream(remoteFile); err != nil {
+		t.Fatal("File download failed", err)
+	}
+
+	// Get the host pubkeys.
+	initialHostPubKeys := make(map[string]struct{})
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) != numInitialHosts {
+		t.Fatal("Active contract count should equal number of hosts")
+	}
+	for _, contract := range rc.ActiveContracts {
+		initialHostPubKeys[contract.HostPublicKey.String()] = struct{}{}
+	}
+	if len(initialHostPubKeys) != numInitialHosts {
+		t.Fatal("expected to find all initial host pub keys")
+	}
+
+	// Add 3 new hosts that will be competing with the expensive hosts.
+	numNewHosts := 3
+	_, err = tg.AddNodeN(node.HostTemplate, numNewHosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the renter has made 2 contracts with the new hosts.
+	i := 0
+	err = build.Retry(100, 250*time.Millisecond, func() error {
+		if i%3 == 0 {
+			err = miner.MineBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		newHostPubKeys := make(map[string]struct{})
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		for _, contract := range rc.ActiveContracts {
+			if _, ok := initialHostPubKeys[contract.HostPublicKey.String()]; !ok {
+				newHostPubKeys[contract.HostPublicKey.String()] = struct{}{}
+			}
+		}
+		if len(newHostPubKeys) != 2 {
+			return errors.New("expected 2 contracts with new hosts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a set of contract IDs to save.
+	contractIDs := make(map[types.FileContractID]struct{})
+	rc, err = renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range rc.ActiveContracts {
+		contractIDs[contract.ID] = struct{}{}
+	}
+
+	err = renter.WaitForUploadHealth(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Block until data has been uploaded to new contracts.
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+
+		for _, contract := range rc.ActiveContracts {
+			if contract.Size != modules.SectorSize {
+				return fmt.Errorf("Each contrat should have 1 sector: %v - %v", contract.Size, contract.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine into the next period to trigger a renew.
+	err = siatest.RenewContractsByRenewWindow(renter, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that 2 contracts were renewed, but not with the initial hosts.
+	i = 0
+	err = build.Retry(120, 250*time.Millisecond, func() error {
+		if i%3 == 0 {
+			err = miner.MineBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		i++
+
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+
+		// Count the number of contracts that were not seen in the previous
+		// batch of contracts, and check that the new contracts are not with the
+		// expensive hosts.
+		if len(rc.ActiveContracts) != 2 {
+			return errors.New("Expected 2 contracts")
+		}
+
+		for _, contract := range rc.ActiveContracts {
+			_, exists := contractIDs[contract.ID]
+			if exists {
+				return errors.New("expected only new contracts to be active")
+			}
+			if _, ok := initialHostPubKeys[contract.HostPublicKey.String()]; ok {
+				return errors.New("contracts with the wrong hosts are being renewed")
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the whole file again as a sanity check.
+	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
 	}

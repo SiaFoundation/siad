@@ -55,6 +55,8 @@ when performing file operations.
 The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
+ - [Fuse Subsystem](#fuse-subsystem)
+ - [Fuse Manager Subsystem](#fuse-manager)
  - [Persistance Subsystem](#persistance-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
@@ -64,6 +66,7 @@ responsibilities.
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
+ - [Refresh Paths Subsystem](#refresh-paths-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -77,6 +80,69 @@ responsibilities.
  - `DeleteFile` calls `callThreadedBubbleMetadata` after the file is deleted
  - `RenameFile` calls `callThreadedBubbleMetadata` on the current and new
    directories when a file is renamed
+
+### Fuse Subsystem
+**Key Files**
+ - [fuse.go](./fuse.go)
+
+The fuse subsystem enables mounting the renter as a virtual filesystem. When
+mounted, the kernel forwards I/O syscalls on files and folders to the userland
+code in this subsystem. For example, the `read` syscall is implemented by
+downloading data from Sia hosts.
+
+Fuse is implemented using the `hanwen/go-fuse/v2` series of packages, primarily
+`fs` and `fuse`. The fuse package recognizes a single node interface for files
+and folders, but the renter has two structs, one for files and another for
+folders. Each the fuseDirnode and the fuseFilenode implement the same Node
+interfaces.
+
+The fuse implementation is remarkably sensitive to small details. UID mistakes,
+slow load times, or missing/incorrect method implementations can often destroy
+an external application's ability to interact with fuse. Currently we use
+ranger, Nautilus, vlc/mpv, and siastream when testing if fuse is still working
+well. More programs may be added to this list as we discover more programs that
+have unique requirements for working with the fuse package.
+
+The siatest/renter suite has two packages which are useful for testing fuse. The
+first is [fuse\_test.go](../../siatest/renter/fuse_test.go), and the second is
+[fusemock\_test.go](../../siatest/renter/fusemock_test.go). The first file
+leverages a testgroup with a renter, a miner, and several hosts to mimic the Sia
+network, and then mounts a fuse folder which uses the full fuse implementation.
+The second file contains a hand-rolled implementation of a fake filesystem which
+implements the fuse interfaces. Both have a commented out sleep at the end of
+the test which, when uncommented, allows a developer to explore the final
+mounted fuse folder with any system application to see if things are working
+correctly.
+
+The mocked fuse is useful for debugging issues related to the fuse
+implementation. When using the renter implementation, it can be difficult to
+determine whether something is not working because there is a bug in the renter
+code, or whether something is not working because the fuse libraries are being
+used incorrectly. The mocked fuse is an easy way to replicate any desired
+behavior and check for misunderstandings that the programmer may have about how
+the fuse librires are meant to be used.
+
+### Fuse Manager Subsystem
+**Key Files**
+ - [fusemanager.go](./fusemanager.go)
+
+The fuse manager subsystem keeps track of multiple fuse directories that are
+mounted at the same time. It maintains a list of mountpoints, and maps to the
+fuse filesystem object that is mounted at those point. Only one folder can be
+mounted at each mountpoint, but the same folder can be mounted at many
+mountpoints.
+
+When debugging fuse, it can be helpful to enable the 'Debug' option when
+mounting a filesystem. This option is commented out in the fuse manager in
+production, but searching for 'Debug:' in the file will reveal the line that can
+be uncommented to enable debugging. Be warned that when debugging is enabled,
+fuse becomes incredibly verbose.
+
+Upon shutdown, the fuse manager will only attempt to unmount each folder one
+time. If the folder is busy or otherwise in use by another application, the
+unmount will fail and the user will have to manually unmount using `fusermount`
+or `umount` before that folder becomes available again. To the best of our
+current knowledge, there is no way to force an unmount.
 
 ### Persistance Subsystem
 **Key Files**
@@ -265,6 +331,10 @@ as well.
 Some downloads, in particular downloads issued by the repair code, have
 already had their memory allocated. These downloads get to skip the heap and
 go straight for the workers.
+
+Before we distribute a download to workers, we check the `localPath` of the
+file to see if it available on disk. If it is, and `disableLocalFetch` isn't
+set, we load the download from disk instead of distributing it to workers.
 
 When a download is distributed to workers, it is given to every single worker
 without checking whether that worker is appropriate for the download. Each
@@ -643,3 +713,16 @@ it up by finding a stuck chunk.
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
+
+### Refresh Paths Subsystem
+**Key Files**
+ - [refreshpaths.go](./refreshpaths.go)
+
+The refresh paths subsystem of the renter is a helper subsystem that tracks the
+minimum unique paths that need to be refreshed in order to refresh the entire
+affected portion of the file system.
+
+**Inbound Complexities** 
+ - `callAdd` is used to try and add a new path. 
+ - `callRefreshAll` is used to refresh all the directories corresponding to the
+   unique paths in order to update the filesystem
