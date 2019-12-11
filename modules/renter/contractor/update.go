@@ -1,8 +1,6 @@
 package contractor
 
 import (
-	"reflect"
-
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -119,7 +117,7 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 
 	// If the allowance is set and we have entered the next period, update
 	// currentPeriod.
-	if !reflect.DeepEqual(c.allowance, modules.Allowance{}) && c.blockHeight >= c.currentPeriod+c.allowance.Period {
+	if c.allowance.Active() && c.blockHeight >= c.currentPeriod+c.allowance.Period {
 		c.currentPeriod += c.allowance.Period
 		c.staticChurnLimiter.callResetAggregateChurn()
 
