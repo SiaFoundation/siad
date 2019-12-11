@@ -225,6 +225,11 @@ type (
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
+//
+// NOTE: When changing the allowance struct, any new or adjusted fields are
+// going to be loaded as blank when the contractor first starts up. The startup
+// code either needs to set sane defaults, or the code which depends on the
+// values needs to appropriately handle the values being empty.
 type Allowance struct {
 	Funds       types.Currency    `json:"funds"`
 	Hosts       uint64            `json:"hosts"`
@@ -249,8 +254,28 @@ type Allowance struct {
 	// period.
 	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
 
-	// NOTE: If you are changing the allowance struct, you must change or
-	// add compatibility code for the contractor's persistence.
+	// The following fields provide price gouging protection for the user. By
+	// setting a particular maximum price for each mechanism that a host can use
+	// to charge users, the workers know to avoid hosts that go outside of the
+	// safety range.
+	//
+	// The intention is that if the fields are not set, a reasonable value will
+	// be derived from the other allowance settings. The intention is that the
+	// hostdb will pay attention to these limits when forming contracts,
+	// understanding that a certain feature (such as storage) will not be used
+	// if the host price is above the limit. If the hostdb believes that a host
+	// is valuable for its other, more reasonably priced features, the hostdb
+	// may choose to form a contract with the host anyway.
+	//
+	// NOTE: If the allowance max price fields are ever extended, all of the
+	// price gouging checks throughout the worker code and contract formation
+	// code also need to be extended.
+	MaxRPCPrice               types.Currency `json:"maxrpcprice"`
+	MaxContractPrice          types.Currency `json:"maxcontractprice"`
+	MaxDownloadBandwidthPrice types.Currency `json:"maxdownloadbandwidthprice"`
+	MaxSectorAccessPrice      types.Currency `json:"maxsectoraccessprice"`
+	MaxStoragePrice           types.Currency `json:"maxstorageprice"`
+	MaxUploadBandwidthPrice   types.Currency `json:"maxuploadbandwidthprice"`
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the

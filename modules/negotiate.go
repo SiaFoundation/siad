@@ -241,6 +241,10 @@ type (
 	// HostExternalSettings are the parameters advertised by the host. These
 	// are the values that the renter will request from the host in order to
 	// build its database.
+	//
+	// NOTE: Anytime the pricing is extended for the HostExternalSettings, the
+	// Allowance also needs to be extended to support manually setting a maximum
+	// reasonable price.
 	HostExternalSettings struct {
 		// MaxBatchSize indicates the maximum size in bytes that a batch is
 		// allowed to be. A batch is an array of revision actions; each

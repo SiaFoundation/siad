@@ -21,6 +21,10 @@ type Downloader interface {
 	// Download requests the specified sector data.
 	Download(root crypto.Hash, offset, length uint32) ([]byte, error)
 
+	// HostSettings returns the settings that are active in the current
+	// downloader session.
+	HostSettings() modules.HostExternalSettings
+
 	// Close terminates the connection to the host.
 	Close() error
 }
