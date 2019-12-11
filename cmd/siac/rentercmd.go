@@ -2037,8 +2037,6 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Create Writter
-
 	// Check for file first
 	if !sp.IsRoot() {
 		rf, err := httpClient.RenterFileGet(sp)
@@ -2071,9 +2069,9 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
 	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	if renterListVerbose {
 		fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
 	}
