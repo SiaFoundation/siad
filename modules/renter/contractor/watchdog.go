@@ -142,10 +142,6 @@ func (c *Contractor) ContractStatus(fcID types.FileContractID) (modules.Contract
 
 // callAllowanceUpdated informs the watchdog of an allowance change.
 func (w *watchdog) callAllowanceUpdated(a modules.Allowance) {
-	if err := w.contractor.tg.Add(); err != nil {
-		return
-	}
-	defer w.contractor.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -156,10 +152,6 @@ func (w *watchdog) callAllowanceUpdated(a modules.Allowance) {
 // callMonitorContract tells the watchdog to monitor the blockchain for data
 // relevant to the given contract.
 func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
-	if err := w.contractor.tg.Add(); err != nil {
-		return err
-	}
-	defer w.contractor.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.contractor.log.Debugln("callMonitorContract", args.fcID)
@@ -209,28 +201,9 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 	return nil
 }
 
-// callSendMostRecentRevision sends the most recent revision transaction out.
-// Should be called whenever a contract is no longer going to be used.
-func (w *watchdog) callSendMostRecentRevision(metadata modules.RenterContract) {
-	if err := w.contractor.tg.Add(); err != nil {
-		return
-	}
-	defer w.contractor.tg.Done()
-	fcID := metadata.ID
-	lastRevisionTxn := metadata.Transaction
-	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
-
-	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
-	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
-}
-
 // callScanConsensusChange scans applied and reverted blocks, updating the
 // watchdog's state with all information relevant to monitored contracts.
 func (w *watchdog) callScanConsensusChange(cc modules.ConsensusChange) {
-	if err := w.contractor.tg.Add(); err != nil {
-		return
-	}
-	defer w.contractor.tg.Done()
 	for _, block := range cc.RevertedBlocks {
 		w.blockHeight--
 		w.managedScanRevertedBlock(block)
@@ -658,10 +631,6 @@ func (w *watchdog) addDependencyToContractFormationSet(fcID types.FileContractID
 // their expiration window, and notifies the contractor of the storage proof
 // status.
 func (w *watchdog) callCheckContracts() {
-	if err := w.contractor.tg.Add(); err != nil {
-		return
-	}
-	defer w.contractor.tg.Done()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.contractor.log.Debugln("Watchdog checking contracts at height:", w.blockHeight)
@@ -847,4 +816,19 @@ func (w *watchdog) managedContractStatus(fcID types.FileContractID) (modules.Con
 		WindowStart:               contractData.windowStart,
 		WindowEnd:                 contractData.windowEnd,
 	}, true
+}
+
+// threadedSendMostRecentRevision sends the most recent revision transaction out.
+// Should be called whenever a contract is no longer going to be used.
+func (w *watchdog) threadedSendMostRecentRevision(metadata modules.RenterContract) {
+	if err := w.contractor.tg.Add(); err != nil {
+		return
+	}
+	defer w.contractor.tg.Done()
+	fcID := metadata.ID
+	lastRevisionTxn := metadata.Transaction
+	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
+
+	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
+	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
 }
