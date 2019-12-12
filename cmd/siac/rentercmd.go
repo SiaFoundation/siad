@@ -1303,7 +1303,7 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				c.HostPublicKey.String(),
 				hostVersion,
@@ -1343,7 +1343,7 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				c.HostPublicKey.String(),
 				hostVersion,
@@ -1383,7 +1383,7 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				c.HostPublicKey.String(),
 				hostVersion,
@@ -1464,7 +1464,7 @@ func rentercontractscmd() {
 				} else {
 					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 				}
-				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
 					address,
 					c.HostPublicKey.String(),
 					hostVersion,
@@ -1503,7 +1503,7 @@ func rentercontractscmd() {
 				} else {
 					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 				}
-				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
 					address,
 					c.HostPublicKey.String(),
 					hostVersion,

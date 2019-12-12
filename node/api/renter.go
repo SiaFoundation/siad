@@ -127,6 +127,8 @@ type (
 		GoodForUpload bool `json:"goodforupload"`
 		// Signals if contract is good for a renewal
 		GoodForRenew bool `json:"goodforrenew"`
+		// Signals if a contract has been marked as bad
+		BadContract bool `json:"badcontract"`
 	}
 
 	// RenterContracts contains the renter's contracts.
@@ -994,6 +996,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Build the contract.
 		contract := RenterContract{
+			BadContract:               c.Utility.BadContract,
 			DownloadSpending:          c.DownloadSpending,
 			EndHeight:                 c.EndHeight,
 			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
@@ -1057,6 +1060,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Build contract
 		contract := RenterContract{
+			BadContract:               c.Utility.BadContract,
 			DownloadSpending:          c.DownloadSpending,
 			EndHeight:                 c.EndHeight,
 			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
