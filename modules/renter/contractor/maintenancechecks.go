@@ -95,6 +95,11 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 // require, with no exceptions, marking the contract as !GFR and/or !GFU.
 // Returns true if and only if and of the checks passed and require the utility
 // to be updated.
+//
+// NOTE: 'needsUpdate' should return 'true' if the contract should be marked as
+// !GFR and !GFU, even if the contract is already marked as such. If
+// 'needsUpdate' is set to true, other checks which may change those values will
+// be ignored and the contract will remain marked as having no utility.
 func (c *Contractor) criticalUtilityChecks(contract modules.RenterContract, host modules.HostDBEntry) (modules.ContractUtility, bool) {
 	c.mu.RLock()
 	blockHeight := c.blockHeight
