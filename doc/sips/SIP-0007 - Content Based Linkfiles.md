@@ -114,7 +114,7 @@ downloading a single sector if there is more than 1 data piece.
 Linkfiles can be encrypted so that only authorized parties are able to read the
 underlying contents.
 
-`sia://5FZ5vUuKPA8c9QSAcNhUqPSPQuGtUBFmJXGnwDv5xax8qWGCCxzw49wuk428oC.nebulous`
+`sia://HFpP7QB2hMRpPSP5giWWVrKe8JKgNh3kbRTZafk27kXrEB3Gxaz51CAhRS1.nebulous`
 
 The receiver of the link knows to look up an encryption key corresponding to the
 ID that is appended to the link. The encryption key must be used to decode the
