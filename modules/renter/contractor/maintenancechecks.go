@@ -16,6 +16,18 @@ const (
 	necessaryUtilityUpdate
 )
 
+// badContractCheck checks whether the contract has been marked as bad. If the
+// contract has been marked as bad, GoodForUpload and GoodForRenew need to be
+// set to false to prevent the renter from using this contract.
+func (c *Contractor) badContractCheck(u modules.Utility) (modules.ContractUtility, bool) {
+	if u.BadContract && (u.GoodForUpload || u.GoodForRenew) {
+		u.GoodForUpload = false
+		u.GoodForRenew = false
+		return u, true
+	}
+	return u, false
+}
+
 // checkHostScore checks host scorebreakdown against minimum accepted scores.
 // forceUpdate is true if the utility change must be taken.
 func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (modules.ContractUtility, utilityUpdateStatus) {
@@ -89,6 +101,11 @@ func (c *Contractor) criticalUtilityChecks(contract modules.RenterContract, host
 	renewWindow := c.allowance.RenewWindow
 	period := c.allowance.Period
 	c.mu.RUnlock()
+
+	u, needsUpdate := c.badContractCheck()
+	if needsUpdate {
+		return u, needsUpdate
+	}
 
 	u, needsUpdate := c.offlineCheck(contract, host)
 	if needsUpdate {
