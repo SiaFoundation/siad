@@ -20,7 +20,7 @@ const (
 // contract has been marked as bad, GoodForUpload and GoodForRenew need to be
 // set to false to prevent the renter from using this contract.
 func (c *Contractor) badContractCheck(u modules.ContractUtility) (modules.ContractUtility, bool) {
-	if u.BadContract && (u.GoodForUpload || u.GoodForRenew) {
+	if u.BadContract {
 		u.GoodForUpload = false
 		u.GoodForRenew = false
 		return u, true
