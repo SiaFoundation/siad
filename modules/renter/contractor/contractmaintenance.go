@@ -782,7 +782,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 
 	// Signal to the watchdog that it should immediately post the last
 	// revision for this contract.
-	go c.staticWatchdog.callSendMostRecentRevision(oldContract.Metadata())
+	go c.staticWatchdog.threadedSendMostRecentRevision(oldContract.Metadata())
 	return amount, nil
 }
 

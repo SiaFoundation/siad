@@ -133,6 +133,10 @@ func newWatchdog(contractor *Contractor) *watchdog {
 
 // ContractStatus returns the status of a contract in the watchdog.
 func (c *Contractor) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
+	if err := c.tg.Add(); err != nil {
+		return modules.ContractWatchStatus{}, false
+	}
+	defer c.tg.Done()
 	return c.staticWatchdog.managedContractStatus(fcID)
 }
 
@@ -195,17 +199,6 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 
 	w.contractor.log.Debugln("Monitoring contract: ", args.fcID)
 	return nil
-}
-
-// callSendMostRecentRevision sends the most recent revision transaction out.
-// Should be called whenever a contract is no longer going to be used.
-func (w *watchdog) callSendMostRecentRevision(metadata modules.RenterContract) {
-	fcID := metadata.ID
-	lastRevisionTxn := metadata.Transaction
-	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
-
-	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
-	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
 }
 
 // callScanConsensusChange scans applied and reverted blocks, updating the
@@ -842,4 +835,19 @@ func (w *watchdog) managedContractStatus(fcID types.FileContractID) (modules.Con
 		WindowStart:               contractData.windowStart,
 		WindowEnd:                 contractData.windowEnd,
 	}, true
+}
+
+// threadedSendMostRecentRevision sends the most recent revision transaction out.
+// Should be called whenever a contract is no longer going to be used.
+func (w *watchdog) threadedSendMostRecentRevision(metadata modules.RenterContract) {
+	if err := w.contractor.tg.Add(); err != nil {
+		return
+	}
+	defer w.contractor.tg.Done()
+	fcID := metadata.ID
+	lastRevisionTxn := metadata.Transaction
+	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
+
+	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
+	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
 }
