@@ -2769,6 +2769,7 @@ flag indicating if recoverable contracts should be returned.
       "uploadspending":   "1234"            // hastings
       "goodforupload":    true,             // boolean
       "goodforrenew":     false,            // boolean
+      "badcontract":      false,            // boolean
     }
   ],
   "passivecontracts": [],
@@ -2834,6 +2835,12 @@ Signals if contract is good for uploading data.
 
 **goodforrenew** | boolean  
 Signals if contract is good for a renewal.  
+
+**badcontract** | boolean  
+Signals whether a contract has been marked as bad. A contract will be marked as
+bad if the contract does not make it onto the blockchain or otherwise gets
+double spent. A contract can also be marked as bad if the host is refusing to
+acknowldege that the contract exists.
 
 ## /renter/contractstatus [GET]
 > curl example
