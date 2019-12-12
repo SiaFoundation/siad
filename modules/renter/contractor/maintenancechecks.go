@@ -19,7 +19,7 @@ const (
 // badContractCheck checks whether the contract has been marked as bad. If the
 // contract has been marked as bad, GoodForUpload and GoodForRenew need to be
 // set to false to prevent the renter from using this contract.
-func (c *Contractor) badContractCheck(u modules.Utility) (modules.ContractUtility, bool) {
+func (c *Contractor) badContractCheck(u modules.ContractUtility) (modules.ContractUtility, bool) {
 	if u.BadContract && (u.GoodForUpload || u.GoodForRenew) {
 		u.GoodForUpload = false
 		u.GoodForRenew = false
@@ -102,12 +102,12 @@ func (c *Contractor) criticalUtilityChecks(contract modules.RenterContract, host
 	period := c.allowance.Period
 	c.mu.RUnlock()
 
-	u, needsUpdate := c.badContractCheck()
+	u, needsUpdate := c.badContractCheck(contract.Utility)
 	if needsUpdate {
 		return u, needsUpdate
 	}
 
-	u, needsUpdate := c.offlineCheck(contract, host)
+	u, needsUpdate = c.offlineCheck(contract, host)
 	if needsUpdate {
 		return u, needsUpdate
 	}
