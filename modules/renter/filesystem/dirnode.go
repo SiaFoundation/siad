@@ -36,7 +36,7 @@ type (
 // if it's no longer being used and if it doesn't have any children which are
 // currently in use. This happens iteratively for all parent as long as
 // removing a child resulted in them not having any children left.
-func (n *DirNode) Close() {
+func (n *DirNode) Close() error {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
 
@@ -56,6 +56,8 @@ func (n *DirNode) Close() {
 		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
+
+	return nil
 }
 
 // Delete is a wrapper for SiaDir.Delete.
@@ -135,7 +137,7 @@ func (n *DirNode) UpdateMetadata(md siadir.Metadata) error {
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
 // offlineMap, goodForRenewMap and contractMap don't need to be provided if
 // 'cached' is set to 'true'.
-func (n *DirNode) managedList(fsRoot string, siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
 	// Prepare a pool of workers.
 	numThreads := 40
 	dirLoadChan := make(chan *DirNode, numThreads)

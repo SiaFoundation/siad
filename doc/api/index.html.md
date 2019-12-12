@@ -789,6 +789,35 @@ Max upload speed permitted in bytes per second
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /gateway/bandwidth [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/gateway/bandwidth"
+```
+
+returns the total upload and download bandwidth usage for the gateway
+
+### JSON Response
+```go
+{
+  "download":  12345                                  // bytes
+  "upload":    12345                                  // bytes
+  "starttime": "2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
+}
+```
+
+**download** | bytes  
+the total number of bytes that have been downloaded by the gateway since the
+starttime.
+
+**upload** | bytes  
+the total number of bytes that have been uploaded by the gateway since the
+starttime.
+
+**starttime** | Unix timestamp  
+the time at which the gateway started monitoring the bandwidth, since the
+bandwidth is not currently persisted this will be startup timestamp.
+
 ## /gateway/connect/:*netaddress* [POST]
 > curl example  
 
@@ -854,9 +883,9 @@ fetches the list of blacklisted addresses.
 {
 "blacklist":
 [
-"123.456.789.0",  // string
-"123.456.789.0",  // string
-"123.456.789.0",  // string
+"123.123.123.123",  // string
+"123.123.123.123",  // string
+"123.123.123.123",  // string
 ],
 }
 ```
@@ -867,7 +896,7 @@ blacklist is a list of blacklisted address
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.456.789.0:9981","123.456.789.0:9981","123.456.789.0:9981"]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.123.123.123","123.123.123.123","123.123.123.123"]}' "localhost:9980/gateway/blacklist"
 ```
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
@@ -2740,6 +2769,7 @@ flag indicating if recoverable contracts should be returned.
       "uploadspending":   "1234"            // hastings
       "goodforupload":    true,             // boolean
       "goodforrenew":     false,            // boolean
+      "badcontract":      false,            // boolean
     }
   ],
   "passivecontracts": [],
@@ -2806,6 +2836,12 @@ Signals if contract is good for uploading data.
 **goodforrenew** | boolean  
 Signals if contract is good for a renewal.  
 
+**badcontract** | boolean  
+Signals whether a contract has been marked as bad. A contract will be marked as
+bad if the contract does not make it onto the blockchain or otherwise gets
+double spent. A contract can also be marked as bad if the host is refusing to
+acknowldege that the contract exists.
+
 ## /renter/contractstatus [GET]
 > curl example
 
@@ -2822,32 +2858,46 @@ ID of the file contract
 
 ```go
 {
-  "formationsweepheight":      1234, // block height,
-  "contractfound":             true,  // boolean
-  "latestrevisionfound",       55,    // uint64
-  "storageprooffoundatheight": 0, // block height,
-  "doublespendheight":         0, // block height,
+  "archived":                  true, // boolean
+  "formationsweepheight":      1234, // block height
+  "contractfound":             true, // boolean
+  "latestrevisionfound",       55,   // uint64
+  "storageprooffoundatheight": 0,    // block height
+  "doublespendheight":         0,    // block height
+  "windowstart":               5000, // block height
+  "windowend":                 5555, // block height
 }
 ```
+**archived** | boolean  
+Indicates whether or not this contract has been archived by the watchdog. This
+is done when a file contract's inputs are double-spent or if the storage proof
+window has already elapsed.
 
-**formationsweepheight** | block height
+**formationsweepheight** | block height  
 The block height at which the renter's watchdog will try to sweep inputs from
 the formation transaction set if it hasn't been confirmed on chain yet.
 
-**contractfound** | boolean
+**contractfound** | boolean  
 Indicates whether or not the renter watchdog found the formation transaction set
 on chain.
 
-**latestrevisionfound** | uint64
+**latestrevisionfound** | uint64  
 The highest revision number found by the watchdog for this contract on chain.
 
-**storageprooffoundatheight** | block height
+**storageprooffoundatheight** | block height  
 The height at which the watchdog found a storage proof for this contract on
 chain.
 
-**doublespendheight** | block height
+**doublespendheight** | block height  
 The height at which a double-spend for this transactions formation transaction
 was found on chain.
+
+**windowstart** | block height  
+The height at which the storage proof window for this contract starts.
+
+**windowend** | block height  
+The height at which the storage proof window for this contract ends.
+
 
 ## /renter/contractorchurnstatus [GET]
 > curl example

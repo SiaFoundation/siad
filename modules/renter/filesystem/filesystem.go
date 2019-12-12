@@ -124,13 +124,7 @@ func nodeSiaPath(rootPath string, n *node) (sp modules.SiaPath) {
 // called from within other 'close' methods.
 func (n *node) closeNode() {
 	if _, exists := n.threads[n.threadUID]; !exists {
-		// TODO: Re-enable this build.Critical. For some reason we are hitting
-		// it, not sure why, and if it hits while doing FUSE operations it
-		// forces the user to reboot their linux instance to use FUSE again at
-		// the same path.
-		//
-		// build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
-		fmt.Println("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
+		build.Critical("threaduid doesn't exist in threads map: ", n.threadUID, len(n.threads))
 	}
 	delete(n.threads, n.threadUID)
 }
@@ -205,6 +199,12 @@ func (fs *FileSystem) CachedFileInfo(siaPath modules.SiaPath) (modules.FileInfo,
 // CachedList lists the files and directories within a SiaDir.
 func (fs *FileSystem) CachedList(siaPath modules.SiaPath, recursive bool) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
 	return fs.managedList(siaPath, recursive, true, nil, nil, nil)
+}
+
+// CachedListOnNode will return the files and directories within a given siadir
+// node.
+func (fs *FileSystem) CachedListOnNode(d *DirNode, recursive bool) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
+	return d.managedList(fs.managedAbsPath(), recursive, true, nil, nil, nil)
 }
 
 // DeleteDir deletes a dir from the filesystem. The dir will be marked as
@@ -556,7 +556,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 		return nil, nil, errors.AddContext(err, "failed to open folder specified by FileList")
 	}
 	defer dir.Close()
-	return dir.managedList(fs.managedAbsPath(), siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	return dir.managedList(fs.managedAbsPath(), recursive, cached, offlineMap, goodForRenewMap, contractsMap)
 }
 
 // managedNewSiaDir creates the folder at the specified siaPath.

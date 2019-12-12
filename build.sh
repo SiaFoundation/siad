@@ -1,6 +1,4 @@
-#!/bin/bash
-
-PRIVKEY=$1
+#!/usr/bin/env bash
 
 # Create fresh artifacts folder.
 rm -rf artifacts
@@ -8,9 +6,6 @@ mkdir artifacts
 
 # Return first error encountered by any command.
 set -e
-
-# Generate public key from private key.
-echo "$PRIVKEY" | openssl rsa -in - -outform PEM -pubout -out artifacts/pubkey.pem
 
 # Build binaries and sign them.
 for arch in amd64 arm; do
@@ -33,9 +28,6 @@ for arch in amd64 arm; do
 
 			# Build binary.
 	                GOOS=${os} GOARCH=${arch} go build -tags='netgo' -o artifacts/$arch/$os/$bin ./cmd/$pkg
-
-			# Sign binary.
-			echo "$PRIVKEY" | openssl dgst -sha256 -sign - -out artifacts/$arch/$os/$bin.sha256 artifacts/$arch/$os/$bin
 	        done
 	done
 done

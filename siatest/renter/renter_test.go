@@ -296,12 +296,12 @@ func TestRenterFour(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []test{
-		{"TestEscapeSiaPath", testEscapeSiaPath},
 		{"TestValidateSiaPath", testValidateSiaPath},
 		{"TestNextPeriod", testNextPeriod},
 		{"TestPauseAndResumeRepairAndUploads", testPauseAndResumeRepairAndUploads},
 		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
 		{"TestDirMode", testDirMode},
+		{"TestEscapeSiaPath", testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
 	// Run tests
@@ -992,9 +992,43 @@ func testSingleFileGet(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Compare File result and Files Results
-		if !reflect.DeepEqual(files[i], rf.File) {
-			t.Fatalf("FileInfos do not match \nFiles Entry: %v\nFile Entry: %v", files[i], rf.File)
+		// Compare File result and Files Results, check the fields which are
+		// expected to be stable between accesses of the file.
+		if files[i].Available != rf.File.Available {
+			t.Error("mismatch")
+		}
+		if files[i].CipherType != rf.File.CipherType {
+			t.Error("mismatch")
+		}
+		if files[i].CreateTime != rf.File.CreateTime {
+			t.Error("mismatch")
+		}
+		if files[i].Filesize != rf.File.Filesize {
+			t.Error("mismatch")
+		}
+		if files[i].LocalPath != rf.File.LocalPath {
+			t.Error("mismatch")
+		}
+		if files[i].FileMode != rf.File.FileMode {
+			t.Error("mismatch")
+		}
+		if files[i].NumStuckChunks != rf.File.NumStuckChunks {
+			t.Error("mismatch")
+		}
+		if files[i].OnDisk != rf.File.OnDisk {
+			t.Error("mismatch")
+		}
+		if files[i].Recoverable != rf.File.Recoverable {
+			t.Error("mismatch")
+		}
+		if files[i].Renewing != rf.File.Renewing {
+			t.Error("mismatch")
+		}
+		if files[i].SiaPath != rf.File.SiaPath {
+			t.Error("mismatch")
+		}
+		if files[i].Stuck != rf.File.Stuck {
+			t.Error("mismatch")
 		}
 	}
 }

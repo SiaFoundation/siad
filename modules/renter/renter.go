@@ -201,6 +201,18 @@ type hostContractor interface {
 	Synced() <-chan struct{}
 }
 
+type renterFuseManager interface {
+	// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+	// the local filesystem.
+	Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) (err error)
+
+	// MountInfo returns the list of currently mounted fuse filesystems.
+	MountInfo() []modules.MountInfo
+
+	// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+	Unmount(mountPoint string) error
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -243,32 +255,35 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	cs               modules.ConsensusSet
-	deps             modules.Dependencies
-	g                modules.Gateway
-	w                modules.Wallet
-	hostContractor   hostContractor
-	hostDB           hostDB
-	log              *persist.Logger
-	persist          persistence
-	persistDir       string
-	memoryManager    *memoryManager
-	mu               *siasync.RWMutex
-	repairLog        *persist.Logger
-	tg               threadgroup.ThreadGroup
-	tpool            modules.TransactionPool
-	wal              *writeaheadlog.WAL
-	staticWorkerPool *workerPool
+	cs                modules.ConsensusSet
+	deps              modules.Dependencies
+	g                 modules.Gateway
+	w                 modules.Wallet
+	hostContractor    hostContractor
+	hostDB            hostDB
+	log               *persist.Logger
+	persist           persistence
+	persistDir        string
+	staticFilesDir    string
+	staticBackupsDir  string
+	memoryManager     *memoryManager
+	mu                *siasync.RWMutex
+	repairLog         *persist.Logger
+	staticFuseManager renterFuseManager
+	tg                threadgroup.ThreadGroup
+	tpool             modules.TransactionPool
+	wal               *writeaheadlog.WAL
+	staticWorkerPool  *workerPool
 }
 
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
+	// TODO: Is this check needed?
 	if r == nil {
 		return nil
 	}
-	r.tg.Stop()
-	r.hostDB.Close()
-	return r.hostContractor.Close()
+
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -576,7 +591,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 
 	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+	r.hostDB.SetIPViolationCheck(s.IPViolationCheck)
 
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
@@ -774,10 +789,10 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	return modules.RenterSettings{
-		Allowance:         r.hostContractor.Allowance(),
-		IPViolationsCheck: enabled,
-		MaxDownloadSpeed:  download,
-		MaxUploadSpeed:    upload,
+		Allowance:        r.hostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
 	}, nil
 }
 
@@ -792,6 +807,22 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 // same name.
 func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
+}
+
+// MountInfo returns the list of currently mounted fusefilesystems.
+func (r *Renter) MountInfo() []modules.MountInfo {
+	return r.staticFuseManager.MountInfo()
+}
+
+// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+// the local filesystem.
+func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
+	return r.staticFuseManager.Mount(mountPoint, sp, opts)
+}
+
+// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+func (r *Renter) Unmount(mountPoint string) error {
+	return r.staticFuseManager.Unmount(mountPoint)
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.
@@ -859,6 +890,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	close(r.uploadHeap.pauseChan)
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.

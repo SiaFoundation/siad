@@ -87,6 +87,42 @@ func (a *AllowanceRequestPost) WithMaxPeriodChurn(maxPeriodChurn uint64) *Allowa
 	return a
 }
 
+// WithMaxRPCPrice adds the maxrpcprice field to the request.
+func (a *AllowanceRequestPost) WithMaxRPCPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxrpcprice", price.String())
+	return a
+}
+
+// WithMaxContractPrice adds the maxcontract field to the request.
+func (a *AllowanceRequestPost) WithMaxContractPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxcontractprice", price.String())
+	return a
+}
+
+// WithMaxDownloadBandwidthPrice adds the maxdownloadbandwidthprice field to the request.
+func (a *AllowanceRequestPost) WithMaxDownloadBandwidthPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxdownloadbandwidthprice", price.String())
+	return a
+}
+
+// WithMaxSectorAccessPrice adds the maxsectoraccessprice field to the request.
+func (a *AllowanceRequestPost) WithMaxSectorAccessPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxsectoraccessprice", price.String())
+	return a
+}
+
+// WithMaxStoragePrice adds the maxstorageprice field to the request.
+func (a *AllowanceRequestPost) WithMaxStoragePrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxstorageprice", price.String())
+	return a
+}
+
+// WithMaxUploadBandwidthPrice adds the maxuploadbandwidthprice field to the request.
+func (a *AllowanceRequestPost) WithMaxUploadBandwidthPrice(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("maxuploadbandwidthprice", price.String())
+	return a
+}
+
 // Send finalizes and sends the request.
 func (a *AllowanceRequestPost) Send() (err error) {
 	if a.sent {
@@ -612,6 +648,34 @@ func (c *Client) RenterUploadReadyGet(dataPieces, parityPieces uint64) (rur api.
 // determine if the renter is ready for upload.
 func (c *Client) RenterUploadReadyDefaultGet() (rur api.RenterUploadReadyGet, err error) {
 	err = c.get("/renter/uploadready", &rur)
+	return
+}
+
+// RenterFuse uses the /renter/fuse endpoint to return information about the
+// current fuse mount point.
+func (c *Client) RenterFuse() (fi api.RenterFuseInfo, err error) {
+	err = c.get("/renter/fuse", &fi)
+	return
+}
+
+// RenterFuseMount uses the /renter/fuse/mount endpoint to mount a fuse
+// filesystem serving the provided siapath.
+func (c *Client) RenterFuseMount(mount string, siaPath modules.SiaPath, readOnly bool) (err error) {
+	sp := escapeSiaPath(siaPath)
+	values := url.Values{}
+	values.Set("siapath", sp)
+	values.Set("mount", mount)
+	values.Set("readonly", strconv.FormatBool(readOnly))
+	err = c.post("/renter/fuse/mount", values.Encode(), nil)
+	return
+}
+
+// RenterFuseUnmount uses the /renter/fuse/unmount endpoint to unmount the
+// currently-mounted fuse filesystem.
+func (c *Client) RenterFuseUnmount(mount string) (err error) {
+	values := url.Values{}
+	values.Set("mount", mount)
+	err = c.post("/renter/fuse/unmount", values.Encode(), nil)
 	return
 }
 

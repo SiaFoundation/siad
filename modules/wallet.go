@@ -505,7 +505,7 @@ type (
 
 	// WalletSettings control the behavior of the Wallet.
 	WalletSettings struct {
-		NoDefrag bool `json:"noDefrag"`
+		NoDefrag bool `json:"nodefrag"`
 	}
 )
 

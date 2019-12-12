@@ -49,6 +49,7 @@ func (api *API) buildHTTPRoutes() {
 	if api.gateway != nil {
 		router.GET("/gateway", api.gatewayHandlerGET)
 		router.POST("/gateway", api.gatewayHandlerPOST)
+		router.GET("/gateway/bandwidth", api.gatewayBandwidthHandlerGET)
 		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
 		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
 		router.GET("/gateway/blacklist", api.gatewayBlacklistHandlerGET)
@@ -103,6 +104,9 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/prices", api.renterPricesHandler)
 		router.POST("/renter/recoveryscan", RequirePassword(api.renterRecoveryScanHandlerPOST, requiredPassword))
 		router.GET("/renter/recoveryscan", api.renterRecoveryScanHandlerGET)
+		router.GET("/renter/fuse", api.renterFuseHandlerGET)
+		router.POST("/renter/fuse/mount", RequirePassword(api.renterFuseMountHandlerPOST, requiredPassword))
+		router.POST("/renter/fuse/unmount", RequirePassword(api.renterFuseUnmountHandlerPOST, requiredPassword))
 
 		// TODO: re-enable these routes once the new .sia format has been
 		// standardized and implemented.

@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
@@ -20,19 +20,29 @@ type LocalDir struct {
 }
 
 // NewLocalDir creates a new LocalDir
-func (tn *TestNode) NewLocalDir() *LocalDir {
+func (tn *TestNode) NewLocalDir() (*LocalDir, error) {
 	fileName := fmt.Sprintf("dir-%s", persist.RandomSuffix())
-	path := filepath.Join(tn.RenterDir(), modules.FileSystemRoot, fileName)
+	path := filepath.Join(tn.RenterDir(), fileName)
+	err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to make local directory for new local dir")
+	}
 	return &LocalDir{
 		path: path,
-	}
+	}, nil
 }
 
-// CreateDir creates a new LocalDir in the current LocalDir with the provide
-// name
+// CreateDir creates a new LocalDir in the current LocalDir with the provided
+// name.
 func (ld *LocalDir) CreateDir(name string) (*LocalDir, error) {
 	path := filepath.Join(ld.path, name)
-	return &LocalDir{path: path}, os.MkdirAll(path, persist.DefaultDiskPermissionsTest)
+	err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to os.MkdirAll a directory")
+	}
+	return &LocalDir{
+		path: path,
+	}, nil
 }
 
 // Files returns a slice of the files in the LocalDir
