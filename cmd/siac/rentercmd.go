@@ -1248,7 +1248,7 @@ func rentercontractscmd() {
 		fmt.Println("  Number of Contracts:", len(rc.ActiveContracts))
 		sort.Sort(byValue(rc.ActiveContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
 		for _, c := range rc.ActiveContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1263,7 +1263,7 @@ func rentercontractscmd() {
 			} else {
 				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
 			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
+			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
 				address,
 				c.HostPublicKey.String(),
 				hostVersion,
@@ -1274,7 +1274,8 @@ func rentercontractscmd() {
 				c.EndHeight,
 				c.ID,
 				c.GoodForUpload,
-				c.GoodForRenew)
+				c.GoodForRenew,
+				c.BadContract)
 		}
 		w.Flush()
 	}
@@ -1287,7 +1288,7 @@ func rentercontractscmd() {
 		sort.Sort(byValue(rc.PassiveContracts))
 		fmt.Println("  Number of Contracts:", len(rc.PassiveContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
 		for _, c := range rc.PassiveContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1313,7 +1314,8 @@ func rentercontractscmd() {
 				c.EndHeight,
 				c.ID,
 				c.GoodForUpload,
-				c.GoodForRenew)
+				c.GoodForRenew,
+				c.BadContract)
 		}
 		w.Flush()
 	}
@@ -1326,7 +1328,7 @@ func rentercontractscmd() {
 		sort.Sort(byValue(rc.RefreshedContracts))
 		fmt.Println("  Number of Contracts:", len(rc.RefreshedContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
 		for _, c := range rc.RefreshedContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1352,7 +1354,8 @@ func rentercontractscmd() {
 				c.EndHeight,
 				c.ID,
 				c.GoodForUpload,
-				c.GoodForRenew)
+				c.GoodForRenew,
+				c.BadContract)
 		}
 		w.Flush()
 	}
@@ -1365,7 +1368,7 @@ func rentercontractscmd() {
 		sort.Sort(byValue(rc.DisabledContracts))
 		fmt.Println("  Number of Contracts:", len(rc.DisabledContracts))
 		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
+		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
 		for _, c := range rc.DisabledContracts {
 			address := c.NetAddress
 			hostVersion := c.HostVersion
@@ -1391,7 +1394,8 @@ func rentercontractscmd() {
 				c.EndHeight,
 				c.ID,
 				c.GoodForUpload,
-				c.GoodForRenew)
+				c.GoodForRenew,
+				c.BadContract)
 		}
 		w.Flush()
 	}
@@ -1445,7 +1449,7 @@ func rentercontractscmd() {
 			sort.Sort(byValue(rce.ExpiredContracts))
 			fmt.Println("	 Number of Contracts:", len(rce.ExpiredContracts))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
+			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
 			for _, c := range rce.ExpiredContracts {
 				address := c.NetAddress
 				hostVersion := c.HostVersion
@@ -1471,7 +1475,8 @@ func rentercontractscmd() {
 					c.EndHeight,
 					c.ID,
 					c.GoodForUpload,
-					c.GoodForRenew)
+					c.GoodForRenew,
+					c.BadContract)
 			}
 			w.Flush()
 		}
@@ -1483,7 +1488,7 @@ func rentercontractscmd() {
 			sort.Sort(byValue(rce.ExpiredRefreshedContracts))
 			fmt.Println("	 Number of Contracts:", len(rce.ExpiredRefreshedContracts))
 			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
+			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
 			for _, c := range rce.ExpiredRefreshedContracts {
 				address := c.NetAddress
 				hostVersion := c.HostVersion
@@ -1509,7 +1514,8 @@ func rentercontractscmd() {
 					c.EndHeight,
 					c.ID,
 					c.GoodForUpload,
-					c.GoodForRenew)
+					c.GoodForRenew,
+					c.BadContract)
 			}
 			w.Flush()
 		}
