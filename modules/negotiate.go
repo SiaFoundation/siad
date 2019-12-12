@@ -33,15 +33,15 @@ const (
 	// preserve compatibility.
 	V1413HostOutOfStorageErrString = "not enough storage remaining to accept sector"
 
-	// V1413ContractNotRecognizedErrString is the string used by hosts since
-	// before version 1.4.1.3 to indicate that they do not recognize the
+	// V1420ContractNotRecognizedErrString is the string used by hosts since
+	// before version 1.4.2 to indicate that they do not recognize the
 	// contract that the renter is trying to update.
 	//
 	// Any update to this string needs to be done by making a new variable. This
 	// variable should not be changed. IsContractNotRecognizedErr() needs to be
 	// updated to include the new string while also still checking the old
 	// string as well to preserve compatibility.
-	V1413ContractNotRecognizedErrString = "no record of that contract"
+	V1420ContractNotRecognizedErrString = "no record of that contract"
 )
 
 const (
@@ -890,7 +890,7 @@ func IsContractNotRecognizedErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	if strings.Contains(err.Error(), V1413ContractNotRecognizedErrString) {
+	if strings.Contains(err.Error(), V1420ContractNotRecognizedErrString) {
 		return true
 	}
 	return false

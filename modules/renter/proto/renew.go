@@ -17,7 +17,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	// Check that the host version is high enough as belt-and-suspenders. This
 	// should never happen, because hosts with old versions should be blacklisted
 	// by the contractor.
-	if build.VersionCmp(params.Host.Version, "1.4.1") < 0 {
+	if build.VersionCmp(params.Host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
 
