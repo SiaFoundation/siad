@@ -5,8 +5,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -130,8 +132,8 @@ var (
 
 	renterFilesListCmd = &cobra.Command{
 		Use:   "ls [path]",
-		Short: "List the status of all files within specified dir",
-		Long:  "List the status of all files known to the renter within the specified folder on the Sia network. To query the root dir either '\"\"', '/' or '.' can be supplied",
+		Short: "List the status of a specific file or all files within specified dir",
+		Long:  "List the status of a specific file or all files known to the renter within the specified folder on the Sia network. To query the root dir either '\"\"', '/' or '.' can be supplied",
 		Run:   renterfileslistcmd,
 	}
 
@@ -1738,7 +1740,7 @@ func renterfilesdeletecmd(path string) {
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
-	} else if !strings.Contains(errFile.Error(), siafile.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) {
 		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Try to delete folder.
@@ -1765,7 +1767,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err == nil {
 		renterfilesdownload(path, destination)
 		return
-	} else if !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
 	_, err = httpClient.RenterGetDir(siaPath)
@@ -2097,9 +2099,23 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// TODO: Currently the list command can only look at directories. We
-	// probably want to add support for looking at specific files as well
-	// though.
+	// Check for file first
+	if !sp.IsRoot() {
+		rf, err := httpClient.RenterFileGet(sp)
+		if err == nil {
+			fmt.Println()
+			json, err := json.MarshalIndent(rf.File, "", "  ")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fmt.Println(string(json))
+			fmt.Println()
+			return
+		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			die(fmt.Sprintf("Error getting file %v: %v", path, err))
+		}
+	}
 
 	// Get dirs with their corresponding files.
 	dirs := getDir(sp)

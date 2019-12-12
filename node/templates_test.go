@@ -2,6 +2,7 @@ package node
 
 import (
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 )
@@ -15,7 +16,7 @@ func TestNew(t *testing.T) {
 
 	// Test AllModulesTemplate.
 	dir := build.TempDir("node", t.Name()+"-AllModulesTemplate")
-	n, errChan := New(AllModules(dir))
+	n, errChan := New(AllModules(dir), time.Now())
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +52,7 @@ func TestNew(t *testing.T) {
 
 	// Test WalletTemplate.
 	dir = build.TempDir("node", t.Name()+"-WalletTemplate")
-	n, errChan = New(Wallet(dir))
+	n, errChan = New(Wallet(dir), time.Now())
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}

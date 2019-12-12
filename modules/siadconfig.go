@@ -15,7 +15,7 @@ type (
 	SiadConfig struct {
 		// Ratelimit related fields
 		ReadBPS    int64  `json:"readbps"`
-		WriteBPS   int64  `json:"writeps"`
+		WriteBPS   int64  `json:"writeps,siamismatch"`
 		PacketSize uint64 `json:"packetsize"`
 
 		// path of config on disk.

@@ -89,7 +89,7 @@ type (
 		Settings         modules.RenterSettings     `json:"settings"`
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
-		NextPeriod       types.BlockHeight          `json:"Nextperiod"`
+		NextPeriod       types.BlockHeight          `json:"nextperiod"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -125,7 +125,7 @@ type (
 		// incorrect capitalization. This field will be removed in the future, so
 		// clients should switch to the StorageSpending field (above) with the
 		// correct lowercase name.
-		StorageSpendingDeprecated types.Currency `json:"StorageSpending"`
+		StorageSpendingDeprecated types.Currency `json:"StorageSpending,siamismatch"`
 		// Total cost to the wallet of forming the file contract.
 		TotalCost types.Currency `json:"totalcost"`
 		// Amount of contract funds that have been spent on uploads.
@@ -176,7 +176,7 @@ type (
 
 	// RenterFuseInfo contains information about mounted fuse filesystems.
 	RenterFuseInfo struct {
-		MountPoints []modules.MountInfo `json:"mountPoints"`
+		MountPoints []modules.MountInfo `json:"mountpoints"`
 	}
 
 	// RenterLoad lists files that were loaded into the renter.
@@ -864,7 +864,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{"unable to parse ipviolationcheck: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		settings.IPViolationsCheck = ipviolationcheck
+		settings.IPViolationCheck = ipviolationcheck
 	}
 
 	// Set the settings in the renter.

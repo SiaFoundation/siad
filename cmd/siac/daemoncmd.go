@@ -58,32 +58,38 @@ Set them to 0 for no limit.`,
 	}
 )
 
-// alertscmd prints the alerts from the daemon.
+// alertscmd prints the alerts from the daemon. This will not print critical
+// alerts as critical alerts are printed on every siac command
 func alertscmd() {
 	al, err := httpClient.DaemonAlertsGet()
 	if err != nil {
 		fmt.Println("Could not get daemon alerts:", err)
 		return
 	}
-	fmt.Println("There are", len(al.Alerts), "alerts")
+	if len(al.Alerts) == numCriticalAlerts {
+		// Return since critical alerts are already displayed
+		return
+	}
+	fmt.Printf("\n  There are %v non Critical alerts\n", len(al.Alerts)-numCriticalAlerts)
 	alertCount := 0
-	for sev := 3; sev > 0; sev-- { // print the alerts in order of critical, warning, error
+	for sev := 2; sev > 0; sev-- { // print the alerts in order of warning, error
 		for _, a := range al.Alerts {
 			if a.Severity == modules.AlertSeverity(sev) {
 				if alertCount > 1000 {
 					fmt.Println("Only the first 1000 alerts are displayed in siac")
 					return
 				}
-				alertCount += 1
-				fmt.Printf(`------------------
-Module:   %s
-Severity: %s
-Message:  %s
-Cause:    %s
-`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+				alertCount++
+				fmt.Printf(`
+------------------
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
 			}
 		}
 	}
+	fmt.Printf("\n------------------\n\n")
 }
 
 // version prints the version of siac and siad.

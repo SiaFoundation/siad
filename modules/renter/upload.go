@@ -52,7 +52,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {
-		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != filesystem.ErrNotExist {
 			return errors.AddContext(err, "unable to delete existing file")
 		}
 	}

@@ -222,6 +222,7 @@ func tryAutoUnlock(srv *server.Server) {
 // startDaemon uses the config parameters to initialize Sia modules and start
 // siad.
 func startDaemon(config Config) (err error) {
+	loadStart := time.Now()
 	// Process the config variables after they are parsed by cobra.
 	config, err = processConfig(config)
 	if err != nil {
@@ -243,13 +244,12 @@ func startDaemon(config Config) (err error) {
 
 	// Print a startup message.
 	fmt.Println("Loading...")
-	loadStart := time.Now()
 
 	// Create the node params by parsing the modules specified in the config.
 	nodeParams := parseModules(config)
 
 	// Start and run the server.
-	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams)
+	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams, loadStart)
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func startDaemon(config Config) (err error) {
 
 	// Print a 'startup complete' message.
 	startupTime := time.Since(loadStart)
-	fmt.Println("Finished loading in", startupTime.Seconds(), "seconds")
+	fmt.Printf("Finished full setup in %.3f seconds\n", startupTime.Seconds())
 
 	// wait for Serve to return or for kill signal to be caught
 	err = func() error {
