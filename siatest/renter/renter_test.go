@@ -4025,8 +4025,8 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	if rg.Settings.UploadsStatus.Paused {
 		t.Fatal("Renter's uploads are paused at the beginning of the test")
 	}
-	if rg.Settings.UploadsStatus.PauseDuration != 0 {
-		t.Fatalf("Pause duration should be 0 if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseDuration)
+	if !rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatalf("Pause end time should be null if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseEndTime)
 	}
 
 	// Pause Repairs And Uploads with a high duration to ensure that the uploads
@@ -4044,8 +4044,8 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	if !rg.Settings.UploadsStatus.Paused {
 		t.Fatal("Renter's uploads are not paused but should be")
 	}
-	if rg.Settings.UploadsStatus.PauseDuration != time.Hour {
-		t.Fatalf("Pause duration should be %v  but was %v", time.Hour, rg.Settings.UploadsStatus.PauseDuration)
+	if rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatal("Pause end time should not be null if the uploads are paused")
 	}
 
 	// Try and Upload a file, the upload post should succeed but the upload
@@ -4080,8 +4080,8 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	if rg.Settings.UploadsStatus.Paused {
 		t.Fatal("Renter's uploads are still paused")
 	}
-	if rg.Settings.UploadsStatus.PauseDuration != 0 {
-		t.Fatalf("Pause duration should be 0 if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseDuration)
+	if !rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatalf("Pause end time should be null if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseEndTime)
 	}
 
 	// Confirm Upload resumes and gets to the expected redundancy. There aren't
@@ -4116,8 +4116,8 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	if !rg.Settings.UploadsStatus.Paused {
 		t.Fatal("Renter's uploads are not paused but should be")
 	}
-	if rg.Settings.UploadsStatus.PauseDuration != time.Hour {
-		t.Fatalf("Pause duration should be %v  but was %v", time.Hour, rg.Settings.UploadsStatus.PauseDuration)
+	if rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatal("Pause end time should not be null if the uploads are paused")
 	}
 
 	// Update renter's allowance to require making contracts with the new hosts
@@ -4177,8 +4177,8 @@ func testPauseAndResumeRepairAndUploads(t *testing.T, tg *siatest.TestGroup) {
 	if rg.Settings.UploadsStatus.Paused {
 		t.Fatal("Renter's uploads are still paused")
 	}
-	if rg.Settings.UploadsStatus.PauseDuration != 0 {
-		t.Fatalf("Pause duration should be 0 if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseDuration)
+	if !rg.Settings.UploadsStatus.PauseEndTime.Equal(time.Time{}) {
+		t.Fatalf("Pause end time should be null if the uploads are not paused but was %v", rg.Settings.UploadsStatus.PauseEndTime)
 	}
 }
 

@@ -799,8 +799,8 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		MaxDownloadSpeed: download,
 		MaxUploadSpeed:   upload,
 		UploadsStatus: modules.UploadsStatus{
-			Paused:        paused,
-			PauseDuration: duration,
+			Paused:       paused,
+			PauseEndTime: duration,
 		},
 	}, nil
 }

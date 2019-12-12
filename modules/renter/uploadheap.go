@@ -152,9 +152,10 @@ type uploadHeap struct {
 	stuckChunkSuccess chan struct{}
 
 	// External control channels
-	pauseChan           chan struct{}
-	pauseTimer          *time.Timer
-	staticPauseDuration time.Duration
+	pauseChan     chan struct{}
+	pauseDuration time.Duration
+	pauseStart    time.Time
+	pauseTimer    *time.Timer
 
 	mu sync.Mutex
 }
@@ -193,8 +194,16 @@ func (uh *uploadHeap) managedLen() int {
 
 // managedPauseStatus will return whether or not the uploadheap is paused and
 // the duration of the pause
-func (uh *uploadHeap) managedPauseStatus() (bool, time.Duration) {
-	return uh.managedIsPaused(), uh.staticPauseDuration
+func (uh *uploadHeap) managedPauseStatus() (bool, time.Time) {
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	timeRemaining := uh.pauseStart.Add(uh.pauseDuration)
+	select {
+	case <-uh.pauseChan:
+		return false, timeRemaining
+	default:
+		return true, timeRemaining
+	}
 }
 
 // managedMarkRepairDone removes the chunk from the repairingChunks map of the
@@ -230,15 +239,19 @@ func (uh *uploadHeap) managedNumStuckChunks() (total int, random int) {
 func (uh *uploadHeap) managedPause(duration time.Duration) {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
+	uh.pauseDuration = duration
+	uh.pauseStart = time.Now()
 	select {
 	case <-uh.pauseChan:
 		// Repairs and Uploads are not currently paused so pause them
 		uh.pauseChan = make(chan struct{})
 		uh.pauseTimer = time.AfterFunc(duration, func() {
+			uh.mu.Lock()
 			close(uh.pauseChan)
-			uh.staticPauseDuration = 0
+			uh.pauseDuration = 0
+			uh.pauseStart = time.Time{}
+			uh.mu.Unlock()
 		})
-		uh.staticPauseDuration = duration
 	default:
 		// Repairs and Uploads are paused so reset the timer duration
 		uh.pauseTimer.Reset(duration)
@@ -339,7 +352,8 @@ func (uh *uploadHeap) managedResume() {
 
 	// Stop the timer and reset the duration
 	stopped := uh.pauseTimer.Stop()
-	uh.staticPauseDuration = 0
+	uh.pauseDuration = 0
+	uh.pauseStart = time.Time{}
 
 	// We only want to close the channel if we were able to stop the timer,
 	// otherwise the channel is already closed because the timer reached its

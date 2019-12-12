@@ -2404,6 +2404,10 @@ Returns the current settings along with metrics on the renter's spending.
   },
   "currentperiod":  6000  // blockheight
   "nextperiod":    12248  // blockheight
+  "uploadsstatus": {
+    "pause": false,              // boolean
+    "pauseendtime": 1234567890,  // Unix timestamp
+  }
 }
 ```
 **settings**    
@@ -2546,6 +2550,15 @@ Height at which the current allowance period began.
 
 **nextperiod** | blockheight  
 Height at which the next allowance period began.  
+
+**uploadsstatus**  
+Information about the renter's uploads.  
+
+**paused** | boolean  
+Indicates whether or not the uploads and repairs are paused.  
+
+**pauseendtime** | unix timestamp  
+The time at which the pause will end.  
 
 ## /renter [POST]
 > curl example  

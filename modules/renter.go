@@ -543,8 +543,8 @@ type RenterSettings struct {
 
 // UploadsStatus contains information about the Renter's Uploads
 type UploadsStatus struct {
-	Paused        bool          `json:"paused"`
-	PauseDuration time.Duration `json:"pauseduration"`
+	Paused       bool      `json:"paused"`
+	PauseEndTime time.Time `json:"pauseendtime"`
 }
 
 // HostDBScans represents a sortable slice of scans.
