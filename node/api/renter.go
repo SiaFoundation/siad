@@ -1151,6 +1151,7 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 	dis, err := trimDownloadInfo(dis...)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
+		return
 	}
 	for _, di := range dis {
 		downloads = append(downloads, DownloadInfo{
