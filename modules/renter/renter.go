@@ -792,7 +792,7 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 	if err != nil {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
-	paused, duration := r.uploadHeap.managedPauseStatus()
+	paused, endTime := r.uploadHeap.managedPauseStatus()
 	return modules.RenterSettings{
 		Allowance:        r.hostContractor.Allowance(),
 		IPViolationCheck: enabled,
@@ -800,7 +800,7 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		MaxUploadSpeed:   upload,
 		UploadsStatus: modules.UploadsStatus{
 			Paused:       paused,
-			PauseEndTime: duration,
+			PauseEndTime: endTime,
 		},
 	}, nil
 }

@@ -2405,7 +2405,7 @@ Returns the current settings along with metrics on the renter's spending.
   "currentperiod":  6000  // blockheight
   "nextperiod":    12248  // blockheight
   "uploadsstatus": {
-    "pause": false,              // boolean
+    "pause":        false,       // boolean
     "pauseendtime": 1234567890,  // Unix timestamp
   }
 }

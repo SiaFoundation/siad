@@ -197,12 +197,12 @@ func (uh *uploadHeap) managedLen() int {
 func (uh *uploadHeap) managedPauseStatus() (bool, time.Time) {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	timeRemaining := uh.pauseStart.Add(uh.pauseDuration)
+	endTime := uh.pauseStart.Add(uh.pauseDuration)
 	select {
 	case <-uh.pauseChan:
-		return false, timeRemaining
+		return false, endTime
 	default:
-		return true, timeRemaining
+		return true, endTime
 	}
 }
 
