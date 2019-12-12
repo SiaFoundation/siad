@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/errors"
@@ -53,8 +54,9 @@ var (
 
 var (
 	// Globals.
-	rootCmd    *cobra.Command // Root command cobra object, used by bash completion cmd.
-	httpClient client.Client
+	rootCmd           *cobra.Command // Root command cobra object, used by bash completion cmd.
+	httpClient        client.Client
+	numCriticalAlerts int
 )
 
 // Exit codes.
@@ -326,6 +328,27 @@ func main() {
 
 		}
 	})
+
+	// Check for Critical Alerts
+	alerts, err := httpClient.DaemonAlertsGet()
+	if err == nil {
+		for _, a := range alerts.Alerts {
+			if a.Severity != modules.SeverityCritical {
+				continue
+			}
+			numCriticalAlerts++
+			fmt.Printf(`------------------
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s
+`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+		}
+		if numCriticalAlerts > 0 {
+			fmt.Println("------------------")
+			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", numCriticalAlerts)
+		}
+	}
 
 	// run
 	if err := root.Execute(); err != nil {
