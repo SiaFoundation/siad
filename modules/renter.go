@@ -534,10 +534,17 @@ type RenterPriceEstimation struct {
 
 // RenterSettings control the behavior of the Renter.
 type RenterSettings struct {
-	Allowance        Allowance `json:"allowance"`
-	IPViolationCheck bool      `json:"ipviolationcheck"`
-	MaxUploadSpeed   int64     `json:"maxuploadspeed"`
-	MaxDownloadSpeed int64     `json:"maxdownloadspeed"`
+	Allowance        Allowance     `json:"allowance"`
+	IPViolationCheck bool          `json:"ipviolationcheck"`
+	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
+	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
+	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
+}
+
+// UploadsStatus contains information about the Renter's Uploads
+type UploadsStatus struct {
+	Paused        bool          `json:"paused"`
+	PauseDuration time.Duration `json:"pauseduration"`
 }
 
 // HostDBScans represents a sortable slice of scans.

@@ -781,18 +781,27 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.hostContractor.RefreshedContract(fcid)
 }
 
-// Settings returns the renter's allowance
+// Settings returns the Renter's current settings.
 func (r *Renter) Settings() (modules.RenterSettings, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.RenterSettings{}, err
+	}
+	defer r.tg.Done()
 	download, upload, _ := r.hostContractor.RateLimits()
 	enabled, err := r.hostDB.IPViolationsCheck()
 	if err != nil {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
+	paused, duration := r.uploadHeap.managedPauseStatus()
 	return modules.RenterSettings{
 		Allowance:        r.hostContractor.Allowance(),
 		IPViolationCheck: enabled,
 		MaxDownloadSpeed: download,
 		MaxUploadSpeed:   upload,
+		UploadsStatus: modules.UploadsStatus{
+			Paused:        paused,
+			PauseDuration: duration,
+		},
 	}, nil
 }
 

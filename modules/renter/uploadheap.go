@@ -152,8 +152,9 @@ type uploadHeap struct {
 	stuckChunkSuccess chan struct{}
 
 	// External control channels
-	pauseChan  chan struct{}
-	pauseTimer *time.Timer
+	pauseChan           chan struct{}
+	pauseTimer          *time.Timer
+	staticPauseDuration time.Duration
 
 	mu sync.Mutex
 }
@@ -188,6 +189,12 @@ func (uh *uploadHeap) managedLen() int {
 	uhLen := uh.heap.Len()
 	uh.mu.Unlock()
 	return uhLen
+}
+
+// managedPauseStatus will return whether or not the uploadheap is paused and
+// the duration of the pause
+func (uh *uploadHeap) managedPauseStatus() (bool, time.Duration) {
+	return uh.managedIsPaused(), uh.staticPauseDuration
 }
 
 // managedMarkRepairDone removes the chunk from the repairingChunks map of the
@@ -229,7 +236,9 @@ func (uh *uploadHeap) managedPause(duration time.Duration) {
 		uh.pauseChan = make(chan struct{})
 		uh.pauseTimer = time.AfterFunc(duration, func() {
 			close(uh.pauseChan)
+			uh.staticPauseDuration = 0
 		})
+		uh.staticPauseDuration = duration
 	default:
 		// Repairs and Uploads are paused so reset the timer duration
 		uh.pauseTimer.Reset(duration)
@@ -328,8 +337,9 @@ func (uh *uploadHeap) managedResume() {
 	default:
 	}
 
-	// Stop the timer
+	// Stop the timer and reset the duration
 	stopped := uh.pauseTimer.Stop()
+	uh.staticPauseDuration = 0
 
 	// We only want to close the channel if we were able to stop the timer,
 	// otherwise the channel is already closed because the timer reached its
