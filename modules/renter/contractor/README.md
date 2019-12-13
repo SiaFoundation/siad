@@ -142,6 +142,8 @@ that allowance modifications only take effect upon the next "contract cycle".
   and deducted appropriately during maintenance to form and renew contracts.
 - `callNotifyChurnedContract` is used when a contract utility changes from GFR
   to !GFR.
+- `threadedSendMostRecentRevision` in the [Watchdog subsystem](#watchdog-subsystem)
+   is called when a contract is renewed and no new revisions are expected.
 
 
 ## Churn Limiter Subsystem
@@ -298,6 +300,9 @@ The watchdog does the following checks on monitored contracts.
   window
 
 ## Inbound Complexities
+- `threadedSendMostRecentRevision` is called in a go-routine from the Contract
+  Maintenance subsystem when a contract is renewed and no new revisions are
+  expected.
 - `callMonitorContract` is called from the Contract Maintenance and Recovery
   subsystems whenever contracts are formed, renewed, or recovered.
 - `callScanConsensusChange`is used in the `ProcessConsensusChange` method of the

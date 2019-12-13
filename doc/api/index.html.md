@@ -2404,6 +2404,10 @@ Returns the current settings along with metrics on the renter's spending.
   },
   "currentperiod":  6000  // blockheight
   "nextperiod":    12248  // blockheight
+  "uploadsstatus": {
+    "pause":        false,       // boolean
+    "pauseendtime": 1234567890,  // Unix timestamp
+  }
 }
 ```
 **settings**    
@@ -2546,6 +2550,15 @@ Height at which the current allowance period began.
 
 **nextperiod** | blockheight  
 Height at which the next allowance period began.  
+
+**uploadsstatus**  
+Information about the renter's uploads.  
+
+**paused** | boolean  
+Indicates whether or not the uploads and repairs are paused.  
+
+**pauseendtime** | unix timestamp  
+The time at which the pause will end.  
 
 ## /renter [POST]
 > curl example  
@@ -2769,6 +2782,7 @@ flag indicating if recoverable contracts should be returned.
       "uploadspending":   "1234"            // hastings
       "goodforupload":    true,             // boolean
       "goodforrenew":     false,            // boolean
+      "badcontract":      false,            // boolean
     }
   ],
   "passivecontracts": [],
@@ -2834,6 +2848,12 @@ Signals if contract is good for uploading data.
 
 **goodforrenew** | boolean  
 Signals if contract is good for a renewal.  
+
+**badcontract** | boolean  
+Signals whether a contract has been marked as bad. A contract will be marked as
+bad if the contract does not make it onto the blockchain or otherwise gets
+double spent. A contract can also be marked as bad if the host is refusing to
+acknowldege that the contract exists.
 
 ## /renter/contractstatus [GET]
 > curl example
