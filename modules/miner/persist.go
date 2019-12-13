@@ -74,31 +74,3 @@ func (m *Miner) load() error {
 func (m *Miner) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, m.persist, filepath.Join(m.persistDir, settingsFile))
 }
-
-// threadedSaveLoop periodically saves the miner persist.
-//
-// TODO: This is never called?
-func (m *Miner) threadedSaveLoop() {
-	for {
-		select {
-		case <-m.tg.StopChan():
-			return
-		case <-time.After(saveLoopPeriod):
-		}
-
-		func() {
-			err := m.tg.Add()
-			if err != nil {
-				return
-			}
-			defer m.tg.Done()
-
-			m.mu.Lock()
-			err = m.saveSync()
-			m.mu.Unlock()
-			if err != nil {
-				m.log.Println("ERROR: Unable to save miner persist:", err)
-			}
-		}()
-	}
-}
