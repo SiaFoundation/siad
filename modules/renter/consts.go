@@ -288,9 +288,6 @@ var (
 const (
 	// defaultFilePerm defines the default permissions used for a new file if no
 	// permissions are supplied.
-	//
-	// TODO: not currently being used instead permissions are manually set,
-	// should we update that?
 	defaultFilePerm = 0666
 
 	// PriceEstimationSafetyFactor is the factor of safety used in the price
