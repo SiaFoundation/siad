@@ -43,7 +43,8 @@ import (
 type worker struct {
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
-	staticHostPubKey types.SiaPublicKey
+	staticHostPubKey    types.SiaPublicKey
+	staticHostPubKeyStr string
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -62,8 +63,9 @@ type worker struct {
 	downloadMu         sync.Mutex
 	downloadTerminated bool // Has downloading been terminated for this worker?
 
-	// Fetch backups queue for the worker.
-	staticFetchBackupsJobQueue fetchBackupsJobQueue
+	// Job queues for the worker.
+	staticFetchBackupsJobQueue   fetchBackupsJobQueue
+	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -110,6 +112,17 @@ func (w *worker) managedBlockUntilReady() bool {
 		}
 	}
 	return true
+}
+
+// staticKilled is a convenience function to determine if a worker has been
+// killed or not.
+func (w *worker) staticKilled() bool {
+	select {
+	case <-w.killChan:
+		return true
+	default:
+		return false
+	}
 }
 
 // staticWake needs to be called any time that a job queued.
