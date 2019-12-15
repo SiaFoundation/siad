@@ -19,6 +19,21 @@ const (
 	gougingFractionDenomDownloadByRoot = 4
 )
 
+// jobDownloadByRoot contains all of the information necessary to execute a
+// perform download job.
+type jobDownloadByRoot struct {
+	// staticJobDownloadByRoot exists as two phases. The first is a startup
+	// phase, which determines whether or not the host is capable of executing
+	// the job.  The second is the fetching phase, where the worker actually
+	// fetches data from the remote host.
+	//
+	// If staticStartupCompleted is set to false, it means the job is in phase
+	// one, and if startupCompleted is set to true, it means the job is in phase
+	// two.
+	staticProject          *projectDownloadByRoot
+	staticStartupCompleted bool
+}
+
 // projectDownloadByRoot is a project to download a piece of data knowing
 // nothing more than the sector root. If the root's location on the network
 // cannot easily be found by looking up a cache, the project will have every
@@ -116,51 +131,13 @@ func checkGougingDownloadByRoot(allowance modules.Allowance, hostSettings module
 	return nil
 }
 
-// DownloadByRoot will spin up a project to locate a root and then download that
-// root.
-func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte, error) {
-	// Create the download by root project.
-	pdbr := &projectDownloadByRoot{
-		staticRoot:   root,
-		staticLength: length,
-		staticOffset: offset,
-
-		workersRegistered: make(map[string]struct{}),
-
-		completeChan: make(chan struct{}),
+// callPerformJobDownloadByRoot will perform a download by root job.
+func (jdbr *jobDownloadByRoot) callPerformJobDownloadByRoot(w *worker) {
+	if jdbr.staticStartupCompleted {
+		jdbr.staticProject.managedResumeJobDownloadByRoot(w)
+	} else {
+		jdbr.staticProject.managedStartJobDownloadByRoot(w)
 	}
-
-	// Give the project to every worker. The list of workers needs to be fetched
-	// first, and then the job can be queued because cleanup of the project
-	// assumes that no more workers will be added to the project once the first
-	// worker has begun work.
-	wp := r.staticWorkerPool
-	wp.mu.RLock()
-	workers := make([]*worker, len(wp.workers))
-	for _, w := range wp.workers {
-		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
-		workers = append(workers, w)
-	}
-	wp.mu.RUnlock()
-	// Queue the jobs in the workers.
-	jdbr := jobDownloadByRoot{
-		project:          pdbr,
-		startupCompleted: false,
-	}
-	for _, w := range workers {
-		w.callQueueJobDownloadByRoot(jdbr)
-	}
-
-	// Block until the project has completed.
-	<-pdbr.completeChan
-	pdbr.mu.Lock()
-	err := pdbr.err
-	data := pdbr.data
-	pdbr.mu.Unlock()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to fetch sector root from the network")
-	}
-	return data, nil
 }
 
 // managedRemoveWorker will remove a worker from the project.
@@ -221,10 +198,10 @@ func (pdbr *projectDownloadByRoot) managedResult() ([]byte, error) {
 	return pdbr.data, pdbr.err
 }
 
-// managedResumeJobPerformDownloadByRoot is called after a worker has confirmed
-// that a root exists on a host, and after the worker has gained the imperative
-// to fetch the data from the host.
-func (pdbr *projectDownloadByRoot) managedResumeJobPerformDownloadByRoot(w *worker) {
+// managedResumeJobDownloadByRoot is called after a worker has confirmed that a
+// root exists on a host, and after the worker has gained the imperative to
+// fetch the data from the host.
+func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	// Fetch a session to use in retrieving the sector.
 	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
@@ -261,10 +238,10 @@ func (pdbr *projectDownloadByRoot) managedResumeJobPerformDownloadByRoot(w *work
 	close(pdbr.completeChan)
 }
 
-// managedStartJobPerformDownloadByRoot will execute the first stage of
-// downloading data by merkle root for a worker. The first stage consists of
-// determining whether or not the worker's host has the merkle root in question.
-func (pdbr *projectDownloadByRoot) managedStartJobPerformDownloadByRoot(w *worker) {
+// managedStartJobDownloadByRoot will execute the first stage of downloading
+// data by merkle root for a worker. The first stage consists of determining
+// whether or not the worker's host has the merkle root in question.
+func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// Determine whether the host has the root. This is accomplished by
 	// performing a download for only one byte.
 	//
@@ -303,7 +280,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobPerformDownloadByRoot(w *worke
 	pdbr.mu.Unlock()
 
 	// Have the worker attempt the full download.
-	pdbr.managedResumeJobPerformDownloadByRoot(w)
+	pdbr.managedResumeJobDownloadByRoot(w)
 	return
 }
 
@@ -335,8 +312,55 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 	// worker so that the worker can actively control how the connection is
 	// used.
 	jdbr := jobDownloadByRoot{
-		project:          pdbr,
-		startupCompleted: true,
+		staticProject:          pdbr,
+		staticStartupCompleted: true,
 	}
 	newWorker.callQueueJobDownloadByRoot(jdbr)
+}
+
+// DownloadByRoot will spin up a project to locate a root and then download that
+// root.
+func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte, error) {
+	// Create the download by root project.
+	pdbr := &projectDownloadByRoot{
+		staticRoot:   root,
+		staticLength: length,
+		staticOffset: offset,
+
+		workersRegistered: make(map[string]struct{}),
+
+		completeChan: make(chan struct{}),
+	}
+
+	// Give the project to every worker. The list of workers needs to be fetched
+	// first, and then the job can be queued because cleanup of the project
+	// assumes that no more workers will be added to the project once the first
+	// worker has begun work.
+	wp := r.staticWorkerPool
+	wp.mu.RLock()
+	workers := make([]*worker, len(wp.workers))
+	for _, w := range wp.workers {
+		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
+		workers = append(workers, w)
+	}
+	wp.mu.RUnlock()
+	// Queue the jobs in the workers.
+	jdbr := jobDownloadByRoot{
+		staticProject:          pdbr,
+		staticStartupCompleted: false,
+	}
+	for _, w := range workers {
+		w.callQueueJobDownloadByRoot(jdbr)
+	}
+
+	// Block until the project has completed.
+	<-pdbr.completeChan
+	pdbr.mu.Lock()
+	err := pdbr.err
+	data := pdbr.data
+	pdbr.mu.Unlock()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to fetch sector root from the network")
+	}
+	return data, nil
 }

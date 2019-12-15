@@ -152,9 +152,10 @@ func (w *worker) threadedWorkLoop() {
 	//
 	// TODO: Need to write testing around these kill functions and ensure they
 	// are executing correctly.
-	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
+	defer w.managedKillJobsDownloadByRoot()
+	defer w.managedKillUploading()
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -183,7 +184,7 @@ func (w *worker) threadedWorkLoop() {
 		// Perform any job to fetch data by its sector root. This is given
 		// priority because it is only used by viewnodes, which are service
 		// operators that need to have good performance for their customers.
-		workAttempted = w.managedPerformJobDownloadByRoot()
+		workAttempted = w.managedLaunchJobDownloadByRoot()
 		if workAttempted {
 			continue
 		}

@@ -4,20 +4,6 @@ import (
 	"sync"
 )
 
-// jobDownloadByRoot contains all of the information necessary to execute a
-// perform download job.
-type jobDownloadByRoot struct {
-	// jobDownloadByRoot exists as two phases. The first is a startup phase,
-	// which determines whether or not the host is capable of executing the job.
-	// The second is the fetching phase, where the worker actually fetches data
-	// from the remote host.
-	//
-	// If startupCompleted is set to false, it means the job is in phase one,
-	// and if startupCompleted is set to true, it means the job is in phase two.
-	project          *projectDownloadByRoot
-	startupCompleted bool
-}
-
 // jobQueueDownloadByRoot is a queue of jobs that the worker need to perform to
 // download data by root.
 type jobQueueDownloadByRoot struct {
@@ -49,13 +35,13 @@ func (w *worker) managedKillJobsDownloadByRoot() {
 	// Loop through the queue and remove the worker from each job.
 	for _, jdbr := range queueJobDownloadByRoot {
 		w.renter.log.Debugln("worker was killed before being able to attempt a downloadByRoot job")
-		jdbr.project.managedRemoveWorker(w)
+		jdbr.staticProject.managedRemoveWorker(w)
 	}
 }
 
-// managedPerformJobDownloadByRoot will attempt to download the root requested
-// by the project from the host.
-func (w *worker) managedPerformJobDownloadByRoot() bool {
+// managedLaunchJobDownloadByRoot will attempt to download the root requested by
+// the project from the host.
+func (w *worker) managedLaunchJobDownloadByRoot() bool {
 	// Fetch work if there is any work to be done.
 	w.staticJobQueueDownloadByRoot.mu.Lock()
 	if len(w.staticJobQueueDownloadByRoot.queue) == 0 {
@@ -65,6 +51,6 @@ func (w *worker) managedPerformJobDownloadByRoot() bool {
 	jdbr := w.staticJobQueueDownloadByRoot.queue[0]
 	w.staticJobQueueDownloadByRoot.queue = w.staticJobQueueDownloadByRoot.queue[1:]
 	w.staticJobQueueDownloadByRoot.mu.Unlock()
-	jdbr.project.managedStartJobPerformDownloadByRoot(w)
+	jdbr.callPerformJobDownloadByRoot(w)
 	return true
 }
