@@ -35,9 +35,9 @@ import (
 // first worker.
 type projectDownloadByRoot struct {
 	// Information about the data that is being retrieved.
-	root   crypto.Hash
-	length uint64
-	offset uint64
+	staticRoot   crypto.Hash
+	staticLength uint64
+	staticOffset uint64
 
 	// workersRegistered is the list of workers that haven't yet checked whether
 	// or not the download root exists on their host. If a worker performs a
@@ -106,8 +106,6 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 			i-- // Since the array has been shifted, adjust the iterator to ensure every item is visited.
 		}
 	}
-	// TODO: Debugln log here in the worker's log indicating that the download
-	// failed.
 
 	// Check whether the pdbr is already completed. If so, nothing else needs to
 	// be done.
@@ -125,14 +123,41 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 	}
 }
 
+// managedWakeStandbyWorker is called when a worker that was performing the
+// actual download has failed and needs to be replaced. If there are any standby
+// workers, one of the standby workers will assume its place.
+//
+// managedWakeStandbyWorker assumes that pieceFound is currently set to true,
+// because it will be called by a worker that failed an had set pieceFound to
+// true.
+func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
+	// If there are no workers on standby, set pieceFound to false, indicating
+	// that no workers are actively fetching the piece.
+	pdbr.mu.Lock()
+	if len(pdbr.workersStandby) == 0 {
+		pdbr.pieceFound = false
+		pdbr.mu.Unlock()
+		return
+	}
+	// There is a standby worker, pop it off of the array.
+	newWorker := pdbr.workersStandby[0]
+	pdbr.workersStandby = pdbr.workersStandby[1:]
+	pdbr.mu.Unlock()
+
+	// Perform the download after releasing the pdbr lock.
+	newWorker.managedResumeJobPerformDownloadByRoot(pdbr)
+}
+
 // downloadByRoot will spin up a project to locate a root and then download that
 // root.
 func (r *Renter) downloadByRoot(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{
-		root:   root,
-		length: length,
-		offset: offset,
+		staticRoot:   root,
+		staticLength: length,
+		staticOffset: offset,
+
+		workersRegistered: make(map[string]struct{}),
 
 		completeChan: make(chan struct{}),
 	}
@@ -140,10 +165,19 @@ func (r *Renter) downloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 	// Give the project to every worker. Two stage loop to avoid a double lock.
 	r.staticWorkerPool.mu.RLock()
 	workers := make([]*worker, len(r.staticWorkerPool.workers))
-	for _, worker := range r.staticWorkerPool.workers {
-		workers = append(workers, worker)
+	for _, w := range r.staticWorkerPool.workers {
+		workers = append(workers, w)
 	}
 	r.staticWorkerPool.mu.RUnlock()
+	// Register all of the workers in the pdbr.
+	for _, w := range workers {
+		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
+	}
+	// Queue the jobs in the workers. The queueing has to be performed after all
+	// of the workers have been registered because cleanup assumes that every
+	// worker has been properly registered before any workers have started to
+	// unregister themselves. Workers can start to unregister as soon as the job
+	// has been queued.
 	for _, w := range workers {
 		w.callQueueJobDownloadByRoot(pdbr)
 	}

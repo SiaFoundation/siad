@@ -180,6 +180,13 @@ func (w *worker) threadedWorkLoop() {
 		if workAttempted {
 			continue
 		}
+		// Perform any job to fetch data by its sector root. This is given
+		// priority because it is only used by viewnodes, which are service
+		// operators that need to have good performance for their customers.
+		workAttempted = w.managedPerformJobDownloadByRoot()
+		if workAttempted {
+			continue
+		}
 		// Perform any job to help download a chunk.
 		workAttempted = w.managedPerformDownloadChunkJob()
 		if workAttempted {
