@@ -6,8 +6,6 @@ package renter
 // TODO: To test this stuff properly we may need to increase the sector size
 // during testing >.>
 
-// TODO: Need to kill the magic constants.
-
 // TODO: We should probably enable the metadata to be extended beyond 4096
 // bytes. At that point, the metadata could just bleed into the fully encoded
 // data where the non-flat erasure coding is happening, and the linkfile
@@ -17,8 +15,8 @@ package renter
 
 import (
 	"bytes"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -30,11 +28,15 @@ import (
 const (
 	// LinkfileMetadataMaxSize is the amount of space in a linkfile that is
 	// allocated for file metadata.
-	LinkFileMetadataMaxSize = 4096
+	LinkFileMetadataMaxSize = 512
 
 	// LinkFileFanoutSize is the amount of space in a linkfile that each sector
 	// allocates to fanout sectors.
-	LinkFileFanoutSize = 8192
+	LinkFileFanoutSize = 512
+
+	// FileStartOffset establishes where in the linkfile data that the actual
+	// underlying file data begins.
+	FileStartOffset = LinkFileMetadataMaxSize + LinkFileFanoutSize
 
 	// LinkFileSiaFolder is the folder where all of the linkfiles are stored.
 	//
@@ -60,7 +62,49 @@ type LinkFileMetadata struct {
 	// TODO: More fields.
 }
 
-// UploadLinkFile will upload the provided data with the provided name and stats 
+// DownloadLinkFile will take a link and turn it into the metadata and data of a
+// download.
+func (r *Renter) DownloadLinkFile(link string) (LinkFileMetadata, []byte, error) {
+	// Parse the provided link into a usable structure for fetching downloads.
+	var ld LinkData
+	err := ld.LoadString(link)
+	if err != nil {
+		return LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
+	}
+
+	// Check that the link follows the restrictions of the current software
+	// capabilities.
+	if ld.Version != 1 {
+		return LinkFileMetadata{}, nil, errors.New("link is not version 1")
+	}
+	if ld.Filesize > modules.SectorSize - FileStartOffset {
+		return LinkFileMetadata{}, nil, errors.New("links with fanouts not supported")
+	}
+	if ld.DataPieces != 1 {
+		return LinkFileMetadata{}, nil, errors.New("data pieces must be set to 1 on a link")
+	}
+	if ld.ParityPieces != 1 {
+		return LinkFileMetadata{}, nil, errors.New("parity pieces must be set to 1 on a link")
+	}
+
+	// Fetch the actual file.
+	linkFileData, err := r.DownloadByRoot(ld.MerkleRoot, 0, ld.Filesize + FileStartOffset)
+	if err != nil {
+		return LinkFileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
+	}
+
+	// Parse out the link file metadata.
+	var lfm LinkFileMetadata
+	err = json.Unmarshal(linkFileData[:LinkFileMetadataMaxSize], &lfm)
+	if err != nil {
+		return LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
+	}
+
+	// Return everything.
+	return lfm, linkFileData[FileStartOffset:FileStartOffset+ld.Filesize], nil
+}
+
+// UploadLinkFile will upload the provided data with the provided name and stats
 func (r *Renter) UploadLinkFile(lfm LinkFileMetadata, fileData io.Reader) (string, error) {
 	// Compose the metadata into the leading sector.
 	mlfm, err := json.Marshal(lfm)
@@ -71,13 +115,10 @@ func (r *Renter) UploadLinkFile(lfm LinkFileMetadata, fileData io.Reader) (strin
 		return "", fmt.Errorf("encoded metadata size of %v exceeds the maximum of %v", len(mlfm), LinkFileMetadataMaxSize)
 	}
 
-	// Helper vars.
-	dataOffset := uint64(LinkFileMetadataMaxSize + LinkFileFanoutSize)
-
 	// Read all of the file data from the reader.
 	readBuf := make([]byte, modules.SectorSize)
 	size, err := io.ReadFull(fileData, readBuf)
-	maxSize := modules.SectorSize - dataOffset
+	maxSize := modules.SectorSize - FileStartOffset
 	if uint64(size) > maxSize {
 		return "", fmt.Errorf("maximum size for a linkfile at the current siad version is %v", maxSize)
 	}
@@ -88,9 +129,9 @@ func (r *Renter) UploadLinkFile(lfm LinkFileMetadata, fileData io.Reader) (strin
 	}
 
 	// Assemble the raw data of the linkfile.
-	linkFileData := make([]byte, LinkFileMetadataMaxSize + LinkFileFanoutSize + size)
+	linkFileData := make([]byte, size+FileStartOffset)
 	copy(linkFileData, mlfm)
-	copy(linkFileData[dataOffset:], readBuf[:size])
+	copy(linkFileData[FileStartOffset:], readBuf[:size])
 
 	// Create parameters to upload the file with 1-of-N erasure coding and no
 	// encryption. This should cause all of the pieces to have the same Merkle
@@ -111,11 +152,11 @@ func (r *Renter) UploadLinkFile(lfm LinkFileMetadata, fileData io.Reader) (strin
 		return "", errors.AddContext(err, "unable to create erasure coder")
 	}
 	up := modules.FileUploadParams{
-		SiaPath: fullPath,
-		ErasureCode: ec,
-		Force: false,
+		SiaPath:             fullPath,
+		ErasureCode:         ec,
+		Force:               false,
 		DisablePartialChunk: true,
-		Repair: true,
+		Repair:              true,
 
 		CipherType: crypto.TypePlain,
 	}
@@ -123,19 +164,50 @@ func (r *Renter) UploadLinkFile(lfm LinkFileMetadata, fileData io.Reader) (strin
 	// Perform the actual upload. This will requring turning the buffer we
 	// grabbed earlier back into a reader.
 	fileDataReader := bytes.NewReader(linkFileData)
+	// TODO: This should probably return a filehandle or something, so that the
+	// caller can open the file without worrying about any sort of race
+	// conditions.
 	err = r.UploadStreamFromReader(up, fileDataReader)
 	if err != nil {
 		return "", errors.AddContext(err, "failed to upload the file")
 	}
 
-	// TODO: Verify the merkle root.
+	// Open the newly uploaded file and get the merkle roots of all the pieces.
+	// They should match eachother.
+	//
+	// TODO: should really get the snapshot from the call to upload rather than
+	// have to open it separately.
+	fileNode, err := r.staticFileSystem.OpenSiaFile(fullPath)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to open the sia file after uploading")
+	}
+	defer fileNode.Close()
+	snap, err := fileNode.Snapshot(fullPath)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to retrieve a snapshot after uploading")
+	}
+
+	// Get all of the pieces of the first chunk and check that they have the
+	// same merkle root. The merkle root will be used to create the link.
+	//
+	// TODO: We assume that there is at least one complete piece here, need to
+	// rewrite that assumption out to avoid a crash.
+	pieces := snap.Pieces(0)
+	mr := pieces[0][0].MerkleRoot
+	for _, pieceSet := range pieces {
+		for _, piece := range pieceSet {
+			if piece.MerkleRoot != mr {
+				return "", errors.New("all of the pieces do not have the same merkle root")
+			}
+		}
+	}
 
 	// Create the link data.
 	ld := LinkData{
-		Version: 1,
-		// TODO: MerkleRoot: mr,
-		Filesize: uint64(size),
-		DataPieces: 1,
+		Version:      1,
+		MerkleRoot:   mr,
+		Filesize:     uint64(size),
+		DataPieces:   1,
 		ParityPieces: 1,
 	}
 	// Convert the link data to a string and return.
