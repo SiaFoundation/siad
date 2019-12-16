@@ -3,7 +3,6 @@ module gitlab.com/NebulousLabs/Sia
 go 1.12
 
 require (
-	github.com/coreos/bbolt v1.3.2
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
 	github.com/hanwen/go-fuse v1.0.1-0.20190720155834-4dd6878445ae
 	github.com/hanwen/go-fuse/v2 v2.0.2
@@ -16,6 +15,7 @@ require (
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/spf13/cobra v0.0.4
 	github.com/xtaci/smux v1.3.3
+	gitlab.com/NebulousLabs/bolt v1.4.0
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20171229012116-7ead97ef90b8
@@ -28,10 +28,8 @@ require (
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190729190618-012a9d4274dd
 	golang.org/x/crypto v0.0.0-20191105034135-c7e5f84aec59
 	golang.org/x/lint v0.0.0-20191125180803-fdd1cda4f05f // indirect
+	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f
 	honnef.co/go/tools v0.0.1-2019.2.3 // indirect
 )
 
-replace (
-	github.com/coreos/bbolt => ./vendor/github.com/coreos/bbolt
-	github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
-)
+replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux

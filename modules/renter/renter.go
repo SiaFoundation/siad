@@ -201,6 +201,18 @@ type hostContractor interface {
 	Synced() <-chan struct{}
 }
 
+type renterFuseManager interface {
+	// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+	// the local filesystem.
+	Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) (err error)
+
+	// MountInfo returns the list of currently mounted fuse filesystems.
+	MountInfo() []modules.MountInfo
+
+	// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+	Unmount(mountPoint string) error
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -257,7 +269,7 @@ type Renter struct {
 	memoryManager     *memoryManager
 	mu                *siasync.RWMutex
 	repairLog         *persist.Logger
-	staticFuseManager *fuseManager
+	staticFuseManager renterFuseManager
 	tg                threadgroup.ThreadGroup
 	tpool             modules.TransactionPool
 	wal               *writeaheadlog.WAL
@@ -579,7 +591,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 
 	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+	r.hostDB.SetIPViolationCheck(s.IPViolationCheck)
 
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
@@ -769,18 +781,27 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.hostContractor.RefreshedContract(fcid)
 }
 
-// Settings returns the renter's allowance
+// Settings returns the Renter's current settings.
 func (r *Renter) Settings() (modules.RenterSettings, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.RenterSettings{}, err
+	}
+	defer r.tg.Done()
 	download, upload, _ := r.hostContractor.RateLimits()
 	enabled, err := r.hostDB.IPViolationsCheck()
 	if err != nil {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
+	paused, endTime := r.uploadHeap.managedPauseStatus()
 	return modules.RenterSettings{
-		Allowance:         r.hostContractor.Allowance(),
-		IPViolationsCheck: enabled,
-		MaxDownloadSpeed:  download,
-		MaxUploadSpeed:    upload,
+		Allowance:        r.hostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
+		UploadsStatus: modules.UploadsStatus{
+			Paused:       paused,
+			PauseEndTime: endTime,
+		},
 	}, nil
 }
 

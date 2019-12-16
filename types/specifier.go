@@ -1,6 +1,9 @@
 package types
 
-import "unicode/utf8"
+import (
+	"fmt"
+	"unicode/utf8"
+)
 
 // SpecifierLen is the length in bytes of a Specifier.
 const SpecifierLen = 16
@@ -17,6 +20,9 @@ const SpecifierLen = 16
 // guarantee that distinct types will never produce the same hash.
 type Specifier [SpecifierLen]byte
 
+// specifierMap is used for tracking unique specifiers
+var specifierMap = newSpecifierMap()
+
 // NewSpecifier returns a specifier for given name, a specifier can only be 16
 // bytes so we panic if the given name is too long.
 func NewSpecifier(name string) Specifier {
@@ -26,6 +32,11 @@ func NewSpecifier(name string) Specifier {
 	if len(name) > SpecifierLen {
 		panic("ERROR: specifier max length exceeded")
 	}
+	if _, ok := specifierMap[name]; ok {
+		err := fmt.Sprint("ERROR: specifier name already in use", name)
+		panic(err)
+	}
+	specifierMap[name] = struct{}{}
 	var s Specifier
 	copy(s[:], name)
 	return s
@@ -40,4 +51,9 @@ func isASCII(s string) bool {
 		}
 	}
 	return true
+}
+
+// newSpecifierMap makes a new map for tracking specifiers
+func newSpecifierMap() map[string]struct{} {
+	return make(map[string]struct{})
 }

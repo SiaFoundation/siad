@@ -82,10 +82,10 @@ type fileContractStatus struct {
 	// output is added to the set.
 	formationTxnSet []types.Transaction
 
-	// parentOutputs stores SiacoinOutputID of any output which this file contract
-	// was ever dependent on. It is initialized with the parent outputs from the
-	// formationTxnSet but may grow as transactions are added or pruned from the
-	// formationTxnSet.
+	// parentOutputs stores SiacoinOutputID of outputs which this file contract is
+	// dependent on, i.e. the parent outputs of the formationTxnSet. It is
+	// initialized with the parent outputs from the formationTxnSet but may grow
+	// and shrink as transactions are added or pruned from the formationTxnSet.
 	parentOutputs map[types.SiacoinOutputID]struct{}
 
 	// In case its been too long since the contract was supposed to form and the
@@ -133,6 +133,10 @@ func newWatchdog(contractor *Contractor) *watchdog {
 
 // ContractStatus returns the status of a contract in the watchdog.
 func (c *Contractor) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
+	if err := c.tg.Add(); err != nil {
+		return modules.ContractWatchStatus{}, false
+	}
+	defer c.tg.Done()
 	return c.staticWatchdog.managedContractStatus(fcID)
 }
 
@@ -195,17 +199,6 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 
 	w.contractor.log.Debugln("Monitoring contract: ", args.fcID)
 	return nil
-}
-
-// callSendMostRecentRevision sends the most recent revision transaction out.
-// Should be called whenever a contract is no longer going to be used.
-func (w *watchdog) callSendMostRecentRevision(metadata modules.RenterContract) {
-	fcID := metadata.ID
-	lastRevisionTxn := metadata.Transaction
-	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
-
-	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
-	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
 }
 
 // callScanConsensusChange scans applied and reverted blocks, updating the
@@ -304,6 +297,10 @@ func (w *watchdog) removeOutputDependency(outputID types.SiacoinOutputID, fcID t
 	} else {
 		delete(dependentFCs, fcID)
 	}
+
+	if contractData, ok := w.contracts[fcID]; ok {
+		delete(contractData.parentOutputs, outputID)
+	}
 }
 
 // getParentOutputIDs returns the IDs of the parent SiacoinOutputs used in the
@@ -387,6 +384,7 @@ func (w *watchdog) managedScanAppliedBlock(block types.Block) {
 				w.contractor.log.Debugln("Found storage proof: ", storageProof.ParentID)
 			}
 		}
+
 		// Check the transaction for spends of any inputs a monitored file contract
 		// depends on.
 		w.findDependencySpends(txn)
@@ -439,25 +437,39 @@ func (w *watchdog) findDependencySpends(txn types.Transaction) {
 		// Try removing this transaction from the set.
 		prunedFormationTxnSet, err := removeTxnFromSet(txn, txnSet)
 		if err != nil {
-			w.contractor.log.Println("Error removing txn from set, inputs were double-spent:", err, fcID)
+			w.contractor.log.Println("Error removing txn from set, inputs were double-spent:", err, fcID, len(txnSet), txn.ID())
 
 			//  Signal to the contractor that this contract's inputs were
 			//  double-spent and that it should be removed.
 			w.archiveContract(fcID, w.blockHeight)
 			go w.contractor.callNotifyDoubleSpend(fcID, w.blockHeight)
-		} else {
-			w.contractor.log.Debugln("Removed transaction from set for: ", fcID, len(prunedFormationTxnSet))
-			contractData.formationTxnSet = prunedFormationTxnSet
+			continue
+		}
 
-			// Add the outputs created by the pruned transaction as dependencies.
-			for i := range txn.SiacoinOutputs {
-				w.addOutputDependency(txn.SiacoinOutputID(uint64(i)), fcID)
+		w.contractor.log.Debugln("Removed transaction from set for: ", fcID, len(prunedFormationTxnSet), txn.ID())
+		contractData.formationTxnSet = prunedFormationTxnSet
+
+		// Get the new set of parent output IDs.
+		newDepOutputs := getParentOutputIDs(prunedFormationTxnSet)
+
+		// Remove outputs no longer needed as dependencies
+		for oid := range contractData.parentOutputs {
+			isStillADependency := false
+			for _, newDep := range newDepOutputs {
+				if oid == newDep {
+					isStillADependency = true
+					break
+				}
 			}
-			// Remove inputs used by the pruned transaction as dependencies. They are
-			// no longer needed because the outputs we just added will be sufficient
-			// for tracking the file contract's dependency on this transaction.
-			for _, input := range txn.SiacoinInputs {
-				w.removeOutputDependency(input.ParentID, fcID)
+			if !isStillADependency {
+				w.removeOutputDependency(oid, fcID)
+			}
+		}
+
+		// Add any new dependencies.
+		for _, oid := range newDepOutputs {
+			if _, ok := contractData.parentOutputs[oid]; !ok {
+				w.addOutputDependency(oid, fcID)
 			}
 		}
 	}
@@ -823,4 +835,19 @@ func (w *watchdog) managedContractStatus(fcID types.FileContractID) (modules.Con
 		WindowStart:               contractData.windowStart,
 		WindowEnd:                 contractData.windowEnd,
 	}, true
+}
+
+// threadedSendMostRecentRevision sends the most recent revision transaction out.
+// Should be called whenever a contract is no longer going to be used.
+func (w *watchdog) threadedSendMostRecentRevision(metadata modules.RenterContract) {
+	if err := w.contractor.tg.Add(); err != nil {
+		return
+	}
+	defer w.contractor.tg.Done()
+	fcID := metadata.ID
+	lastRevisionTxn := metadata.Transaction
+	lastRevNum := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
+
+	debugStr := fmt.Sprintf("sending most recent revision txn for contract with id: %s revNum: %d", fcID.String(), lastRevNum)
+	w.sendTxnSet([]types.Transaction{lastRevisionTxn}, debugStr)
 }

@@ -1,3 +1,5 @@
+// +build !windows
+
 package renter
 
 import (
@@ -21,7 +23,7 @@ type fuseManager struct {
 }
 
 // newFuseManager returns a new fuseManager.
-func newFuseManager(r *Renter) *fuseManager {
+func newFuseManager(r *Renter) renterFuseManager {
 	// Create the fuseManager
 	fm := &fuseManager{
 		mountPoints: make(map[string]*fuseFS),

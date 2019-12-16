@@ -24,24 +24,24 @@ const (
 	// that supports the currently used version of the renter-host protocol.
 	MinimumSupportedRenterHostProtocolVersion = "1.4.1"
 
-	// V1413HostOutOfStorageErrString is the string used by hosts since before
-	// version 1.4.1.3 to indicate that they have run out of storage.
+	// V1420HostOutOfStorageErrString is the string used by hosts since before
+	// version 1.4.2 to indicate that they have run out of storage.
 	//
 	// Any update to this string needs to be done by making a new variable. This
 	// variable should not be changed. IsOOSErr() needs to be updated to include
 	// the new string while also still checking the old string as well to
 	// preserve compatibility.
-	V1413HostOutOfStorageErrString = "not enough storage remaining to accept sector"
+	V1420HostOutOfStorageErrString = "not enough storage remaining to accept sector"
 
-	// V1413ContractNotRecognizedErrString is the string used by hosts since
-	// before version 1.4.1.3 to indicate that they do not recognize the
+	// V1420ContractNotRecognizedErrString is the string used by hosts since
+	// before version 1.4.2 to indicate that they do not recognize the
 	// contract that the renter is trying to update.
 	//
 	// Any update to this string needs to be done by making a new variable. This
 	// variable should not be changed. IsContractNotRecognizedErr() needs to be
 	// updated to include the new string while also still checking the old
 	// string as well to preserve compatibility.
-	V1413ContractNotRecognizedErrString = "no record of that contract"
+	V1420ContractNotRecognizedErrString = "no record of that contract"
 )
 
 const (
@@ -189,20 +189,20 @@ var (
 	PrefixFileContractIdentifier = types.NewSpecifier("FCIdentifier")
 
 	// RPCDownload is the specifier for downloading a file from a host.
-	RPCDownload = types.NewSpecifier("Download2")
+	RPCDownload = types.NewSpecifier("Download" + string(2))
 
 	// RPCFormContract is the specifier for forming a contract with a host.
-	RPCFormContract = types.NewSpecifier("FormContract2")
+	RPCFormContract = types.NewSpecifier("FormContract" + string(2))
 
 	// RPCRenewContract is the specifier to renewing an existing contract.
-	RPCRenewContract = types.NewSpecifier("RenewContract2")
+	RPCRenewContract = types.NewSpecifier("RenewContract" + string(2))
 
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.
-	RPCReviseContract = types.NewSpecifier("ReviseContract2")
+	RPCReviseContract = types.NewSpecifier("ReviseContract" + string(2))
 
 	// RPCSettings is the specifier for requesting settings from the host.
-	RPCSettings = types.NewSpecifier("Settings2")
+	RPCSettings = types.NewSpecifier("Settings" + string(2))
 
 	// SectorSize defines how large a sector should be in bytes. The sector
 	// size needs to be a power of two to be compatible with package
@@ -241,6 +241,10 @@ type (
 	// HostExternalSettings are the parameters advertised by the host. These
 	// are the values that the renter will request from the host in order to
 	// build its database.
+	//
+	// NOTE: Anytime the pricing is extended for the HostExternalSettings, the
+	// Allowance also needs to be extended to support manually setting a maximum
+	// reasonable price.
 	HostExternalSettings struct {
 		// MaxBatchSize indicates the maximum size in bytes that a batch is
 		// allowed to be. A batch is an array of revision actions; each
@@ -359,8 +363,8 @@ var (
 	RPCLoopRenewContract = types.NewSpecifier("LoopRenew")
 	RPCLoopSectorRoots   = types.NewSpecifier("LoopSectorRoots")
 	RPCLoopSettings      = types.NewSpecifier("LoopSettings")
-	RPCLoopUnlock        = types.NewSpecifier("RPCLoopUnlock")
-	RPCLoopWrite         = types.NewSpecifier("RPCLoopWrite")
+	RPCLoopUnlock        = types.NewSpecifier("LoopUnlock")
+	RPCLoopWrite         = types.NewSpecifier("LoopWrite")
 )
 
 // RPC ciphers
@@ -869,7 +873,7 @@ func IsOOSErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	if strings.Contains(err.Error(), V1413HostOutOfStorageErrString) {
+	if strings.Contains(err.Error(), V1420HostOutOfStorageErrString) {
 		return true
 	}
 	return false
@@ -886,7 +890,7 @@ func IsContractNotRecognizedErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	if strings.Contains(err.Error(), V1413ContractNotRecognizedErrString) {
+	if strings.Contains(err.Error(), V1420ContractNotRecognizedErrString) {
 		return true
 	}
 	return false

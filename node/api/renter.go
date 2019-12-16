@@ -63,10 +63,6 @@ var (
 		Testing:  types.BlockHeight(1),
 	}).(types.BlockHeight)
 
-	//BackupKeySpecifier is the specifier used for deriving the secret used to
-	//encrypt a backup from the RenterSeed.
-	backupKeySpecifier = types.NewSpecifier("backupkey")
-
 	// errNeedBothDataAndParityPieces is the error returned when only one of the
 	// erasure coding parameters is set
 	errNeedBothDataAndParityPieces = errors.New("must provide both the datapieces parameter and the paritypieces parameter if specifying erasure coding parameters")
@@ -86,7 +82,7 @@ type (
 		Settings         modules.RenterSettings     `json:"settings"`
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
-		NextPeriod       types.BlockHeight          `json:"Nextperiod"`
+		NextPeriod       types.BlockHeight          `json:"nextperiod"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -122,7 +118,7 @@ type (
 		// incorrect capitalization. This field will be removed in the future, so
 		// clients should switch to the StorageSpending field (above) with the
 		// correct lowercase name.
-		StorageSpendingDeprecated types.Currency `json:"StorageSpending"`
+		StorageSpendingDeprecated types.Currency `json:"StorageSpending,siamismatch"`
 		// Total cost to the wallet of forming the file contract.
 		TotalCost types.Currency `json:"totalcost"`
 		// Amount of contract funds that have been spent on uploads.
@@ -131,6 +127,8 @@ type (
 		GoodForUpload bool `json:"goodforupload"`
 		// Signals if contract is good for a renewal
 		GoodForRenew bool `json:"goodforrenew"`
+		// Signals if a contract has been marked as bad
+		BadContract bool `json:"badcontract"`
 	}
 
 	// RenterContracts contains the renter's contracts.
@@ -173,7 +171,7 @@ type (
 
 	// RenterFuseInfo contains information about mounted fuse filesystems.
 	RenterFuseInfo struct {
-		MountPoints []modules.MountInfo `json:"mountPoints"`
+		MountPoints []modules.MountInfo `json:"mountpoints"`
 	}
 
 	// RenterLoad lists files that were loaded into the renter.
@@ -375,7 +373,7 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(backupPath, secret[:32]); err != nil {
@@ -420,7 +418,7 @@ func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(backupPath, secret[:32]); err != nil {
@@ -453,7 +451,7 @@ func (api *API) renterBackupHandlerPOST(w http.ResponseWriter, req *http.Request
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Create the backup.
 	if err := api.renter.CreateBackup(dst, secret[:32]); err != nil {
@@ -486,7 +484,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 	rs := proto.DeriveRenterSeed(ws)
 	defer fastrand.Read(rs[:])
 	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, backupKeySpecifier)
+	secret := crypto.HashAll(rs, modules.BackupKeySpecifier)
 	defer fastrand.Read(secret[:])
 	// Load the backup.
 	if err := api.renter.LoadBackup(src, secret[:32]); err != nil {
@@ -682,6 +680,54 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		settings.Allowance.MaxPeriodChurn = maxPeriodChurn
 		maxPeriodChurnSet = true
 	}
+	if str := req.FormValue("maxrpcprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxrpcprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxRPCPrice = price
+	}
+	if str := req.FormValue("maxcontractprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxcontractprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxContractPrice = price
+	}
+	if str := req.FormValue("maxdownloadbandwidthprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxdownloadbandwidthprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxDownloadBandwidthPrice = price
+	}
+	if str := req.FormValue("maxsectoraccessprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxsectoraccessprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxSectorAccessPrice = price
+	}
+	if str := req.FormValue("maxstorageprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxstorageprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxStoragePrice = price
+	}
+	if str := req.FormValue("maxuploadbandwidthprice"); str != "" {
+		price, ok := scanAmount(str)
+		if !ok {
+			WriteError(w, Error{"unable to parse maxuploadbandwidthprice"}, http.StatusBadRequest)
+			return
+		}
+		settings.Allowance.MaxUploadBandwidthPrice = price
+	}
 
 	// Validate any allowance changes. Funds and Period are the only required
 	// fields.
@@ -805,7 +851,7 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 			WriteError(w, Error{"unable to parse ipviolationcheck: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-		settings.IPViolationsCheck = ipviolationcheck
+		settings.IPViolationCheck = ipviolationcheck
 	}
 
 	// Set the settings in the renter.
@@ -950,6 +996,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Build the contract.
 		contract := RenterContract{
+			BadContract:               c.Utility.BadContract,
 			DownloadSpending:          c.DownloadSpending,
 			EndHeight:                 c.EndHeight,
 			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
@@ -1013,6 +1060,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Build contract
 		contract := RenterContract{
+			BadContract:               c.Utility.BadContract,
 			DownloadSpending:          c.DownloadSpending,
 			EndHeight:                 c.EndHeight,
 			Fees:                      c.TxnFee.Add(c.SiafundFee).Add(c.ContractFee),
@@ -1103,6 +1151,7 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 	dis, err := trimDownloadInfo(dis...)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
+		return
 	}
 	for _, di := range dis {
 		downloads = append(downloads, DownloadInfo{

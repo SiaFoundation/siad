@@ -5,7 +5,9 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,7 +23,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -122,8 +123,8 @@ var (
 
 	renterFilesListCmd = &cobra.Command{
 		Use:   "ls [path]",
-		Short: "List the status of all files within specified dir",
-		Long:  "List the status of all files known to the renter within the specified folder on the Sia network. To query the root dir either '\"\"', '/' or '.' can be supplied",
+		Short: "List the status of a specific file or all files within specified dir",
+		Long:  "List the status of a specific file or all files known to the renter within the specified folder on the Sia network. To query the root dir either '\"\"', '/' or '.' can be supplied",
 		Run:   renterfileslistcmd,
 	}
 
@@ -474,8 +475,25 @@ Expectations for period:
   Expected Upload:      %v
   Expected Download:    %v
   Expected Redundancy:  %v
-`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow, allowance.Hosts, modules.FilesizeUnits(allowance.ExpectedStorage),
-		modules.FilesizeUnits(allowance.ExpectedUpload), modules.FilesizeUnits(allowance.ExpectedDownload), allowance.ExpectedRedundancy)
+
+Price Protections:
+  MaxRPCPrice:               %v per million requests
+  MaxContractPrice:          %v
+  MaxDownloadBandwidthPrice: %v per TB
+  MaxSectorAccessPrice:      %v per million accesses
+  MaxStoragePrice:           %v per TB per Month
+  MaxUploadBandwidthPrice:   %v per TB
+`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
+		allowance.Hosts, modules.FilesizeUnits(allowance.ExpectedStorage),
+		modules.FilesizeUnits(allowance.ExpectedUpload),
+		modules.FilesizeUnits(allowance.ExpectedDownload),
+		allowance.ExpectedRedundancy,
+		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
+		currencyUnits(allowance.MaxContractPrice),
+		currencyUnits(allowance.MaxDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
+		currencyUnits(allowance.MaxSectorAccessPrice.Mul64(1e6)),
+		currencyUnits(allowance.MaxStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
+		currencyUnits(allowance.MaxUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)))
 
 	// Show detailed current Period spending metrics
 	renterallowancespending(rg)
@@ -563,7 +581,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	if allowanceHosts != "" {
 		hosts, err := strconv.Atoi(allowanceHosts)
 		if err != nil {
-			die("Could not parse host count")
+			die("Could not parse host count:", err)
 		}
 		req = req.WithHosts(uint64(hosts))
 		changedFields++
@@ -572,7 +590,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	if allowanceRenewWindow != "" {
 		rw, err := parsePeriod(allowanceRenewWindow)
 		if err != nil {
-			die("Could not parse renew window")
+			die("Could not parse renew window:", err)
 		}
 		var renewWindow types.BlockHeight
 		_, err = fmt.Sscan(rw, &renewWindow)
@@ -633,6 +651,96 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		req = req.WithExpectedRedundancy(expectedRedundancy)
 		changedFields++
 	}
+	// parse maxrpcprice
+	if allowanceMaxRPCPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxRPCPrice)
+		if err != nil {
+			die("Could not parse max rpc price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("Could not read max rpc price:", err)
+		}
+		price = price.Div64(1e6)
+		req = req.WithMaxRPCPrice(price)
+		changedFields++
+	}
+	// parse maxcontractprice
+	if allowanceMaxContractPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxContractPrice)
+		if err != nil {
+			die("Could not parse max contract price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("Could not read max contract price:", err)
+		}
+		req = req.WithMaxContractPrice(price)
+		changedFields++
+	}
+	// parse maxdownloadbandwidthprice
+	if allowanceMaxDownloadBandwidthPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxDownloadBandwidthPrice)
+		if err != nil {
+			die("Could not parse max download bandwidth price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("Could not read max download bandwidth price:", err)
+		}
+		price = price.Div(modules.BytesPerTerabyte)
+		req = req.WithMaxDownloadBandwidthPrice(price)
+		changedFields++
+	}
+	// parse maxsectoraccessprice
+	if allowanceMaxSectorAccessPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxSectorAccessPrice)
+		if err != nil {
+			die("Could not parse max sector access price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("Could not read max sector access price:", err)
+		}
+		price = price.Div64(1e6)
+		req = req.WithMaxSectorAccessPrice(price)
+		changedFields++
+	}
+	// parse maxstorageprice
+	if allowanceMaxStoragePrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxStoragePrice)
+		if err != nil {
+			die("Could not parse max storage price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("Could not read max storage price:", err)
+		}
+		price = price.Div(modules.BlockBytesPerMonthTerabyte)
+		req = req.WithMaxStoragePrice(price)
+		changedFields++
+	}
+	// parse maxuploadbandwidthprice
+	if allowanceMaxUploadBandwidthPrice != "" {
+		priceStr, err := parseCurrency(allowanceMaxUploadBandwidthPrice)
+		if err != nil {
+			die("Could not parse max upload bandwidth price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("Could not read max upload bandwidth price:", err)
+		}
+		price = price.Div(modules.BytesPerTerabyte)
+		req = req.WithMaxUploadBandwidthPrice(price)
+		changedFields++
+	}
+
 	// check if any fields were updated.
 	if changedFields == 0 {
 		// If no fields were set then walk the user through the interactive
@@ -1056,6 +1164,62 @@ func renterbackuplistcmd() {
 	w.Flush()
 }
 
+// contractStats is a helper function to pull information out of the renter
+// contracts to be displayed
+func contractStats(contracts []api.RenterContract) (size uint64, spent, remaining, fees types.Currency) {
+	for _, c := range contracts {
+		size += c.Size
+		remaining = remaining.Add(c.RenterFunds)
+		fees = fees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		spent = spent.Add(contractTotalSpent)
+	}
+	return
+}
+
+// writeContracts is a helper function to display contracts
+func writeContracts(contracts []api.RenterContract) {
+	fmt.Println("  Number of Contracts:", len(contracts))
+	sort.Sort(byValue(contracts))
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
+	for _, c := range contracts {
+		address := c.NetAddress
+		hostVersion := c.HostVersion
+		if address == "" {
+			address = "Host Removed"
+			hostVersion = ""
+		}
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
+			address,
+			c.HostPublicKey.String(),
+			hostVersion,
+			currencyUnits(c.RenterFunds),
+			currencyUnits(contractTotalSpent),
+			currencyUnits(c.Fees),
+			modules.FilesizeUnits(c.Size),
+			c.EndHeight,
+			c.ID,
+			c.GoodForUpload,
+			c.GoodForRenew,
+			c.BadContract)
+	}
+	w.Flush()
+}
+
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
@@ -1066,63 +1230,21 @@ func rentercontractscmd() {
 
 	// Build Current Period summary
 	fmt.Println("Current Period Summary")
-	var totalStored, totalWasted uint64
-	var totalRemaining, totalSpent, totalFees types.Currency
 	// Active Contracts are all good data
-	for _, c := range rc.ActiveContracts {
-		totalStored += c.Size
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	activeSize, activeSpent, activeRemaining, activeFees := contractStats(rc.ActiveContracts)
 	// Passive Contracts are all good data
-	for _, c := range rc.PassiveContracts {
-		totalStored += c.Size
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	passiveSize, passiveSpent, passiveRemaining, passiveFees := contractStats(rc.PassiveContracts)
 	// Refreshed Contracts are duplicate data
-	for _, c := range rc.RefreshedContracts {
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	_, refreshedSpent, refreshedRemaining, refreshedFees := contractStats(rc.RefreshedContracts)
 	// Disabled Contracts are wasted data
-	for _, c := range rc.DisabledContracts {
-		totalWasted += c.Size
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	disabledSize, disabledSpent, disabledRemaining, disabledFees := contractStats(rc.DisabledContracts)
+	// Sum up the appropriate totals
+	totalStored := activeSize + passiveSize
+	totalWasted := disabledSize
+	totalSpent := activeSpent.Add(passiveSpent).Add(refreshedSpent).Add(disabledSpent)
+	totalRemaining := activeRemaining.Add(passiveRemaining).Add(refreshedRemaining).Add(disabledRemaining)
+	totalFees := activeFees.Add(passiveFees).Add(refreshedFees).Add(disabledFees)
+
 	fmt.Printf(`  Total Good Data:    %s
   Total Wasted Data:  %s
   Total Remaining:    %v
@@ -1137,38 +1259,7 @@ func rentercontractscmd() {
 		fmt.Println("  No active contracts.")
 	} else {
 		// Display Active Contracts
-		fmt.Println("  Number of Contracts:", len(rc.ActiveContracts))
-		sort.Sort(byValue(rc.ActiveContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.ActiveContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew)
-		}
-		w.Flush()
+		writeContracts(rc.ActiveContracts)
 	}
 
 	fmt.Println("\nPassive Contracts:")
@@ -1176,38 +1267,7 @@ func rentercontractscmd() {
 		fmt.Println("  No passive contracts.")
 	} else {
 		// Display Passive Contracts
-		sort.Sort(byValue(rc.PassiveContracts))
-		fmt.Println("  Number of Contracts:", len(rc.PassiveContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.PassiveContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew)
-		}
-		w.Flush()
+		writeContracts(rc.PassiveContracts)
 	}
 
 	fmt.Println("\nRefreshed Contracts:")
@@ -1215,38 +1275,7 @@ func rentercontractscmd() {
 		fmt.Println("  No refreshed contracts.")
 	} else {
 		// Display Refreshed Contracts
-		sort.Sort(byValue(rc.RefreshedContracts))
-		fmt.Println("  Number of Contracts:", len(rc.RefreshedContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.RefreshedContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew)
-		}
-		w.Flush()
+		writeContracts(rc.RefreshedContracts)
 	}
 
 	fmt.Println("\nDisabled Contracts:")
@@ -1254,38 +1283,7 @@ func rentercontractscmd() {
 		fmt.Println("  No disabled contracts.")
 	} else {
 		// Display Disabled Contracts
-		sort.Sort(byValue(rc.DisabledContracts))
-		fmt.Println("  Number of Contracts:", len(rc.DisabledContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-		for _, c := range rc.DisabledContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew)
-		}
-		w.Flush()
+		writeContracts(rc.DisabledContracts)
 	}
 
 	if renterAllContracts {
@@ -1295,35 +1293,16 @@ func rentercontractscmd() {
 		}
 		// Build Historical summary
 		fmt.Println("\nHistorical Summary")
-		var totalStored uint64
-		var totalRemaining, totalSpent, totalFees types.Currency
 		// Expired Contracts are all good data
-		for _, c := range rce.ExpiredContracts {
-			totalStored += c.Size
-			totalRemaining = totalRemaining.Add(c.RenterFunds)
-			totalFees = totalFees.Add(c.Fees)
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			totalSpent = totalSpent.Add(contractTotalSpent)
-		}
+		expiredSize, expiredSpent, expiredRemaining, expiredFees := contractStats(rce.ExpiredContracts)
 		// Expired Refreshed Contracts are duplicate data
-		for _, c := range rce.ExpiredRefreshedContracts {
-			totalRemaining = totalRemaining.Add(c.RenterFunds)
-			totalFees = totalFees.Add(c.Fees)
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			totalSpent = totalSpent.Add(contractTotalSpent)
-		}
+		_, expiredRefreshedSpent, expiredRefreshedRemaining, expiredRefreshedFees := contractStats(rce.ExpiredRefreshedContracts)
+		// Sum up the appropriate totals
+		totalStored := expiredSize
+		totalSpent := expiredSpent.Add(expiredRefreshedSpent)
+		totalRemaining := expiredRemaining.Add(expiredRefreshedRemaining)
+		totalFees := expiredFees.Add(expiredRefreshedFees)
+
 		fmt.Printf(`  Total Expired Data:  %s
   Total Remaining:     %v
   Total Spent:         %v
@@ -1334,76 +1313,14 @@ func rentercontractscmd() {
 		if len(rce.ExpiredContracts) == 0 {
 			fmt.Println("  No expired contracts.")
 		} else {
-			sort.Sort(byValue(rce.ExpiredContracts))
-			fmt.Println("	 Number of Contracts:", len(rce.ExpiredContracts))
-			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-			for _, c := range rce.ExpiredContracts {
-				address := c.NetAddress
-				hostVersion := c.HostVersion
-				if address == "" {
-					address = "Host Removed"
-					hostVersion = ""
-				}
-				// Negative Currency Check
-				var contractTotalSpent types.Currency
-				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-					contractTotalSpent = c.RenterFunds.Add(c.Fees)
-				} else {
-					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-				}
-				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
-					address,
-					c.HostPublicKey.String(),
-					hostVersion,
-					currencyUnits(c.RenterFunds),
-					currencyUnits(contractTotalSpent),
-					currencyUnits(c.Fees),
-					modules.FilesizeUnits(c.Size),
-					c.EndHeight,
-					c.ID,
-					c.GoodForUpload,
-					c.GoodForRenew)
-			}
-			w.Flush()
+			writeContracts(rce.ExpiredContracts)
 		}
 
 		fmt.Println("\nExpired Refresh Contracts:")
 		if len(rce.ExpiredRefreshedContracts) == 0 {
 			fmt.Println("  No expired refreshed contracts.")
 		} else {
-			sort.Sort(byValue(rce.ExpiredRefreshedContracts))
-			fmt.Println("	 Number of Contracts:", len(rce.ExpiredRefreshedContracts))
-			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew")
-			for _, c := range rce.ExpiredRefreshedContracts {
-				address := c.NetAddress
-				hostVersion := c.HostVersion
-				if address == "" {
-					address = "Host Removed"
-					hostVersion = ""
-				}
-				// Negative Currency Check
-				var contractTotalSpent types.Currency
-				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-					contractTotalSpent = c.RenterFunds.Add(c.Fees)
-				} else {
-					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-				}
-				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\n",
-					address,
-					c.HostPublicKey.String(),
-					hostVersion,
-					currencyUnits(c.RenterFunds),
-					currencyUnits(contractTotalSpent),
-					currencyUnits(c.Fees),
-					modules.FilesizeUnits(c.Size),
-					c.EndHeight,
-					c.ID,
-					c.GoodForUpload,
-					c.GoodForRenew)
-			}
-			w.Flush()
+			writeContracts(rce.ExpiredRefreshedContracts)
 		}
 	}
 }
@@ -1582,7 +1499,7 @@ func renterfilesdeletecmd(path string) {
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
-	} else if !strings.Contains(errFile.Error(), siafile.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) {
 		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Try to delete folder.
@@ -1609,7 +1526,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err == nil {
 		renterfilesdownload(path, destination)
 		return
-	} else if !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
+	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
 	_, err = httpClient.RenterGetDir(siaPath)
@@ -1929,9 +1846,23 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// TODO: Currently the list command can only look at directories. We
-	// probably want to add support for looking at specific files as well
-	// though.
+	// Check for file first
+	if !sp.IsRoot() {
+		rf, err := httpClient.RenterFileGet(sp)
+		if err == nil {
+			fmt.Println()
+			json, err := json.MarshalIndent(rf.File, "", "  ")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fmt.Println(string(json))
+			fmt.Println()
+			return
+		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			die(fmt.Sprintf("Error getting file %v: %v", path, err))
+		}
+	}
 
 	// Get dirs with their corresponding files.
 	dirs := getDir(sp)

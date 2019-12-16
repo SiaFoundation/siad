@@ -20,6 +20,12 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyLowFundsRefreshFail will cause contract renewal to fail due to low
+	// funds in the allowance.
+	DependencyLowFundsRefreshFail struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyDisableAsyncStartup prevents the async part of a module's creation
 	// from being executed.
 	DependencyDisableAsyncStartup struct {
@@ -151,6 +157,11 @@ func (d *DependencyLowFundsFormationFail) Disrupt(s string) bool {
 // Disrupt causes contract renewal to fail due to low allowance funds.
 func (d *DependencyLowFundsRenewalFail) Disrupt(s string) bool {
 	return s == "LowFundsRenewal"
+}
+
+// Disrupt causes contract renewal to fail due to low allowance funds.
+func (d *DependencyLowFundsRefreshFail) Disrupt(s string) bool {
+	return s == "LowFundsRefresh"
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was
