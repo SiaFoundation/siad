@@ -47,9 +47,9 @@ type dataRequest struct {
 	c              chan struct{}
 }
 
-// newProgramData creates a new ProgramData object from the specified reader. It
+// openProgramData creates a new ProgramData object from the specified reader. It
 // will read from the reader until dataLength is reached.
-func newProgramData(r io.Reader, dataLength uint64) *programData {
+func openProgramData(r io.Reader, dataLength uint64) *programData {
 	pd := &programData{
 		cancel:       make(chan struct{}),
 		r:            r,
@@ -186,8 +186,9 @@ func (pd *programData) Len() uint64 {
 	return pd.staticLength
 }
 
-// Stop will stop the background thread and wait for it to return.
-func (pd *programData) Stop() {
+// Close will stop the background thread and wait for it to return.
+func (pd *programData) Close() error {
 	close(pd.cancel)
 	pd.wg.Wait()
+	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 
 	"gitlab.com/NebulousLabs/threadgroup"
 
@@ -60,14 +59,12 @@ type Program struct {
 	renterSig  types.TransactionSignature
 	outputChan chan Output
 
-	mu sync.Mutex
 	tg *threadgroup.ThreadGroup
 }
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget Cost, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
-	// TODO: capture hostState
 	p := &Program{
 		budget:            budget,
 		finalContractSize: initialContractSize,
@@ -77,21 +74,19 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 			host:            mdm.host,
 			remainingBudget: budget,
 		},
-		staticData: newProgramData(data, programDataLen),
+		staticData: openProgramData(data, programDataLen),
 		so:         so,
 		tg:         &mdm.tg,
 	}
-	defer p.staticData.Stop()
+	defer p.staticData.Close()
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	// Convert the instructions.
 	var err error
 	var instruction instruction
 	for _, i := range instructions {
 		switch i.Specifier {
 		case modules.SpecifierReadSector:
-			instruction, err = p.decodeReadSectorInstruction(i)
+			instruction, err = p.staticDecodeReadSectorInstruction(i)
 		default:
 			err = fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 		}
@@ -111,6 +106,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 	if err != nil {
 		return nil, nil, err
 	}
+
 	// Execute all the instructions.
 	if err := p.tg.Add(); err != nil {
 		return nil, nil, err
@@ -118,24 +114,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 	go func() {
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		fcRoot := initialMerkleRoot
-		for _, i := range p.instructions {
-			select {
-			case <-ctx.Done(): // Check for interrupt
-				break
-			default:
-			}
-			// Execute next instruction.
-			output := i.Execute(fcRoot)
-			fcRoot = output.NewMerkleRoot
-			p.outputChan <- output
-			// Abort if the last output contained an error.
-			if output.Error != nil {
-				break
-			}
-		}
+		p.executeInstructions(ctx, initialMerkleRoot)
 	}()
 	// If the program is readonly there is no need to finalize it.
 	if p.readOnly() {
@@ -144,11 +123,29 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 	return p.managedFinalize, p.outputChan, nil
 }
 
+// executeInstructions executes the programs instructions sequentially while
+// returning the results to the caller using outputChan.
+func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
+	for _, i := range p.instructions {
+		select {
+		case <-ctx.Done(): // Check for interrupt
+			break
+		default:
+		}
+		// Execute next instruction.
+		output := i.Execute(fcRoot)
+		fcRoot = output.NewMerkleRoot
+		p.outputChan <- output
+		// Abort if the last output contained an error.
+		if output.Error != nil {
+			break
+		}
+	}
+}
+
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
 func (p *Program) managedFinalize() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	// Commit the changes to the storage obligation.
 	ps := p.staticProgramState
 	err := p.so.Update(ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
@@ -167,30 +164,4 @@ func (p *Program) readOnly() bool {
 		}
 	}
 	return true
-}
-
-// createRevisionSignature creates a signature for a file contract revision
-// that signs on the file contract revision. The renter should have already
-// provided the signature. createRevisionSignature will check to make sure that
-// the renter's signature is valid.
-func createRevisionSignature(fcr types.FileContractRevision, renterSig types.TransactionSignature, secretKey crypto.SecretKey, blockHeight types.BlockHeight) (types.Transaction, error) {
-	hostSig := types.TransactionSignature{
-		ParentID:       crypto.Hash(fcr.ParentID),
-		PublicKeyIndex: 1,
-		CoveredFields: types.CoveredFields{
-			FileContractRevisions: []uint64{0},
-		},
-	}
-	txn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{fcr},
-		TransactionSignatures: []types.TransactionSignature{renterSig, hostSig},
-	}
-	sigHash := txn.SigHash(1, blockHeight)
-	encodedSig := crypto.SignHash(sigHash, secretKey)
-	txn.TransactionSignatures[1].Signature = encodedSig[:]
-	err := modules.VerifyFileContractRevisionTransactionSignatures(fcr, txn.TransactionSignatures, blockHeight)
-	if err != nil {
-		return types.Transaction{}, err
-	}
-	return txn, nil
 }
