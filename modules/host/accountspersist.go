@@ -46,14 +46,14 @@ var (
 	// the accounts persist file.
 	accountMetadata = persist.FixedMetadata{
 		Header:  types.NewSpecifier("EphemeralAccount"),
-		Version: types.NewSpecifier("1.4.3"),
+		Version: types.NewSpecifier("1.4.3.0"),
 	}
 
 	// fingerprintsMetadata contains the header and version specifiers that
 	// identify the fingerprints persist file.
 	fingerprintsMetadata = persist.FixedMetadata{
 		Header:  types.NewSpecifier("Fingerprint"),
-		Version: types.NewSpecifier("1.4.3"),
+		Version: types.NewSpecifier("1.4.3.0"),
 	}
 )
 
