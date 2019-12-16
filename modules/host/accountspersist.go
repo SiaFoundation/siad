@@ -42,18 +42,21 @@ const (
 )
 
 var (
+	// specifierV1430 is the specifier for version 1.4.3.0
+	specifierV1430 = types.NewSpecifier("1.4.3.0")
+
 	// accountMetadata contains the header and version specifiers that identify
 	// the accounts persist file.
 	accountMetadata = persist.FixedMetadata{
 		Header:  types.NewSpecifier("EphemeralAccount"),
-		Version: types.NewSpecifier("1.4.3.0"),
+		Version: specifierV1430,
 	}
 
 	// fingerprintsMetadata contains the header and version specifiers that
 	// identify the fingerprints persist file.
 	fingerprintsMetadata = persist.FixedMetadata{
 		Header:  types.NewSpecifier("Fingerprint"),
-		Version: types.NewSpecifier("1.4.3.0"),
+		Version: specifierV1430,
 	}
 )
 
