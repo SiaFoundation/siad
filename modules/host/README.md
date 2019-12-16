@@ -51,13 +51,13 @@ only keep tiny balances in ephemeral accounts and users should refill the
 ephemeral accounts frequently, even on the order of multiple times per minute.
 
 To increase performance, the host will allow a user to withdraw from an
-ephemeral without requiring the user to wait until the host has persisted the
-withdrawal to complete a transaction. This allows the user to perform actions
-such as downloading with significantly less latency. This also means that if the
-host loses power at that exact moment, the host will forget that the user has
-spent money and the user will be able to spend that money again. The host can
-configure the amount of money it is willing to risk due to this asynchronous
-persist model through the `maxephemeralaccountrisk` setting.
+ephemeral account without requiring the user to wait until the host has
+persisted the withdrawal to complete a transaction. This allows the user to
+perform actions such as downloading with significantly less latency. This also
+means that if the host loses power at that exact moment, the host will forget
+that the user has spent money and the user will be able to spend that money
+again. The host can configure the amount of money it is willing to risk due to
+this asynchronous persist model through the `maxephemeralaccountrisk` setting.
 
 If an ephemeral account has been inactive for a period of 7 days, the host will
 prune it from the accounts list. This will effectively expire the account, along
