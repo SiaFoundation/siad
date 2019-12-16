@@ -34,6 +34,9 @@ var (
 		Header:  "siad.config",
 		Version: "1.0.0",
 	}
+
+	// ConfigName is the name of the config file on disk
+	ConfigName = "siad.config"
 )
 
 // SetRatelimit sets the ratelimit related fields in the config and persists it

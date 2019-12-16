@@ -110,7 +110,7 @@ func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPas
 	}
 
 	// Load the config file.
-	cfg, err := modules.NewConfig(filepath.Join(dir, "siad.config"))
+	cfg, err := modules.NewConfig(filepath.Join(dir, modules.ConfigName))
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load siad config")
 	}
