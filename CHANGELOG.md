@@ -9,6 +9,47 @@ Sia uses the following versioning scheme, vX.X.X.X
 Version History
 ---------------
 
+Dec 2019:
+
+### v1.4.2.0
+**Key Updates**
+ - Allowance in Backups
+ - Wallet Password Reset
+ - Bad Contract Utility Add
+ - FUSE
+ - Renter Watchdog
+ - Contract Churn Limiter
+ - Serving Downloads from Disk
+ - Verify Wallet Password Endpoint
+ - Siafilesystem
+ - Sia node scanner
+ - Gateway blacklisting
+ - Contract Extortion Checker
+ - Instant Boot
+ - Alert System
+ - Remove siafile chunks from memory
+ - Additional price change protection for the Renter
+ - siac Alerts command
+ - Critical alerts displayed on every siac call
+ - Single File Get in siac
+ - Gateway bandwidth monitoring
+ - Ability to pause uploads/repairs
+
+**Bugs**
+ - Missing return statements in API (http: superfluous response.WriteHeader call)
+ - Stuck Loop fixes (chunks not being added due to directory siapath never being set)
+ - Rapid Cycle repair loop on start up
+ - Wallet Init with force flag when no wallet exists previous would error
+
+**Other**
+ - Module READMEs
+ - staticcheck and gosec added
+ - Security.md file created
+ - Community images added for Built On Sia
+ - JSON tag code analyzer 
+ - Response Writer code analyzer
+ - boltdb added to gitlab.com/NebulousLabs
+
 Sep 2019:
 
 v1.4.1.2 (hotfix)
