@@ -695,7 +695,7 @@ func (api *API) walletUnlockHandler(w http.ResponseWriter, req *http.Request, _ 
 	potentialKeys, _ := encryptionKeys(req.FormValue("encryptionpassword"))
 	var err error
 	for _, key := range potentialKeys {
-		errChan := api.wallet.Unlock(key)
+		errChan := api.wallet.UnlockAsync(key)
 		var unlockErr error
 		select {
 		case unlockErr = <-errChan:

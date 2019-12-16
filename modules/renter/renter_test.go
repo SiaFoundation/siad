@@ -113,7 +113,7 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = <-w.Unlock(key)
+	err = w.Unlock(key)
 	if err != nil {
 		return nil, err
 	}

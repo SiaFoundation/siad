@@ -181,7 +181,7 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 			return nil, err
 		}
 	}
-	err = <-w.Unlock(key)
+	err = w.Unlock(key)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 			return nil, err
 		}
 	}
-	err = <-w.Unlock(key)
+	err = w.Unlock(key)
 	if err != nil {
 		return nil, err
 	}

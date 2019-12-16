@@ -32,7 +32,7 @@ func TestPrimarySeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	sk := crypto.NewWalletKey(crypto.HashObject(seed))
-	err = <-wt.wallet.Unlock(sk)
+	err = wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestPrimarySeed(t *testing.T) {
 		t.Error("unexpected err:", err)
 	}
 	sk = crypto.NewWalletKey(crypto.HashObject(seed))
-	err = <-wt.wallet.Unlock(sk)
+	err = wt.wallet.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestLoadSeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	sk := crypto.NewWalletKey(crypto.HashObject(newSeed))
-	err = <-w.Unlock(sk)
+	err = w.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestSweepSeedCoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = <-w.Unlock(sk)
+	err = w.Unlock(sk)
 	if err != nil {
 		t.Fatal(err)
 	}

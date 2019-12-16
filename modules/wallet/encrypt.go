@@ -569,9 +569,9 @@ func (w *Wallet) IsMasterKey(masterKey crypto.CipherKey) (bool, error) {
 
 }
 
-// Unlock will decrypt the wallet seed and load all of the addresses into
+// UnlockAsync will decrypt the wallet seed and load all of the addresses into
 // memory.
-func (w *Wallet) Unlock(masterKey crypto.CipherKey) <-chan error {
+func (w *Wallet) UnlockAsync(masterKey crypto.CipherKey) <-chan error {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// By having the wallet's ThreadGroup track the Unlock method, we ensure
@@ -597,6 +597,12 @@ func (w *Wallet) Unlock(masterKey crypto.CipherKey) <-chan error {
 	// Initialize all of the keys in the wallet under a lock. While holding the
 	// lock, also grab the subscriber status.
 	return w.managedUnlock(masterKey)
+}
+
+// Unlock will decrypt the wallet seed and load all of the addresses into
+// memory.
+func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
+	return <-w.UnlockAsync(masterKey)
 }
 
 // managedChangeKey safely performs the database operations required to change

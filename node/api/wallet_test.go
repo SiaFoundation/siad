@@ -435,7 +435,7 @@ func TestIntegrationWalletSweepSeedPOST(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = <-w.Unlock(key)
+	err = w.Unlock(key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +515,7 @@ func TestIntegrationWalletLoadSeedPOST(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = <-w2.Unlock(key2)
+	err = w2.Unlock(key2)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -91,7 +91,7 @@ func (ht *hostTester) initWallet() error {
 	if err != nil {
 		return err
 	}
-	err = <-ht.wallet.Unlock(key)
+	err = ht.wallet.Unlock(key)
 	if err != nil {
 		return err
 	}
