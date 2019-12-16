@@ -29,9 +29,6 @@ default: &default_params
       - $CI_PROJECT_DIR/cover/cover.out
     when: always
 
-  after_script:
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
-
 ## Define the default nightly test parameters.
 .default_nightly_test: &default_nightly_params
   <<: *default_test_params
@@ -40,6 +37,9 @@ default: &default_params
    -  ""
   only:
    - schedules
+
+  after_script:
+    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 lint:
   stage: lint
