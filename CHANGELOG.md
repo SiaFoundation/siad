@@ -47,7 +47,7 @@ Dec 2019:
  - Security.md file created
  - Community images added for Built On Sia
  - JSON tag code analyzer 
- - Response Writer code analyzer
+ - ResponseWriter code analyzer
  - boltdb added to gitlab.com/NebulousLabs
 
 Sep 2019:
