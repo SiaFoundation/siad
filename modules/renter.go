@@ -397,6 +397,10 @@ type FileUploadParams struct {
 	Force               bool
 	DisablePartialChunk bool
 	Repair              bool
+
+	// CipherType was added later. If it is left blank, the renter will use the
+	// default encryption method (as of writing, Threefish)
+	CipherType crypto.CipherType
 }
 
 // FileInfo provides information about a file.

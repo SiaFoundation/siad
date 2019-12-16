@@ -23,7 +23,6 @@ func TestLinkFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if ldDecoded != ld {
 		t.Error("encoded data and decoded data do not match")
 	}
