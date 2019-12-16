@@ -31,12 +31,13 @@ const (
 	fingerprintsCurrFilename = "fingerprintsbucket_current.db"
 	fingerprintsNxtFilename  = "fingerprintsbucket_next.db"
 
-	// bucketBlockRange defines the range of blocks a fingerprint bucket spans
+	// bucketBlockRange defines the range of expiry block heights the
+	// fingerprints contained in a single bucket can span
 	bucketBlockRange = 20
 
 	// sectorSize is (traditionally) the size of a sector on disk in bytes.
 	// It is used to perform a sanity check that verifies if this is a multiple
-	// of the account size
+	// of the account size.
 	sectorSize = 512
 )
 
@@ -44,15 +45,15 @@ var (
 	// accountMetadata contains the header and version specifiers that identify
 	// the accounts persist file.
 	accountMetadata = persist.FixedMetadata{
-		Header:  types.Specifier{'A', 'c', 'c', 'o', 'u', 'n', 't', 's'},
-		Version: types.Specifier{'1', '.', '4', '.', '2'},
+		Header:  types.NewSpecifier("EphemeralAccount"),
+		Version: types.NewSpecifier("1.4.3"),
 	}
 
 	// fingerprintsMetadata contains the header and version specifiers that
 	// identify the fingerprints persist file.
 	fingerprintsMetadata = persist.FixedMetadata{
-		Header:  types.Specifier{'F', 'i', 'n', 'g', 'e', 'r', 'P', 'r', 'i', 'n', 't', 's'},
-		Version: types.Specifier{'1', '.', '4', '.', '2'},
+		Header:  types.NewSpecifier("Fingerprint"),
+		Version: types.NewSpecifier("1.4.3"),
 	}
 )
 
@@ -63,10 +64,8 @@ type (
 	accountsPersister struct {
 		accounts modules.File
 
-		// fingerprints are stored using the fingerprint manager, it has it's
-		// own mutex to avoid lock contention when releasing the indexLock.
-		// Benchmarks have shown that the releasing of the index locks has to be
-		// in a separate domain from the fingerprints.
+		// fingerprints are stored using the fingerprint manager, it has its
+		// own mutex to avoid lock contention on the indexLocks.
 		fingerprints   *fingerprintManager
 		fingerprintsMu sync.Mutex
 
@@ -131,25 +130,28 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 	return ap, nil
 }
 
-// newFingerprintManager will create a fingerprint manager, this manager uses
-// two files to store the fingerprints on disk
+// newFingerprintManager will create a new fingerprint manager, this manager
+// uses two files to store the fingerprints on disk.
 func (ap *accountsPersister) newFingerprintManager() (_ *fingerprintManager, err error) {
 	fm := &fingerprintManager{}
 
 	fm.currentPath = filepath.Join(ap.h.persistDir, fingerprintsCurrFilename)
-	if fm.current, err = ap.openFingerprintBucket(fm.currentPath); err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.currentPath))
+	fm.current, err = ap.openFingerprintBucket(fm.currentPath)
+	if err != nil {
+		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.currentPath))
 	}
 
 	fm.nextPath = filepath.Join(ap.h.persistDir, fingerprintsNxtFilename)
-	if fm.next, err = ap.openFingerprintBucket(fm.nextPath); err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.nextPath))
+	fm.next, err = ap.openFingerprintBucket(fm.nextPath)
+	if err != nil {
+		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.nextPath))
 	}
 
 	return fm, nil
 }
 
-// callSaveAccount will persist the given account data at given index
+// callSaveAccount will persist the given account data at the location
+// corresponding to the given index.
 func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) error {
 	ap.managedLockIndex(index)
 	defer ap.managedUnlockIndex(index)
@@ -373,7 +375,7 @@ func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*accou
 
 		// deleted accounts will decode into an account with 0 as LastTxnTime,
 		// we want to skip those so that index becomes free and eventually gets
-		// overwritten
+		// overwritten.
 		if data.LastTxnTime > 0 {
 			account := data.account(index)
 			m[account.id] = account
@@ -500,8 +502,8 @@ func safeEncode(obj interface{}, expectedSize int) ([]byte, error) {
 	return bytes, nil
 }
 
-// location is a helper method that returns the location of the account at given
-// index
+// location is a helper method that returns the location of the account with
+// given index.
 func location(index uint32) int64 {
 	// metadataPadding is the amount of bytes we pad the metadata with. We pad
 	// metadata to ensure writing an account to disk never crosses the 512 bytes

@@ -48,11 +48,12 @@ func TestAccountCallDeposit(t *testing.T) {
 		t.Fatal("Deposit was not credited")
 	}
 
+	// Verify the current risk is 0 after a clean shutdown.
 	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountMaxBalance verifies we can never deposit more than the account max
-// balance into an ephemeral account
+// balance into an ephemeral account.
 func TestAccountMaxBalance(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -77,10 +78,11 @@ func TestAccountMaxBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify the current risk is 0 after a clean shutdown.
 	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
-// TestAccountCallWithdraw verifies we can spend from an ephemeral account
+// TestAccountCallWithdraw verifies we can withdraw from an ephemeral account.
 func TestAccountCallWithdraw(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -133,7 +135,7 @@ func TestAccountCallWithdraw(t *testing.T) {
 		defer wg.Done()
 		msg, sig = prepareWithdrawal(accountID, overSpend, am.h.blockHeight, sk)
 		if err := callWithdraw(am, msg, sig); err != nil {
-			// t.Log(err)
+			t.Log(err)
 			atomic.AddUint64(&atomicErrs, 1)
 		}
 	}()
@@ -142,7 +144,7 @@ func TestAccountCallWithdraw(t *testing.T) {
 		defer wg.Done()
 		time.Sleep(100 * time.Millisecond) // ensure withdrawal blocks
 		if err := callDeposit(am, accountID, deposit); err != nil {
-			// t.Log(err)
+			t.Log(err)
 			atomic.AddUint64(&atomicErrs, 1)
 		}
 	}()
@@ -157,10 +159,12 @@ func TestAccountCallWithdraw(t *testing.T) {
 		t.Fatal("Account balance was incorrect after spend", balance.HumanString())
 	}
 
+	// Verify the current risk is 0 after a clean shutdown.
 	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
-// TestAccountCallWithdrawTimeout verifies withdrawals timeout eventually
+// TestAccountCallWithdrawTimeout verifies withdrawals timeout if the account
+// is not sufficiently funded.
 func TestAccountCallWithdrawTimeout(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -184,10 +188,11 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 		t.Fatal("Unexpected error: ", err)
 	}
 
+	// Verify the current risk is 0 after a clean shutdown.
 	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
-// TestAccountExpiry verifies accounts expire and get pruned
+// TestAccountExpiry verifies accounts expire and get pruned.
 func TestAccountExpiry(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -223,7 +228,7 @@ func TestAccountExpiry(t *testing.T) {
 	}
 }
 
-// TestAccountWithdrawalSpent verifies a withdrawal can not be spent twice
+// TestAccountWithdrawalSpent verifies a withdrawal can not be spent twice.
 func TestAccountWithdrawalSpent(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -262,7 +267,7 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 }
 
 // TestAccountWithdrawalExpired verifies a withdrawal with an expiry in the past
-// is not accepted
+// is not accepted.
 func TestAccountWithdrawalExpired(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -320,13 +325,22 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Prepare a withdrawal message
-	diff := types.NewCurrency64(5)
-	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight+(2*bucketBlockRange)+1, sk)
-	err = callWithdraw(am, msg, sig)
+	// Make sure to test the cutoff point properly
+	shouldNotExpire := am.h.blockHeight + (2 * bucketBlockRange) - 1
+	shouldExpire := am.h.blockHeight + (2 * bucketBlockRange)
 
+	// Prepare a withdrawal message
+	oneCurrency := types.NewCurrency64(1)
+	msg, sig := prepareWithdrawal(accountID, oneCurrency, shouldExpire, sk)
+	err = callWithdraw(am, msg, sig)
 	if !errors.Contains(err, ErrWithdrawalExtremeFuture) {
 		t.Fatal("Expected withdrawal extreme future error", err)
+	}
+
+	msg, sig = prepareWithdrawal(accountID, oneCurrency, shouldNotExpire, sk)
+	err = callWithdraw(am, msg, sig)
+	if errors.Contains(err, ErrWithdrawalExtremeFuture) {
+		t.Fatal("Expected withdrawal to be valid", err)
 	}
 }
 
@@ -368,7 +382,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 
 // TestAccountRiskBenchmark benches the account manager and tries to reach max
 // risk. If it can reach max risk it prints the configuration that managed to
-// reach it.
+// reach it. This test should be skipped, it is added for documenting purposes.
 func TestAccountRiskBenchmark(t *testing.T) {
 	t.SkipNow()
 
@@ -440,6 +454,10 @@ func TestAccountRiskBenchmark(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	// Note we can not prepare the withdraw messages and signatures for this
+	// benchmark because of the fact that blocks are mined and blockheight is
+	// changing.
 
 	// Spin up a routine that periodically refills the accounts with the amount
 	// that has been withdrawn, we do this to ensure a "safe" deposit that never
@@ -546,8 +564,8 @@ func TestAccountRiskBenchmark(t *testing.T) {
 }
 
 // TestAccountWithdrawalBenchmark benches the withdrawals by running a couple of
-// configurations (#accounts,#withdrawals,#threads). This is added for debugging
-// purposes, the test is therefore skipped.
+// configurations (#accounts,#withdrawals,#threads). This test should be
+// skipped, it is added for documenting purposes.
 func TestAccountWithdrawalBenchmark(t *testing.T) {
 	t.SkipNow()
 
@@ -558,8 +576,11 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 		[]int{100, 100000, 16},
 		[]int{100, 100000, 32},
 		[]int{100, 100000, 64},
+		[]int{100, 200000, 16},
+		[]int{100, 200000, 32},
+		[]int{100, 200000, 64},
 		[]int{100, 200000, 128},
-		[]int{100, 500000, 256},
+		[]int{100, 500000, 128},
 	}
 
 	// Prepare a host
@@ -650,7 +671,7 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 }
 
 // TestAccountWithdrawalMultiple will deposit a large sum and make a lot of
-// small withdrawals
+// small withdrawals.
 func TestAccountWithdrawalMultiple(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -664,13 +685,19 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	}
 	am := ht.host.staticAccountManager
 
-	withdrawals := int(1e3)
-	threads := 10
+	// Grab some settings
+	his := ht.host.InternalSettings()
+	maxBalance := his.MaxEphemeralAccountBalance
+	withdrawalSize := maxBalance.Div64(10000)
+
+	// Note: withdrawals needs to be a multiple of threads for this test to pass
+	withdrawals := 10000
+	threads := 100
 
 	// Prepare an account and fund it
 	sk, spk := prepareAccount()
 	account := spk.String()
-	err = callDeposit(am, account, types.NewCurrency64(uint64(withdrawals)))
+	err = callDeposit(am, account, maxBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,24 +706,24 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	msgs := make([]*withdrawalMessage, withdrawals)
 	sigs := make([]crypto.Signature, withdrawals)
 	for w := 0; w < int(withdrawals); w++ {
-		msgs[w], sigs[w] = prepareWithdrawal(account, types.NewCurrency64(1), am.h.blockHeight, sk)
+		msgs[w], sigs[w] = prepareWithdrawal(account, withdrawalSize, am.h.blockHeight, sk)
 	}
 
-	// Run the withdrawals in 10 separate buckets (ensure that withdrawals do
-	// not exceed numDeposits * depositAmount)
+	// Run the withdrawals in separate threads (ensure that withdrawals do not
+	// exceed numDeposits * depositAmount)
 	var wg sync.WaitGroup
 	var atomicWithdrawalErrs uint64
-	for b := 0; b < threads; b++ {
+	for th := 0; th < threads; th++ {
 		wg.Add(1)
-		go func(bucket int) {
+		go func(thread int) {
 			defer wg.Done()
-			for i := bucket * (withdrawals / threads); i < (bucket+1)*(withdrawals/threads); i++ {
+			for i := thread * (withdrawals / threads); i < (thread+1)*(withdrawals/threads); i++ {
 				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
 				}
 			}
-		}(b)
+		}(th)
 	}
 	wg.Wait()
 
@@ -706,11 +733,14 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		t.Fatal("Unexpected error during withdrawals")
 	}
 
+	// Verify we've drained the account completely
 	balance := getAccountBalance(am, account)
 	if !balance.IsZero() {
+		t.Log(balance.HumanString())
 		t.Fatal("Unexpected account balance after withdrawals")
 	}
 
+	// Verify the current risk is 0 after a clean shutdown.
 	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
@@ -799,6 +829,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		t.Fatal("Unexpected account balance")
 	}
 
+	// Verify the current risk is 0 after a clean shutdown.
 	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
@@ -874,6 +905,7 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 		t.Fatal("Max ephemeral account balance risk was not reached")
 	}
 
+	// Verify the current risk is 0 after a clean shutdown.
 	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
@@ -883,6 +915,7 @@ func TestAccountIndexRecycling(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Prepare a host & update its settings to expire accounts after 2s
 	ht, err := blankHostTester(t.Name())
@@ -925,11 +958,11 @@ func TestAccountIndexRecycling(t *testing.T) {
 		_, pk := prepareAccount()
 		id := pk.String()
 		deposit(id)
-		pi, exists := am.managedAccountPersistInfo(id)
-		if !exists {
+		persistInfo := am.managedAccountPersistInfo(id)
+		if persistInfo == nil {
 			t.Fatal("Unexpected failure, account id unknown")
 		}
-		accToIndex[id] = pi.index
+		accToIndex[id] = persistInfo.index
 	}
 
 	// Keep accounts alive past the expire frequency by periodically depositing
@@ -957,11 +990,11 @@ func TestAccountIndexRecycling(t *testing.T) {
 	// Verify that only accounts which have been inactive for longer than the
 	// account expiry threshold are expired
 	for id, index := range accToIndex {
-		_, exists := am.managedAccountPersistInfo(id)
-		if expire(id) && exists {
+		persistInfo := am.managedAccountPersistInfo(id)
+		if expire(id) && persistInfo != nil {
 			t.Logf("Expected account at index %d to be expired\n", index)
 			t.Fatal("PruneExpiredAccount failure")
-		} else if !expire(id) && !exists {
+		} else if !expire(id) && persistInfo == nil {
 			t.Logf("Expected account at index %d to be active\n", index)
 			t.Fatal("PruneExpiredAccount failure")
 		}
@@ -980,11 +1013,11 @@ func TestAccountIndexRecycling(t *testing.T) {
 	for i := len(expired); i > 0; i-- {
 		_, pk := prepareAccount()
 		deposit(pk.String())
-		pi, exists := am.managedAccountPersistInfo(pk.String())
-		if !exists {
+		persistInfo := am.managedAccountPersistInfo(pk.String())
+		if persistInfo == nil {
 			t.Fatal("Unexpected failure, account id unknown")
 		}
-		newIndex := pi.index
+		newIndex := persistInfo.index
 		if _, ok := expired[newIndex]; !ok {
 			t.Log(managedAccountIndexCheck(am))
 			t.Fatalf("Account has index %v, instead of reusing a recycled index", newIndex)
