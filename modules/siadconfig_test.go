@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,39 +29,25 @@ func TestSiadConfigPersistCompat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Set the old rate limit field
-	sc.WriteBPSDeprecated = 100
-
-	// Save
-	err = sc.save()
+	// Test setting deprecated field only
+	err = saveLoadCheck(sc, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Load
-	err = sc.load(path)
+	// Test setting both fields
+	err = saveLoadCheck(sc, 150, 250)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// Confirm that the new field is set and the old field is zeroed out
-	if sc.WriteBPS != 100 {
-		t.Fatal("Expected WriteBPS to be set to 100 on load but got:", sc.WriteBPS)
-	}
-	if sc.WriteBPSDeprecated != 0 {
-		t.Fatal("Expected WriteBPSDeprecated to be reset to 0 but got:", sc.WriteBPSDeprecated)
 	}
 
 	// Confirm that set limits sets the new field and not the old field
-	err = sc.SetRatelimit(200, 200)
+	err = sc.SetRatelimit(0, 200)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sc.WriteBPS != 200 {
-		t.Fatal("Expected WriteBPS to be set to 200 but got:", sc.WriteBPS)
-	}
-	if sc.WriteBPSDeprecated != 0 {
-		t.Fatal("Expected WriteBPSDeprecated not to be set but got:", sc.WriteBPSDeprecated)
+	if err = checkWriteBPS(sc, 200); err != nil {
+		t.Fatal(err)
 	}
 
 	// Calling Load should have no impact now
@@ -68,10 +55,45 @@ func TestSiadConfigPersistCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sc.WriteBPS != 200 {
-		t.Fatal("Expected WriteBPS to be set to 200 but got:", sc.WriteBPS)
+	if err = checkWriteBPS(sc, 200); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// saveLoadCheck is a helper to check saving and loading the siad config file
+// and verifying the correct values for the WriteBPS fields
+func saveLoadCheck(sc *SiadConfig, writeBPS, writeBPSDeprepacted int64) error {
+	// Set both fields
+	sc.WriteBPSDeprecated = writeBPSDeprepacted
+	sc.WriteBPS = writeBPS
+
+	// Save
+	err := sc.save()
+	if err != nil {
+		return err
+	}
+
+	// Load
+	err = sc.load(sc.path)
+	if err != nil {
+		return err
+	}
+
+	// Confirm that the new field is set and the old field is zeroed out
+	expectedValue := writeBPS
+	if expectedValue == 0 {
+		expectedValue = writeBPSDeprepacted
+	}
+	return checkWriteBPS(sc, expectedValue)
+}
+
+// checkWriteBPS is a helper to check the WriteBPS and WriteBPSDeprecated fields
+func checkWriteBPS(sc *SiadConfig, writeBPS int64) error {
+	if sc.WriteBPS != writeBPS {
+		return fmt.Errorf("Expected WriteBPS to be set to %v on load but got: %v", writeBPS, sc.WriteBPS)
 	}
 	if sc.WriteBPSDeprecated != 0 {
-		t.Fatal("Expected WriteBPSDeprecated not to be set but got:", sc.WriteBPSDeprecated)
+		return fmt.Errorf("Expected WriteBPSDeprecated to be reset to 0 but got: %v", sc.WriteBPSDeprecated)
 	}
+	return nil
 }

@@ -74,11 +74,12 @@ func (cfg *SiadConfig) load(path string) error {
 // tag upgrade from `writeps` to `writebps`
 func (cfg *SiadConfig) writeBPSConpat() {
 	// If the deprecated tag field is none zero and the new field is still zero,
-	// set the new field and zero out the old field
+	// set the new field
 	if cfg.WriteBPSDeprecated != 0 && cfg.WriteBPS == 0 {
 		cfg.WriteBPS = cfg.WriteBPSDeprecated
-		cfg.WriteBPSDeprecated = 0
 	}
+	// Zero out the old field as to not overwrite a value in the future.
+	cfg.WriteBPSDeprecated = 0
 }
 
 // NewConfig loads a config from disk or creates a new one if no config exists
