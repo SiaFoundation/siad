@@ -12,6 +12,7 @@ package node
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -218,7 +219,7 @@ func (n *Node) Close() (err error) {
 // of initialization because the siatest package cannot import any of the
 // modules directly (so that the modules may use the siatest package to test
 // themselves).
-func New(params NodeParams) (*Node, <-chan error) {
+func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	dir := params.Dir
 	errChan := make(chan error, 1)
 
@@ -478,6 +479,7 @@ func New(params NodeParams) (*Node, <-chan error) {
 		errChan <- errors.Extend(err, errors.New("unable to create renter"))
 		return nil, errChan
 	}
+	printfRelease("API is now available, synchronous startup completed in %.3f seconds\n", time.Since(loadStartTime).Seconds())
 	go func() {
 		errChan <- errors.Compose(<-errChanCS, <-errChanRenter)
 		close(errChan)

@@ -49,6 +49,7 @@ func (api *API) buildHTTPRoutes() {
 	if api.gateway != nil {
 		router.GET("/gateway", api.gatewayHandlerGET)
 		router.POST("/gateway", api.gatewayHandlerPOST)
+		router.GET("/gateway/bandwidth", api.gatewayBandwidthHandlerGET)
 		router.POST("/gateway/connect/:netaddress", RequirePassword(api.gatewayConnectHandler, requiredPassword))
 		router.POST("/gateway/disconnect/:netaddress", RequirePassword(api.gatewayDisconnectHandler, requiredPassword))
 		router.GET("/gateway/blacklist", api.gatewayBlacklistHandlerGET)
@@ -103,6 +104,9 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/prices", api.renterPricesHandler)
 		router.POST("/renter/recoveryscan", RequirePassword(api.renterRecoveryScanHandlerPOST, requiredPassword))
 		router.GET("/renter/recoveryscan", api.renterRecoveryScanHandlerGET)
+		router.GET("/renter/fuse", api.renterFuseHandlerGET)
+		router.POST("/renter/fuse/mount", RequirePassword(api.renterFuseMountHandlerPOST, requiredPassword))
+		router.POST("/renter/fuse/unmount", RequirePassword(api.renterFuseUnmountHandlerPOST, requiredPassword))
 
 		// TODO: re-enable these routes once the new .sia format has been
 		// standardized and implemented.
@@ -119,6 +123,8 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/stream/*siapath", api.renterStreamHandler)
 		router.POST("/renter/upload/*siapath", RequirePassword(api.renterUploadHandler, requiredPassword))
 		router.GET("/renter/uploadready", api.renterUploadReadyHandler)
+		router.POST("/renter/uploads/pause", RequirePassword(api.renterUploadsPauseHandler, requiredPassword))
+		router.POST("/renter/uploads/resume", RequirePassword(api.renterUploadsResumeHandler, requiredPassword))
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 

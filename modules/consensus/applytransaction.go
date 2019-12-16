@@ -4,7 +4,7 @@ package consensus
 // There is an assumption that the transaction has already been verified.
 
 import (
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"

@@ -2,6 +2,7 @@ package modules
 
 import (
 	"net"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 )
@@ -132,6 +133,9 @@ type (
 	Gateway interface {
 		Alerter
 
+		// BandwidthCounters returns the Gateway's upload and download bandwidth
+		BandwidthCounters() (uint64, uint64, time.Time, error)
+
 		// Connect establishes a persistent connection to a peer.
 		Connect(NetAddress) error
 
@@ -156,17 +160,17 @@ type (
 		DisconnectManual(NetAddress) error
 
 		// AddToBlacklist adds addresses to the blacklist of the gateway
-		AddToBlacklist(addresses []NetAddress) error
+		AddToBlacklist(addresses []string) error
 
 		// Blacklist returns the current blacklist of the Gateway
 		Blacklist() ([]string, error)
 
 		// RemoveFromBlacklist removes addresses from the blacklist of the
 		// gateway
-		RemoveFromBlacklist(addresses []NetAddress) error
+		RemoveFromBlacklist(addresses []string) error
 
 		// SetBlacklist sets the blacklist of the gateway
-		SetBlacklist(addresses []NetAddress) error
+		SetBlacklist(addresses []string) error
 
 		// Address returns the Gateway's address.
 		Address() NetAddress

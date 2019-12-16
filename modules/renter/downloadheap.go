@@ -15,6 +15,7 @@ import (
 	"container/heap"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -181,7 +182,6 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		r.log.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
-	defer file.Close()
 	// If the file on disk doesn't have the right size we don't use it
 	// for repairing. This protects in case the user creates a different
 	// file at the same location.
@@ -196,28 +196,53 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		return false
 	}
 	// Fetch the chunk from disk.
-	sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
-	pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
-	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v",
-			localPath, fileName, err)
+	if err := r.tg.Add(); err != nil {
 		return false
 	}
-	shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
-	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
-			localPath, fileName, err)
-		return false
-	}
-	err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
-	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
-			localPath, fileName, err)
-		return false
-	}
-	// Finalize the recovery and clean up memory.
-	chunk.managedFinalizeRecovery()
-	chunk.returnMemory()
+	go func() (success bool) {
+		defer r.tg.Done()
+		defer file.Close()
+		// Try downloading if serving from disk failed.
+		defer func() {
+			if success {
+				// Return the memory for the chunk on success and finalize the
+				// recovery.
+				atomic.AddUint64(&chunk.download.atomicDataReceived, chunk.staticFetchLength)
+				atomic.AddUint64(&chunk.download.atomicTotalDataTransferred, chunk.staticFetchLength)
+				chunk.managedFinalizeRecovery()
+				chunk.returnMemory()
+			} else {
+				// If it failed, download it instead.
+				r.managedDistributeDownloadChunkToWorkers(chunk)
+			}
+		}()
+		// Check if download was already aborted.
+		select {
+		case <-chunk.download.completeChan:
+			return false
+		default:
+		}
+		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
+		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
+		if err != nil {
+			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
+				localPath, fileName, err)
+			return false
+		}
+		shards, err := chunk.renterFile.ErasureCode().EncodeShards(pieces)
+		if err != nil {
+			r.log.Debugf("managedTryFetchChunkFromDisk failed to encode data pieces from %v for %v: %v",
+				localPath, fileName, err)
+			return false
+		}
+		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
+		if err != nil {
+			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
+				localPath, fileName, err)
+			return false
+		}
+		return true
+	}()
 	return true
 }
 

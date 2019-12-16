@@ -2,7 +2,6 @@ package renter
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 )
 
 // DeleteFile removes a file entry from the renter and deletes its data from
@@ -33,8 +32,14 @@ func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]mo
 		return []modules.FileInfo{}, err
 	}
 	defer r.tg.Done()
-	offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-	fis, _, err := r.staticFileSystem.List(siaPath, recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	var fis []modules.FileInfo
+	var err error
+	if cached {
+		fis, _, err = r.staticFileSystem.CachedList(siaPath, recursive)
+	} else {
+		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+		fis, _, err = r.staticFileSystem.List(siaPath, recursive, offlineMap, goodForRenewMap, contractsMap)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +61,16 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	return fi, nil
 }
 
+// FileCached returns file from siaPath queried by user, using cached values for
+// health and redundancy.
+func (r *Renter) FileCached(siaPath modules.SiaPath) (modules.FileInfo, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.FileInfo{}, err
+	}
+	defer r.tg.Done()
+	return r.staticFileSystem.CachedFileInfo(siaPath)
+}
+
 // RenameFile takes an existing file and changes the nickname. The original
 // file must exist, and there must not be any file that already has the
 // replacement nickname.
@@ -64,6 +79,7 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	defer r.tg.Done()
+
 	// Rename file
 	err := r.staticFileSystem.RenameFile(currentName, newName)
 	if err != nil {
@@ -77,16 +93,6 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	}
 	go r.callThreadedBubbleMetadata(dirSiaPath)
 
-	// Create directory metadata for new path, ignore errors if siadir already
-	// exists
-	dirSiaPath, err = newName.Dir()
-	if err != nil {
-		return err
-	}
-	err = r.CreateDir(dirSiaPath)
-	if err != filesystem.ErrExists && err != nil {
-		return err
-	}
 	// Call callThreadedBubbleMetadata on the new directory to make sure the
 	// system metadata is updated to reflect the move
 	go r.callThreadedBubbleMetadata(dirSiaPath)

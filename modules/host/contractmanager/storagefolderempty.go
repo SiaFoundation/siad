@@ -68,7 +68,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				// None of the storage folders have enough room to house the
 				// sector.
 				wal.mu.Unlock()
-				return errors.New(modules.V1413HostOutOfStorageErrString)
+				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
 			defer sf.mu.RUnlock()
 
@@ -137,7 +137,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			wal.mu.Unlock()
 			return nil
 		}()
-		if err != nil && err.Error() == modules.V1413HostOutOfStorageErrString {
+		if err != nil && err.Error() == modules.V1420HostOutOfStorageErrString {
 			return err
 		} else if err != nil {
 			// Try the next storage folder.
@@ -148,7 +148,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 		break
 	}
 	if len(storageFolders) < 1 {
-		return errors.New(modules.V1413HostOutOfStorageErrString)
+		return errors.New(modules.V1420HostOutOfStorageErrString)
 	}
 	return nil
 }

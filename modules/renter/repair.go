@@ -238,8 +238,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		default:
 		}
 
-		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-		_, directories, err := r.staticFileSystem.List(siaPath, false, true, offlineMap, goodForRenewMap, contractsMap)
+		_, directories, err := r.staticFileSystem.CachedList(siaPath, false)
 		if err != nil {
 			return modules.SiaPath{}, err
 		}

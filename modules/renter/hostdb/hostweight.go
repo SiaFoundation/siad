@@ -237,6 +237,16 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	contractExpectedStorageTime := types.NewCurrency64(contractExpectedStorage).Mul64(uint64(allowance.Period))
 	contractExpectedUpload := types.NewCurrency64(allowance.ExpectedUpload).Mul64(uint64(allowance.Period)).MulFloat(allowance.ExpectedRedundancy).Div64(allowance.Hosts)
 
+	// Get the extra costs expected for downloads and uploads from the sector access
+	// price and base price.
+	extraCostsPerRPC := entry.BaseRPCPrice.Add(entry.SectorAccessPrice)
+
+	contractExpectedDownloadRPCs := contractExpectedDownload.Div64(modules.StreamDownloadSize)
+	extraDownloadRPCCost := contractExpectedDownloadRPCs.Mul(extraCostsPerRPC)
+
+	contractExpectedUploadRPCs := contractExpectedUpload.Div64(modules.StreamUploadSize)
+	extraUploadRPCCost := contractExpectedUploadRPCs.Mul(extraCostsPerRPC)
+
 	// Calculate the hostCollateral the renter would expect the host to put
 	// into a contract.
 	//
@@ -263,9 +273,9 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// that there will be on average one early renewal per contract, due to
 	// spending all of the contract's money.
 	contractPrice := entry.ContractPrice.Add(txnFees).Mul64(2)
-	downloadPrice := entry.DownloadBandwidthPrice.Mul(contractExpectedDownload)
+	downloadPrice := entry.DownloadBandwidthPrice.Mul(contractExpectedDownload).Add(extraDownloadRPCCost)
 	storagePrice := entry.StoragePrice.Mul(contractExpectedStorageTime)
-	uploadPrice := entry.UploadBandwidthPrice.Mul(contractExpectedUpload)
+	uploadPrice := entry.UploadBandwidthPrice.Mul(contractExpectedUpload).Add(extraUploadRPCCost)
 	siafundFee := contractPrice.Add(hostCollateral).Add(downloadPrice).Add(storagePrice).Add(uploadPrice).MulTax()
 	totalPrice := contractPrice.Add(downloadPrice).Add(storagePrice).Add(uploadPrice).Add(siafundFee)
 
@@ -350,8 +360,13 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 // version reported by the host.
 func versionAdjustments(entry modules.HostDBEntry) float64 {
 	base := float64(1)
-	if build.VersionCmp(entry.Version, "1.4.2") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
+	}
+	// Penalty for hosts that are below version v1.4.1.2 because there were
+	// transaction pool updates which reduces overall network congestion.
+	if build.VersionCmp(entry.Version, "1.4.1.2") < 0 {
+		base = base * 0.75
 	}
 	// Heavy penalty for hosts that cannot use the current renter-host protocol.
 	if build.VersionCmp(entry.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {

@@ -35,7 +35,7 @@ func (n *FileNode) managedClose() {
 // parent if it's no longer being used and if it doesn't have any children which
 // are currently in use. This happens iteratively for all parent as long as
 // removing a child resulted in them not having any children left.
-func (n *FileNode) Close() {
+func (n *FileNode) Close() error {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
 
@@ -53,6 +53,8 @@ func (n *FileNode) Close() {
 		// Check if the parent needs to be removed from its parent too.
 		parent.managedTryRemoveFromParentsIteratively()
 	}
+
+	return nil
 }
 
 // Copy copies a file node and returns the copy.
@@ -75,6 +77,13 @@ func (n *FileNode) managedDelete() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.SiaFile.Delete()
+}
+
+// managedMode returns the underlying file's os.FileMode.
+func (n *FileNode) managedMode() os.FileMode {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.SiaFile.Mode()
 }
 
 // managedFileInfo returns the FileInfo of the file node.
@@ -108,7 +117,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		LocalPath:        localPath,
 		MaxHealth:        maxHealth,
 		MaxHealthPercent: modules.HealthPercentage(maxHealth),
-		ModTime:          n.ModTime(),
+		ModificationTime: n.ModTime(),
 		NumStuckChunks:   numStuckChunks,
 		OnDisk:           onDisk,
 		Recoverable:      onDisk || redundancy >= 1,
@@ -117,6 +126,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
+		UID:              n.staticUID,
 		UploadedBytes:    uploadedBytes,
 		UploadProgress:   uploadProgress,
 	}
@@ -189,7 +199,7 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		LocalPath:        localPath,
 		MaxHealth:        maxHealth,
 		MaxHealthPercent: modules.HealthPercentage(maxHealth),
-		ModTime:          md.ModTime,
+		ModificationTime: md.ModTime,
 		NumStuckChunks:   md.NumStuckChunks,
 		OnDisk:           onDisk,
 		Recoverable:      onDisk || md.CachedUserRedundancy >= 1,
@@ -198,6 +208,7 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
 		StuckHealth:      md.CachedStuckHealth,
+		UID:              n.staticUID,
 		UploadedBytes:    md.CachedUploadedBytes,
 		UploadProgress:   md.CachedUploadProgress,
 	}

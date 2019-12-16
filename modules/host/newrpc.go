@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -71,7 +71,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	})
 	h.mu.RUnlock()
 	if err != nil || h.dependencies.Disrupt("loopLockNoRecordOfThatContract") {
-		s.writeError(errors.New(modules.V1413ContractNotRecognizedErrString))
+		s.writeError(errors.New(modules.V1420ContractNotRecognizedErrString))
 		return extendErr("could get storage obligation "+req.ContractID.String()+": ", err)
 	}
 

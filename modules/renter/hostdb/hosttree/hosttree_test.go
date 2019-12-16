@@ -396,7 +396,7 @@ func TestNodeAtWeight(t *testing.T) {
 	}
 
 	h := tree.root.nodeAtWeight(weight)
-	if h.entry.HostDBEntry.PublicKey.String() != entry.PublicKey.String() {
+	if !h.entry.HostDBEntry.PublicKey.Equals(entry.PublicKey) {
 		t.Errorf("nodeAtWeight returned wrong node: expected %v, got %v", entry, h.entry)
 	}
 }
@@ -451,7 +451,7 @@ func TestRandomHosts(t *testing.T) {
 	if len(randHosts) != 2 {
 		t.Fatal("didn't get 2 hosts")
 	}
-	if randHosts[0].PublicKey.String() == randHosts[1].PublicKey.String() {
+	if randHosts[0].PublicKey.Equals(randHosts[1].PublicKey) {
 		t.Error("doubled up")
 	}
 
@@ -461,7 +461,7 @@ func TestRandomHosts(t *testing.T) {
 		t.Fatal("didn't get 3 hosts", len(randHosts))
 	}
 
-	if randHosts[0].PublicKey.String() == randHosts[1].PublicKey.String() || randHosts[0].PublicKey.String() == randHosts[2].PublicKey.String() || randHosts[1].PublicKey.String() == randHosts[2].PublicKey.String() {
+	if randHosts[0].PublicKey.Equals(randHosts[1].PublicKey) || randHosts[0].PublicKey.Equals(randHosts[2].PublicKey) || randHosts[1].PublicKey.Equals(randHosts[2].PublicKey) {
 		t.Error("doubled up")
 	}
 
@@ -490,7 +490,7 @@ func TestRandomHosts(t *testing.T) {
 		t.Error("didn't get 3 hosts")
 	}
 
-	if randHosts[0].PublicKey.String() == randHosts[1].PublicKey.String() || randHosts[0].PublicKey.String() == randHosts[2].PublicKey.String() || randHosts[1].PublicKey.String() == randHosts[2].PublicKey.String() {
+	if randHosts[0].PublicKey.Equals(randHosts[1].PublicKey) || randHosts[0].PublicKey.Equals(randHosts[2].PublicKey) || randHosts[1].PublicKey.Equals(randHosts[2].PublicKey) {
 		t.Error("doubled up")
 	}
 
@@ -511,7 +511,7 @@ func TestRandomHosts(t *testing.T) {
 		t.Error("didn't get 3 hosts")
 	}
 
-	if randHosts[0].PublicKey.String() == randHosts[1].PublicKey.String() || randHosts[0].PublicKey.String() == randHosts[2].PublicKey.String() || randHosts[1].PublicKey.String() == randHosts[2].PublicKey.String() {
+	if randHosts[0].PublicKey.Equals(randHosts[1].PublicKey) || randHosts[0].PublicKey.Equals(randHosts[2].PublicKey) || randHosts[1].PublicKey.Equals(randHosts[2].PublicKey) {
 		t.Error("doubled up")
 	}
 }
