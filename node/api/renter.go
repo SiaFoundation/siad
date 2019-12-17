@@ -1045,6 +1045,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 	}
 
 	// Get current block height for reference
+	currentPeriod := api.renter.CurrentPeriod()
 	for _, c := range api.renter.OldContracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -1082,7 +1083,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Determine contract status
 		refreshed := api.renter.RefreshedContract(c.ID)
-		endHeightInPast := c.EndHeight < currentBlockHeight
+		endHeightInPast := c.EndHeight < currentBlockHeight || c.StartHeight < currentPeriod
 		expiredContract := expired && endHeightInPast && !refreshed
 		expiredRefreshed := expired && endHeightInPast && refreshed
 		refreshedContract := refreshed && !endHeightInPast
