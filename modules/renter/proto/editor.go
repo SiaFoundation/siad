@@ -57,6 +57,11 @@ func (he *Editor) Close() error {
 	return he.conn.Close()
 }
 
+// HostSettings returns the settings that are active in the current session.
+func (he *Editor) HostSettings() modules.HostExternalSettings {
+	return he.host.HostExternalSettings
+}
+
 // Upload negotiates a revision that adds a sector to a file contract.
 func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	// Acquire the contract.

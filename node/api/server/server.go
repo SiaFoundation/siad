@@ -146,7 +146,7 @@ func (srv *Server) Unlock(password string) error {
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
 // used if the APIaddr is localhost.
-func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string, nodeParams node.NodeParams) (*Server, <-chan error) {
+func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string, nodeParams node.NodeParams, loadStartTime time.Time) (*Server, <-chan error) {
 	c := make(chan error, 1)
 	defer close(c)
 
@@ -206,7 +206,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}()
 
 		// Create the Sia node for the server after the server was started.
-		n, errChan = node.New(nodeParams)
+		n, errChan = node.New(nodeParams, loadStartTime)
 		if err := modules.PeekErr(errChan); err != nil {
 			if isAddrInUseErr(err) {
 				return nil, fmt.Errorf("%v; are you running another instance of siad?", err.Error())
@@ -243,9 +243,9 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 // the empty string. Usernames are ignored for authentication. This type of
 // authentication sends passwords in plaintext and should therefore only be
 // used if the APIaddr is localhost.
-func New(APIaddr string, requiredUserAgent string, requiredPassword string, nodeParams node.NodeParams) (*Server, error) {
+func New(APIaddr string, requiredUserAgent string, requiredPassword string, nodeParams node.NodeParams, loadStartTime time.Time) (*Server, error) {
 	// Wait for the node to be done loading.
-	srv, errChan := NewAsync(APIaddr, requiredUserAgent, requiredPassword, nodeParams)
+	srv, errChan := NewAsync(APIaddr, requiredUserAgent, requiredPassword, nodeParams, loadStartTime)
 	if err := <-errChan; err != nil {
 		// Error occurred during async load. Close all modules.
 		if build.Release == "standard" {

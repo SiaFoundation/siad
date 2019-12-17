@@ -87,6 +87,7 @@ vet:
 lint:
 	GO111MODULE=on go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
+	GO111MODULE=on go run ./analysis/cmd/analyze.go -- $(pkgs)
 
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck:

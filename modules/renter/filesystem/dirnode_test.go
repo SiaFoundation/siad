@@ -171,7 +171,7 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
 	sp := newSiaPath("path/to/dir")
-	err := fs.NewSiaDir(sp)
+	err := fs.NewSiaDir(sp, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,9 +17,9 @@ type instructionReadSector struct {
 	merkleRootOff uint64
 }
 
-// decodeReadSectorInstruction creates a new 'ReadSector' instruction from the
+// staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the
 // provided generic instruction.
-func (p *Program) decodeReadSectorInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierReadSector {
 		return nil, fmt.Errorf("expected specifier %v but got %v",

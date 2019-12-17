@@ -52,7 +52,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if up.Force {
-		if err := r.DeleteFile(up.SiaPath); err != nil && err != siafile.ErrUnknownPath {
+		if err := r.DeleteFile(up.SiaPath); err != nil && err != filesystem.ErrNotExist {
 			return errors.AddContext(err, "unable to delete existing file")
 		}
 	}
@@ -77,12 +77,6 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 	dirSiaPath, err := up.SiaPath.Dir()
 	if err != nil {
 		return err
-	}
-	// Try to create the directory. If ErrExists is returned it already
-	// exists.
-	err = r.staticFileSystem.NewSiaDir(dirSiaPath)
-	if err != filesystem.ErrExists && err != nil {
-		return errors.AddContext(err, "unable to create sia directory for new file")
 	}
 
 	// Create the Siafile and add to renter

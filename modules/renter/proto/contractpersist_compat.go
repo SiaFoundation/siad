@@ -68,10 +68,10 @@ type v1412ContractHeader struct {
 	Locked        bool
 }
 
-// contractHeaderDecodeV1412ToV1413 attempts to decode a contract header using
+// contractHeaderDecodeV1412ToV1420 attempts to decode a contract header using
 // the persist struct as of v1.4.1.2, returning a header that has been converted
-// to the v1.4.1.3 version of the header.
-func contractHeaderDecodeV1412ToV1413(f io.ReadSeeker, decodeMaxSize int) (contractHeader, error) {
+// to the v1.4.2 version of the header.
+func contractHeaderDecodeV1412ToV1420(f io.ReadSeeker, decodeMaxSize int) (contractHeader, error) {
 	var v1412Header v1412ContractHeader
 	err := encoding.NewDecoder(f, decodeMaxSize).Decode(&v1412Header)
 	if err != nil {
@@ -102,10 +102,10 @@ func contractHeaderDecodeV1412ToV1413(f io.ReadSeeker, decodeMaxSize int) (contr
 	}, nil
 }
 
-// updateSetHeaderUnmarshalV142ToV1413 attempts to unmarshal an update set
-// header using the v.1.3.2 encoding scheme, returning a v1.4.1.3 version of the
+// updateSetHeaderUnmarshalV132ToV1420 attempts to unmarshal an update set
+// header using the v.1.3.2 encoding scheme, returning a v1.4.2 version of the
 // update set header.
-func updateSetHeaderUnmarshalV132ToV1413(b []byte, u *updateSetHeader) error {
+func updateSetHeaderUnmarshalV132ToV1420(b []byte, u *updateSetHeader) error {
 	var oldHeader v132UpdateSetHeader
 	if err := encoding.Unmarshal(b, &oldHeader); err != nil {
 		// If unmarshaling the header the old way also doesn't work we

@@ -3,7 +3,7 @@ package persist
 import (
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 )
 
 // BoltDatabase is a persist-level wrapper for the bolt database, providing
