@@ -66,13 +66,13 @@ func (cfg *SiadConfig) save() error {
 
 // load loads the config from disk.
 func (cfg *SiadConfig) load(path string) error {
-	defer cfg.writeBPSConpat()
+	defer cfg.writeBPSCompat()
 	return persist.LoadJSON(configMetadata, cfg, path)
 }
 
-// writeBPSConpat is compatibility code for addressing the the incorrect json
+// writeBPSCompat is compatibility code for addressing the the incorrect json
 // tag upgrade from `writeps` to `writebps`
-func (cfg *SiadConfig) writeBPSConpat() {
+func (cfg *SiadConfig) writeBPSCompat() {
 	// If the deprecated tag field is none zero and the new field is still zero,
 	// set the new field
 	if cfg.WriteBPSDeprecated != 0 && cfg.WriteBPS == 0 {
