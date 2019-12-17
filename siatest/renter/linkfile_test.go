@@ -36,7 +36,7 @@ func TestLinkfile(t *testing.T) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload as a linkfile.
-	data := fastrand.Bytes(100)
+	data := fastrand.Bytes(100 + siatest.Fuzz())
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload linkfile client call.

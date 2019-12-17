@@ -258,6 +258,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		println("err1")
+		println(err.Error())
 		pdbr.managedRemoveWorker(w)
 		return
 	}
