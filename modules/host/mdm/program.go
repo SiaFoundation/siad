@@ -27,6 +27,12 @@ var (
 	ErrInsufficientMemoryBudget       = errors.New("insufficient 'memory' budget")
 )
 
+var (
+	// ErrInterrupted indicates that the program was interrupted during
+	// execution and couldn't finish.
+	ErrInterrupted = errors.New("execution of program was interrupted")
+)
+
 // programState contains some fields needed for the execution of instructions.
 // The program's state is captured when the program is created and remains the
 // same during the execution of the program.
@@ -124,6 +130,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		for _, i := range p.instructions {
 			select {
 			case <-ctx.Done(): // Check for interrupt
+				p.outputChan <- outputFromError(ErrInterrupted)
 				break
 			default:
 			}
