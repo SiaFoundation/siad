@@ -492,20 +492,6 @@ func (st *serverTester) reloadedServerTester() (*serverTester, error) {
 	return copyST, nil
 }
 
-// netAddress returns the NetAddress of the caller.
-func (st *serverTester) netAddress() modules.NetAddress {
-	return st.server.api.gateway.Address()
-}
-
-// coinAddress returns a coin address that the caller is able to spend from.
-func (st *serverTester) coinAddress() string {
-	var addr struct {
-		Address string
-	}
-	st.getAPI("/wallet/address", &addr)
-	return addr.Address
-}
-
 // acceptContracts instructs the host to begin accepting contracts.
 func (st *serverTester) acceptContracts() error {
 	settingsValues := url.Values{}

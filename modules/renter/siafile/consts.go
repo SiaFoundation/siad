@@ -39,14 +39,6 @@ const (
 	// pubKeyTablePruneThreshold is the number of unused hosts a SiaFile can
 	// store in its host key table before it is pruned.
 	pubKeyTablePruneThreshold = 50
-
-	// threadDepth is how deep the ThreadType will track calling files and
-	// calling lines
-	threadDepth = 3
-
-	// fileListRoutines is the number of goroutines used in FileList to load
-	// siafile metadata from disk
-	fileListRoutines = 20
 )
 
 // Constants to indicate which part of the partial upload the combined chunk is

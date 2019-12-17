@@ -264,8 +264,6 @@ type Renter struct {
 	log               *persist.Logger
 	persist           persistence
 	persistDir        string
-	staticFilesDir    string
-	staticBackupsDir  string
 	memoryManager     *memoryManager
 	mu                *siasync.RWMutex
 	repairLog         *persist.Logger

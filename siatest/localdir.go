@@ -144,20 +144,3 @@ func (ld *LocalDir) newFile(size int, name string, mode os.FileMode) (*LocalFile
 		checksum: crypto.HashBytes(bytes),
 	}, err
 }
-
-// subDirs returns a slice of the sub directories in the LocalDir
-func (ld *LocalDir) subDirs() ([]*LocalDir, error) {
-	var dirs []*LocalDir
-	fileInfos, err := ioutil.ReadDir(ld.path)
-	if err != nil {
-		return dirs, err
-	}
-	for _, f := range fileInfos {
-		if f.IsDir() {
-			dirs = append(dirs, &LocalDir{
-				path: filepath.Join(ld.path, f.Name()),
-			})
-		}
-	}
-	return dirs, nil
-}
