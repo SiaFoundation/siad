@@ -53,6 +53,17 @@ func NewSiaPath(s string) (SiaPath, error) {
 	return newSiaPath(s)
 }
 
+// NewGlobalSiaPath can be used to create a global var which is a SiaPath. If
+// there is an error creating the SiaPath, the function will panic, making this
+// function unsuitable for typical use.
+func NewGlobalSiaPath(s string) SiaPath {
+	sp, err := NewSiaPath(s)
+	if err != nil {
+		panic("error creating global siapath: ", err)
+	}
+	return sp
+}
+
 // RandomSiaPath returns a random SiaPath created from 20 bytes of base32
 // encoded entropy.
 func RandomSiaPath() (sp SiaPath) {
