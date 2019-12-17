@@ -2108,19 +2108,18 @@ func TestExtendPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 	miner := tg.Miners()[0]
-	for i := 0; i < int(endheight-cg.Height); i++ {
+	for i := 0; i <= int(endheight-cg.Height); i++ {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// Confirm the previously active contracts are now marked as disabled and
+	// Confirm the previously active contracts are now marked as expired and
 	// were replaced with new active contracts
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, len(tg.Hosts()), 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	renter.PrintDebugInfo(t, true, false, true)
 }

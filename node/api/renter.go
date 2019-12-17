@@ -981,6 +981,7 @@ func (api *API) renterContractsHandler(w http.ResponseWriter, req *http.Request,
 // OldContracts().
 func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterContracts {
 	var rc RenterContracts
+	currentBlockHeight := api.cs.Height()
 	for _, c := range api.renter.Contracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -1044,7 +1045,6 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 	}
 
 	// Get current block height for reference
-	currentPeriod := api.renter.CurrentPeriod()
 	for _, c := range api.renter.OldContracts() {
 		var size uint64
 		if len(c.Transaction.FileContractRevisions) != 0 {
@@ -1082,11 +1082,11 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 
 		// Determine contract status
 		refreshed := api.renter.RefreshedContract(c.ID)
-		currentPeriodContract := c.StartHeight >= currentPeriod
-		expiredContract := expired && !currentPeriodContract && !refreshed
-		expiredRefreshed := expired && !currentPeriodContract && refreshed
-		refreshedContract := refreshed && currentPeriodContract
-		disabledContract := disabled && !refreshed && currentPeriodContract
+		endHeightInPast := c.EndHeight < currentBlockHeight
+		expiredContract := expired && endHeightInPast && !refreshed
+		expiredRefreshed := expired && endHeightInPast && refreshed
+		refreshedContract := refreshed && !endHeightInPast
+		disabledContract := disabled && !refreshed && !endHeightInPast
 
 		// A contract can only be refreshed, disabled, expired, or expired refreshed
 		if expiredContract {
@@ -1100,7 +1100,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 		}
 
 		// Record inactive contracts for compatibility
-		if inactive && currentPeriodContract {
+		if inactive && !endHeightInPast {
 			rc.InactiveContracts = append(rc.InactiveContracts, contract)
 		}
 	}

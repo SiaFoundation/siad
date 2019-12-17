@@ -2721,23 +2721,24 @@ continue to be available to be downloaded from. Refreshed contracts are
 contracts that ran out of funds and needed to be renewed so more money could be
 added to the contract with the host. The data reported in these contracts is
 duplicate data and should not be included in any accounting. Disabled contracts
-are contracts that are in the current period that are not being used for
-uploading as they were replaced instead of renewed. Expired contracts are
-contracts not in the current period, where no more data is being stored and
-excess funds have been released to the renter. Expired Refreshed contracts are
-contracts that were refreshed at some point in a previous period. The data
-reported in these contracts is duplicate data and should not be included in any
-accounting. Recoverable contracts are contracts which the contractor is
-currently trying to recover and which haven't expired yet.
+are contracts that are in the current period and have not yet expired that are
+not being used for uploading as they were replaced instead of renewed. Expired
+contracts are contracts with an `EndHeight` in the past, where no more data is
+being stored and excess funds have been released to the renter. Expired
+Refreshed contracts are contracts that were refreshed at some point in a
+previous period. The data reported in these contracts is duplicate data and
+should not be included in any accounting. Recoverable contracts are contracts
+which the contractor is currently trying to recover and which haven't expired
+yet.
 
-| Type              | GoodForUpload | GoodForRenew | In Current Period | Data Counted Elsewhere Already|
-| ----------------- | :-----------: | :----------: | :---------------: | :---------------------------: |
-| Active            | Yes           | Yes          | Yes               | No                            |
-| Passive           | No            | Yes          | Yes               | No                            |
-| Refreshed         | No            | No           | Yes               | Yes                           |
-| Disabled          | No            | No           | Yes               | No                            |
-| Expired           | No            | No           | No                | No                            |
-| Expired Refreshed | No            | No           | No                | Yes                           |
+| Type              | GoodForUpload | GoodForRenew | Endheight in the Future | Data Counted Elsewhere Already|
+| ----------------- | :-----------: | :----------: | :---------------------: | :---------------------------: |
+| Active            | Yes           | Yes          | Yes                     | No                            |
+| Passive           | No            | Yes          | Yes                     | No                            |
+| Refreshed         | No            | No           | Yes                     | Yes                           |
+| Disabled          | No            | No           | Yes                     | No                            |
+| Expired           | No            | No           | No                      | No                            |
+| Expired Refreshed | No            | No           | No                      | Yes                           |
 
 **NOTE:** No spending is double counted anywhere in the contracts, only the data
 is double counted in the refreshed contracts. For spending totals in the current
