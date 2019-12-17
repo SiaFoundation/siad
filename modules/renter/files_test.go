@@ -189,6 +189,48 @@ func TestRenterDeleteFile(t *testing.T) {
 	}
 }
 
+// TestRenterDeleteFileMissingParent tries to delete a file for which the parent
+// has been deleted before.
+func TestRenterDeleteFileMissingParent(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Put a file in the renter.
+	siaPath, err := modules.NewSiaPath("parent/file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath, rsc := testingFileParams()
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     siaPath,
+		ErasureCode: rsc,
+	}
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, persist.DefaultDiskPermissionsTest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Delete the parent.
+	if err := rt.renter.staticFileSystem.DeleteFile(dirSiaPath); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the file. This should not return an error since it's already
+	// deleted implicitly.
+	if err := rt.renter.staticFileSystem.DeleteFile(up.SiaPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestRenterFileList probes the FileList method of the renter type.
 func TestRenterFileList(t *testing.T) {
 	if testing.Short() {
