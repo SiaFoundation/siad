@@ -43,10 +43,7 @@ func (ld LinkData) String() string {
 
 // LoadString converts from a string and loads the result into ld.
 func (ld *LinkData) LoadString(s string) error {
-	// Check that the link is a valid sialink, and then trim the sia prefix.
-	if !strings.HasPrefix(s, "sia://") {
-		return errors.New("link does not appear to be a sia link - expecting sia:// prefix")
-	}
+	// Trim any 'sia://' that has tagged along.
 	base := strings.TrimPrefix(s, "sia://")
 
 	// Use the base64 package to decode the string.

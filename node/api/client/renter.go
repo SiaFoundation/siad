@@ -1,6 +1,8 @@
 package client
 
 import (
+	// "bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -700,4 +702,41 @@ func (c *Client) RenterUploadsResumePost() (err error) {
 func (c *Client) RenterPost(values url.Values) (err error) {
 	err = c.post("/renter", values.Encode(), nil)
 	return
+}
+
+// RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
+// file.
+func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
+	values := url.Values{}
+	trimmed := strings.TrimPrefix(sialink, "sia://")
+	values.Set("sialink", trimmed)
+	getQuery := fmt.Sprintf("/renter/sialink?%s", values.Encode())
+	_, resp, err = c.getRawResponse(getQuery)
+	return
+}
+
+// RenterSialinkPost uses the /renter/sialink endpoint to upload a linkfile. The
+// sialink is returned along with an error.
+//
+// TODO: add a mode
+func (c *Client) RenterSialinkPost(r io.Reader, name string) (string, error) {
+	// Upload the file.
+	//
+	// TODO: Is this a blocking upload?
+	values := url.Values{}
+	values.Set("name", name)
+	resp, err := c.postRawResponse(fmt.Sprintf("/renter/sialink?%s", values.Encode()), r)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to /renter/sialink failed")
+	}
+
+	// Parse the response to get the sialink.
+	var rshp api.RenterSialinkHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	// buf := bytes.NewBuffer(resp)
+	// err = json.NewDecoder(buf).Decode(&rshp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+	}
+	return rshp.Sialink, err
 }

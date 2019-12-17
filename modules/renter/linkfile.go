@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -81,9 +82,14 @@ func (r *Renter) DownloadLinkFile(link string) (modules.LinkFileMetadata, []byte
 		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
 	}
 
-	// Parse out the link file metadata.
+	// Parse out the link file metadata. Need to use a json.NewDecoder because
+	// the length of the metadata is unknown, simply calling json.Unmarshal will
+	// result in an error when it hits the padding.
 	var lfm modules.LinkFileMetadata
-	err = json.Unmarshal(linkFileData[:LinkFileMetadataMaxSize], &lfm)
+	bufDat := make([]byte, LinkFileMetadataMaxSize)
+	copy(bufDat, linkFileData)
+	buf := bytes.NewBuffer(bufDat)
+	err = json.NewDecoder(buf).Decode(&lfm)
 	if err != nil {
 		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
 	}
@@ -144,7 +150,7 @@ func (r *Renter) UploadLinkFile(lfm modules.LinkFileMetadata, fileData io.Reader
 		ErasureCode:         ec,
 		Force:               false,
 		DisablePartialChunk: true,
-		Repair:              true,
+		Repair:              false, // indicates whether this is a repair operation
 
 		CipherType: crypto.TypePlain,
 	}
@@ -159,6 +165,13 @@ func (r *Renter) UploadLinkFile(lfm modules.LinkFileMetadata, fileData io.Reader
 	if err != nil {
 		return "", errors.AddContext(err, "failed to upload the file")
 	}
+
+	// TODO: Is this blocking? Do we need to block? - looks like the answer is
+	// that the UploadStreamFromReader call is not blocking, therefore this
+	// needs to block until the upload is complete. Which cannot be done
+	// correctly without getting the file node that's being used for uploading
+	// because wayward renames could cause issues.
+	time.Sleep(time.Second * 40)
 
 	// Open the newly uploaded file and get the merkle roots of all the pieces.
 	// They should match eachother.
@@ -185,7 +198,7 @@ func (r *Renter) UploadLinkFile(lfm modules.LinkFileMetadata, fileData io.Reader
 	for _, pieceSet := range pieces {
 		for _, piece := range pieceSet {
 			if piece.MerkleRoot != mr {
-				return "", errors.New("all of the pieces do not have the same merkle root")
+				return "", fmt.Errorf("pieces in the linkfile have different merkle roots: %v :: %v", piece.MerkleRoot, mr)
 			}
 		}
 	}

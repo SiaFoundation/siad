@@ -93,7 +93,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
-	siaPath, ec, force, repair := up.SiaPath, up.ErasureCode, up.Force, up.Repair
+	siaPath, ec, force, repair, cipherType := up.SiaPath, up.ErasureCode, up.Force, up.Repair, up.CipherType
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
@@ -135,7 +135,7 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 		return nil, fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (ec.NumPieces()+ec.MinPieces())/2)
 	}
 	// Create the Siafile and add to renter
-	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
+	sk := crypto.GenerateSiaKey(cipherType)
 	err = r.staticFileSystem.NewSiaFile(siaPath, up.Source, up.ErasureCode, sk, 0, defaultFilePerm, up.DisablePartialChunk)
 	if err != nil {
 		return nil, err

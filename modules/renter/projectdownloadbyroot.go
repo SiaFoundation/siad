@@ -175,7 +175,7 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 		// before removing themselves from the project, meaning that there
 		// should never be a case where the list of registered workers is empty
 		// but the list of standby workers is not empty.
-		if len(pdbr.workersStandby) == 0 {
+		if len(pdbr.workersStandby) != 0 {
 			build.Critical("pdbr has standby workers but no registered workers:", len(pdbr.workersStandby))
 		}
 		pdbr.err = errors.New("workers were unable to recover the data by sector root - all workers failed")
@@ -205,6 +205,7 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	// Fetch a session to use in retrieving the sector.
 	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
+		println("rrr")
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
@@ -216,24 +217,32 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	hostSettings := downloader.HostSettings()
 	err = checkGougingDownloadByRoot(allowance, hostSettings)
 	if err != nil {
+		println("xxx")
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
 	}
 
-	// Fetch the data.
-	sectorData, err := downloader.Download(pdbr.staticRoot, uint32(pdbr.staticOffset), uint32(pdbr.staticLength))
+	// Fetch the data. Need to ensure that the length is a factor of 64, need to
+	// add and remove padding.
+	padding := 64 - pdbr.staticLength%64
+	if padding == 64 {
+		padding = 0
+	}
+	sectorData, err := downloader.Download(pdbr.staticRoot, uint32(pdbr.staticOffset), uint32(pdbr.staticLength+padding))
 	// If the fetch was unsuccessful, a standby worker needs to be activated
 	if err != nil {
+		println("zzz")
+		println(err.Error())
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
 	}
 
 	// Fetch was successful, update the data in the pdbr and perform a
-	// successful close.
+	// successful close. Make sure to strip the padding when returning the data.
 	pdbr.mu.Lock()
-	pdbr.data = sectorData
+	pdbr.data = sectorData[:pdbr.staticLength]
 	pdbr.mu.Unlock()
 	close(pdbr.completeChan)
 }
@@ -248,6 +257,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// Fetch a session to use in retrieving the sector.
 	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
+		println("err1")
 		pdbr.managedRemoveWorker(w)
 		return
 	}
@@ -257,12 +267,15 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	hostSettings := downloader.HostSettings()
 	err = checkGougingDownloadByRoot(allowance, hostSettings)
 	if err != nil {
+		println("err2")
 		pdbr.managedRemoveWorker(w)
 		return
 	}
 	// Try to fetch one byte.
-	_, err = downloader.Download(pdbr.staticRoot, 0, 1)
+	_, err = downloader.Download(pdbr.staticRoot, 0, 64)
 	if err != nil {
+		println("err3")
+		println(err.Error())
 		pdbr.managedRemoveWorker(w)
 		return
 	}
@@ -272,6 +285,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// nobody is actively fetching the root.
 	pdbr.mu.Lock()
 	if pdbr.rootFound {
+		println("not found")
 		pdbr.workersStandby = append(pdbr.workersStandby, w)
 		pdbr.mu.Unlock()
 		return
@@ -338,7 +352,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 	// worker has begun work.
 	wp := r.staticWorkerPool
 	wp.mu.RLock()
-	workers := make([]*worker, len(wp.workers))
+	workers := make([]*worker, 0, len(wp.workers))
 	for _, w := range wp.workers {
 		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 		workers = append(workers, w)

@@ -1680,7 +1680,7 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // renterSialinkHandlerGET accepts a sialink as input and will stream the data
 // from the sialink out of the response body as output.
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	sialink := ps.ByName("sialink")
+	sialink := req.FormValue("sialink")
 	metadata, data, err := api.renter.DownloadLinkFile(sialink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
