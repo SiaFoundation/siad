@@ -123,9 +123,9 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileData io.Reader
 	}
 
 	// Assemble the raw data of the linkfile.
-	linkFileData := make([]byte, size+FileStartOffset)
+	linkFileData := make([]byte, modules.SectorSize)
 	copy(linkFileData, mlfm)
-	copy(linkFileData[FileStartOffset:], readBuf[:size])
+	copy(linkFileData[FileStartOffset:], readBuf)
 
 	// Create parameters to upload the file with 1-of-N erasure coding and no
 	// encryption. This should cause all of the pieces to have the same Merkle
@@ -158,52 +158,28 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileData io.Reader
 	// Perform the actual upload. This will requring turning the buffer we
 	// grabbed earlier back into a reader.
 	fileDataReader := bytes.NewReader(linkFileData)
-	// TODO: This should probably return a filehandle or something, so that the
-	// caller can open the file without worrying about any sort of race
-	// conditions.
-	err = r.UploadStreamFromReader(up, fileDataReader)
+	fileNode, err := r.managedUploadStreamFromReader(up, fileDataReader, false)
 	if err != nil {
 		return "", errors.AddContext(err, "failed to upload the file")
 	}
-
-	// TODO: Is this blocking? Do we need to block? - looks like the answer is
-	// that the UploadStreamFromReader call is not blocking, therefore this
-	// needs to block until the upload is complete. Which cannot be done
-	// correctly without getting the file node that's being used for uploading
-	// because wayward renames could cause issues.
-	time.Sleep(time.Second * 40)
-
-	// Open the newly uploaded file and get the merkle roots of all the pieces.
-	// They should match eachother.
-	//
-	// TODO: should really get the snapshot from the call to upload rather than
-	// have to open it separately.
-	fileNode, err := r.staticFileSystem.OpenSiaFile(fullPath)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to open the sia file after uploading")
-	}
 	defer fileNode.Close()
-	snap, err := fileNode.Snapshot(fullPath)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to retrieve a snapshot after uploading")
-	}
 
-	// Get all of the pieces of the first chunk and check that they have the
-	// same merkle root. The merkle root will be used to create the link.
+	// Block until the file is available from the Sia network.
 	//
-	// TODO: We assume that there is at least one complete piece here, need to
-	// rewrite that assumption out to avoid a crash.
-	pieces := snap.Pieces(0)
-	mr := pieces[0][0].MerkleRoot
-	for _, pieceSet := range pieces {
-		for _, piece := range pieceSet {
-			if piece.MerkleRoot != mr {
-				return "", fmt.Errorf("pieces in the linkfile have different merkle roots: %v :: %v", piece.MerkleRoot, mr)
-			}
-		}
+	// TODO: Not sure if polling is the best option, not sure we should be
+	// blocking at all, bunch of magic constants to clean up. Should note that
+	// this will unblock basically as soon as the first piece is availabe,
+	// because it's a 1-of-N scheme.
+	start := time.Now()
+	for time.Since(start) > 5 * time.Minute && fileNode.Metadata().Redundancy < 1 {
+		time.Sleep(time.Second)
 	}
 
-	// Create the link data.
+	// The Merkle root should be the exact data that was uploaded due to the
+	// erasure coding and encryption settings.
+	mr := crypto.MerkleRoot(linkFileData)
+
+	// Create the link data and return the resulting sialink.
 	ld := LinkData{
 		Version:      1,
 		MerkleRoot:   mr,
@@ -211,7 +187,5 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileData io.Reader
 		DataPieces:   1,
 		ParityPieces: 1,
 	}
-	// Convert the link data to a string and return.
-	sialink := ld.String()
-	return sialink, nil
+	return ld.String(), nil
 }
