@@ -3,15 +3,15 @@ package renter
 // linkfile.go provides the tools for creating and uploading linkfiles, and then
 // receiving the associated links to recover the files.
 
-// TODO: To test this stuff properly we may need to increase the sector size
-// during testing >.>
+// TODO: Merge the metadata into the raw file data. Have a fixed size early
+// metadata which tells you all the really important stuff (how much of the real
+// data is file data, what the fanout settings are, etc.), and then the rest
+// just melds into the file like normal.
 
-// TODO: We should probably enable the metadata to be extended beyond 4096
-// bytes. At that point, the metadata could just bleed into the fully encoded
-// data where the non-flat erasure coding is happening, and the linkfile
-// retreiver just knows to handle it correctly.
-//
-// I have some ideas for how to do this now, the spec will end up changing.
+// TODO: Come up with some fanout scheme.
+
+// TODO: Figure out whether the function should be blocking and how to handle
+// timeouts related to uploading the data to the network.
 
 import (
 	"bytes"
