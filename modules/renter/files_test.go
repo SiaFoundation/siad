@@ -103,8 +103,8 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPath)
-	if err != filesystem.ErrNotExist {
-		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
+	if err != nil {
+		t.Errorf("Expected no error got '%v'", err)
 	}
 
 	// Put a file in the renter.
@@ -118,8 +118,8 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPathOne)
-	if err != filesystem.ErrNotExist {
-		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
+	if err != nil {
+		t.Errorf("Expected no error got '%v'", err)
 	}
 	// Delete the file.
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
@@ -164,8 +164,8 @@ func TestRenterDeleteFile(t *testing.T) {
 	}
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile(siaPath1)
-	if err != filesystem.ErrNotExist {
-		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
+	if err != nil {
+		t.Errorf("Expected no error got '%v'", err)
 	}
 	// Call delete on the new name.
 	err = rt.renter.DeleteFile(siaPathOne)
