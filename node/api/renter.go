@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -244,6 +245,11 @@ type (
 		StartTime            time.Time `json:"starttime"`            // The time when the download was started.
 		StartTimeUnix        int64     `json:"starttimeunix"`        // The time when the download was started in unix format.
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
+	}
+
+	// TODO:
+	RenterSialinkHandlerPOST struct {
+		Sialink string `json:"sialink"`
 	}
 )
 
@@ -1669,6 +1675,67 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return dp, nil
+}
+
+// renterSialinkHandlerGET accepts a sialink as input and will stream the data
+// from the sialink out of the response body as output.
+func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	sialink := ps.ByName("sialink")
+	metadata, data, err := api.renter.DownloadLinkFile(sialink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	reader := bytes.NewReader(data)
+	http.ServeContent(w, req, metadata.Name, time.Time{}, reader)
+}
+
+// renterSialinkHandlerPOST accepts some data and some metadata and then turns
+// that into a sialink, which is returned to the caller.
+func (api *API) renterSialinkHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	/* - no support for forcing yet.
+	// Check whether existing file should be overwritten
+	force := false
+	if f := queryForm.Get("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+	*/
+
+	// TODO: Erasure coding params - both for the base file and for the fanout.
+
+	// Call the renter to upload the linkfile and create a sialink.
+	name := queryForm.Get("name")
+	modeStr := queryForm.Get("mode")
+	var mode uint32
+	if modeStr == "" {
+		mode = modules.DefaultFilePerm
+	} else {
+		// TODO: parse modeStr instead of using default
+		mode = modules.DefaultFilePerm
+	}
+	lfm := modules.LinkFileMetadata{
+		Name: name,
+		Mode: mode,
+	}
+	sialink, err := api.renter.UploadLinkFile(lfm, req.Body)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, RenterSialinkHandlerPOST{
+		Sialink: sialink,
+	})
 }
 
 // renterStreamHandler handles downloads from the /renter/stream endpoint

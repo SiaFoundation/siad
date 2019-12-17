@@ -108,13 +108,6 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/fuse/mount", RequirePassword(api.renterFuseMountHandlerPOST, requiredPassword))
 		router.POST("/renter/fuse/unmount", RequirePassword(api.renterFuseUnmountHandlerPOST, requiredPassword))
 
-		// TODO: re-enable these routes once the new .sia format has been
-		// standardized and implemented.
-		// router.POST("/renter/load", RequirePassword(api.renterLoadHandler, requiredPassword))
-		// router.POST("/renter/loadascii", RequirePassword(api.renterLoadAsciiHandler, requiredPassword))
-		// router.GET("/renter/share", RequirePassword(api.renterShareHandler, requiredPassword))
-		// router.GET("/renter/shareascii", RequirePassword(api.renterShareAsciiHandler, requiredPassword))
-
 		router.POST("/renter/delete/*siapath", RequirePassword(api.renterDeleteHandler, requiredPassword))
 		router.GET("/renter/download/*siapath", RequirePassword(api.renterDownloadHandler, requiredPassword))
 		router.POST("/renter/download/cancel", RequirePassword(api.renterCancelDownloadHandler, requiredPassword))
@@ -127,6 +120,10 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/uploads/resume", RequirePassword(api.renterUploadsResumeHandler, requiredPassword))
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
+
+		// Linkfile endpoints
+		router.GET("/renter/sialink", api.renterSialinkHandlerGET)
+		router.POST("/renter/sialink", RequirePassword(api.renterSialinkHandlerPOST, requiredPassword))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))

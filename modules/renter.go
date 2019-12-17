@@ -70,6 +70,11 @@ const (
 	// permissions are supplied. Changing this value is a compatibility issue
 	// since users expect dirs to have these permissions.
 	DefaultDirPerm = 0755
+
+	// DefaultFilePerm defines the default permissions used for a new file if no
+	// permissions are supplied. Changing this value is a compatibility issue
+	// since users expect files to have these permissions.
+	DefaultFilePerm = 0666
 )
 
 // String returns the string value for the FilterMode
@@ -917,6 +922,12 @@ type Renter interface {
 
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
+
+	// TODO:
+	DownloadLinkFile(link string) (LinkFileMetadata, []byte, error)
+
+	// TODO:
+	UploadLinkFile(lfm LinkFileMetadata, filedata io.Reader) (string, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -954,4 +965,16 @@ func HealthPercentage(health float64) float64 {
 		healthPercent = 0
 	}
 	return healthPercent
+}
+
+// LinkFileMetadata is all of the metadata that gets placed into the first 4096
+// bytes of the linkfile, and is used to set the metadata of the file when
+// writing back to disk. The data is json-encoded when it is placed into the
+// leading bytes of the linkfile, meaning that this struct can be extended
+// without breaking compatibility.
+type LinkFileMetadata struct {
+	Name string `json:"name"`
+	Mode uint32 `json:"mode"`
+
+	// TODO: More fields.
 }

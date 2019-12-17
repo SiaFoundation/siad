@@ -50,54 +50,42 @@ const (
 	LinkFileSiaFolder = "/home/user/linkfiles"
 )
 
-// LinkFileMetadata is all of the metadata that gets placed into the first 4096
-// bytes of the linkfile, and is used to set the metadata of the file when
-// writing back to disk. The data is json-encoded when it is placed into the
-// leading bytes of the linkfile, meaning that this struct can be extended
-// without breaking compatibility.
-type LinkFileMetadata struct {
-	Name string `json:"name"`
-	Mode string `json:"mode"`
-
-	// TODO: More fields.
-}
-
 // DownloadLinkFile will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadLinkFile(link string) (LinkFileMetadata, []byte, error) {
+func (r *Renter) DownloadLinkFile(link string) (modules.LinkFileMetadata, []byte, error) {
 	// Parse the provided link into a usable structure for fetching downloads.
 	var ld LinkData
 	err := ld.LoadString(link)
 	if err != nil {
-		return LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
+		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
 	}
 
 	// Check that the link follows the restrictions of the current software
 	// capabilities.
 	if ld.Version != 1 {
-		return LinkFileMetadata{}, nil, errors.New("link is not version 1")
+		return modules.LinkFileMetadata{}, nil, errors.New("link is not version 1")
 	}
 	if ld.Filesize > modules.SectorSize - FileStartOffset {
-		return LinkFileMetadata{}, nil, errors.New("links with fanouts not supported")
+		return modules.LinkFileMetadata{}, nil, errors.New("links with fanouts not supported")
 	}
 	if ld.DataPieces != 1 {
-		return LinkFileMetadata{}, nil, errors.New("data pieces must be set to 1 on a link")
+		return modules.LinkFileMetadata{}, nil, errors.New("data pieces must be set to 1 on a link")
 	}
 	if ld.ParityPieces != 1 {
-		return LinkFileMetadata{}, nil, errors.New("parity pieces must be set to 1 on a link")
+		return modules.LinkFileMetadata{}, nil, errors.New("parity pieces must be set to 1 on a link")
 	}
 
 	// Fetch the actual file.
 	linkFileData, err := r.DownloadByRoot(ld.MerkleRoot, 0, ld.Filesize + FileStartOffset)
 	if err != nil {
-		return LinkFileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
+		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
 	}
 
 	// Parse out the link file metadata.
-	var lfm LinkFileMetadata
+	var lfm modules.LinkFileMetadata
 	err = json.Unmarshal(linkFileData[:LinkFileMetadataMaxSize], &lfm)
 	if err != nil {
-		return LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
+		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
 	}
 
 	// Return everything.
@@ -105,7 +93,7 @@ func (r *Renter) DownloadLinkFile(link string) (LinkFileMetadata, []byte, error)
 }
 
 // UploadLinkFile will upload the provided data with the provided name and stats
-func (r *Renter) UploadLinkFile(lfm LinkFileMetadata, fileData io.Reader) (string, error) {
+func (r *Renter) UploadLinkFile(lfm modules.LinkFileMetadata, fileData io.Reader) (string, error) {
 	// Compose the metadata into the leading sector.
 	mlfm, err := json.Marshal(lfm)
 	if err != nil {
