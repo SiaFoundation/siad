@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/demotemutex"
 
 	"gitlab.com/NebulousLabs/Sia/build"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/pbkdf2"

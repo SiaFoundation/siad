@@ -103,8 +103,8 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPath)
-	if err != filesystem.ErrNotExist {
-		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
+	if err != nil {
+		t.Errorf("Expected no error got '%v'", err)
 	}
 
 	// Put a file in the renter.
@@ -118,8 +118,8 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPathOne)
-	if err != filesystem.ErrNotExist {
-		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
+	if err != nil {
+		t.Errorf("Expected no error got '%v'", err)
 	}
 	// Delete the file.
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
@@ -164,8 +164,8 @@ func TestRenterDeleteFile(t *testing.T) {
 	}
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile(siaPath1)
-	if err != filesystem.ErrNotExist {
-		t.Errorf("Expected '%v' got '%v'", filesystem.ErrNotExist, err)
+	if err != nil {
+		t.Errorf("Expected no error got '%v'", err)
 	}
 	// Call delete on the new name.
 	err = rt.renter.DeleteFile(siaPathOne)
@@ -186,6 +186,48 @@ func TestRenterDeleteFile(t *testing.T) {
 	expWalkStr := ""
 	if walkStr != expWalkStr {
 		t.Fatalf("Bad walk string: expected %q, got %q", expWalkStr, walkStr)
+	}
+}
+
+// TestRenterDeleteFileMissingParent tries to delete a file for which the parent
+// has been deleted before.
+func TestRenterDeleteFileMissingParent(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Put a file in the renter.
+	siaPath, err := modules.NewSiaPath("parent/file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath, rsc := testingFileParams()
+	up := modules.FileUploadParams{
+		Source:      "",
+		SiaPath:     siaPath,
+		ErasureCode: rsc,
+	}
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, persist.DefaultDiskPermissionsTest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Delete the parent.
+	if err := rt.renter.staticFileSystem.DeleteFile(dirSiaPath); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the file. This should not return an error since it's already
+	// deleted implicitly.
+	if err := rt.renter.staticFileSystem.DeleteFile(up.SiaPath); err != nil {
+		t.Fatal(err)
 	}
 }
 

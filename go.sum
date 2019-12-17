@@ -57,6 +57,8 @@ github.com/spf13/viper v1.3.2/go.mod h1:ZiWeW+zYFKm7srdB9IoDzzZXaJaI5eL9QjNiN/DM
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
+gitlab.com/NebulousLabs/bolt v1.4.0 h1:6sfFp1YQtGWbSLLYoH8+0h3EtFRGbsp07L3uZNChdE0=
+gitlab.com/NebulousLabs/bolt v1.4.0/go.mod h1:72gB2R0hTcUU2Ih7mBpHF0jJlIldSyPzG1cuwz1uYJY=
 gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40 h1:IbucNi8u1a1ErgVFVgg8pERhSyzYe5l+o8krDMnNjWA=
 gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40/go.mod h1:HfnnxM8isYA7FUlqS5h34XTeiBhPtcuCquVujKsn9aw=
 gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500 h1:BUDZfLl/9IRseYl7/GW1DF+11SYCMJ6P4whCBJhtEhQ=

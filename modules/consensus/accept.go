@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"

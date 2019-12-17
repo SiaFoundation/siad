@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
