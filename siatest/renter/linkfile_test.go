@@ -8,7 +8,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TODO:
+// TestLinkfile provides basic end-to-end testing for uploading linkfiles and
+// downloading the resulting sialinks.
 func TestLinkfile(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

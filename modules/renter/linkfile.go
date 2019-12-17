@@ -29,17 +29,17 @@ import (
 const (
 	// LinkfileMetadataMaxSize is the amount of space in a linkfile that is
 	// allocated for file metadata.
-	LinkFileMetadataMaxSize = 512
+	LinkfileMetadataMaxSize = 512
 
-	// LinkFileFanoutSize is the amount of space in a linkfile that each sector
+	// LinkfileFanoutSize is the amount of space in a linkfile that each sector
 	// allocates to fanout sectors.
-	LinkFileFanoutSize = 512
+	LinkfileFanoutSize = 512
 
 	// FileStartOffset establishes where in the linkfile data that the actual
 	// underlying file data begins.
-	FileStartOffset = LinkFileMetadataMaxSize + LinkFileFanoutSize
+	FileStartOffset = LinkfileMetadataMaxSize + LinkfileFanoutSize
 
-	// LinkFileSiaFolder is the folder where all of the linkfiles are stored.
+	// LinkfileSiaFolder is the folder where all of the linkfiles are stored.
 	//
 	// TODO: Move this to /var/linkfiles or some equivalent name. I'm not sure
 	// that 'linkfiles' is the right base folder name (though I do think /var is
@@ -48,65 +48,65 @@ const (
 	//
 	// TODO: Would be great to have this be a proper SiaPath instead of just a
 	// string.
-	LinkFileSiaFolder = "/home/user/linkfiles"
+	LinkfileSiaFolder = "/home/user/linkfiles"
 )
 
-// DownloadLinkFile will take a link and turn it into the metadata and data of a
+// DownloadSialink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadLinkFile(link string) (modules.LinkFileMetadata, []byte, error) {
+func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte, error) {
 	// Parse the provided link into a usable structure for fetching downloads.
 	var ld LinkData
 	err := ld.LoadString(link)
 	if err != nil {
-		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
+		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
 	}
 
 	// Check that the link follows the restrictions of the current software
 	// capabilities.
 	if ld.Version != 1 {
-		return modules.LinkFileMetadata{}, nil, errors.New("link is not version 1")
+		return modules.LinkfileMetadata{}, nil, errors.New("link is not version 1")
 	}
-	if ld.Filesize > modules.SectorSize - FileStartOffset {
-		return modules.LinkFileMetadata{}, nil, errors.New("links with fanouts not supported")
+	if ld.Filesize > modules.SectorSize-FileStartOffset {
+		return modules.LinkfileMetadata{}, nil, errors.New("links with fanouts not supported")
 	}
 	if ld.DataPieces != 1 {
-		return modules.LinkFileMetadata{}, nil, errors.New("data pieces must be set to 1 on a link")
+		return modules.LinkfileMetadata{}, nil, errors.New("data pieces must be set to 1 on a link")
 	}
 	if ld.ParityPieces != 1 {
-		return modules.LinkFileMetadata{}, nil, errors.New("parity pieces must be set to 1 on a link")
+		return modules.LinkfileMetadata{}, nil, errors.New("parity pieces must be set to 1 on a link")
 	}
 
 	// Fetch the actual file.
-	linkFileData, err := r.DownloadByRoot(ld.MerkleRoot, 0, ld.Filesize + FileStartOffset)
+	linkFileData, err := r.DownloadByRoot(ld.MerkleRoot, 0, ld.Filesize+FileStartOffset)
 	if err != nil {
-		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
+		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
 	}
 
 	// Parse out the link file metadata. Need to use a json.NewDecoder because
 	// the length of the metadata is unknown, simply calling json.Unmarshal will
 	// result in an error when it hits the padding.
-	var lfm modules.LinkFileMetadata
-	bufDat := make([]byte, LinkFileMetadataMaxSize)
+	var lfm modules.LinkfileMetadata
+	bufDat := make([]byte, LinkfileMetadataMaxSize)
 	copy(bufDat, linkFileData)
 	buf := bytes.NewBuffer(bufDat)
 	err = json.NewDecoder(buf).Decode(&lfm)
 	if err != nil {
-		return modules.LinkFileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
+		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
 	}
 
 	// Return everything.
-	return lfm, linkFileData[FileStartOffset:FileStartOffset+ld.Filesize], nil
+	return lfm, linkFileData[FileStartOffset : FileStartOffset+ld.Filesize], nil
 }
 
-// UploadLinkFile will upload the provided data with the provided name and stats
-func (r *Renter) UploadLinkFile(lfm modules.LinkFileMetadata, fileData io.Reader) (string, error) {
+// UploadLinkfile will upload the provided data with the provided name and stats
+func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileData io.Reader) (string, error) {
 	// Compose the metadata into the leading sector.
 	mlfm, err := json.Marshal(lfm)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to marshal the link file metadata")
 	}
-	if len(mlfm) > LinkFileMetadataMaxSize {
-		return "", fmt.Errorf("encoded metadata size of %v exceeds the maximum of %v", len(mlfm), LinkFileMetadataMaxSize)
+	if len(mlfm) > LinkfileMetadataMaxSize {
+		return "", fmt.Errorf("encoded metadata size of %v exceeds the maximum of %v", len(mlfm), LinkfileMetadataMaxSize)
 	}
 
 	// Read all of the file data from the reader.
@@ -131,7 +131,7 @@ func (r *Renter) UploadLinkFile(lfm modules.LinkFileMetadata, fileData io.Reader
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
 	// also resiliant to host failures.
-	spBase, err := modules.NewSiaPath(LinkFileSiaFolder)
+	spBase, err := modules.NewSiaPath(LinkfileSiaFolder)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to create a siapath from the base")
 	}

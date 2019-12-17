@@ -1681,7 +1681,7 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // from the sialink out of the response body as output.
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	sialink := req.FormValue("sialink")
-	metadata, data, err := api.renter.DownloadLinkFile(sialink)
+	metadata, data, err := api.renter.DownloadSialink(sialink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
 		return
@@ -1724,11 +1724,11 @@ func (api *API) renterSialinkHandlerPOST(w http.ResponseWriter, req *http.Reques
 		// TODO: parse modeStr instead of using default
 		mode = modules.DefaultFilePerm
 	}
-	lfm := modules.LinkFileMetadata{
+	lfm := modules.LinkfileMetadata{
 		Name: name,
 		Mode: mode,
 	}
-	sialink, err := api.renter.UploadLinkFile(lfm, req.Body)
+	sialink, err := api.renter.UploadLinkfile(lfm, req.Body)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
 		return

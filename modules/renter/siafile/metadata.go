@@ -123,6 +123,8 @@ type (
 		StuckHealth         float64   `json:"stuckhealth"`
 
 		// File ownership/permission fields.
+		//
+		// TODO: The UserID and GroupID should be explciitly sized, right?
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
 		UserID  int         `json:"userid"`  // id of the user who owns the file
 		GroupID int         `json:"groupid"` // id of the group that owns the file

@@ -362,8 +362,6 @@ func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
 func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
 
 // Mode implements os.FileInfo.
-//
-// TODO: get the real mode
 func (d DirectoryInfo) Mode() os.FileMode { return d.DirMode }
 
 // ModTime implements os.FileInfo.
@@ -923,11 +921,18 @@ type Renter interface {
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
-	// TODO:
-	DownloadLinkFile(link string) (LinkFileMetadata, []byte, error)
+	// DownloadSialink will fetch a file from the Sia network using the sialink.
+	DownloadSialink(sialink string) (LinkfileMetadata, []byte, error)
 
-	// TODO:
-	UploadLinkFile(lfm LinkFileMetadata, filedata io.Reader) (string, error)
+	// UploadLinkfile will upload data to the Sia network from a reader and
+	// create a linkfile, returning the sialink that can be used to access the
+	// file.
+	//
+	// NOTE: A linkfile is a file that is tracked and repaired by the renter.  A
+	// linkfile contains more than just the file data, it also contains metadata
+	// about the file and other information which is useful in fetching the
+	// file.
+	UploadLinkfile(lfm LinkfileMetadata, filedata io.Reader) (string, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -967,14 +972,30 @@ func HealthPercentage(health float64) float64 {
 	return healthPercent
 }
 
-// LinkFileMetadata is all of the metadata that gets placed into the first 4096
+// LinkfileMetadata is all of the metadata that gets placed into the first 4096
 // bytes of the linkfile, and is used to set the metadata of the file when
 // writing back to disk. The data is json-encoded when it is placed into the
 // leading bytes of the linkfile, meaning that this struct can be extended
 // without breaking compatibility.
-type LinkFileMetadata struct {
+//
+// TODO: Linkfiles are going imply content based addressing, which means the
+// link will not ever change, and therefore the metadata also will not ever
+// change. This makes a few typical fields like modtime and atime useless.
+type LinkfileMetadata struct {
+	// Filename.
 	Name string `json:"name"`
-	Mode uint32 `json:"mode"`
 
-	// TODO: More fields.
+	// Permissions.
+	//
+	// TODO: Should the groupid and userid be uint32?
+	GroupID int32  `json:"groupid"`
+	Mode    uint32 `json:"mode"`
+	UserID  int32  `json:"userid"`
+
+	// Timestamp information
+	CreateTime time.Time `json:"createtime"`
+
+	// Fanout redundancy information.
+	FanoutDataPieces   uint8
+	FanoutParityPieces uint8
 }
