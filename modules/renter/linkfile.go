@@ -38,17 +38,11 @@ const (
 	// FileStartOffset establishes where in the linkfile data that the actual
 	// underlying file data begins.
 	FileStartOffset = LinkfileMetadataMaxSize + LinkfileFanoutSize
+)
 
+var (
 	// LinkfileSiaFolder is the folder where all of the linkfiles are stored.
-	//
-	// TODO: Move this to /var/linkfiles or some equivalent name. I'm not sure
-	// that 'linkfiles' is the right base folder name (though I do think /var is
-	// the right place) because... well maybe it is the right name I forgot the
-	// reason.
-	//
-	// TODO: Would be great to have this be a proper SiaPath instead of just a
-	// string.
-	LinkfileSiaFolder = "/home/user/linkfiles"
+	LinkfileSiaFolder = modules.NewGlobalSiaPath("/var/linkfiles")
 )
 
 // DownloadSialink will take a link and turn it into the metadata and data of a
@@ -131,11 +125,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileData io.Reader
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
 	// also resiliant to host failures.
-	spBase, err := modules.NewSiaPath(LinkfileSiaFolder)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to create a siapath from the base")
-	}
-	fullPath, err := spBase.Join(lfm.Name)
+	fullPath, err := LinkfileSiaFolder.Join(lfm.Name)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to create a linkfile with the given name")
 	}
