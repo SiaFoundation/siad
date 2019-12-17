@@ -59,7 +59,7 @@ func NewSiaPath(s string) (SiaPath, error) {
 func NewGlobalSiaPath(s string) SiaPath {
 	sp, err := NewSiaPath(s)
 	if err != nil {
-		panic("error creating global siapath: ", err)
+		panic("error creating global siapath: " + err.Error())
 	}
 	return sp
 }
