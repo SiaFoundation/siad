@@ -27,7 +27,7 @@ const (
 	// pieces that are used when creating the base sector for a linkfile.
 	LinkfileDefaultSectorDataPieces = 1
 
-	// LinkfileDefaultSectorDataPieces establishes the default number of parity
+	// LinkfileDefaultSectorParityPieces establishes the default number of parity
 	// pieces that are used when creating the base sector for a linkfile.
 	LinkfileDefaultSectorParityPieces = 10
 )
