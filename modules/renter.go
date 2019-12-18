@@ -996,6 +996,6 @@ type LinkfileMetadata struct {
 	BaseSectorParityPieces uint8 `json:"basesectorparitypieces"`
 
 	// Fanout redundancy information.
-	FanoutDataPieces     uint8  `json:"fanoutdatapieces"`
-	FanoutParityPieces   uint8  `json:"fanoutparitypieces"`
+	FanoutDataPieces   uint8 `json:"fanoutdatapieces"`
+	FanoutParityPieces uint8 `json:"fanoutparitypieces"`
 }

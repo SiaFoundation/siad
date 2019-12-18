@@ -171,7 +171,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	if err != nil {
 		return "", errors.AddContext(err, "unable to marshal the link file metadata")
 	}
-	if len(mlfm) > (math.MaxUint16/2) {
+	if len(mlfm) > (math.MaxUint16 / 2) {
 		return "", fmt.Errorf("encoded metadata size of %v exceeds the maximum of %v", len(mlfm), math.MaxUint32)
 	}
 
