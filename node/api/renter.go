@@ -1706,6 +1706,14 @@ func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request
 // renterLinkfileHandlerPOST accepts some data and some metadata and then turns
 // that into a sialink, which is returned to the caller.
 func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse out the intended siapath.
+	siaPathStr := ps.ByName("siapath")
+	siaPath, err := modules.NewSiaPath(siaPathStr)
+	if err != nil {
+		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -1721,14 +1729,6 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 			WriteError(w, Error{"unable to parse 'overwriteexistingfile' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
-	}
-
-	// Parse out the intended siapath.
-	siaPathStr := queryForm.Get("siapath")
-	siaPath, err := modules.NewSiaPath(siaPathStr)
-	if err != nil {
-		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
-		return
 	}
 
 	// TODO: Erasure coding params - both for the base file and for the fanout.

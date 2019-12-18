@@ -74,7 +74,7 @@ const (
 	// DefaultFilePerm defines the default permissions used for a new file if no
 	// permissions are supplied. Changing this value is a compatibility issue
 	// since users expect files to have these permissions.
-	DefaultFilePerm = 0666
+	DefaultFilePerm = 0644
 )
 
 // String returns the string value for the FilterMode
