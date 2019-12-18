@@ -5157,8 +5157,7 @@ valid indicates if the address supplied to :addr is a valid UnlockHash.
 curl -A "Sia-Agent" "localhost:9980/wallet/verifypassword?password=<password>"
 ```
 
-Takes a password and verifies if it is the valid password used to encrypt the
-wallet.
+Takes a password and verifies if it is the password used to encrypt the wallet.
 
 ### Path Parameters
 #### REQUIRED
