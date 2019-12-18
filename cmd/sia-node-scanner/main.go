@@ -451,7 +451,7 @@ func (ns *nodeScanner) updateNodeStats(res nodeScanResult) {
 	if !ok && res.Err != nil {
 		return
 	} else if !ok {
-		// If this node isn't in the persisted set, initalize it.
+		// If this node isn't in the persisted set, initialize it.
 		stats = nodeStats{
 			FirstConnectionTime:          res.Timestamp,
 			LastSuccessfulConnectionTime: res.Timestamp,

@@ -133,7 +133,7 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mount fuse to the emtpy filesystem again, this time upload a file while
+	// Mount fuse to the empty filesystem again, this time upload a file while
 	// the system is mounted, then try to read the filesystem from the
 	// directory.
 	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), true)
@@ -767,7 +767,7 @@ func TestFuse(t *testing.T) {
 	// testing the concurrency of the fusemanager.
 	//
 	// After all threads have completed phase two, the threads will enter a
-	// thrid phase where they all mount root to their mountpoint and then they
+	// third phase where they all mount root to their mountpoint and then they
 	// all open, read, and close the files located in root, causing heavy
 	// concurrent access to a small number of files.
 	threads := 25
