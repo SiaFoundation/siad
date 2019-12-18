@@ -248,6 +248,12 @@ type (
 		StartTimeUnix        int64     `json:"starttimeunix"`        // The time when the download was started in unix format.
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
 	}
+
+	// RenterLinkfileHandlerPOST is the response that the api returns after the
+	// /renter/linkfile/ POST endpoint has been used.
+	RenterLinkfileHandlerPOST struct {
+		Sialink string `json:"sialink"`
+	}
 )
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
@@ -1680,6 +1686,75 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return dp, nil
+}
+
+// renterSialinkHandlerGET accepts a sialink as input and will stream the data
+// from the sialink out of the response body as output.
+func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// TODO: Add support for offset + len.
+
+	sialink := ps.ByName("sialink")
+	metadata, data, err := api.renter.DownloadSialink(sialink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	reader := bytes.NewReader(data)
+	http.ServeContent(w, req, metadata.Name, time.Time{}, reader)
+}
+
+// renterLinkfileHandlerPOST accepts some data and some metadata and then turns
+// that into a sialink, which is returned to the caller.
+func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Check whether existing file should be overwritten
+	overwriteExistingFile := false
+	if f := queryForm.Get("overwriteexistingfile"); f != "" {
+		overwriteExistingFile, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'overwriteexistingfile' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse out the intended siapath.
+	siaPathStr := queryForm.Get("siapath")
+	siaPath, err := modules.NewSiaPath(siaPathStr)
+	if err != nil {
+		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Erasure coding params - both for the base file and for the fanout.
+
+	// Call the renter to upload the linkfile and create a sialink.
+	name := queryForm.Get("name")
+	modeStr := queryForm.Get("mode")
+	var mode uint32
+	if modeStr == "" {
+		mode = modules.DefaultFilePerm
+	} else {
+		// TODO: parse modeStr instead of using default
+		mode = modules.DefaultFilePerm
+	}
+	lfm := modules.LinkfileMetadata{
+		Name: name,
+		Mode: mode,
+	}
+	sialink, err := api.renter.UploadLinkfile(lfm, siaPath, overwriteExistingFile, req.Body)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, RenterLinkfileHandlerPOST{
+		Sialink: sialink,
+	})
 }
 
 // renterStreamHandler handles downloads from the /renter/stream endpoint

@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -728,4 +729,42 @@ func (c *Client) RenterUploadsResumePost() (err error) {
 func (c *Client) RenterPost(values url.Values) (err error) {
 	err = c.post("/renter", values.Encode(), nil)
 	return
+}
+
+// RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
+// file.
+//
+// TODO: Add support for offset + len. Though... if we always want to fetch all
+// of the metadata, an offset an len isn't going to help so much b/c we don't
+// know where the actual file offset starts. We may need to increase the size of
+// the sialink :(
+func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
+	trimmed := strings.TrimPrefix(sialink, "sia://")
+	getQuery := fmt.Sprintf("/renter/sialink/%s", trimmed)
+	_, resp, err = c.getRawResponse(getQuery)
+	return
+}
+
+// RenterLinkfilePost uses the /renter/sialink endpoint to upload a linkfile.
+// The resulting sialink is returned along with an error.
+//
+// TODO: add support for all of the linkfile params that are not yet supported.
+func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (string, error) {
+	// Upload the file.
+	values := url.Values{}
+	values.Set("name", name)
+	values.Set("siapath", siaPath)
+	query := fmt.Sprintf("/renter/linkfile?%s", values.Encode())
+	resp, err := c.postRawResponse(query, r)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to"+query+" failed")
+	}
+
+	// Parse the response to get the sialink.
+	var rshp api.RenterLinkfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+	}
+	return rshp.Sialink, err
 }

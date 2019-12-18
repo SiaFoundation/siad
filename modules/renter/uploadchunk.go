@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
@@ -350,8 +351,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			// Encrypt the piece.
 			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
-			// If the piece was not a full sector, pad it accordingly with random bytes.
-			if short := int(modules.SectorSize) - len(chunk.physicalChunkData[i]); short > 0 {
+			// If the piece was not a full sector, pad it accordingly with
+			// random bytes. Do not however pad the data with random bytes if
+			// the encryption key is 'plaintext', because this will cause
+			// identical pieces to have different Merkle roots, which ruins the
+			// consistency of content addressing.
+			short := int(modules.SectorSize) - len(chunk.physicalChunkData[i])
+			if chunk.fileEntry.MasterKey().Type() != crypto.TypePlain && short > 0 {
 				// The form `append(obj, make([]T, n))` will be optimized by the
 				// compiler to eliminate unneeded allocations starting go 1.11.
 				chunk.physicalChunkData[i] = append(chunk.physicalChunkData[i], make([]byte, short)...)

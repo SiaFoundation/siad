@@ -70,6 +70,11 @@ const (
 	// permissions are supplied. Changing this value is a compatibility issue
 	// since users expect dirs to have these permissions.
 	DefaultDirPerm = 0755
+
+	// DefaultFilePerm defines the default permissions used for a new file if no
+	// permissions are supplied. Changing this value is a compatibility issue
+	// since users expect files to have these permissions.
+	DefaultFilePerm = 0666
 )
 
 // String returns the string value for the FilterMode
@@ -364,8 +369,6 @@ func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
 func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
 
 // Mode implements os.FileInfo.
-//
-// TODO: get the real mode
 func (d DirectoryInfo) Mode() os.FileMode { return d.DirMode }
 
 // ModTime implements os.FileInfo.
@@ -404,6 +407,10 @@ type FileUploadParams struct {
 	Force               bool
 	DisablePartialChunk bool
 	Repair              bool
+
+	// CipherType was added later. If it is left blank, the renter will use the
+	// default encryption method (as of writing, Threefish)
+	CipherType crypto.CipherType
 }
 
 // FileInfo provides information about a file.
@@ -929,6 +936,19 @@ type Renter interface {
 
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
+
+	// DownloadSialink will fetch a file from the Sia network using the sialink.
+	DownloadSialink(sialink string) (LinkfileMetadata, []byte, error)
+
+	// UploadLinkfile will upload data to the Sia network from a reader and
+	// create a linkfile, returning the sialink that can be used to access the
+	// file.
+	//
+	// NOTE: A linkfile is a file that is tracked and repaired by the renter.  A
+	// linkfile contains more than just the file data, it also contains metadata
+	// about the file and other information which is useful in fetching the
+	// file.
+	UploadLinkfile(lfm LinkfileMetadata, siaPath SiaPath, overwriteExistingFile bool, filedata io.Reader) (string, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -966,4 +986,30 @@ func HealthPercentage(health float64) float64 {
 		healthPercent = 0
 	}
 	return healthPercent
+}
+
+// LinkfileMetadata is all of the metadata that gets placed into the first 4096
+// bytes of the linkfile, and is used to set the metadata of the file when
+// writing back to disk. The data is json-encoded when it is placed into the
+// leading bytes of the linkfile, meaning that this struct can be extended
+// without breaking compatibility.
+type LinkfileMetadata struct {
+	// Filename.
+	Name string `json:"name"`
+
+	// Permissions.
+	Mode uint32 `json:"mode"`
+
+	// Timestamp information
+	CreateTime time.Time `json:"createtime"`
+
+	// Base sector erasure coding settings. This is useful directly in the
+	// linkfile metadata because it allows the sialink to be recovered using
+	// only the metadata.
+	BaseSectorDataPieces   uint8 `json:"basesectordatapieces"`
+	BaseSectorParityPieces uint8 `json:"basesectorparitypieces"`
+
+	// Fanout redundancy information.
+	FanoutDataPieces   uint8 `json:"fanoutdatapieces"`
+	FanoutParityPieces uint8 `json:"fanoutparitypieces"`
 }
