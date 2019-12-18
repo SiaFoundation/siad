@@ -89,8 +89,15 @@ linters:
     - golint
     - gocritic
     - typecheck
+    - gosec
 
 issues:
+  # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text. Set to 0 to disable. Default is 3.
+  max-same-issues: 0
+
   # List of regexps of issue texts to exclude, empty list by default.
   # But independently from this option we use default exclude patterns,
   # it can be disabled by `exclude-use-default: false`. To list all
@@ -103,8 +110,10 @@ issues:
   # Default value for this option is true.
   exclude-use-default: true
 
-  # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
-  max-issues-per-linter: 0
-
-  # Maximum count of issues with the same text. Set to 0 to disable. Default is 3.
-  max-same-issues: 0
+  # Additional exclusion rules.
+  exclude-rules:
+    # Ignore  gosec hardcoded credentials false positive.
+    - path: cmd/siac/
+      text: "G101: Potential hardcoded credentials"
+      linters:
+        - gosec
