@@ -485,8 +485,8 @@ Price Protections:
   MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
 		allowance.Hosts, modules.FilesizeUnits(allowance.ExpectedStorage),
-		modules.FilesizeUnits(allowance.ExpectedUpload),
-		modules.FilesizeUnits(allowance.ExpectedDownload),
+		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
+		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
 		allowance.ExpectedRedundancy,
 		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
 		currencyUnits(allowance.MaxContractPrice),
