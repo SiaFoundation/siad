@@ -240,7 +240,7 @@ The Persistence subsystem is used to persist Contractor data across sessions.
 Currently it uses the Sia persist package. Prior to v1.3.0 the persistence
 subsystem used a journal system which is no longer used. If, on startup, this
 old journal system is found, the Contractor will convert it into the new
-Persistence subsytem.
+Persistence subsystem.
 
 ### Inbound Complexities
 - `save` is called from the [Allowance](#allowance-subsystem), and
