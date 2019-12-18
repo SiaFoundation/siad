@@ -977,20 +977,16 @@ func HealthPercentage(health float64) float64 {
 // writing back to disk. The data is json-encoded when it is placed into the
 // leading bytes of the linkfile, meaning that this struct can be extended
 // without breaking compatibility.
-//
-// TODO: Linkfiles are going imply content based addressing, which means the
-// link will not ever change, and therefore the metadata also will not ever
-// change. This makes a few typical fields like modtime and atime useless.
 type LinkfileMetadata struct {
 	// Filename.
 	Name string `json:"name"`
 
 	// Permissions.
 	//
-	// TODO: Should the groupid and userid be uint32?
-	GroupID int32  `json:"groupid"`
+	// TODO: Should the groupid and userid be int32?
+	GroupID uint32 `json:"groupid"`
 	Mode    uint32 `json:"mode"`
-	UserID  int32  `json:"userid"`
+	UserID  uint32 `json:"userid"`
 
 	// Timestamp information
 	CreateTime time.Time `json:"createtime"`

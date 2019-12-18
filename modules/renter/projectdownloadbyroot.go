@@ -205,7 +205,9 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	// Fetch a session to use in retrieving the sector.
 	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
-		println("rrr")
+		// TODO: run error code here to indicate to the worker that attempts to
+		// grab the downloader are failing.
+		w.renter.log.Debugln("worker failed a projectDownloadByRoot because downloader could not be opened:", err)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
@@ -217,7 +219,9 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	hostSettings := downloader.HostSettings()
 	err = checkGougingDownloadByRoot(allowance, hostSettings)
 	if err != nil {
-		println("xxx")
+		//  TODO: run error code here to indicate to the worker that price
+		//  gouging warnings are being hit.
+		w.renter.log.Debugln("worker failed a projectDownloadByRoot because gouging protection kicked in:", err)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
@@ -230,10 +234,12 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 		padding = 0
 	}
 	sectorData, err := downloader.Download(pdbr.staticRoot, uint32(pdbr.staticOffset), uint32(pdbr.staticLength+padding))
-	// If the fetch was unsuccessful, a standby worker needs to be activated
+	// If the fetch was unsuccessful, a standby worker needs to be activated.
 	if err != nil {
-		println("zzz")
-		println(err.Error())
+		// TODO: run error code here to indicate that worker download attempts
+		// are failing. It's already been established that the host has the
+		// sector.
+		w.renter.log.Debugln("worker failed a projectDownloadByRoot because the full root download failed:", err)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
@@ -257,8 +263,9 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// Fetch a session to use in retrieving the sector.
 	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
-		println("err1")
-		println(err.Error())
+		// TODO: run error code here to indicate to the worker that attempts to
+		// grab the downloader are failing.
+		w.renter.log.Debugln("worker failed a projectDownloadByRoot because downloader could not be opened:", err)
 		pdbr.managedRemoveWorker(w)
 		return
 	}
@@ -268,15 +275,16 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	hostSettings := downloader.HostSettings()
 	err = checkGougingDownloadByRoot(allowance, hostSettings)
 	if err != nil {
-		println("err2")
+		//  TODO: run error code here to indicate to the worker that price
+		//  gouging warnings are being hit.
+		w.renter.log.Debugln("worker failed a projectDownloadByRoot because gouging protection kicked in:", err)
 		pdbr.managedRemoveWorker(w)
 		return
 	}
 	// Try to fetch one byte.
 	_, err = downloader.Download(pdbr.staticRoot, 0, 64)
 	if err != nil {
-		println("err3")
-		println(err.Error())
+		w.renter.log.Debugln("worker failed a projectDownloadByRoot because the initial root download failed:", err)
 		pdbr.managedRemoveWorker(w)
 		return
 	}
@@ -286,7 +294,6 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// nobody is actively fetching the root.
 	pdbr.mu.Lock()
 	if pdbr.rootFound {
-		println("not found")
 		pdbr.workersStandby = append(pdbr.workersStandby, w)
 		pdbr.mu.Unlock()
 		return

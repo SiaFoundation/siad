@@ -9,10 +9,10 @@ import (
 func TestLinkfileLayoutEncoding(t *testing.T) {
 	// Try encoding an decoding a simple example.
 	llOriginal := linkfileLayout{
-		filesize: 1e6,
-		metadataSize: 1e3,
-		initialFanoutSize: 187,
-		fanoutDataPieces: 8,
+		filesize:           1e6,
+		metadataSize:       1e3,
+		initialFanoutSize:  187,
+		fanoutDataPieces:   8,
 		fanoutParityPieces: 3,
 	}
 	encoded := llOriginal.encode()

@@ -91,7 +91,7 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 	if ld.Version != 1 {
 		return modules.LinkfileMetadata{}, nil, errors.New("link is not version 1")
 	}
-	if LinkfileLayoutSize + ld.PayloadSize > modules.SectorSize {
+	if LinkfileLayoutSize+ld.PayloadSize > modules.SectorSize {
 		return modules.LinkfileMetadata{}, nil, errors.New("size of file suggests a fanout was used - this version does not support fanouts")
 	}
 	if ld.DataPieces != 1 {
@@ -126,7 +126,7 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 	// TODO: If there is intra-sector sharding, that code needs to be applied
 	// here.
 
-	return lfm, baseSector[offset:LinkfileLayoutSize+ld.PayloadSize], nil
+	return lfm, baseSector[offset : LinkfileLayoutSize+ld.PayloadSize], nil
 }
 
 // UploadLinkfile will upload the provided data with the provided name and
@@ -260,7 +260,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileDataReader io.
 	ld := LinkData{
 		Version:      1,
 		MerkleRoot:   mr,
-		PayloadSize:  uint64(offset-LinkfileLayoutSize),
+		PayloadSize:  uint64(offset - LinkfileLayoutSize),
 		DataPieces:   1,
 		ParityPieces: 1,
 	}
