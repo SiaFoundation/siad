@@ -14,9 +14,10 @@ type (
 	// SiadConfig is a helper type to manage the global siad config.
 	SiadConfig struct {
 		// Ratelimit related fields
-		ReadBPS    int64  `json:"readbps"`
-		WriteBPS   int64  `json:"writeps,siamismatch"`
-		PacketSize uint64 `json:"packetsize"`
+		ReadBPS            int64  `json:"readbps"`
+		WriteBPSDeprecated int64  `json:"writeps,siamismatch"`
+		WriteBPS           int64  `json:"writebps"`
+		PacketSize         uint64 `json:"packetsize"`
 
 		// path of config on disk.
 		path string
@@ -33,6 +34,9 @@ var (
 		Header:  "siad.config",
 		Version: "1.0.0",
 	}
+
+	// ConfigName is the name of the config file on disk
+	ConfigName = "siad.config"
 )
 
 // SetRatelimit sets the ratelimit related fields in the config and persists it
@@ -62,7 +66,20 @@ func (cfg *SiadConfig) save() error {
 
 // load loads the config from disk.
 func (cfg *SiadConfig) load(path string) error {
+	defer cfg.writeBPSCompat()
 	return persist.LoadJSON(configMetadata, cfg, path)
+}
+
+// writeBPSCompat is compatibility code for addressing the the incorrect json
+// tag upgrade from `writeps` to `writebps`
+func (cfg *SiadConfig) writeBPSCompat() {
+	// If the deprecated tag field is none zero and the new field is still zero,
+	// set the new field
+	if cfg.WriteBPSDeprecated != 0 && cfg.WriteBPS == 0 {
+		cfg.WriteBPS = cfg.WriteBPSDeprecated
+	}
+	// Zero out the old field as to not overwrite a value in the future.
+	cfg.WriteBPSDeprecated = 0
 }
 
 // NewConfig loads a config from disk or creates a new one if no config exists
