@@ -729,7 +729,7 @@ func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (s
 	query := fmt.Sprintf("/renter/linkfile?%s", values.Encode())
 	resp, err := c.postRawResponse(query, r)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to" + query + " failed")
+		return "", errors.AddContext(err, "post call to"+query+" failed")
 	}
 
 	// Parse the response to get the sialink.
