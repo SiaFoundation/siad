@@ -124,9 +124,9 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// terminated. This function should not block while these threads wait to
 	// terminate.
 	h.mu.Lock()
-	// Notify the account manager of an update to the consensus, note we have to
-	// call it after the host released its mutex lock
-	defer h.staticAccountManager.callConsensusChanged()
+	// Notify the account manager of an update to the consensus. This call is
+	// deferred because the account manager will access the host's block height.
+	defer h.staticAccountManager.callConsensusChanged(cc)
 	defer h.mu.Unlock()
 
 	// Wrap the whole parsing into a single large database tx to keep things

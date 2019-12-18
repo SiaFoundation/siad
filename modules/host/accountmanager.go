@@ -8,11 +8,17 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
+	// ErrWithdrawalsInactive occurs when the host is not yet synced. If that is
+	// the case the account manager does not allow trading money from the
+	// ephemeral accounts.
+	ErrWithdrawalsInactive = errors.New("ephemeral account withdrawals are inactive, the host is not synced")
+
 	// ErrAccountPersist occurs when an ephemeral account could not be persisted
 	// to disk.
 	ErrAccountPersist = errors.New("ephemeral account could not be persisted to disk")
@@ -137,6 +143,10 @@ type (
 		// they will get processed in a FIFO fashion when risk is lowered.
 		blockedDeposits []*blockedDeposit
 
+		// withdrawalsInactive indicates whether the account manager allows
+		// withdrawals or not. This will be false if the host is not synced.
+		withdrawalsInactive bool
+
 		mu sync.Mutex
 		h  *Host
 	}
@@ -253,6 +263,10 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 		blockedWithdrawals: make([]*blockedWithdrawal, 0),
 		index:              make([]uint64, 0),
 		h:                  h,
+
+		// withdrawals are inactive until the host is synced, consensus updates
+		// will activate withdrawals when the host is fully synced
+		withdrawalsInactive: true,
 	}
 
 	// Create the accounts persister
@@ -395,6 +409,13 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
+	// Check if withdrawals are inactive. This will be the case when the host is
+	// not synced yet. Until that is not the case, we do not allow trading.
+	if am.withdrawalsInactive {
+		err = ErrWithdrawalsInactive
+		return
+	}
+
 	// Save the fingerprint in memory and call persist asynchronously. If the
 	// fingerprint is known we return an error.
 	if err := am.fingerprints.add(fingerprint, expiry, cbh); err != nil {
@@ -448,21 +469,34 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 
 // callConsensusChanged is called by the host whenever it processed a change to
 // the consensus. We use it to remove fingerprints which have been expired.
-func (am *accountManager) callConsensusChanged() {
+func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
+	var rotate bool
+	defer func() {
+		if rotate {
+			err := am.staticAccountsPersister.callRotateFingerprintBuckets()
+			if err != nil {
+				am.h.log.Critical("Could not rotate fingerprints on disk", err)
+			}
+		}
+	}()
+
 	cbh := am.h.BlockHeight()
 
-	// If the current block height is equal to the minimum block height of the
-	// current bucket range, we want to rotate the buckets.
-	if min, _ := currentBucketRange(cbh); min == cbh {
-		am.mu.Lock()
-		am.fingerprints.rotate()
-		am.mu.Unlock()
+	am.mu.Lock()
+	defer am.mu.Unlock()
 
-		err := am.staticAccountsPersister.callRotateFingerprintBuckets()
-		if err != nil {
-			am.h.log.Critical("Could not rotate fingerprints on disk", err)
+	if cc.Synced {
+		am.withdrawalsInactive = false
+
+		// If the current block height is equal to the minimum block height of
+		// the current bucket range, we want to rotate the buckets.
+		if min, _ := currentBucketRange(cbh); min == cbh {
+			am.fingerprints.rotate()
+			rotate = true
 		}
+		return
 	}
+	am.withdrawalsInactive = true
 }
 
 // schedulePersist will append the resultChan to the persist queue and call

@@ -2,6 +2,7 @@ package host
 
 import (
 	"fmt"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"math"
 	"math/rand"
 	"sort"
@@ -1026,6 +1027,50 @@ func TestAccountIndexRecycling(t *testing.T) {
 	}
 
 	doneChan <- struct{}{}
+}
+
+// TestAccountWithdrawalsInactive will test the account manager does not allow
+// withdrawals when the host is not synced.
+func TestAccountWithdrawalsInactive(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a host
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// Prepare an account
+	sk, spk := prepareAccount()
+	accountID := spk.String()
+	oneCurrency := types.NewCurrency64(1)
+
+	// Fund the account
+	err = callDeposit(am, accountID, oneCurrency.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify withdrawal is active
+	msg, sig := prepareWithdrawal(accountID, oneCurrency, am.h.blockHeight, sk)
+	err = callWithdraw(am, msg, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mock a consensus change that indicates the host is not synced
+	am.callConsensusChanged(modules.ConsensusChange{Synced: false})
+
+	// Verify withdrawal is active
+	msg, sig = prepareWithdrawal(accountID, oneCurrency, am.h.blockHeight, sk)
+	err = callWithdraw(am, msg, sig)
+	if !errors.Contains(err, ErrWithdrawalsInactive) {
+		t.Fatal(err)
+	}
 }
 
 // managedCurrentRisk will return the current risk
