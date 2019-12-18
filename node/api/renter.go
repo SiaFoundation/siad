@@ -1682,7 +1682,7 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// TODO: Add support for offset + len.
 
-	sialink := req.FormValue("sialink")
+	sialink := ps.ByName("sialink")
 	metadata, data, err := api.renter.DownloadSialink(sialink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)

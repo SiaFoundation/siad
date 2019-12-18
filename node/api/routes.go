@@ -122,8 +122,8 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 
 		// Linkfile endpoints
-		router.GET("/renter/sialink", api.renterSialinkHandlerGET)
-		router.POST("/renter/sialink", RequirePassword(api.renterSialinkHandlerPOST, requiredPassword))
+		router.GET("/renter/sialink/:sialink", api.renterSialinkHandlerGET)
+		router.POST("/renter/linkfile", RequirePassword(api.renterSialinkHandlerPOST, requiredPassword))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))

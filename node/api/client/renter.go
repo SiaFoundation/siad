@@ -706,27 +706,30 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 
 // RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
 // file.
+//
+// TODO: Add support for offset + len. Though... if we always want to fetch all
+// of the metadata, an offset an len isn't going to help so much b/c we don't
+// know where the actual file offset starts. We may need to increase the size of
+// the sialink :(
 func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
-	values := url.Values{}
 	trimmed := strings.TrimPrefix(sialink, "sia://")
-	values.Set("sialink", trimmed)
-	getQuery := fmt.Sprintf("/renter/sialink?%s", values.Encode())
+	getQuery := fmt.Sprintf("/renter/sialink/%s", trimmed)
 	_, resp, err = c.getRawResponse(getQuery)
 	return
 }
 
-// RenterSialinkPost uses the /renter/sialink endpoint to upload a linkfile. The
-// sialink is returned along with an error.
+// RenterLinkfilePost uses the /renter/sialink endpoint to upload a linkfile.
+// The resulting sialink is returned along with an error.
 //
-// TODO: add a mode
-func (c *Client) RenterSialinkPost(r io.Reader, name string, siaPath string) (string, error) {
+// TODO: add support for all of the linkfile params that are not yet supported.
+func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (string, error) {
 	// Upload the file.
 	//
 	// TODO: Is this a blocking upload?
 	values := url.Values{}
 	values.Set("name", name)
 	values.Set("siapath", siaPath)
-	resp, err := c.postRawResponse(fmt.Sprintf("/renter/sialink?%s", values.Encode()), r)
+	resp, err := c.postRawResponse(fmt.Sprintf("/renter/linkfile?%s", values.Encode()), r)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to /renter/sialink failed")
 	}

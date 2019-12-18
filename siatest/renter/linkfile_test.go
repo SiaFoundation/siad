@@ -40,7 +40,7 @@ func TestLinkfile(t *testing.T) {
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload linkfile client call.
-	sialink, err := r.RenterSialinkPost(reader, "testOne", "/home/user/linkfiles/testOne")
+	sialink, err := r.RenterLinkfilePost(reader, "testOne", "/home/user/linkfiles/testOne")
 	if err != nil {
 		t.Fatal(err)
 	}
