@@ -242,7 +242,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
 	// also resiliant to host failures.
-	ec, err := siafile.NewRSSubCode(int(lfm.BaseSectorDataPieces), int(lfm.BaseSectorParityPieces), 64)
+	ec, err := siafile.NewRSSubCode(int(lfm.BaseSectorDataPieces), int(lfm.BaseSectorParityPieces), crypto.SegmentSize)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to create erasure coder")
 	}
