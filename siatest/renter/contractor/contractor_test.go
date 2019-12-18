@@ -1827,7 +1827,7 @@ func TestContractorHostRemoval(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 
-	// Downloading the file should be succesful.
+	// Downloading the file should be successful.
 	if _, _, err := renter.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("File download failed", err)
 	}

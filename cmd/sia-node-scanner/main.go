@@ -77,7 +77,7 @@ type nodeScanner struct {
 	scanLog io.WriteCloser
 
 	// data keeps track of connection time and uptime stats for each node that has
-	// been succesfully connected to at least once it the past 30 days.
+	// been successfully connected to at least once it the past 30 days.
 	data persistData
 	// persistFile stores persistData using siaPersist.
 	persistFile string
@@ -92,7 +92,7 @@ type persistData struct {
 }
 
 type nodeStats struct {
-	// Timestamp of first succesful connection to this node.
+	// Timestamp of first successful connection to this node.
 	// Used for total uptime and uptime percentage calculations.
 	FirstConnectionTime time.Time
 

@@ -330,5 +330,5 @@ overspending its allowance.
 
 If the contractor were to simply create new contracts while other contracts were
 still unconfirmed, it would be possible to overspend the set allowance. When the
-watchdog sweeps its inputs succesfully, the contract will be marked as
+watchdog sweeps its inputs successfully, the contract will be marked as
 double-spent in which case the allowance funds are returned for further use.

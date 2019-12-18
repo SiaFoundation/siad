@@ -28,7 +28,7 @@ In addition to a log for each scan, the scanner also maintains a persistent set
 of all nodes it has successfully connected to. After the first run (which starts
 with the bootstrap nodes), all future runs start off the scan by filling the
 queue with this persistent set. For each node in the persisted set, we also
-store the first connection time, the last succesful connection time, recent
+store the first connection time, the last successful connection time, recent
 uptime (number of seconds last node was last down or since first connection),
 total uptime, and also uptime percentage.
  
@@ -65,7 +65,7 @@ SiaNodeScanner
 There is 1 main goroutine, and 10 worker goroutines.The main routine starts the
 workers and creates workAssignments which are sent down a channel. The workers
 read from this channel to start scanning different IP addresses. When a scan is
-completed (either succesfully or because an error was encountered) each worker
+completed (either successfully or because an error was encountered) each worker
 sends a NodeScanResult back down a result channel.  The worker then reads from
 this channel, logging the result and any errors, and creating new work
 assignments if new IP addresses were discovered. 
