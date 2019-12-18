@@ -459,10 +459,6 @@ func renterallowancecmd() {
 	}
 	allowance := rg.Settings.Allowance
 
-	// Normalize the expectations over the period.
-	allowance.ExpectedUpload *= uint64(allowance.Period)
-	allowance.ExpectedDownload *= uint64(allowance.Period)
-
 	// Show allowance info
 	fmt.Printf(`Allowance:
   Amount:               %v
