@@ -44,6 +44,7 @@ func TestLinkfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Log("Example sialink:", sialink)
 
 	// Try to download the file behind the sialink.
 	fetchedData, err := r.RenterSialinkGet(sialink)

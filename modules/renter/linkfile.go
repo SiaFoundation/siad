@@ -21,7 +21,7 @@ import (
 const (
 	// LinkfileLayoutSize describes the amount of space within the first sector
 	// of a linkfile used to describe the rest of the linkfile.
-	LinkfileLayoutSize = 20
+	LinkfileLayoutSize = 14
 
 	// LinkfileDefaultSectorDataPieces establishes the default number of data
 	// pieces that are used when creating the base sector for a linkfile.
@@ -42,8 +42,7 @@ var (
 // of the linkfile.
 type linkfileLayout struct {
 	filesize           uint64
-	metadataSize       uint32
-	initialFanoutSize  uint32
+	metadataSize       uint16
 	fanoutDataPieces   uint16
 	fanoutParityPieces uint16
 }
@@ -51,14 +50,12 @@ type linkfileLayout struct {
 // encode will return a []byte that has compactly encoded all of the layout
 // data.
 func (ll *linkfileLayout) encode() []byte {
-	offset := 0
 	b := make([]byte, LinkfileLayoutSize)
+	offset := 0
 	binary.LittleEndian.PutUint64(b[offset:], ll.filesize)
 	offset += 8
-	binary.LittleEndian.PutUint32(b[offset:], ll.metadataSize)
-	offset += 4
-	binary.LittleEndian.PutUint32(b[offset:], ll.initialFanoutSize)
-	offset += 4
+	binary.LittleEndian.PutUint16(b[offset:], ll.metadataSize)
+	offset += 2
 	binary.LittleEndian.PutUint16(b[offset:], ll.fanoutDataPieces)
 	offset += 2
 	binary.LittleEndian.PutUint16(b[offset:], ll.fanoutParityPieces)
@@ -71,10 +68,8 @@ func (ll *linkfileLayout) decode(b []byte) {
 	offset := 0
 	ll.filesize = binary.LittleEndian.Uint64(b[offset:])
 	offset += 8
-	ll.metadataSize = binary.LittleEndian.Uint32(b[offset:])
-	offset += 4
-	ll.initialFanoutSize = binary.LittleEndian.Uint32(b[offset:])
-	offset += 4
+	ll.metadataSize = binary.LittleEndian.Uint16(b[offset:])
+	offset += 2
 	ll.fanoutDataPieces = binary.LittleEndian.Uint16(b[offset:])
 	offset += 2
 	ll.fanoutParityPieces = binary.LittleEndian.Uint16(b[offset:])
@@ -90,6 +85,7 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
 	}
+	headerSize := uint64(ld.HeaderSize)
 
 	// Check that the link follows the restrictions of the current software
 	// capabilities.
@@ -99,7 +95,7 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 	if ld.Version != 1 {
 		return modules.LinkfileMetadata{}, nil, errors.New("link is not version 1")
 	}
-	if LinkfileLayoutSize+ld.PayloadSize > modules.SectorSize {
+	if headerSize+ld.FileSize > modules.SectorSize {
 		return modules.LinkfileMetadata{}, nil, errors.New("size of file suggests a fanout was used - this version does not support fanouts")
 	}
 	if ld.DataPieces != 1 {
@@ -110,31 +106,37 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 	}
 
 	// Fetch the actual file.
-	baseSector, err := r.DownloadByRoot(ld.MerkleRoot, 0, LinkfileLayoutSize+ld.PayloadSize)
+	//
+	// TODO: If offset and len are requested, fetch both the header as well as
+	// the offset+len pieces. When fanout is supported, offset+len could easily
+	// be deep in the fanout, so there might be necessity to go digging for the
+	// right merkle roots.
+	baseSector, err := r.DownloadByRoot(ld.MerkleRoot, 0, headerSize+ld.FileSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
 	}
 
 	// Parse out the linkfileLayout.
-	offset := uint32(0)
+	offset := uint64(0)
 	var ll linkfileLayout
 	ll.decode(baseSector)
 	offset += LinkfileLayoutSize
 
 	// Parse out the linkfile metadata.
 	var lfm modules.LinkfileMetadata
-	err = json.Unmarshal(baseSector[offset:offset+ll.metadataSize], &lfm)
+	metadataSize := uint64(ll.metadataSize)
+	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
 	}
-	offset += ll.metadataSize
+	offset += metadataSize
 
 	// TODO: Parse out the fanout.
 
 	// TODO: If there is intra-sector sharding, that code needs to be applied
 	// here.
 
-	return lfm, baseSector[offset : LinkfileLayoutSize+ld.PayloadSize], nil
+	return lfm, baseSector[offset : headerSize+ld.FileSize], nil
 }
 
 // UploadLinkfile will upload the provided data with the provided name and
@@ -157,9 +159,6 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	if lfm.BaseSectorDataPieces != 1 {
 		return "", errors.New("intra-sector erasure coding not yet supported")
 	}
-	if lfm.BaseSectorFanoutSize != 0 {
-		return "", errors.New("fanout not yet supported")
-	}
 	if lfm.FanoutDataPieces != 0 {
 		return "", errors.New("fanout not yet supported")
 	}
@@ -172,7 +171,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	if err != nil {
 		return "", errors.AddContext(err, "unable to marshal the link file metadata")
 	}
-	if len(mlfm) > math.MaxUint32 {
+	if len(mlfm) > (math.MaxUint16/2) {
 		return "", fmt.Errorf("encoded metadata size of %v exceeds the maximum of %v", len(mlfm), math.MaxUint32)
 	}
 
@@ -187,16 +186,18 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 
 	// Compute the layout bytes for the sector.
 	ll := linkfileLayout{
-		metadataSize:       uint32(len(mlfm)),
-		initialFanoutSize:  0, // TODO: Will be updated when fanout is implemented
+		metadataSize:       uint16(len(mlfm)),
 		fanoutDataPieces:   0, // TODO: Will be updated when fanout is implemented
 		fanoutParityPieces: 0, // TODO: Will be updated when fanout is implemented
 	}
 	llData := ll.encode()
-	headerSize := uint64(uint32(len(llData)) + ll.metadataSize + ll.initialFanoutSize)
+	headerSize := uint16(len(llData)) + ll.metadataSize
 
-	// TODO: Create the fanout data.
-	fanoutData := make([]byte, ll.initialFanoutSize) // empty slice for now, so that the full math can be used.
+	// TODO: Create the fanout data. The size of the fanout data is going to
+	// have to be computed using some external function, it's going to be based
+	// on the erasure coding parameters so that four full fanout pointers can
+	// always fit.
+	fanoutData := make([]byte, 0) // empty slice for now, so that the full math can be used.
 
 	// Read data from the reader to fill out the remainder of the first sector.
 	//
@@ -204,7 +205,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	// and amount of intra-sector erasure coding being performed. Can't read
 	// directly into erasure coding shards though because we don't know how much
 	// data total is being read yet.
-	fileData := make([]byte, modules.SectorSize-headerSize)
+	fileData := make([]byte, modules.SectorSize-uint64(headerSize))
 	size, err := io.ReadFull(fileDataReader, fileData)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
 		err = nil
@@ -282,7 +283,8 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	ld := LinkData{
 		Version:      1,
 		MerkleRoot:   mr,
-		PayloadSize:  uint64(offset - LinkfileLayoutSize),
+		HeaderSize:   headerSize,
+		FileSize:     uint64(size),
 		DataPieces:   1,
 		ParityPieces: 1,
 	}

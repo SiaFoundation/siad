@@ -12,7 +12,8 @@ func TestLinkFormat(t *testing.T) {
 	ld := LinkData{
 		Version:      1,
 		MerkleRoot:   crypto.HashObject("1"),
-		PayloadSize:  1e6,
+		HeaderSize:   21e3,
+		FileSize:     1e6,
 		DataPieces:   1,
 		ParityPieces: 1,
 	}
