@@ -21,7 +21,7 @@ lint:
   script: 
     ## This is the recommended way to install golang-ci lint.
     - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.21.0
-    - ./bin/golangci-lint run --disable-all --enable=vet --enable=gofmt --deadline=600s ./...
+    - ./bin/golangci-lint run -c .golangci.yml ./...
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
     - make test
 
