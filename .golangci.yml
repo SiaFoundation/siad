@@ -53,6 +53,9 @@ linters-settings:
     check-shadowing: false
     disable-all: false
 
+  golint:
+    min-confidence: 1.0
+
   gocritic:
     # Which checks should be enabled; can't be combined with 'disabled-checks';
     # See https://go-critic.github.io/overview#checks-overview
@@ -83,6 +86,7 @@ linters:
   enable:
     - govet
     - gofmt
+    - golint
     - gocritic
     - typecheck
 
