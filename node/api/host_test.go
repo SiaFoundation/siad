@@ -22,8 +22,6 @@ import (
 var (
 	// Various folder sizes for testing host storage folder resizing.
 	// Must be provided as strings to the API call.
-	minFolderSizeString    = strconv.FormatUint(modules.SectorSize*contractmanager.MinimumSectorsPerStorageFolder, 10)
-	maxFolderSizeString    = strconv.FormatUint(modules.SectorSize*contractmanager.MaximumSectorsPerStorageFolder, 10)
 	tooSmallFolderString   = strconv.FormatUint(modules.SectorSize*(contractmanager.MinimumSectorsPerStorageFolder-1), 10)
 	tooLargeFolderString   = strconv.FormatUint(modules.SectorSize*(contractmanager.MaximumSectorsPerStorageFolder+1), 10)
 	mediumSizeFolderString = strconv.FormatUint(modules.SectorSize*contractmanager.MinimumSectorsPerStorageFolder*3, 10)

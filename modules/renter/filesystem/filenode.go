@@ -19,18 +19,6 @@ type (
 	}
 )
 
-// closeFileNode calls the common closeNode method.
-func (n *FileNode) closeFileNode() {
-	n.node.closeNode()
-}
-
-// managedClose calls close while holding the node's lock.
-func (n *FileNode) managedClose() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.closeFileNode()
-}
-
 // Close calls close on the FileNode and also removes the FileNode from its
 // parent if it's no longer being used and if it doesn't have any children which
 // are currently in use. This happens iteratively for all parent as long as

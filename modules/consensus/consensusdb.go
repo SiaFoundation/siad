@@ -7,7 +7,7 @@ package consensus
 // ignored otherwise, which is suboptimal.
 
 import (
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"

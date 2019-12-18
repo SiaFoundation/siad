@@ -25,11 +25,6 @@ var (
 )
 
 var (
-	errAlreadyWatchingContract      = errors.New("Watchdog already watching contract with this ID")
-	errEmptyFormationTransactionSet = errors.New("formation transaction set is empty")
-
-	errNonSiacoinInputsInFormationTxn = errors.New("Non-Siacoin inputs in formation transaction")
-	errNotAcceptedByTpool             = errors.New("transaction set not accepted by memory pool")
-
-	errTxnNotInSet = errors.New("Transaction not in set; cannot remove from set.")
+	errAlreadyWatchingContract = errors.New("Watchdog already watching contract with this ID")
+	errTxnNotInSet             = errors.New("Transaction not in set; cannot remove from set.")
 )

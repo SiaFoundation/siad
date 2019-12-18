@@ -11,6 +11,8 @@ import (
 )
 
 // Client holds fields to make requests to a Sia API.
+//
+//lint:ignore U1000 Ignore unused code, Client type is used externally
 type Client struct {
 	address  string
 	password string
@@ -19,6 +21,8 @@ type Client struct {
 // NewClient creates a new api.Client using the provided address and password.
 // If password is not the empty string, HTTP basic authentication will be used
 // to communicate with the API.
+//
+//lint:ignore U1000 Ignore unused code, NewClient is used externally
 func NewClient(address string, password string) *Client {
 	return &Client{
 		address:  address,

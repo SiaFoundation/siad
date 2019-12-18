@@ -194,15 +194,3 @@ func (mh *mapHeap) remove(i int) *mapElement {
 	mh.size -= elem.set.size
 	return elem
 }
-
-// fix re-establishes the heap ordering after the element at index i has changed
-// its value. Changing the value of the element at index i and then calling Fix
-// is equivalent to, but less expensive than, calling Remove(h, i) followed by a
-// Push of the new value. The complexity is O(log(n)) where n = h.len().
-func (mh *mapHeap) fix(i int) {
-	// Check if the heap condition can be satisfied by sifting down.
-	// If not, sift up too.
-	if !mh.down(i, mh.len()) {
-		mh.up(i)
-	}
-}

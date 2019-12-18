@@ -303,13 +303,6 @@ func (n *DirNode) closeDirNode() {
 	}
 }
 
-// managedClose calls close while holding the node's lock.
-func (n *DirNode) managedClose() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.closeDirNode()
-}
-
 // managedNewSiaFileFromReader will read a siafile and its chunks from the given
 // reader and add it to the directory. This will always load the file from the
 // given reader.
@@ -393,13 +386,6 @@ func (n *DirNode) managedUniquePrefix(path string, uid siafile.SiafileUID) (stri
 		break
 	}
 	return currentPath, false
-}
-
-// managedSiaDir calls siaDir while holding the node's lock.
-func (n *DirNode) managedSiaDir() (*siadir.SiaDir, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.siaDir()
 }
 
 // siaDir is a wrapper for the lazySiaDir field.
@@ -526,7 +512,7 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 	// Otherwise simply delete the file.
 	err := os.Remove(filepath.Join(n.absPath(), fileName+modules.SiaFileExtension))
 	if os.IsNotExist(err) {
-		return ErrNotExist
+		return nil
 	}
 	return err
 }

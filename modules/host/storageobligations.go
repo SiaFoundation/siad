@@ -36,7 +36,7 @@ import (
 	"errors"
 	"strconv"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -54,35 +54,39 @@ const (
 )
 
 var (
-	// errDuplicateStorageObligation is returned when the storage obligation
-	// database already has a storage obligation with the provided file
-	// contract. This error should only happen in the event of a developer
-	// mistake.
-	errDuplicateStorageObligation = errors.New("storage obligation has a file contract which conflicts with an existing storage obligation")
-
 	// errInsaneFileContractOutputCounts is returned when a file contract has
 	// the wrong number of outputs for either the valid or missed payouts.
+	//
+	//lint:ignore U1000 used in isSane() which is currently unused but we want to keep it around
 	errInsaneFileContractOutputCounts = errors.New("file contract has incorrect number of outputs for the valid or missed payouts")
 
 	// errInsaneFileContractRevisionOutputCounts is returned when a file
 	// contract has the wrong number of outputs for either the valid or missed
 	// payouts.
+	//
+	//lint:ignore U1000 used in isSane() which is currently unused but we want to keep it around
 	errInsaneFileContractRevisionOutputCounts = errors.New("file contract revision has incorrect number of outputs for the valid or missed payouts")
 
 	// errInsaneOriginSetFileContract is returned is the final transaction of
 	// the origin transaction set of a storage obligation does not have a file
 	// contract in the final transaction - there should be a file contract
 	// associated with every storage obligation.
+	//
+	//lint:ignore U1000 used in isSane() which is currently unused but we want to keep it around
 	errInsaneOriginSetFileContract = errors.New("origin transaction set of storage obligation should have one file contract in the final transaction")
 
 	// errInsaneOriginSetSize is returned if the origin transaction set of a
 	// storage obligation is empty - there should be a file contract associated
 	// with every storage obligation.
+	//
+	//lint:ignore U1000 used in isSane() which is currently unused but we want to keep it around
 	errInsaneOriginSetSize = errors.New("origin transaction set of storage obligation is size zero")
 
 	// errInsaneRevisionSetRevisionCount is returned if the final transaction
 	// in the revision transaction set of a storage obligation has more or less
 	// than one file contract revision.
+	//
+	//lint:ignore U1000 used in isSane() which is currently unused but we want to keep it around
 	errInsaneRevisionSetRevisionCount = errors.New("revision transaction set of storage obligation should have one file contract revision in the final transaction")
 
 	// errInsaneStorageObligationRevision is returned if there is an attempted
@@ -92,6 +96,8 @@ var (
 	// errInsaneStorageObligationRevisionData is returned if there is an
 	// attempted storage obligation revision which does not have sensical
 	// inputs.
+	//
+	//lint:ignore U1000 used in isSane() which is currently unused but we want to keep it around
 	errInsaneStorageObligationRevisionData = errors.New("revision to storage obligation has insane data")
 
 	// errNoBuffer is returned if there is an attempted storage obligation that
@@ -216,6 +222,8 @@ func (so storageObligation) id() types.FileContractID {
 
 // isSane checks that required assumptions about the storage obligation are
 // correct.
+//
+//lint:ignore U1000 isSane() is currently unused but we want to keep it around
 func (so storageObligation) isSane() error {
 	// There should be an origin transaction set.
 	if len(so.OriginTransactionSet) == 0 {
