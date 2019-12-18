@@ -1680,6 +1680,8 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // renterSialinkHandlerGET accepts a sialink as input and will stream the data
 // from the sialink out of the response body as output.
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// TODO: Add support for offset + len.
+
 	sialink := req.FormValue("sialink")
 	metadata, data, err := api.renter.DownloadSialink(sialink)
 	if err != nil {

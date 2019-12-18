@@ -719,12 +719,13 @@ func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
 // sialink is returned along with an error.
 //
 // TODO: add a mode
-func (c *Client) RenterSialinkPost(r io.Reader, name string) (string, error) {
+func (c *Client) RenterSialinkPost(r io.Reader, name string, siaPath string) (string, error) {
 	// Upload the file.
 	//
 	// TODO: Is this a blocking upload?
 	values := url.Values{}
 	values.Set("name", name)
+	values.Set("siapath", siaPath)
 	resp, err := c.postRawResponse(fmt.Sprintf("/renter/sialink?%s", values.Encode()), r)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to /renter/sialink failed")
