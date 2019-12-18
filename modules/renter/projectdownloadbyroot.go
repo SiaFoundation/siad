@@ -149,7 +149,7 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 	delete(pdbr.workersRegistered, w.staticHostPubKeyStr)
 
 	// Delete every instance of the worker in the list of standby workers. The
-	// worker should only be in the list once, but we check teh whole list
+	// worker should only be in the list once, but we check the whole list
 	// anyway.
 	for i := 0; i < len(pdbr.workersStandby); i++ {
 		if pdbr.workersStandby[i] == w {
