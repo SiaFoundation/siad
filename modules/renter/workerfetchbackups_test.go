@@ -12,7 +12,7 @@ import (
 func TestCheckFetchBackupsGouging(t *testing.T) {
 	oneCurrency := types.NewCurrency64(1)
 
-	// minAllowance contians only the fields necessary to test the price gouging
+	// minAllowance contains only the fields necessary to test the price gouging
 	// function. The min allowance doesn't include any of the max prices,
 	// because the function will ignore them if they are not set.
 	minAllowance := modules.Allowance{
