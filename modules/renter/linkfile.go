@@ -255,7 +255,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 		CipherType: crypto.TypePlain,
 	}
 
-	// Perform the actual upload. This will requring turning the buffer we
+	// Perform the actual upload. This will require turning the buffer we
 	// grabbed earlier back into a reader.
 	baseSectorReader := bytes.NewReader(baseSector)
 	fileNode, err := r.managedUploadStreamFromReader(up, baseSectorReader, false)
