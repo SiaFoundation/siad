@@ -713,7 +713,7 @@ func TestWalletVerifyPassword(t *testing.T) {
 		t.Error(err)
 	}
 	if wvpg.Valid {
-		t.Error("Password should not valid")
+		t.Error("Password should not be valid")
 	}
 
 	// Reinit the wallet by using a specific password.
@@ -743,6 +743,6 @@ func TestWalletVerifyPassword(t *testing.T) {
 		t.Error(err)
 	}
 	if wvpg.Valid {
-		t.Error("Password should not valid")
+		t.Error("Password should not be valid")
 	}
 }
