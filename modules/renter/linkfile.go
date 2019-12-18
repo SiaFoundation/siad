@@ -22,6 +22,14 @@ const (
 	// LinkfileLayoutSize describes the amount of space within the first sector
 	// of a linkfile used to describe the rest of the linkfile.
 	LinkfileLayoutSize = 20
+
+	// LinkfileDefaultSectorDataPieces establishes the default number of data
+	// pieces that are used when creating the base sector for a linkfile.
+	LinkfileDefaultSectorDataPieces = 1
+
+	// LinkfileDefaultSectorDataPieces establishes the default number of parity
+	// pieces that are used when creating the base sector for a linkfile.
+	LinkfileDefaultSectorParityPieces = 10
 )
 
 var (
@@ -132,13 +140,33 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 // UploadLinkfile will upload the provided data with the provided name and
 // metadata, returning a sialink which can be used by any viewnode to recover
 // the full original file and metadata.
-//
-// TODO: Params we need:
-//		+ Initial sector erasure coding settings
-//		+ Initial fanout size
-//		+ Fanout redundancy settings
-//		+ A 'force' parameter to overwrite any existing linkfiles
-func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileDataReader io.Reader) (string, error) {
+func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.SiaPath, overwriteExistingFile bool, fileDataReader io.Reader) (string, error) {
+	// Input checks.
+	//
+	// TODO: Some of these restrictions can be lifted as the full set of
+	// features are added to linkfiles.
+	if fileDataReader == nil {
+		return "", errors.New("need to provide a stream of upload data")
+	}
+	if lfm.BaseSectorDataPieces == 0 {
+		lfm.BaseSectorDataPieces = LinkfileDefaultSectorDataPieces
+	}
+	if lfm.BaseSectorParityPieces == 0 {
+		lfm.BaseSectorParityPieces = LinkfileDefaultSectorParityPieces
+	}
+	if lfm.BaseSectorDataPieces != 1 {
+		return "", errors.New("intra-sector erasure coding not yet supported")
+	}
+	if lfm.BaseSectorFanoutSize != 0 {
+		return "", errors.New("fanout not yet supported")
+	}
+	if lfm.FanoutDataPieces != 0 {
+		return "", errors.New("fanout not yet supported")
+	}
+	if lfm.FanoutParityPieces != 0 {
+		return "", errors.New("fanout not yet supported")
+	}
+
 	// Compose the metadata into the leading sector.
 	mlfm, err := json.Marshal(lfm)
 	if err != nil {
@@ -212,21 +240,15 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, fileDataReader io.
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
 	// also resiliant to host failures.
-	fullPath, err := LinkfileSiaFolder.Join(lfm.Name)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to create a linkfile with the given name")
-	}
-	// TODO: allow the caller to decide what sort of replication should be used
-	// on this first chunk.
-	ec, err := siafile.NewRSSubCode(1, 10, 64)
+	ec, err := siafile.NewRSSubCode(int(lfm.BaseSectorDataPieces), int(lfm.BaseSectorParityPieces), 64)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to create erasure coder")
 	}
 	up := modules.FileUploadParams{
-		SiaPath:             fullPath,
+		SiaPath:             siaPath,
 		ErasureCode:         ec,
-		Force:               false,
-		DisablePartialChunk: true,
+		Force:               overwriteExistingFile,
+		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
 		Repair:              false, // indicates whether this is a repair operation
 
 		CipherType: crypto.TypePlain,

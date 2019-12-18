@@ -342,6 +342,12 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 
 // DownloadByRoot will spin up a project to locate a root and then download that
 // root.
+//
+// TODO: Update the function, or perhaps create a separate project, to handle
+// intra-root erasure coding. For speed, going to need some updates anyway
+// that's better about worker selection and making sure we go for hosts that can
+// provide excellent ttfb, while making the selection process aware of the
+// workload of existing workers.
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{

@@ -1700,17 +1700,23 @@ func (api *API) renterSialinkHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	/* - no support for forcing yet.
 	// Check whether existing file should be overwritten
-	force := false
-	if f := queryForm.Get("force"); f != "" {
-		force, err = strconv.ParseBool(f)
+	overwriteExistingFile := false
+	if f := queryForm.Get("overwriteexistingfile"); f != "" {
+		overwriteExistingFile, err = strconv.ParseBool(f)
 		if err != nil {
-			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse 'overwriteexistingfile' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
-	*/
+
+	// Parse out the intended siapath.
+	siaPathStr := queryForm.Get("siapath")
+	siaPath, err := modules.NewSiaPath(siaPathStr)
+	if err != nil {
+		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 
 	// TODO: Erasure coding params - both for the base file and for the fanout.
 
@@ -1728,7 +1734,7 @@ func (api *API) renterSialinkHandlerPOST(w http.ResponseWriter, req *http.Reques
 		Name: name,
 		Mode: mode,
 	}
-	sialink, err := api.renter.UploadLinkfile(lfm, req.Body)
+	sialink, err := api.renter.UploadLinkfile(lfm, siaPath, overwriteExistingFile, req.Body)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
 		return

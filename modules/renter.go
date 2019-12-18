@@ -932,7 +932,7 @@ type Renter interface {
 	// linkfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(lfm LinkfileMetadata, filedata io.Reader) (string, error)
+	UploadLinkfile(lfm LinkfileMetadata, siaPath SiaPath, overwriteExistingFile bool, filedata io.Reader) (string, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -982,16 +982,21 @@ type LinkfileMetadata struct {
 	Name string `json:"name"`
 
 	// Permissions.
-	//
-	// TODO: Should the groupid and userid be int32?
-	GroupID uint32 `json:"groupid"`
+	GroupID int64  `json:"groupid"`
 	Mode    uint32 `json:"mode"`
-	UserID  uint32 `json:"userid"`
+	UserID  int64  `json:"userid"`
 
 	// Timestamp information
 	CreateTime time.Time `json:"createtime"`
 
+	// Base sector erasure coding settings. This is useful directly in the
+	// linkfile metadata because it allows the sialink to be recovered using
+	// only the metadata.
+	BaseSectorDataPieces   uint8 `json:"basesectordatapieces"`
+	BaseSectorParityPieces uint8 `json:"basesectorparitypieces"`
+
 	// Fanout redundancy information.
-	FanoutDataPieces   uint8
-	FanoutParityPieces uint8
+	BaseSectorFanoutSize uint32 `json:"basesectorfanoutsize"`
+	FanoutDataPieces     uint8  `json:"fanoutdatapieces"`
+	FanoutParityPieces   uint8  `json:"fanoutparitypieces"`
 }
