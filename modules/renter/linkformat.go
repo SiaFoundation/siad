@@ -26,7 +26,7 @@ type LinkData struct {
 
 // String converts LinkData to a string.
 func (ld LinkData) String() string {
-	raw := make([]byte, 45, 45)
+	raw := make([]byte, 45)
 	raw[0] = byte(ld.Version)
 	copy(raw[1:], ld.MerkleRoot[:])
 	binary.LittleEndian.PutUint16(raw[33:], ld.HeaderSize)
@@ -49,7 +49,7 @@ func (ld *LinkData) LoadString(s string) error {
 	base := strings.TrimPrefix(s, "sia://")
 
 	// Use the base64 package to decode the string.
-	raw := make([]byte, 45, 45)
+	raw := make([]byte, 45)
 	_, err := base64.RawURLEncoding.Decode(raw, []byte(base))
 	if err != nil {
 		return errors.New("unable to decode input as base64")

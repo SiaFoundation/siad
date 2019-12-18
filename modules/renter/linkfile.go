@@ -101,9 +101,6 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 	if ld.DataPieces != 1 {
 		return modules.LinkfileMetadata{}, nil, errors.New("data pieces must be set to 1 on a link")
 	}
-	if ld.ParityPieces != 1 {
-		return modules.LinkfileMetadata{}, nil, errors.New("parity pieces must be set to 1 on a link")
-	}
 
 	// Fetch the actual file.
 	//
@@ -286,8 +283,8 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 		MerkleRoot:   mr,
 		HeaderSize:   headerSize,
 		FileSize:     uint64(size),
-		DataPieces:   1,
-		ParityPieces: 1,
+		DataPieces:   lfm.BaseSectorDataPieces,
+		ParityPieces: lfm.BaseSectorParityPieces,
 	}
 	return ld.String(), nil
 }

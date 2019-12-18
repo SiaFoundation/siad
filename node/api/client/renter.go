@@ -1,7 +1,6 @@
 package client
 
 import (
-	// "bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -724,21 +723,18 @@ func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
 // TODO: add support for all of the linkfile params that are not yet supported.
 func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (string, error) {
 	// Upload the file.
-	//
-	// TODO: Is this a blocking upload?
 	values := url.Values{}
 	values.Set("name", name)
 	values.Set("siapath", siaPath)
-	resp, err := c.postRawResponse(fmt.Sprintf("/renter/linkfile?%s", values.Encode()), r)
+	query := fmt.Sprintf("/renter/linkfile?%s", values.Encode())
+	resp, err := c.postRawResponse(query, r)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to /renter/sialink failed")
+		return "", errors.AddContext(err, "post call to" + query + " failed")
 	}
 
 	// Parse the response to get the sialink.
-	var rshp api.RenterSialinkHandlerPOST
+	var rshp api.RenterLinkfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
-	// buf := bytes.NewBuffer(resp)
-	// err = json.NewDecoder(buf).Decode(&rshp)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to parse the sialink upload response")
 	}
