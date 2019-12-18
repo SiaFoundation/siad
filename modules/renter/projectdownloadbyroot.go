@@ -22,10 +22,10 @@ const (
 // jobDownloadByRoot contains all of the information necessary to execute a
 // perform download job.
 type jobDownloadByRoot struct {
-	// staticJobDownloadByRoot exists as two phases. The first is a startup
-	// phase, which determines whether or not the host is capable of executing
-	// the job.  The second is the fetching phase, where the worker actually
-	// fetches data from the remote host.
+	// jobDownloadByRoot exists as two phases. The first is a startup phase,
+	// which determines whether or not the host is capable of executing the job.
+	// The second is the fetching phase, where the worker actually fetches data
+	// from the remote host.
 	//
 	// If staticStartupCompleted is set to false, it means the job is in phase
 	// one, and if startupCompleted is set to true, it means the job is in phase
@@ -78,8 +78,8 @@ type projectDownloadByRoot struct {
 }
 
 // checkGougingDownloadByRoot looks at the current renter allowance and the
-// active settings for a host and determines whether an backup fetch should be
-// halted due to price gouging.
+// active settings for a host and determines whether a download by root job
+// should be halted due to price gouging.
 //
 // NOTE: Currently this function treats all downloads being the stream download
 // size and assumes that data is actually being appended to the host. As the
