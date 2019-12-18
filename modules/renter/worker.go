@@ -215,7 +215,8 @@ func (w *worker) threadedWorkLoop() {
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
 	return &worker{
-		staticHostPubKey: hostPubKey,
+		staticHostPubKey:    hostPubKey,
+		staticHostPubKeyStr: hostPubKey.String(),
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
