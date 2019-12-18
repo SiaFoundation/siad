@@ -123,7 +123,7 @@ func (api *API) buildHTTPRoutes() {
 
 		// Linkfile endpoints
 		router.GET("/renter/sialink/:sialink", api.renterSialinkHandlerGET)
-		router.POST("/renter/linkfile", RequirePassword(api.renterSialinkHandlerPOST, requiredPassword))
+		router.POST("/renter/linkfile", RequirePassword(api.renterLinkfileHandlerPOST, requiredPassword))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))

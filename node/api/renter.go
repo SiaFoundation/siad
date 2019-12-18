@@ -247,8 +247,9 @@ type (
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
 	}
 
-	// TODO:
-	RenterSialinkHandlerPOST struct {
+	// RenterLinkfileHandlerPOST is the response that the api returns after the
+	// /renter/linkfile/ POST endpoint has been used.
+	RenterLinkfileHandlerPOST struct {
 		Sialink string `json:"sialink"`
 	}
 )
@@ -1692,9 +1693,9 @@ func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request
 	http.ServeContent(w, req, metadata.Name, time.Time{}, reader)
 }
 
-// renterSialinkHandlerPOST accepts some data and some metadata and then turns
+// renterLinkfileHandlerPOST accepts some data and some metadata and then turns
 // that into a sialink, which is returned to the caller.
-func (api *API) renterSialinkHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -1741,7 +1742,7 @@ func (api *API) renterSialinkHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
 		return
 	}
-	WriteJSON(w, RenterSialinkHandlerPOST{
+	WriteJSON(w, RenterLinkfileHandlerPOST{
 		Sialink: sialink,
 	})
 }
