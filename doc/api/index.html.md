@@ -3713,6 +3713,73 @@ file is available locally.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /renter/sialink/*sialink* [GET]
+> curl example  
+
+> Stream the whole file.  
+
+```bash
+// TODO: Replace this with a rick roll
+curl -A "Sia-Agent" "localhost:9980/renter/sialink/Ab4zT-TlIWiunNSax0tPrOWYnQrIriI0j4yCWcpxcWrXsABjAAAAAAAAAAEK"
+```  
+
+downloads a sialink using http streaming. This call blocks until the data is
+received.
+
+### Path Parameters // TODO: support for offset+len when ready as optional parameters
+
+### OPTIONAL
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /renter/linkfile/*siapath* [POST]
+> curl example  
+
+```bash
+# This command uploads the file 'myImage.png' to the Sia folder
+# 'linkfiles/myImage.png'. Users who download the file will see the name
+# 'image.png'.
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/linkfile/linkfiles/myImage.png?name=image.png" --data-binary @myImage.png
+```
+
+uploads a file to the network using a stream. If the upload stream POST call
+fails or quits before the file is fully uploaded, the file can be repaired by a
+subsequent call to the upload stream endpoint using the `repair` flag.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+Location where the linkfile will reside in the renter's filesystem. The path
+must be non-empty, may not include any path traversal strings ("./", "../"), and
+may not begin with a forward-slash character.  
+
+### Query String Parameters
+### OPTIONAL
+**mode** | uint32  
+The file mode / permissions of the file. Users who download this file will be
+presented a file with this mode. If no mode is set, the Sia default of 0644 will
+be used.
+
+**overwriteexistingfile** | bool  
+If there is already file that exists at the provided siapath, setting this flag
+will cause the new file to overwrite/delete the existing file. If this flag is
+not set, an error will be returned preventing the user from destroying existing
+data.
+
+### JSON Response
+> JSON Response Example
+```go
+{
+"sialink":"AdW6wAkbZrRz1Tesm8VD_FDQ32Ex15i9HZpYlyE6BJNqsABkAAAAAAAAAAEK" // string
+}
+```
+**sialink** | string  
+This is the sialink that can be used with the `/renter/sialink` GET endpoint to
+retrieve the file that has been uploaded.
+
 ## /renter/upload/*siapath* [POST]
 > curl example  
 
