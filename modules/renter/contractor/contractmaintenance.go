@@ -482,28 +482,24 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 // TODO: This needs to be revisited and a test needs to be added.
 func staticCheckViewContractExtortion(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
 	// Check whether the RPC base price is too high.
-	if allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) <= 0 {
 		return errors.New("rpc base price of host is too high - extortion protection enabled")
 	}
 	// Check whether the form contract price is too high.
-	if allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
+	if !allowance.MaxContractPrice.IsZero() && allowance.MaxContractPrice.Cmp(hostSettings.ContractPrice) <= 0 {
 		return errors.New("contract price of host is too high - extortion protection enabled")
 	}
+	// Check whether the sector access price is too high.
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
+		return errors.New("sector accesss price of host is too high - extortion protection enabled")
+	}
+
 	// Check whether the form contract price does not leave enough room for
 	// uploads and downloads. At least half of the viewcontract's funds need to
 	// remain for download bandwidth.
 	if allowance.ViewContractInitialPrice.Div64(2).Cmp(hostSettings.ContractPrice) <= 0 {
 		return errors.New("contract price of host does not leave room for activies - extortion protection enabled")
 	}
-	// Check whether the download bandwidth price is too high.
-	if allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) <= 0 {
-		return errors.New("download bandwidth price of host is too high - extortion protection enabled")
-	}
-	// Check whether the sector access price is too high.
-	if allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
-		return errors.New("sector accesss price of host is too high - extortion protection enabled")
-	}
-
 	return nil
 }
 
