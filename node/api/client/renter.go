@@ -722,11 +722,13 @@ func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
 //
 // TODO: add support for all of the linkfile params that are not yet supported.
 func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (string, error) {
+	// Strip any leading slash from the siaPath.
+	siaPath = strings.TrimPrefix(siaPath, "/")
+
 	// Upload the file.
 	values := url.Values{}
 	values.Set("name", name)
-	values.Set("siapath", siaPath)
-	query := fmt.Sprintf("/renter/linkfile?%s", values.Encode())
+	query := fmt.Sprintf("/renter/linkfile/%s?%s", siaPath, values.Encode())
 	resp, err := c.postRawResponse(query, r)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to"+query+" failed")
