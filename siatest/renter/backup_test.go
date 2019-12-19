@@ -413,6 +413,12 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Regression test for a bug where RenterFilesGet would fail when snapshots
+	// existed.
+	_, err = r.RenterFilesGet(false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Confirm siadir exists by querying directory
 	rd, err := r.RenterGetDir(modules.RootSiaPath())
 	if err != nil {
