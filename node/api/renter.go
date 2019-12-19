@@ -1708,7 +1708,7 @@ func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request
 func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse out the intended siapath.
 	siaPathStr := ps.ByName("siapath")
-	siaPath, err := modules.NewSiaPath(siaPathStr)
+	siaPath, err := modules.UserSiaPath().Join(siaPathStr)
 	if err != nil {
 		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
 		return
