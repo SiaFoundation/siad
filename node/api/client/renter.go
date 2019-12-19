@@ -249,8 +249,8 @@ func (c *Client) RenterCancelDownloadPost(id modules.DownloadID) (err error) {
 	return
 }
 
-// RenterDeletePost uses the /renter/delete endpoint to delete a file.
-func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
+// RenterFileDeletePost uses the /renter/delete endpoint to delete a file.
+func (c *Client) RenterFileDeletePost(siaPath modules.SiaPath) (err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.post(fmt.Sprintf("/renter/delete/%s", sp), "", nil)
 	return

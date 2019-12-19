@@ -1495,7 +1495,7 @@ func renterfilesdeletecmd(path string) {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// Try to delete file.
-	errFile := httpClient.RenterDeletePost(siaPath)
+	errFile := httpClient.RenterFileDeletePost(siaPath)
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return

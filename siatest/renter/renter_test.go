@@ -3099,7 +3099,7 @@ func TestUploadAfterDelete(t *testing.T) {
 	// closing the entry. That shouldn't cause issues.
 	for i := 0; i < 5; i++ {
 		// Delete the file.
-		if err := renter.RenterDeletePost(remoteFile.SiaPath()); err != nil {
+		if err := renter.RenterFileDeletePost(remoteFile.SiaPath()); err != nil {
 			t.Fatal(err)
 		}
 		// Upload the file again right after deleting it.

@@ -499,6 +499,7 @@ func (n *DirNode) managedDelete() error {
 func (n *DirNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
 	// Check if the file is open in memory. If it is delete it.
 	sf, exists := n.files[fileName]
 	if exists {
@@ -509,12 +510,28 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 		n.removeFile(sf)
 		return nil
 	}
-	// Otherwise simply delete the file.
-	err := os.Remove(filepath.Join(n.absPath(), fileName+modules.SiaFileExtension))
-	if os.IsNotExist(err) {
-		return nil
+
+	// Check whether the file is actually a directory.
+	_, exists = n.directories[fileName]
+	if exists {
+		return errors.New("cannot delete file - file is an open directory")
 	}
-	return err
+
+	// Check if the on-disk version is a file. This check is needed because
+	// os.Remove will delete an empty directory without returning any error, if
+	// the user has a directory name 'dir.sia' it could cause an edge case.
+	sysPath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
+	info, err := os.Stat(sysPath)
+	if err != nil {
+		return errors.AddContext(err, "unable to find file")
+	}
+	if info.IsDir() {
+		return errors.New("cannot delete file, file is a directory")
+	}
+
+	// Otherwise simply delete the file.
+	err = os.Remove(sysPath)
+	return errors.AddContext(err, "unable to delete file")
 }
 
 // managedInfo builds and returns the DirectoryInfo of a SiaDir.

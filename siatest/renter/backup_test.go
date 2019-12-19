@@ -137,7 +137,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Delete the file and upload another file to the same siapath. This one should
 	// have the same siapath but not the same UID.
-	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+	if err := r.RenterFileDeletePost(rf.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
 	subDir, err = r.FilesDir().CreateDir("subDir")
@@ -367,10 +367,10 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Delete both files and restore the first snapshot.
-	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+	if err := r.RenterFileDeletePost(rf.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.RenterDeletePost(rf2.SiaPath()); err != nil {
+	if err := r.RenterFileDeletePost(rf2.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.RenterRecoverBackupPost("foo"); err != nil {
@@ -389,7 +389,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal("expected second file to be unavailable")
 	}
 	// Delete the first file again.
-	if err := r.RenterDeletePost(rf.SiaPath()); err != nil {
+	if err := r.RenterFileDeletePost(rf.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
 
