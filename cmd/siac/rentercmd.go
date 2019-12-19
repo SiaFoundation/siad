@@ -1036,7 +1036,7 @@ consider repair bandwidth separately.`)
 	// expectedDownload
 	fmt.Println(`7/8: Expected Download
 Expected download tells siad how much downloading the user expects to do each
-month. If this value is high, siad will more strongly prefer hosts that have a
+period. If this value is high, siad will more strongly prefer hosts that have a
 low download bandwidth price. If this value is low, siad will focus on other
 metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
