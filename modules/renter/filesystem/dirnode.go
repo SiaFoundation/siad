@@ -520,6 +520,9 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 	// Check if the on-disk version is a file. This check is needed because
 	// os.Remove will delete an empty directory without returning any error, if
 	// the user has a directory name 'dir.sia' it could cause an edge case.
+	//
+	// There is a test for this edge case in the integration test called
+	// 'TestUploadAfterDelete'.
 	sysPath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
 	info, err := os.Stat(sysPath)
 	if err != nil {

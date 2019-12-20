@@ -420,7 +420,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Confirm siadir exists by querying directory
-	rd, err := r.RenterGetDir(modules.RootSiaPath())
+	rd, err := r.RenterDirGet(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +430,7 @@ func TestRemoteBackup(t *testing.T) {
 	if len(rd.Files) != 0 {
 		t.Fatal("Expected 0 files but got", rd.Files)
 	}
-	rd, err = r.RenterGetDir(rd.Directories[1].SiaPath)
+	rd, err = r.RenterDirGet(rd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,7 +488,7 @@ func TestRemoteBackup(t *testing.T) {
 	}
 
 	// Confirm siadir exists by querying directory
-	rd, err = r.RenterGetDir(modules.RootSiaPath())
+	rd, err = r.RenterDirGet(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +498,7 @@ func TestRemoteBackup(t *testing.T) {
 	if len(rd.Files) != 0 {
 		t.Fatal("Expected 0 files but got", rd.Files)
 	}
-	rd, err = r.RenterGetDir(rd.Directories[1].SiaPath)
+	rd, err = r.RenterDirGet(rd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -373,7 +373,7 @@ func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
 		dirs = append(dirs, d)
 
 		// Get the dir info.
-		rd, err := tn.RenterGetDir(d)
+		rd, err := tn.RenterDirGet(d)
 		if err != nil {
 			return nil, err
 		}
@@ -514,7 +514,7 @@ func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float
 func (tn *TestNode) WaitForStuckChunksToBubble() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterGetDir(modules.RootSiaPath())
+		rd, err := tn.RenterDirGet(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -530,7 +530,7 @@ func (tn *TestNode) WaitForStuckChunksToBubble() error {
 func (tn *TestNode) WaitForStuckChunksToRepair() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterGetDir(modules.RootSiaPath())
+		rd, err := tn.RenterDirGet(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}

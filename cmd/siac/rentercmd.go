@@ -306,13 +306,13 @@ func rentercmd() {
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return errors.AddContext(err, "unable to get root dir with RenterGetDir")
+		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
 	}
 
 	rc, err := httpClient.RenterContractsGet()
@@ -1386,7 +1386,7 @@ Contract %v
 // into a single error.
 func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
-	rd, err := httpClient.RenterGetDir(siaPath)
+	rd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
 		err = errors.AddContext(err, "failed to get dir info")
 		return
@@ -1529,7 +1529,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = httpClient.RenterGetDir(siaPath)
+	_, err = httpClient.RenterDirGet(siaPath)
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
@@ -1795,7 +1795,7 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs.
 func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
-	rgd, err := httpClient.RenterGetDir(siaPath)
+	rgd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
 		die("failed to get dir info:", err)
 	}
