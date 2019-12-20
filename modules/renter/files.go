@@ -7,7 +7,8 @@ import (
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
 func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
-	if err := r.tg.Add(); err != nil {
+	err := r.tg.Add()
+	if err != nil {
 		return err
 	}
 	defer r.tg.Done()
