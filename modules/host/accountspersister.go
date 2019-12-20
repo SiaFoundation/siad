@@ -65,14 +65,9 @@ type (
 	// manager. This includes all ephemeral account data and the fingerprints of
 	// the withdrawal messages.
 	accountsPersister struct {
-		accounts modules.File
-
-		// fingerprints are stored using the fingerprint manager, it has its
-		// own mutex to avoid lock contention on the indexLocks.
-		fingerprints   *fingerprintManager
-		fingerprintsMu sync.Mutex
-
-		indexLocks map[uint32]*indexLock
+		accounts     modules.File
+		fingerprints *fingerprintManager
+		indexLocks   map[uint32]*indexLock
 
 		mu sync.Mutex
 		h  *Host
@@ -98,13 +93,17 @@ type (
 		mu      sync.Mutex
 	}
 
-	// fingerprintManager is a helper struct that wraps both buckets and
-	// specifies the threshold blockheight at which they need to rotate
+	// fingerprintManager is used to store fingerprints. It does so by keeping
+	// them in two separate buckets, depending on the expiry blockheight of the
+	// fingerprint. The underlying files rotate after a certain amount of blocks
+	// to ensure the files don't grow too large in size. It has its own mutex to
+	// avoid lock contention on the indexLocks.
 	fingerprintManager struct {
 		current     modules.File
 		currentPath string
 		next        modules.File
 		nextPath    string
+		mu          sync.Mutex
 	}
 )
 
@@ -204,9 +203,7 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 
 // callSaveFingerprint writes the fingerprint to disk
 func (ap *accountsPersister) callSaveFingerprint(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) error {
-	ap.fingerprintsMu.Lock()
-	defer ap.fingerprintsMu.Unlock()
-	return errors.AddContext(ap.fingerprints.save(fp, expiry,
+	return errors.AddContext(ap.fingerprints.managedSave(fp, expiry,
 		currentBlockHeight), "could not save fingerprint")
 }
 
@@ -239,11 +236,11 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 // callRotateFingerprintBuckets will rotate the fingerprint bucket files, but
 // only if the current block height exceeds the current bucket's threshold
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
-	ap.fingerprintsMu.Lock()
-	defer ap.fingerprintsMu.Unlock()
+	fm := ap.fingerprints
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
 
 	// Close the current fingerprint files, this syncs the files before closing
-	fm := ap.fingerprints
 	if err = fm.close(); err != nil {
 		return errors.AddContext(err, "could not close fingerprint files")
 	}
@@ -445,7 +442,10 @@ func (a *accountData) bytes() ([]byte, error) {
 }
 
 // save will persist the given fingerprint into the appropriate bucket
-func (fm *fingerprintManager) save(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) (err error) {
+func (fm *fingerprintManager) managedSave(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) (err error) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
 	// Encode the fingerprint, verify it has the correct size
 	fpBytes, err := safeEncode(fp, fingerprintSize)
 	if err != nil {

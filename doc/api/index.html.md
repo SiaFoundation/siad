@@ -1290,10 +1290,10 @@ the host will forget that the user has spent money and the user will be able to
 spend that money again.
 
 maxephemeralaccountrisk is the maximum amount of money that the host is willing
-to risk to a power loss. The account manager will keep track of the total amount
-of money that has been withdrawn, but has not yet been persisted to disk. If a
-user's withdrawal would put the host over the maxephemeralaccountrisk, the host
-will wait to complete the user's transaction until it has persisted the
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
 widthdrawal, to prevent the host from having too much money at risk.
 
 Note that money is only at risk if the host experiences an unclean shutdown
@@ -1455,10 +1455,10 @@ the host will forget that the user has spent money and the user will be able to
 spend that money again.
 
 maxephemeralaccountrisk is the maximum amount of money that the host is willing
-to risk to a power loss. The account manager will keep track of the total amount
-of money that has been withdrawn, but has not yet been persisted to disk. If a
-user's withdrawal would put the host over the maxephemeralaccountrisk, the host
-will wait to complete the user's transaction until it has persisted the
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
 widthdrawal, to prevent the host from having too much money at risk.
 
 Note that money is only at risk if the host experiences an

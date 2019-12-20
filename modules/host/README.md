@@ -6,10 +6,10 @@ transact with the host through a number of RPC calls.
 In order for data to be uploaded and stored, the renter and host must agree on a
 file contract. Once they have negotiated the terms of the file contract, it is
 signed and put on chain. Any further action related to the data is reflected in
-the file contract by means contract revisions that get signed by both parties.
-The host is responsible for managing these contracts, and making sure the data
-is safely stored. The host proves that it is storing the data by providing a
-segment of the file and a list of hashes from the file's merkletree.
+the file contract by means of contract revisions that get signed by both
+parties. The host is responsible for managing these contracts, and making sure
+the data is safely stored. The host proves that it is storing the data by
+providing a segment of the file and a list of hashes from the file's merkletree.
 
 Aside from storage, the host offers another service called ephemeral accounts.
 These accounts serve as an alternative payment method to file contracts. Users
@@ -59,9 +59,11 @@ that the user has spent money and the user will be able to spend that money
 again. The host can configure the amount of money it is willing to risk due to
 this asynchronous persist model through the `maxephemeralaccountrisk` setting.
 
-If an ephemeral account has been inactive for a period of 7 days, the host will
-prune it from the accounts list. This will effectively expire the account, along
-with all the money that was associated to it.
+Ephemeral accounts that have been inactive for a long period of time will be
+pruned from the account list. This will effectively expire the account, along
+with all the money that was associated to it. The host can configure this period
+through the ephemeralaccountexpiry setting. The default is set to a period of 7
+days.
 
 ### AccountsPersister Subsystem
 

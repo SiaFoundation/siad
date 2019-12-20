@@ -330,8 +330,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency) (err err
 	// balance. If the account does not exist yet, it will be created.
 	acc := am.openAccount(id)
 	if acc.depositExceedsMaxBalance(amount, maxBalance) {
-		err = ErrBalanceMaxExceeded
-		return
+		return ErrBalanceMaxExceeded
 	}
 
 	// Block deposit if maxRisk is exceeded. A blocked deposit does not add to
@@ -373,8 +372,9 @@ func (am *accountManager) callCommitDeposit(amount types.Currency) {
 
 	// Risk is lowered - see if we can unblock deposits and/or withdrawals. We
 	// unblock in this particular order to ensure deposits are unblocked first.
-	am.unblockDeposits(&amount, cbh)
-	am.unblockWithdrawals(&amount, cbh)
+	allowance := amount
+	allowance = am.unblockDeposits(allowance, cbh)
+	am.unblockWithdrawals(allowance, cbh)
 }
 
 // callWithdraw will process the given withdrawal message. This call will block
@@ -412,8 +412,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	// Check if withdrawals are inactive. This will be the case when the host is
 	// not synced yet. Until that is not the case, we do not allow trading.
 	if am.withdrawalsInactive {
-		err = ErrWithdrawalsInactive
-		return
+		return ErrWithdrawalsInactive
 	}
 
 	// Save the fingerprint in memory and call persist asynchronously. If the
@@ -485,18 +484,18 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
-	if cc.Synced {
-		am.withdrawalsInactive = false
-
-		// If the current block height is equal to the minimum block height of
-		// the current bucket range, we want to rotate the buckets.
-		if min, _ := currentBucketRange(cbh); min == cbh {
-			am.fingerprints.rotate()
-			rotate = true
-		}
+	if !cc.Synced {
+		am.withdrawalsInactive = true
 		return
 	}
-	am.withdrawalsInactive = true
+
+	// If the current block height is equal to the minimum block height of
+	// the current bucket range, we want to rotate the buckets.
+	am.withdrawalsInactive = false
+	if min, _ := currentBucketRange(cbh); min == cbh {
+		am.fingerprints.rotate()
+		rotate = true
+	}
 }
 
 // schedulePersist will append the resultChan to the persist queue and call
@@ -504,18 +503,20 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 // FIFO fashion, ensuring an account is never overwritten by older account data.
 func (am *accountManager) schedulePersist(acc *account, resultChan chan error) {
 	acc.resultChans = append(acc.resultChans, resultChan)
-	if len(acc.resultChans) == 1 {
-		if err := am.h.tg.Add(); err != nil {
-			return
-		}
-		go func() {
-			defer am.h.tg.Done()
-			waiting := am.threadedSaveAccount(acc.id)
-			for waiting > 0 {
-				waiting = am.threadedSaveAccount(acc.id)
-			}
-		}()
+	if len(acc.resultChans) > 1 {
+		return
 	}
+
+	if err := am.h.tg.Add(); err != nil {
+		return
+	}
+	go func() {
+		defer am.h.tg.Done()
+		waiting := am.threadedSaveAccount(acc.id)
+		for waiting > 0 {
+			waiting = am.threadedSaveAccount(acc.id)
+		}
+	}()
 }
 
 // managedAccountPersistInfo is a helper method that will collect all of the
@@ -545,7 +546,7 @@ func (am *accountManager) managedAccountPersistInfo(id string) *accountPersistIn
 // Note that the caller adds this thread to the threadgroup. If the add is done
 // inside the goroutine, the host risks losing money even on graceful shutdowns.
 func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
-	// Gather all information required to persist and process it afterwars
+	// Gather all information required to persist and process it afterwards
 	accInfo := am.managedAccountPersistInfo(id)
 	if accInfo == nil {
 		return
@@ -584,8 +585,9 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 
 	// Risk is lowered - see if we can unblock deposits and/or withdrawals. We
 	// unblock in this particular order to ensure deposits are unblocked first.
-	am.unblockDeposits(&accInfo.risk, cbh)
-	am.unblockWithdrawals(&accInfo.risk, cbh)
+	allowance := accInfo.risk
+	allowance = am.unblockDeposits(allowance, cbh)
+	am.unblockWithdrawals(allowance, cbh)
 	return
 }
 
@@ -599,21 +601,20 @@ func (am *accountManager) threadedSaveFingerprint(fp crypto.Hash, expiry, cbh ty
 	}
 }
 
-// unblockDeposits will unblock pending deposits until the unblockAllowance runs
-// out. The unblockAllowance is the amount of risk that got freed up by a
-// persist or a commit (FC fsync).
-func (am *accountManager) unblockDeposits(unblockAllowance *types.Currency, cbh types.BlockHeight) {
+// unblockDeposits will unblock pending deposits until the allowance runs out.
+// The allowance is the amount of risk that got freed up by a persist or a
+// commit (FC fsync).
+func (am *accountManager) unblockDeposits(allowance types.Currency, cbh types.BlockHeight) (remaining types.Currency) {
 	var numUnblocked int
 	for i, bd := range am.blockedDeposits {
 		amount, id := bd.amount, bd.id
 		acc, exists := am.accounts[id]
 		if !exists {
-			// The resultchan will have been closed by the code that expired the
-			// account.
+			// Account has expired
 			continue
 		}
 
-		if unblockAllowance.Cmp(amount) < 0 {
+		if allowance.Cmp(amount) < 0 {
 			numUnblocked = i
 			break
 		}
@@ -625,22 +626,23 @@ func (am *accountManager) unblockDeposits(unblockAllowance *types.Currency, cbh 
 
 		am.schedulePersist(acc, bd.result)
 
-		(*unblockAllowance) = (*unblockAllowance).Sub(amount)
+		allowance = allowance.Sub(amount)
 	}
 	am.blockedDeposits = am.blockedDeposits[numUnblocked:]
+	remaining = allowance
+	return
 }
 
-// unblockWithdrawals will unblock pending withdrawals until the
-// unblockAllowance runs out. The unblockAllowance is the amount of risk that
-// got freed up by a persist or a commit (FC fsync).
-func (am *accountManager) unblockWithdrawals(unblockAllowance *types.Currency, cbh types.BlockHeight) {
+// unblockWithdrawals will unblock pending withdrawals until the allowance runs
+// out. The allowance is the amount of risk that got freed up by a persist or a
+// commit (FC fsync).
+func (am *accountManager) unblockWithdrawals(allowance types.Currency, cbh types.BlockHeight) (remaining types.Currency) {
 	var numUnblocked int
 	for i, bw := range am.blockedWithdrawals {
 		amount, id := bw.withdrawal.amount, bw.withdrawal.account
 		acc, exists := am.accounts[id]
 		if !exists {
-			// The resultchan will have been closed by the code that expired the
-			// account.
+			// Account has expired
 			continue
 		}
 
@@ -657,7 +659,7 @@ func (am *accountManager) unblockWithdrawals(unblockAllowance *types.Currency, c
 			build.Critical("blocked withdrawal has insufficient balance to process, due to the order of execution in the callWithdrawal, this should never happen")
 		}
 
-		if unblockAllowance.Cmp(amount) < 0 {
+		if allowance.Cmp(amount) < 0 {
 			numUnblocked = i
 			break
 		}
@@ -669,9 +671,11 @@ func (am *accountManager) unblockWithdrawals(unblockAllowance *types.Currency, c
 
 		am.schedulePersist(acc, bw.result)
 
-		(*unblockAllowance) = (*unblockAllowance).Sub(amount)
+		allowance = allowance.Sub(amount)
 	}
 	am.blockedWithdrawals = am.blockedWithdrawals[numUnblocked:]
+	remaining = allowance
+	return
 }
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
@@ -682,9 +686,6 @@ func (am *accountManager) unblockWithdrawals(unblockAllowance *types.Currency, c
 // Note: threadgroup counter must be inside for loop. If not, calling 'Flush'
 // on the threadgroup would deadlock.
 func (am *accountManager) threadedPruneExpiredAccounts() {
-	// Disrupt can trigger forceful account expiry for testing purposes
-	forceExpire := am.h.dependencies.Disrupt("expireEphemeralAccounts")
-
 	for {
 		his := am.h.InternalSettings()
 		accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
@@ -702,7 +703,7 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 
 			// Expire accounts that have been inactive for too long. Keep track
 			// of the indexes that got expired
-			expired := am.managedExpireAccounts(forceExpire, accountExpiryTimeout)
+			expired := am.managedExpireAccounts(accountExpiryTimeout)
 			if len(expired) == 0 {
 				return
 			}
@@ -759,10 +760,13 @@ func (am *accountManager) waitForDepositResult(resultChan chan error) error {
 }
 
 // managedExpireAccounts will expire accounts where the lastTxnTime exceeds the
-// given threshold, or when forced.
-func (am *accountManager) managedExpireAccounts(force bool, threshold int64) []uint32 {
+// given threshold.
+func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 	am.mu.Lock()
 	defer am.mu.Unlock()
+
+	// Disrupt can trigger forceful account expiry for testing purposes
+	force := am.h.dependencies.Disrupt("expireEphemeralAccounts")
 
 	var deleted []uint32
 	now := time.Now().Unix()
@@ -784,44 +788,44 @@ func (am *accountManager) managedExpireAccounts(force bool, threshold int64) []u
 // will be created.
 func (am *accountManager) openAccount(id string) *account {
 	acc, exists := am.accounts[id]
-	if !exists {
-		acc = &account{
-			id:                 id,
-			index:              am.index.assignFreeIndex(),
-			blockedWithdrawals: make(blockedWithdrawalHeap, 0),
-			resultChans:        make([]chan error, 0),
-		}
-		am.accounts[id] = acc
+	if exists {
+		return acc
 	}
+	acc = &account{
+		id:                 id,
+		index:              am.index.assignFreeIndex(),
+		blockedWithdrawals: make(blockedWithdrawalHeap, 0),
+		resultChans:        make([]chan error, 0),
+	}
+	am.accounts[id] = acc
 	return acc
 }
 
 // assignFreeIndex will return the next available account index
 func (ai *accountIndex) assignFreeIndex() uint32 {
-	var i, pos int = 0, -1
+	var i, off int = 0, -1
 
 	// Go through all bitmaps in random order to find a free index
 	full := ^uint64(0)
 	for i = range *ai {
 		if (*ai)[i] != full {
-			pos = bits.TrailingZeros(uint(^(*ai)[i]))
+			off = bits.TrailingZeros(uint(^(*ai)[i]))
 			break
 		}
 	}
 
 	// Add a new bitfield if all bitfields are full, otherwise flip the bit
-	if pos == -1 {
-		pos = 0
-		*ai = append(*ai, 1<<uint(pos))
+	if off == -1 {
+		off = 0
+		*ai = append(*ai, 1<<uint(off))
 		i = len(*ai) - 1
 	} else {
-		(*ai)[i] |= (1 << uint(pos))
+		(*ai)[i] |= (1 << uint(off))
 	}
 
 	// Calculate the index by multiplying the bitfield index by 64 (seeing as
 	// the bitfields are of type uint64) and adding the position
-	index := uint32((i * 64) + pos)
-	return index
+	return uint32((i * 64) + off)
 }
 
 // releaseIndex will unset the bit corresponding to given index
@@ -846,9 +850,7 @@ func (ai *accountIndex) buildIndex(accounts map[string]*account) {
 
 	// Add empty bitfields to accomodate all account indexes
 	n := int(math.Floor(float64(maxIndex)/64)) + 1
-	for i := 0; i < n; i++ {
-		*ai = append(*ai, uint64(0))
-	}
+	*ai = make([]uint64, n)
 
 	// Range over the accounts and flip the bit corresponding to their index
 	for _, acc := range accounts {
