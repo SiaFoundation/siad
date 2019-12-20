@@ -3507,7 +3507,7 @@ curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/delete/my
 ```
 
 deletes a renter file entry. Does not delete any downloads or original files,
-only the entry in the renter.
+only the entry in the renter. Will return an error if the target is a folder.
 
 ### Path Parameters
 ### REQUIRED
