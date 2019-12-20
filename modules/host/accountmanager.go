@@ -798,7 +798,7 @@ func (am *accountManager) openAccount(id string) *account {
 
 // assignFreeIndex will return the next available account index
 func (ai *accountIndex) assignFreeIndex() uint32 {
-	var i, pos int = 0, -1
+	i, pos := 0, -1
 
 	// Go through all bitmaps in random order to find a free index
 	full := ^uint64(0)
