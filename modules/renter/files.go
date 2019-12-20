@@ -26,6 +26,7 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	// Need a metadata update func that operates on a node to do that.
 	dirSiaPath, err := siaPath.Dir()
 	if err != nil {
+		r.log.Printf("Unable to fetch the directory from a siaPath %v for deleted siafile: %v", siaPath, err)
 		// Return 'nil' because the delete operation succeeded, it was only the
 		// metadata update operation that failed.
 		return nil
