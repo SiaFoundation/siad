@@ -514,7 +514,7 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 	// Check whether the file is actually a directory.
 	_, exists = n.directories[fileName]
 	if exists {
-		return errors.New("cannot delete file - file is an open directory")
+		return ErrDeleteFileIsDir
 	}
 
 	// Check if the on-disk version is a file. This check is needed because
@@ -525,11 +525,13 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 	// 'TestUploadAfterDelete'.
 	sysPath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
 	info, err := os.Stat(sysPath)
-	if err != nil {
+	if os.IsNotExist(err) {
+		return errors.Extend(err, ErrNotExist)
+	} else if err != nil {
 		return errors.AddContext(err, "unable to find file")
 	}
 	if info.IsDir() {
-		return errors.New("cannot delete file, file is a directory")
+		return ErrDeleteFileIsDir
 	}
 
 	// Otherwise simply delete the file.

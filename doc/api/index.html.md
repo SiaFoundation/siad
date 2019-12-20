@@ -3065,7 +3065,8 @@ may not begin with a forward-slash character.
 **action** | string  
 Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
- - `delete` will remove a directory and its contents from the sia network
+ - `delete` will remove a directory and its contents from the sia network. Will
+   return an error if the target is a file.
  - `rename` will rename a directory on the sia network
 
  **newsiapath** | string  
