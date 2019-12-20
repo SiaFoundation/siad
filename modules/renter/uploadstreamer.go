@@ -34,8 +34,9 @@ import (
 // multiple readers, wait for the shard to finish reading and then check the
 // error for that Read.
 type StreamShard struct {
-	n   int
-	err error
+	n    int
+	peek []byte
+	err  error
 
 	r io.Reader
 
@@ -47,6 +48,7 @@ type StreamShard struct {
 // NewStreamShard creates a new stream shard from a reader.
 func NewStreamShard(r io.Reader) *StreamShard {
 	return &StreamShard{
+		peek:       make([]byte, 0, 1),
 		r:          r,
 		signalChan: make(chan struct{}),
 	}
@@ -56,6 +58,26 @@ func NewStreamShard(r io.Reader) *StreamShard {
 func (ss *StreamShard) Close() error {
 	close(ss.signalChan)
 	ss.closed = true
+	return nil
+}
+
+// Peek will check to see if there is more data in the stream.
+func (ss *StreamShard) Peek() error {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	// If 'peek' already has data, then there is more data to consume.
+	if len(ss.peek) > 0 {
+		return nil
+	}
+
+	// Read a byte into peek.
+	ss.peek = append(ss.peek, 0)
+	_, err := io.ReadFull(ss.r, ss.peek)
+	if err != nil {
+		ss.err = err
+		return err
+	}
 	return nil
 }
 
@@ -74,6 +96,20 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
+
+	if len(b) < 1 {
+		return 0, nil
+	}
+	if len(ss.peek) > 0 {
+		// Sanity check - peek should never be more than 1 byte.
+		if len(ss.peek) > 1 {
+			build.Critical("stream shard has too many bytes in the peek field", len(ss.peek))
+		}
+		b[0] = ss.peek[0]
+		b = b[1:]
+		ss.n += 1
+		ss.peek = ss.peek[:0]
+	}
 	n, err := ss.r.Read(b)
 	ss.n += n
 	ss.err = err
@@ -253,6 +289,14 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 			// Adjust the fileSize
 			return entry, nil
 		} else if ss.err != nil {
+			return nil, ss.err
+		}
+
+		// Call Peek to make sure that there's more data for another shard.
+		err = ss.Peek()
+		if err == io.EOF {
+			return entry, nil
+		} else if err != nil {
 			return nil, ss.err
 		}
 	}
