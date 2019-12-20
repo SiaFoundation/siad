@@ -3065,7 +3065,8 @@ may not begin with a forward-slash character.
 **action** | string  
 Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
- - `delete` will remove a directory and its contents from the sia network
+ - `delete` will remove a directory and its contents from the sia network. Will
+   return an error if the target is a file.
  - `rename` will rename a directory on the sia network
 
  **newsiapath** | string  
@@ -3507,7 +3508,7 @@ curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/delete/my
 ```
 
 deletes a renter file entry. Does not delete any downloads or original files,
-only the entry in the renter.
+only the entry in the renter. Will return an error if the target is a folder.
 
 ### Path Parameters
 ### REQUIRED
