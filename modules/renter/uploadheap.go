@@ -221,7 +221,7 @@ func (uh *uploadHeap) managedMarkRepairDone(id uploadChunkID) {
 
 // managedNumStuckChunks returns total number of stuck chunks in the heap and
 // the number of stuck chunks that were added at random as opposed to being
-// added due to a recently succesful file repair
+// added due to a recently successful file repair
 func (uh *uploadHeap) managedNumStuckChunks() (total int, random int) {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()

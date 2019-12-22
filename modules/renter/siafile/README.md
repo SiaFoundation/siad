@@ -9,7 +9,7 @@ they are accessed.
 
 Since SiaFile's are rapidly accessed during downloads and repairs, the
 SiaFile was built with the requirement that all reads and writes must be able
-to happen in contant time, knowing only the offset of thte logical data
+to happen in constant time, knowing only the offset of the logical data
 within the SiaFile. To achieve that, all the data is page-aligned which also
 improves disk performance. Overall the SiaFile package is designed to
 minimize disk I/O operations and to keep the memory footprint as small as

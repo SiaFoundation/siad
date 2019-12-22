@@ -57,7 +57,7 @@ responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
  - [Fuse Subsystem](#fuse-subsystem)
  - [Fuse Manager Subsystem](#fuse-manager)
- - [Persistance Subsystem](#persistance-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
@@ -144,7 +144,7 @@ unmount will fail and the user will have to manually unmount using `fusermount`
 or `umount` before that folder becomes available again. To the best of our
 current knowledge, there is no way to force an unmount.
 
-### Persistance Subsystem
+### Persistence Subsystem
 **Key Files**
  - [persist_compat.go](./persist_compat.go)
  - [persist.go](./persist.go)
