@@ -70,6 +70,10 @@ func TestFuse(t *testing.T) {
 	r := tg.Renters()[0]
 
 	// Set the default opts for mounting a fuse directory.
+	//
+	// NOTE: Can't test 'AllowOther' in this test, if 'AllowOther' is set to
+	// true, Linux will complain unless the user has changed the default
+	// configuration for fuse established in /etc/fuse.conf.
 	defaultOpts := modules.MountOptions{
 		ReadOnly:   true,
 		AllowOther: false,
@@ -84,6 +88,22 @@ func TestFuse(t *testing.T) {
 	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Get the list of filesystem mounts and see that the mountpoint is
+	// represented correctly.
+	fi, err := r.RenterFuse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fi.MountPoints) != 1 {
+		t.Fatal("there should be a mountpoint listed")
+	}
+	if !fi.MountPoints[0].MountOptions.ReadOnly {
+		t.Error("ReadOnly should be set to true")
+	}
+	if fi.MountPoints[0].MountOptions.AllowOther {
+		t.Error("AllowOther should be set to false")
 	}
 
 	// Try reading the empty fuse directory.
