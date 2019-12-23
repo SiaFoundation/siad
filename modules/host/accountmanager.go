@@ -487,7 +487,7 @@ func (am *accountManager) managedUpdateRiskAfterDeposit(deposit types.Currency, 
 	select {
 	case <-syncChan:
 		return
-	case <-time.After(10 * time.Nanosecond):
+	default:
 	}
 
 	// Add the deposit to the outstanding risk
