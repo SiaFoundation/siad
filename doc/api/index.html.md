@@ -3628,9 +3628,9 @@ which mountpoints have been used for each mount.
 {
   "mountPoints": [ // []modules.FuseMountInfo
     {
-	  "mountpoint": "/home/user/siavideos", // string
-	  "siapath": "/videos",                 // modules.SiaPath
-	},
+      "mountpoint": "/home/user/siavideos", // string
+      "siapath": "/videos",                 // modules.SiaPath
+    },
   ]
 }
 ```
