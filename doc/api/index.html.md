@@ -3626,10 +3626,15 @@ which mountpoints have been used for each mount.
 
 ```go
 {
-  "mountPoints": [ // []modules.FuseMountInfo
+  "mountPoints": [ // []modules.MountInfo
     {
       "mountpoint": "/home/user/siavideos", // string
       "siapath": "/videos",                 // modules.SiaPath
+
+      "mountoptions": { // []modules.MountOptions
+          "allowother": false, // bool
+          "readonly": true,    // bool
+        },
     },
   ]
 }

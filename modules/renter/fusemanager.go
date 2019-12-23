@@ -110,7 +110,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	// Create the fuse filesystem object.
 	filesystem := &fuseFS{
-		readOnly: opts.ReadOnly,
+		options: opts,
 
 		renter: fm.renter,
 	}
@@ -162,6 +162,8 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 		infos = append(infos, modules.MountInfo{
 			MountPoint: mountPoint,
 			SiaPath:    siaPath,
+
+			MountOptions: filesystem.options,
 		})
 	}
 	return infos
