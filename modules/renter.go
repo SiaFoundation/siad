@@ -594,7 +594,8 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 
 // MountOptions specify various settings of a FUSE filesystem mount.
 type MountOptions struct {
-	ReadOnly bool
+	AllowOther bool
+	ReadOnly   bool
 }
 
 // RecoverableContract is a types.FileContract as it appears on the blockchain

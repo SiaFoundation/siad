@@ -134,6 +134,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	// Mount the filesystem.
 	server, err := fs.Mount(mountPoint, filesystem.root, &fs.Options{
 		MountOptions: fuse.MountOptions{
+			AllowOther: opts.AllowOther,
 			// Debug: true,
 		},
 	})

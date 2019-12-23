@@ -660,12 +660,13 @@ func (c *Client) RenterFuse() (fi api.RenterFuseInfo, err error) {
 
 // RenterFuseMount uses the /renter/fuse/mount endpoint to mount a fuse
 // filesystem serving the provided siapath.
-func (c *Client) RenterFuseMount(mount string, siaPath modules.SiaPath, readOnly bool) (err error) {
+func (c *Client) RenterFuseMount(mount string, siaPath modules.SiaPath, opts modules.MountOptions) (err error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("siapath", sp)
 	values.Set("mount", mount)
-	values.Set("readonly", strconv.FormatBool(readOnly))
+	values.Set("readonly", strconv.FormatBool(opts.ReadOnly))
+	values.Set("allowother", strconv.FormatBool(opts.AllowOther))
 	err = c.post("/renter/fuse/mount", values.Encode(), nil)
 	return
 }
