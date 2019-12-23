@@ -48,9 +48,6 @@ func TestAccountCallDeposit(t *testing.T) {
 	if !after.Sub(before).Equals(diff) {
 		t.Fatal("Deposit was not credited")
 	}
-
-	// Verify the current risk is 0 after a clean shutdown.
-	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountMaxBalance verifies we can never deposit more than the account max
@@ -75,12 +72,9 @@ func TestAccountMaxBalance(t *testing.T) {
 	maxBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
 	exceedingBalance := maxBalance.Add(types.NewCurrency64(1))
 	err = callDeposit(am, accountID, exceedingBalance)
-	if err != ErrBalanceMaxExceeded {
+	if !errors.Contains(err, ErrBalanceMaxExceeded) {
 		t.Fatal(err)
 	}
-
-	// Verify the current risk is 0 after a clean shutdown.
-	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountCallWithdraw verifies we can withdraw from an ephemeral account.
@@ -159,9 +153,6 @@ func TestAccountCallWithdraw(t *testing.T) {
 	if !balance.Equals(expected) {
 		t.Fatal("Account balance was incorrect after spend", balance.HumanString())
 	}
-
-	// Verify the current risk is 0 after a clean shutdown.
-	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountCallWithdrawTimeout verifies withdrawals timeout if the account
@@ -188,9 +179,6 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	if err := callWithdraw(am, msg, sig); err != ErrBalanceInsufficient {
 		t.Fatal("Unexpected error: ", err)
 	}
-
-	// Verify the current risk is 0 after a clean shutdown.
-	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountExpiry verifies accounts expire and get pruned.
@@ -740,9 +728,6 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		t.Log(balance.HumanString())
 		t.Fatal("Unexpected account balance after withdrawals")
 	}
-
-	// Verify the current risk is 0 after a clean shutdown.
-	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountWithdrawalBlockMultiple will deposit a large sum in increments,
@@ -829,9 +814,6 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		t.Log(balance.String())
 		t.Fatal("Unexpected account balance")
 	}
-
-	// Verify the current risk is 0 after a clean shutdown.
-	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountMaxEphemeralAccountRisk tests the behaviour when the amount of
@@ -895,7 +877,7 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 			accPK := accountPKs[i]
 			accSK := accountSKs[i]
 			msg, sig := prepareWithdrawal(accPK, maxBalance, cbh, accSK)
-			if wErr := callWithdraw(am, msg, sig); wErr == errMaxRiskReached {
+			if wErr := callWithdraw(am, msg, sig); errors.Contains(wErr, errMaxRiskReached) {
 				atomic.AddUint64(&atomicMaxRiskReached, 1)
 			}
 		}(i)
@@ -905,9 +887,6 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 	if atomic.LoadUint64(&atomicMaxRiskReached) == 0 {
 		t.Fatal("Max ephemeral account balance risk was not reached")
 	}
-
-	// Verify the current risk is 0 after a clean shutdown.
-	testZeroCurrentRiskAfterShutdown(ht.host, t)
 }
 
 // TestAccountIndexRecycling ensures that the account index of expired accounts
@@ -1102,20 +1081,6 @@ func managedAccountIndexCheck(am *accountManager) string {
 	return "No duplicate indexes found"
 }
 
-// testZeroCurrentRiskAfterShutdown verifies current risk is 0 after cleanly
-// shutting down the host
-func testZeroCurrentRiskAfterShutdown(host *Host, t *testing.T) {
-	am := host.staticAccountManager
-	err := host.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	currentRisk := managedCurrentRisk(am)
-	if !currentRisk.IsZero() {
-		t.Fatalf("[%s] Current risk is %s after clean shutdown of host", t.Name(), currentRisk.HumanString())
-	}
-}
-
 // callWithdraw will perform the withdrawal using a timestamp for the priority
 func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signature) error {
 	return am.callWithdraw(msg, sig, time.Now().UnixNano())
@@ -1125,11 +1090,13 @@ func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signatu
 // commit, this commit will be called when the FC is fsynced to disk, in tests
 // we ignore that for most test cases
 func callDeposit(am *accountManager, id string, amount types.Currency) error {
-	err := am.callDeposit(id, amount)
-	if err != ErrBalanceMaxExceeded {
-		am.callCommitDeposit(amount)
+	doneChan := make(chan error)
+	err := am.callDeposit(id, amount, doneChan)
+	if err != nil {
+		return err
 	}
-	return err
+	close(doneChan)
+	return nil
 }
 
 // prepareWithdrawal prepares a withdrawal message, signs it using the provided

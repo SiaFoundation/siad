@@ -34,7 +34,7 @@ func TestAccountsReload(t *testing.T) {
 			Key:       pk[:],
 		}
 		expected := types.NewCurrency64(i)
-		err = am.callDeposit(id.String(), expected)
+		err = callDeposit(am, id.String(), expected)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +83,7 @@ func TestFingerprintsReload(t *testing.T) {
 	// Prepare an account
 	sk, spk := prepareAccount()
 	id := spk.String()
-	err = am.callDeposit(id, types.NewCurrency64(10))
+	err = callDeposit(am, id, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestFingerprintsRotate(t *testing.T) {
 	// Prepare account
 	sk, pk := prepareAccount()
 	id := pk.String()
-	err = am.callDeposit(id, types.NewCurrency64(2))
+	err = callDeposit(am, id, types.NewCurrency64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
