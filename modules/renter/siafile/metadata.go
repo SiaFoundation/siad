@@ -155,6 +155,11 @@ type (
 		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
 		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
 		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
+
+		// Sialink tracking. If this siafile is known to have sectors of any
+		// linkfiles, those linkfiles will be listed here. It should be noted
+		// that a single siafile can be responsible for tracking many linkfiles.
+		Sialinks []string `json:"sialinks"`
 	}
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
