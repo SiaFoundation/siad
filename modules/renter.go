@@ -77,6 +77,11 @@ const (
 	DefaultFilePerm = 0644
 )
 
+var (
+	// LinkfileSiaFolder is the folder where all of the linkfiles are stored.
+	LinkfileSiaFolder = NewGlobalSiaPath("/var/linkfiles")
+)
+
 // String returns the string value for the FilterMode
 func (fm FilterMode) String() string {
 	switch fm {

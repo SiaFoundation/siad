@@ -32,11 +32,6 @@ const (
 	LinkfileDefaultSectorParityPieces = 10
 )
 
-var (
-	// LinkfileSiaFolder is the folder where all of the linkfiles are stored.
-	LinkfileSiaFolder = modules.NewGlobalSiaPath("/var/linkfiles")
-)
-
 // linkfileLayout explains the layout information that is used for storing data
 // inside of the linkfile. The linkfileLayout always appears right at the front
 // of the linkfile.
@@ -261,6 +256,10 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 		return "", errors.AddContext(err, "failed to upload the file")
 	}
 	defer fileNode.Close()
+
+	// TODO: If the siaPath provided is not in LinkfileSiaFolder, log a message
+	// so the user can find the file later without needing to do a full system
+	// scna.
 
 	// Block until the file is available from the Sia network.
 	//
