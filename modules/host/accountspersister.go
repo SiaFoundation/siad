@@ -166,7 +166,11 @@ func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) er
 
 	// Write the data to disk
 	_, err = ap.accounts.WriteAt(accBytes, location(index))
-	return errors.AddContext(err, "failed to save account")
+	if err != nil {
+		panic("Unable to write the ephemeral account to disk.")
+	}
+
+	return nil
 }
 
 // callBatchDeleteAccount will overwrite the accounts at given indexes with
@@ -442,7 +446,7 @@ func (a *accountData) bytes() ([]byte, error) {
 }
 
 // save will persist the given fingerprint into the appropriate bucket
-func (fm *fingerprintManager) managedSave(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) (err error) {
+func (fm *fingerprintManager) managedSave(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
@@ -453,7 +457,7 @@ func (fm *fingerprintManager) managedSave(fp crypto.Hash, expiry, currentBlockHe
 		return ErrAccountPersist
 	}
 
-	// write into bucket depending on it's expiry
+	// Write into bucket depending on it's expiry
 	_, max := currentBucketRange(currentBlockHeight)
 	if expiry < max {
 		_, err := fm.current.Write(fpBytes)

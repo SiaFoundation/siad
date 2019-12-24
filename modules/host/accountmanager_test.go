@@ -421,8 +421,8 @@ func TestAccountRiskBenchmark(t *testing.T) {
 	// number of withdrawals and threads are multiplied by a factor as long as
 	// max risk is not reached.
 	acc := 100
-	withdrawals := 1000
-	threads := 16
+	withdrawals := 2
+	threads := 2
 
 	// Grab some settings
 	his := ht.host.InternalSettings()
@@ -458,7 +458,7 @@ func TestAccountRiskBenchmark(t *testing.T) {
 			select {
 			case <-doneChan:
 				break
-			case <-time.After(200 * time.Millisecond):
+			case <-time.After(100 * time.Millisecond):
 				for a := 0; a < acc; a++ {
 					deposit := atomic.LoadUint64(&atomicWithdrawn[a])
 					if err := callDeposit(am, accountIDs[a], types.NewCurrency64(deposit)); err != nil {
@@ -480,8 +480,13 @@ func TestAccountRiskBenchmark(t *testing.T) {
 			select {
 			case <-doneChan:
 				break
-			case <-time.After(1 * time.Second):
-				fmt.Printf("# withdrawals: %v\n", atomic.LoadUint64(&atomicWithdrawals))
+			case <-time.After(3 * time.Second):
+				wc := atomic.LoadUint64(&atomicWithdrawals)
+				am.mu.Lock()
+				cr := am.currentRisk.HumanString()
+				mr := maxRisk.HumanString()
+				am.mu.Unlock()
+				fmt.Printf("\n\tNum Withdrawals: %v\n\tCurrent Risk: %v\n\tMax Risk: %v\n\n", wc, cr, mr)
 			}
 		}
 	}()
@@ -531,13 +536,10 @@ func TestAccountRiskBenchmark(t *testing.T) {
 			break
 		}
 
-		am.mu.Lock()
-		fmt.Printf("Current Risk: %v\n", am.currentRisk.HumanString())
-		fmt.Printf("Max Risk: %v\n\n", maxRisk.HumanString())
-		am.mu.Unlock()
-
-		withdrawals *= 10
-		threads *= 2
+		withdrawals *= 2
+		if threads < 128 {
+			threads *= 2
+		}
 	}
 	doneChan <- struct{}{}
 

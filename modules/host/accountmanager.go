@@ -156,9 +156,9 @@ type (
 		balance            types.Currency
 		blockedWithdrawals blockedWithdrawalHeap
 
-		// resultChans is a queue on which the result of deposit or withdrawals
-		// are sent once the account's balance has been persisted to disk.
-		resultChans []chan error
+		// commitResultChans is a queue on which the result of commiting the
+		// account to disk is sent.
+		commitResultChans []chan error
 
 		// pendingRisk keeps track of how much of the account balance is
 		// unsaved. We keep track of this on a per account basis because the
@@ -187,17 +187,18 @@ type (
 	// executed but is stalled because either maxRisk is reached or the
 	// account's balance is insufficient.
 	blockedWithdrawal struct {
-		withdrawal *withdrawalMessage
-		result     chan error
-		priority   int64
+		withdrawal   *withdrawalMessage
+		priority     int64
+		commitResult chan error
 	}
 
 	// blockedDeposit represents a deposit call that is pending to be
 	// executed but is stalled because maxRisk is reached.
 	blockedDeposit struct {
-		id     string
-		amount types.Currency
-		result chan error
+		id           string
+		amount       types.Currency
+		commitResult chan error
+		syncResult   chan error
 	}
 
 	// blockedWithdrawalHeap is a heap of blocked withdrawal calls; the heap is
@@ -348,27 +349,18 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 	maxRisk := his.MaxEphemeralAccountRisk
 	maxBalance := his.MaxEphemeralAccountBalance
 
-	// Setup the result channel, once the account manager has persisted the
-	// account to disk it will send the result over this channel.
-	resultChan := make(chan error)
+	// Setup the commit result channel, once the account manager has persisted
+	// the account to disk it will send the result over this channel.
+	commitResultChan := make(chan error)
 
-	// Perform the actual deposit.
-	err := am.managedPerformDeposit(id, amount, maxRisk, maxBalance, cbh, syncChan, resultChan)
+	// Initiate the deposit.
+	err := am.managedPrepareDeposit(id, amount, maxRisk, maxBalance, cbh, commitResultChan, syncChan)
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
 
 	// Wait for the deposit result.
-	err = am.waitForDepositResult(resultChan)
-	if err != nil {
-		return err
-	}
-
-	// If the deposit was successful, we want to increase the current risk. This
-	// risk gets lowered as soon as the file contract is successfully fsynced.
-	// The RPC will signal this through the syncChan.
-	am.managedUpdateRiskAfterDeposit(amount, syncChan)
-	return nil
+	return am.staticWaitForDepositResult(commitResultChan)
 }
 
 // callWithdraw will process the given withdrawal message. This call will block
@@ -388,19 +380,19 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	his := am.h.InternalSettings()
 	maxRisk := his.MaxEphemeralAccountRisk
 
-	// Setup the result channel, once the account manager has performed the
-	// withdrawal it will send the result over this channel. Note we do not
+	// Setup the commit result channel, once the account manager has performed
+	// the withdrawal it will send the result over this channel. Note we do not
 	// await the fsync of the account in case of withdrawals.
-	resultChan := make(chan error)
+	commitResultChan := make(chan error)
 
-	// Perform the withdraw.
-	withdrawDone, err := am.managedPerformWithdraw(msg, fingerprint, priority, maxRisk, cbh, resultChan)
+	// Initiate the withdraw process.
+	withdrawDone, err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, cbh, commitResultChan)
 	if err != nil {
 		return errors.AddContext(err, "Withdraw failed")
 	}
 
 	if !withdrawDone {
-		return am.waitForWithdrawalResult(resultChan)
+		return am.staticWaitForWithdrawalResult(commitResultChan)
 	}
 	return nil
 }
@@ -437,9 +429,9 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 	}
 }
 
-// managedPerformDeposit will deposit the given amount into the account and
-// communicate the result over the given channel.
-func (am *accountManager) managedPerformDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, syncedChan, resultChan chan error) error {
+// managedPrepareDeposit performs a couple of steps in preparation of the
+// deposit. If everything checks out it will commit the deposit.
+func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, commitResultChan, syncChan chan error) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -456,53 +448,22 @@ func (am *accountManager) managedPerformDeposit(id string, amount, maxRisk, maxB
 	// lower the current risk, such as FC fsyncs or account persists.
 	if am.currentRisk.Cmp(maxRisk) > 0 {
 		am.blockedDeposits = append(am.blockedDeposits, &blockedDeposit{
-			id:     id,
-			amount: amount,
-			result: resultChan,
+			id:           id,
+			amount:       amount,
+			commitResult: commitResultChan,
+			syncResult:   syncChan,
 		})
 		return nil
 	}
 
-	// Update the account details
-	acc.balance = acc.balance.Add(amount)
-	acc.lastTxnTime = time.Now().Unix()
-
-	// Unblock withdrawals that were waiting for more funds.
-	acc.unblockWithdrawals(blockHeight)
-
-	// Persist the account
-	am.schedulePersist(acc, resultChan)
+	// Commit the deposit in memory and to disk.
+	am.commitDeposit(acc, amount, blockHeight, commitResultChan, syncChan)
 	return nil
 }
 
-// managedUpdateRiskAfterDeposit will update the current risk after a deposit
-// has been performed. The deposit amount is added to the host's current risk.
-// The host is at risk for this amount as long as the file contract has not been
-// fsynced. When the RPC is done with the FC fsync it will close the doneChan so
-// the account manager can lower the risk.
-func (am *accountManager) managedUpdateRiskAfterDeposit(deposit types.Currency, syncChan chan error) {
-	// The syncChan might already be closed, perform a quick check to verify
-	// this. If it is the case we do not need to update risk at all. This saves
-	// unnecessarily acquiring the lock.
-	select {
-	case <-syncChan:
-		return
-	default:
-	}
-
-	// Add the deposit to the outstanding risk
-	am.mu.Lock()
-	am.currentRisk = am.currentRisk.Add(deposit)
-	am.mu.Unlock()
-
-	go am.threadedUpdateRiskAfterSync(deposit, syncChan)
-}
-
-// managedPerformWithdraw will try and perform the given withdrawal. It will
-// ensure the fingerprint is unique and block in case the withdraw exceeds the
-// account balance, or we are at maxrisk. Important to note is that a withdrawal
-// does not await the fsync of the account to disk.
-func (am *accountManager) managedPerformWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, resultChan chan error) (bool, error) {
+// managedPrepareWithdraw performs a couple of steps in preparation of the
+// withdrawal. If everything checks out it will commit the withdrawal.
+func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (bool, error) {
 	amount, id, expiry := msg.amount, msg.account, msg.expiry
 
 	am.mu.Lock()
@@ -535,9 +496,9 @@ func (am *accountManager) managedPerformWithdraw(msg *withdrawalMessage, fp cryp
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
-			withdrawal: msg,
-			priority:   priority,
-			result:     resultChan,
+			withdrawal:   msg,
+			priority:     priority,
+			commitResult: commitResultChan,
 		})
 		return false, nil
 	}
@@ -548,23 +509,14 @@ func (am *accountManager) managedPerformWithdraw(msg *withdrawalMessage, fp cryp
 			return false, errMaxRiskReached // only for testing purposes
 		}
 		am.blockedWithdrawals = append(am.blockedWithdrawals, &blockedWithdrawal{
-			withdrawal: msg,
-			priority:   priority,
-			result:     resultChan,
+			withdrawal:   msg,
+			priority:     priority,
+			commitResult: commitResultChan,
 		})
 		return false, nil
 	}
 
-	delta := acc.withdraw(amount)
-
-	// Update the current risk and the account's pending risk. By allowing money
-	// to be withdrawn from the account, without awaiting the persist, the host
-	// is at risk at losing the balance delta. This is added to the risk now,
-	// but will get subtracted again when the account was persisted.
-	acc.pendingRisk = acc.pendingRisk.Add(delta)
-	am.currentRisk = am.currentRisk.Add(delta)
-
-	am.schedulePersist(acc, resultChan)
+	am.commitWithdrawal(acc, amount, blockHeight, commitResultChan)
 	return true, nil
 }
 
@@ -583,7 +535,7 @@ func (am *accountManager) managedAccountPersistInfo(id string) *accountPersistIn
 		index:   acc.index,
 		data:    acc.accountData(),
 		risk:    acc.pendingRisk,
-		waiting: len(acc.resultChans),
+		waiting: len(acc.commitResultChans),
 	}
 }
 
@@ -653,15 +605,15 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 		// expired in the mean time the current risk will already have been
 		// lowered.
 		am.currentRisk = am.currentRisk.Sub(accInfo.risk)
-	}
 
-	// Send the result to all resultChans that where waiting the moment we
-	// calculated the account data. If there are remaining resultChans after
-	// this operation, we signal this to the caller through the waiting return
-	// value. If there are resultChans still waiting, threadedSaveAccount will
-	// be called again.
-	acc.sendResult(err, accInfo.waiting)
-	waiting = len(acc.resultChans)
+		// Send the result to all commitResultChans that where waiting the
+		// moment we calculated the account data. If there are remaining
+		// commitResultChans after this operation, we signal this to the caller
+		// through the waiting return value. If there are channels still
+		// waiting, threadedSaveAccount will be called again.
+		acc.sendResult(err, accInfo.waiting)
+		waiting = len(acc.commitResultChans)
+	}
 
 	// Risk is lowered - see if we can unblock deposits and/or withdrawals. We
 	// unblock in this particular order to ensure deposits are unblocked first.
@@ -682,12 +634,73 @@ func (am *accountManager) threadedSaveFingerprint(fp crypto.Hash, expiry, cbh ty
 	}
 }
 
-// schedulePersist will append the resultChan to the persist queue and call
-// threadedSaveAccount for the given id. This way persists are happening in a
-// FIFO fashion, ensuring an account is never overwritten by older account data.
-func (am *accountManager) schedulePersist(acc *account, resultChan chan error) {
-	acc.resultChans = append(acc.resultChans, resultChan)
-	if len(acc.resultChans) > 1 {
+// commitDeposit deposits the amount to the account balance and schedules a
+// persist to save the account data to disk.
+func (am *accountManager) commitDeposit(a *account, amount types.Currency, blockHeight types.BlockHeight, commitResultChan, syncChan chan error) {
+	// Update the account details
+	a.balance = a.balance.Add(amount)
+	a.lastTxnTime = time.Now().Unix()
+
+	// As soon as the account balance has been updated in memory, we want to
+	// increase the host's current risk by the deposit amount. When the file
+	// contracts get fsynced, the sync chan will close. At that point we will
+	// lower the current risk by the deposit amount.
+	am.updateRiskAfterDeposit(amount, syncChan)
+
+	// Unblock withdrawals that were waiting for more funds.
+	a.unblockWithdrawals(blockHeight)
+
+	// Persist the account
+	am.schedulePersist(a, commitResultChan)
+}
+
+// commitWithdrawal withdraws the amount from the account balance and schedules
+// a persist to save the account data to disk.
+func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) {
+	before := a.balance
+
+	// Update the account details
+	a.balance = a.balance.Sub(amount)
+	a.lastTxnTime = time.Now().Unix()
+
+	// Update the current risk and the account's pending risk. By allowing money
+	// to be withdrawn from the account, without awaiting the persist, the host
+	// is at risk at losing the balance delta. This is added to the risk now,
+	// but will get subtracted again when the account was persisted.
+	delta := before.Sub(a.balance)
+	a.pendingRisk = a.pendingRisk.Add(delta)
+	am.currentRisk = am.currentRisk.Add(delta)
+
+	am.schedulePersist(a, commitResultChan)
+}
+
+// managedUpdateRiskAfterDeposit will update the current risk after a deposit
+// has been performed. The deposit amount is added to the host's current risk.
+// The host is at risk for this amount as long as the file contract has not been
+// fsynced. When the RPC is done with the FC fsync it will close the doneChan so
+// the account manager can lower the risk.
+func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncChan chan error) {
+	// The syncChan might already be closed, perform a quick check to verify
+	// this. If it is the case we do not need to update risk at all. This saves
+	// unnecessarily acquiring the lock.
+	select {
+	case <-syncChan:
+		return
+	default:
+	}
+
+	// Add the deposit to the outstanding risk
+	am.currentRisk = am.currentRisk.Add(deposit)
+	go am.threadedUpdateRiskAfterSync(deposit, syncChan)
+}
+
+// schedulePersist will append the commitResultChan to the persist queue and
+// call threadedSaveAccount for the given id. This way persists are happening in
+// a FIFO fashion, ensuring an account is never overwritten by older account
+// data.
+func (am *accountManager) schedulePersist(acc *account, commitResultChan chan error) {
+	acc.commitResultChans = append(acc.commitResultChans, commitResultChan)
+	if len(acc.commitResultChans) > 1 {
 		return
 	}
 
@@ -717,19 +730,13 @@ func (am *accountManager) unblockDeposits(allowance types.Currency, cbh types.Bl
 		}
 
 		if allowance.Cmp(amount) < 0 {
+			// Allowance ran out
 			numUnblocked = i
 			break
 		}
 
-		// Update the account details
-		acc.balance = acc.balance.Add(amount)
-		acc.lastTxnTime = time.Now().Unix()
-
-		// Unblock withdrawals that were waiting for more funds
-		acc.unblockWithdrawals(cbh)
-
-		// Persist the account
-		am.schedulePersist(acc, bd.result)
+		// Commit the deposit
+		am.commitDeposit(acc, amount, cbh, bd.commitResult, bd.syncResult)
 		allowance = allowance.Sub(amount)
 	}
 	am.blockedDeposits = am.blockedDeposits[numUnblocked:]
@@ -754,7 +761,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, cbh types
 		// have been changed since the withdrawal was blocked, potentially
 		// pushing it over its expiry.
 		if err := bw.withdrawal.validateExpiry(cbh); err != nil {
-			bw.result <- err
+			bw.commitResult <- err
 			continue
 		}
 
@@ -764,19 +771,13 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, cbh types
 		}
 
 		if allowance.Cmp(amount) < 0 {
+			// Allowance ran out
 			numUnblocked = i
 			break
 		}
 
-		// Update the current risk and the account's pending risk introduced by
-		// this withdrawal. The host is at risk for this amount because the
-		// account has not yet been persisted to disk.
-		delta := acc.withdraw(amount)
-		acc.pendingRisk = acc.pendingRisk.Add(delta)
-		am.currentRisk = am.currentRisk.Add(delta)
-
-		am.schedulePersist(acc, bw.result)
-
+		// Commit the withdrawal
+		am.commitWithdrawal(acc, bw.withdrawal.amount, cbh, bw.commitResult)
 		allowance = allowance.Sub(amount)
 	}
 	am.blockedWithdrawals = am.blockedWithdrawals[numUnblocked:]
@@ -808,7 +809,7 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 			defer am.h.tg.Done()
 
 			// Expire accounts that have been inactive for too long. Keep track
-			// of the indexes that got expired
+			// of the indexes that got expired.
 			expired := am.managedExpireAccounts(accountExpiryTimeout)
 			if len(expired) == 0 {
 				return
@@ -841,11 +842,11 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 	}
 }
 
-// waitForWithdrawalResult will block until it receives a message on the given
-// result channel, or until it either times out or receives a stop signal.
-func (am *accountManager) waitForWithdrawalResult(resultChan chan error) error {
+// staticWaitForWithdrawalResult will block until it receives a message on the
+// given result channel, or until it either times out or receives a stop signal.
+func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
 	select {
-	case err := <-resultChan:
+	case err := <-commitResultChan:
 		return errors.AddContext(err, "blocked withdrawal failed")
 	case <-time.After(blockedWithdrawalTimeout):
 		return ErrBalanceInsufficient
@@ -854,11 +855,11 @@ func (am *accountManager) waitForWithdrawalResult(resultChan chan error) error {
 	}
 }
 
-// waitForDepositResult will block until it receives a message on the given
-// result channel, or until it receives a stop signal.
-func (am *accountManager) waitForDepositResult(resultChan chan error) error {
+// staticWaitForDepositResult will block until it receives a message on the
+// given result channel, or until it receives a stop signal.
+func (am *accountManager) staticWaitForDepositResult(commitResultChan chan error) error {
 	select {
-	case err := <-resultChan:
+	case err := <-commitResultChan:
 		return errors.AddContext(err, "deposit failed")
 	case <-am.h.tg.StopChan():
 		return ErrDepositCancelled
@@ -879,8 +880,9 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 	for id, acc := range am.accounts {
 		if force || now-acc.lastTxnTime > threshold {
 			// Signal all waiting result chans this account has expired
-			for _, c := range acc.resultChans {
+			for _, c := range acc.commitResultChans {
 				c <- ErrAccountExpired
+				close(c)
 			}
 			am.currentRisk = am.currentRisk.Sub(acc.pendingRisk)
 			delete(am.accounts, id)
@@ -901,7 +903,7 @@ func (am *accountManager) openAccount(id string) *account {
 		id:                 id,
 		index:              am.accountBifield.assignFreeIndex(),
 		blockedWithdrawals: make(blockedWithdrawalHeap, 0),
-		resultChans:        make([]chan error, 0),
+		commitResultChans:  make([]chan error, 0),
 	}
 	am.accounts[id] = acc
 	return acc
@@ -1055,29 +1057,14 @@ func (a *account) withdrawalExceedsBalance(withdrawal types.Currency) bool {
 // sendResult will send the given result to the result channels that are waiting
 func (a *account) sendResult(result error, waiting int) {
 	for i := 0; i < waiting; i++ {
-		resultChan := a.resultChans[i]
+		commitResultChan := a.commitResultChans[i]
+		err := errors.AddContext(result, ErrAccountPersist.Error())
 		select {
-		case resultChan <- errors.AddContext(result, ErrAccountPersist.Error()):
-			close(resultChan)
+		case commitResultChan <- err:
 		default:
-			close(resultChan)
 		}
 	}
-	a.resultChans = a.resultChans[waiting:]
-}
-
-// withdraw will subtract the given amount from the balance and properly adjust
-// the risk. It returns the balance delta.
-func (a *account) withdraw(amount types.Currency) types.Currency {
-	before := a.balance
-
-	// Update the account details
-	a.balance = a.balance.Sub(amount)
-	a.lastTxnTime = time.Now().Unix()
-
-	// Return balance delta
-	delta := before.Sub(a.balance)
-	return delta
+	a.commitResultChans = a.commitResultChans[waiting:]
 }
 
 // unblockWithdrawals goes through all blocked withdrawals and unblocks the ones
@@ -1088,23 +1075,23 @@ func (a *account) unblockWithdrawals(currentBlockHeight types.BlockHeight) {
 		bw := a.blockedWithdrawals.Pop().(*blockedWithdrawal)
 		if err := bw.withdrawal.validateExpiry(currentBlockHeight); err != nil {
 			select {
-			case bw.result <- err:
-				close(bw.result)
+			case bw.commitResult <- err:
+				close(bw.commitResult)
 			default:
-				close(bw.result)
 			}
-
 			continue
 		}
 
-		// requeue if balance is insufficient
+		// Requeue if balance is insufficient
 		if bw.withdrawal.amount.Cmp(a.balance) > 0 {
 			a.blockedWithdrawals.Push(*bw)
 			break
 		}
 
-		a.withdraw(bw.withdrawal.amount)
+		// Update the account details
+		a.balance = a.balance.Sub(bw.withdrawal.amount)
+		a.lastTxnTime = time.Now().Unix()
 
-		close(bw.result)
+		close(bw.commitResult)
 	}
 }
