@@ -1027,9 +1027,8 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected upload")
 		}
-		// User provdies setting in terms of period, need to normalize to
-		// per-block.
-		expectedUpload /= uint64(allowance.Period)
+		// User set field in terms of period, need to normalize to per-block.
+		expectedUpload /= uint64(period)
 	}
 	req = req.WithExpectedUpload(expectedUpload)
 
@@ -1067,7 +1066,7 @@ consider repair bandwidth separately.`)
 			die("Could not parse expected download")
 		}
 		// User set field in terms of period, need to normalize to per-block.
-		expectedDownload /= uint64(allowance.Period)
+		expectedDownload /= uint64(period)
 	}
 	req = req.WithExpectedDownload(expectedDownload)
 
