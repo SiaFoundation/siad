@@ -1397,7 +1397,7 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 			return
 		}
 	}
-	files, err := api.renter.FileList(modules.RootSiaPath(), true, c)
+	files, err := api.renter.FileList(modules.UserSiaPath(), true, c)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

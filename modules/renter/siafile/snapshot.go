@@ -70,7 +70,7 @@ func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 	sf.mu.RLock()
 	if sf.deleted {
 		sf.mu.RUnlock()
-		return nil, errors.New("can't copy deleted SiaFile")
+		return nil, errors.AddContext(ErrDeleted, "can't copy deleted SiaFile")
 	}
 	// Open file.
 	f, err := os.Open(sf.siaFilePath)

@@ -27,6 +27,10 @@ var (
 	// ErrExists is returned when a file or folder already exists at a given
 	// location.
 	ErrExists = errors.New("a file or folder already exists at the specified path")
+
+	// ErrDeleteFileIsDir is returned when the file delete method is used but
+	// the filename corresponds to a directory
+	ErrDeleteFileIsDir = errors.New("cannot delete file, file is a directory")
 )
 
 type (

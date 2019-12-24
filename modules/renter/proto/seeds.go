@@ -42,14 +42,14 @@ type (
 )
 
 type (
-	// contractIdentifier is an identifer which is stored in the arbitrary data
+	// contractIdentifier is an identifier which is stored in the arbitrary data
 	// section of each contract.
 	contractIdentifier [32]byte
 	// contractIdentifierSigningKey is the key used to sign a
 	// contractIdentifier to verify that the identifier was created by the
 	// renter.
 	contractIdentifierSigningKey [64]byte
-	// ContractSignedIdentifier is an identifer with a prefix and appended
+	// ContractSignedIdentifier is an identifier with a prefix and appended
 	// signature, ready to be stored in the arbitrary data section of a
 	// transaction.
 	ContractSignedIdentifier [FCSignedIdentiferSize]byte
@@ -176,7 +176,7 @@ func PrefixedSignedIdentifier(renterSeed EphemeralRenterSeed, txn types.Transact
 	marshaledKey := encoding.Marshal(hostKey)
 	padding := threefish.BlockSize - len(marshaledKey)%threefish.BlockSize
 	encryptedKey := sk.EncryptBytes(append(marshaledKey, make([]byte, padding)...))
-	// Create the signed identifer object.
+	// Create the signed identifier object.
 	var csi ContractSignedIdentifier
 	copy(csi[:16], modules.PrefixNonSia[:])
 	copy(csi[16:48], identifier[:])

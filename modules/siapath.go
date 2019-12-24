@@ -53,6 +53,17 @@ func NewSiaPath(s string) (SiaPath, error) {
 	return newSiaPath(s)
 }
 
+// NewGlobalSiaPath can be used to create a global var which is a SiaPath. If
+// there is an error creating the SiaPath, the function will panic, making this
+// function unsuitable for typical use.
+func NewGlobalSiaPath(s string) SiaPath {
+	sp, err := NewSiaPath(s)
+	if err != nil {
+		panic("error creating global siapath: " + err.Error())
+	}
+	return sp
+}
+
 // RandomSiaPath returns a random SiaPath created from 20 bytes of base32
 // encoded entropy.
 func RandomSiaPath() (sp SiaPath) {
@@ -136,6 +147,11 @@ func (sp SiaPath) Dir() (SiaPath, error) {
 // Equals compares two SiaPath types for equality
 func (sp SiaPath) Equals(siaPath SiaPath) bool {
 	return sp.Path == siaPath.Path
+}
+
+// IsEmpty returns true if the siapath is equal to the nil value
+func (sp SiaPath) IsEmpty() bool {
+	return sp.Equals(SiaPath{})
 }
 
 // IsRoot indicates whether or not the SiaPath path is a root directory siapath

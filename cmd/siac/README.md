@@ -21,7 +21,7 @@ Common tasks
 * `siac consensus` view block height
 
 Wallet:
-* `siac wallet init [-p]` initilize a wallet
+* `siac wallet init [-p]` initialize a wallet
 * `siac wallet unlock` unlock a wallet
 * `siac wallet balance` retrieve wallet balance
 * `siac wallet address` get a wallet address

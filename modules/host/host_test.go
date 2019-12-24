@@ -23,11 +23,9 @@ import (
 // A hostTester is the helper object for host testing, including helper modules
 // and methods for controlling synchronization.
 type hostTester struct {
-	cs      modules.ConsensusSet
-	gateway modules.Gateway
-	miner   modules.TestMiner
-	// renter    modules.Renter
-	renting   bool
+	cs        modules.ConsensusSet
+	gateway   modules.Gateway
+	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
 	walletKey crypto.CipherKey

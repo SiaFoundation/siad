@@ -240,7 +240,7 @@ The Persistence subsystem is used to persist Contractor data across sessions.
 Currently it uses the Sia persist package. Prior to v1.3.0 the persistence
 subsystem used a journal system which is no longer used. If, on startup, this
 old journal system is found, the Contractor will convert it into the new
-Persistence subsytem.
+Persistence subsystem.
 
 ### Inbound Complexities
 - `save` is called from the [Allowance](#allowance-subsystem), and
@@ -330,5 +330,5 @@ overspending its allowance.
 
 If the contractor were to simply create new contracts while other contracts were
 still unconfirmed, it would be possible to overspend the set allowance. When the
-watchdog sweeps its inputs succesfully, the contract will be marked as
+watchdog sweeps its inputs successfully, the contract will be marked as
 double-spent in which case the allowance funds are returned for further use.

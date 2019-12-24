@@ -2,7 +2,6 @@ package siafile
 
 import (
 	"errors"
-	"io/ioutil"
 	"os"
 	"sync"
 
@@ -56,20 +55,6 @@ func newFaultyDiskDependency(writeLimit int) *dependencyFaultyDisk {
 	}
 }
 
-func (d *dependencyFaultyDisk) create(path string) (modules.File, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.tryFail() {
-		return nil, errDiskFault
-	}
-
-	f, err := os.Create(path)
-	if err != nil {
-		return nil, err
-	}
-	return d.newFaultyFile(f), nil
-}
-
 // disabled allows the caller to temporarily disable the dependency
 func (d *dependencyFaultyDisk) disable() {
 	d.mu.Lock()
@@ -105,18 +90,6 @@ func (d *dependencyFaultyDisk) tryFail() bool {
 // newFaultyFile creates a new faulty file around the provided file handle.
 func (d *dependencyFaultyDisk) newFaultyFile(f *os.File) modules.File {
 	return &faultyFile{d: d, file: f}
-}
-func (*dependencyFaultyDisk) readFile(path string) ([]byte, error) {
-	return ioutil.ReadFile(path)
-}
-func (d *dependencyFaultyDisk) remove(path string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if d.tryFail() {
-		return nil
-	}
-	return os.Remove(path)
 }
 
 // reset resets the failDenominator and the failed flag of the dependency

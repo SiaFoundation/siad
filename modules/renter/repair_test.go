@@ -1238,7 +1238,7 @@ func TestRandomStuckFileRegression(t *testing.T) {
 
 	// Set the root directories metadata to have a large number of aggregate
 	// stuck chunks. Since there is only 1 stuck chunk this was causing the
-	// likelyhood of the stuck file being chosen to be very low.
+	// likelihood of the stuck file being chosen to be very low.
 	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)

@@ -1,7 +1,6 @@
 package host
 
 import (
-	"errors"
 	"net"
 	"time"
 
@@ -9,12 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-)
-
-var (
-	// errRenewDoesNotExtend is returned if a file contract renewal is
-	// presented which does not extend the existing file contract.
-	errRenewDoesNotExtend = errors.New("file contract renewal does not extend the existing file contract")
 )
 
 // renewBaseCollateral returns the base collateral on the storage in the file
