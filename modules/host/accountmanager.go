@@ -524,9 +524,9 @@ func (am *accountManager) managedPerformWithdraw(msg *withdrawalMessage, fp cryp
 	if err := am.h.tg.Add(); err != nil {
 		return false, ErrWithdrawalCancelled
 	}
-	func() {
+	go func() {
 		defer am.h.tg.Done()
-		go am.threadedSaveFingerprint(fp, expiry, blockHeight)
+		am.threadedSaveFingerprint(fp, expiry, blockHeight)
 	}()
 
 	// Open the account, create if it does not exist yet
