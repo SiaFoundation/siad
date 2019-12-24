@@ -1,8 +1,9 @@
 package host
 
 import (
+	crand "crypto/rand"
+	"encoding/binary"
 	"fmt"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"math"
 	"math/rand"
 	"sort"
@@ -11,6 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -1108,7 +1112,7 @@ func prepareWithdrawal(id string, amount types.Currency, expiry types.BlockHeigh
 		account: id,
 		expiry:  expiry,
 		amount:  amount,
-		nonce:   uint64(rand.Int()),
+		nonce:   randuint64(),
 	}
 	hash := crypto.HashObject(*msg)
 	sig := crypto.SignHash(hash, sk)
@@ -1124,4 +1128,13 @@ func prepareAccount() (crypto.SecretKey, types.SiaPublicKey) {
 		Key:       pk[:],
 	}
 	return sk, spk
+}
+
+// randuint64 generates a random uint64
+func randuint64() uint64 {
+	var b [8]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		build.Critical("could not generate random uint64")
+	}
+	return uint64(binary.LittleEndian.Uint64(b[:]))
 }
