@@ -207,8 +207,11 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 
 // callSaveFingerprint writes the fingerprint to disk
 func (ap *accountsPersister) callSaveFingerprint(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) error {
-	return errors.AddContext(ap.fingerprints.managedSave(fp, expiry,
-		currentBlockHeight), "could not save fingerprint")
+	err := ap.fingerprints.managedSave(fp, expiry, currentBlockHeight)
+	if err != nil {
+		return errors.AddContext(err, "could not save fingerprint")
+	}
+	return nil
 }
 
 // callLoadData loads the accounts data from disk and returns it
@@ -445,7 +448,7 @@ func (a *accountData) bytes() ([]byte, error) {
 	return accBytes, nil
 }
 
-// save will persist the given fingerprint into the appropriate bucket
+// managedSave will persist the given fingerprint into the appropriate bucket
 func (fm *fingerprintManager) managedSave(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()

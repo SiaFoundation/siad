@@ -27,7 +27,7 @@ var (
 	// the account has expired in the mean time.
 	ErrAccountExpired = errors.New("ephemeral account expired")
 
-	// ErrBalanceInsufficient occurs when a withdrawal could not be succesfully
+	// ErrBalanceInsufficient occurs when a withdrawal could not be successfully
 	// completed because the account balance was insufficient.
 	ErrBalanceInsufficient = errors.New("ephemeral account balance was insufficient")
 
@@ -156,7 +156,7 @@ type (
 		balance            types.Currency
 		blockedWithdrawals blockedWithdrawalHeap
 
-		// commitResultChans is a queue on which the result of commiting the
+		// commitResultChans is a queue on which the result of committing the
 		// account to disk is sent.
 		commitResultChans []chan error
 
@@ -169,7 +169,7 @@ type (
 		// pending risk is lowered.
 		pendingRisk types.Currency
 
-		// lastTxnTime is the timestamp of the last transaction that occured
+		// lastTxnTime is the timestamp of the last transaction that occurred
 		// involving the ephemeral account. A transaction can be either a
 		// deposit or withdrawal from the ephemeral account. We keep track of
 		// this timestamp to allow pruning ephemeral accounts that have been
@@ -956,7 +956,7 @@ func (ab *accountBifield) buildIndex(accounts map[string]*account) {
 		}
 	}
 
-	// Add empty bitfields to accomodate all account indexes
+	// Add empty bitfields to accommodate all account indexes
 	n := int(math.Floor(float64(maxIndex)/64)) + 1
 	*ab = make([]uint64, n)
 
