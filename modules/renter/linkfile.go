@@ -84,9 +84,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 
 	// Check that the link follows the restrictions of the current software
 	// capabilities.
-	//
-	// TODO: Some of these restrictions will be lifted as the full linkfile spec
-	// is completed.
 	if ld.Version != 1 {
 		return modules.LinkfileMetadata{}, nil, errors.New("link is not version 1")
 	}
@@ -98,11 +95,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	}
 
 	// Fetch the actual file.
-	//
-	// TODO: If offset and len are requested, fetch both the header as well as
-	// the offset+len pieces. When fanout is supported, offset+len could easily
-	// be deep in the fanout, so there might be necessity to go digging for the
-	// right merkle roots.
 	baseSector, err := r.DownloadByRoot(ld.MerkleRoot, 0, headerSize+ld.FileSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
@@ -123,11 +115,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	}
 	offset += metadataSize
 
-	// TODO: Parse out the fanout.
-
-	// TODO: If there is intra-sector sharding, that code needs to be applied
-	// here.
-
 	return lfm, baseSector[offset : headerSize+ld.FileSize], nil
 }
 
@@ -136,9 +123,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 // the full original file and metadata.
 func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.SiaPath, overwriteExistingFile bool, fileDataReader io.Reader) (modules.Sialink, error) {
 	// Input checks.
-	//
-	// TODO: Some of these restrictions can be lifted as the full set of
-	// features are added to linkfiles.
 	if fileDataReader == nil {
 		return "", errors.New("need to provide a stream of upload data")
 	}
@@ -167,15 +151,6 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	if len(mlfm) > maxMetaSize {
 		return "", fmt.Errorf("encoded metadata size of %v exceeds the maximum of %v", len(mlfm), maxMetaSize)
 	}
-
-	// TODO: Compute fanout information based on the supplied redundancy. When
-	// we start doing a full fanout actually the entire first chunk is going to
-	// need to be kept in memory (and all subsequent fanout chunks) while the
-	// rest of the file uploads. The overhead here isn't too bad though, at
-	// worst each 4 KiB of memory points to 4 MiB of streamed uploaded data. At
-	// best it's more like each 4 KiB of memory points to 100 MiB of streamed
-	// uploaded data; for reasonably sized files and reasonable parallelism, the
-	// viewnode will not run out of memory.
 
 	// Compute the layout bytes for the sector.
 	ll := linkfileLayout{
@@ -256,10 +231,6 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 		return "", errors.AddContext(err, "failed to upload the file")
 	}
 	defer fileNode.Close()
-
-	// TODO: If the siaPath provided is not in LinkfileSiaFolder, log a message
-	// so the user can find the file later without needing to do a full system
-	// scna.
 
 	// Block until the file is available from the Sia network.
 	//
