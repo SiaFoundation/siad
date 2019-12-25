@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -24,23 +25,9 @@ type LinkData struct {
 	ParityPieces uint8
 }
 
-// String converts LinkData to a string.
-func (ld LinkData) String() string {
-	raw := make([]byte, 47)
-	raw[0] = byte(ld.Version)
-	copy(raw[1:], ld.MerkleRoot[:])
-	binary.LittleEndian.PutUint32(raw[33:], ld.HeaderSize)
-	binary.LittleEndian.PutUint64(raw[37:], ld.FileSize)
-	raw[45] = byte(ld.DataPieces)
-	raw[46] = byte(ld.ParityPieces)
-
-	// Encode to base64.
-	bufBytes := make([]byte, 0, 72)
-	buf := bytes.NewBuffer(bufBytes)
-	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
-	encoder.Write(raw)
-	encoder.Close()
-	return "sia://" + buf.String()
+// LoadSialink returns the linkdata associated with an input sialink.
+func (ld LinkData) LoadSialink(s modules.Sialink) error {
+	return ld.LoadString(string(s))
 }
 
 // LoadString converts from a string and loads the result into ld.
@@ -56,12 +43,12 @@ func (ld *LinkData) LoadString(s string) error {
 	}
 
 	// Decode the raw bytes into a LinkData.
-	ld.Version = uint8(raw[0])
+	ld.Version = raw[0]
 	copy(ld.MerkleRoot[:], raw[1:])
 	ld.HeaderSize = binary.LittleEndian.Uint32(raw[33:])
 	ld.FileSize = binary.LittleEndian.Uint64(raw[37:])
-	ld.DataPieces = uint8(raw[45])
-	ld.ParityPieces = uint8(raw[46])
+	ld.DataPieces = raw[45]
+	ld.ParityPieces = raw[46]
 
 	if ld.DataPieces == 0 {
 		return errors.New("data pieces on sialink should not be set to zero")
@@ -70,4 +57,29 @@ func (ld *LinkData) LoadString(s string) error {
 		return errors.New("parity pieces on sialink should not be set to zero")
 	}
 	return nil
+}
+
+// Sialink returns the type safe 'sialink' of the link data, which is just a
+// typecast string.
+func (ld LinkData) Sialink() modules.Sialink {
+	return modules.Sialink(ld.String())
+}
+
+// String converts LinkData to a string.
+func (ld LinkData) String() string {
+	raw := make([]byte, 47)
+	raw[0] = ld.Version
+	copy(raw[1:], ld.MerkleRoot[:])
+	binary.LittleEndian.PutUint32(raw[33:], ld.HeaderSize)
+	binary.LittleEndian.PutUint64(raw[37:], ld.FileSize)
+	raw[45] = ld.DataPieces
+	raw[46] = ld.ParityPieces
+
+	// Encode to base64.
+	bufBytes := make([]byte, 0, 72)
+	buf := bytes.NewBuffer(bufBytes)
+	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
+	encoder.Write(raw)
+	encoder.Close()
+	return "sia://" + buf.String()
 }

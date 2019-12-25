@@ -717,8 +717,9 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 // of the metadata, an offset an len isn't going to help so much b/c we don't
 // know where the actual file offset starts. We may need to increase the size of
 // the sialink :(
-func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
-	trimmed := strings.TrimPrefix(sialink, "sia://")
+func (c *Client) RenterSialinkGet(sialink modules.Sialink) (resp []byte, err error) {
+	str := string(sialink)
+	trimmed := strings.TrimPrefix(str, "sia://")
 	getQuery := fmt.Sprintf("/renter/sialink/%s", trimmed)
 	_, resp, err = c.getRawResponse(getQuery)
 	return
@@ -728,7 +729,7 @@ func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
 // The resulting sialink is returned along with an error.
 //
 // TODO: add support for all of the linkfile params that are not yet supported.
-func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (string, error) {
+func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (modules.Sialink, error) {
 	// Strip any leading slash from the siaPath.
 	siaPath = strings.TrimPrefix(siaPath, "/")
 

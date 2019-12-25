@@ -26,6 +26,8 @@ func TestLinkFormat(t *testing.T) {
 	}
 	if ldDecoded != ld {
 		t.Error("encoded data and decoded data do not match")
+		t.Error(ld)
+		t.Error(ldDecoded)
 	}
 
 	// TODO: Loop to test a bunch of different random inputs to make sure things

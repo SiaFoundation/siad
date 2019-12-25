@@ -231,6 +231,11 @@ type (
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType
 	}
+
+	// Sialink is a specific type of string that refers to a sialink. A sialink
+	// is always prefixed by 'sia://', and can be used to fetch data from the
+	// Sia network knowing nothing more than the root of the data.
+	Sialink string
 )
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
@@ -431,7 +436,7 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
-	Sialinks         []string          `json:"sialinks"`
+	Sialinks         []Sialink         `json:"sialinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
@@ -928,7 +933,7 @@ type Renter interface {
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
 	// DownloadSialink will fetch a file from the Sia network using the sialink.
-	DownloadSialink(sialink string) (LinkfileMetadata, []byte, error)
+	DownloadSialink(sialink Sialink) (LinkfileMetadata, []byte, error)
 
 	// UploadLinkfile will upload data to the Sia network from a reader and
 	// create a linkfile, returning the sialink that can be used to access the
@@ -938,7 +943,7 @@ type Renter interface {
 	// linkfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(lfm LinkfileMetadata, siaPath SiaPath, overwriteExistingFile bool, filedata io.Reader) (string, error)
+	UploadLinkfile(lfm LinkfileMetadata, siaPath SiaPath, overwriteExistingFile bool, filedata io.Reader) (Sialink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

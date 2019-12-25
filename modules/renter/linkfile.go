@@ -64,7 +64,7 @@ func (ll *linkfileLayout) decode(b []byte) {
 	ll.filesize = binary.LittleEndian.Uint64(b[offset:])
 	offset += 8
 	ll.metadataSize = binary.LittleEndian.Uint32(b[offset:])
-	offset += 2
+	offset += 4
 	ll.fanoutDataPieces = b[offset]
 	offset += 1
 	ll.fanoutParityPieces = b[offset]
@@ -73,10 +73,10 @@ func (ll *linkfileLayout) decode(b []byte) {
 
 // DownloadSialink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte, error) {
+func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata, []byte, error) {
 	// Parse the provided link into a usable structure for fetching downloads.
 	var ld LinkData
-	err := ld.LoadString(link)
+	err := ld.LoadSialink(link)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
 	}
@@ -134,7 +134,7 @@ func (r *Renter) DownloadSialink(link string) (modules.LinkfileMetadata, []byte,
 // UploadLinkfile will upload the provided data with the provided name and
 // metadata, returning a sialink which can be used by any viewnode to recover
 // the full original file and metadata.
-func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.SiaPath, overwriteExistingFile bool, fileDataReader io.Reader) (string, error) {
+func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.SiaPath, overwriteExistingFile bool, fileDataReader io.Reader) (modules.Sialink, error) {
 	// Input checks.
 	//
 	// TODO: Some of these restrictions can be lifted as the full set of
@@ -289,7 +289,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 		DataPieces:   lfm.BaseSectorDataPieces,
 		ParityPieces: lfm.BaseSectorParityPieces,
 	}
-	sialink := ld.String()
+	sialink := ld.Sialink()
 
 	// Add the sialink toe the Siafile.
 	err = fileNode.AddSialink(sialink)
