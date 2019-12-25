@@ -1975,6 +1975,7 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		ErasureCode: ec,
 		Force:       force,
 		Repair:      repair,
+		CipherType:  crypto.TypeDefaultRenter,
 	}
 	err = api.renter.UploadStreamFromReader(up, req.Body)
 	if err != nil {
