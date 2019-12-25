@@ -2,6 +2,8 @@ package renter
 
 import (
 	"gitlab.com/NebulousLabs/Sia/modules"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // DeleteFile removes a file entry from the renter and deletes its data from
@@ -16,7 +18,7 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	// Perform the delete operation.
 	err = r.staticFileSystem.DeleteFile(siaPath)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to delete siafile from filesystem")
 	}
 
 	// Update the filesystem metadata.
