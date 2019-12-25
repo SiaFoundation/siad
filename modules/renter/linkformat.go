@@ -50,6 +50,15 @@ func (ld *LinkData) LoadString(s string) error {
 	ld.DataPieces = raw[45]
 	ld.ParityPieces = raw[46]
 
+	// Do some sanity checks on the version, the data pieces, and the parity
+	// pieces. Having these checks in place ensures that data was not lost at
+	// the front or end of the sialink - the first byte is not allowed to be
+	// zero, and the final two bytes are also not allowed to be zero. If for
+	// some reason those were omitted, these errors should catch that the
+	// sialink has not been copied correctly.
+	if ld.Version == 0 {
+		return errors.New("version of sialink is not allowed to be zero")
+	}
 	if ld.DataPieces == 0 {
 		return errors.New("data pieces on sialink should not be set to zero")
 	}
