@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -40,7 +41,7 @@ func TestLinkfile(t *testing.T) {
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload linkfile client call.
-	sialink, err := r.RenterLinkfilePost(reader, "testOne", "linkfiles/testOne")
+	sialink, err := r.RenterLinkfilePost(reader, "testOne", "testOne")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,5 +56,24 @@ func TestLinkfile(t *testing.T) {
 		t.Error("upload and download doesn't match")
 		t.Log(data)
 		t.Log(fetchedData)
+	}
+
+	// Check the metadata of the siafile, see that the metadata of the siafile
+	// has the sialink referenced.
+	linkfilePath, err := modules.LinkfileSiaFolder.Join("testOne")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renterFile, err := r.RenterFileRootGet(linkfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(renterFile.File.Sialinks) != 1 {
+		t.Fatal("expecting one sialink:", len(renterFile.File.Sialinks))
+	}
+	if renterFile.File.Sialinks[0] != sialink {
+		t.Error("sialinks should match")
+		t.Log(renterFile.File.Sialinks[0])
+		t.Log(sialink)
 	}
 }

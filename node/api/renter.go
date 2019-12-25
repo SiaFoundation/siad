@@ -284,7 +284,7 @@ func trimSiaDirFolderOnFiles(fis ...modules.FileInfo) (_ []modules.FileInfo, err
 	for i := range fis {
 		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 		if err != nil {
-			return nil, err
+			return nil, errors.AddContext(err, "unable to trim the user sia path from a provided fileinfo")
 		}
 	}
 	return fis, nil
@@ -1331,27 +1331,53 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterFileHandler handles GET requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Determine the siapath that hte user wants to get the file from.
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+
+	// Determine whether the user is requesting a user siapath, or a root
+	// siapath.
+	var root bool
+	rootStr := req.FormValue("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
+			return
+		}
 	}
+
+	// Rebase the users input to the user folder if the user is requesting a
+	// user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Fetch the file.
 	file, err := api.renter.File(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	files, err := trimSiaDirFolderOnFiles(file)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+
+	// If the user requested the user siapath, trim the dir folder so that the
+	// output is all centered around the user's folder.
+	if !root {
+		files, err := trimSiaDirFolderOnFiles(file)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		file = files[0]
 	}
-	file = files[0]
+
 	WriteJSON(w, RenterFile{
 		File: file,
 	})

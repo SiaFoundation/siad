@@ -276,7 +276,11 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	// erasure coding and encryption settings.
 	mr := crypto.MerkleRoot(baseSector)
 
-	// Create the link data and return the resulting sialink.
+	// TODO: Write a test to ensure that adding a bunch of linkfiles to the
+	// siafile metadata is okay, make sure that if the metadata size rolls over,
+	// the siafile updates are handled correctly.
+
+	// Create the sialink.
 	ld := LinkData{
 		Version:      1,
 		MerkleRoot:   mr,
@@ -285,5 +289,13 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 		DataPieces:   lfm.BaseSectorDataPieces,
 		ParityPieces: lfm.BaseSectorParityPieces,
 	}
-	return ld.String(), nil
+	sialink := ld.String()
+
+	// Add the sialink toe the Siafile.
+	err = fileNode.AddSialink(sialink)
+	if err != nil {
+		return sialink, errors.AddContext(err, "unable to add sialink to siafile")
+	}
+
+	return sialink, nil
 }

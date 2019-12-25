@@ -190,6 +190,20 @@ func (sf *SiaFile) AccessTime() time.Time {
 	return sf.staticMetadata.AccessTime
 }
 
+// AddSialink will add a sialink to the SiaFile.
+func (sf *SiaFile) AddSialink(sl string) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.Sialinks = append(sf.staticMetadata.Sialinks, sl)
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
 // ChangeTime returns the ChangeTime timestamp of the file.
 func (sf *SiaFile) ChangeTime() time.Time {
 	sf.mu.RLock()

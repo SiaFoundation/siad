@@ -406,6 +406,13 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 	return modules.DownloadID(h.Get("ID")), resp, nil
 }
 
+// RenterFileRootGet uses the /renter/file/:siapath endpoint to query a file.
+func (c *Client) RenterFileRootGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get("/renter/file/"+sp+"?root=true", &rf)
+	return
+}
+
 // RenterFileGet uses the /renter/file/:siapath endpoint to query a file.
 func (c *Client) RenterFileGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
 	sp := escapeSiaPath(siaPath)
