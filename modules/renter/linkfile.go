@@ -29,7 +29,7 @@ const (
 
 	// LinkfileDefaultSectorParityPieces establishes the default number of
 	// parity pieces that are used when creating the base sector for a linkfile.
-	LinkfileDefaultSectorParityPieces = 10
+	LinkfileDefaultSectorParityPieces = 9
 )
 
 // linkfileLayout explains the layout information that is used for storing data
@@ -37,9 +37,9 @@ const (
 // of the linkfile.
 type linkfileLayout struct {
 	filesize           uint64
-	metadataSize       uint16
-	fanoutDataPieces   uint16
-	fanoutParityPieces uint16
+	metadataSize       uint32
+	fanoutDataPieces   uint8
+	fanoutParityPieces uint8
 }
 
 // encode will return a []byte that has compactly encoded all of the layout
@@ -49,12 +49,12 @@ func (ll *linkfileLayout) encode() []byte {
 	offset := 0
 	binary.LittleEndian.PutUint64(b[offset:], ll.filesize)
 	offset += 8
-	binary.LittleEndian.PutUint16(b[offset:], ll.metadataSize)
-	offset += 2
-	binary.LittleEndian.PutUint16(b[offset:], ll.fanoutDataPieces)
-	offset += 2
-	binary.LittleEndian.PutUint16(b[offset:], ll.fanoutParityPieces)
-	offset += 2
+	binary.LittleEndian.PutUint32(b[offset:], ll.metadataSize)
+	offset += 4
+	b[offset] = ll.fanoutDataPieces
+	offset += 1
+	b[offset] = ll.fanoutParityPieces
+	offset += 1
 	return b
 }
 
@@ -63,12 +63,12 @@ func (ll *linkfileLayout) decode(b []byte) {
 	offset := 0
 	ll.filesize = binary.LittleEndian.Uint64(b[offset:])
 	offset += 8
-	ll.metadataSize = binary.LittleEndian.Uint16(b[offset:])
+	ll.metadataSize = binary.LittleEndian.Uint32(b[offset:])
 	offset += 2
-	ll.fanoutDataPieces = binary.LittleEndian.Uint16(b[offset:])
-	offset += 2
-	ll.fanoutParityPieces = binary.LittleEndian.Uint16(b[offset:])
-	offset += 2
+	ll.fanoutDataPieces = b[offset]
+	offset += 1
+	ll.fanoutParityPieces = b[offset]
+	offset += 1
 }
 
 // DownloadSialink will take a link and turn it into the metadata and data of a
@@ -179,12 +179,12 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 
 	// Compute the layout bytes for the sector.
 	ll := linkfileLayout{
-		metadataSize:       uint16(len(mlfm)),
+		metadataSize:       uint32(len(mlfm)),
 		fanoutDataPieces:   0, // TODO: Will be updated when fanout is implemented
 		fanoutParityPieces: 0, // TODO: Will be updated when fanout is implemented
 	}
 	llData := ll.encode()
-	headerSize := uint16(len(llData)) + ll.metadataSize
+	headerSize := uint32(len(llData)) + ll.metadataSize
 
 	// TODO: Create the fanout data. The size of the fanout data is going to
 	// have to be computed using some external function, it's going to be based

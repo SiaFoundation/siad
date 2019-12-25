@@ -18,7 +18,7 @@ import (
 type LinkData struct {
 	Version      uint8
 	MerkleRoot   crypto.Hash
-	HeaderSize   uint16
+	HeaderSize   uint32
 	FileSize     uint64
 	DataPieces   uint8
 	ParityPieces uint8
@@ -26,16 +26,16 @@ type LinkData struct {
 
 // String converts LinkData to a string.
 func (ld LinkData) String() string {
-	raw := make([]byte, 45)
+	raw := make([]byte, 47)
 	raw[0] = byte(ld.Version)
 	copy(raw[1:], ld.MerkleRoot[:])
-	binary.LittleEndian.PutUint16(raw[33:], ld.HeaderSize)
-	binary.LittleEndian.PutUint64(raw[35:], ld.FileSize)
-	raw[43] = byte(ld.DataPieces)
-	raw[44] = byte(ld.ParityPieces)
+	binary.LittleEndian.PutUint32(raw[33:], ld.HeaderSize)
+	binary.LittleEndian.PutUint64(raw[37:], ld.FileSize)
+	raw[45] = byte(ld.DataPieces)
+	raw[46] = byte(ld.ParityPieces)
 
 	// Encode to base64.
-	bufBytes := make([]byte, 0, 70)
+	bufBytes := make([]byte, 0, 72)
 	buf := bytes.NewBuffer(bufBytes)
 	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
 	encoder.Write(raw)
@@ -49,7 +49,7 @@ func (ld *LinkData) LoadString(s string) error {
 	base := strings.TrimPrefix(s, "sia://")
 
 	// Use the base64 package to decode the string.
-	raw := make([]byte, 45)
+	raw := make([]byte, 47)
 	_, err := base64.RawURLEncoding.Decode(raw, []byte(base))
 	if err != nil {
 		return errors.New("unable to decode input as base64")
@@ -58,9 +58,16 @@ func (ld *LinkData) LoadString(s string) error {
 	// Decode the raw bytes into a LinkData.
 	ld.Version = uint8(raw[0])
 	copy(ld.MerkleRoot[:], raw[1:])
-	ld.HeaderSize = binary.LittleEndian.Uint16(raw[33:])
-	ld.FileSize = binary.LittleEndian.Uint64(raw[35:])
-	ld.DataPieces = uint8(raw[43])
-	ld.ParityPieces = uint8(raw[44])
+	ld.HeaderSize = binary.LittleEndian.Uint32(raw[33:])
+	ld.FileSize = binary.LittleEndian.Uint64(raw[37:])
+	ld.DataPieces = uint8(raw[45])
+	ld.ParityPieces = uint8(raw[46])
+
+	if ld.DataPieces == 0 {
+		return errors.New("data pieces on sialink should not be set to zero")
+	}
+	if ld.ParityPieces == 0 {
+		return errors.New("parity pieces on sialink should not be set to zero")
+	}
 	return nil
 }
