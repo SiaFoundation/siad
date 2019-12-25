@@ -1739,10 +1739,10 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 
 	// Check whether existing file should be overwritten
 	overwriteExistingFile := false
-	if f := queryForm.Get("overwriteexistingfile"); f != "" {
+	if f := queryForm.Get("force"); f != "" {
 		overwriteExistingFile, err = strconv.ParseBool(f)
 		if err != nil {
-			WriteError(w, Error{"unable to parse 'overwriteexistingfile' parameter: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}

@@ -3763,7 +3763,7 @@ The file mode / permissions of the file. Users who download this file will be
 presented a file with this mode. If no mode is set, the Sia default of 0644 will
 be used.
 
-**overwriteexistingfile** | bool  
+**force** | bool  
 If there is already file that exists at the provided siapath, setting this flag
 will cause the new file to overwrite/delete the existing file. If this flag is
 not set, an error will be returned preventing the user from destroying existing
