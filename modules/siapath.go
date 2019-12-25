@@ -40,6 +40,11 @@ var (
 	ChunkMetadataExtension = ".ccmd"
 )
 
+var (
+	// LinkfileSiaFolder is the folder where all of the linkfiles are stored.
+	LinkfileSiaFolder = NewGlobalSiaPath("/var/linkfiles")
+)
+
 type (
 	// SiaPath is the struct used to uniquely identify siafiles and siadirs across
 	// Sia
