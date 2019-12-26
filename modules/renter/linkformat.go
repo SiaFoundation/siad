@@ -1,5 +1,9 @@
 package renter
 
+// linkformat.go creates links that can be used to reference specific sector
+// data in a siafile. The links are base58 encoded structs prepended with
+// 'sia://'
+
 import (
 	"bytes"
 	"encoding/base64"
@@ -11,11 +15,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// linkformat.go creates links that can be used to reference specific sector
-// data in a siafile. The links are base58 encoded structs prepended with
-// 'sia://'
-
-// LinkData defines the data that appears in a linkfile.
+// LinkData defines the data that appears in a linkfile. The DataPieces and
+// ParityPieces specify the intra-sector erasure coding parameters, not the
+// linkfile erasure coding parameters.
 type LinkData struct {
 	Version      uint8
 	MerkleRoot   crypto.Hash
@@ -61,9 +63,6 @@ func (ld *LinkData) LoadString(s string) error {
 	}
 	if ld.DataPieces == 0 {
 		return errors.New("data pieces on sialink should not be set to zero")
-	}
-	if ld.ParityPieces == 0 {
-		return errors.New("parity pieces on sialink should not be set to zero")
 	}
 	return nil
 }

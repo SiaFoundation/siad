@@ -938,7 +938,7 @@ type Renter interface {
 	// linkfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(lfm LinkfileMetadata, siaPath SiaPath, overwriteExistingFile bool, filedata io.Reader) (Sialink, error)
+	UploadLinkfile(lup LinkfileUploadParameters) (Sialink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -992,14 +992,33 @@ type LinkfileMetadata struct {
 
 	// Timestamp information
 	CreateTime time.Time `json:"createtime"`
+}
 
-	// Base sector erasure coding settings. This is useful directly in the
-	// linkfile metadata because it allows the sialink to be recovered using
-	// only the metadata.
-	BaseSectorDataPieces   uint8 `json:"basesectordatapieces"`
-	BaseSectorParityPieces uint8 `json:"basesectorparitypieces"`
+// LinkfileUploadParameters establishes the parameters such as the intra-root
+// erasure coding.
+type LinkfileUploadParameters struct {
+	// SiaPath defines the siapath that the linkfile is going to be uploaded to.
+	// Recommended that the linkfile is placed in /var/linkfiles
+	SiaPath SiaPath
 
-	// Fanout redundancy information.
-	FanoutDataPieces   uint8 `json:"fanoutdatapieces"`
-	FanoutParityPieces uint8 `json:"fanoutparitypieces"`
+	// Force determines whether the upload should overwrite an existing siafile
+	// at 'SiaPath'. If set to false, an error will be returned if there is
+	// already a file at 'SiaPath'. If set to true, any existing siafile at
+	// SiaPath will be deleted and over-written.
+	Force bool
+
+	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
+	// meaning that only the redundancy needs to be configured by the user.
+	BaseChunkRedundancy uint8
+
+	// The intra sector erasure coding settings establish how the gets erasure
+	// coded within the base chunk. This is an optimization to improve download
+	// speeds.
+	IntraSectorDataPieces   uint8
+	IntraSectorParityPieces uint8
+
+	FileMetadata LinkfileMetadata
+
+	// Reader supplies the file data for the linkfile.
+	Reader io.Reader
 }

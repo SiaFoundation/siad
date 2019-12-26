@@ -1738,9 +1738,9 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Check whether existing file should be overwritten
-	overwriteExistingFile := false
+	force := false
 	if f := queryForm.Get("force"); f != "" {
-		overwriteExistingFile, err = strconv.ParseBool(f)
+		force, err = strconv.ParseBool(f)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -1763,7 +1763,13 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		Name: name,
 		Mode: mode,
 	}
-	sialink, err := api.renter.UploadLinkfile(lfm, siaPath, overwriteExistingFile, req.Body)
+	lup := modules.LinkfileUploadParameters{
+		SiaPath: siaPath,
+		Force: force,
+		FileMetadata: lfm,
+		Reader: req.Body,
+	}
+	sialink, err := api.renter.UploadLinkfile(lup)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
 		return
