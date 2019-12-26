@@ -3,6 +3,22 @@ package renter
 // linkfile.go provides the tools for creating and uploading linkfiles, and then
 // receiving the associated links to recover the files.
 
+// Brief description of how the fanout will work: The fanout describes the set
+// of sector roots that can be fetched for each chunk in a larger linkfile. The
+// erasure coding settings of the fanout explain how many sector roots are
+// needed per chunk. The fanout sector roots are listed in-order, and the total
+// number of chunks multiplied by the number of sectors per chunk multiplied by
+// the number of bytes per sector root give you the total fanout size - from the
+// fanout size and fanout erasure coding settings the total number of chunks can
+// be determined.
+//
+// If the fanout description doesn't fit entirely within the first chunk, a
+// second chunk can be created to house the rest of the fanout. The decision may
+// also be made to put the entirety of the fanout into its own siafile, meaning
+// a linkfile could end up being 3 siafiles total - one siafile for the base
+// chunk, one siafile for the fanout description, and one siafile for the actual
+// file data.
+
 import (
 	"bytes"
 	"encoding/binary"

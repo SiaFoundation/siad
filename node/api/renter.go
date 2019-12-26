@@ -1764,10 +1764,10 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		Mode: mode,
 	}
 	lup := modules.LinkfileUploadParameters{
-		SiaPath: siaPath,
-		Force: force,
+		SiaPath:      siaPath,
+		Force:        force,
 		FileMetadata: lfm,
-		Reader: req.Body,
+		Reader:       req.Body,
 	}
 	sialink, err := api.renter.UploadLinkfile(lup)
 	if err != nil {
