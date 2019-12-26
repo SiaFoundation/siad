@@ -25,6 +25,4 @@ func TestLinkfileLayoutEncoding(t *testing.T) {
 	if llOriginal != llRecovered {
 		t.Fatal("encoding and decoding of linkfileLayout does not match")
 	}
-
-	// TODO: Try a wider range of values with randomness / fuzzing.
 }

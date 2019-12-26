@@ -29,7 +29,4 @@ func TestLinkFormat(t *testing.T) {
 		t.Error(ld)
 		t.Error(ldDecoded)
 	}
-
-	// TODO: Loop to test a bunch of different random inputs to make sure things
-	// are compatible across all sorts of inputs.
 }
