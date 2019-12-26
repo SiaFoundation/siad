@@ -41,7 +41,9 @@ func TestLinkfile(t *testing.T) {
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload linkfile client call.
-	sialink, err := r.RenterLinkfilePost(reader, "testOne", "testOne")
+	filename := "testOne"
+	uploadSiaPath := "testOnePath"
+	sialink, err := r.RenterLinkfilePost(reader, filename, uploadSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +62,7 @@ func TestLinkfile(t *testing.T) {
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the sialink referenced.
-	linkfilePath, err := modules.LinkfileSiaFolder.Join("testOne")
+	linkfilePath, err := modules.LinkfileSiaFolder.Join(uploadSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}

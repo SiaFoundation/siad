@@ -195,9 +195,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 // convert function exists).
 func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
 	// Input checks.
-	if lup.Reader == nil {
-		return "", errors.New("need to provide a stream of upload data")
-	}
 	if lup.BaseChunkRedundancy == 0 {
 		lup.BaseChunkRedundancy = LinkfileDefaultBaseChunkRedundancy
 	}
@@ -209,6 +206,12 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	}
 	if lup.FileMetadata.Mode == 0 {
 		lup.FileMetadata.Mode = modules.DefaultFilePerm
+	}
+	if lup.FileMetadata.CreateTime == (time.Time{}) {
+		lup.FileMetadata.CreateTime = time.Now()
+	}
+	if lup.Reader == nil {
+		return "", errors.New("need to provide a stream of upload data")
 	}
 	if lup.IntraSectorDataPieces != 1 {
 		return "", errors.New("intra-sector erasure coding not yet supported, intra sector data pieces must be set to 1")

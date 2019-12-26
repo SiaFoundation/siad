@@ -1746,7 +1746,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Check whether the redundancy has been set.
-	redundancy := 0
+	redundancy := uint8(0)
 	if rStr := queryForm.Get("redundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
 			WriteError(w, Error{"unable to parse redundancy: " + err.Error()}, http.StatusBadRequest)

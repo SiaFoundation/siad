@@ -712,23 +712,16 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 
 // RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
 // file.
-//
-// TODO: Add support for offset + len. Though... if we always want to fetch all
-// of the metadata, an offset an len isn't going to help so much b/c we don't
-// know where the actual file offset starts. We may need to increase the size of
-// the sialink :(
-func (c *Client) RenterSialinkGet(sialink modules.Sialink) (resp []byte, err error) {
+func (c *Client) RenterSialinkGet(sialink modules.Sialink) (fileData []byte, err error) {
 	str := string(sialink)
 	trimmed := strings.TrimPrefix(str, "sia://")
 	getQuery := fmt.Sprintf("/renter/sialink/%s", trimmed)
-	_, resp, err = c.getRawResponse(getQuery)
+	_, fileData, err = c.getRawResponse(getQuery)
 	return
 }
 
 // RenterLinkfilePost uses the /renter/sialink endpoint to upload a linkfile.
 // The resulting sialink is returned along with an error.
-//
-// TODO: add support for all of the linkfile params that are not yet supported.
 func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (modules.Sialink, error) {
 	// Strip any leading slash from the siaPath.
 	siaPath = strings.TrimPrefix(siaPath, "/")
