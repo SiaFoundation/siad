@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	// ErrWithdrawalsInactive occurs when the host is not yet synced. If that is
+	// ErrWithdrawalsInactive occurs when the host is not synced yet. If that is
 	// the case the account manager does not allow trading money from the
 	// ephemeral accounts.
 	ErrWithdrawalsInactive = errors.New("ephemeral account withdrawals are inactive because the host is not synced")
@@ -24,19 +24,18 @@ var (
 	ErrAccountPersist = errors.New("ephemeral account could not be persisted to disk")
 
 	// ErrAccountExpired occurs when a blocked action can not complete because
-	// the account has expired in the mean time.
+	// the account has expired in the meantime.
 	ErrAccountExpired = errors.New("ephemeral account expired")
 
 	// ErrBalanceInsufficient occurs when a withdrawal could not be successfully
 	// completed because the account balance was insufficient.
 	ErrBalanceInsufficient = errors.New("ephemeral account balance was insufficient")
 
-	// ErrBalanceMaxExceeded occurs when a deposit is so large that if it would
-	// get added to the account balance it would exceed the ephemeral account
-	// maximum balance.
+	// ErrBalanceMaxExceeded occurs when a deposit would push the account's
+	// balance over the maximum allowed ephemeral account balance.
 	ErrBalanceMaxExceeded = errors.New("ephemeral account maximam balance exceeded")
 
-	// ErrWithdrawalSpent occurs when a withdrawal is being performed using a
+	// ErrWithdrawalSpent occurs when a withdrawal is requested using a
 	// withdrawal message that has been spent already.
 	ErrWithdrawalSpent = errors.New("withdrawal message was already spent")
 
@@ -60,9 +59,9 @@ var (
 	// stopped in the midst of a deposit process.
 	ErrDepositCancelled = errors.New("ephemeral account deposit cancelled due to a shutdown")
 
-	// Used for testing purposes. This error gets returned when a certain
-	// dependency is specified, this way we signal the caller max risk is
-	// reached, which is otherwise an internal state that is never exposed.
+	// When the errMaxRiskReached dependency is specified this error is returned
+	// on withdraw or deposit when max risk is reached. It enables easy
+	// verification of when max risk is reached in tests. Used only in tests.
 	errMaxRiskReached = errors.New("errMaxRiskReached")
 
 	// pruneExpiredAccountsFrequency is the frequency at which the account
@@ -89,11 +88,11 @@ var (
 // a balance to a pubkey. Users can deposit funds into an ephemeral account with
 // a host and then later use the funds to transact with the host.
 //
-// The account owner fully entrusts the money with the host, he has no recourse
-// at all if the host decides to steal the funds. For this reason, users should
-// only keep tiny balances in ephemeral accounts and users should refill the
-// ephemeral accounts frequently, even on the order of multiple times per
-// minute.
+// The ephemeral account owner fully entrusts the money with the host, he has no
+// recourse at all if the host decides to steal the funds. For this reason,
+// users should only keep tiny balances in ephemeral accounts and users should
+// refill the ephemeral accounts frequently, even on the order of multiple times
+// per minute.
 type (
 	// withdrawalMessage contains all details to process a withdrawal
 	withdrawalMessage struct {
@@ -116,20 +115,23 @@ type (
 		staticAccountsPersister *accountsPersister
 
 		// The accountBifield keeps track of all account indexes using a
-		// bitfield. The account index decides the location at which the account
-		// is stored in the accounts file on disk.
+		// bitfield. Every account has a unique index. The account's index
+		// decides at what location in the accounts file the account's data gets
+		// persisted.
 		accountBifield accountBifield
 
-		// To increase performance, a withdrawal will not await the persist of
-		// the account. This allows users to transact with the host with
-		// significantly less latency. This also means that the money that has
-		// already been withdrawn is at risk to the host. An unclean shutdown
-		// before the account manager was able to persist the account balance to
-		// disk would allow the user to withdraw that money twice. To limit this
-		// risk to the host, he can set a maxephemeralaccountrisk, when that
-		// amount is reached all consecutive withdrawals and deposits block
-		// until the account manager has successfully persisted all updates to
-		// disk and risk is lowered.
+		// To increase performance, deposits get credited before the file
+		// contract fsynced, and withdrawals do not block until the ephemeral
+		// account is safely persisted. This allows users to transact with the
+		// host with significantly less latency. This also means that the host
+		// is at risk to lose money until the file contract and latest account
+		// balance are persisted to disk. An unclean shutdown or fsync failure
+		// would allow the user to withdraw money twice, or withdraw money that
+		// not properly 'moved hands' in the file contract. We keep track of
+		// this outstanding risk in currentRisk. To limit this risk, the host
+		// can configure a maxephemeralaccountrisk. When that amount is reached,
+		// withdrawals and deposits block until the accounts get persisted and
+		// filecontracts get fsynced which in turn lower the outstanding risk.
 		currentRisk types.Currency
 
 		// When maxRisk is reached, all withdrawals are appended to a queue,
@@ -141,8 +143,8 @@ type (
 		blockedDeposits []*blockedDeposit
 
 		// withdrawalsInactive indicates whether the account manager allows
-		// withdrawals or not. This will be true as long as the host is not
-		// fully synced.
+		// withdrawals or not. Withdrawals are inactive as long as the host is
+		// not fully synced, or when it goes out of sync.
 		withdrawalsInactive bool
 
 		mu sync.Mutex
@@ -156,17 +158,17 @@ type (
 		balance            types.Currency
 		blockedWithdrawals blockedWithdrawalHeap
 
-		// commitResultChans is a queue on which the result of committing the
+		// persistResultChans is a queue on which the result of committing the
 		// account to disk is sent.
-		commitResultChans []chan error
+		persistResultChans []chan error
 
-		// pendingRisk keeps track of how much of the account balance is
-		// unsaved. We keep track of this on a per account basis because the
-		// background thread persisting the account needs to know how much to
-		// deduct from the overall pending risk. If the persist thread has to
-		// wait, consecutive withdrawals can update the account balance in the
-		// meantime, this builds up the pendingRisk. When the account is saved,
-		// pending risk is lowered.
+		// pendingRisk keeps track of the unsaved account balance delta. We keep
+		// track of this on a per account basis because we have to know how much
+		// to subtract from the overall pending risk once an account gets
+		// persisted to disk. Every time a withdrawal is made from the account,
+		// pending risk is increased, if the background thread saves the
+		// account, the pending risk is reset and the overall risk gets lowered
+		// by the delta that got persisted to disk.
 		pendingRisk types.Currency
 
 		// lastTxnTime is the timestamp of the last transaction that occurred
@@ -195,10 +197,10 @@ type (
 	// blockedDeposit represents a deposit call that is pending to be
 	// executed but is stalled because maxRisk is reached.
 	blockedDeposit struct {
-		id           string
-		amount       types.Currency
-		commitResult chan error
-		syncResult   chan error
+		id            string
+		amount        types.Currency
+		persistResult chan error
+		syncResult    chan error
 	}
 
 	// blockedWithdrawalHeap is a heap of blocked withdrawal calls; the heap is
@@ -264,7 +266,8 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 		h:                  h,
 
 		// withdrawals are inactive until the host is synced, consensus updates
-		// will activate withdrawals when the host is fully synced
+		// will activate withdrawals when the host is fully synced, or
+		// deactivate when it goes out of sync
 		withdrawalsInactive: true,
 	}
 
@@ -274,7 +277,7 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 		return nil, err
 	}
 
-	// Load the persisted accounts data from disk
+	// Load the accounts data from disk
 	var data *accountsPersisterData
 	if data, err = am.staticAccountsPersister.callLoadData(); err != nil {
 		return nil, err
@@ -306,9 +309,9 @@ func newFingerprintMap(bucketBlockRange int) *fingerprintMap {
 
 // callDeposit will deposit the amount into the account with given id. This will
 // increase the host's current risk by the deposit amount. This is because until
-// the file contract has been fsynced, the host is at risk for losing money. The
-// caller has to pass in a syncChan that should be closed when the file contract
-// is fsynced. When that happens, the current risk is lowered.
+// the file contract has been fsynced, the host is at risk to losing money. The
+// caller has to pass in a sync chan that gets closed when the file contract is
+// fsynced. When that happens, the current risk is lowered.
 //
 // The deposit is subject to mainting ACID properties between the file contract
 // and the ephemeral account. In order to document the model, the following is a
@@ -349,18 +352,15 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 	maxRisk := his.MaxEphemeralAccountRisk
 	maxBalance := his.MaxEphemeralAccountBalance
 
-	// Setup the commit result channel, once the account manager has persisted
-	// the account to disk it will send the result over this channel.
-	commitResultChan := make(chan error)
-
 	// Initiate the deposit.
-	err := am.managedPrepareDeposit(id, amount, maxRisk, maxBalance, bh, commitResultChan, syncChan)
+	persistResultChan := make(chan error)
+	err := am.managedPrepareDeposit(id, amount, maxRisk, maxBalance, bh, persistResultChan, syncChan)
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
 
-	// Wait for the deposit result.
-	return am.staticWaitForDepositResult(commitResultChan)
+	// Wait for the deposit to be persisted.
+	return am.staticWaitForDepositResult(persistResultChan)
 }
 
 // callWithdraw will process the given withdrawal message. This call will block
@@ -368,7 +368,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 // caller can specify a priority. This priority defines the order in which the
 // withdrawals get processed in the event they are blocked due to insufficient
 // funds.
-func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) (err error) {
+func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) error {
 	// Gather some variables
 	his := am.h.InternalSettings()
 	bh := am.h.BlockHeight()
@@ -380,21 +380,19 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 		return err
 	}
 
-	// Setup the commit result channel, once the account manager has performed
-	// the withdrawal it will send the result over this channel. Note we do not
-	// await the fsync of the account in case of withdrawals.
-	commitResultChan := make(chan error)
+	// Setup the commit result channel, once the account manager has committed
+	// the withdrawal, it will send the result over this channel. Note we only
+	// await the withdrawal to be committed and not persisted.
+	commitResultChan := make(chan error, 1)
 
 	// Initiate the withdraw process.
-	withdrawCommitted, err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, bh, commitResultChan)
+	err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, bh, commitResultChan)
 	if err != nil {
 		return errors.AddContext(err, "Withdraw failed")
 	}
 
-	if !withdrawCommitted {
-		return am.staticWaitForWithdrawalResult(commitResultChan)
-	}
-	return nil
+	// Wait for the withdrawal to be committed.
+	return am.staticWaitForWithdrawalResult(commitResultChan)
 }
 
 // callConsensusChanged is called by the host whenever it processed a change to
@@ -431,7 +429,7 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 
 // managedPrepareDeposit performs a couple of steps in preparation of the
 // deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, commitResultChan, syncChan chan error) error {
+func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan, syncChan chan error) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -448,22 +446,23 @@ func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxB
 	// lower the current risk, such as FC fsyncs or account persists.
 	if am.currentRisk.Cmp(maxRisk) > 0 {
 		am.blockedDeposits = append(am.blockedDeposits, &blockedDeposit{
-			id:           id,
-			amount:       amount,
-			commitResult: commitResultChan,
-			syncResult:   syncChan,
+			id:            id,
+			amount:        amount,
+			persistResult: persistResultChan,
+			syncResult:    syncChan,
 		})
 		return nil
 	}
 
-	// Commit the deposit in memory and to disk.
-	am.commitDeposit(acc, amount, blockHeight, commitResultChan, syncChan)
+	// Commit the deposit
+	am.commitDeposit(acc, amount, blockHeight, persistResultChan, syncChan)
+
 	return nil
 }
 
 // managedPrepareWithdraw performs a couple of steps in preparation of the
 // withdrawal. If everything checks out it will commit the withdrawal.
-func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (withdrawCommitted bool, err error) {
+func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (err error) {
 	amount, id, expiry := msg.amount, msg.account, msg.expiry
 
 	am.mu.Lock()
@@ -477,14 +476,14 @@ func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp cryp
 	// Check if withdrawals are inactive. This will be the case when the host is
 	// not synced yet. Until that is not the case, we do not allow trading.
 	if am.withdrawalsInactive {
-		return false, ErrWithdrawalsInactive
+		return ErrWithdrawalsInactive
 	}
 
 	// Save the fingerprint in memory and call persist asynchronously. If the
 	// fingerprint is known we return an error.
 	exists := am.fingerprints.has(fp)
 	if exists {
-		return false, ErrWithdrawalSpent
+		return ErrWithdrawalSpent
 	}
 	am.fingerprints.add(fp, expiry, blockHeight)
 
@@ -498,24 +497,24 @@ func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp cryp
 			priority:     priority,
 			commitResult: commitResultChan,
 		})
-		return false, nil
+		return nil
 	}
 
 	// Block this withdrawal if maxRisk is exceeded
 	if am.currentRisk.Cmp(maxRisk) > 0 || len(am.blockedWithdrawals) > 0 {
 		if am.h.dependencies.Disrupt("errMaxRiskReached") {
-			return false, errMaxRiskReached // only for testing purposes
+			return errMaxRiskReached // only for testing purposes
 		}
 		am.blockedWithdrawals = append(am.blockedWithdrawals, &blockedWithdrawal{
 			withdrawal:   msg,
 			priority:     priority,
 			commitResult: commitResultChan,
 		})
-		return false, nil
+		return nil
 	}
 
 	am.commitWithdrawal(acc, amount, blockHeight, commitResultChan)
-	return true, nil
+	return nil
 }
 
 // managedAccountPersistInfo is a helper method that will collect all of the
@@ -533,7 +532,7 @@ func (am *accountManager) managedAccountPersistInfo(id string) *accountPersistIn
 		index:   acc.index,
 		data:    acc.accountData(),
 		risk:    acc.pendingRisk,
-		waiting: len(acc.commitResultChans),
+		waiting: len(acc.persistResultChans),
 	}
 }
 
@@ -601,13 +600,13 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 	if exists {
 		acc.pendingRisk = acc.pendingRisk.Sub(accInfo.risk)
 
-		// Send the result to all commitResultChans that where waiting the
+		// Send the result to all persistResultChans that where waiting the
 		// moment we calculated the account data. If there are remaining
-		// commitResultChans after this operation, we signal this to the caller
+		// persistResultChans after this operation, we signal this to the caller
 		// through the waiting return value. If there are channels still
 		// waiting, threadedSaveAccount will be called again.
 		acc.sendResult(err, accInfo.waiting)
-		waiting = len(acc.commitResultChans)
+		waiting = len(acc.persistResultChans)
 	}
 
 	// Lower the current risk by the amount of risk that just got persisted.
@@ -623,7 +622,7 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 
 // commitDeposit deposits the amount to the account balance and schedules a
 // persist to save the account data to disk.
-func (am *accountManager) commitDeposit(a *account, amount types.Currency, blockHeight types.BlockHeight, commitResultChan, syncChan chan error) {
+func (am *accountManager) commitDeposit(a *account, amount types.Currency, blockHeight types.BlockHeight, persistResultChan, syncChan chan error) {
 	// Update the account details
 	a.balance = a.balance.Add(amount)
 	a.lastTxnTime = time.Now().Unix()
@@ -655,9 +654,7 @@ func (am *accountManager) commitDeposit(a *account, amount types.Currency, block
 		// Commit the withdrawal
 		am.commitWithdrawal(a, bw.withdrawal.amount, blockHeight, bw.commitResult)
 	}
-
-	// Persist the account
-	am.schedulePersist(a, commitResultChan)
+	am.schedulePersist(a, persistResultChan)
 }
 
 // commitWithdrawal withdraws the amount from the account balance and schedules
@@ -677,7 +674,8 @@ func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, bl
 	a.pendingRisk = a.pendingRisk.Add(delta)
 	am.currentRisk = am.currentRisk.Add(delta)
 
-	am.schedulePersist(a, commitResultChan)
+	close(commitResultChan)
+	am.schedulePersist(a, make(chan error))
 }
 
 // managedUpdateRiskAfterDeposit will update the current risk after a deposit
@@ -700,13 +698,13 @@ func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncCha
 	go am.threadedUpdateRiskAfterSync(deposit, syncChan)
 }
 
-// schedulePersist will append the commitResultChan to the persist queue and
+// schedulePersist will append the persistResultChan to the persist queue and
 // call threadedSaveAccount for the given id. This way persists are happening in
 // a FIFO fashion, ensuring an account is never overwritten by older account
 // data.
-func (am *accountManager) schedulePersist(acc *account, commitResultChan chan error) {
-	acc.commitResultChans = append(acc.commitResultChans, commitResultChan)
-	if len(acc.commitResultChans) > 1 {
+func (am *accountManager) schedulePersist(acc *account, persistResultChan chan error) {
+	acc.persistResultChans = append(acc.persistResultChans, persistResultChan)
+	if len(acc.persistResultChans) > 1 {
 		return
 	}
 
@@ -742,7 +740,7 @@ func (am *accountManager) unblockDeposits(allowance types.Currency, bh types.Blo
 		}
 
 		// Commit the deposit
-		am.commitDeposit(acc, amount, bh, bd.commitResult, bd.syncResult)
+		am.commitDeposit(acc, amount, bh, bd.persistResult, bd.syncResult)
 		allowance = allowance.Sub(amount)
 	}
 	am.blockedDeposits = am.blockedDeposits[numUnblocked:]
@@ -848,6 +846,17 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 	}
 }
 
+// staticWaitForDepositResult will block until it receives a message on the
+// given result channel, or until it receives a stop signal.
+func (am *accountManager) staticWaitForDepositResult(persistResultChan chan error) error {
+	select {
+	case err := <-persistResultChan:
+		return errors.AddContext(err, "deposit failed")
+	case <-am.h.tg.StopChan():
+		return ErrDepositCancelled
+	}
+}
+
 // staticWaitForWithdrawalResult will block until it receives a message on the
 // given result channel, or until it either times out or receives a stop signal.
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
@@ -858,17 +867,6 @@ func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan er
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
 		return ErrWithdrawalCancelled
-	}
-}
-
-// staticWaitForDepositResult will block until it receives a message on the
-// given result channel, or until it receives a stop signal.
-func (am *accountManager) staticWaitForDepositResult(commitResultChan chan error) error {
-	select {
-	case err := <-commitResultChan:
-		return errors.AddContext(err, "deposit failed")
-	case <-am.h.tg.StopChan():
-		return ErrDepositCancelled
 	}
 }
 
@@ -886,7 +884,7 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 	for id, acc := range am.accounts {
 		if force || now-acc.lastTxnTime > threshold {
 			// Signal all waiting result chans this account has expired
-			for _, c := range acc.commitResultChans {
+			for _, c := range acc.persistResultChans {
 				c <- ErrAccountExpired
 				close(c)
 			}
@@ -908,7 +906,7 @@ func (am *accountManager) openAccount(id string) *account {
 		id:                 id,
 		index:              am.accountBifield.assignFreeIndex(),
 		blockedWithdrawals: make(blockedWithdrawalHeap, 0),
-		commitResultChans:  make([]chan error, 0),
+		persistResultChans: make([]chan error, 0),
 	}
 	am.accounts[id] = acc
 	return acc
@@ -1062,12 +1060,12 @@ func (a *account) withdrawalExceedsBalance(withdrawal types.Currency) bool {
 // sendResult will send the given result to the result channels that are waiting
 func (a *account) sendResult(result error, waiting int) {
 	for i := 0; i < waiting; i++ {
-		commitResultChan := a.commitResultChans[i]
+		persistResultChan := a.persistResultChans[i]
 		err := errors.AddContext(result, ErrAccountPersist.Error())
 		select {
-		case commitResultChan <- err:
+		case persistResultChan <- err:
 		default:
 		}
 	}
-	a.commitResultChans = a.commitResultChans[waiting:]
+	a.persistResultChans = a.persistResultChans[waiting:]
 }
