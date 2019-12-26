@@ -344,7 +344,7 @@ func newFingerprintMap(bucketBlockRange int) *fingerprintMap {
 // this point
 func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan chan error) error {
 	// Gather some variables.
-	cbh := am.h.BlockHeight()
+	bh := am.h.BlockHeight()
 	his := am.h.InternalSettings()
 	maxRisk := his.MaxEphemeralAccountRisk
 	maxBalance := his.MaxEphemeralAccountBalance
@@ -354,7 +354,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 	commitResultChan := make(chan error)
 
 	// Initiate the deposit.
-	err := am.managedPrepareDeposit(id, amount, maxRisk, maxBalance, cbh, commitResultChan, syncChan)
+	err := am.managedPrepareDeposit(id, amount, maxRisk, maxBalance, bh, commitResultChan, syncChan)
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
@@ -369,16 +369,16 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 // withdrawals get processed in the event they are blocked due to insufficient
 // funds.
 func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) (err error) {
+	// Gather some variables
+	his := am.h.InternalSettings()
+	bh := am.h.BlockHeight()
+	maxRisk := his.MaxEphemeralAccountRisk
+
 	// Validate the message's expiry and signature first
-	cbh := am.h.BlockHeight()
 	fingerprint := crypto.HashAll(*msg)
-	if err := msg.validate(cbh, fingerprint, sig); err != nil {
+	if err := msg.validate(bh, fingerprint, sig); err != nil {
 		return err
 	}
-
-	// Gather information outside of the lock
-	his := am.h.InternalSettings()
-	maxRisk := his.MaxEphemeralAccountRisk
 
 	// Setup the commit result channel, once the account manager has performed
 	// the withdrawal it will send the result over this channel. Note we do not
@@ -386,7 +386,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	commitResultChan := make(chan error)
 
 	// Initiate the withdraw process.
-	withdrawDone, err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, cbh, commitResultChan)
+	withdrawDone, err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, bh, commitResultChan)
 	if err != nil {
 		return errors.AddContext(err, "Withdraw failed")
 	}
@@ -400,7 +400,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 // callConsensusChanged is called by the host whenever it processed a change to
 // the consensus. We use it to remove fingerprints which have been expired.
 func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
-	cbh := am.h.BlockHeight()
+	bh := am.h.BlockHeight()
 
 	// If the host is not synced, withdrawals are disabled. In this case we also
 	// do not want to rotate the fingerprints.
@@ -414,8 +414,8 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 
 	// Only if the current block height is equal to the minimum block height of
 	// the current bucket range, we want to rotate the buckets.
-	min, _ := currentBucketRange(cbh)
-	if min != cbh {
+	min, _ := currentBucketRange(bh)
+	if min != bh {
 		am.mu.Unlock()
 		return
 	}
@@ -465,7 +465,6 @@ func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxB
 // withdrawal. If everything checks out it will commit the withdrawal.
 func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (bool, error) {
 	amount, id, expiry := msg.amount, msg.account, msg.expiry
-
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -482,13 +481,7 @@ func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp cryp
 		return false, ErrWithdrawalSpent
 	}
 	am.fingerprints.add(fp, expiry, blockHeight)
-	if err := am.h.tg.Add(); err != nil {
-		return false, ErrWithdrawalCancelled
-	}
-	go func() {
-		defer am.h.tg.Done()
-		am.threadedSaveFingerprint(fp, expiry, blockHeight)
-	}()
+	defer am.staticAccountsPersister.callQueueSaveFingerprint(fp, expiry)
 
 	// Open the account, create if it does not exist yet
 	acc := am.openAccount(id)
@@ -551,7 +544,7 @@ func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, sy
 
 	select {
 	case <-syncChan:
-		cbh := am.h.BlockHeight()
+		bh := am.h.BlockHeight()
 		am.mu.Lock()
 		am.currentRisk = am.currentRisk.Sub(deposit)
 
@@ -559,8 +552,8 @@ func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, sy
 		// seeing as they might be blocked due to current risk exceeding the
 		// maximum. Unblock deposit and withdrawals in this particular order
 		// until the deposit (read: allowance) runs out.
-		deposit = am.unblockDeposits(deposit, cbh)
-		am.unblockWithdrawals(deposit, cbh)
+		deposit = am.unblockDeposits(deposit, bh)
+		am.unblockWithdrawals(deposit, bh)
 		am.mu.Unlock()
 		return
 	case <-am.h.tg.StopChan():
@@ -581,6 +574,7 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 	// Gather all information required to persist and process it afterwards
 	accInfo := am.managedAccountPersistInfo(id)
 	if accInfo == nil {
+		// Account expired
 		return
 	}
 
@@ -589,7 +583,7 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 	_ = am.h.dependencies.Disrupt("errMaxRiskReached")
 	persister := am.staticAccountsPersister
 	err := persister.callSaveAccount(accInfo.data, accInfo.index)
-	cbh := am.h.BlockHeight()
+	bh := am.h.BlockHeight()
 
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -601,10 +595,6 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 	acc, exists := am.accounts[id]
 	if exists {
 		acc.pendingRisk = acc.pendingRisk.Sub(accInfo.risk)
-		// Only lower the current risk if the account still exists. If it
-		// expired in the mean time the current risk will already have been
-		// lowered.
-		am.currentRisk = am.currentRisk.Sub(accInfo.risk)
 
 		// Send the result to all commitResultChans that where waiting the
 		// moment we calculated the account data. If there are remaining
@@ -615,23 +605,15 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 		waiting = len(acc.commitResultChans)
 	}
 
+	// Lower the current risk by the amount of risk that just got persisted.
+	am.currentRisk = am.currentRisk.Sub(accInfo.risk)
+
 	// Risk is lowered - see if we can unblock deposits and/or withdrawals. We
 	// unblock in this particular order to ensure deposits are unblocked first.
 	allowance := accInfo.risk
-	allowance = am.unblockDeposits(allowance, cbh)
-	am.unblockWithdrawals(allowance, cbh)
+	allowance = am.unblockDeposits(allowance, bh)
+	am.unblockWithdrawals(allowance, bh)
 	return
-}
-
-// threadedSaveFingerprint will persist the fingerprint data.
-//
-// Note that the caller adds this thread to the threadgroup. If the add is done
-// inside the goroutine, we risk losing a fingerprint if the host shuts down.
-func (am *accountManager) threadedSaveFingerprint(fp crypto.Hash, expiry, cbh types.BlockHeight) {
-	err := am.staticAccountsPersister.callSaveFingerprint(fp, expiry, cbh)
-	if err != nil {
-		am.h.log.Critical("Could not save fingerprint", err)
-	}
 }
 
 // commitDeposit deposits the amount to the account balance and schedules a
@@ -648,7 +630,26 @@ func (am *accountManager) commitDeposit(a *account, amount types.Currency, block
 	am.updateRiskAfterDeposit(amount, syncChan)
 
 	// Unblock withdrawals that were waiting for more funds.
-	a.unblockWithdrawals(blockHeight)
+	for a.blockedWithdrawals.Len() > 0 {
+		bw := a.blockedWithdrawals.Pop().(*blockedWithdrawal)
+		err := bw.withdrawal.validateExpiry(blockHeight)
+		if err != nil {
+			select {
+			case bw.commitResult <- err:
+			default:
+			}
+			continue
+		}
+
+		// Requeue if balance is insufficient
+		if bw.withdrawal.amount.Cmp(a.balance) > 0 {
+			a.blockedWithdrawals.Push(*bw)
+			break
+		}
+
+		// Commit the withdrawal
+		am.commitWithdrawal(a, bw.withdrawal.amount, blockHeight, bw.commitResult)
+	}
 
 	// Persist the account
 	am.schedulePersist(a, commitResultChan)
@@ -719,7 +720,7 @@ func (am *accountManager) schedulePersist(acc *account, commitResultChan chan er
 // unblockDeposits will unblock pending deposits until the allowance runs out.
 // The allowance is the amount of risk that got freed up by a persist or a
 // commit (FC fsync).
-func (am *accountManager) unblockDeposits(allowance types.Currency, cbh types.BlockHeight) (remaining types.Currency) {
+func (am *accountManager) unblockDeposits(allowance types.Currency, bh types.BlockHeight) (remaining types.Currency) {
 	var numUnblocked int
 	for i, bd := range am.blockedDeposits {
 		amount, id := bd.amount, bd.id
@@ -736,7 +737,7 @@ func (am *accountManager) unblockDeposits(allowance types.Currency, cbh types.Bl
 		}
 
 		// Commit the deposit
-		am.commitDeposit(acc, amount, cbh, bd.commitResult, bd.syncResult)
+		am.commitDeposit(acc, amount, bh, bd.commitResult, bd.syncResult)
 		allowance = allowance.Sub(amount)
 	}
 	am.blockedDeposits = am.blockedDeposits[numUnblocked:]
@@ -747,7 +748,7 @@ func (am *accountManager) unblockDeposits(allowance types.Currency, cbh types.Bl
 // unblockWithdrawals will unblock pending withdrawals until the allowance runs
 // out. The allowance is the amount of risk that got freed up by a persist or a
 // commit (FC fsync).
-func (am *accountManager) unblockWithdrawals(allowance types.Currency, cbh types.BlockHeight) (remaining types.Currency) {
+func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.BlockHeight) (remaining types.Currency) {
 	var numUnblocked int
 	for i, bw := range am.blockedWithdrawals {
 		amount, id := bw.withdrawal.amount, bw.withdrawal.account
@@ -760,7 +761,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, cbh types
 		// Validate the expiry - this is necessary seeing as the blockheight can
 		// have been changed since the withdrawal was blocked, potentially
 		// pushing it over its expiry.
-		if err := bw.withdrawal.validateExpiry(cbh); err != nil {
+		if err := bw.withdrawal.validateExpiry(bh); err != nil {
 			bw.commitResult <- err
 			continue
 		}
@@ -777,7 +778,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, cbh types
 		}
 
 		// Commit the withdrawal
-		am.commitWithdrawal(acc, bw.withdrawal.amount, cbh, bw.commitResult)
+		am.commitWithdrawal(acc, bw.withdrawal.amount, bh, bw.commitResult)
 		allowance = allowance.Sub(amount)
 	}
 	am.blockedWithdrawals = am.blockedWithdrawals[numUnblocked:]
@@ -884,7 +885,6 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 				c <- ErrAccountExpired
 				close(c)
 			}
-			am.currentRisk = am.currentRisk.Sub(acc.pendingRisk)
 			delete(am.accounts, id)
 			deleted = append(deleted, acc.index)
 		}
@@ -971,8 +971,8 @@ func (ab *accountBifield) buildIndex(accounts map[string]*account) {
 // add will add the given fingerprint to the fingerprintMap. If the map already
 // contains the fingerprint we will return false to signal it has not been
 // added.
-func (fm *fingerprintMap) add(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) {
-	_, max := currentBucketRange(currentBlockHeight)
+func (fm *fingerprintMap) add(fp crypto.Hash, expiry, blockHeight types.BlockHeight) {
+	_, max := currentBucketRange(blockHeight)
 	if expiry < max {
 		fm.current[fp] = struct{}{}
 		return
@@ -999,23 +999,23 @@ func (fm *fingerprintMap) rotate() {
 
 // validate is a helper function that composes validateExpiry and
 // validateSignature
-func (wm *withdrawalMessage) validate(currentBlockHeight types.BlockHeight, hash crypto.Hash, sig crypto.Signature) error {
+func (wm *withdrawalMessage) validate(blockHeight types.BlockHeight, hash crypto.Hash, sig crypto.Signature) error {
 	return errors.Compose(
-		wm.validateExpiry(currentBlockHeight),
+		wm.validateExpiry(blockHeight),
 		wm.validateSignature(hash, sig),
 	)
 }
 
 // validateExpiry returns an error if the withdrawal message is either already
 // expired or if it expires too far into the future
-func (wm *withdrawalMessage) validateExpiry(currentBlockHeight types.BlockHeight) error {
+func (wm *withdrawalMessage) validateExpiry(blockHeight types.BlockHeight) error {
 	// Verify the current blockheight does not exceed the expiry
-	if currentBlockHeight > wm.expiry {
+	if blockHeight > wm.expiry {
 		return ErrWithdrawalExpired
 	}
 
 	// Verify the withdrawal is not too far into the future
-	_, max := currentBucketRange(currentBlockHeight)
+	_, max := currentBucketRange(blockHeight)
 	if wm.expiry >= max+bucketBlockRange {
 		return ErrWithdrawalExtremeFuture
 	}
@@ -1065,33 +1065,4 @@ func (a *account) sendResult(result error, waiting int) {
 		}
 	}
 	a.commitResultChans = a.commitResultChans[waiting:]
-}
-
-// unblockWithdrawals goes through all blocked withdrawals and unblocks the ones
-// for which the account has sufficient balance. This function alters the
-// account balance to reflect all withdrawals that have been unblocked.
-func (a *account) unblockWithdrawals(currentBlockHeight types.BlockHeight) {
-	for a.blockedWithdrawals.Len() > 0 {
-		bw := a.blockedWithdrawals.Pop().(*blockedWithdrawal)
-		if err := bw.withdrawal.validateExpiry(currentBlockHeight); err != nil {
-			select {
-			case bw.commitResult <- err:
-				close(bw.commitResult)
-			default:
-			}
-			continue
-		}
-
-		// Requeue if balance is insufficient
-		if bw.withdrawal.amount.Cmp(a.balance) > 0 {
-			a.blockedWithdrawals.Push(*bw)
-			break
-		}
-
-		// Update the account details
-		a.balance = a.balance.Sub(bw.withdrawal.amount)
-		a.lastTxnTime = time.Now().Unix()
-
-		close(bw.commitResult)
-	}
 }

@@ -3,6 +3,7 @@ package host
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -101,6 +102,11 @@ func TestFingerprintsReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Because fingerprints are enqueued to get persisted to disk, the
+	// threadgroup wouldn't await them if we called close or flush. Sleep here
+	// to allow some time for the fp to get persisted to disk.
+	time.Sleep(time.Second)
 
 	// Reload the host
 	err = reloadHost(ht)

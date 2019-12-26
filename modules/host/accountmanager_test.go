@@ -424,15 +424,15 @@ func TestAccountRiskBenchmark(t *testing.T) {
 	// #threads. The number of accounts will be fixed for this benchmark, the
 	// number of withdrawals and threads are multiplied by a factor as long as
 	// max risk is not reached.
-	acc := 100
-	withdrawals := 2
-	threads := 2
+	acc := 10
+	withdrawals := 100000
+	threads := 16
 
 	// Grab some settings
 	his := ht.host.InternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
 	maxRisk := his.MaxEphemeralAccountRisk
-	withdrawalSize := maxBalance.Div64(5000)
+	withdrawalSize := maxBalance.Div64(10000)
 
 	// Prepare the accounts
 	accountIDs := make([]string, acc)
@@ -500,7 +500,7 @@ func TestAccountRiskBenchmark(t *testing.T) {
 		atomic.StoreUint64(&atomicWithdrawals, 0) // reset counter
 
 		// Log the configuration
-		fmt.Printf("- - - - \nConfiguration:\nAccounts: %d\nWithdrawals: %d\nThreads: %d\n\n", acc, withdrawals, threads)
+		fmt.Printf("- - - - - - - - \nConfiguration:\nAccounts: %d\nWithdrawals: %d\nThreads: %d\n- - - - - - - - \n\n", acc, withdrawals, threads)
 
 		var wg sync.WaitGroup
 		for th := 0; th < threads; th++ {
@@ -529,6 +529,10 @@ func TestAccountRiskBenchmark(t *testing.T) {
 						break
 					}
 					atomic.AddUint64(&atomicWithdrawals, 1)
+
+					// Sleep to allow the GC some time. If we do not sleep here,
+					// the percentile statistics are much worse due to outliers.
+					time.Sleep(10 * time.Microsecond)
 				}
 			}()
 		}
@@ -576,6 +580,7 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 		{100, 200000, 64},
 		{100, 200000, 128},
 		{100, 500000, 128},
+		{100, 1000000, 16},
 	}
 
 	// Prepare a host
@@ -636,6 +641,10 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 					}
 					timeInMS := time.Since(start).Microseconds()
 					timings[thread] = append(timings[thread], timeInMS)
+
+					// Sleep to allow the GC some time. If we do not sleep here,
+					// the percentile statistics are much worse due to outliers.
+					time.Sleep(10 * time.Microsecond)
 				}
 			}(th)
 		}

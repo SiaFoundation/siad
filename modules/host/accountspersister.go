@@ -65,9 +65,10 @@ type (
 	// manager. This includes all ephemeral account data and the fingerprints of
 	// the withdrawal messages.
 	accountsPersister struct {
-		accounts     modules.File
-		fingerprints *fingerprintManager
-		indexLocks   map[uint32]*indexLock
+		accounts   modules.File
+		indexLocks map[uint32]*indexLock
+
+		staticFingerprintManager *fingerprintManager
 
 		mu sync.Mutex
 		h  *Host
@@ -99,11 +100,32 @@ type (
 	// to ensure the files don't grow too large in size. It has its own mutex to
 	// avoid lock contention on the indexLocks.
 	fingerprintManager struct {
-		current     modules.File
-		currentPath string
-		next        modules.File
-		nextPath    string
-		mu          sync.Mutex
+		staticCurrentPath string
+		staticNextPath    string
+
+		current modules.File
+		next    modules.File
+
+		staticSaveFingerprintsQueue saveFingerprintsQueue
+		wakeChan                    chan struct{}
+
+		mu sync.Mutex
+		h  *Host
+	}
+
+	// saveFingerprintsQueue wraps a queue of fingerprints that are scheduled ot
+	// be persisted to disk. It has its own mutex to be able to enqueue a
+	// fingerprint with minimal lock contention.
+	saveFingerprintsQueue struct {
+		queue []fingerprint
+		mu    sync.Mutex
+	}
+
+	// fingerprint is a helper struct that contains the fingerprint hash and its
+	// expiry block height.
+	fingerprint struct {
+		hash   crypto.Hash
+		expiry types.BlockHeight
 	}
 )
 
@@ -125,9 +147,12 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 	}
 
 	// Create the fingerprint manager
-	if ap.fingerprints, err = ap.newFingerprintManager(); err != nil {
-		return nil, err // already has context
+	fpm, err := ap.newFingerprintManager()
+	if err != nil {
+		return nil, err
 	}
+	ap.staticFingerprintManager = fpm
+	go fpm.threadedSaveFingerprintsLoop()
 
 	return ap, nil
 }
@@ -135,18 +160,22 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 // newFingerprintManager will create a new fingerprint manager, this manager
 // uses two files to store the fingerprints on disk.
 func (ap *accountsPersister) newFingerprintManager() (_ *fingerprintManager, err error) {
-	fm := &fingerprintManager{}
-
-	fm.currentPath = filepath.Join(ap.h.persistDir, fingerprintsCurrFilename)
-	fm.current, err = ap.openFingerprintBucket(fm.currentPath)
-	if err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.currentPath))
+	fm := &fingerprintManager{
+		staticSaveFingerprintsQueue: saveFingerprintsQueue{queue: make([]fingerprint, 0)},
+		wakeChan:                    make(chan struct{}, 1),
+		h:                           ap.h,
 	}
 
-	fm.nextPath = filepath.Join(ap.h.persistDir, fingerprintsNxtFilename)
-	fm.next, err = ap.openFingerprintBucket(fm.nextPath)
+	fm.staticCurrentPath = filepath.Join(ap.h.persistDir, fingerprintsCurrFilename)
+	fm.current, err = ap.openFingerprintBucket(fm.staticCurrentPath)
 	if err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.nextPath))
+		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.staticCurrentPath))
+	}
+
+	fm.staticNextPath = filepath.Join(ap.h.persistDir, fingerprintsNxtFilename)
+	fm.next, err = ap.openFingerprintBucket(fm.staticNextPath)
+	if err != nil {
+		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.staticNextPath))
 	}
 
 	return fm, nil
@@ -205,13 +234,13 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 	return
 }
 
-// callSaveFingerprint writes the fingerprint to disk
-func (ap *accountsPersister) callSaveFingerprint(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) error {
-	err := ap.fingerprints.managedSave(fp, expiry, currentBlockHeight)
-	if err != nil {
-		return errors.AddContext(err, "could not save fingerprint")
-	}
-	return nil
+// callQueueSaveFingerprint adds the given fingerprint to the save queue.
+func (ap *accountsPersister) callQueueSaveFingerprint(hash crypto.Hash, expiry types.BlockHeight) {
+	fm := ap.staticFingerprintManager
+	fm.staticSaveFingerprintsQueue.mu.Lock()
+	fm.staticSaveFingerprintsQueue.queue = append(fm.staticSaveFingerprintsQueue.queue, fingerprint{hash, expiry})
+	fm.staticSaveFingerprintsQueue.mu.Unlock()
+	fm.staticWake()
 }
 
 // callLoadData loads the accounts data from disk and returns it
@@ -226,10 +255,11 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 	}
 
 	// Load fingerprints
+	fm := ap.staticFingerprintManager
 	fingerprints := make(map[crypto.Hash]struct{})
 	if err := errors.Compose(
-		ap.loadFingerprints(ap.fingerprints.currentPath, fingerprints),
-		ap.loadFingerprints(ap.fingerprints.nextPath, fingerprints),
+		ap.loadFingerprints(fm.staticCurrentPath, fingerprints),
+		ap.loadFingerprints(fm.staticNextPath, fingerprints),
 	); err != nil {
 		return nil, err
 	}
@@ -243,7 +273,7 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 // callRotateFingerprintBuckets will rotate the fingerprint bucket files, but
 // only if the current block height exceeds the current bucket's threshold
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
-	fm := ap.fingerprints
+	fm := ap.staticFingerprintManager
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
@@ -253,16 +283,16 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	}
 
 	// Swap the fingerprints by renaming the next bucket
-	if err = os.Rename(fm.nextPath, fm.currentPath); err != nil {
+	if err = os.Rename(fm.staticNextPath, fm.staticCurrentPath); err != nil {
 		return errors.AddContext(err, "could not rename next fingerprint bucket")
 	}
 
 	// Reopen files
-	if fm.current, err = ap.openFingerprintBucket(fm.currentPath); err != nil {
-		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.currentPath))
+	if fm.current, err = ap.openFingerprintBucket(fm.staticCurrentPath); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.staticCurrentPath))
 	}
-	if fm.next, err = ap.openFingerprintBucket(fm.nextPath); err != nil {
-		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.nextPath))
+	if fm.next, err = ap.openFingerprintBucket(fm.staticNextPath); err != nil {
+		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.staticNextPath))
 	}
 
 	return nil
@@ -352,7 +382,7 @@ func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metada
 // close will cleanly shutdown the account persister's open file handles
 func (ap *accountsPersister) close() error {
 	return errors.Compose(
-		ap.fingerprints.close(),
+		ap.staticFingerprintManager.close(),
 		syncAndClose(ap.accounts),
 	)
 }
@@ -413,6 +443,87 @@ func (ap *accountsPersister) loadFingerprints(path string, m map[crypto.Hash]str
 	return nil
 }
 
+// threadedSaveFingerprintsLoop continuously checks if fingerprints got added to
+// the queue and will save them. The loop blocks until it receives a message on
+// the wakeChan, or until it receives a stop signal.
+func (fm *fingerprintManager) threadedSaveFingerprintsLoop() {
+	for {
+		var workPerformed bool
+		func() {
+			if err := fm.h.tg.Add(); err != nil {
+				return
+			}
+			defer fm.h.tg.Done()
+
+			fm.staticSaveFingerprintsQueue.mu.Lock()
+			if len(fm.staticSaveFingerprintsQueue.queue) == 0 {
+				fm.staticSaveFingerprintsQueue.mu.Unlock()
+				return
+			}
+
+			fp := fm.staticSaveFingerprintsQueue.queue[0]
+			fm.staticSaveFingerprintsQueue.queue = fm.staticSaveFingerprintsQueue.queue[1:]
+			fm.staticSaveFingerprintsQueue.mu.Unlock()
+
+			err := fm.managedSave(fp)
+			if err != nil {
+				fm.h.log.Fatal("Could not save fingerprint", err)
+			}
+			workPerformed = true
+		}()
+
+		if workPerformed {
+			continue
+		}
+
+		select {
+		case <-fm.wakeChan:
+			continue
+		case <-fm.h.tg.StopChan():
+			return
+		}
+	}
+}
+
+// managedSave will persist the given fingerprint into the appropriate bucket
+func (fm *fingerprintManager) managedSave(fp fingerprint) error {
+	// Encode the fingerprint, verify it has the correct size
+	fpBytes, err := safeEncode(fp.hash, fingerprintSize)
+	if err != nil {
+		build.Critical(errors.New("fingerprint size is larger than the expected size"))
+		return ErrAccountPersist
+	}
+	bh := fm.h.BlockHeight()
+
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	// Write into bucket depending on it's expiry
+	_, max := currentBucketRange(bh)
+	if fp.expiry < max {
+		_, err := fm.current.Write(fpBytes)
+		return err
+	}
+	_, err = fm.next.Write(fpBytes)
+	return err
+}
+
+// staticWake is called every time a fingerprint is added to the queue.
+func (fm *fingerprintManager) staticWake() {
+	select {
+	case fm.wakeChan <- struct{}{}:
+	default:
+	}
+}
+
+// close will safely close the current and next bucket file
+func (fm *fingerprintManager) close() error {
+	return errors.Compose(
+		syncAndClose(fm.current),
+		syncAndClose(fm.next),
+	)
+}
+
 // accountData transforms the account into an accountData struct which will
 // contain all data we persist to disk
 func (a *account) accountData() *accountData {
@@ -446,36 +557,6 @@ func (a *accountData) bytes() ([]byte, error) {
 		return nil, err
 	}
 	return accBytes, nil
-}
-
-// managedSave will persist the given fingerprint into the appropriate bucket
-func (fm *fingerprintManager) managedSave(fp crypto.Hash, expiry, currentBlockHeight types.BlockHeight) error {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-
-	// Encode the fingerprint, verify it has the correct size
-	fpBytes, err := safeEncode(fp, fingerprintSize)
-	if err != nil {
-		build.Critical(errors.New("fingerprint size is larger than the expected size"))
-		return ErrAccountPersist
-	}
-
-	// Write into bucket depending on it's expiry
-	_, max := currentBucketRange(currentBlockHeight)
-	if expiry < max {
-		_, err := fm.current.Write(fpBytes)
-		return err
-	}
-	_, err = fm.next.Write(fpBytes)
-	return err
-}
-
-// close will close the current and next bucket file
-func (fm *fingerprintManager) close() error {
-	return errors.Compose(
-		syncAndClose(fm.current),
-		syncAndClose(fm.next),
-	)
 }
 
 // currentBucketRange will calculate the range (in blockheight) that defines the
