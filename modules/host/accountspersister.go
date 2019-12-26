@@ -113,7 +113,7 @@ type (
 		h  *Host
 	}
 
-	// saveFingerprintsQueue wraps a queue of fingerprints that are scheduled ot
+	// saveFingerprintsQueue wraps a queue of fingerprints that are scheduled to
 	// be persisted to disk. It has its own mutex to be able to enqueue a
 	// fingerprint with minimal lock contention.
 	saveFingerprintsQueue struct {
@@ -122,7 +122,8 @@ type (
 	}
 
 	// fingerprint is a helper struct that contains the fingerprint hash and its
-	// expiry block height.
+	// expiry block height. These objects are enqueued in the save queue and
+	// processed by the threadedSaveFingerprintsLoop.
 	fingerprint struct {
 		hash   crypto.Hash
 		expiry types.BlockHeight
@@ -152,6 +153,8 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 		return nil, err
 	}
 	ap.staticFingerprintManager = fpm
+
+	// Start the save loop
 	go fpm.threadedSaveFingerprintsLoop()
 
 	return ap, nil
@@ -161,24 +164,59 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 // uses two files to store the fingerprints on disk.
 func (ap *accountsPersister) newFingerprintManager() (_ *fingerprintManager, err error) {
 	fm := &fingerprintManager{
+		staticCurrentPath:           filepath.Join(ap.h.persistDir, fingerprintsCurrFilename),
+		staticNextPath:              filepath.Join(ap.h.persistDir, fingerprintsNxtFilename),
 		staticSaveFingerprintsQueue: saveFingerprintsQueue{queue: make([]fingerprint, 0)},
 		wakeChan:                    make(chan struct{}, 1),
 		h:                           ap.h,
 	}
 
-	fm.staticCurrentPath = filepath.Join(ap.h.persistDir, fingerprintsCurrFilename)
 	fm.current, err = ap.openFingerprintBucket(fm.staticCurrentPath)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.staticCurrentPath))
 	}
 
-	fm.staticNextPath = filepath.Join(ap.h.persistDir, fingerprintsNxtFilename)
 	fm.next, err = ap.openFingerprintBucket(fm.staticNextPath)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.staticNextPath))
 	}
 
 	return fm, nil
+}
+
+// callLoadData loads all accounts data and fingerprints from disk
+func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
+	accounts := make(map[string]*account)
+	fingerprints := make(map[crypto.Hash]struct{})
+
+	// Load accounts
+	err := func() error {
+		ap.mu.Lock()
+		defer ap.mu.Unlock()
+		return ap.loadAccounts(ap.accounts, accounts)
+	}()
+	if err != nil {
+		return nil, err
+	}
+
+	// Load fingerprints
+	fm := ap.staticFingerprintManager
+	err = func() error {
+		fm.mu.Lock()
+		defer fm.mu.Unlock()
+		return errors.Compose(
+			ap.loadFingerprints(fm.staticCurrentPath, fingerprints),
+			ap.loadFingerprints(fm.staticNextPath, fingerprints),
+		)
+	}()
+	if err != nil {
+		return nil, err
+	}
+
+	return &accountsPersisterData{
+		accounts:     accounts,
+		fingerprints: fingerprints,
+	}, nil
 }
 
 // callSaveAccount will persist the given account data at the location
@@ -200,6 +238,15 @@ func (ap *accountsPersister) callSaveAccount(data *accountData, index uint32) er
 	}
 
 	return nil
+}
+
+// callQueueSaveFingerprint adds the given fingerprint to the save queue.
+func (ap *accountsPersister) callQueueSaveFingerprint(hash crypto.Hash, expiry types.BlockHeight) {
+	fm := ap.staticFingerprintManager
+	fm.staticSaveFingerprintsQueue.mu.Lock()
+	fm.staticSaveFingerprintsQueue.queue = append(fm.staticSaveFingerprintsQueue.queue, fingerprint{hash, expiry})
+	fm.staticSaveFingerprintsQueue.mu.Unlock()
+	fm.staticWake()
 }
 
 // callBatchDeleteAccount will overwrite the accounts at given indexes with
@@ -234,44 +281,7 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 	return
 }
 
-// callQueueSaveFingerprint adds the given fingerprint to the save queue.
-func (ap *accountsPersister) callQueueSaveFingerprint(hash crypto.Hash, expiry types.BlockHeight) {
-	fm := ap.staticFingerprintManager
-	fm.staticSaveFingerprintsQueue.mu.Lock()
-	fm.staticSaveFingerprintsQueue.queue = append(fm.staticSaveFingerprintsQueue.queue, fingerprint{hash, expiry})
-	fm.staticSaveFingerprintsQueue.mu.Unlock()
-	fm.staticWake()
-}
-
-// callLoadData loads the accounts data from disk and returns it
-func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
-
-	// Load accounts
-	accounts := make(map[string]*account)
-	if err := ap.loadAccounts(ap.accounts, accounts); err != nil {
-		return nil, err
-	}
-
-	// Load fingerprints
-	fm := ap.staticFingerprintManager
-	fingerprints := make(map[crypto.Hash]struct{})
-	if err := errors.Compose(
-		ap.loadFingerprints(fm.staticCurrentPath, fingerprints),
-		ap.loadFingerprints(fm.staticNextPath, fingerprints),
-	); err != nil {
-		return nil, err
-	}
-
-	return &accountsPersisterData{
-		accounts:     accounts,
-		fingerprints: fingerprints,
-	}, nil
-}
-
-// callRotateFingerprintBuckets will rotate the fingerprint bucket files, but
-// only if the current block height exceeds the current bucket's threshold
+// callRotateFingerprintBuckets will rotate the fingerprint buckets
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	fm := ap.staticFingerprintManager
 	fm.mu.Lock()
@@ -288,17 +298,19 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	}
 
 	// Reopen files
-	if fm.current, err = ap.openFingerprintBucket(fm.staticCurrentPath); err != nil {
+	fm.current, err = ap.openFingerprintBucket(fm.staticCurrentPath)
+	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.staticCurrentPath))
 	}
-	if fm.next, err = ap.openFingerprintBucket(fm.staticNextPath); err != nil {
+	fm.next, err = ap.openFingerprintBucket(fm.staticNextPath)
+	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.staticNextPath))
 	}
 
 	return nil
 }
 
-// managedLockAccount grabs a lock on an (account) index.
+// managedLockIndex grabs a lock on an (account) index.
 func (ap *accountsPersister) managedLockIndex(index uint32) {
 	ap.mu.Lock()
 	il, exists := ap.indexLocks[index]
@@ -316,7 +328,7 @@ func (ap *accountsPersister) managedLockIndex(index uint32) {
 	il.mu.Lock()
 }
 
-// managedLockAccount releases a lock on an (account) index.
+// managedUnlockIndex releases a lock on an (account) index.
 func (ap *accountsPersister) managedUnlockIndex(index uint32) {
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
@@ -446,6 +458,9 @@ func (ap *accountsPersister) loadFingerprints(path string, m map[crypto.Hash]str
 // threadedSaveFingerprintsLoop continuously checks if fingerprints got added to
 // the queue and will save them. The loop blocks until it receives a message on
 // the wakeChan, or until it receives a stop signal.
+//
+// Note: threadgroup counter must be inside for loop. If not, calling 'Flush'
+// on the threadgroup would deadlock.
 func (fm *fingerprintManager) threadedSaveFingerprintsLoop() {
 	for {
 		var workPerformed bool
@@ -498,7 +513,7 @@ func (fm *fingerprintManager) managedSave(fp fingerprint) error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
-	// Write into bucket depending on it's expiry
+	// Write into bucket depending on its expiry
 	_, max := currentBucketRange(bh)
 	if fp.expiry < max {
 		_, err := fm.current.Write(fpBytes)
@@ -508,7 +523,7 @@ func (fm *fingerprintManager) managedSave(fp fingerprint) error {
 	return err
 }
 
-// staticWake is called every time a fingerprint is added to the queue.
+// staticWake is called every time a fingerprint is added to the save queue.
 func (fm *fingerprintManager) staticWake() {
 	select {
 	case fm.wakeChan <- struct{}{}:
@@ -548,7 +563,7 @@ func (a *accountData) account(index uint32) *account {
 	}
 }
 
-// bytes returns the account data as an array of bytes.
+// bytes returns the account data as bytes.
 func (a *accountData) bytes() ([]byte, error) {
 	// Encode the account, verify it has the correct size
 	accBytes, err := safeEncode(*a, accountSize)

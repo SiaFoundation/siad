@@ -949,8 +949,8 @@ func (ab *accountBifield) releaseIndex(index uint32) {
 	(*ab)[i] &= mask
 }
 
-// buildAccountIndex will initialize bitfields representing all ephemeral
-// accounts. Upon account expiry, its index will be freed up by unsetting the
+// buildIndex will initialize bitfields representing all ephemeral accounts.
+// Upon account expiry, its index will be freed up by unsetting the
 // corresponding bit. When a new account is opened, it will grab the first
 // available index, effectively recycling the expired account indexes.
 func (ab *accountBifield) buildIndex(accounts map[string]*account) {

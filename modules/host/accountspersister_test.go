@@ -185,11 +185,10 @@ func TestFingerprintsRotate(t *testing.T) {
 		t.Fatal("Unexpected error, expected ErrWithdrawalSpent but got:", err)
 	}
 
-	// Flush the host's threadgroup (this awaits the asynchronous persist of the
-	// fingerprints - which is necessary for this test to pass)
-	if err = ht.host.tg.Flush(); err != nil {
-		t.Fatal(err)
-	}
+	// Because fingerprints are enqueued to get persisted to disk, the
+	// threadgroup wouldn't await them if we called close or flush. Sleep here
+	// to allow some time for the fp to get persisted to disk.
+	time.Sleep(time.Second)
 
 	// Verify we have the fingerprints on disk by using the persister
 	data, err := am.staticAccountsPersister.callLoadData()
