@@ -26,7 +26,7 @@ type LinkData struct {
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
-func (ld LinkData) LoadSialink(s modules.Sialink) error {
+func (ld *LinkData) LoadSialink(s modules.Sialink) error {
 	return ld.LoadString(string(s))
 }
 
