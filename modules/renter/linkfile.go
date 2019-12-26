@@ -262,7 +262,7 @@ func (r *Renter) UploadLinkfile(lfm modules.LinkfileMetadata, siaPath modules.Si
 	}
 	sialink := ld.Sialink()
 
-	// Add the sialink toe the Siafile.
+	// Add the sialink to the Siafile.
 	err = fileNode.AddSialink(sialink)
 	if err != nil {
 		return sialink, errors.AddContext(err, "unable to add sialink to siafile")
