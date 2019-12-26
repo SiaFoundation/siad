@@ -3751,23 +3751,34 @@ subsequent call to the upload stream endpoint using the `repair` flag.
 
 ### Path Parameters
 ### REQUIRED
+**siapath** | string  
+Location where the file will reside in the renter on the network. The path must
+be non-empty, may not include any path traversal strings ("./", "../"), and may
+not begin with a forward-slash character.  
+
+### Query String Parameters
+### REQUIRED
 **name** | string  
 Location where the linkfile will reside in the renter's filesystem. The path
 must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
-### Query String Parameters
 ### OPTIONAL
-**mode** | uint32  
-The file mode / permissions of the file. Users who download this file will be
-presented a file with this mode. If no mode is set, the Sia default of 0644 will
-be used.
-
 **force** | bool  
 If there is already a file that exists at the provided siapath, setting this
 flag will cause the new file to overwrite/delete the existing file. If this flag
 is not set, an error will be returned preventing the user from destroying
 existing data.
+
+**mode** | uint32  
+The file mode / permissions of the file. Users who download this file will be
+presented a file with this mode. If no mode is set, the Sia default of 0644 will
+be used.
+
+**redundancy** | uint8  
+The redundancy to use when uploading the linkfile. Linkfiles are always uploaded
+using a 1-of-N erasure coding scheme, so the redundancy needs to be set quite a
+bit higher than for typical files to achieve the same level of reliability.
 
 ### JSON Response
 > JSON Response Example
