@@ -200,7 +200,7 @@ type (
 		id            string
 		amount        types.Currency
 		persistResult chan error
-		syncResult    chan error
+		syncResult    chan struct{}
 	}
 
 	// blockedWithdrawalHeap is a heap of blocked withdrawal calls; the heap is
@@ -345,7 +345,7 @@ func newFingerprintMap(bucketBlockRange int) *fingerprintMap {
 // 5. Failure after RPC calls deposit, after EA is updated, after AM returns,
 // after FC sync: EA is updated, FC is updated, there is no risk to the host at
 // this point
-func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan chan error) error {
+func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
 	his := am.h.InternalSettings()
@@ -429,7 +429,7 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 
 // managedPrepareDeposit performs a couple of steps in preparation of the
 // deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan, syncChan chan error) error {
+func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -540,7 +540,7 @@ func (am *accountManager) managedAccountPersistInfo(id string) *accountPersistIn
 // received a signal on the doneChan. This thread will stop after a timeout of
 // 10 mins, or if it receives a stop signal. This doneChan is passed in by the
 // RPC, it will close this channel when the file contract has been fsynced.
-func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, syncChan chan error) {
+func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, syncChan chan struct{}) {
 	if err := am.h.tg.Add(); err != nil {
 		return
 	}
@@ -622,7 +622,7 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 
 // commitDeposit deposits the amount to the account balance and schedules a
 // persist to save the account data to disk.
-func (am *accountManager) commitDeposit(a *account, amount types.Currency, blockHeight types.BlockHeight, persistResultChan, syncChan chan error) {
+func (am *accountManager) commitDeposit(a *account, amount types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) {
 	// Update the account details
 	a.balance = a.balance.Add(amount)
 	a.lastTxnTime = time.Now().Unix()
@@ -683,7 +683,7 @@ func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, bl
 // The host is at risk for this amount as long as the file contract has not been
 // fsynced. When the RPC is done with the FC fsync it will close the doneChan so
 // the account manager can lower the risk.
-func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncChan chan error) {
+func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncChan chan struct{}) {
 	// The syncChan might already be closed, perform a quick check to verify
 	// this. If it is the case we do not need to update risk at all. This saves
 	// unnecessarily acquiring the lock.

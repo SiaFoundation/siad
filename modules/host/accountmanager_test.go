@@ -1105,7 +1105,7 @@ func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signatu
 // commit, this commit will be called when the FC is fsynced to disk, in tests
 // we ignore that for most test cases
 func callDeposit(am *accountManager, id string, amount types.Currency) error {
-	doneChan := make(chan error)
+	doneChan := make(chan struct{})
 	err := am.callDeposit(id, amount, doneChan)
 	if err != nil {
 		return err
