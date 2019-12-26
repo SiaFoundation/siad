@@ -386,12 +386,12 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	commitResultChan := make(chan error)
 
 	// Initiate the withdraw process.
-	withdrawDone, err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, bh, commitResultChan)
+	withdrawCommitted, err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, bh, commitResultChan)
 	if err != nil {
 		return errors.AddContext(err, "Withdraw failed")
 	}
 
-	if !withdrawDone {
+	if !withdrawCommitted {
 		return am.staticWaitForWithdrawalResult(commitResultChan)
 	}
 	return nil
@@ -463,9 +463,15 @@ func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxB
 
 // managedPrepareWithdraw performs a couple of steps in preparation of the
 // withdrawal. If everything checks out it will commit the withdrawal.
-func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (bool, error) {
+func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (withdrawCommitted bool, err error) {
 	amount, id, expiry := msg.amount, msg.account, msg.expiry
+
 	am.mu.Lock()
+	defer func() {
+		if err == nil {
+			am.staticAccountsPersister.callQueueSaveFingerprint(fp, expiry)
+		}
+	}()
 	defer am.mu.Unlock()
 
 	// Check if withdrawals are inactive. This will be the case when the host is
@@ -481,7 +487,6 @@ func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp cryp
 		return false, ErrWithdrawalSpent
 	}
 	am.fingerprints.add(fp, expiry, blockHeight)
-	defer am.staticAccountsPersister.callQueueSaveFingerprint(fp, expiry)
 
 	// Open the account, create if it does not exist yet
 	acc := am.openAccount(id)
