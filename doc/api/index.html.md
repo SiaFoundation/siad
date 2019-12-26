@@ -3764,6 +3764,10 @@ must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
 ### OPTIONAL
+**createtime** int64  
+The timestamp which should be put in the file metadata as the creation timestamp
+of the file. This is a Unix timestamp.
+
 **force** | bool  
 If there is already a file that exists at the provided siapath, setting this
 flag will cause the new file to overwrite/delete the existing file. If this flag

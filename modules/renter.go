@@ -990,8 +990,8 @@ type LinkfileMetadata struct {
 	// Permissions.
 	Mode uint32 `json:"mode"`
 
-	// Timestamp information
-	CreateTime time.Time `json:"createtime"`
+	// Timestamp information, in 64bit Unix.
+	CreateTime int64 `json:"createtime"`
 }
 
 // LinkfileUploadParameters establishes the parameters such as the intra-root

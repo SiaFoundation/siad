@@ -1765,9 +1765,19 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 			return
 		}
 	}
+	createTimeStr := queryForm.Get("createtime")
+	var createTime int64
+	if createTimeStr != "" {
+		_, err := fmt.Sscan(createTimeStr, &createTime)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to parse file create time: %v", err)}, http.StatusBadRequest)
+			return
+		}
+	}
 	lfm := modules.LinkfileMetadata{
-		Name: name,
-		Mode: mode,
+		Name:       name,
+		Mode:       mode,
+		CreateTime: createTime,
 	}
 	lup := modules.LinkfileUploadParameters{
 		SiaPath:             siaPath,

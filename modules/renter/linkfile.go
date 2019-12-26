@@ -207,8 +207,8 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	if lup.FileMetadata.Mode == 0 {
 		lup.FileMetadata.Mode = modules.DefaultFilePerm
 	}
-	if lup.FileMetadata.CreateTime == (time.Time{}) {
-		lup.FileMetadata.CreateTime = time.Now()
+	if lup.FileMetadata.CreateTime == 0 {
+		lup.FileMetadata.CreateTime = time.Now().Unix()
 	}
 	if lup.Reader == nil {
 		return "", errors.New("need to provide a stream of upload data")
