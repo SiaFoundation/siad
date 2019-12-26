@@ -1707,8 +1707,6 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // renterSialinkHandlerGET accepts a sialink as input and will stream the data
 // from the sialink out of the response body as output.
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// TODO: Add support for offset + len.
-
 	sialink := modules.Sialink(ps.ByName("sialink"))
 	metadata, data, err := api.renter.DownloadSialink(sialink)
 	if err != nil {
@@ -1747,25 +1745,35 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		}
 	}
 
-	// TODO: Erasure coding params - both for the base file and for the fanout.
+	// Check whether the redundancy has been set.
+	redundancy := 0
+	if rStr := queryForm.Get("redundancy"); rStr != "" {
+		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
+			WriteError(w, Error{"unable to parse redundancy: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
 
 	// Call the renter to upload the linkfile and create a sialink.
 	name := queryForm.Get("name")
 	modeStr := queryForm.Get("mode")
 	var mode uint32
-	if modeStr == "" {
-		mode = modules.DefaultFilePerm
-	} else {
-		// TODO: parse modeStr instead of using default
-		mode = modules.DefaultFilePerm
+	if modeStr != "" {
+		_, err := fmt.Sscanf(modeStr, "%o", &mode)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to parse file mode: %v", err)}, http.StatusBadRequest)
+			return
+		}
 	}
 	lfm := modules.LinkfileMetadata{
 		Name: name,
 		Mode: mode,
 	}
 	lup := modules.LinkfileUploadParameters{
-		SiaPath:      siaPath,
-		Force:        force,
+		SiaPath:             siaPath,
+		Force:               force,
+		BaseChunkRedundancy: redundancy,
+
 		FileMetadata: lfm,
 		Reader:       req.Body,
 	}

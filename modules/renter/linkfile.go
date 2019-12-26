@@ -207,6 +207,9 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	if lup.IntraSectorParityPieces == 0 {
 		lup.IntraSectorParityPieces = LinkfileDefaultIntraSectorParityPieces
 	}
+	if lup.FileMetadata.Mode == 0 {
+		lup.FileMetadata.Mode = modules.DefaultFilePerm
+	}
 	if lup.IntraSectorDataPieces != 1 {
 		return "", errors.New("intra-sector erasure coding not yet supported, intra sector data pieces must be set to 1")
 	}
