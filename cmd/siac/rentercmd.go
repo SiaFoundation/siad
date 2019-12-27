@@ -1830,6 +1830,35 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 	return s[i].dir.SiaPath.String() < s[j].dir.SiaPath.String()
 }
 
+// getDirRoot returns the directory info for the directory at siaPath and its
+// subdirs, querying the root directory.
+func getDirRoot(siaPath modules.SiaPath) (dirs []directoryInfo) {
+	rgd, err := httpClient.RenterDirRootGet(siaPath)
+	if err != nil {
+		die("failed to get dir info:", err)
+	}
+	dir := rgd.Directories[0]
+	subDirs := rgd.Directories[1:]
+
+	// Append directory to dirs.
+	dirs = append(dirs, directoryInfo{
+		dir:     dir,
+		files:   rgd.Files,
+		subDirs: subDirs,
+	})
+
+	// If -R isn't set we are done.
+	if !renterListRecursive {
+		return
+	}
+	// Call getDir on subdirs.
+	for _, subDir := range subDirs {
+		rdirs := getDir(subDir.SiaPath)
+		dirs = append(dirs, rdirs...)
+	}
+	return
+}
+
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs.
 func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
@@ -2193,34 +2222,41 @@ func renterlinkfilescmd(cmd *cobra.Command, args []string) {
 
 // renterlinkfileslscmd lists all of the linkfiles that a user has uploaded.
 func renterlinkfileslscmd() {
-	// Fetch the linkfile directory.
-	renterDir, err := httpClient.RenterDirRootGet(modules.LinkfileSiaFolder)
-	if err != nil {
-		die("Unable to fetch linkfiles dir:", err)
+	// Get dirs with their corresponding files. The linkfiles list command is
+	// always recursive (at least for now - may add a flag later.).
+	dirs := getDirRoot(modules.LinkfileSiaFolder)
+	numFiles := 0
+	for _, dir := range dirs {
+		numFiles += len(dir.files)
 	}
-
-	// Print out all of the subdirs.
-	for _, dir := range renterDir.Directories {
-		fmt.Println("Found a subdir, recursive display not yet supported", dir.SiaPath)
+	if numFiles+len(dirs) < 1 {
+		fmt.Println("No files/dirs have been uploaded.")
+		return
 	}
+	fmt.Printf("Listing %v files/dirs:\n", numFiles+len(dirs)-1)
 
-	// Print out all of files and their sialinks.
-	//
-	// TODO: Tabwriter.
-	for _, file := range renterDir.Files {
-		if len(file.Sialinks) == 0 {
-			fmt.Println(file.SiaPath, "\tno sialinks")
-		} else {
-			fmt.Println(file.SiaPath, "\t", file.Sialinks[0])
-			for _, sialink := range file.Sialinks[1:] {
-				fmt.Println("\t", sialink)
+	// Print out all of the dirs.
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	sort.Sort(byDirectoryInfo(dirs))
+	for _, dir := range dirs {
+		fmt.Fprintf(w, "\t%v\t\t\t\n", dir.dir.SiaPath)
+		sort.Sort(bySiaPathDir(dir.subDirs))
+		for _, subDir := range dir.subDirs {
+			fmt.Fprintf(w, "\t\t%v\t\t\n", subDir.SiaPath.Name())
+		}
+
+		for _, file := range dir.files {
+			if len(file.Sialinks) == 0 {
+				fmt.Fprintf(w, "\t\t\t%v\t\n", file.SiaPath.Name())
+			} else {
+				fmt.Fprintf(w, "\t\t\t%v\t%v\n", file.SiaPath.Name(), file.Sialinks[0])
+				for _, sialink := range file.Sialinks[1:] {
+					fmt.Fprintf(w, "\t\t\t\t%v\n", sialink)
+				}
 			}
 		}
 	}
-
-	if len(renterDir.Directories) != 0 {
-		fmt.Println("\nNot showing any files in any subdirs - coming soon")
-	}
+	w.Flush()
 }
 
 // renterlinkfilesuploadcmd will upload a linkfile to the Sia network.
