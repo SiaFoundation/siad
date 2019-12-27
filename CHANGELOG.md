@@ -9,6 +9,15 @@ Sia uses the following versioning scheme, vX.X.X.X
 Version History
 ---------------
 
+Latest:
+
+### v1.4.2.1
+**Key Updates**
+ - Added the ability to upload linkfiles and create sialinks
+
+**Bugs Fixed**
+ - Unable to upload a new file if 'force' is set and no file exists to delete.
+
 Dec 2019:
 
 ### v1.4.2.0
@@ -35,7 +44,7 @@ Dec 2019:
  - Gateway bandwidth monitoring
  - Ability to pause uploads/repairs
 
-**Bugs**
+**Bugs Fixed**
  - Missing return statements in API (http: superfluous response.WriteHeader call)
  - Stuck Loop fixes (chunks not being added due to directory siapath never being set)
  - Rapid Cycle repair loop on start up

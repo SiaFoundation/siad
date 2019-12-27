@@ -417,6 +417,13 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 	return modules.DownloadID(h.Get("ID")), resp, nil
 }
 
+// RenterFileRootGet uses the /renter/file/:siapath endpoint to query a file.
+func (c *Client) RenterFileRootGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get("/renter/file/"+sp+"?root=true", &rf)
+	return
+}
+
 // RenterFileGet uses the /renter/file/:siapath endpoint to query a file.
 func (c *Client) RenterFileGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
 	sp := escapeSiaPath(siaPath)
@@ -645,6 +652,14 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 	return
 }
 
+// RenterDirRootGet uses the /renter/dir/ endpoint to query a directory,
+// starting from the root path.
+func (c *Client) RenterDirRootGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get(fmt.Sprintf("/renter/dir/%s?root=true", sp), &rd)
+	return
+}
+
 // RenterDirGet uses the /renter/dir/ endpoint to query a directory
 func (c *Client) RenterDirGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	sp := escapeSiaPath(siaPath)
@@ -733,33 +748,35 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 
 // RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
 // file.
-//
-// TODO: Add support for offset + len. Though... if we always want to fetch all
-// of the metadata, an offset an len isn't going to help so much b/c we don't
-// know where the actual file offset starts. We may need to increase the size of
-// the sialink :(
-func (c *Client) RenterSialinkGet(sialink string) (resp []byte, err error) {
-	trimmed := strings.TrimPrefix(sialink, "sia://")
+func (c *Client) RenterSialinkGet(sialink modules.Sialink) (fileData []byte, err error) {
+	str := string(sialink)
+	trimmed := strings.TrimPrefix(str, "sia://")
 	getQuery := fmt.Sprintf("/renter/sialink/%s", trimmed)
-	_, resp, err = c.getRawResponse(getQuery)
+	_, fileData, err = c.getRawResponse(getQuery)
 	return
 }
 
 // RenterLinkfilePost uses the /renter/sialink endpoint to upload a linkfile.
 // The resulting sialink is returned along with an error.
-//
-// TODO: add support for all of the linkfile params that are not yet supported.
-func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (string, error) {
-	// Strip any leading slash from the siaPath.
-	siaPath = strings.TrimPrefix(siaPath, "/")
-
-	// Upload the file.
+func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
+	// Set the url values.
 	values := url.Values{}
-	values.Set("name", name)
-	query := fmt.Sprintf("/renter/linkfile/%s?%s", siaPath, values.Encode())
-	_, resp, err := c.postRawResponse(query, r)
+	values.Set("name", lup.FileMetadata.Name)
+	createTimeStr := fmt.Sprintf("%v", lup.FileMetadata.CreateTime)
+	values.Set("createtime", createTimeStr)
+	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	values.Set("redundancy", redundancyStr)
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	_, resp, err := c.postRawResponse(query, lup.Reader)
+
 	if err != nil {
-		return "", errors.AddContext(err, "post call to"+query+" failed")
+		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the sialink.

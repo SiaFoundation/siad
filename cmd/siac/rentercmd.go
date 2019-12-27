@@ -192,6 +192,44 @@ local path where the Sia folder is mounted.`,
 		Run:   wrap(renterfilesuploadcmd),
 	}
 
+	renterLinkfilesCmd = &cobra.Command{
+		Use:   "linkfiles",
+		Short: "Perform actions related to linkfiles",
+		Long: `Linkfiles are files that can be shared throughout the Sia network. The
+linkfiles command allows the user to upload linkfiles to the network and to view
+a list of linkfiles that the user has uploaded to the network. After uploading a
+linkfile, the user is presented with a sialink. The sialink can be presented to
+any viewnode, and the viewnode will be able to retrieve the file.`,
+		Run: renterlinkfilescmd,
+	}
+
+	renterLinkfilesLsCmd = &cobra.Command{
+		Use:   "linkfiles ls",
+		Short: "List all linkfiles that the user has uploaded.",
+		Long: `List all linkfiles that the user has uploaded. Only files in /var/linkfiles
+will be considered. The corresponding sialinks will also be displayed.`,
+		Run: wrap(renterlinkfileslscmd),
+	}
+
+	renterLinkfilesUploadCmd = &cobra.Command{
+		Use:   "linkfiles upload [source path] [destination siapath]",
+		Short: "Upload a linkfile to the Sia network",
+		Long: `Upload a linkfile to the Sia network. The act of uploading a linkfile will
+produce a sialink, which can be presented to any viewnode, which can then fetch
+the corresponding file. The act of uploading "pins" the linkfile to the Sia
+network, where it will remain available for anyone to download until the
+uploader deletes the file. The uploader does not need to stay online in order
+for the file to remain available on the Sia network, they merely need to
+maintain the set of contracts that the file has been uploaded to.
+
+At any time, someone else can "repin" the file just by uploading it to their set
+of contracts. This will allow the same file to continue being available from the
+same sialink even if the original uploader disappears or deletes the file. A
+file will remain available on the Sia network until there is nobody pinning it
+anymore.`,
+		Run: wrap(renterlinkfilesuploadcmd),
+	}
+
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
@@ -326,7 +364,7 @@ func rentersharecmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 		die("Failed to export file:", err)
 	}
-	_, err = httpClient.RenterGetDir(siaPath)
+	_, err = httpClient.RenterDirGet(siaPath)
 	if err == nil {
 		die("Exporting folders is not supported yet.")
 		return
@@ -2208,6 +2246,83 @@ func renterfilesuploadcmd(source, path string) {
 		}
 		fmt.Printf("Uploaded '%s' as '%s'.\n", abs(source), path)
 	}
+}
+
+// renterlinkfilescmd displays the usage info for the command.
+func renterlinkfilescmd(cmd *cobra.Command, args []string) {
+	cmd.UsageFunc()(cmd)
+	os.Exit(exitCodeUsage)
+}
+
+// renterlinkfileslscmd lists all of the linkfiles that a user has uploaded.
+func renterlinkfileslscmd() {
+	// Fetch the linkfile directory.
+	renterDir, err := httpClient.RenterDirRootGet(modules.LinkfileSiaFolder)
+	if err != nil {
+		die("Unable to fetch linkfiles dir:", err)
+	}
+
+	// Print out all of the subdirs.
+	for _, dir := range renterDir.Directories {
+		fmt.Println("Found a subdir, recursive display not yet supported", dir.SiaPath)
+	}
+
+	// Print out all of files and their sialinks.
+	//
+	// TODO: Tabwriter.
+	for _, file := range renterDir.Files {
+		if len(file.Sialinks) == 0 {
+			fmt.Println(file.SiaPath, "\tno sialinks")
+		} else {
+			fmt.Println(file.SiaPath, "\t", file.Sialinks[0])
+			for _, sialink := range file.Sialinks[1:] {
+				fmt.Println("\t", sialink)
+			}
+		}
+	}
+
+	if len(renterDir.Directories) != 0 {
+		fmt.Println("\nNot showing any files in any subdirs - coming soon")
+	}
+}
+
+// renterlinkfilesuploadcmd will upload a linkfile to the Sia network.
+func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+
+	// Open the source file.
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		die("Unable to open source file:", err)
+	}
+	defer file.Close()
+	fi, err := file.Stat()
+	if err != nil {
+		die("Unable to fetch source fileinfo:", err)
+	}
+	_, sourceName := filepath.Split(sourcePath)
+
+	// Perform the upload and print the result.
+	lup := modules.LinkfileUploadParameters{
+		SiaPath: siaPath,
+
+		FileMetadata: modules.LinkfileMetadata{
+			Name:       sourceName,
+			Mode:       fi.Mode(),
+			CreateTime: time.Now().Unix(),
+		},
+
+		Reader: file,
+	}
+	sialink, err := httpClient.RenterLinkfilePost(lup)
+	if err != nil {
+		die("could not upload linkfile:", err)
+	}
+	fmt.Println("File uploaded successfully, the sialink is", sialink)
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which

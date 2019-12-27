@@ -226,6 +226,11 @@ type (
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType
 	}
+
+	// Sialink is a specific type of string that refers to a sialink. A sialink
+	// is always prefixed by 'sia://', and can be used to fetch data from the
+	// Sia network knowing nothing more than the root of the data.
+	Sialink string
 )
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
@@ -433,6 +438,7 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
+	Sialinks         []Sialink         `json:"sialinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
@@ -938,7 +944,7 @@ type Renter interface {
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
 	// DownloadSialink will fetch a file from the Sia network using the sialink.
-	DownloadSialink(sialink string) (LinkfileMetadata, []byte, error)
+	DownloadSialink(sialink Sialink) (LinkfileMetadata, []byte, error)
 
 	// UploadLinkfile will upload data to the Sia network from a reader and
 	// create a linkfile, returning the sialink that can be used to access the
@@ -948,7 +954,7 @@ type Renter interface {
 	// linkfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(lfm LinkfileMetadata, siaPath SiaPath, overwriteExistingFile bool, filedata io.Reader) (string, error)
+	UploadLinkfile(lup LinkfileUploadParameters) (Sialink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -998,18 +1004,37 @@ type LinkfileMetadata struct {
 	Name string `json:"name"`
 
 	// Permissions.
-	Mode uint32 `json:"mode"`
+	Mode os.FileMode `json:"mode"`
 
-	// Timestamp information
-	CreateTime time.Time `json:"createtime"`
+	// Timestamp information, in 64bit Unix.
+	CreateTime int64 `json:"createtime"`
+}
 
-	// Base sector erasure coding settings. This is useful directly in the
-	// linkfile metadata because it allows the sialink to be recovered using
-	// only the metadata.
-	BaseSectorDataPieces   uint8 `json:"basesectordatapieces"`
-	BaseSectorParityPieces uint8 `json:"basesectorparitypieces"`
+// LinkfileUploadParameters establishes the parameters such as the intra-root
+// erasure coding.
+type LinkfileUploadParameters struct {
+	// SiaPath defines the siapath that the linkfile is going to be uploaded to.
+	// Recommended that the linkfile is placed in /var/linkfiles
+	SiaPath SiaPath
 
-	// Fanout redundancy information.
-	FanoutDataPieces   uint8 `json:"fanoutdatapieces"`
-	FanoutParityPieces uint8 `json:"fanoutparitypieces"`
+	// Force determines whether the upload should overwrite an existing siafile
+	// at 'SiaPath'. If set to false, an error will be returned if there is
+	// already a file at 'SiaPath'. If set to true, any existing siafile at
+	// SiaPath will be deleted and over-written.
+	Force bool
+
+	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
+	// meaning that only the redundancy needs to be configured by the user.
+	BaseChunkRedundancy uint8
+
+	// The intra sector erasure coding settings establish how the gets erasure
+	// coded within the base chunk. This is an optimization to improve download
+	// speeds.
+	IntraSectorDataPieces   uint8
+	IntraSectorParityPieces uint8
+
+	FileMetadata LinkfileMetadata
+
+	// Reader supplies the file data for the linkfile.
+	Reader io.Reader
 }

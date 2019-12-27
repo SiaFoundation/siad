@@ -155,6 +155,11 @@ type (
 		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
 		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
 		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
+
+		// Sialink tracking. If this siafile is known to have sectors of any
+		// linkfiles, those linkfiles will be listed here. It should be noted
+		// that a single siafile can be responsible for tracking many linkfiles.
+		Sialinks []modules.Sialink `json:"sialinks"`
 	}
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
@@ -183,6 +188,20 @@ func (sf *SiaFile) AccessTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.AccessTime
+}
+
+// AddSialink will add a sialink to the SiaFile.
+func (sf *SiaFile) AddSialink(s modules.Sialink) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.Sialinks = append(sf.staticMetadata.Sialinks, s)
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // ChangeTime returns the ChangeTime timestamp of the file.
