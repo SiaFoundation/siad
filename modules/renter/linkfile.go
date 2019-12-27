@@ -184,17 +184,9 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	return lfm, baseSector[offset : headerSize+ld.FileSize], nil
 }
 
-// UploadLinkfile will upload the provided data with the provided name and
-// metadata, returning a sialink which can be used by any viewnode to recover
-// the full original file and metadata.
-//
-// UploadLinkfile accepts a data stream directly. This method of generating a
-// linkfile is limited to files where the data + metadata fully fits within a
-// single sector. Larger files will need to be uploaded as siafiles first, and
-// then converted using a convert function (as of writing this comment, no
-// convert function exists).
-func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
-	// Input checks.
+// establishDefaults will set any zero values in the lup to be equal to the
+// desired defaults.
+func establishDefaults(lup *modules.LinkfileUploadParameters) {
 	if lup.BaseChunkRedundancy == 0 {
 		lup.BaseChunkRedundancy = LinkfileDefaultBaseChunkRedundancy
 	}
@@ -210,6 +202,22 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	if lup.FileMetadata.CreateTime == 0 {
 		lup.FileMetadata.CreateTime = time.Now().Unix()
 	}
+}
+
+// UploadLinkfile will upload the provided data with the provided name and
+// metadata, returning a sialink which can be used by any viewnode to recover
+// the full original file and metadata.
+//
+// UploadLinkfile accepts a data stream directly. This method of generating a
+// linkfile is limited to files where the data + metadata fully fits within a
+// single sector. Larger files will need to be uploaded as siafiles first, and
+// then converted using a convert function (as of writing this comment, no
+// convert function exists).
+func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
+	// Set reasonable default values for any lup fields that are blank.
+	establishDefaults(&lup)
+
+	// Input checks - ensure the settings are reasonable.
 	if lup.Reader == nil {
 		return "", errors.New("need to provide a stream of upload data")
 	}

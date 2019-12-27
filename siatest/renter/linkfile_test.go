@@ -101,5 +101,7 @@ func TestLinkfile(t *testing.T) {
 	}
 
 	// TODO: Need to verify the mode, name, and create-time. At this time, I'm
-	// not sure how we can feed those out of the API.
+	// not sure how we can feed those out of the API. They aren't going to be
+	// the same as the siafile values, because the siafile was created
+	// separately.
 }
