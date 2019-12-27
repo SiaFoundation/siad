@@ -7,23 +7,32 @@ import (
 // DeleteFile removes a file entry from the renter and deletes its data from
 // the hosts it is stored on.
 func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
-	if err := r.tg.Add(); err != nil {
+	err := r.tg.Add()
+	if err != nil {
 		return err
 	}
 	defer r.tg.Done()
 
-	// Call callThreadedBubbleMetadata on the old directory to make sure the
-	// system metadata is updated to reflect the move
-	defer func() error {
-		dirSiaPath, err := siaPath.Dir()
-		if err != nil {
-			return err
-		}
-		go r.callThreadedBubbleMetadata(dirSiaPath)
-		return nil
-	}()
+	// Perform the delete operation.
+	err = r.staticFileSystem.DeleteFile(siaPath)
+	if err != nil {
+		return err
+	}
 
-	return r.staticFileSystem.DeleteFile(siaPath)
+	// Update the filesystem metadata.
+	//
+	// TODO: This is incorrect, should be running the metadata update call on a
+	// node, not on a siaPath. The node should be returned by the delete call.
+	// Need a metadata update func that operates on a node to do that.
+	dirSiaPath, err := siaPath.Dir()
+	if err != nil {
+		r.log.Printf("Unable to fetch the directory from a siaPath %v for deleted siafile: %v", siaPath, err)
+		// Return 'nil' because the delete operation succeeded, it was only the
+		// metadata update operation that failed.
+		return nil
+	}
+	go r.callThreadedBubbleMetadata(dirSiaPath)
+	return nil
 }
 
 // FileList returns all of the files that the renter has.
