@@ -1853,7 +1853,7 @@ func getDirRoot(siaPath modules.SiaPath) (dirs []directoryInfo) {
 	}
 	// Call getDir on subdirs.
 	for _, subDir := range subDirs {
-		rdirs := getDir(subDir.SiaPath)
+		rdirs := getDirRoot(subDir.SiaPath)
 		dirs = append(dirs, rdirs...)
 	}
 	return
