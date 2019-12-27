@@ -195,7 +195,7 @@ any viewnode, and the viewnode will be able to retrieve the file.`,
 	}
 
 	renterLinkfilesLsCmd = &cobra.Command{
-		Use:   "linkfiles ls",
+		Use:   "ls",
 		Short: "List all linkfiles that the user has uploaded.",
 		Long: `List all linkfiles that the user has uploaded. Only files in /var/linkfiles
 will be considered. The corresponding sialinks will also be displayed.`,
@@ -203,7 +203,7 @@ will be considered. The corresponding sialinks will also be displayed.`,
 	}
 
 	renterLinkfilesUploadCmd = &cobra.Command{
-		Use:   "linkfiles upload [source path] [destination siapath]",
+		Use:   "upload [source path] [destination siapath]",
 		Short: "Upload a linkfile to the Sia network",
 		Long: `Upload a linkfile to the Sia network. The act of uploading a linkfile will
 produce a sialink, which can be presented to any viewnode, which can then fetch
