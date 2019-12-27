@@ -303,13 +303,6 @@ func (n *DirNode) closeDirNode() {
 	}
 }
 
-// managedClose calls close while holding the node's lock.
-func (n *DirNode) managedClose() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.closeDirNode()
-}
-
 // managedNewSiaFileFromReader will read a siafile and its chunks from the given
 // reader and add it to the directory. This will always load the file from the
 // given reader.
@@ -393,13 +386,6 @@ func (n *DirNode) managedUniquePrefix(path string, uid siafile.SiafileUID) (stri
 		break
 	}
 	return currentPath, false
-}
-
-// managedSiaDir calls siaDir while holding the node's lock.
-func (n *DirNode) managedSiaDir() (*siadir.SiaDir, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.siaDir()
 }
 
 // siaDir is a wrapper for the lazySiaDir field.
@@ -513,6 +499,7 @@ func (n *DirNode) managedDelete() error {
 func (n *DirNode) managedDeleteFile(fileName string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
 	// Check if the file is open in memory. If it is delete it.
 	sf, exists := n.files[fileName]
 	if exists {
@@ -523,12 +510,33 @@ func (n *DirNode) managedDeleteFile(fileName string) error {
 		n.removeFile(sf)
 		return nil
 	}
-	// Otherwise simply delete the file.
-	err := os.Remove(filepath.Join(n.absPath(), fileName+modules.SiaFileExtension))
-	if os.IsNotExist(err) {
-		return nil
+
+	// Check whether the file is actually a directory.
+	_, exists = n.directories[fileName]
+	if exists {
+		return ErrDeleteFileIsDir
 	}
-	return err
+
+	// Check if the on-disk version is a file. This check is needed because
+	// os.Remove will delete an empty directory without returning any error, if
+	// the user has a directory name 'dir.sia' it could cause an edge case.
+	//
+	// There is a test for this edge case in the integration test called
+	// 'TestUploadAfterDelete'.
+	sysPath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
+	info, err := os.Stat(sysPath)
+	if os.IsNotExist(err) {
+		return errors.Extend(err, ErrNotExist)
+	} else if err != nil {
+		return errors.AddContext(err, "unable to find file")
+	}
+	if info.IsDir() {
+		return ErrDeleteFileIsDir
+	}
+
+	// Otherwise simply delete the file.
+	err = os.Remove(sysPath)
+	return errors.AddContext(err, "unable to delete file")
 }
 
 // managedInfo builds and returns the DirectoryInfo of a SiaDir.

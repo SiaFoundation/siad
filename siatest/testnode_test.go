@@ -18,7 +18,7 @@ func TestNextNodeAddress(t *testing.T) {
 	// Confirm testNodeAddressCounter is initialized correctly
 	ac := newNodeAddressCounter()
 	if ac.address.String() != "127.1.0.0" {
-		t.Fatalf("testNodeAddressCounter inital value incorrect; got %v expected %v", ac.address.String(), "127.1.0.0")
+		t.Fatalf("testNodeAddressCounter initial value incorrect; got %v expected %v", ac.address.String(), "127.1.0.0")
 	}
 
 	// Check address iteration

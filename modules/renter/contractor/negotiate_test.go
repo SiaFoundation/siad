@@ -18,13 +18,12 @@ import (
 
 // contractorTester contains all of the modules that are used while testing the contractor.
 type contractorTester struct {
-	cs        modules.ConsensusSet
-	gateway   modules.Gateway
-	miner     modules.TestMiner
-	tpool     modules.TransactionPool
-	wallet    modules.Wallet
-	walletKey crypto.CipherKey
-	hdb       hostDB
+	cs      modules.ConsensusSet
+	gateway modules.Gateway
+	miner   modules.TestMiner
+	tpool   modules.TransactionPool
+	wallet  modules.Wallet
+	hdb     hostDB
 
 	contractor *Contractor
 }

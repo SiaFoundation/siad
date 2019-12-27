@@ -306,13 +306,13 @@ func rentercmd() {
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return errors.AddContext(err, "unable to get root dir with RenterGetDir")
+		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
 	}
 
 	rc, err := httpClient.RenterContractsGet()
@@ -459,10 +459,6 @@ func renterallowancecmd() {
 	}
 	allowance := rg.Settings.Allowance
 
-	// Normalize the expectations over the period.
-	allowance.ExpectedUpload *= uint64(allowance.Period)
-	allowance.ExpectedDownload *= uint64(allowance.Period)
-
 	// Show allowance info
 	fmt.Printf(`Allowance:
   Amount:               %v
@@ -485,8 +481,8 @@ Price Protections:
   MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
 		allowance.Hosts, modules.FilesizeUnits(allowance.ExpectedStorage),
-		modules.FilesizeUnits(allowance.ExpectedUpload),
-		modules.FilesizeUnits(allowance.ExpectedDownload),
+		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
+		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
 		allowance.ExpectedRedundancy,
 		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
 		currencyUnits(allowance.MaxContractPrice),
@@ -1000,24 +996,24 @@ and bandwidth needs while spending significantly less than the overall allowance
 
 	// expectedUpload
 	fmt.Println(`6/8: Expected Upload
-Expected upload tells siad how much uploading the user expects to do each month.
-If this value is high, siad will more strongly prefer hosts that have a low
-upload bandwidth price. If this value is low, siad will focus on other metrics
-than upload bandwidth pricing, because even if the host charges a lot for upload
-bandwidth, it will not impact the total cost to the user very much.
+Expected upload tells siad how much uploading the user expects to do each
+period. If this value is high, siad will more strongly prefer hosts that have a
+low upload bandwidth price. If this value is low, siad will focus on other
+metrics than upload bandwidth pricing, because even if the host charges a lot
+for upload bandwidth, it will not impact the total cost to the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)))
+	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(allowance.Period)))
 
 	var expectedUpload uint64
 	if allowance.ExpectedUpload == 0 {
 		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedUpload = allowance.ExpectedUpload * uint64(types.BlocksPerMonth)
+		expectedUpload = allowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Upload: ")
@@ -1031,13 +1027,15 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected upload")
 		}
+		// User set field in terms of period, need to normalize to per-block.
+		expectedUpload /= uint64(period)
 	}
-	req = req.WithExpectedUpload(expectedUpload / uint64(types.BlocksPerMonth))
+	req = req.WithExpectedUpload(expectedUpload)
 
 	// expectedDownload
 	fmt.Println(`7/8: Expected Download
 Expected download tells siad how much downloading the user expects to do each
-month. If this value is high, siad will more strongly prefer hosts that have a
+period. If this value is high, siad will more strongly prefer hosts that have a
 low download bandwidth price. If this value is low, siad will focus on other
 metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
@@ -1045,15 +1043,15 @@ for downloads, it will not impact the total cost to the user very much.
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)))
+	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(allowance.Period)))
 
 	var expectedDownload uint64
 	if allowance.ExpectedDownload == 0 {
 		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedDownload = allowance.ExpectedDownload * uint64(types.BlocksPerMonth)
+		expectedDownload = allowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Download: ")
@@ -1067,8 +1065,10 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected download")
 		}
+		// User set field in terms of period, need to normalize to per-block.
+		expectedDownload /= uint64(period)
 	}
-	req = req.WithExpectedDownload(expectedDownload / uint64(types.BlocksPerMonth))
+	req = req.WithExpectedDownload(expectedDownload)
 
 	// expectedRedundancy
 	fmt.Println(`8/8: Expected Redundancy
@@ -1386,7 +1386,7 @@ Contract %v
 // into a single error.
 func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
-	rd, err := httpClient.RenterGetDir(siaPath)
+	rd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
 		err = errors.AddContext(err, "failed to get dir info")
 		return
@@ -1495,7 +1495,7 @@ func renterfilesdeletecmd(path string) {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// Try to delete file.
-	errFile := httpClient.RenterDeletePost(siaPath)
+	errFile := httpClient.RenterFileDeletePost(siaPath)
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
@@ -1529,7 +1529,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = httpClient.RenterGetDir(siaPath)
+	_, err = httpClient.RenterDirGet(siaPath)
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
@@ -1795,7 +1795,7 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs.
 func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
-	rgd, err := httpClient.RenterGetDir(siaPath)
+	rgd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
 		die("failed to get dir info:", err)
 	}

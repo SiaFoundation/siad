@@ -145,7 +145,7 @@ unmount will fail and the user will have to manually unmount using `fusermount`
 or `umount` before that folder becomes available again. To the best of our
 current knowledge, there is no way to force an unmount.
 
-### Persistance Subsystem
+### Persistence Subsystem
 **Key Files**
  - [persist_compat.go](./persist_compat.go)
  - [persist.go](./persist.go)

@@ -301,7 +301,7 @@ type ContractUtility struct {
 	GoodForRenew  bool
 
 	// BadContract will be set to true if there's good reason to believe that
-	// the contract is unusuable and will continue to be unusuable. For example,
+	// the contract is unusable and will continue to be unusable. For example,
 	// if the host is claiming that the contract does not exist, the contract
 	// should be marked as bad.
 	BadContract bool

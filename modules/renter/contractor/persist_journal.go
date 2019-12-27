@@ -55,15 +55,6 @@ type journal struct {
 	filename string
 }
 
-// update applies the updateSet atomically to j. It syncs the underlying file
-// before returning.
-func (j *journal) update(us updateSet) error {
-	if err := json.NewEncoder(j.f).Encode(us); err != nil {
-		return err
-	}
-	return j.f.Sync()
-}
-
 // Close closes the underlying file.
 func (j *journal) Close() error {
 	return j.f.Close()

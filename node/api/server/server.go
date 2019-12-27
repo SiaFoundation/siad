@@ -160,7 +160,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}
 
 		// Load the config file.
-		cfg, err := modules.NewConfig(filepath.Join(nodeParams.Dir, configName))
+		cfg, err := modules.NewConfig(filepath.Join(nodeParams.Dir, modules.ConfigName))
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to load siad config")
 		}

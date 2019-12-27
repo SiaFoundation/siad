@@ -1145,7 +1145,7 @@ to failed file contracts and missed storage proofs.
 
 **potentialstoragerevenue** | hastings  
 The amount of revenue that the host stands to earn if all storage proofs are
-submitted corectly and in time.  
+submitted correctly and in time.
 
 **riskedstoragecollateral** | hastings  
 The amount of money that the host has risked on file contracts. If the host
@@ -1495,15 +1495,15 @@ Id of the storageobligation, which is defined by the file contract id of the
 file contract that governs the storage obligation.
 
 **potentialdownloadrevenue** | hastings  
-Potential revenue for downloaded data that the host will reveive upon successful
+Potential revenue for downloaded data that the host will receive upon successful
 completion of the obligation.
 
 **potentialstoragerevenue** | hastings  
-Potential revenue for storage of data that the host will reveive upon successful
+Potential revenue for storage of data that the host will receive upon successful
 completion of the obligation.
 
 **potentialuploadrevenue** | hastings  
-Potential revenue for uploaded data that the host will reveive upon successful
+Potential revenue for uploaded data that the host will receive upon successful
 completion of the obligation.
 
 **riskedcollateral** | hastings  
@@ -1520,7 +1520,7 @@ Amount for transaction fees that the host added to the storage obligation.
 Expiration height is the height at which the storage obligation expires.
 
 **negotiationheight** | blockheight  
-Negotion height is the height at which the storage obligation was negotiated.
+Negotiation height is the height at which the storage obligation was negotiated.
 
 **proofdeadline** | blockheight  
 The proof deadline is the height by which the storage proof must be submitted.
@@ -1639,7 +1639,7 @@ responses](#standard-responses).
 curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&force=false" "localhost:9980/host/storage/folders/remove"
 ```
 
-Remove a storage folder from the manager. All sotrage on the folder will be
+Remove a storage folder from the manager. All storage on the folder will be
 moved to other stoarge folders, meaning that no data will be lost. If the
 manager is unable to save data, an error will be returned and the operation will
 be stopped.
@@ -1671,7 +1671,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=10000000000
 Grows or shrinks a storage file in the manager. The manager may not check that
 there is enough space on-disk to support growing the storasge folder, but should
 gracefully handle running out of space unexpectedly. When shrinking a storage
-folder, any data in the folder that neeeds to be moved will be placed into other
+folder, any data in the folder that needs to be moved will be placed into other
 storage folders, meaning that no data will be lost. If the manager is unable to
 migrate the data, an error will be returned and the operation will be stopped.
 
@@ -3065,7 +3065,8 @@ may not begin with a forward-slash character.
 **action** | string  
 Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
- - `delete` will remove a directory and its contents from the sia network
+ - `delete` will remove a directory and its contents from the sia network. Will
+   return an error if the target is a file.
  - `rename` will rename a directory on the sia network
 
  **newsiapath** | string  
@@ -3113,7 +3114,7 @@ header's 'ID' field.
   "error":               "",                      // string
   "received":            8192,                    // bytes
   "starttime":           "2009-11-10T23:00:00Z",  // RFC 3339 time
-  "totaldatatransfered": 10031                    // bytes
+  "totaldatatransferred": 10031                    // bytes
 }
 ```
 **destination** | string  
@@ -3158,8 +3159,8 @@ file complete fully. This typically has a resolution of tens of megabytes.
 **starttime** | date, RFC 3339 time  
 Time at which the download was initiated.
 
-**totaldatatransfered** | bytes  
-The total amount of data transfered when downloading the file. This will
+**totaldatatransferred** | bytes
+The total amount of data transferred when downloading the file. This will
 eventually include data transferred during contract + payment negotiation, as
 well as data from failed piece downloads.  
 
@@ -3507,7 +3508,7 @@ curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/delete/my
 ```
 
 deletes a renter file entry. Does not delete any downloads or original files,
-only the entry in the renter.
+only the entry in the renter. Will return an error if the target is a folder.
 
 ### Path Parameters
 ### REQUIRED
@@ -3885,7 +3886,7 @@ Returns the whether or not the renter is ready for upload.
 ### Path Parameters
 ### OPTIONAL
 datapieces and paritypieces are both optional, however if one is supplied then
-the other needs to be supplied. If neither are supplied then the deafult values
+the other needs to be supplied. If neither are supplied then the default values
 for the erasure coding will be used 
 
 **datapieces** | int  
@@ -4738,7 +4739,7 @@ Key that is used to encrypt the siag key when it is imported to the wallet.
 **keyfiles**  
 List of filepaths that point to the keyfiles that make up the siag key. There
 should be at least one keyfile per required signature. The filenames need to be
-commna separated (no spaces), which means filepaths that contain a comma are not
+comma separated (no spaces), which means filepaths that contain a comma are not
 allowed.  
 
 ### Response
@@ -5239,8 +5240,7 @@ valid indicates if the address supplied to :addr is a valid UnlockHash.
 curl -A "Sia-Agent" "localhost:9980/wallet/verifypassword?password=<password>"
 ```
 
-Takes a password and verifies if it is the valid password used to encrypt the
-wallet.
+Takes a password and verifies if it is the password used to encrypt the wallet.
 
 ### Path Parameters
 #### REQUIRED
@@ -5256,7 +5256,7 @@ Password being checked.
 }
 ```
 **valid** | boolean  
-valid indicates if the password supplied is the password used to encrypte the
+valid indicates if the password supplied is the password used to encrypt the
 wallet.  
 
 ## /wallet/watch [GET]

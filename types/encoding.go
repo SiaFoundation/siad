@@ -14,20 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 )
 
-// sanityCheckWriter checks that the bytes written to w exactly match the
-// bytes in buf.
-type sanityCheckWriter struct {
-	w   io.Writer
-	buf *bytes.Buffer
-}
-
-func (s sanityCheckWriter) Write(p []byte) (int, error) {
-	if !bytes.Equal(p, s.buf.Next(len(p))) {
-		panic("encoding mismatch")
-	}
-	return s.w.Write(p)
-}
-
 // MarshalSia implements the encoding.SiaMarshaler interface.
 func (b Block) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)

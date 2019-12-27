@@ -393,9 +393,6 @@ func dbRemoveSiacoinOutputID(tx *bolt.Tx, id types.SiacoinOutputID, txid types.T
 func dbAddSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID, output types.SiafundOutput) {
 	mustPut(tx.Bucket(bucketSiafundOutputs), id, output)
 }
-func dbRemoveSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID) {
-	mustDelete(tx.Bucket(bucketSiafundOutputs), id)
-}
 
 // Add/Remove txid from siafund output ID bucket
 func dbAddSiafundOutputID(tx *bolt.Tx, id types.SiafundOutputID, txid types.TransactionID) {

@@ -22,7 +22,6 @@ const (
 )
 
 var (
-	errEarlyStop         = errors.New("initial blockchain download did not complete by the time shutdown was issued")
 	errNilProcBlock      = errors.New("nil processed block was fetched from the database")
 	errSendBlocksStalled = errors.New("SendBlocks RPC timed and never received any blocks")
 

@@ -1,4 +1,9 @@
-default:
+stages:
+  - lint
+  - test
+  - deploy
+
+default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
   ## improvements.
   image: golang:latest
@@ -6,11 +11,36 @@ default:
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
     - export GOPATH="$CI_PROJECT_DIR/.cache"
- 
-stages:
-  - lint
-  - test
-  - deploy
+
+## Define the default test parameters.
+.default_test: &default_test_params
+  ## Merge the contents of the 'default_params' alias
+  <<: *default_params
+  stage: test
+
+  ## disable default tests for scheduled pipelines (nightlies)
+  except:
+    - schedules
+
+
+## Define the default nightly test parameters.
+.default_nightly_test: &default_nightly_params
+  <<: *default_test_params
+  ## Only run during scheduled pipelines.
+  except:
+   -  ""
+  only:
+   - schedules
+
+  artifacts:
+    name: "SiaTesting-$CI_JOB_NAME"
+    paths:
+      - $CI_PROJECT_DIR/SiaTesting
+      - $CI_PROJECT_DIR/cover/cover.out
+    when: always
+
+  after_script:
+    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 lint:
   stage: lint
@@ -21,9 +51,14 @@ lint:
   script: 
     ## This is the recommended way to install golang-ci lint.
     - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.21.0
-    - ./bin/golangci-lint run --disable-all --enable=vet --enable=gofmt --deadline=600s ./...
+    - ./bin/golangci-lint run -c .golangci.yml ./...
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
+    - make lint-analysis
     - make test
+    - apt-get update
+    - apt-get -y install python3-pip
+    - pip3 install codespell
+    - make markdown-spellcheck
 
 build:
   stage: lint
@@ -37,43 +72,34 @@ build:
     - ./build.sh
 
 legacy-tests:
-  stage: test
+  <<: *default_test_params
   cache:
     key: legacy-cache
     paths:
       - .cache
-  except:
-    - schedules
   script: 
     - make test-long pkgs="./node ./node/api ./node/api/server" run=.
 
 package-tests:
-  stage: test
+  <<: *default_test_params
   cache:
     key: package-cache
     paths:
       - .cache
-  except:
-    - schedules
   script: 
     - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
 
 siatest-tests:
-  stage: test
+  <<: *default_test_params
   cache:
     key: integration-cache
     paths:
       - .cache
-  except:
-    - schedules
   script:
     - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 siatest-renter-tests:
-  stage: test
-  except:
-    - schedules
+  <<: *default_test_params
   cache:
     key: siatest-renter-tests-cache
     paths:
@@ -82,62 +108,25 @@ siatest-renter-tests:
     - apt-get update
     - apt-get install -y fuse
     - make test-long run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 legacy-tests-nightly:
-  stage: test
-  only:
-    - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
+  <<: *default_nightly_params
   script: 
     - make test-vlong pkgs="./node ./node/api ./node/api/server" run=.
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 package-tests-nightly:
-  stage: test
-  only:
-    - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
+  <<: *default_nightly_params
   script: 
     - make test-vlong run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 siatest-tests-nightly:
-  stage: test
-  only:
-    - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
+  <<: *default_nightly_params
   script:
     - make test-vlong run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
 siatest-renter--tests-nightly:
-  stage: test
-  only:
-    - schedules
-  artifacts:
-    name: "SiaTesting-$CI_JOB_NAME"
-    paths:
-      - $CI_PROJECT_DIR/SiaTesting
-      - $CI_PROJECT_DIR/cover/cover.out
-    when: always
+  <<: *default_nightly_params
   script:
     - apt-get update
     - apt-get install -y fuse
     - make test-vlong run=. pkgs="./siatest/renter ./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
-    - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting

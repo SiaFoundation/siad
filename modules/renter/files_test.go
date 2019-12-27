@@ -6,10 +6,10 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -17,20 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
-
-// newTestingWal is a helper method to create a wal during testing.
-func newTestingWal() *writeaheadlog.WAL {
-	walDir := filepath.Join(os.TempDir(), "wals")
-	if err := os.MkdirAll(walDir, 0700); err != nil {
-		panic(err)
-	}
-	walPath := filepath.Join(walDir, hex.EncodeToString(fastrand.Bytes(8)))
-	_, wal, err := writeaheadlog.New(walPath)
-	if err != nil {
-		panic(err)
-	}
-	return wal
-}
 
 // newRenterTestFile creates a test file when the test has a renter so that the
 // file is properly added to the renter. It returns the SiaFileSetEntry that the
@@ -103,8 +89,10 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPath)
-	if err != nil {
-		t.Errorf("Expected no error got '%v'", err)
+	// NOTE: using strings.Contains because errors.Contains does not recognize
+	// errors when errors.Extend is used
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Errorf("Expected error to contain %v but got '%v'", filesystem.ErrNotExist, err)
 	}
 
 	// Put a file in the renter.
@@ -118,8 +106,10 @@ func TestRenterDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = rt.renter.DeleteFile(siaPathOne)
-	if err != nil {
-		t.Errorf("Expected no error got '%v'", err)
+	// NOTE: using strings.Contains because errors.Contains does not recognize
+	// errors when errors.Extend is used
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Errorf("Expected error to contain %v but got '%v'", filesystem.ErrNotExist, err)
 	}
 	// Delete the file.
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
@@ -164,8 +154,10 @@ func TestRenterDeleteFile(t *testing.T) {
 	}
 	// Call delete on the previous name.
 	err = rt.renter.DeleteFile(siaPath1)
-	if err != nil {
-		t.Errorf("Expected no error got '%v'", err)
+	// NOTE: using strings.Contains because errors.Contains does not recognize
+	// errors when errors.Extend is used
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Errorf("Expected error to contain %v but got '%v'", filesystem.ErrNotExist, err)
 	}
 	// Call delete on the new name.
 	err = rt.renter.DeleteFile(siaPathOne)
@@ -221,8 +213,11 @@ func TestRenterDeleteFileMissingParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Delete the parent.
-	if err := rt.renter.staticFileSystem.DeleteFile(dirSiaPath); err != nil {
-		t.Fatal(err)
+	err = rt.renter.staticFileSystem.DeleteFile(dirSiaPath)
+	// NOTE: using strings.Contains because errors.Contains does not recognize
+	// errors when errors.Extend is used
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Errorf("Expected error to contain %v but got '%v'", filesystem.ErrNotExist, err)
 	}
 	// Delete the file. This should not return an error since it's already
 	// deleted implicitly.

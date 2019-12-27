@@ -154,6 +154,11 @@ func (sp SiaPath) Equals(siaPath SiaPath) bool {
 	return sp.Path == siaPath.Path
 }
 
+// IsEmpty returns true if the siapath is equal to the nil value
+func (sp SiaPath) IsEmpty() bool {
+	return sp.Equals(SiaPath{})
+}
+
 // IsRoot indicates whether or not the SiaPath path is a root directory siapath
 func (sp SiaPath) IsRoot() bool {
 	return sp.Path == ""
