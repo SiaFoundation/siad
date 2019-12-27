@@ -988,7 +988,7 @@ type LinkfileMetadata struct {
 	Name string `json:"name"`
 
 	// Permissions.
-	Mode uint32 `json:"mode"`
+	Mode os.FileMode `json:"mode"`
 
 	// Timestamp information, in 64bit Unix.
 	CreateTime int64 `json:"createtime"`

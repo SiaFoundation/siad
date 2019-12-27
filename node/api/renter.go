@@ -1757,7 +1757,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 	// Call the renter to upload the linkfile and create a sialink.
 	name := queryForm.Get("name")
 	modeStr := queryForm.Get("mode")
-	var mode uint32
+	var mode os.FileMode
 	if modeStr != "" {
 		_, err := fmt.Sscanf(modeStr, "%o", &mode)
 		if err != nil {

@@ -119,7 +119,8 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
 	if force {
-		if err := r.DeleteFile(siaPath); err != nil && err != filesystem.ErrNotExist {
+		err := r.DeleteFile(siaPath)
+		if err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
 			return nil, err
 		}
 	}

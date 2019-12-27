@@ -739,7 +739,7 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modul
 	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to"+query+" failed")
+		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the sialink.

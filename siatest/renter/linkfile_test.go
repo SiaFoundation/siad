@@ -49,7 +49,7 @@ func TestLinkfile(t *testing.T) {
 	// Quick fuzz on the force value so that sometimes it is set, sometimes it
 	// is not.
 	var force bool
-	if fastrand.Intn(1) == 0 {
+	if fastrand.Intn(2) == 0 {
 		force = true
 	}
 	lup := modules.LinkfileUploadParameters{
@@ -99,4 +99,7 @@ func TestLinkfile(t *testing.T) {
 		t.Log(renterFile.File.Sialinks[0])
 		t.Log(sialink)
 	}
+
+	// TODO: Need to verify the mode, name, and create-time. At this time, I'm
+	// not sure how we can feed those out of the API.
 }
