@@ -722,15 +722,22 @@ func (c *Client) RenterSialinkGet(sialink modules.Sialink) (fileData []byte, err
 
 // RenterLinkfilePost uses the /renter/sialink endpoint to upload a linkfile.
 // The resulting sialink is returned along with an error.
-func (c *Client) RenterLinkfilePost(r io.Reader, name string, siaPath string) (modules.Sialink, error) {
-	// Strip any leading slash from the siaPath.
-	siaPath = strings.TrimPrefix(siaPath, "/")
-
-	// Upload the file.
+func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
+	// Set the url values.
 	values := url.Values{}
-	values.Set("name", name)
-	query := fmt.Sprintf("/renter/linkfile/%s?%s", siaPath, values.Encode())
-	resp, err := c.postRawResponse(query, r)
+	values.Set("name", lup.FileMetadata.Name)
+	createTimeStr := fmt.Sprintf("%v", lup.FileMetadata.CreateTime)
+	values.Set("createtime", createTimeStr)
+	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	values.Set("redundancy", redundancyStr)
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to"+query+" failed")
 	}

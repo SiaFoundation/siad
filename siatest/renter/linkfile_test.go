@@ -42,8 +42,29 @@ func TestLinkfile(t *testing.T) {
 	reader := bytes.NewReader(data)
 	// Call the upload linkfile client call.
 	filename := "testOne"
-	uploadSiaPath := "testOnePath"
-	sialink, err := r.RenterLinkfilePost(reader, filename, uploadSiaPath)
+	uploadSiaPath, err := modules.NewSiaPath("testOnePath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Quick fuzz on the force value so that sometimes it is set, sometimes it
+	// is not.
+	var force bool
+	if fastrand.Intn(1) == 0 {
+		force = true
+	}
+	lup := modules.LinkfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               true, // Even there is no file to replace, try setting 'force' to true.
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.LinkfileMetadata{
+			Name:       filename,
+			Mode:       0600, // intentionally not the default
+			CreateTime: 1e6,  // intentionally before current time
+		},
+
+		Reader: reader,
+	}
+	sialink, err := r.RenterLinkfilePost(lup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +83,7 @@ func TestLinkfile(t *testing.T) {
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the sialink referenced.
-	linkfilePath, err := modules.LinkfileSiaFolder.Join(uploadSiaPath)
+	linkfilePath, err := modules.LinkfileSiaFolder.Join(uploadSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}
