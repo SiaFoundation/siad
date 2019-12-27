@@ -2249,7 +2249,7 @@ func renterlinkfileslscmd() {
 			if len(file.Sialinks) == 0 {
 				fmt.Fprintf(w, "\t\t%v\t\n", file.SiaPath.Name())
 			} else {
-				fmt.Fprintf(w, "\t\t\t%v\t%v\n", file.SiaPath.Name(), file.Sialinks[0])
+				fmt.Fprintf(w, "\t\t%v\t%v\n", file.SiaPath.Name(), file.Sialinks[0])
 				for _, sialink := range file.Sialinks[1:] {
 					fmt.Fprintf(w, "\t\t\t%v\n", sialink)
 				}
