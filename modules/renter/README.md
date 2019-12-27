@@ -58,7 +58,7 @@ responsibilities.
  - [Fuse Subsystem](#fuse-subsystem)
  - [Fuse Manager Subsystem](#fuse-manager-subsystem)
  - [Linkfile Subsystem](#linkfile-subsystem)
- - [Persistance Subsystem](#persistance-subsystem)
+ - [Persistence Subsystem](#persistance-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
@@ -195,7 +195,7 @@ merkle root as the previous piece. This means a single chunk may have up to 30
 different sector roots, but as the chunk gets repaired over and over the
 encryption on each chunk needs to stay the same (if there is any encryption at
 all), so that the 30 sector roots of the chunk are always the same 30 roots as
-the initally uploaded chunk.
+the initially uploaded chunk.
 
 ### Memory Subsystem
 **Key Files**
