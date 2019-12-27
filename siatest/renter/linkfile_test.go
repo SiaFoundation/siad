@@ -54,7 +54,7 @@ func TestLinkfile(t *testing.T) {
 	}
 	lup := modules.LinkfileUploadParameters{
 		SiaPath:             uploadSiaPath,
-		Force:               true, // Even there is no file to replace, try setting 'force' to true.
+		Force:               force,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.LinkfileMetadata{
 			Name:       filename,
