@@ -2242,7 +2242,7 @@ func renterlinkfileslscmd() {
 		fmt.Fprintf(w, "\t%v/\t\t\n", dir.dir.SiaPath)
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
-			fmt.Fprintf(w, "\t%v\t\t\n", subDir.SiaPath.Name())
+			fmt.Fprintf(w, "\t\t%v/\t\n", subDir.SiaPath.Name())
 		}
 
 		for _, file := range dir.files {
