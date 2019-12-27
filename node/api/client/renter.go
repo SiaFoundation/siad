@@ -624,6 +624,14 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 	return
 }
 
+// RenterDirRootGet uses the /renter/dir/ endpoint to query a directory,
+// starting from the root path.
+func (c *Client) RenterDirRootGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get(fmt.Sprintf("/renter/dir/%s?root=true", sp), &rd)
+	return
+}
+
 // RenterDirGet uses the /renter/dir/ endpoint to query a directory
 func (c *Client) RenterDirGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	sp := escapeSiaPath(siaPath)
