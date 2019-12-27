@@ -2239,7 +2239,7 @@ func renterlinkfileslscmd() {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	sort.Sort(byDirectoryInfo(dirs))
 	for _, dir := range dirs {
-		fmt.Fprintf(w, "\n")
+		fmt.Fprintf(w, "\t\t\t\n")
 		fmt.Fprintf(w, "\t%v/\t\t\n", dir.dir.SiaPath)
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
