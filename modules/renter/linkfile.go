@@ -135,7 +135,7 @@ func (ll *linkfileLayout) decode(b []byte) {
 // download.
 func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata, []byte, error) {
 	// Parse the provided link into a usable structure for fetching downloads.
-	var ld LinkData
+	var ld modules.LinkData
 	err := ld.LoadSialink(link)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
@@ -345,7 +345,7 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 
 	// Create the sialink.
 	mr := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
-	ld := LinkData{
+	ld := modules.LinkData{
 		Version:      1,
 		MerkleRoot:   mr,
 		HeaderSize:   headerSize,

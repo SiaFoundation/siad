@@ -1,4 +1,4 @@
-package renter
+package modules
 
 import (
 	"testing"

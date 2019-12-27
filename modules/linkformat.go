@@ -1,4 +1,4 @@
-package renter
+package modules
 
 // linkformat.go creates links that can be used to reference specific sector
 // data in a siafile. The links are base58 encoded structs prepended with
@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -28,7 +27,7 @@ type LinkData struct {
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
-func (ld *LinkData) LoadSialink(s modules.Sialink) error {
+func (ld *LinkData) LoadSialink(s Sialink) error {
 	return ld.LoadString(string(s))
 }
 
@@ -69,8 +68,8 @@ func (ld *LinkData) LoadString(s string) error {
 
 // Sialink returns the type safe 'sialink' of the link data, which is just a
 // typecast string.
-func (ld LinkData) Sialink() modules.Sialink {
-	return modules.Sialink(ld.String())
+func (ld LinkData) Sialink() Sialink {
+	return Sialink(ld.String())
 }
 
 // String converts LinkData to a string.

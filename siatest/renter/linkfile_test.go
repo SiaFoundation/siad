@@ -104,4 +104,8 @@ func TestLinkfile(t *testing.T) {
 	// not sure how we can feed those out of the API. They aren't going to be
 	// the same as the siafile values, because the siafile was created
 	// separately.
+	//
+	// Maybe this can be accomplished by tagging a flag to the API which has the
+	// layout and metadata streamed as the first bytes? Maybe there is some
+	// easier way.
 }
