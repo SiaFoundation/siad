@@ -151,7 +151,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		return modules.LinkfileMetadata{}, nil, errors.New("size of file suggests a fanout was used - this version does not support fanouts")
 	}
 	if ld.DataPieces != 1 || ld.ParityPieces != 0 {
-		return modules.LinkfileMetadata{}, nil, errors.New("inra-root erasure coding not supported")
+		return modules.LinkfileMetadata{}, nil, errors.New("intra-root erasure coding not supported")
 	}
 
 	// Fetch the actual file.
