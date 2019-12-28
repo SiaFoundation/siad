@@ -58,7 +58,7 @@ responsibilities.
  - [Fuse Subsystem](#fuse-subsystem)
  - [Fuse Manager Subsystem](#fuse-manager-subsystem)
  - [Linkfile Subsystem](#linkfile-subsystem)
- - [Persistence Subsystem](#persistance-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
