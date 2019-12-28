@@ -159,6 +159,9 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
 	}
+	if len(baseSector) < LinkfileLayoutSize {
+		return modules.LinkfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+	}
 
 	// Parse out the linkfileLayout.
 	offset := uint64(0)
