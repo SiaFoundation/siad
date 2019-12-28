@@ -168,7 +168,7 @@ they find a host which has the desired data.
 A linkfile is broken into two major sections. The first section is called the
 'leading chunk', and it is a chunk which is uploaded with a 1-of-N redundancy in
 a separate file. This chunk has all of the metadata about the file, as well as
-the first few byte of the file. The leading chunk is constructed specifically so
+the first few bytes of the file. The leading chunk is constructed specifically so
 that an entire file and all of its relevant metadata can be recovered using
 nothing more than a single sector root.
 
