@@ -180,7 +180,7 @@ information to learn the fanout of the file, enabling the downloader to download
 the entire file using nothing more than the sector root of the leading chunk.
 
 The linkfiles health and integrity is maintained by the repair subsystem.
-Linkfiles are designed to look at act as typical siafiles, including being
+Linkfiles are designed to look and act as typical siafiles, including being
 visible to the repair subsystem, which means the overall overhead for managing
 and protecting these files is minimal. The leading chunk is a 1-of-N siafile,
 and the fanout chunks are all stored together in a single siafile that has
