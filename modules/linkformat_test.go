@@ -62,4 +62,11 @@ func TestLinkFormat(t *testing.T) {
 	if err == nil {
 		t.Error("expecting error when bad string is decoded into a LinkData")
 	}
+
+	// Try loading a string that is definitely too small.
+	str = "too small"
+	err = ld.LoadString(str)
+	if err == nil {
+		t.Error("expecting error when bad string is decoded into a LinkData")
+	}
 }
