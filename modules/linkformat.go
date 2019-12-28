@@ -38,11 +38,17 @@ func (ld *LinkData) LoadSialink(s Sialink) error {
 // LoadString converts from a string and loads the result into ld.
 func (ld *LinkData) LoadString(s string) error {
 	// Trim any 'sia://' that has tagged along.
-	base := strings.TrimPrefix(s, "sia://")
+	base := []byte(strings.TrimPrefix(s, "sia://"))
+	if len(base) > 70 {
+		return errors.New("not a sialink, sialinks are at most 76 bytes")
+	}
 
-	// Use the base64 package to decode the string.
-	raw := make([]byte, 52)
-	_, err := base64.RawURLEncoding.Decode(raw, []byte(base))
+	// Use the base64 package to decode the string. 54 bytes is the maximum
+	// number of bytes that 70 input bytes can decode into using base64. We have
+	// to decode into 54 bytes even though the maximum sialink is actually 52
+	// bytes because we are accepting adversarial input and cannot crash.
+	raw := make([]byte, 54)
+	_, err := base64.RawURLEncoding.Decode(raw, base)
 	if err != nil {
 		return errors.New("unable to decode input as base64")
 	}

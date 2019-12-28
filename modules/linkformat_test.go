@@ -50,4 +50,16 @@ func TestLinkFormat(t *testing.T) {
 		t.Log(ld)
 		t.Log(ldDecoded)
 	}
+
+	// Try loading a string that is too large.
+	str = str + "some extra bytes"
+	err = ld.LoadString(str)
+	if err == nil {
+		t.Error("expecting error when bad string is decoded into a LinkData")
+	}
+	str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	err = ld.LoadString(str)
+	if err == nil {
+		t.Error("expecting error when bad string is decoded into a LinkData")
+	}
 }
