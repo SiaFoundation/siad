@@ -17,13 +17,17 @@ import (
 // LinkData defines the data that appears in a linkfile. The DataPieces and
 // ParityPieces specify the intra-sector erasure coding parameters, not the
 // linkfile erasure coding parameters.
+//
+// The maximum value for Version, DataPieces, and ParityPieces is 15, and the
+// maximum value for HeaderSize is 2^51. This is because these values get
+// bitpacked together to make the URL shorter.
 type LinkData struct {
-	Version      uint8
 	MerkleRoot   crypto.Hash
-	HeaderSize   uint32
+	Version      uint64
+	DataPieces   uint64
+	ParityPieces uint64
+	HeaderSize   uint64
 	FileSize     uint64
-	DataPieces   uint8
-	ParityPieces uint8
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
@@ -34,22 +38,48 @@ func (ld *LinkData) LoadSialink(s Sialink) error {
 // LoadString converts from a string and loads the result into ld.
 func (ld *LinkData) LoadString(s string) error {
 	// Trim any 'sia://' that has tagged along.
-	base := strings.TrimPrefix(s, "sia://")
+	base := []byte(strings.TrimPrefix(s, "sia://"))
+	if len(base) > 70 {
+		return errors.New("not a sialink, sialinks are at most 76 bytes")
+	}
 
-	// Use the base64 package to decode the string.
-	raw := make([]byte, 47)
-	_, err := base64.RawURLEncoding.Decode(raw, []byte(base))
+	// Use the base64 package to decode the string. 54 bytes is the maximum
+	// number of bytes that 70 input bytes can decode into using base64. We have
+	// to decode into 54 bytes even though the maximum sialink is actually 52
+	// bytes because we are accepting adversarial input and cannot crash.
+	raw := make([]byte, 54)
+	_, err := base64.RawURLEncoding.Decode(raw, base)
 	if err != nil {
 		return errors.New("unable to decode input as base64")
 	}
 
 	// Decode the raw bytes into a LinkData.
-	ld.Version = raw[0]
-	copy(ld.MerkleRoot[:], raw[1:])
-	ld.HeaderSize = binary.LittleEndian.Uint32(raw[33:])
-	ld.FileSize = binary.LittleEndian.Uint64(raw[37:])
-	ld.DataPieces = raw[45]
-	ld.ParityPieces = raw[46]
+	copy(ld.MerkleRoot[:], raw)
+	reader := bytes.NewReader(raw[32:])
+	headerSize, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return errors.AddContext(err, "unable to read sialink header size")
+	}
+	fileSize, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return errors.AddContext(err, "unable to read sialink file size")
+	}
+	ld.FileSize = fileSize
+
+	// Decode the bitpacked fields.
+	ld.ParityPieces = headerSize
+	ld.ParityPieces <<= 60
+	ld.ParityPieces >>= 60
+	headerSize >>= 4
+	ld.DataPieces = headerSize
+	ld.DataPieces <<= 60
+	ld.DataPieces >>= 60
+	headerSize >>= 4
+	ld.Version = headerSize
+	ld.Version <<= 60
+	ld.Version >>= 60
+	headerSize >>= 4
+	ld.HeaderSize = headerSize
 
 	// Do some sanity checks on the version, the data pieces, and the parity
 	// pieces. Having these checks in place ensures that data was not lost at
@@ -74,19 +104,42 @@ func (ld LinkData) Sialink() Sialink {
 
 // String converts LinkData to a string.
 func (ld LinkData) String() string {
-	raw := make([]byte, 47)
-	raw[0] = ld.Version
-	copy(raw[1:], ld.MerkleRoot[:])
-	binary.LittleEndian.PutUint32(raw[33:], ld.HeaderSize)
-	binary.LittleEndian.PutUint64(raw[37:], ld.FileSize)
-	raw[45] = ld.DataPieces
-	raw[46] = ld.ParityPieces
+	// Treat ld.Version, ld.HeaderSize, and ld.Parity size all as 4 bit
+	// integers. That's 12 bits total. Bitpack those 12 bits into ld.HeaderSize
+	// by ensuring that ld.HeaderSize fits into 52 bits, and then shifiting it
+	// up a few bits to make room for the bitpacked values.
+	if ld.DataPieces > 15 {
+		panic("DataPieces can only be 4 bits")
+	}
+	if ld.ParityPieces > 15 {
+		panic("ParityPieces can only be 4 bits")
+	}
+	if ld.Version > 15 {
+		panic("Version can only be 4 bits")
+	}
+	if ld.HeaderSize > uint64(1<<51) {
+		panic("HeaderSize can only be 52 bits")
+	}
+	ld.HeaderSize *= 16
+	ld.HeaderSize += ld.Version
+	ld.HeaderSize *= 16
+	ld.HeaderSize += ld.DataPieces
+	ld.HeaderSize *= 16
+	ld.HeaderSize += ld.ParityPieces
 
-	// Encode to base64.
-	bufBytes := make([]byte, 0, 72)
+	// Write out the raw bytes. Max size is 50 bytes - 32 for the Merkle root,
+	// 10 for the first varint, 10 for the second varint.
+	raw := make([]byte, 52)
+	copy(raw, ld.MerkleRoot[:])
+	size1 := binary.PutUvarint(raw[32:], ld.HeaderSize)
+	size2 := binary.PutUvarint(raw[32+size1:], ld.FileSize)
+
+	// Encode to base64. The maximum size of 52 bytes encoded to base64 is 72
+	// bytes.
+	bufBytes := make([]byte, 0, 70)
 	buf := bytes.NewBuffer(bufBytes)
 	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
-	encoder.Write(raw)
+	encoder.Write(raw[:32+size1+size2])
 	encoder.Close()
 	return "sia://" + buf.String()
 }

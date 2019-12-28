@@ -140,7 +140,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
 	}
-	headerSize := uint64(ld.HeaderSize)
+	headerSize := ld.HeaderSize
 
 	// Check that the link follows the restrictions of the current software
 	// capabilities.
@@ -151,13 +151,16 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		return modules.LinkfileMetadata{}, nil, errors.New("size of file suggests a fanout was used - this version does not support fanouts")
 	}
 	if ld.DataPieces != 1 || ld.ParityPieces != 0 {
-		return modules.LinkfileMetadata{}, nil, errors.New("inra-root erasure coding not supported")
+		return modules.LinkfileMetadata{}, nil, errors.New("intra-root erasure coding not supported")
 	}
 
 	// Fetch the actual file.
 	baseSector, err := r.DownloadByRoot(ld.MerkleRoot, 0, headerSize+ld.FileSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
+	}
+	if len(baseSector) < LinkfileLayoutSize {
+		return modules.LinkfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
 	// Parse out the linkfileLayout.
@@ -221,12 +224,12 @@ func uploadLinkfileMetadataBytes(lup modules.LinkfileUploadParameters) ([]byte, 
 
 // uploadLinkfileFileBytes will return the file data bytes of the file being
 // uploaded.
-func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize uint32) ([]byte, error) {
+func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize uint64) ([]byte, error) {
 	// Read data from the reader to fill out the remainder of the first sector.
 	//
 	// NOTE: When intra-sector erasure coding is added to improve download
 	// speeds, the fileData buffer size will need to be adjusted.
-	fileBytes := make([]byte, modules.SectorSize-uint64(headerSize))
+	fileBytes := make([]byte, modules.SectorSize-headerSize)
 	size, err := io.ReadFull(lup.Reader, fileBytes)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
 		err = nil
@@ -246,7 +249,7 @@ func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize ui
 		peekErr = nil
 	}
 	if peekErr != nil {
-		return nil, errors.AddContext(err, "too mcuh data provided, cannot create linkfile")
+		return nil, errors.AddContext(err, "too much data provided, cannot create linkfile")
 	}
 	if n != 0 {
 		return nil, errors.New("too much data provided, cannot create linkfile")
@@ -305,7 +308,7 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	if err != nil {
 		return "", errors.AddContext(err, "error retrieving linkfile metadata bytes")
 	}
-	headerSize := uint32(LinkfileLayoutSize + len(metadataBytes))
+	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes))
 	fileBytes, err := uploadLinkfileFileBytes(lup, headerSize)
 	if err != nil {
 		return "", errors.AddContext(err, "error retrieving linkfile file bytes")
@@ -350,8 +353,8 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 		MerkleRoot:   mr,
 		HeaderSize:   headerSize,
 		FileSize:     uint64(len(fileBytes)),
-		DataPieces:   lup.IntraSectorDataPieces,
-		ParityPieces: lup.IntraSectorParityPieces,
+		DataPieces:   uint64(lup.IntraSectorDataPieces),
+		ParityPieces: uint64(lup.IntraSectorParityPieces),
 	}
 	sialink := ld.Sialink()
 	// Add the sialink to the Siafile.
