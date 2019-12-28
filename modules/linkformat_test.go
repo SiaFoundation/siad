@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"math"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -18,9 +19,29 @@ func TestLinkFormat(t *testing.T) {
 		FileSize:     18471849,
 	}
 	str := ld.String()
-
 	var ldDecoded LinkData
 	err := ldDecoded.LoadString(str)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ldDecoded != ld {
+		t.Error("encoded data and decoded data do not match")
+		t.Log(ld)
+		t.Log(ldDecoded)
+	}
+
+	// Try another set of values, this time using the max allowed value for each
+	// numeric type.
+	ld = LinkData{
+		MerkleRoot:   crypto.HashObject("2"),
+		Version:      15,
+		DataPieces:   15,
+		ParityPieces: 11,
+		HeaderSize:   (1 << 51),
+		FileSize:     math.MaxUint64,
+	}
+	str = ld.String()
+	err = ldDecoded.LoadString(str)
 	if err != nil {
 		t.Fatal(err)
 	}

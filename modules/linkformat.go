@@ -18,8 +18,8 @@ import (
 // ParityPieces specify the intra-sector erasure coding parameters, not the
 // linkfile erasure coding parameters.
 //
-// The maximum value for Version, DataPieces, and ParityPieces is 16, and the
-// maximum value for HeaderSize is 2^52. This is because these values get
+// The maximum value for Version, DataPieces, and ParityPieces is 15, and the
+// maximum value for HeaderSize is 2^51. This is because these values get
 // bitpacked together to make the URL shorter.
 type LinkData struct {
 	MerkleRoot   crypto.Hash
@@ -41,7 +41,7 @@ func (ld *LinkData) LoadString(s string) error {
 	base := strings.TrimPrefix(s, "sia://")
 
 	// Use the base64 package to decode the string.
-	raw := make([]byte, 50)
+	raw := make([]byte, 52)
 	_, err := base64.RawURLEncoding.Decode(raw, []byte(base))
 	if err != nil {
 		return errors.New("unable to decode input as base64")
@@ -102,16 +102,16 @@ func (ld LinkData) String() string {
 	// integers. That's 12 bits total. Bitpack those 12 bits into ld.HeaderSize
 	// by ensuring that ld.HeaderSize fits into 52 bits, and then shifiting it
 	// up a few bits to make room for the bitpacked values.
-	if ld.DataPieces > 16 {
+	if ld.DataPieces > 15 {
 		panic("DataPieces can only be 4 bits")
 	}
-	if ld.ParityPieces > 16 {
+	if ld.ParityPieces > 15 {
 		panic("ParityPieces can only be 4 bits")
 	}
-	if ld.Version > 16 {
+	if ld.Version > 15 {
 		panic("Version can only be 4 bits")
 	}
-	if ld.HeaderSize > uint64(1<<52) {
+	if ld.HeaderSize > uint64(1<<51) {
 		panic("HeaderSize can only be 52 bits")
 	}
 	ld.HeaderSize *= 16
@@ -121,16 +121,16 @@ func (ld LinkData) String() string {
 	ld.HeaderSize *= 16
 	ld.HeaderSize += ld.ParityPieces
 
-	// Write out the raw bytes. Max size is 50 bytes - 32 for the Merkle root, 9
-	// for the first varint, 9 for the second varint.
-	raw := make([]byte, 50)
+	// Write out the raw bytes. Max size is 50 bytes - 32 for the Merkle root,
+	// 10 for the first varint, 10 for the second varint.
+	raw := make([]byte, 52)
 	copy(raw, ld.MerkleRoot[:])
 	size1 := binary.PutUvarint(raw[32:], ld.HeaderSize)
 	size2 := binary.PutUvarint(raw[32+size1:], ld.FileSize)
 
-	// Encode to base64. The maximum size of 50 bytes encoded to base64 is 68
+	// Encode to base64. The maximum size of 52 bytes encoded to base64 is 72
 	// bytes.
-	bufBytes := make([]byte, 0, 68)
+	bufBytes := make([]byte, 0, 70)
 	buf := bytes.NewBuffer(bufBytes)
 	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
 	encoder.Write(raw[:32+size1+size2])
