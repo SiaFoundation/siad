@@ -10,14 +10,15 @@ import (
 // decoding from a string.
 func TestLinkFormat(t *testing.T) {
 	ld := LinkData{
-		Version:      1,
 		MerkleRoot:   crypto.HashObject("1"),
-		HeaderSize:   21e3,
-		FileSize:     1e6,
-		DataPieces:   1,
-		ParityPieces: 1,
+		Version:      1,
+		DataPieces:   8,
+		ParityPieces: 3,
+		HeaderSize:   173,
+		FileSize:     18471849,
 	}
 	str := ld.String()
+	t.Log(str)
 
 	var ldDecoded LinkData
 	err := ldDecoded.LoadString(str)
@@ -26,7 +27,7 @@ func TestLinkFormat(t *testing.T) {
 	}
 	if ldDecoded != ld {
 		t.Error("encoded data and decoded data do not match")
-		t.Error(ld)
-		t.Error(ldDecoded)
+		t.Log(ld)
+		t.Log(ldDecoded)
 	}
 }
