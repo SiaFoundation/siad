@@ -58,7 +58,7 @@ responsibilities.
  - [Fuse Subsystem](#fuse-subsystem)
  - [Fuse Manager Subsystem](#fuse-manager-subsystem)
  - [Linkfile Subsystem](#linkfile-subsystem)
- - [Persistence Subsystem](#persistance-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
@@ -168,7 +168,7 @@ they find a host which has the desired data.
 A linkfile is broken into two major sections. The first section is called the
 'leading chunk', and it is a chunk which is uploaded with a 1-of-N redundancy in
 a separate file. This chunk has all of the metadata about the file, as well as
-the first few byte of the file. The leading chunk is constructed specifically so
+the first few bytes of the file. The leading chunk is constructed specifically so
 that an entire file and all of its relevant metadata can be recovered using
 nothing more than a single sector root.
 
@@ -180,7 +180,7 @@ information to learn the fanout of the file, enabling the downloader to download
 the entire file using nothing more than the sector root of the leading chunk.
 
 The linkfiles health and integrity is maintained by the repair subsystem.
-Linkfiles are designed to look at act as typical siafiles, including being
+Linkfiles are designed to look and act as typical siafiles, including being
 visible to the repair subsystem, which means the overall overhead for managing
 and protecting these files is minimal. The leading chunk is a 1-of-N siafile,
 and the fanout chunks are all stored together in a single siafile that has
