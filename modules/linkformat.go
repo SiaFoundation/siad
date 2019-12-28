@@ -111,7 +111,7 @@ func (ld LinkData) String() string {
 	if ld.Version > 16 {
 		panic("Version can only be 4 bits")
 	}
-	if ld.HeaderSize > uint64(1 << 52) {
+	if ld.HeaderSize > uint64(1<<52) {
 		panic("HeaderSize can only be 52 bits")
 	}
 	ld.HeaderSize *= 16

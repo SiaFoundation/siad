@@ -18,7 +18,6 @@ func TestLinkFormat(t *testing.T) {
 		FileSize:     18471849,
 	}
 	str := ld.String()
-	t.Log(str)
 
 	var ldDecoded LinkData
 	err := ldDecoded.LoadString(str)
