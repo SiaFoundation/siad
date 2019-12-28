@@ -249,7 +249,7 @@ func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize ui
 		peekErr = nil
 	}
 	if peekErr != nil {
-		return nil, errors.AddContext(err, "too mcuh data provided, cannot create linkfile")
+		return nil, errors.AddContext(err, "too much data provided, cannot create linkfile")
 	}
 	if n != 0 {
 		return nil, errors.New("too much data provided, cannot create linkfile")
