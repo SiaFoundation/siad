@@ -60,6 +60,10 @@ func TestLinkFormat(t *testing.T) {
 		t.Error("should not be able to set an invalid version")
 	}
 
+	// Some longer fuzzing sorts of tests below, skip for short tests.
+	if testing.Short() {
+		t.SkipNow()
+	}
 	// Create a bunch of random values and run the same test.
 	for i := 0; i < 100e3; i++ {
 		ldRand := LinkData{
@@ -196,5 +200,34 @@ func TestLinkFormat(t *testing.T) {
 	err = ld.LoadString(params)
 	if err != nil {
 		t.Error("should be no issues loading a sialink with params")
+	}
+
+	// Test a bunch of different packet sizes with fuzz for the set fetch size
+	// function.
+	for i := 1; i < 2000; i++ {
+		var ld LinkData
+		// Try one less byte less than i packets.
+		ld.SetFetchSize(uint64(i*SialinkPacketSize) - 1)
+		fs := ld.FetchSize()
+		ld.SetFetchSize(fs)
+		if ld.FetchSize() != fs {
+			t.Error("inconsistency")
+		}
+
+		// Try exactly i packets.
+		ld.SetFetchSize(uint64(i * SialinkPacketSize))
+		fs = ld.FetchSize()
+		ld.SetFetchSize(fs)
+		if ld.FetchSize() != fs {
+			t.Error("inconsistency")
+		}
+
+		// Try one more byte than i packets.
+		ld.SetFetchSize(uint64(i*SialinkPacketSize) + 1)
+		fs = ld.FetchSize()
+		ld.SetFetchSize(fs)
+		if ld.FetchSize() != fs {
+			t.Error("inconsistency")
+		}
 	}
 }
