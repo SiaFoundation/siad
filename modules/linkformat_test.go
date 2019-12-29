@@ -1,72 +1,152 @@
 package modules
 
 import (
-	"math"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestLinkFormat checks that the linkformat is correctly encoding to and
 // decoding from a string.
 func TestLinkFormat(t *testing.T) {
-	ld := LinkData{
-		MerkleRoot:   crypto.HashObject("1"),
-		Version:      1,
-		DataPieces:   8,
-		ParityPieces: 3,
-		HeaderSize:   173,
-		FileSize:     18471849,
+	// Create a linkdata struct that is all 0's, check that the resulting
+	// sialink is 52 bytes, and check that the struct encodes and decodes
+	// without problems.
+	var ldMin LinkData
+	sialink := ldMin.Sialink()
+	if len(sialink) != 52 {
+		t.Error("sialink is not 52 bytes")
 	}
-	str := ld.String()
-	var ldDecoded LinkData
-	err := ldDecoded.LoadString(str)
+	var ldMinDecoded LinkData
+	err := ldMinDecoded.LoadSialink(sialink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ldDecoded != ld {
-		t.Error("encoded data and decoded data do not match")
-		t.Log(ld)
-		t.Log(ldDecoded)
+	if ldMinDecoded != ldMin {
+		t.Error("encoding and decoding is not symmetric")
 	}
 
-	// Try another set of values, this time using the max allowed value for each
-	// numeric type.
-	ld = LinkData{
-		MerkleRoot:   crypto.HashObject("2"),
-		Version:      15,
-		DataPieces:   15,
-		ParityPieces: 11,
-		HeaderSize:   (1 << 51),
-		FileSize:     math.MaxUint64,
+	// Create a linkdata struct that is all 1's, check that the resulting
+	// sialink is 52 bytes, and check that the struct encodes and decodes
+	// without problems.
+	ldMax := LinkData{
+		vdp:            255,
+		fetchMagnitude: 255,
 	}
-	str = ld.String()
-	err = ldDecoded.LoadString(str)
+	for i := 0; i < len(ldMax.merkleRoot); i++ {
+		ldMax.merkleRoot[i] = 255
+	}
+	sialink = ldMax.Sialink()
+	if len(sialink) != 52 {
+		t.Error("sialink is not 52 bytes")
+	}
+	var ldMaxDecoded LinkData
+	err = ldMaxDecoded.LoadSialink(sialink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ldDecoded != ld {
-		t.Error("encoded data and decoded data do not match")
-		t.Log(ld)
-		t.Log(ldDecoded)
+	if ldMaxDecoded != ldMax {
+		t.Error("encoding and decoding is not symmetric")
 	}
 
-	// Try loading a string that is too large.
-	str = str + "some extra bytes"
-	err = ld.LoadString(str)
-	if err == nil {
-		t.Error("expecting error when bad string is decoded into a LinkData")
+	// Create a bunch of random values and run the same test.
+	if testing.Short() {
+		t.SkipNow()
 	}
-	str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	err = ld.LoadString(str)
-	if err == nil {
-		t.Error("expecting error when bad string is decoded into a LinkData")
+	for i := 0; i < 100e3; i++ {
+		ldRand := LinkData{
+			vdp:            uint8(fastrand.Intn(256)),
+			fetchMagnitude: uint8(fastrand.Intn(256)),
+			merkleRoot:     crypto.HashObject(i),
+		}
+		sialink = ldRand.Sialink()
+		if len(sialink) != 52 {
+			t.Error("sialink is not 52 bytes")
+			t.Log(ldRand.String())
+			t.Log(len(ldRand.String()))
+			t.Log(ldRand)
+		}
+		var ldRandDecoded LinkData
+		err = ldRandDecoded.LoadSialink(sialink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ldRandDecoded != ldRand {
+			t.Error("encoding and decoding is not symmetric")
+			t.Log(ldRand.String())
+			t.Log(len(ldRand.String()))
+			t.Log(ldRand)
+			t.Log(ldRandDecoded)
+		}
+
+		// Test the setters and getters of the LinkData when the rest of the
+		// values are randomized.
+		ldChanged := ldRand
+		err = ldChanged.SetVersion(1)
+		if err != nil {
+			t.Error(err)
+		}
+		if ldChanged.Version() != 1 {
+			t.Error("version setting and getting is incorrect")
+			t.Log(ldRand)
+			t.Log(ldChanged)
+		}
+		err = ldChanged.SetVersion(2)
+		if err != nil {
+			t.Error(err)
+		}
+		if ldChanged.Version() != 2 {
+			t.Error("version setting and getting is incorrect")
+			t.Log(ldRand)
+			t.Log(ldChanged)
+		}
+		err = ldChanged.SetVersion(3)
+		if err != nil {
+			t.Error(err)
+		}
+		if ldChanged.Version() != 3 {
+			t.Error("version setting and getting is incorrect")
+			t.Log(ldRand)
+			t.Log(ldChanged)
+		}
+		err = ldChanged.SetVersion(4)
+		if err != nil {
+			t.Error(err)
+		}
+		if ldChanged.Version() != 4 {
+			t.Error("version setting and getting is incorrect")
+			t.Log(ldRand)
+			t.Log(ldChanged)
+		}
+		// Reset to original.
+		err = ldChanged.SetVersion(ldRand.Version())
+		if err != nil {
+			t.Error(err)
+		}
+		if ldChanged != ldRand {
+			t.Error("ldChanged should match ldRand after reverting version changes")
+		}
 	}
 
-	// Try loading a string that is definitely too small.
-	str = "too small"
-	err = ld.LoadString(str)
+	// Try loading an arbitrary string that is too small.
+	var ld LinkData
+	var arb string
+	for i := 0; i < encodedLinkDataSize-1; i++ {
+		arb = arb + "a"
+	}
+	err = ld.LoadString(arb)
 	if err == nil {
-		t.Error("expecting error when bad string is decoded into a LinkData")
+		t.Error("expecting error when loading string that is too small")
+	}
+	arb = arb + "a"
+	err = ld.LoadString(arb)
+	if err != nil {
+		t.Error(err)
+	}
+	arb = arb + "a"
+	err = ld.LoadString(arb)
+	if err == nil {
+		t.Error("expecting error when loading string that is too large")
 	}
 }
