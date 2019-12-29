@@ -64,7 +64,7 @@ func TestLinkFormat(t *testing.T) {
 	for i := 0; i < 100e3; i++ {
 		ldRand := LinkData{
 			vdp:            uint8(fastrand.Intn(256)),
-			fetchMagnitude: uint8(fastrand.Intn(207)), // Can't be full value becuase larger values are illegal for SetFetchSize.
+			fetchMagnitude: uint8(fastrand.Intn(208)),
 			merkleRoot:     crypto.HashObject(i),
 		}
 		sialink = ldRand.Sialink()
@@ -137,7 +137,7 @@ func TestLinkFormat(t *testing.T) {
 
 		// Set and fetch a random fetch size. Ensure that fetch constraints are
 		// followed correctly.
-		randFetchSize := fastrand.Intn(int(SialinkMaxFetchSize))+1
+		randFetchSize := fastrand.Intn(int(SialinkMaxFetchSize)) + 1
 		ldChanged.SetFetchSize(uint64(randFetchSize))
 		resultFetchSize := ldChanged.FetchSize()
 		if resultFetchSize < uint64(randFetchSize) {
@@ -146,7 +146,7 @@ func TestLinkFormat(t *testing.T) {
 		// The resulting fetch size should be within 4% of the requested fetch
 		// size. There is an exception if 4% is less than one packet, because
 		// always the fetch size will be some multiple of a single packet.
-		if float64(randFetchSize + SialinkPacketSize) * SialinkFetchMagnitudeGrowthFactor < float64(resultFetchSize) {
+		if float64(randFetchSize+SialinkPacketSize)*SialinkFetchMagnitudeGrowthFactor < float64(resultFetchSize) {
 			t.Error("FetchSize() should never return a value that is more than 4% larger than the input to SetFetchSize()", resultFetchSize, randFetchSize)
 		}
 		// Check that resetting the fetch magnitude to the original value
