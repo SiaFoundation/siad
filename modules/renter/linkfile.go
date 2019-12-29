@@ -153,7 +153,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	// change to account for the fact that a lot of the bytes are redundant.
 	fetchSize := ld.FetchSize()
 	if fetchSize > modules.SectorSize {
-		return modules.LinkfileMetadata{}, nil, errors.New("cannot fetch more than one sector of raw data")
+		fetchSize = modules.SectorSize
 	}
 
 	// Fetch the actual file.
@@ -357,7 +357,8 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	ld.SetMerkleRoot(mr)
 	ld.SetDataPieces(lup.IntraSectorDataPieces)
 	ld.SetParityPieces(lup.IntraSectorParityPieces)
-	ld.SetFetchSize(uint64(len(fileBytes)))
+	// When setting the fetch size, need to include all the headers.
+	ld.SetFetchSize(uint64(offset))
 	sialink := ld.Sialink()
 	// Add the sialink to the Siafile.
 	err = fileNode.AddSialink(sialink)
