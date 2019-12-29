@@ -50,14 +50,21 @@ func TestLinkFormat(t *testing.T) {
 		t.Error("encoding and decoding is not symmetric")
 	}
 
-	// Create a bunch of random values and run the same test.
-	if testing.Short() {
-		t.SkipNow()
+	// Try setting bad version numbers on the LinkData.
+	err = ldMax.SetVersion(0)
+	if err == nil {
+		t.Error("should not be able to set an invalid version")
 	}
+	err = ldMax.SetVersion(5)
+	if err == nil {
+		t.Error("should not be able to set an invalid version")
+	}
+
+	// Create a bunch of random values and run the same test.
 	for i := 0; i < 100e3; i++ {
 		ldRand := LinkData{
 			vdp:            uint8(fastrand.Intn(256)),
-			fetchMagnitude: uint8(fastrand.Intn(256)),
+			fetchMagnitude: uint8(fastrand.Intn(207)), // Can't be full value becuase larger values are illegal for SetFetchSize.
 			merkleRoot:     crypto.HashObject(i),
 		}
 		sialink = ldRand.Sialink()
@@ -127,6 +134,33 @@ func TestLinkFormat(t *testing.T) {
 		if ldChanged != ldRand {
 			t.Error("ldChanged should match ldRand after reverting version changes")
 		}
+
+		// Set and fetch a random fetch size. Ensure that fetch constraints are
+		// followed correctly.
+		randFetchSize := fastrand.Intn(int(SialinkMaxFetchSize))+1
+		ldChanged.SetFetchSize(uint64(randFetchSize))
+		resultFetchSize := ldChanged.FetchSize()
+		if resultFetchSize < uint64(randFetchSize) {
+			t.Error("FetchSize() should never return a value lower than what was submitted to SetFetchSize()", resultFetchSize, randFetchSize)
+		}
+		// The resulting fetch size should be within 4% of the requested fetch
+		// size. There is an exception if 4% is less than one packet, because
+		// always the fetch size will be some multiple of a single packet.
+		if float64(randFetchSize + SialinkPacketSize) * SialinkFetchMagnitudeGrowthFactor < float64(resultFetchSize) {
+			t.Error("FetchSize() should never return a value that is more than 4% larger than the input to SetFetchSize()", resultFetchSize, randFetchSize)
+		}
+		// Check that resetting the fetch magnitude to the original value
+		// results in the same struct - meaning that no other values were
+		// incorrectly changed.
+		ldChanged.SetFetchSize(ldRand.FetchSize())
+		if ldChanged != ldRand {
+			t.Error("resetting fetch size didn't result in original value")
+			t.Log(ldRand.fetchMagnitude)
+			t.Log(ldChanged.fetchMagnitude)
+		}
+		// Final check - after the change see that the size can be queried
+		// again.
+		ldChanged.FetchSize()
 	}
 
 	// Try loading an arbitrary string that is too small.
@@ -139,14 +173,28 @@ func TestLinkFormat(t *testing.T) {
 	if err == nil {
 		t.Error("expecting error when loading string that is too small")
 	}
+	// Try loading a siafile that's just arbitrary/meaningless data.
 	arb = arb + "a"
 	err = ld.LoadString(arb)
 	if err != nil {
 		t.Error(err)
 	}
-	arb = arb + "a"
-	err = ld.LoadString(arb)
+	// Try loading a siafile that's too large.
+	long := arb + "a"
+	err = ld.LoadString(long)
 	if err == nil {
 		t.Error("expecting error when loading string that is too large")
+	}
+	// Try loading a blank siafile.
+	blank := ""
+	err = ld.LoadString(blank)
+	if err == nil {
+		t.Error("expecting an error when loading a blank sialink")
+	}
+	// Try adding some extra params after a valid siafile.
+	params := arb + "&asdfasdfasdf"
+	err = ld.LoadString(params)
+	if err != nil {
+		t.Error("should be no issues loading a sialink with params")
 	}
 }

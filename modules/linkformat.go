@@ -30,9 +30,18 @@ const (
 	// a multiple of this size.
 	SialinkPacketSize = 1420
 
-	// FetchMagnitudeGrowthFactor indicates how fast the fast the FetchMagnitude
-	// grows.
-	FetchMagnitudeGrowthFactor = 1.04
+	// SialinkFetchMagnitudeGrowthFactor determines how fast the fetchMagnitude
+	// of LinkData grows.
+	SialinkFetchMagnitudeGrowthFactor = 1.025
+
+	SialinkFetchMagnitudeStart = 41 // 1 + 1/(SialinkFetchMagnitudeGrowthFactor-1)
+
+	// SialinkMaxFetchSize defines the maximum fetch size that is supported by
+	// the sialink format. This is intentionally the same number as
+	// modules.SectorSize on the release build. We could not use
+	// modules.SectorSize directly because during testing that value is too
+	// small to properly test the link format.
+	SialinkMaxFetchSize = 1 << 22
 )
 
 // LinkData defines the data that appears in a linkfile. It is a highly
@@ -59,14 +68,21 @@ func (ld LinkData) DataPieces() uint8 {
 func (ld LinkData) FetchSize() uint64 {
 	// Sentinal value of 0 indicates that the whole sector needs to be fetched.
 	if ld.fetchMagnitude == 0 {
-		return SectorSize
+		return SialinkMaxFetchSize
 	}
 
-	// Calculate the number of bytes that need to be fetched. Take the 1.04 to
+	// The first few magnitudes are numeric values, no exponential growth yet.
+	if ld.fetchMagnitude < SialinkFetchMagnitudeStart {
+		return uint64(ld.fetchMagnitude) * SialinkPacketSize
+	}
+
+	// Calculate the number of bytes that need to be fetched. Take the 1.025 to
 	// the power of the magnitude and then multiply that by the packet size.
 	// This number is an approximation, but covers the whole range from ~1500
-	// bytes to the full 4 MiB, skipping only 4% at a time.
-	numPackets := math.Pow(1.04, float64(ld.fetchMagnitude))
+	// bytes to the full 4 MiB, skipping only 2.5% at a time.
+	numPackets := math.Pow(SialinkFetchMagnitudeGrowthFactor, float64(ld.fetchMagnitude-SialinkFetchMagnitudeStart))
+	numPackets *= SialinkFetchMagnitudeStart
+	numPackets = math.Ceil(numPackets)
 	return uint64(numPackets * SialinkPacketSize)
 }
 
@@ -134,24 +150,35 @@ func (ld *LinkData) SetDataPieces(dp uint8) {
 }
 
 // SetFetchSize will compress the fetch size into a uint8. This is a lossy
-// process, however so long as the value is below SectorSize, the result of
-// calling 'FetchSize()' on the ld will be greater than or equal to the input
-// value and no more than 4% larger than the input value.
+// process, however so long as the value is below SialinkMaxFetchSize, the
+// result of calling 'FetchSize()' on the ld will be greater than or equal to
+// the input value and no more than 4% larger than the input value.
 func (ld *LinkData) SetFetchSize(size uint64) {
-	if size > SectorSize {
-		build.Critical("size needs to be less than SectorSize")
+	// If the fetch size is larger than or equal to the maximum supported size,
+	// set the fetch size to '0', indicating that all data should be fetched.
+	if size >= SialinkMaxFetchSize {
+		ld.fetchMagnitude = 0
+		return
 	}
-	// The number of packets is the size divided by the packet size. One is
-	// added at the end because it is necessary to round up.
-	packets := math.Ceil(float64(size) / SialinkPacketSize)
 
-	// TODO: This is taking the log base FetchMagnitudeGrowthFactor of the
-	// value. Surely there is a faster way.
-	val := 1.0
-	magnitude := uint8(0)
-	for val < packets {
+	// Determine the number of packets that are necessary to cover the provided
+	// size.
+	packets := float64((size + SialinkPacketSize - 1) / SialinkPacketSize)
+
+	// Because 3% per round is a slow growing number, the first 33 magnitudes
+	// actually correspond to their numeric values. The exponential growth
+	// starts at the 41st value.
+	if packets < SialinkFetchMagnitudeStart {
+		ld.fetchMagnitude = uint8(packets)
+		return
+	}
+
+	// Figure out log base 1.025 of the number of packets.
+	val := float64(SialinkFetchMagnitudeStart)
+	magnitude := uint8(SialinkFetchMagnitudeStart)
+	for math.Ceil(val) < packets {
 		magnitude++
-		val *= 1.04
+		val *= SialinkFetchMagnitudeGrowthFactor
 	}
 	ld.fetchMagnitude = magnitude
 }
