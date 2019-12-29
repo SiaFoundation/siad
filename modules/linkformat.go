@@ -7,27 +7,67 @@ package modules
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/binary"
+	"math"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// LinkData defines the data that appears in a linkfile. The DataPieces and
-// ParityPieces specify the intra-sector erasure coding parameters, not the
-// linkfile erasure coding parameters.
+const (
+	// rawLinkDataSize is the raw size of the data that gets put into a link.
+	rawLinkDataSize = 34
+
+	// encodedLinkDataSize is the size of the LinkData after it has been encoded
+	// using base64. This size excludes the 'sia://' prefix.
+	encodedLinkDataSize = 46
+)
+
+const (
+	// SialinkPacketSize indicates the assumed packet size when fetching a
+	// sialink. There is an assumption that any fetch of logical data has to be
+	// a multiple of this size.
+	SialinkPacketSize = 1420
+
+	// FetchMagnitudeGrowthFactor indicates how fast the fast the FetchMagnitude
+	// grows.
+	FetchMagnitudeGrowthFactor = 1.04
+)
+
+// LinkData defines the data that appears in a linkfile. It is a highly
+// compressed data structure that encodes into 48 or fewer base64 bytes. The
+// goal of LinkData is not to provide a complete set of information, but rather
+// to provide enough information to efficiently recover a file.
 //
-// The maximum value for Version, DataPieces, and ParityPieces is 15, and the
-// maximum value for HeaderSize is 2^51. This is because these values get
-// bitpacked together to make the URL shorter.
+// Because the values are compressed, they are unexpectored and must be accessed
+// using helper methods.
 type LinkData struct {
-	MerkleRoot   crypto.Hash
-	Version      uint64
-	DataPieces   uint64
-	ParityPieces uint64
-	HeaderSize   uint64
-	FileSize     uint64
+	vdp            uint8
+	fetchMagnitude uint8
+	merkleRoot     crypto.Hash
+}
+
+// DataPieces will return the data pieces from the linkdata. At this time, the
+// DataPieces should be considered undefined, will always return '1'.
+func (ld LinkData) DataPieces() uint8 {
+	return 1
+}
+
+// FetchSize determines how many logical bytes should be fetched based on the
+// magnitude of the fetch request.
+func (ld LinkData) FetchSize() uint64 {
+	// Sentinal value of 0 indicates that the whole sector needs to be fetched.
+	if ld.fetchMagnitude == 0 {
+		return SectorSize
+	}
+
+	// Calculate the number of bytes that need to be fetched. Take the 1.04 to
+	// the power of the magnitude and then multiply that by the packet size.
+	// This number is an approximation, but covers the whole range from ~1500
+	// bytes to the full 4 MiB, skipping only 4% at a time.
+	numPackets := math.Pow(1.04, float64(ld.fetchMagnitude))
+	return uint64(numPackets * SialinkPacketSize)
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
@@ -38,61 +78,112 @@ func (ld *LinkData) LoadSialink(s Sialink) error {
 // LoadString converts from a string and loads the result into ld.
 func (ld *LinkData) LoadString(s string) error {
 	// Trim any 'sia://' that has tagged along.
-	base := []byte(strings.TrimPrefix(s, "sia://"))
-	if len(base) > 70 {
-		return errors.New("not a sialink, sialinks are at most 76 bytes")
+	noPrefix := strings.TrimPrefix(s, "sia://")
+	// Trim any parameters that may exist after an amperstand. Eventually, it
+	// will be possible to parse these separately as additional/optional
+	// argumetns, for now anything after an amperstand is just ignored.
+	splits := strings.SplitN(noPrefix, "&", 2)
+	if len(splits) == 0 {
+		return errors.New("not a sialnik, no base sialink provided")
+	}
+	base := []byte(splits[0])
+
+	// Input check, ensure that this is an expected string.
+	if len(base) != encodedLinkDataSize {
+		return errors.New("not a sialink, sialinks are always 46 bytes")
 	}
 
-	// Use the base64 package to decode the string. 54 bytes is the maximum
-	// number of bytes that 70 input bytes can decode into using base64. We have
-	// to decode into 54 bytes even though the maximum sialink is actually 52
-	// bytes because we are accepting adversarial input and cannot crash.
-	raw := make([]byte, 54)
+	// Decode the sialink from base64 into raw. I believe that only
+	// 'rawLinkDataSize' bytes are necessary to decode successfully, however the
+	// stdlib will panic if you run a decode operation on a slice that is too
+	// small, so 4 extra bytes are added to cover any potential situation where
+	// a sialink needs extra space to decode. 4 is chosen because that's the
+	// size of a base64 word, meaning that there's an entire extra word of
+	// cushion. Because we check the size upon receiving the sialink, we will
+	// never need more than one extra word.
+	raw := make([]byte, rawLinkDataSize+4)
 	_, err := base64.RawURLEncoding.Decode(raw, base)
 	if err != nil {
 		return errors.New("unable to decode input as base64")
 	}
 
-	// Decode the raw bytes into a LinkData.
-	copy(ld.MerkleRoot[:], raw)
-	reader := bytes.NewReader(raw[32:])
-	headerSize, err := binary.ReadUvarint(reader)
-	if err != nil {
-		return errors.AddContext(err, "unable to read sialink header size")
-	}
-	fileSize, err := binary.ReadUvarint(reader)
-	if err != nil {
-		return errors.AddContext(err, "unable to read sialink file size")
-	}
-	ld.FileSize = fileSize
+	// Load the raw data.
+	ld.vdp = raw[0]
+	ld.fetchMagnitude = raw[1]
+	copy(ld.merkleRoot[:], raw[2:])
+	return nil
+}
 
-	// Decode the bitpacked fields.
-	ld.ParityPieces = headerSize
-	ld.ParityPieces <<= 60
-	ld.ParityPieces >>= 60
-	headerSize >>= 4
-	ld.DataPieces = headerSize
-	ld.DataPieces <<= 60
-	ld.DataPieces >>= 60
-	headerSize >>= 4
-	ld.Version = headerSize
-	ld.Version <<= 60
-	ld.Version >>= 60
-	headerSize >>= 4
-	ld.HeaderSize = headerSize
+// MerkleRoot returns the merkle root of the LinkData.
+func (ld LinkData) MerkleRoot() crypto.Hash {
+	return ld.merkleRoot
+}
 
-	// Do some sanity checks on the version, the data pieces, and the parity
-	// pieces. Having these checks in place ensures that data was not lost at
-	// the front or end of the sialink - the first byte is not allowed to be
-	// zero, and the final two bytes are also not allowed to be zero. If for
-	// some reason those were omitted, these errors should catch that the
-	// sialink has not been copied correctly.
-	if ld.Version == 0 {
-		return errors.New("version of sialink is not allowed to be zero")
+// ParityPieces returns the number of ParityPieces from the linkdata. At this
+// time, ParityPieces should be considered undefined, will always return '0'.
+func (ld LinkData) ParityPieces() uint8 {
+	return 0
+}
+
+// SetDataPieces will set the data pieces for the LinkData.
+func (ld *LinkData) SetDataPieces(dp uint8) {
+	if dp != 1 {
+		build.Critical("SetDataPieces can only be 1 right now")
 	}
-	if ld.DataPieces == 0 {
-		return errors.New("data pieces on sialink should not be set to zero")
+	// Do nothing - value is already '0', which implies a value of '1'.
+}
+
+// SetFetchSize will compress the fetch size into a uint8. This is a lossy
+// process, however so long as the value is below SectorSize, the result of
+// calling 'FetchSize()' on the ld will be greater than or equal to the input
+// value and no more than 4% larger than the input value.
+func (ld *LinkData) SetFetchSize(size uint64) {
+	if size > SectorSize {
+		build.Critical("size needs to be less than SectorSize")
 	}
+	// The number of packets is the size divided by the packet size. One is
+	// added at the end because it is necessary to round up.
+	packets := math.Ceil(float64(size) / SialinkPacketSize)
+
+	// TODO: This is taking the log base FetchMagnitudeGrowthFactor of the
+	// value. Surely there is a faster way.
+	val := 1.0
+	magnitude := uint8(0)
+	for val < packets {
+		magnitude++
+		val *= 1.04
+	}
+	ld.fetchMagnitude = magnitude
+}
+
+// SetMerkleRoot will set the merkle root of the LinkData. This is the one
+// function that doesn't need to be wrapped for safety, however it is wrapped so
+// that the field remains consistent with all other fields.
+func (ld *LinkData) SetMerkleRoot(mr crypto.Hash) {
+	ld.merkleRoot = mr
+}
+
+func (ld *LinkData) SetParityPieces(pp uint8) {
+	if pp != 0 {
+		build.Critical("SetParityPieces can only be 0 right now")
+	}
+	// Do nothing - value is already '0', which implies a value of '0'.
+}
+
+// SetVersion sets the version of the LinkData. Value must be in the range 
+// [1, 4].
+func (ld *LinkData) SetVersion(version uint8) error {
+	// Check that the version is in the valid range for versions.
+	if version < 1 || version > 4 {
+		return errors.New("version must be in the range [1, 4]")
+	}
+	// Convert the version to its bitwise value.
+	version--
+
+	// Zero out the version bits of the vdp.
+	ld.vdp &= 252
+	// Set the version bits of the vdp.
+	ld.vdp += version
 	return nil
 }
 
@@ -104,42 +195,27 @@ func (ld LinkData) Sialink() Sialink {
 
 // String converts LinkData to a string.
 func (ld LinkData) String() string {
-	// Treat ld.Version, ld.HeaderSize, and ld.Parity size all as 4 bit
-	// integers. That's 12 bits total. Bitpack those 12 bits into ld.HeaderSize
-	// by ensuring that ld.HeaderSize fits into 52 bits, and then shifiting it
-	// up a few bits to make room for the bitpacked values.
-	if ld.DataPieces > 15 {
-		panic("DataPieces can only be 4 bits")
-	}
-	if ld.ParityPieces > 15 {
-		panic("ParityPieces can only be 4 bits")
-	}
-	if ld.Version > 15 {
-		panic("Version can only be 4 bits")
-	}
-	if ld.HeaderSize > uint64(1<<51) {
-		panic("HeaderSize can only be 52 bits")
-	}
-	ld.HeaderSize *= 16
-	ld.HeaderSize += ld.Version
-	ld.HeaderSize *= 16
-	ld.HeaderSize += ld.DataPieces
-	ld.HeaderSize *= 16
-	ld.HeaderSize += ld.ParityPieces
+	// Build the raw string.
+	raw := make([]byte, rawLinkDataSize)
+	raw[0] = ld.vdp
+	raw[1] = ld.fetchMagnitude
+	copy(raw[2:], ld.merkleRoot[:])
 
-	// Write out the raw bytes. Max size is 50 bytes - 32 for the Merkle root,
-	// 10 for the first varint, 10 for the second varint.
-	raw := make([]byte, 52)
-	copy(raw, ld.MerkleRoot[:])
-	size1 := binary.PutUvarint(raw[32:], ld.HeaderSize)
-	size2 := binary.PutUvarint(raw[32+size1:], ld.FileSize)
-
-	// Encode to base64. The maximum size of 52 bytes encoded to base64 is 72
-	// bytes.
-	bufBytes := make([]byte, 0, 70)
+	// Encode the raw bytes to base64. TWe have to use a a buffer and a base64
+	// encoder because the other functions that the stdlib provides will add
+	// padding to the end unnecessarily.
+	bufBytes := make([]byte, 0, encodedLinkDataSize)
 	buf := bytes.NewBuffer(bufBytes)
 	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
-	encoder.Write(raw[:32+size1+size2])
+	encoder.Write(raw)
 	encoder.Close()
 	return "sia://" + buf.String()
+}
+
+// Version will pull the version out of the vdp and return it. Version is a 2
+// bit number, meaning there are 4 possible values. The bitwise values cover the
+// range [0, 3], however we want to return a value in the range [1, 4], so we
+// increment the bitwise result.
+func (ld LinkData) Version() uint8 {
+	return (ld.vdp & 3) + 1
 }

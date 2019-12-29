@@ -140,22 +140,24 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
 	}
-	headerSize := ld.HeaderSize
 
 	// Check that the link follows the restrictions of the current software
 	// capabilities.
-	if ld.Version < 1 || ld.Version < LinkfileVersion {
+	if ld.Version() < 1 || ld.Version() < LinkfileVersion {
 		return modules.LinkfileMetadata{}, nil, errors.New("link version is not recognized")
 	}
-	if headerSize+ld.FileSize > modules.SectorSize {
-		return modules.LinkfileMetadata{}, nil, errors.New("size of file suggests a fanout was used - this version does not support fanouts")
-	}
-	if ld.DataPieces != 1 || ld.ParityPieces != 0 {
+	if ld.DataPieces() != 1 || ld.ParityPieces() != 0 {
 		return modules.LinkfileMetadata{}, nil, errors.New("intra-root erasure coding not supported")
+	}
+	// NOTE: Once intra-sector erasure coding is in play, this check has to
+	// change to account for the fact that a lot of the bytes are redundant.
+	fetchSize := ld.FetchSize()
+	if fetchSize > modules.SectorSize {
+		return modules.LinkfileMetadata{}, nil, errors.New("cannot fetch more than one sector of raw data")
 	}
 
 	// Fetch the actual file.
-	baseSector, err := r.DownloadByRoot(ld.MerkleRoot, 0, headerSize+ld.FileSize)
+	baseSector, err := r.DownloadByRoot(ld.MerkleRoot(), 0, fetchSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
 	}
@@ -184,7 +186,9 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	}
 	offset += metadataSize
 
-	return lfm, baseSector[offset : headerSize+ld.FileSize], nil
+	// Use the filesize in the linkfileLayout - the LinkData only provides a
+	// rough / approximate fetch size.
+	return lfm, baseSector[offset : offset+ll.filesize], nil
 }
 
 // uploadLinkfileEstablishDefaults will set any zero values in the lup to be
@@ -348,14 +352,12 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 
 	// Create the sialink.
 	mr := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
-	ld := modules.LinkData{
-		Version:      1,
-		MerkleRoot:   mr,
-		HeaderSize:   headerSize,
-		FileSize:     uint64(len(fileBytes)),
-		DataPieces:   uint64(lup.IntraSectorDataPieces),
-		ParityPieces: uint64(lup.IntraSectorParityPieces),
-	}
+	var ld modules.LinkData
+	ld.SetVersion(LinkfileVersion)
+	ld.SetMerkleRoot(mr)
+	ld.SetDataPieces(lup.IntraSectorDataPieces)
+	ld.SetParityPieces(lup.IntraSectorParityPieces)
+	ld.SetFetchSize(uint64(len(fileBytes)))
 	sialink := ld.Sialink()
 	// Add the sialink to the Siafile.
 	err = fileNode.AddSialink(sialink)
