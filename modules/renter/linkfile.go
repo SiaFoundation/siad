@@ -36,7 +36,7 @@ import (
 const (
 	// LinkfileLayoutSize describes the amount of space within the first sector
 	// of a linkfile used to describe the rest of the linkfile.
-	LinkfileLayoutSize = 64
+	LinkfileLayoutSize = 256
 
 	// LinkfileDefaultBaseChunkRedundancy establishes the default redundancy for
 	// the base chunk of a linkfile.
@@ -79,7 +79,9 @@ type linkfileLayout struct {
 	fanoutExtensionSize     uint64
 	fanoutDataPieces        uint8
 	fanoutParityPieces      uint8
-	reserved                [35]byte
+	cipherType              crypto.CipherType
+	cipherKey               [64]byte // cipherKey is incompatible with ciphers that need keys larger than 64 bytes
+	reserved                [155]byte // in case more fields are needed for future extensions
 }
 
 // encode will return a []byte that has compactly encoded all of the layout
