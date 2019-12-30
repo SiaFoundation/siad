@@ -93,8 +93,7 @@ type downloadDestination interface {
 	// pieces - the downloadDestination can check and determine if a recovery is
 	// required.
 	//
-	// The pieces are provided decrypted. If we did not need to decrypt the
-	// data, there would be little point in fetching the data.
+	// The pieces are provided decrypted.
 	WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, writeOffset int64, length uint64) error
 }
 

@@ -80,7 +80,7 @@ type linkfileLayout struct {
 	fanoutDataPieces        uint8
 	fanoutParityPieces      uint8
 	cipherType              crypto.CipherType
-	cipherKey               [64]byte // cipherKey is incompatible with ciphers that need keys larger than 64 bytes
+	cipherKey               [64]byte  // cipherKey is incompatible with ciphers that need keys larger than 64 bytes
 	reserved                [155]byte // in case more fields are needed for future extensions
 }
 
