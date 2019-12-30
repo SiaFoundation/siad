@@ -161,6 +161,38 @@ func linkfileBuildSialink(version uint8, merkleRoot crypto.Hash, lup modules.Lin
 	return ld.Sialink()
 }
 
+// linkfileEstablishDefaults will set any zero values in the lup to be equal to
+// the desired defaults.
+func linkfileEstablishDefaults(lup *modules.LinkfileUploadParameters) error {
+	if lup.BaseChunkRedundancy == 0 {
+		lup.BaseChunkRedundancy = LinkfileDefaultBaseChunkRedundancy
+	}
+	if lup.IntraSectorDataPieces == 0 {
+		lup.IntraSectorDataPieces = LinkfileDefaultIntraSectorDataPieces
+	}
+	if lup.IntraSectorParityPieces == 0 {
+		lup.IntraSectorParityPieces = LinkfileDefaultIntraSectorParityPieces
+	}
+	if lup.FileMetadata.Mode == 0 {
+		lup.FileMetadata.Mode = modules.DefaultFilePerm
+	}
+	if lup.FileMetadata.CreateTime == 0 {
+		lup.FileMetadata.CreateTime = time.Now().Unix()
+	}
+
+	// Input checks - ensure the settings are compatible.
+	if lup.Reader == nil {
+		return errors.New("need to provide a stream of upload data")
+	}
+	if lup.IntraSectorDataPieces != 1 {
+		return errors.New("intra-sector erasure coding not yet supported, intra sector data pieces must be set to 1")
+	}
+	if lup.IntraSectorParityPieces != 0 {
+		return errors.New("intra-sector erasure coding not yet supported, intra sector parity pieces must be set to 0")
+	}
+	return nil
+}
+
 // linkfileMetadataBytes will return the marshalled/encoded bytes for the
 // linkfile metadata.
 func linkfileMetadataBytes(fm modules.LinkfileMetadata) ([]byte, error) {
@@ -204,6 +236,12 @@ func linkfileUploadParams(lup modules.LinkfileUploadParameters) (modules.FileUpl
 // sector linkfile will be placed, and the siaPath provided as its own input is
 // the siaPath of the file that is being used to create the linkfile.
 func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, siaPath modules.SiaPath) (modules.Sialink, error) {
+	// Set reasonable default values for any lup fields that are blank.
+	err := linkfileEstablishDefaults(&lup)
+	if err != nil {
+		return "", errors.AddContext(err, "linkfile upload parameters are incorrect")
+	}
+
 	// Grab the filenode for the provided siapath.
 	fileNode, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
@@ -211,13 +249,14 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 	}
 	defer fileNode.Close()
 
-	// Check that the encryption key is compatible with the linkfile format.
+	// Check that the encryption key and erasure code is compatible with the
+	// linkfile format. This is intentionally done before any heavy computation
+	// to catch early errors.
 	var ll linkfileLayout
 	masterKey := fileNode.MasterKey()
 	if len(masterKey.Key()) > len(ll.cipherKey) {
 		return "", errors.AddContext(err, "cipher key is not supported by the linkfile format")
 	}
-
 	ec := fileNode.ErasureCode()
 	if ec.Type() != siafile.ECReedSolomonSubShards64 {
 		return "", errors.AddContext(err, "siafile has unsupported erasure code type")
@@ -234,12 +273,12 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 	if err != nil {
 		return "", errors.AddContext(err, "error retrieving linkfile metadata bytes")
 	}
-	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes))
 
 	// Implementation gap - if the file is small enough to fit entirely within
 	// one sector, return an error. A full fanout is not necessary, a simple
 	// linkfile should be created instead.
-	if headerSize+fileNode.Size() <= modules.SectorSize {
+	noFanoutHeaderSize := uint64(LinkfileLayoutSize + len(metadataBytes))
+	if noFanoutHeaderSize+fileNode.Size() <= modules.SectorSize {
 		return "", errors.New("cannot convert siafiles that are small enough to fit inside a fanout")
 	}
 
@@ -248,6 +287,7 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 	if err != nil {
 		return "", errors.AddContext(err, "unable to encode the fanout of the siafile")
 	}
+	headerSize := noFanoutHeaderSize + uint64(len(fanoutBytes))
 	if headerSize+uint64(len(fanoutBytes)) > modules.SectorSize {
 		return "", errors.New("siafile is too large to be turned into a sialink")
 	}
@@ -266,18 +306,8 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 	}
 	copy(ll.cipherKey[:], masterKey.Key())
 
-	// Eventually the fileBytes should fill out the rest of the base sector
-	// (anything remaining after the fanout) with the first bits of logical data
-	// so that this data can be fetched on the first round trip.
-	//
-	// TODO: May need to do something about the version here so that we can add
-	// it later if we don't get this done by release. We could probably make the
-	// fileBytes optimization a linkfilev2 sort of thing, so we know which
-	// linkfiles support it and which ones don't.
-	var fileBytes []byte
-
 	// Create the base sector.
-	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, fanoutBytes, fileBytes)
+	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, fanoutBytes, nil)
 	baseSectorReader := bytes.NewReader(baseSector)
 	fileUploadParams, err := linkfileUploadParams(lup)
 	if err != nil {
@@ -299,10 +329,7 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 	err1 := fileNode.AddSialink(sialink)
 	err2 := newFileNode.AddSialink(sialink)
 	err = errors.Compose(err1, err2)
-	if err != nil {
-		return sialink, errors.AddContext(err, "unable to add sialink to the sianodes")
-	}
-	return sialink, nil
+	return sialink, errors.AddContext(err, "unable to add sialink to the sianodes")
 }
 
 // DownloadSialink will take a link and turn it into the metadata and data of a
@@ -365,26 +392,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	return lfm, baseSector[offset : offset+ll.filesize], nil
 }
 
-// uploadLinkfileEstablishDefaults will set any zero values in the lup to be
-// equal to the desired defaults.
-func uploadLinkfileEstablishDefaults(lup *modules.LinkfileUploadParameters) {
-	if lup.BaseChunkRedundancy == 0 {
-		lup.BaseChunkRedundancy = LinkfileDefaultBaseChunkRedundancy
-	}
-	if lup.IntraSectorDataPieces == 0 {
-		lup.IntraSectorDataPieces = LinkfileDefaultIntraSectorDataPieces
-	}
-	if lup.IntraSectorParityPieces == 0 {
-		lup.IntraSectorParityPieces = LinkfileDefaultIntraSectorParityPieces
-	}
-	if lup.FileMetadata.Mode == 0 {
-		lup.FileMetadata.Mode = modules.DefaultFilePerm
-	}
-	if lup.FileMetadata.CreateTime == 0 {
-		lup.FileMetadata.CreateTime = time.Now().Unix()
-	}
-}
-
 // uploadLinkfileFileBytes will return the file data bytes of the file being
 // uploaded.
 func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize uint64) ([]byte, error) {
@@ -431,17 +438,9 @@ func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize ui
 // convert function exists).
 func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
 	// Set reasonable default values for any lup fields that are blank.
-	uploadLinkfileEstablishDefaults(&lup)
-
-	// Input checks - ensure the settings are compatible.
-	if lup.Reader == nil {
-		return "", errors.New("need to provide a stream of upload data")
-	}
-	if lup.IntraSectorDataPieces != 1 {
-		return "", errors.New("intra-sector erasure coding not yet supported, intra sector data pieces must be set to 1")
-	}
-	if lup.IntraSectorParityPieces != 0 {
-		return "", errors.New("intra-sector erasure coding not yet supported, intra sector parity pieces must be set to 0")
+	err := linkfileEstablishDefaults(&lup)
+	if err != nil {
+		return "", errors.AddContext(err, "linkfile upload parameters are incorrect")
 	}
 
 	// Fetch the bytes for the metadata and the data.
@@ -462,12 +461,9 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 		intraSectorParityPieces: lup.IntraSectorParityPieces,
 	}
 
-	// No fanout bytes yet, leave it empty.
-	var fanoutBytes []byte
-
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, fanoutBytes, fileBytes)
+	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, nil, fileBytes)
 
 	// Perform the actual upload. This will require turning the base sector into
 	// a reader.
@@ -487,8 +483,5 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	sialink := linkfileBuildSialink(LinkfileVersion, baseSectorRoot, lup, fetchSize)
 	// Add the sialink to the Siafile.
 	err = fileNode.AddSialink(sialink)
-	if err != nil {
-		return sialink, errors.AddContext(err, "unable to add sialink to siafile")
-	}
-	return sialink, nil
+	return sialink, errors.AddContext(err, "unable to add sialink to siafile")
 }
