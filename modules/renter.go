@@ -928,7 +928,7 @@ type Renter interface {
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
 	// DownloadSialink will fetch a file from the Sia network using the sialink.
-	DownloadSialink(sialink Sialink) (LinkfileMetadata, []byte, error)
+	DownloadSialink(sialink Sialink) (LinkfileMetadata, Streamer, error)
 
 	// UploadLinkfile will upload data to the Sia network from a reader and
 	// create a linkfile, returning the sialink that can be used to access the

@@ -3,22 +3,6 @@ package renter
 // linkfile.go provides the tools for creating and uploading linkfiles, and then
 // receiving the associated links to recover the files.
 
-// Brief description of how the fanout will work: The fanout describes the set
-// of sector roots that can be fetched for each chunk in a larger linkfile. The
-// erasure coding settings of the fanout explain how many sector roots are
-// needed per chunk. The fanout sector roots are listed in-order, and the total
-// number of chunks multiplied by the number of sectors per chunk multiplied by
-// the number of bytes per sector root give you the total fanout size - from the
-// fanout size and fanout erasure coding settings the total number of chunks can
-// be determined.
-//
-// If the fanout description doesn't fit entirely within the first chunk, a
-// second chunk can be created to house the rest of the fanout. The decision may
-// also be made to put the entirety of the fanout into its own siafile, meaning
-// a linkfile could end up being 3 siafiles total - one siafile for the base
-// chunk, one siafile for the fanout description, and one siafile for the actual
-// file data.
-
 import (
 	"bytes"
 	"encoding/binary"
@@ -230,6 +214,25 @@ func linkfileUploadParams(lup modules.LinkfileUploadParameters) (modules.FileUpl
 	}, nil
 }
 
+// streamerFromReader wraps a bytes.Reader to give it a Close() method.
+type streamerFromReader struct {
+	*bytes.Reader
+}
+
+// Close is a no-op because a bytes.Reaader doesn't need to be closed.
+func (sfr *streamerFromReader) Close() error {
+	return nil
+}
+
+// streamerFromSlice returns a modules.Streamer given a slice. This is
+// non-trivial because a bytes.Reader does not implement Close.
+func streamerFromSlice(b []byte) modules.Streamer {
+	reader := bytes.NewReader(b)
+	return &streamerFromReader{
+		Reader: reader,
+	}
+}
+
 // CreateSialinkFromSiafile creates a linkfile from a siafile. This requires
 // uploading a new linkfile which contains fanout information pointing to the
 // siafile data. The SiaPath provided in 'lup' indicates where the new base
@@ -334,7 +337,7 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 
 // DownloadSialink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata, []byte, error) {
+func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata, modules.Streamer, error) {
 	// Parse the provided link into a usable structure for fetching downloads.
 	var ld modules.LinkData
 	err := ld.LoadSialink(link)
@@ -357,7 +360,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		fetchSize = modules.SectorSize
 	}
 
-	// Fetch the actual file.
+	// Fetch the leading sector.
 	baseSector, err := r.DownloadByRoot(ld.MerkleRoot(), 0, fetchSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
@@ -372,9 +375,16 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	ll.decode(baseSector)
 	offset += LinkfileLayoutSize
 
-	// Check that there are no fanout settings, currently the download sialink
-	// function does not support fanout.
-	if ll.fanoutHeaderSize != 0 || ll.fanoutExtensionSize != 0 {
+	// Check that there is no fanout extension, as that is not currently
+	// supported.
+	if ll.fanoutExtensionSize != 0 {
+		return modules.LinkfileMetadata{}, nil, errors.New("downloading large siafiles is not supported in this version of siad")
+	}
+
+	// TODO: Implement fanout fetching. But first, what actually needs to happen
+	// is the DownloadSialink function needs to somehow deal with a download
+	// destination, instead of returning a []byte.
+	if ll.fanoutHeaderSize != 0 {
 		return modules.LinkfileMetadata{}, nil, errors.New("downloading large siafiles is not supported in this version of siad")
 	}
 
@@ -389,7 +399,8 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 
 	// Use the filesize in the linkfileLayout - the LinkData only provides a
 	// rough / approximate fetch size.
-	return lfm, baseSector[offset : offset+ll.filesize], nil
+	streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
+	return lfm, streamer, nil
 }
 
 // uploadLinkfileFileBytes will return the file data bytes of the file being

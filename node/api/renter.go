@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -1708,13 +1707,12 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // from the sialink out of the response body as output.
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	sialink := modules.Sialink(ps.ByName("sialink"))
-	metadata, data, err := api.renter.DownloadSialink(sialink)
+	metadata, streamer, err := api.renter.DownloadSialink(sialink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	reader := bytes.NewReader(data)
-	http.ServeContent(w, req, metadata.Name, time.Time{}, reader)
+	http.ServeContent(w, req, metadata.Name, time.Time{}, streamer)
 }
 
 // renterLinkfileHandlerPOST accepts some data and some metadata and then turns
