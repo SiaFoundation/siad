@@ -2322,9 +2322,9 @@ func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 
 	// Perform the conversion and print the result.
 	lup := modules.LinkfileUploadParameters{
-		SiaPath: sourceSiaPath,
+		SiaPath: destSiaPath,
 	}
-	sialink, err := httpClient.RenterConvertSiafileToLinkfilePost(lup, destSiaPath)
+	sialink, err := httpClient.RenterConvertSiafileToLinkfilePost(lup, sourceSiaPath)
 	if err != nil {
 		die("could not upload linkfile:", err)
 	}
