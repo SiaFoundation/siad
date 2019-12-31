@@ -809,7 +809,7 @@ func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadPa
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	resp, err := c.postRawResponse(query, lup.Reader)
+	_, resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
