@@ -280,7 +280,7 @@ func (fs *fanoutStreamer) Seek(offset int64, whence int) (int64, error) {
 	defer fs.mu.Unlock()
 
 	// If there's an immediate seek to the beginning, support that.
-	if offset == 0 && whence == 0 && fs.offset < uint64(len(fs.chunkDataCurrent)) {
+	if offset == 0 && whence == 0 && (fs.offset < uint64(len(fs.chunkDataCurrent)) || fs.offset == 0) {
 		fs.offset = 0
 		return 0, nil
 	}
