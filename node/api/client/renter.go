@@ -728,7 +728,7 @@ func (c *Client) RenterSialinkGet(sialink modules.Sialink) (fileData []byte, err
 	return
 }
 
-// RenterLinkfilePost uses the /renter/sialink endpoint to upload a linkfile.
+// RenterLinkfilePost uses the /renter/linkfile endpoint to upload a linkfile.
 // The resulting sialink is returned along with an error.
 func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
 	// Set the url values.
@@ -742,6 +742,41 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modul
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	resp, err := c.postRawResponse(query, lup.Reader)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to "+query+" failed")
+	}
+
+	// Parse the response to get the sialink.
+	var rshp api.RenterLinkfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+	}
+	return rshp.Sialink, err
+}
+
+// RenterConvertSiafileToLinkfilePost uses the /renter/sialink endpoint to
+// convert an existing siafile to a linkfile. The input SiaPath 'convert' is the
+// siapath of the siafile that should be converted. The siapath provided inside
+// of the upload params is the name that will be used for the base sector of the
+// linkfile.
+func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (modules.Sialink, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("name", lup.FileMetadata.Name)
+	createTimeStr := fmt.Sprintf("%v", lup.FileMetadata.CreateTime)
+	values.Set("createtime", createTimeStr)
+	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	values.Set("redundancy", redundancyStr)
+	values.Set("convertpath", convert.String())
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())

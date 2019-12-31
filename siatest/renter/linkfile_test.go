@@ -108,4 +108,53 @@ func TestLinkfile(t *testing.T) {
 	// Maybe this can be accomplished by tagging a flag to the API which has the
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
+
+	// Upload a siafile that will then be converted to a linkfile. The siafile
+	// needs at least 2 sectors.
+	localFile, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize*2)+siatest.Fuzz(), 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localData, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filename2 := "testTwo"
+	uploadSiaPath2, err := modules.NewSiaPath("testTwoPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lup = modules.LinkfileUploadParameters{
+		SiaPath:             uploadSiaPath2,
+		Force:               !force,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.LinkfileMetadata{
+			Name:       filename2,
+			Mode:       0600, // intentionally not the default
+			CreateTime: 1e6,  // intentionally before current time
+		},
+	}
+	sialink2, err := r.RenterConvertSiafileToLinkfilePost(lup, remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the sialink.
+	fetchedData, err = r.RenterSialinkGet(sialink2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fetchedData, localData) {
+		t.Error("upload and download doesn't match")
+	}
+
+	// TODO: Need to verify the mode, name, and create-time. At this time, I'm
+	// not sure how we can feed those out of the API. They aren't going to be
+	// the same as the siafile values, because the siafile was created
+	// separately.
+	//
+	// Maybe this can be accomplished by tagging a flag to the API which has the
+	// layout and metadata streamed as the first bytes? Maybe there is some
+	// easier way.
 }

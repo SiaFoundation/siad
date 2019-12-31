@@ -15,10 +15,10 @@ import (
 type fanoutStreamer struct {
 	// Each chunk is an array of sector hashes that correspond to pieces which
 	// can be fetched.
-	staticChunks [][]crypto.Hash
+	staticChunks       [][]crypto.Hash
 	staticErasureCoder modules.ErasureCoder
-	staticLayout linkfileLayout
-	staticMasterKey crypto.CipherKey
+	staticLayout       linkfileLayout
+	staticMasterKey    crypto.CipherKey
 
 	// Variables to correctly implement the reader.
 	offset uint64
@@ -27,14 +27,14 @@ type fanoutStreamer struct {
 	// naive, and intended to be thrown away and integrated properly with the
 	// general download streamer, this is just to get end-to-end examples
 	// working as fast as possible.
-	chunkAvailable chan struct{}
+	chunkAvailable   chan struct{}
 	chunkDataCurrent []byte
 	chunkDataNext    []byte
-	fetchErr error
+	fetchErr         error
 
 	// Utils.
 	staticRenter *Renter
-	mu sync.Mutex
+	mu           sync.Mutex
 }
 
 // linkfileDecodeFanout will take an encoded data fanout and convert it into a
@@ -53,8 +53,8 @@ func (r *Renter) newFanoutStreamer(ll linkfileLayout, fanoutBytes []byte) (*fano
 	// Build the base streamer object.
 	fs := &fanoutStreamer{
 		staticErasureCoder: ec,
-		staticLayout: ll,
-		staticMasterKey: masterKey,
+		staticLayout:       ll,
+		staticMasterKey:    masterKey,
 
 		chunkAvailable: make(chan struct{}),
 
@@ -64,7 +64,7 @@ func (r *Renter) newFanoutStreamer(ll linkfileLayout, fanoutBytes []byte) (*fano
 	// Decode the fanout to get the chunk fetch data.
 	piecesPerChunk := uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
 	chunkSize := crypto.HashSize * piecesPerChunk
-	for uint64(len(fanoutBytes)) > chunkSize {
+	for uint64(len(fanoutBytes)) >= chunkSize {
 		chunk := make([]crypto.Hash, piecesPerChunk)
 		for i := 0; i < len(chunk); i++ {
 			copy(chunk[i][:], fanoutBytes)
@@ -95,7 +95,7 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 
 		// Spin up a thread to fetch this piece.
 		wg.Add(1)
-		go func() {
+		go func(i uint64) {
 			defer wg.Done()
 			pieceData, err := fs.staticRenter.DownloadByRoot(fs.staticChunks[chunkIndex][i], 0, modules.SectorSize)
 			if err == nil {
@@ -103,7 +103,7 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 				key.DecryptBytesInPlace(pieceData, 0)
 				pieces[i] = pieceData
 			}
-		}()
+		}(i)
 	}
 	wg.Wait()
 
@@ -144,7 +144,7 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 		return
 	}
 	// Combine everything into one chunk. Release memory along the way.
-	chunkSize := (modules.SectorSize-fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
+	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
 	chunkData := make([]byte, 0, chunkSize)
 	for i := uint8(0); i < piecesReceived; i++ {
 		chunkData = append(chunkData, pieces[i]...)
@@ -159,8 +159,12 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 		// indicate to waiting threads that data is available.
 		fs.chunkDataCurrent = chunkData
 		close(fs.chunkAvailable)
-		// There is no next chunk, set up a goroutine to fetch the next chunk.
-		go fs.threadedFetchChunk(chunkIndex+1)
+
+		// There is no next chunk, and no thread fetching the next chunk. If the
+		// file has a next chunk, fetch that.
+		if fs.staticLayout.filesize > chunkSize * (chunkIndex+1) {
+			go fs.threadedFetchChunk(chunkIndex + 1)
+		}
 	} else {
 		// Set the next chunk to the fetched data. Buffers are now full, no need
 		// to isuse another thread. There is also nobody waiting for the next
@@ -198,6 +202,10 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 			fs.mu.Unlock()
 			return 0, io.EOF
 		}
+		// Correct the input value if it exceeds the bounds of the file.
+		if fs.offset + uint64(len(b)) > fs.staticLayout.filesize {
+			b = b[:fs.staticLayout.filesize-fs.offset]
+		}
 		// Check whether the next data is available.
 		if fs.chunkDataCurrent == nil {
 			// Data is not available, block until there is data available.
@@ -216,7 +224,7 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 	defer fs.mu.Unlock()
 
 	// Determine the offset of the current chunk to copy from.
-	chunkSize := (modules.SectorSize-fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
+	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
 	chunkOffset := fs.offset % chunkSize
 	n := copy(b, fs.chunkDataCurrent[chunkOffset:])
 	fs.offset += uint64(n)
@@ -229,7 +237,7 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 
 	// Determine whether there is still data in the current chunk. If so,
 	// nothing to do. Next call to read will pick up further along in the chunk.
-	if chunkOffset + uint64(n) < chunkSize {
+	if chunkOffset+uint64(n) < chunkSize {
 		return n, nil
 	}
 
@@ -248,7 +256,7 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 
 	// If the new current chunk contains all remaining data, nothing needs to be
 	// done, as all the remaining data has been fetched.
-	if fs.offset + uint64(len(fs.chunkDataCurrent)) == fs.staticLayout.filesize {
+	if fs.offset+uint64(len(fs.chunkDataCurrent)) >= fs.staticLayout.filesize {
 		return n, nil
 	}
 
@@ -262,6 +270,20 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 
 // Seek will move the pointer for the streamer.
 func (fs *fanoutStreamer) Seek(offset int64, whence int) (int64, error) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	// If there's an immediate seek to the beginning, support that.
+	if offset == 0 && whence == 0 && fs.offset < uint64(len(fs.chunkDataCurrent)) {
+		fs.offset = 0
+		return 0, nil
+	}
+	// If there's a seek to the end while the offset is at the beginning,
+	// support that too.
+	if offset == 0 && whence == 2 && fs.offset == 0 {
+		return int64(fs.staticLayout.filesize), nil
+	}
+
 	return 0, errors.New("seeking is not yet supported")
 }
 

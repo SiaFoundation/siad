@@ -91,6 +91,10 @@ func (ll *linkfileLayout) encode() []byte {
 	offset += 1
 	b[offset] = ll.fanoutParityPieces
 	offset += 1
+	copy(b[offset:], ll.cipherType[:])
+	offset += len(ll.cipherType)
+	copy(b[offset:], ll.cipherKey[:])
+	offset += len(ll.cipherKey)
 	return b
 }
 
@@ -115,6 +119,10 @@ func (ll *linkfileLayout) decode(b []byte) {
 	offset += 1
 	ll.fanoutParityPieces = b[offset]
 	offset += 1
+	copy(ll.cipherType[:], b[offset:])
+	offset += len(ll.cipherType)
+	copy(ll.cipherKey[:], b[offset:])
+	offset += len(ll.cipherKey)
 }
 
 // linkfileBuildBaseSector will take all of the elements of the base sector and
@@ -165,9 +173,6 @@ func linkfileEstablishDefaults(lup *modules.LinkfileUploadParameters) error {
 	}
 
 	// Input checks - ensure the settings are compatible.
-	if lup.Reader == nil {
-		return errors.New("need to provide a stream of upload data")
-	}
 	if lup.IntraSectorDataPieces != 1 {
 		return errors.New("intra-sector erasure coding not yet supported, intra sector data pieces must be set to 1")
 	}
@@ -455,6 +460,12 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	err := linkfileEstablishDefaults(&lup)
 	if err != nil {
 		return "", errors.AddContext(err, "linkfile upload parameters are incorrect")
+	}
+	// Additional input check - this check is unique to uploading a linkfile
+	// from a streamer. The convert siafile function does not need to be passed
+	// a reader.
+	if lup.Reader == nil {
+		return "", errors.New("need to provide a stream of upload data")
 	}
 
 	// Fetch the bytes for the metadata and the data.

@@ -1783,11 +1783,39 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		BaseChunkRedundancy: redundancy,
 
 		FileMetadata: lfm,
-		Reader:       req.Body,
 	}
-	sialink, err := api.renter.UploadLinkfile(lup)
+
+	// Check whether this is a streaming upload or a siafile conversion. If no
+	// convert path is provided, assume that the req.Body will be used as a
+	// streaming upload.
+	convertPathStr := queryForm.Get("convertpath")
+	if convertPathStr == "" {
+		lup.Reader = req.Body
+		sialink, err := api.renter.UploadLinkfile(lup)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		WriteJSON(w, RenterLinkfileHandlerPOST{
+			Sialink: sialink,
+		})
+		return
+	}
+
+	// There is a convert path.
+	convertPath, err := modules.NewSiaPath(convertPathStr)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+		WriteError(w, Error{"invalid convertpath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	convertPath, err = rebaseInputSiaPath(convertPath)
+	if err != nil {
+		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	sialink, err := api.renter.CreateSialinkFromSiafile(lup, convertPath)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to linkfile: %v", err)}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, RenterLinkfileHandlerPOST{
