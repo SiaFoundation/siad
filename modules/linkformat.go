@@ -34,7 +34,11 @@ const (
 	// of LinkData grows.
 	SialinkFetchMagnitudeGrowthFactor = 1.025
 
-	SialinkFetchMagnitudeStart = 41 // 1 + 1/(SialinkFetchMagnitudeGrowthFactor-1)
+	// SialinkFetchMagnitudeStart defines the point at which the sialink
+	// switches from linear growth to exponential growth. This is chosen in
+	// tandem with SialinkFetchMagnitudeGrowthFactor, such that the exponential
+	// growth takes over as soon as it grows faster than linear growth.
+	SialinkFetchMagnitudeStart = 41
 
 	// SialinkMaxFetchSize defines the maximum fetch size that is supported by
 	// the sialink format. This is intentionally the same number as
@@ -190,6 +194,7 @@ func (ld *LinkData) SetMerkleRoot(mr crypto.Hash) {
 	ld.merkleRoot = mr
 }
 
+// SetParityPieces will set the parity pieces of the LinkData.
 func (ld *LinkData) SetParityPieces(pp uint8) {
 	if pp != 0 {
 		build.Critical("SetParityPieces can only be 0 right now")
@@ -197,7 +202,7 @@ func (ld *LinkData) SetParityPieces(pp uint8) {
 	// Do nothing - value is already '0', which implies a value of '0'.
 }
 
-// SetVersion sets the version of the LinkData. Value must be in the range 
+// SetVersion sets the version of the LinkData. Value must be in the range
 // [1, 4].
 func (ld *LinkData) SetVersion(version uint8) error {
 	// Check that the version is in the valid range for versions.
