@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -80,14 +81,18 @@ func (r *Renter) newFanoutStreamer(ll linkfileLayout, fanoutBytes []byte) (*fano
 	return fs, nil
 }
 
+// Replace the fetch with something that waits until there are 10 pieces total
+// avilable
+
 // threadedFetchChunk will fetch a chunk at the provided index.
 func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 	// Spin up one thread per piece and try to fetch them all. This is wasteful,
 	// but easier to implement. Intention at least for now is just to get
 	// end-to-end testing working for this feature.
 	var blankHash crypto.Hash
+	doneChan := make(chan struct{})
 	pieces := make([][]byte, len(fs.staticChunks[chunkIndex]))
-	var wg sync.WaitGroup
+	piecesCompleted := new(uint64)
 	for i := uint64(0); i < uint64(len(fs.staticChunks[chunkIndex])); i++ {
 		// Skip pieces where the Merkle root is not supplied.
 		if fs.staticChunks[chunkIndex][i] == blankHash {
@@ -95,18 +100,20 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 		}
 
 		// Spin up a thread to fetch this piece.
-		wg.Add(1)
 		go func(i uint64) {
-			defer wg.Done()
 			pieceData, err := fs.staticRenter.DownloadByRoot(fs.staticChunks[chunkIndex][i], 0, modules.SectorSize)
 			if err == nil {
 				key := fs.staticMasterKey.Derive(chunkIndex, i)
 				key.DecryptBytesInPlace(pieceData, 0)
 				pieces[i] = pieceData
+				result := atomic.AddUint64(piecesCompleted, 1)
+				if result == uint64(fs.staticLayout.fanoutDataPieces) {
+					close(doneChan)
+				}
 			}
 		}(i)
 	}
-	wg.Wait()
+	<-doneChan
 
 	// Check how many pieces came back.
 	piecesReceived := uint8(0)
