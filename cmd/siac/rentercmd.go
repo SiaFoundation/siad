@@ -221,6 +221,15 @@ anymore.`,
 		Run: wrap(renterlinkfilesuploadcmd),
 	}
 
+	renterLinkfilesConvertCmd = &cobra.Command{
+		Use: "convert [source siaPath] [destination siaPath]",
+		Short: "Convert a siafile to a sharable sialink",
+		Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
+will be created in the user's linkfile directory. The linkfile and the original
+siafile are both necessary to pin the file and keep the sialink active.`,
+		Run: wrap(renterlinkfilesconvertcmd),
+	}
+
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
@@ -2296,6 +2305,30 @@ func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
 		die("could not upload linkfile:", err)
 	}
 	fmt.Println("File uploaded successfully, the sialink is", sialink)
+}
+
+// renterlinkfilesconvertcmd will convert an existing siafile to a linkfile and
+// sialink on the Sia network.
+func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
+	// Create the siapaths.
+	sourceSiaPath, err := modules.NewSiaPath(sourceSiaPathStr)
+	if err != nil {
+		die("Could not parse source siapath:", err)
+	}
+	destSiaPath, err := modules.NewSiaPath(destSiaPathStr)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+
+	// Perform the conversion and print the result.
+	lup := modules.LinkfileUploadParameters{
+		SiaPath: sourceSiaPath,
+	}
+	sialink, err := httpClient.RenterConvertSiafileToLinkfilePost(lup, destSiaPath)
+	if err != nil {
+		die("could not upload linkfile:", err)
+	}
+	fmt.Println("File converted successfully, the sialink is", sialink)
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which

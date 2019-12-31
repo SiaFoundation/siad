@@ -3769,6 +3769,12 @@ may not begin with a forward-slash character.
 The timestamp which should be put in the file metadata as the creation timestamp
 of the file. This is a Unix timestamp.
 
+**convertpath** string  
+The siapath of an existing siafile that should be converted to a sialink. A new
+linkfile will be created. Both the new linkfile and the existing siafile are
+required to be maintained on the netowrk in order for the sialink to remain
+active.
+
 **force** | bool  
 If there is already a file that exists at the provided siapath, setting this
 flag will cause the new file to overwrite/delete the existing file. If this flag
