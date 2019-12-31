@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"io"
 	"sync"
 
@@ -133,7 +134,9 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 	}
 
 	// Recover the data.
-	err := fs.staticErasureCoder.Reconstruct(pieces)
+	buf := bytes.NewBuffer(nil)
+	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
+	err := fs.staticErasureCoder.Recover(pieces, chunkSize, buf)
 	if err != nil {
 		fs.mu.Lock()
 		if fs.chunkDataCurrent == nil {
@@ -143,13 +146,7 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 		fs.mu.Unlock()
 		return
 	}
-	// Combine everything into one chunk. Release memory along the way.
-	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
-	chunkData := make([]byte, 0, chunkSize)
-	for i := uint8(0); i < piecesReceived; i++ {
-		chunkData = append(chunkData, pieces[i]...)
-		pieces[i] = nil
-	}
+	chunkData := buf.Bytes()
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -222,9 +219,6 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 		break
 	}
 	defer fs.mu.Unlock()
-	println("read request")
-	println(fs.offset)
-	println(len(b))
 
 	// Determine the offset of the current chunk to copy from.
 	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
@@ -273,9 +267,6 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 
 // Seek will move the pointer for the streamer.
 func (fs *fanoutStreamer) Seek(offset int64, whence int) (int64, error) {
-	println("seek request")
-	println(offset)
-	println(whence)
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -290,10 +281,6 @@ func (fs *fanoutStreamer) Seek(offset int64, whence int) (int64, error) {
 		return int64(fs.staticLayout.filesize), nil
 	}
 
-	println("not able to seek")
-	println(offset)
-	println(whence)
-	println(fs.offset)
 	return 0, errors.New("seeking is not yet supported")
 }
 
