@@ -927,8 +927,14 @@ type Renter interface {
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
+	// CreateSialinkFromSiafile will create a sialink from a siafile. This will
+	// result in some uploading - the base sector linkfile needs to be uploaded
+	// separately, and if there is a fanout expansion that needs to be uploaded
+	// separately as well.
+	CreateSialinkFromSiafile(LinkfileUploadParameters, SiaPath) (Sialink, error)
+
 	// DownloadSialink will fetch a file from the Sia network using the sialink.
-	DownloadSialink(sialink Sialink) (LinkfileMetadata, Streamer, error)
+	DownloadSialink(Sialink) (LinkfileMetadata, Streamer, error)
 
 	// UploadLinkfile will upload data to the Sia network from a reader and
 	// create a linkfile, returning the sialink that can be used to access the
@@ -938,7 +944,7 @@ type Renter interface {
 	// linkfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(lup LinkfileUploadParameters) (Sialink, error)
+	UploadLinkfile(LinkfileUploadParameters) (Sialink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
