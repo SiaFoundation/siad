@@ -162,7 +162,7 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 
 		// There is no next chunk, and no thread fetching the next chunk. If the
 		// file has a next chunk, fetch that.
-		if fs.staticLayout.filesize > chunkSize * (chunkIndex+1) {
+		if fs.staticLayout.filesize > chunkSize*(chunkIndex+1) {
 			go fs.threadedFetchChunk(chunkIndex + 1)
 		}
 	} else {
@@ -203,7 +203,7 @@ func (fs *fanoutStreamer) Read(b []byte) (int, error) {
 			return 0, io.EOF
 		}
 		// Correct the input value if it exceeds the bounds of the file.
-		if fs.offset + uint64(len(b)) > fs.staticLayout.filesize {
+		if fs.offset+uint64(len(b)) > fs.staticLayout.filesize {
 			b = b[:fs.staticLayout.filesize-fs.offset]
 		}
 		// Check whether the next data is available.
