@@ -381,13 +381,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		return modules.LinkfileMetadata{}, nil, errors.New("downloading large siafiles is not supported in this version of siad")
 	}
 
-	// TODO: Implement fanout fetching. But first, what actually needs to happen
-	// is the DownloadSialink function needs to somehow deal with a download
-	// destination, instead of returning a []byte.
-	if ll.fanoutHeaderSize != 0 {
-		return modules.LinkfileMetadata{}, nil, errors.New("downloading large siafiles is not supported in this version of siad")
-	}
-
 	// Parse out the linkfile metadata.
 	var lfm modules.LinkfileMetadata
 	metadataSize := uint64(ll.metadataSize)
@@ -397,10 +390,20 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	}
 	offset += metadataSize
 
-	// Use the filesize in the linkfileLayout - the LinkData only provides a
-	// rough / approximate fetch size.
-	streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
-	return lfm, streamer, nil
+	// If there is no fanout, all of the data will be contained in the base
+	// sector, return a streamer using the data from the base sector.
+	if ll.fanoutHeaderSize == 0 {
+		streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
+		return lfm, streamer, nil
+	}
+
+	// There is a fanout, create a fanout streamer and return that.
+	fanoutBytes := baseSector[offset : offset+uint64(ll.fanoutHeaderSize)]
+	fs, err := r.newFanoutStreamer(ll, fanoutBytes)
+	if err != nil {
+		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
+	}
+	return lfm, fs, nil
 }
 
 // uploadLinkfileFileBytes will return the file data bytes of the file being
