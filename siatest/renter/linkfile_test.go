@@ -19,7 +19,7 @@ func TestLinkfile(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   3,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -111,7 +111,7 @@ func TestLinkfile(t *testing.T) {
 
 	// Upload a siafile that will then be converted to a linkfile. The siafile
 	// needs at least 2 sectors.
-	localFile, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize*2)+siatest.Fuzz(), 1, 1, false)
+	localFile, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize*2)+siatest.Fuzz(), 2, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
