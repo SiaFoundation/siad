@@ -1718,13 +1718,12 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // from the sialink out of the response body as output.
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	sialink := modules.Sialink(ps.ByName("sialink"))
-	metadata, data, err := api.renter.DownloadSialink(sialink)
+	metadata, streamer, err := api.renter.DownloadSialink(sialink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	reader := bytes.NewReader(data)
-	http.ServeContent(w, req, metadata.Name, time.Time{}, reader)
+	http.ServeContent(w, req, metadata.Name, time.Time{}, streamer)
 }
 
 // renterLinkfileHandlerPOST accepts some data and some metadata and then turns
@@ -1795,11 +1794,39 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		BaseChunkRedundancy: redundancy,
 
 		FileMetadata: lfm,
-		Reader:       req.Body,
 	}
-	sialink, err := api.renter.UploadLinkfile(lup)
+
+	// Check whether this is a streaming upload or a siafile conversion. If no
+	// convert path is provided, assume that the req.Body will be used as a
+	// streaming upload.
+	convertPathStr := queryForm.Get("convertpath")
+	if convertPathStr == "" {
+		lup.Reader = req.Body
+		sialink, err := api.renter.UploadLinkfile(lup)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		WriteJSON(w, RenterLinkfileHandlerPOST{
+			Sialink: sialink,
+		})
+		return
+	}
+
+	// There is a convert path.
+	convertPath, err := modules.NewSiaPath(convertPathStr)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+		WriteError(w, Error{"invalid convertpath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	convertPath, err = rebaseInputSiaPath(convertPath)
+	if err != nil {
+		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	sialink, err := api.renter.CreateSialinkFromSiafile(lup, convertPath)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to linkfile: %v", err)}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, RenterLinkfileHandlerPOST{

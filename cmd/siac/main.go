@@ -288,7 +288,7 @@ func main() {
 
 	renterFuseCmd.AddCommand(renterFuseMountCmd, renterFuseUnmountCmd)
 
-	renterLinkfilesCmd.AddCommand(renterLinkfilesLsCmd, renterLinkfilesUploadCmd)
+	renterLinkfilesCmd.AddCommand(renterLinkfilesLsCmd, renterLinkfilesUploadCmd, renterLinkfilesConvertCmd)
 	renterLinkfilesLsCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", true, "Recursively list files and folders")
 
 	root.AddCommand(gatewayCmd)
