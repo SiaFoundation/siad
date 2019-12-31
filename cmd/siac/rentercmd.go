@@ -222,7 +222,7 @@ anymore.`,
 	}
 
 	renterLinkfilesConvertCmd = &cobra.Command{
-		Use: "convert [source siaPath] [destination siaPath]",
+		Use:   "convert [source siaPath] [destination siaPath]",
 		Short: "Convert a siafile to a sharable sialink",
 		Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
 will be created in the user's linkfile directory. The linkfile and the original
