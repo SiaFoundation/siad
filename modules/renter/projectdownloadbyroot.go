@@ -268,6 +268,9 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	if pdbr.staticComplete() {
 		return
 	}
+	if w.staticPubKeyStr != "ed25519:0e3be43c674f2ad07e76e337a2a27e795b9295381585942f2930862b5d7c6c54" {
+		return
+	}
 
 	// Determine whether the host has the root. This is accomplished by
 	// performing a download for only one byte.
