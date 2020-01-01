@@ -17,6 +17,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// Profiling singleton
+var start time.Time
+
 const (
 	// LinkfileLayoutSize describes the amount of space within the first sector
 	// of a linkfile used to describe the rest of the linkfile.
@@ -343,6 +346,8 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 // DownloadSialink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata, modules.Streamer, error) {
+	start = time.Now()
+	println("start")
 	// Parse the provided link into a usable structure for fetching downloads.
 	var ld modules.LinkData
 	err := ld.LoadSialink(link)
@@ -366,10 +371,12 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	}
 
 	// Fetch the leading sector.
+	println("beginning download by root: ", time.Since(start)/1e6)
 	baseSector, err := r.DownloadByRoot(ld.MerkleRoot(), 0, fetchSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "link based download has failed")
 	}
+	println("download by root complete: ", time.Since(start)/1e6)
 	if len(baseSector) < LinkfileLayoutSize {
 		return modules.LinkfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
@@ -399,6 +406,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	// sector, return a streamer using the data from the base sector.
 	if ll.fanoutHeaderSize == 0 {
 		streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
+		println("returning streamer will full data available: ", time.Since(start)/1e6)
 		return lfm, streamer, nil
 	}
 
