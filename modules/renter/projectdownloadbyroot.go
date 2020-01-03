@@ -372,7 +372,7 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 // completed successfully. Workers use this method to determine whether to
 // abort early.
 func (pdbr *projectDownloadByRoot) staticComplete() bool {
-	select{
+	select {
 	case <-pdbr.completeChan:
 		return true
 	default:

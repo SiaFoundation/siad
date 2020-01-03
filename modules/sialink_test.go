@@ -68,7 +68,7 @@ func TestSialink(t *testing.T) {
 	for i := 0; i < 100e3; i++ {
 		ldRand := LinkData{
 			vdp:            uint8(fastrand.Intn(256)),
-			fetchMagnitude: uint8(fastrand.Intn(208)),
+			fetchMagnitude: uint8(fastrand.Intn(256)),
 			merkleRoot:     crypto.HashObject(i),
 		}
 		sialink = ldRand.Sialink()
@@ -147,11 +147,16 @@ func TestSialink(t *testing.T) {
 		if resultFetchSize < uint64(randFetchSize) {
 			t.Error("FetchSize() should never return a value lower than what was submitted to SetFetchSize()", resultFetchSize, randFetchSize)
 		}
-		// The resulting fetch size should be within 4% of the requested fetch
-		// size. There is an exception if 4% is less than one packet, because
-		// always the fetch size will be some multiple of a single packet.
-		if float64(randFetchSize+SialinkPacketSize)*SialinkFetchMagnitudeGrowthFactor < float64(resultFetchSize) {
-			t.Error("FetchSize() should never return a value that is more than 4% larger than the input to SetFetchSize()", resultFetchSize, randFetchSize)
+		// The resulting fetch size should be no more than 16384 bytes larger
+		// than the input fetch size.
+		if resultFetchSize > uint64(randFetchSize)+(SialinkMaxFetchSize/256) {
+			t.Error("resulting fetch size is too large!")
+		}
+		// Check that setting and getting the fetch size with the compressed
+		// value returns the same compressed value.
+		ldChanged.SetFetchSize(resultFetchSize)
+		if ldChanged.FetchSize() != resultFetchSize {
+			t.Error("setting and getting a fetch size is not always consistent")
 		}
 		// Check that resetting the fetch magnitude to the original value
 		// results in the same struct - meaning that no other values were
@@ -162,9 +167,6 @@ func TestSialink(t *testing.T) {
 			t.Log(ldRand.fetchMagnitude)
 			t.Log(ldChanged.fetchMagnitude)
 		}
-		// Final check - after the change see that the size can be queried
-		// again.
-		ldChanged.FetchSize()
 	}
 
 	// Try loading an arbitrary string that is too small.
@@ -204,10 +206,11 @@ func TestSialink(t *testing.T) {
 
 	// Test a bunch of different packet sizes with fuzz for the set fetch size
 	// function.
-	for i := 1; i < 2000; i++ {
+	fetchIncrement := uint64(SialinkMaxFetchSize / 256)
+	for i := uint64(0); i < 255; i++ {
 		var ld LinkData
 		// Try one less byte less than i packets.
-		ld.SetFetchSize(uint64(i*SialinkPacketSize) - 1)
+		ld.SetFetchSize((i * fetchIncrement) - 1)
 		fs := ld.FetchSize()
 		ld.SetFetchSize(fs)
 		if ld.FetchSize() != fs {
@@ -215,7 +218,7 @@ func TestSialink(t *testing.T) {
 		}
 
 		// Try exactly i packets.
-		ld.SetFetchSize(uint64(i * SialinkPacketSize))
+		ld.SetFetchSize(i * fetchIncrement)
 		fs = ld.FetchSize()
 		ld.SetFetchSize(fs)
 		if ld.FetchSize() != fs {
@@ -223,7 +226,7 @@ func TestSialink(t *testing.T) {
 		}
 
 		// Try one more byte than i packets.
-		ld.SetFetchSize(uint64(i*SialinkPacketSize) + 1)
+		ld.SetFetchSize((i * fetchIncrement) + 1)
 		fs = ld.FetchSize()
 		ld.SetFetchSize(fs)
 		if ld.FetchSize() != fs {
