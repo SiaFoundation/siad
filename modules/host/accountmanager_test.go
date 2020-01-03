@@ -180,7 +180,7 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	// Withdraw from it
 	amount := types.NewCurrency64(1)
 	msg, sig := prepareWithdrawal(unknown, amount, am.h.blockHeight, sk)
-	if err := callWithdraw(am, msg, sig); err != ErrBalanceInsufficient {
+	if err := callWithdraw(am, msg, sig); !errors.Contains(err, ErrBalanceInsufficient) {
 		t.Fatal("Unexpected error: ", err)
 	}
 }

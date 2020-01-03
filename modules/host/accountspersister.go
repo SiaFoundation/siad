@@ -515,7 +515,7 @@ func (fm *fingerprintManager) managedSave(fp fingerprint) error {
 
 	// Write into bucket depending on its expiry
 	_, max := currentBucketRange(bh)
-	if fp.expiry < max {
+	if fp.expiry <= max {
 		_, err := fm.current.Write(fpBytes)
 		return err
 	}
@@ -575,14 +575,13 @@ func (a *accountData) bytes() ([]byte, error) {
 }
 
 // currentBucketRange will calculate the range (in blockheight) that defines the
-// boundaries of the current bucket. This is non-inclusive, so max is outside
-// the bucket, [min,max)
+// boundaries of the current bucket.
 func currentBucketRange(currentBlockHeight types.BlockHeight) (min, max types.BlockHeight) {
 	cbh := uint64(currentBlockHeight)
 	bbr := uint64(bucketBlockRange)
 	threshold := cbh + (bbr - (cbh % bbr))
 	min = types.BlockHeight(threshold - bucketBlockRange)
-	max = types.BlockHeight(threshold)
+	max = types.BlockHeight(threshold) - 1
 	return
 }
 

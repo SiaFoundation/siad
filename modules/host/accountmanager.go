@@ -208,17 +208,13 @@ type (
 	blockedWithdrawalHeap []*blockedWithdrawal
 
 	// fingerprintMap keeps track of all the fingerprints and serves as a lookup
-	// table. To make sure these fingerprints are not kept in memory forever,
-	// the account manager will remove them when the current block height
-	// exceeds their expiry. It does this by keeping the fingerprints in two
-	// separate maps. When the block height reaches a certain threshold, which
-	// is calculated on the fly using the current block height and the bucket
-	// block range, the account manager will remove all fingerprints in the
-	// current map and replace them with the fingerprints from the next map.
+	// table. It keeps track of the fingerprints by using two separate buckets,
+	// fingerprints are added based on their expiry. These buckets rotate when
+	// the current block height reaches a certain threshold, this is done to
+	// ensure fingerprints are not kept in memory forever.
 	fingerprintMap struct {
-		bucketBlockRange int
-		current          map[crypto.Hash]struct{}
-		next             map[crypto.Hash]struct{}
+		current map[crypto.Hash]struct{}
+		next    map[crypto.Hash]struct{}
 	}
 
 	// accountPersistInfo is a helper struct that contains all necessary
@@ -259,7 +255,7 @@ func (bwh blockedWithdrawalHeap) Value() types.Currency {
 func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	am := &accountManager{
 		accounts:           make(map[string]*account),
-		fingerprints:       newFingerprintMap(bucketBlockRange),
+		fingerprints:       newFingerprintMap(),
 		blockedDeposits:    make([]*blockedDeposit, 0),
 		blockedWithdrawals: make([]*blockedWithdrawal, 0),
 		accountBifield:     make(accountBifield, 0),
@@ -299,34 +295,32 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 }
 
 // newFingerprintMap will create a new fingerprint map
-func newFingerprintMap(bucketBlockRange int) *fingerprintMap {
+func newFingerprintMap() *fingerprintMap {
 	return &fingerprintMap{
-		bucketBlockRange: bucketBlockRange,
-		current:          make(map[crypto.Hash]struct{}),
-		next:             make(map[crypto.Hash]struct{}),
+		current: make(map[crypto.Hash]struct{}),
+		next:    make(map[crypto.Hash]struct{}),
 	}
 }
 
-// callDeposit will deposit the amount into the account with given id. This will
-// increase the host's current risk by the deposit amount. This is because until
-// the file contract has been fsynced, the host is at risk to losing money. The
-// caller has to pass in a sync chan that gets closed when the file contract is
-// fsynced. When that happens, the current risk is lowered.
+// callDeposit will deposit the amount into the ephemeral account with given id.
+// This will increase the host's current risk by the deposit amount. This is
+// because until the file contract has been fsynced, the host is at risk to
+// losing money. The caller passes in a channel that gets closed when the file
+// contract is fsynced. When that happens, the current risk is lowered.
 //
-// The deposit is subject to mainting ACID properties between the file contract
-// and the ephemeral account. In order to document the model, the following is a
-// brief description of why it has to be ACID and an overview of the various
-// failure modes.
+// The deposit is subject to maintaining ACID properties between the file
+// contract (FC) and the ephemeral account (EA). In order to document the model,
+// the following is a brief description of why it has to be ACID and an overview
+// of the various failure modes.
 //
-// Deposit will get called by the RPC. The RPC will update the account balance
-// by depositing the amount of money that moved hands in the file contract. Both
-// the ephemeral account (EA) and the file contract (FC) need to be fsynced to
-// disk. In order to make the money immediately available, the RPC will perform
-// the deposit before initiating the FC sync. This puts the host at risk, and
-// thus a deposit will increase the current risk. When the account manager
-// returns and indicates the EA was synced, the RPC will sync the FC. When this
-// fsync is done it will close the syncChan. This syncChan was passed during the
-// deposit, and will lower risk when it is closed.
+// Deposit is called by the RPCs. An RPC will deposit an amount of money equal
+// to the amount that changed hands in the FC revision. In order to make that
+// money immediately available, the deposit is done before the FC gets fsynced.
+// This puts the host at risk. The host is at risk to losing money until both
+// the ephemeral account and the file contract are safely on disk. A call to
+// deposit will block until the EA is fsynced. When the deposit returns the RPC
+// will go ahead and fsync the FC. After the FC is fsynced, the sync chan gets
+// closed, upon which the account manager lowers the host's outstanding risk.
 //
 // Failure Modes:
 //
@@ -360,7 +354,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 	}
 
 	// Wait for the deposit to be persisted.
-	return am.staticWaitForDepositResult(persistResultChan)
+	return errors.AddContext(am.staticWaitForDepositResult(persistResultChan), "Deposit failed")
 }
 
 // callWithdraw will process the given withdrawal message. This call will block
@@ -382,7 +376,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 
 	// Setup the commit result channel, once the account manager has committed
 	// the withdrawal, it will send the result over this channel. Note we only
-	// await the withdrawal to be committed and not persisted.
+	// block until the withdrawal gets committed and not persisted.
 	commitResultChan := make(chan error, 1)
 
 	// Initiate the withdraw process.
@@ -392,7 +386,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	}
 
 	// Wait for the withdrawal to be committed.
-	return am.staticWaitForWithdrawalResult(commitResultChan)
+	return errors.AddContext(am.staticWaitForWithdrawalResult(commitResultChan), "Withdraw failed")
 }
 
 // callConsensusChanged is called by the host whenever it processed a change to
@@ -420,7 +414,6 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 
 	am.fingerprints.rotate()
 	am.mu.Unlock()
-
 	err := am.staticAccountsPersister.callRotateFingerprintBuckets()
 	if err != nil {
 		am.h.log.Critical("Could not rotate fingerprints on disk", err)
@@ -665,28 +658,27 @@ func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, bl
 	// Update the account details
 	a.balance = a.balance.Sub(amount)
 	a.lastTxnTime = time.Now().Unix()
+	close(commitResultChan)
 
 	// Update the current risk and the account's pending risk. By allowing money
-	// to be withdrawn from the account, without awaiting the persist, the host
+	// to be withdrawn from the account without awaiting the persist, the host
 	// is at risk at losing the balance delta. This is added to the risk now,
 	// but will get subtracted again when the account was persisted.
 	delta := before.Sub(a.balance)
 	a.pendingRisk = a.pendingRisk.Add(delta)
 	am.currentRisk = am.currentRisk.Add(delta)
 
-	close(commitResultChan)
 	am.schedulePersist(a, make(chan error))
 }
 
-// managedUpdateRiskAfterDeposit will update the current risk after a deposit
-// has been performed. The deposit amount is added to the host's current risk.
-// The host is at risk for this amount as long as the file contract has not been
-// fsynced. When the RPC is done with the FC fsync it will close the doneChan so
-// the account manager can lower the risk.
+// updateRiskAfterDeposit will update the current risk after a deposit has been
+// performed. The deposit amount is added to the host's current risk. The host
+// is at risk for this amount as long as the file contract has not been fsynced.
+// When the RPC is done with the FC fsync it will close the doneChan so the
+// account manager can lower the risk.
 func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncChan chan struct{}) {
 	// The syncChan might already be closed, perform a quick check to verify
-	// this. If it is the case we do not need to update risk at all. This saves
-	// unnecessarily acquiring the lock.
+	// this. If it is the case we do not need to update risk at all.
 	select {
 	case <-syncChan:
 		return
@@ -851,7 +843,7 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 func (am *accountManager) staticWaitForDepositResult(persistResultChan chan error) error {
 	select {
 	case err := <-persistResultChan:
-		return errors.AddContext(err, "deposit failed")
+		return err
 	case <-am.h.tg.StopChan():
 		return ErrDepositCancelled
 	}
@@ -862,7 +854,7 @@ func (am *accountManager) staticWaitForDepositResult(persistResultChan chan erro
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
 	select {
 	case err := <-commitResultChan:
-		return errors.AddContext(err, "blocked withdrawal failed")
+		return err
 	case <-time.After(blockedWithdrawalTimeout):
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
@@ -976,7 +968,7 @@ func (ab *accountBifield) buildIndex(accounts map[string]*account) {
 // added.
 func (fm *fingerprintMap) add(fp crypto.Hash, expiry, blockHeight types.BlockHeight) {
 	_, max := currentBucketRange(blockHeight)
-	if expiry < max {
+	if expiry <= max {
 		fm.current[fp] = struct{}{}
 		return
 	}
@@ -1019,7 +1011,7 @@ func (wm *withdrawalMessage) validateExpiry(blockHeight types.BlockHeight) error
 
 	// Verify the withdrawal is not too far into the future
 	_, max := currentBucketRange(blockHeight)
-	if wm.expiry >= max+bucketBlockRange {
+	if wm.expiry > max+bucketBlockRange {
 		return ErrWithdrawalExtremeFuture
 	}
 
