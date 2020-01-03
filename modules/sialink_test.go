@@ -7,9 +7,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestLinkFormat checks that the linkformat is correctly encoding to and
-// decoding from a string.
-func TestLinkFormat(t *testing.T) {
+// TestSialink checks that the linkformat is correctly encoding to and decoding
+// from a string.
+func TestSialink(t *testing.T) {
 	// Create a linkdata struct that is all 0's, check that the resulting
 	// sialink is 52 bytes, and check that the struct encodes and decodes
 	// without problems.
