@@ -101,6 +101,14 @@ func (fcs *fetchChunkState) completed() bool {
 
 // threadedFetchChunk will fetch a chunk at the provided index.
 func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
+	if int(fs.staticLayout.fanoutDataPieces) > len(fs.staticChunks[chunkIndex]) {
+		fs.mu.Lock()
+		close(fs.chunkAvailable)
+		fs.fetchErr = errors.New("not enough pieces in the chunk to recover chunk")
+		fs.mu.Unlock()
+		return
+	}
+
 	// Spin up one thread per piece and try to fetch them all. This is wasteful,
 	// but easier to implement. Intention at least for now is just to get
 	// end-to-end testing working for this feature.
@@ -117,6 +125,13 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 	for i := uint64(0); i < uint64(len(fcs.pieces)); i++ {
 		// Skip pieces where the Merkle root is not supplied.
 		if fs.staticChunks[chunkIndex][i] == blankHash {
+			fcs.mu.Lock()
+			fcs.piecesFailed++
+			allTried := fcs.piecesCompleted+fcs.piecesFailed == uint64(len(fcs.pieces))
+			if !fcs.completed() && allTried {
+				close(fcs.doneChan)
+			}
+			fcs.mu.Unlock()
 			continue
 		}
 
@@ -139,9 +154,10 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 			fcs.mu.Lock()
 			if fcs.completed() {
 				pieceData = nil
-			} else {
-				fcs.pieces[i] = pieceData
+				fcs.mu.Unlock()
+				return
 			}
+			fcs.pieces[i] = pieceData
 			fcs.piecesCompleted++
 			if fcs.completed() {
 				close(fcs.doneChan)

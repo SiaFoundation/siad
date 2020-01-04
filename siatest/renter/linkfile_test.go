@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest"
@@ -41,8 +42,8 @@ func TestLinkfile(t *testing.T) {
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload linkfile client call.
-	filename := "testOne"
-	uploadSiaPath, err := modules.NewSiaPath("testOnePath")
+	filename := "testSmall"
+	uploadSiaPath, err := modules.NewSiaPath("testSmallPath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +80,43 @@ func TestLinkfile(t *testing.T) {
 		t.Error("upload and download doesn't match")
 		t.Log(data)
 		t.Log(fetchedData)
+	}
+
+	// Upload another linkfile, this time ensure that the linkfile is more than
+	// one sector.
+	largeData := fastrand.Bytes(int(modules.SectorSize*2) + siatest.Fuzz())
+	largeReader := bytes.NewReader(largeData)
+	largeFilename := "testLarge"
+	largeSiaPath, err := modules.NewSiaPath("testLargePath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var force2 bool
+	if fastrand.Intn(2) == 0 {
+		force = true
+	}
+	largeLup := modules.LinkfileUploadParameters{
+		SiaPath:             largeSiaPath,
+		Force:               force2,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.LinkfileMetadata{
+			Name: largeFilename,
+			// Remaining fields intentionally left to default
+		},
+
+		Reader: largeReader,
+	}
+	largeSialink, err := r.RenterLinkfilePost(largeLup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second * 5)
+	largeFetchedData, err := r.RenterSialinkGet(largeSialink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(largeFetchedData, largeData) {
+		t.Error("upload and download data does not match for large siafiles")
 	}
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
