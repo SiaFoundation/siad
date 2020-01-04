@@ -6,7 +6,6 @@ package renter
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"

@@ -275,6 +275,9 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 
 	// Create the metadata for this siafile and compute the resulting header
 	// size.
+	//
+	// TODO: 'lup' has an fm in it, need to figure out if those values should
+	// obliterate these ones or not.
 	fm := modules.LinkfileMetadata{
 		Name:       siaPath.Name(),
 		Mode:       fileNode.Mode(),
@@ -415,9 +418,21 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	return lfm, fs, nil
 }
 
-// uploadLinkfileFileBytes will return the file data bytes of the file being
-// uploaded.
-func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize uint64) ([]byte, error) {
+// uploadLinkfileReadLeadingChunk will read the leading chunk of a linkfile. If
+// entire file is small enough to fit inside of the leading chunk, the return
+// value will be:
+//
+//   (fileBytes, nil, false, nil)
+//
+// And if the entire file is too large to fit inside of the leading chunk, the
+// return value will be:
+//
+//   (nil, fileReader, true, nil)
+//
+// where the fileReader contains all of the data for the file, including the
+// data that uploadLinkfileReadLeadingChunk had to read to figure out whether
+// the file was too large to fit into the leading chunk.
+func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, headerSize uint64) ([]byte, io.Reader, bool, error) {
 	// Read data from the reader to fill out the remainder of the first sector.
 	//
 	// NOTE: When intra-sector erasure coding is added to improve download
@@ -428,7 +443,7 @@ func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize ui
 		err = nil
 	}
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to read the file data")
+		return nil, nil, false, errors.AddContext(err, "unable to read the file data")
 	}
 	// Set fileBytes to the right size.
 	fileBytes = fileBytes[:size]
@@ -442,46 +457,44 @@ func uploadLinkfileFileBytes(lup modules.LinkfileUploadParameters, headerSize ui
 		peekErr = nil
 	}
 	if peekErr != nil {
-		return nil, errors.AddContext(err, "too much data provided, cannot create linkfile")
+		return nil, nil, false, errors.AddContext(err, "too much data provided, cannot create linkfile")
 	}
-	if n != 0 {
-		return nil, errors.New("too much data provided, cannot create linkfile")
+	if n == 0 {
+		return fileBytes, nil, false, nil
 	}
-	return fileBytes, nil
+
+	// TODO:
+	return nil, nil, true, errors.New("large files not yet supported")
 }
 
-// UploadLinkfile will upload the provided data with the provided name and
-// metadata, returning a sialink which can be used by any viewnode to recover
-// the full original file and metadata.
-//
-// UploadLinkfile accepts a data stream directly. This method of generating a
-// linkfile is limited to files where the data + metadata fully fits within a
-// single sector. Larger files will need to be uploaded as siafiles first, and
-// then converted using a convert function (as of writing this comment, no
-// convert function exists).
-func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
-	// Set reasonable default values for any lup fields that are blank.
-	err := linkfileEstablishDefaults(&lup)
-	if err != nil {
-		return "", errors.AddContext(err, "linkfile upload parameters are incorrect")
-	}
-	// Additional input check - this check is unique to uploading a linkfile
-	// from a streamer. The convert siafile function does not need to be passed
-	// a reader.
-	if lup.Reader == nil {
-		return "", errors.New("need to provide a stream of upload data")
-	}
+// prependReader is an io.Reader which
+type prependReader struct {
+	prependData []byte
+	io.Reader
+}
 
-	// Fetch the bytes for the metadata and the data.
-	metadataBytes, err := linkfileMetadataBytes(lup.FileMetadata)
-	if err != nil {
-		return "", errors.AddContext(err, "error retrieving linkfile metadata bytes")
+// Read will read data from the prependReader.
+func (pr *prependReader) Read(b []byte) (int, error) {
+	n := copy(b, pr.prependData)
+	if n != 0 {
+		pr.prependData = pr.prependData[n:]
+		return n, nil
 	}
-	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes))
-	fileBytes, err := uploadLinkfileFileBytes(lup, headerSize)
-	if err != nil {
-		return "", errors.AddContext(err, "error retrieving linkfile file bytes")
-	}
+	return pr.Reader.Read(b)
+}
+
+// uploadLinkfileLargeFile will accept a fileReader containing all of the data
+// to a large siafile and upload it to the Sia network using
+// 'managedUploadStreamFromReader'. The final sialink is created by calling
+// 'CreateSialinkFromSiafile' on the resulting siafile.
+func (r *Renter) uploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Sialink, error) {
+	return "", errors.New("large files not yet supported")
+}
+
+// uploadLinkfileSmallFile uploads a file that fits entirely in the leading
+// chunk of a linkfile to the Sia network and returns the sialink that can be
+// used to access the file.
+func (r *Renter) uploadLinkfileSmallFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileBytes []byte) (modules.Sialink, error) {
 	ll := linkfileLayout{
 		version:                 LinkfileVersion,
 		filesize:                uint64(len(fileBytes)),
@@ -513,4 +526,49 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	// Add the sialink to the Siafile.
 	err = fileNode.AddSialink(sialink)
 	return sialink, errors.AddContext(err, "unable to add sialink to siafile")
+}
+
+// UploadLinkfile will upload the provided data with the provided name and
+// metadata, returning a sialink which can be used by any viewnode to recover
+// the full original file and metadata.
+//
+// UploadLinkfile accepts a data stream directly. This method of generating a
+// linkfile is limited to files where the data + metadata fully fits within a
+// single sector. Larger files will need to be uploaded as siafiles first, and
+// then converted using a convert function (as of writing this comment, no
+// convert function exists).
+func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
+	// Set reasonable default values for any lup fields that are blank.
+	err := linkfileEstablishDefaults(&lup)
+	if err != nil {
+		return "", errors.AddContext(err, "linkfile upload parameters are incorrect")
+	}
+	// Additional input check - this check is unique to uploading a linkfile
+	// from a streamer. The convert siafile function does not need to be passed
+	// a reader.
+	if lup.Reader == nil {
+		return "", errors.New("need to provide a stream of upload data")
+	}
+
+	// Fetch the bytes for the metadata and the data.
+	metadataBytes, err := linkfileMetadataBytes(lup.FileMetadata)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to retrieve linkfile metadata bytes")
+	}
+
+	// Read data from the lup reader. If the file data provided fits entirely
+	// into the leading chunk, this method will use that data to upload a
+	// linkfile directly. If the file data provided does not fit entirely into
+	// the leading chunk, a separate method will be called to upload the file
+	// separately using upload streaming, and then the siafile conversion
+	// function will be used to generate the final sialink.
+	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes))
+	fileBytes, fileReader, largeFile, err := uploadLinkfileReadLeadingChunk(lup, headerSize)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to retreive leading chunk file bytes")
+	}
+	if largeFile {
+		r.uploadLinkfileLargeFile(lup, metadataBytes, fileReader)
+	}
+	return r.uploadLinkfileSmallFile(lup, metadataBytes, fileBytes)
 }
