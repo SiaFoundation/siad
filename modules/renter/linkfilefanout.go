@@ -122,6 +122,7 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 		pieces:   make([][]byte, len(fs.staticChunks[chunkIndex])),
 		doneChan: make(chan struct{}),
 	}
+	piecesFetched := make(map[crypto.Hash]struct{})
 	for i := uint64(0); i < uint64(len(fcs.pieces)); i++ {
 		// Skip pieces where the Merkle root is not supplied.
 		if fs.staticChunks[chunkIndex][i] == blankHash {
@@ -134,6 +135,13 @@ func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
 			fcs.mu.Unlock()
 			continue
 		}
+		// Skip pieces where the download has already been issued. This is
+		// particularly useful for 1-of-N files.
+		_, exists := piecesFetched[fs.staticChunks[chunkIndex][i]]
+		if exists {
+			continue
+		}
+		piecesFetched[fs.staticChunks[chunkIndex][i]] = struct{}{}
 
 		// Spin up a thread to fetch this piece.
 		go func(i uint64) {
