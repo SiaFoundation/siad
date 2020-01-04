@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -190,6 +189,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
+	chunkFinishedChans := make([]chan struct{}, 0)
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing connectivity
 		// during the upload.
@@ -215,6 +215,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		// Create a new shard set it to be the source reader of the chunk.
 		ss := NewStreamShard(reader)
 		uuc.sourceReader = ss
+		chunkFinishedChans = append(chunkFinishedChans, uuc.releasedChan)
 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
@@ -249,15 +250,18 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		case <-ss.signalChan:
 		}
 
-		println("sleeping a bit on the upload chunk before return to let all the pieces finalize")
-		time.Sleep(time.Second * 5)
 		// If an io.EOF error occurred or less than chunkSize was read, we are
 		// done. Otherwise we report the error.
 		if _, err := ss.Result(); err == io.EOF {
-			// Adjust the fileSize
-			return entry, nil
+			// All chunks succesfully submitted.
+			break
 		} else if ss.err != nil {
 			return nil, ss.err
 		}
 	}
+	// Wait for all chunks to finish, then return.
+	for _, finishedChan := range chunkFinishedChans {
+		<-finishedChan
+	}
+	return entry, nil
 }

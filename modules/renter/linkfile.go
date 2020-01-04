@@ -516,7 +516,7 @@ func (r *Renter) uploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, m
 	}
 	// Create the siapath for the linkfile extra data. This is going to be the
 	// same as the linkfile upload siapath, except with a suffix.
-	siaPath, err := modules.NewSiaPath(lup.SiaPath.String()+"-extended")
+	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + "-extended")
 	if err != nil {
 		return "", errors.AddContext(err, "unable to create SiaPath for large linkfile extended data")
 	}
