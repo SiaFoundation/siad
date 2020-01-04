@@ -483,6 +483,16 @@ func (pr *prependReader) Read(b []byte) (int, error) {
 	return pr.Reader.Read(b)
 }
 
+// newPrependReader accepts a slice and a reader, and returns a reader that will
+// read out the prepended data before transitioning to using the standard
+// reader.
+func newPrependReader(prepend []byte, reader io.Reader) io.Reader {
+	return &prependReader{
+		prependData: prepend,
+		Reader:      reader,
+	}
+}
+
 // uploadLinkfileLargeFile will accept a fileReader containing all of the data
 // to a large siafile and upload it to the Sia network using
 // 'managedUploadStreamFromReader'. The final sialink is created by calling

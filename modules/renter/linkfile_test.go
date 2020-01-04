@@ -1,7 +1,11 @@
 package renter
 
 import (
+	"bytes"
+	"io/ioutil"
 	"testing"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestLinkfileLayoutEncoding checks that encoding and decoding a linkfile
@@ -24,5 +28,21 @@ func TestLinkfileLayoutEncoding(t *testing.T) {
 	llRecovered.decode(encoded)
 	if llOriginal != llRecovered {
 		t.Fatal("encoding and decoding of linkfileLayout does not match")
+	}
+}
+
+// TestPrependReader checks that the prepend reader is working correctly.
+func TestPrependReader(t *testing.T) {
+	originalData := fastrand.Bytes(1e3)
+	prepend := originalData[:100]
+	readerData := originalData[100:]
+
+	pr := newPrependReader(prepend, bytes.NewReader(readerData))
+	data, err := ioutil.ReadAll(pr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, originalData) {
+		t.Error("data mismatch")
 	}
 }
