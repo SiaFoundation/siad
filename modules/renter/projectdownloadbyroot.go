@@ -204,18 +204,15 @@ func (pdbr *projectDownloadByRoot) managedResult() ([]byte, error) {
 // fetch the data from the host.
 func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	// Fetch a session to use in retrieving the sector.
-	println("worker full sector downloader open ||||||||||||||||||||: ", time.Since(start)/1e6)
 	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		// TODO: run error code here to indicate to the worker that attempts to
 		// grab the downloader are failing.
 		w.renter.log.Debugln("worker failed a projectDownloadByRoot because downloader could not be opened:", err)
-		println("worker full sector downloader open failed, waking next worker: ", time.Since(start)/1e6)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
 	}
-	println("worker full sector downloader opened successfully: ", time.Since(start)/1e6)
 	defer downloader.Close()
 
 	// Check for price gouging before completing the job.
@@ -237,16 +234,13 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	if padding == 64 {
 		padding = 0
 	}
-	println("worker full sector download starting: ", time.Since(start)/1e6)
 	sectorData, err := downloader.Download(pdbr.staticRoot, uint32(pdbr.staticOffset), uint32(pdbr.staticLength+padding))
-	println("worker full sector download completed |||||||||||||||||||||: ", time.Since(start)/1e6)
 	// If the fetch was unsuccessful, a standby worker needs to be activated.
 	if err != nil {
 		// TODO: run error code here to indicate that worker download attempts
 		// are failing. It's already been established that the host has the
 		// sector.
 		w.renter.log.Debugln("worker failed a projectDownloadByRoot because the full root download failed:", err)
-		println("worker full sector download failed: ", time.Since(start)/1e6)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
@@ -268,9 +262,6 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	if pdbr.staticComplete() {
 		return
 	}
-	if w.staticPubKeyStr != "ed25519:0e3be43c674f2ad07e76e337a2a27e795b9295381585942f2930862b5d7c6c54" {
-		return
-	}
 
 	// Determine whether the host has the root. This is accomplished by
 	// performing a download for only one byte.
@@ -289,7 +280,6 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 		return
 	}
 
-	println("worker downloader achieved: ", time.Since(start)/1e6)
 	defer downloader.Close()
 	// Check for price gouging before completing the job.
 	allowance := w.renter.hostContractor.Allowance()
@@ -303,15 +293,11 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 		return
 	}
 	// Try to fetch one byte.
-	println("sector check started: ", time.Since(start)/1e6)
 	_, err = downloader.Download(pdbr.staticRoot, 0, 64)
 	if err != nil {
-		println("sector check failed: ", time.Since(start)/1e6)
 		pdbr.managedRemoveWorker(w)
 		return
 	}
-	println("sector check complete: ", time.Since(start)/1e6)
-	println(w.staticHostPubKeyStr)
 	// Check if the project is already complete, do no more work if so.
 	if pdbr.staticComplete() {
 		return
@@ -420,11 +406,9 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 	for _, w := range workers {
 		w.callQueueJobDownloadByRoot(jdbr)
 	}
-	println("all jobs are queued: ", time.Since(start)/1e6)
 
 	// Block until the project has completed.
 	<-pdbr.completeChan
-	println("completeChan closed: ", time.Since(start)/1e6)
 	pdbr.mu.Lock()
 	err := pdbr.err
 	data := pdbr.data
