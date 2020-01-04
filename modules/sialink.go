@@ -7,7 +7,6 @@ package modules
 import (
 	"bytes"
 	"encoding/base64"
-	"math"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -25,21 +24,6 @@ const (
 )
 
 const (
-	// SialinkPacketSize indicates the assumed packet size when fetching a
-	// sialink. There is an assumption that any fetch of logical data has to be
-	// a multiple of this size.
-	SialinkPacketSize = 1420
-
-	// SialinkFetchMagnitudeGrowthFactor determines how fast the fetchMagnitude
-	// of LinkData grows.
-	SialinkFetchMagnitudeGrowthFactor = 1.025
-
-	// SialinkFetchMagnitudeStart defines the point at which the sialink
-	// switches from linear growth to exponential growth. This is chosen in
-	// tandem with SialinkFetchMagnitudeGrowthFactor, such that the exponential
-	// growth takes over as soon as it grows faster than linear growth.
-	SialinkFetchMagnitudeStart = 41
-
 	// SialinkMaxFetchSize defines the maximum fetch size that is supported by
 	// the sialink format. This is intentionally the same number as
 	// modules.SectorSize on the release build. We could not use
@@ -70,24 +54,13 @@ func (ld LinkData) DataPieces() uint8 {
 // FetchSize determines how many logical bytes should be fetched based on the
 // magnitude of the fetch request.
 func (ld LinkData) FetchSize() uint64 {
-	// Sentinal value of 0 indicates that the whole sector needs to be fetched.
-	if ld.fetchMagnitude == 0 {
+	// If the fetch magnitude is maxed out, fetch everything.
+	if ld.fetchMagnitude == 255 {
 		return SialinkMaxFetchSize
 	}
-
-	// The first few magnitudes are numeric values, no exponential growth yet.
-	if ld.fetchMagnitude < SialinkFetchMagnitudeStart {
-		return uint64(ld.fetchMagnitude) * SialinkPacketSize
-	}
-
-	// Calculate the number of bytes that need to be fetched. Take the 1.025 to
-	// the power of the magnitude and then multiply that by the packet size.
-	// This number is an approximation, but covers the whole range from ~1500
-	// bytes to the full 4 MiB, skipping only 2.5% at a time.
-	numPackets := math.Pow(SialinkFetchMagnitudeGrowthFactor, float64(ld.fetchMagnitude-SialinkFetchMagnitudeStart))
-	numPackets *= SialinkFetchMagnitudeStart
-	numPackets = math.Ceil(numPackets)
-	return uint64(numPackets * SialinkPacketSize)
+	// Increment the magnitude so the '0' value is fetching data.
+	fm := uint64(ld.fetchMagnitude + 1)
+	return SialinkMaxFetchSize / 256 * fm
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
@@ -154,37 +127,26 @@ func (ld *LinkData) SetDataPieces(dp uint8) {
 }
 
 // SetFetchSize will compress the fetch size into a uint8. This is a lossy
-// process, however so long as the value is below SialinkMaxFetchSize, the
-// result of calling 'FetchSize()' on the ld will be greater than or equal to
-// the input value and no more than 4% larger than the input value.
+// process that will round the value up to the nearest multiple of 16,384
+// (2^14). Storing only a uint8 allows for shorter sialinks and better
+// compatibility with the IPFS standard of 46 byte links.
+//
+// If the input is 2^22 or larger, a value of '255' will be set, indicating that
+// the full initial root should be downloaded.
 func (ld *LinkData) SetFetchSize(size uint64) {
-	// If the fetch size is larger than or equal to the maximum supported size,
-	// set the fetch size to '0', indicating that all data should be fetched.
 	if size >= SialinkMaxFetchSize {
-		ld.fetchMagnitude = 0
-		return
+		ld.fetchMagnitude = 255
 	}
-
-	// Determine the number of packets that are necessary to cover the provided
-	// size.
-	packets := float64((size + SialinkPacketSize - 1) / SialinkPacketSize)
-
-	// Because 3% per round is a slow growing number, the first 33 magnitudes
-	// actually correspond to their numeric values. The exponential growth
-	// starts at the 41st value.
-	if packets < SialinkFetchMagnitudeStart {
-		ld.fetchMagnitude = uint8(packets)
-		return
+	// Subtract one from the size so the operation to round-up will not round
+	// sizes that divide perfectly evenly. The increment to round up is
+	// performed in the FetchSize() function so that the '0' value of
+	// ld.fetchMagnitude indicatese that 16,384 bytes should be fetched.
+	//
+	// Check for underflow.
+	if size != 0 {
+		size--
 	}
-
-	// Figure out log base 1.025 of the number of packets.
-	val := float64(SialinkFetchMagnitudeStart)
-	magnitude := uint8(SialinkFetchMagnitudeStart)
-	for math.Ceil(val) < packets {
-		magnitude++
-		val *= SialinkFetchMagnitudeGrowthFactor
-	}
-	ld.fetchMagnitude = magnitude
+	ld.fetchMagnitude = uint8(size / (SialinkMaxFetchSize / 256))
 }
 
 // SetMerkleRoot will set the merkle root of the LinkData. This is the one

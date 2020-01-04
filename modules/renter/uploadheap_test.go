@@ -201,6 +201,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, stuck, fileRecentlySuc
 			fileRecentlySuccessful: fileRecentlySuccessful,
 			priority:               priority,
 			health:                 float64(i),
+			releasedChan:           make(chan struct{}),
 		}
 		if !r.uploadHeap.managedPush(chunk) {
 			return fmt.Errorf("unable to push chunk: %v", chunk)
@@ -484,6 +485,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 			stuck:           false,
 			piecesCompleted: -1,
 			piecesNeeded:    1,
+			releasedChan:    make(chan struct{}),
 		}
 		if !rt.renter.uploadHeap.managedPush(chunk) {
 			t.Fatal("Chunk should have been added to heap")
@@ -556,6 +558,7 @@ func TestUploadHeapMaps(t *testing.T) {
 			stuck:           stuck,
 			piecesCompleted: 1,
 			piecesNeeded:    1,
+			releasedChan:    make(chan struct{}),
 		}
 		// push chunk to heap
 		if !rt.renter.uploadHeap.managedPush(chunk) {

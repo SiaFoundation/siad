@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"sync"
-	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -81,56 +80,112 @@ func (r *Renter) newFanoutStreamer(ll linkfileLayout, fanoutBytes []byte) (*fano
 	return fs, nil
 }
 
-// Replace the fetch with something that waits until there are 10 pieces total
-// avilable
+// fetchChunkState is a helper struct for coordinating goroutines that are
+// attempting to download a chunk for a fanout streamer.
+type fetchChunkState struct {
+	staticDataPieces uint64
+
+	pieces          [][]byte
+	piecesCompleted uint64
+	piecesFailed    uint64
+
+	doneChan chan struct{}
+	mu       sync.Mutex
+}
+
+// completed returns whether enough data has been fetched for the chunk to be
+// recovered successfully.
+func (fcs *fetchChunkState) completed() bool {
+	return fcs.piecesCompleted >= fcs.staticDataPieces
+}
 
 // threadedFetchChunk will fetch a chunk at the provided index.
 func (fs *fanoutStreamer) threadedFetchChunk(chunkIndex uint64) {
+	if int(fs.staticLayout.fanoutDataPieces) > len(fs.staticChunks[chunkIndex]) {
+		fs.mu.Lock()
+		close(fs.chunkAvailable)
+		fs.fetchErr = errors.New("not enough pieces in the chunk to recover chunk")
+		fs.mu.Unlock()
+		return
+	}
+
 	// Spin up one thread per piece and try to fetch them all. This is wasteful,
 	// but easier to implement. Intention at least for now is just to get
 	// end-to-end testing working for this feature.
+	//
+	// TODO: Restructure the concurrency here to interrupt/kill DownloadByRoot
+	// calls which aren't needed anymore.
 	var blankHash crypto.Hash
-	doneChan := make(chan struct{})
-	pieces := make([][]byte, len(fs.staticChunks[chunkIndex]))
-	piecesCompleted := new(uint64)
-	for i := uint64(0); i < uint64(len(fs.staticChunks[chunkIndex])); i++ {
+	fcs := fetchChunkState{
+		staticDataPieces: uint64(fs.staticLayout.fanoutDataPieces),
+
+		pieces:   make([][]byte, len(fs.staticChunks[chunkIndex])),
+		doneChan: make(chan struct{}),
+	}
+	piecesFetched := make(map[crypto.Hash]struct{})
+	for i := uint64(0); i < uint64(len(fcs.pieces)); i++ {
 		// Skip pieces where the Merkle root is not supplied.
 		if fs.staticChunks[chunkIndex][i] == blankHash {
+			fcs.mu.Lock()
+			fcs.piecesFailed++
+			allTried := fcs.piecesCompleted+fcs.piecesFailed == uint64(len(fcs.pieces))
+			if !fcs.completed() && allTried {
+				close(fcs.doneChan)
+			}
+			fcs.mu.Unlock()
 			continue
 		}
+		// Skip pieces where the download has already been issued. This is
+		// particularly useful for 1-of-N files.
+		_, exists := piecesFetched[fs.staticChunks[chunkIndex][i]]
+		if exists {
+			continue
+		}
+		piecesFetched[fs.staticChunks[chunkIndex][i]] = struct{}{}
 
 		// Spin up a thread to fetch this piece.
 		go func(i uint64) {
 			pieceData, err := fs.staticRenter.DownloadByRoot(fs.staticChunks[chunkIndex][i], 0, modules.SectorSize)
-			if err == nil {
-				key := fs.staticMasterKey.Derive(chunkIndex, i)
-				key.DecryptBytesInPlace(pieceData, 0)
-				pieces[i] = pieceData
-				result := atomic.AddUint64(piecesCompleted, 1)
-				if result == uint64(fs.staticLayout.fanoutDataPieces) {
-					close(doneChan)
+			if err != nil {
+				fcs.mu.Lock()
+				fcs.piecesFailed++
+				allTried := fcs.piecesCompleted+fcs.piecesFailed == uint64(len(fcs.pieces))
+				if !fcs.completed() && allTried {
+					close(fcs.doneChan)
 				}
+				fcs.mu.Unlock()
+				// TODO: Log that there was a failure to fetch a root?
+				return
 			}
+			key := fs.staticMasterKey.Derive(chunkIndex, i)
+			key.DecryptBytesInPlace(pieceData, 0)
+			fcs.mu.Lock()
+			if fcs.completed() {
+				pieceData = nil
+				fcs.mu.Unlock()
+				return
+			}
+			fcs.pieces[i] = pieceData
+			fcs.piecesCompleted++
+			if fcs.completed() {
+				close(fcs.doneChan)
+			}
+			fcs.mu.Unlock()
 		}(i)
 	}
-	<-doneChan
+	<-fcs.doneChan
 
 	// Check how many pieces came back.
-	piecesReceived := uint8(0)
-	for i := uint8(0); i < uint8(len(pieces)); i++ {
-		// Count this as a new piece if less than a full set of pieces have been
-		// discovered.
-		if pieces[i] != nil && piecesReceived < fs.staticLayout.fanoutDataPieces {
-			piecesReceived++
-		} else {
-			// If the full set of pieces have been discovered, nil this piece
-			// out to save on memory.
-			pieces[i] = nil
+	fcs.mu.Lock()
+	completed := fcs.completed()
+	pieces := fcs.pieces
+	fcs.mu.Unlock()
+	if !completed {
+		fcs.mu.Lock()
+		for i := 0; i < len(fcs.pieces); i++ {
+			fcs.pieces[i] = nil
 		}
-	}
-
-	// If there are not enough pieces, the fetch has failed.
-	if piecesReceived < fs.staticLayout.fanoutDataPieces {
+		fcs.mu.Unlock()
 		fs.mu.Lock()
 		if fs.chunkDataCurrent == nil {
 			close(fs.chunkAvailable)

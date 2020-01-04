@@ -92,6 +92,7 @@ type unfinishedUploadChunk struct {
 	piecesCompleted  int                 // number of pieces that have been fully uploaded.
 	piecesRegistered int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
 	released         bool                // whether this chunk has been released from the active chunks set.
+	releasedChan     chan struct{}       // used to signal to other processes that the upload is complete.
 	unusedHosts      map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
 	workersRemaining int                 // number of inactive workers still able to upload a piece.
 	workersStandby   []*worker           // workers that can be used if other workers fail.
@@ -446,6 +447,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		}
 		uc.released = true
+		close(uc.releasedChan)
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
