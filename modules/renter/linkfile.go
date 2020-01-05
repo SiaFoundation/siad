@@ -535,6 +535,10 @@ func (r *Renter) uploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, m
 	if err != nil {
 		return "", errors.AddContext(err, "unable to upload large linkfile")
 	}
+	// TODO: Right now, 'managedUploadStreamFromReader' returns as soon as the
+	// file is 'available' on the Sia network, this can have adverse effects for
+	// the fanout if using anything besides 1-of-N erasure coding settings. Need
+	// to update the code here to work around that.
 
 	// Convert the new siafile we just uploaded into a linkfile using the
 	// convert function.

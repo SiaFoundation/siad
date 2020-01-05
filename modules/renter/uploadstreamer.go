@@ -46,9 +46,9 @@ type StreamShard struct {
 }
 
 // NewStreamShard creates a new stream shard from a reader.
-func NewStreamShard(r io.Reader) *StreamShard {
+func NewStreamShard(r io.Reader, peek []byte) *StreamShard {
 	return &StreamShard{
-		peek:       make([]byte, 0, 1),
+		peek:       peek,
 		r:          r,
 		signalChan: make(chan struct{}),
 	}
@@ -62,13 +62,13 @@ func (ss *StreamShard) Close() error {
 }
 
 // Peek will check to see if there is more data in the stream.
-func (ss *StreamShard) Peek() error {
+func (ss *StreamShard) Peek() ([]byte, error) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
 	// If 'peek' already has data, then there is more data to consume.
 	if len(ss.peek) > 0 {
-		return nil
+		return ss.peek, nil
 	}
 
 	// Read a byte into peek.
@@ -76,9 +76,9 @@ func (ss *StreamShard) Peek() error {
 	_, err := io.ReadFull(ss.r, ss.peek)
 	if err != nil {
 		ss.err = err
-		return err
+		return nil, err
 	}
-	return nil
+	return ss.peek, nil
 }
 
 // Result returns the returned values of calling Read on the shard.
@@ -100,6 +100,7 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 	if len(b) < 1 {
 		return 0, nil
 	}
+	var peekBytes int // will be 0 or 1
 	if len(ss.peek) > 0 {
 		// Sanity check - peek should never be more than 1 byte.
 		if len(ss.peek) > 1 {
@@ -109,11 +110,12 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 		b = b[1:]
 		ss.n += 1
 		ss.peek = ss.peek[:0]
+		peekBytes++
 	}
 	n, err := ss.r.Read(b)
 	ss.n += n
 	ss.err = err
-	return n, err
+	return n+peekBytes, err
 }
 
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
@@ -190,6 +192,9 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // reached and upload the data to the Sia network. Depending on whether backup
 // is true or false, the siafile for the upload will be stored in the siafileset
 // or backupfileset.
+//
+// managedUploadStreamFromReader will return as soon as the data is avaialble on
+// the Sia network, this will happen faster than the entire upload is complete.
 func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (entry *filesystem.FileNode, err error) {
 	// Check the upload params first.
 	entry, err = r.managedInitUploadStream(up, backup)
@@ -225,7 +230,8 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
-	chunkFinishedChans := make([]chan struct{}, 0)
+	var peek []byte
+	chunks := make([]*unfinishedUploadChunk, 0)
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing connectivity
 		// during the upload.
@@ -249,7 +255,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		}
 
 		// Create a new shard set it to be the source reader of the chunk.
-		ss := NewStreamShard(reader)
+		ss := NewStreamShard(reader, peek)
 		uuc.sourceReader = ss
 
 		// Check if the chunk needs any work or if we can skip it.
@@ -264,7 +270,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 				}
 			}
 			// Notify the upload loop.
-			chunkFinishedChans = append(chunkFinishedChans, uuc.releasedChan)
+			chunks = append(chunks, uuc)
 			select {
 			case r.uploadHeap.newUploads <- struct{}{}:
 			default:
@@ -296,16 +302,22 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		}
 
 		// Call Peek to make sure that there's more data for another shard.
-		err = ss.Peek()
+		peek, err = ss.Peek()
 		if err == io.EOF {
-			return nil
+			break
 		} else if err != nil {
-			return ss.err
+			return nil, ss.err
 		}
 	}
 	// Wait for all chunks to finish, then return.
-	for _, finishedChan := range chunkFinishedChans {
-		<-finishedChan
+	for _, chunk := range chunks {
+		<-chunk.availableChan
+		chunk.mu.Lock()
+		err := chunk.err
+		chunk.mu.Unlock()
+		if err != nil {
+			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
+		}
 	}
 	return entry, nil
 }

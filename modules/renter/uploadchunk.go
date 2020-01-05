@@ -87,12 +87,14 @@ type unfinishedUploadChunk struct {
 	//	+ the worker should increment the number of pieces completed
 	//	+ the worker should decrement the number of pieces registered
 	//	+ the worker should release the memory for the completed piece
+	available        bool
+	availableChan    chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
+	err              error
 	mu               sync.Mutex
 	pieceUsage       []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
 	piecesCompleted  int                 // number of pieces that have been fully uploaded.
 	piecesRegistered int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
 	released         bool                // whether this chunk has been released from the active chunks set.
-	releasedChan     chan struct{}       // used to signal to other processes that the upload is complete.
 	unusedHosts      map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
 	workersRemaining int                 // number of inactive workers still able to upload a piece.
 	workersStandby   []*worker           // workers that can be used if other workers fail.
@@ -435,6 +437,12 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 	}
 
+	// Check if the chunk is now available.
+	if uc.piecesCompleted >= uc.minimumPieces && !uc.available && !uc.released {
+		uc.available = true
+		close(uc.availableChan)
+	}
+
 	// Check if the chunk needs to be removed from the list of active
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
@@ -446,8 +454,11 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		} else {
 			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		}
+		if !uc.available {
+			close(uc.availableChan)
+			uc.err = errors.New("unable to upload file, file is not avaialble on the newtork")
+		}
 		uc.released = true
-		close(uc.releasedChan)
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
