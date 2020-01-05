@@ -615,7 +615,7 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes))
 	fileBytes, fileReader, largeFile, err := uploadLinkfileReadLeadingChunk(lup, headerSize)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to retreive leading chunk file bytes")
+		return "", errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
 	if largeFile {
 		return r.uploadLinkfileLargeFile(lup, metadataBytes, fileReader)
