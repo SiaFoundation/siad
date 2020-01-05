@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest"
@@ -93,7 +92,7 @@ func TestLinkfile(t *testing.T) {
 	}
 	var force2 bool
 	if fastrand.Intn(2) == 0 {
-		force = true
+		force2 = true
 	}
 	largeLup := modules.LinkfileUploadParameters{
 		SiaPath:             largeSiaPath,
@@ -110,13 +109,12 @@ func TestLinkfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(time.Second * 5)
 	largeFetchedData, err := r.RenterSialinkGet(largeSialink)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(largeFetchedData, largeData) {
-		t.Error("upload and download data does not match for large siafiles")
+		t.Error("upload and download data does not match for large siafiles", len(largeFetchedData), len(largeData))
 	}
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
