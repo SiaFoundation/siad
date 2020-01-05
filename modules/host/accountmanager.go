@@ -560,10 +560,10 @@ func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, sy
 	}
 }
 
-// threadedSaveAccount will save the account with given id. There is only ever
-// one background thread per account running. This is ensured by the account's
-// pendingRisk, only if that increases from 0 -> something, a goroutine is
-// scheduled to save the account.
+// threadedSaveAccount will save the account with given id. The thread will keep
+// calling this method as long as there are channels in persistResultChans.
+// Which essentially means there are other threads awaiting the persist result.
+// There is only ever one save thread per account.
 //
 // Note that the caller adds this thread to the threadgroup. If the add is done
 // inside the goroutine, the host risks losing money even on graceful shutdowns.
@@ -600,6 +600,11 @@ func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
 		// waiting, threadedSaveAccount will be called again.
 		acc.sendResult(err, accInfo.waiting)
 		waiting = len(acc.persistResultChans)
+
+		// Sanity check
+		if waiting == 0 && !acc.pendingRisk.IsZero() {
+			build.Critical("The account's pending risk should be zero if there are no threads awaiting a persist")
+		}
 	}
 
 	// Lower the current risk by the amount of risk that just got persisted.
