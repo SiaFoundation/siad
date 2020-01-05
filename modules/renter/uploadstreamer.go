@@ -253,7 +253,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		// If an io.EOF error occurred or less than chunkSize was read, we are
 		// done. Otherwise we report the error.
 		if _, err := ss.Result(); err == io.EOF {
-			// All chunks succesfully submitted.
+			// All chunks successfully submitted.
 			break
 		} else if ss.err != nil {
 			return nil, ss.err
