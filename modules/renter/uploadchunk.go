@@ -456,7 +456,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 		if !uc.available {
 			close(uc.availableChan)
-			uc.err = errors.New("unable to upload file, file is not avaialble on the newtork")
+			uc.err = errors.New("unable to upload file, file is not available on the newtork")
 		}
 		uc.released = true
 	}

@@ -115,7 +115,7 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 	n, err := ss.r.Read(b)
 	ss.n += n
 	ss.err = err
-	return n+peekBytes, err
+	return n + peekBytes, err
 }
 
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
