@@ -757,7 +757,10 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 		// have been changed since the withdrawal was blocked, potentially
 		// pushing it over its expiry.
 		if err := bw.withdrawal.validateExpiry(bh); err != nil {
-			bw.commitResult <- err
+			select {
+			case bw.commitResult <- err:
+			default:
+			}
 			continue
 		}
 
@@ -877,7 +880,10 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 		if force || now-acc.lastTxnTime > threshold {
 			// Signal all waiting result chans this account has expired
 			for _, c := range acc.persistResultChans {
-				c <- ErrAccountExpired
+				select {
+				case c <- ErrAccountExpired:
+				default:
+				}
 				close(c)
 			}
 			delete(am.accounts, id)
