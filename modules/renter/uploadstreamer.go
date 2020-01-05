@@ -215,7 +215,6 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		// Create a new shard set it to be the source reader of the chunk.
 		ss := NewStreamShard(reader)
 		uuc.sourceReader = ss
-		chunkFinishedChans = append(chunkFinishedChans, uuc.releasedChan)
 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
@@ -229,6 +228,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 				}
 			}
 			// Notify the upload loop.
+			chunkFinishedChans = append(chunkFinishedChans, uuc.releasedChan)
 			select {
 			case r.uploadHeap.newUploads <- struct{}{}:
 			default:
