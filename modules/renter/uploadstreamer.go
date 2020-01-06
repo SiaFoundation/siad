@@ -115,7 +115,7 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 	n, err := ss.r.Read(b)
 	ss.n += n
 	ss.err = err
-	return n+peekBytes, err
+	return n + peekBytes, err
 }
 
 // UploadStreamFromReader reads from the provided reader until io.EOF is reached and
@@ -194,7 +194,9 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // or backupfileset.
 //
 // managedUploadStreamFromReader will return as soon as the data is avaialble on
-// the Sia network, this will happen faster than the entire upload is complete.
+// the Sia network, this will happen faster than the entire upload is complete -
+// the streamer may continue uploading in the background after returning while
+// it is boosting redundancy.
 func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (entry *filesystem.FileNode, err error) {
 	// Check the upload params first.
 	entry, err = r.managedInitUploadStream(up, backup)
