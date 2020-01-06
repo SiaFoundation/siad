@@ -29,11 +29,12 @@ type leastRecentlyUsedCache struct {
 }
 
 // newLeastRecentlyUsedCache initializes an lru.
-func newLeastRecentlyUsedCache(size uint64) *leastRecentlyUsedCache {
+func newLeastRecentlyUsedCache(size uint64, sb *streamBuffer) *leastRecentlyUsedCache {
 	return &leastRecentlyUsedCache{
 		nodes: make(map[uint64]*leastRecentlyUsedCacheNode),
 
-		staticSize: size,
+		staticSize:         size,
+		staticStreamBuffer: sb,
 	}
 }
 

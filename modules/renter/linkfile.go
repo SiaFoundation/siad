@@ -419,7 +419,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 
 	// There is a fanout, create a fanout streamer and return that.
 	fanoutBytes := baseSector[offset : offset+uint64(ll.fanoutHeaderSize)]
-	fs, err := r.newFanoutStreamer(ll, fanoutBytes)
+	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}

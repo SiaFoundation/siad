@@ -246,6 +246,11 @@ func (s *stream) prepareOffset() {
 	dataSize := s.staticStreamBuffer.staticDataSize
 	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
 
+	// If the offset is already at the end of the file, there is nothing to do.
+	if s.offset == dataSize {
+		return
+	}
+
 	// Update the current data section. The update call will trigger the
 	// streamBuffer to fetch the dataSection if the dataSection is not already
 	// in the streamBuffer cache.
@@ -310,7 +315,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	if (index+1)*dataSectionSize > dataSize {
 		fetchSize = dataSize - (index * dataSectionSize)
 	} else {
-		fetchSize = dataSize
+		fetchSize = dataSectionSize
 	}
 
 	// Create the data section, allocating the right number of bytes for the
@@ -379,7 +384,7 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, sou
 
 	// Create a stream that points to the stream buffer.
 	stream := &stream{
-		lru:    newLeastRecentlyUsedCache(nodesToCache),
+		lru:    newLeastRecentlyUsedCache(nodesToCache, streamBuf),
 		offset: initialOffset,
 
 		staticStreamBuffer: streamBuf,
