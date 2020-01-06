@@ -1022,8 +1022,7 @@ func (wm *withdrawalMessage) validateExpiry(blockHeight types.BlockHeight) error
 	}
 
 	// Verify the withdrawal is not too far into the future
-	_, max := currentBucketRange(blockHeight)
-	if wm.expiry > max+bucketBlockRange {
+	if wm.expiry > blockHeight+bucketBlockRange {
 		return ErrWithdrawalExtremeFuture
 	}
 

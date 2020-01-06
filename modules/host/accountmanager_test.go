@@ -355,8 +355,8 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	}
 
 	// Make sure to test the cutoff point properly
-	shouldNotExpire := am.h.blockHeight + (2 * bucketBlockRange) - 1
-	shouldExpire := am.h.blockHeight + (2 * bucketBlockRange)
+	shouldNotExpire := am.h.blockHeight + bucketBlockRange
+	shouldExpire := shouldNotExpire + 1
 
 	// Prepare a withdrawal message
 	oneCurrency := types.NewCurrency64(1)
