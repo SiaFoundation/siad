@@ -3660,7 +3660,6 @@ Mounts a Sia directory to the local filesystem using FUSE.
 Location on disk to use as the mountpoint.
 
 **readonly** | bool  
-### REQUIRED
 Whether the directory should be mounted as ReadOnly. Currently, readonly is a
 required parameter and must be set to true.
 
