@@ -54,6 +54,42 @@ func TestAccountCallDeposit(t *testing.T) {
 	}
 }
 
+// TestAccountCallDepositClosedSyncChan verifies behaviour when the sync chan we
+// pass to deposit is already closed
+func TestAccountCallDepositClosedSyncChan(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	// Prepare an account
+	_, spk := prepareAccount()
+	accountID := spk.String()
+
+	// Deposit money into it, make sure to close the syncChan before calling
+	// deposit
+	diff := types.NewCurrency64(100)
+	before := getAccountBalance(am, accountID)
+	syncChan := make(chan struct{})
+	close(syncChan)
+	err = am.callDeposit(accountID, diff, syncChan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the amount was credited
+	after := getAccountBalance(am, accountID)
+	if !after.Sub(before).Equals(diff) {
+		t.Fatal("Deposit was not credited")
+	}
+}
+
 // TestAccountMaxBalance verifies we can never deposit more than the account max
 // balance into an ephemeral account.
 func TestAccountMaxBalance(t *testing.T) {
@@ -1105,12 +1141,12 @@ func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signatu
 // commit, this commit will be called when the FC is fsynced to disk, in tests
 // we ignore that for most test cases
 func callDeposit(am *accountManager, id string, amount types.Currency) error {
-	doneChan := make(chan struct{})
-	err := am.callDeposit(id, amount, doneChan)
+	syncChan := make(chan struct{})
+	err := am.callDeposit(id, amount, syncChan)
 	if err != nil {
 		return err
 	}
-	close(doneChan)
+	close(syncChan)
 	return nil
 }
 

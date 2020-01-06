@@ -114,11 +114,11 @@ type (
 		fingerprints            *fingerprintMap
 		staticAccountsPersister *accountsPersister
 
-		// The accountBifield keeps track of all account indexes using a
+		// The accountBitfield keeps track of all account indexes using a
 		// bitfield. Every account has a unique index. The account's index
 		// decides at what location in the accounts file the account's data gets
 		// persisted.
-		accountBifield accountBifield
+		accountBitfield accountBitfield
 
 		// To increase performance, deposits get credited before the file
 		// contract fsynced, and withdrawals do not block until the ephemeral
@@ -183,7 +183,7 @@ type (
 	// accountBitfield is a bitfield to keep track of account indexes. When an
 	// account is opened, it is assigned a free index. When an account expires
 	// due to inactivity, its index gets recycled.
-	accountBifield []uint64
+	accountBitfield []uint64
 
 	// blockedWithdrawal represents a withdrawal call that is pending to be
 	// executed but is stalled because either maxRisk is reached or the
@@ -258,7 +258,7 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 		fingerprints:       newFingerprintMap(),
 		blockedDeposits:    make([]*blockedDeposit, 0),
 		blockedWithdrawals: make([]*blockedWithdrawal, 0),
-		accountBifield:     make(accountBifield, 0),
+		accountBitfield:    make(accountBitfield, 0),
 		h:                  h,
 
 		// withdrawals are inactive until the host is synced, consensus updates
@@ -282,11 +282,11 @@ func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	am.fingerprints.next = data.fingerprints
 
 	// Build the account index
-	am.accountBifield.buildIndex(am.accounts)
+	am.accountBitfield.buildIndex(am.accounts)
 
 	// Close any open file handles if we receive a stop signal
 	am.h.tg.AfterStop(func() {
-		am.staticAccountsPersister.close()
+		am.staticAccountsPersister.callClose()
 	})
 
 	go am.threadedPruneExpiredAccounts()
@@ -348,7 +348,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 
 	// Initiate the deposit.
 	persistResultChan := make(chan error)
-	err := am.managedPrepareDeposit(id, amount, maxRisk, maxBalance, bh, persistResultChan, syncChan)
+	err := am.managedDeposit(id, amount, maxRisk, maxBalance, bh, persistResultChan, syncChan)
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
@@ -380,7 +380,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 	commitResultChan := make(chan error, 1)
 
 	// Initiate the withdraw process.
-	err := am.managedPrepareWithdraw(msg, fingerprint, priority, maxRisk, bh, commitResultChan)
+	err := am.managedWithdraw(msg, fingerprint, priority, maxRisk, bh, commitResultChan)
 	if err != nil {
 		return errors.AddContext(err, "Withdraw failed")
 	}
@@ -420,9 +420,9 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 	}
 }
 
-// managedPrepareDeposit performs a couple of steps in preparation of the
+// managedDeposit performs a couple of steps in preparation of the
 // deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
+func (am *accountManager) managedDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -453,9 +453,9 @@ func (am *accountManager) managedPrepareDeposit(id string, amount, maxRisk, maxB
 	return nil
 }
 
-// managedPrepareWithdraw performs a couple of steps in preparation of the
+// managedWithdraw performs a couple of steps in preparation of the
 // withdrawal. If everything checks out it will commit the withdrawal.
-func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (err error) {
+func (am *accountManager) managedWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (err error) {
 	amount, id, expiry := msg.amount, msg.account, msg.expiry
 
 	am.mu.Lock()
@@ -472,8 +472,9 @@ func (am *accountManager) managedPrepareWithdraw(msg *withdrawalMessage, fp cryp
 		return ErrWithdrawalsInactive
 	}
 
-	// Save the fingerprint in memory and call persist asynchronously. If the
-	// fingerprint is known we return an error.
+	// Save the fingerprint in memory. If the fingerprint is known we return an
+	// error. Note that a call to the persister is deferred which'll save the
+	// fingerprint on disk.
 	exists := am.fingerprints.has(fp)
 	if exists {
 		return ErrWithdrawalSpent
@@ -530,8 +531,8 @@ func (am *accountManager) managedAccountPersistInfo(id string) *accountPersistIn
 }
 
 // threadedUpdateRiskAfterSync will update the current risk after it has
-// received a signal on the doneChan. This thread will stop after a timeout of
-// 10 mins, or if it receives a stop signal. This doneChan is passed in by the
+// received a signal on the syncChan. This thread will stop after a timeout of
+// 10 mins, or if it receives a stop signal. This syncChan is passed in by the
 // RPC, it will close this channel when the file contract has been fsynced.
 func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, syncChan chan struct{}) {
 	if err := am.h.tg.Add(); err != nil {
@@ -549,8 +550,9 @@ func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, sy
 		// seeing as they might be blocked due to current risk exceeding the
 		// maximum. Unblock deposit and withdrawals in this particular order
 		// until the deposit (read: allowance) runs out.
-		deposit = am.unblockDeposits(deposit, bh)
-		am.unblockWithdrawals(deposit, bh)
+		allowance := deposit
+		allowance = am.unblockDeposits(allowance, bh)
+		am.unblockWithdrawals(allowance, bh)
 		am.mu.Unlock()
 		return
 	case <-am.h.tg.StopChan():
@@ -658,8 +660,6 @@ func (am *accountManager) commitDeposit(a *account, amount types.Currency, block
 // commitWithdrawal withdraws the amount from the account balance and schedules
 // a persist to save the account data to disk.
 func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) {
-	before := a.balance
-
 	// Update the account details
 	a.balance = a.balance.Sub(amount)
 	a.lastTxnTime = time.Now().Unix()
@@ -669,9 +669,8 @@ func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, bl
 	// to be withdrawn from the account without awaiting the persist, the host
 	// is at risk at losing the balance delta. This is added to the risk now,
 	// but will get subtracted again when the account was persisted.
-	delta := before.Sub(a.balance)
-	a.pendingRisk = a.pendingRisk.Add(delta)
-	am.currentRisk = am.currentRisk.Add(delta)
+	a.pendingRisk = a.pendingRisk.Add(amount)
+	am.currentRisk = am.currentRisk.Add(amount)
 
 	am.schedulePersist(a, make(chan error))
 }
@@ -679,7 +678,7 @@ func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, bl
 // updateRiskAfterDeposit will update the current risk after a deposit has been
 // performed. The deposit amount is added to the host's current risk. The host
 // is at risk for this amount as long as the file contract has not been fsynced.
-// When the RPC is done with the FC fsync it will close the doneChan so the
+// When the RPC is done with the FC fsync it will close the syncChan so the
 // account manager can lower the risk.
 func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncChan chan struct{}) {
 	// The syncChan might already be closed, perform a quick check to verify
@@ -700,8 +699,12 @@ func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncCha
 // a FIFO fashion, ensuring an account is never overwritten by older account
 // data.
 func (am *accountManager) schedulePersist(acc *account, persistResultChan chan error) {
+	persistScheduled := len(acc.persistResultChans) > 0
 	acc.persistResultChans = append(acc.persistResultChans, persistResultChan)
-	if len(acc.persistResultChans) > 1 {
+
+	// Return early if we weren't the first to schedule a persist for this
+	// account. This is to ensure there's only one save thread per account.
+	if persistScheduled {
 		return
 	}
 
@@ -748,7 +751,7 @@ func (am *accountManager) unblockDeposits(allowance types.Currency, bh types.Blo
 // unblockWithdrawals will unblock pending withdrawals until the allowance runs
 // out. The allowance is the amount of risk that got freed up by a persist or a
 // commit (FC fsync).
-func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.BlockHeight) (remaining types.Currency) {
+func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.BlockHeight) {
 	var numUnblocked int
 	for i, bw := range am.blockedWithdrawals {
 		amount, id := bw.withdrawal.amount, bw.withdrawal.account
@@ -785,8 +788,6 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 		allowance = allowance.Sub(amount)
 	}
 	am.blockedWithdrawals = am.blockedWithdrawals[numUnblocked:]
-	remaining = allowance
-	return
 }
 
 // threadedPruneExpiredAccounts will expire accounts which have been inactive
@@ -831,7 +832,7 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 			// Once deleted from disk, recycle the indexes by releasing them.
 			am.mu.Lock()
 			for _, index := range deleted {
-				am.accountBifield.releaseIndex(index)
+				am.accountBitfield.releaseIndex(index)
 			}
 			am.mu.Unlock()
 		}()
@@ -907,7 +908,7 @@ func (am *accountManager) openAccount(id string) *account {
 	}
 	acc = &account{
 		id:                 id,
-		index:              am.accountBifield.assignFreeIndex(),
+		index:              am.accountBitfield.assignFreeIndex(),
 		blockedWithdrawals: make(blockedWithdrawalHeap, 0),
 		persistResultChans: make([]chan error, 0),
 	}
@@ -916,7 +917,7 @@ func (am *accountManager) openAccount(id string) *account {
 }
 
 // assignFreeIndex will return the next available account index
-func (ab *accountBifield) assignFreeIndex() uint32 {
+func (ab *accountBitfield) assignFreeIndex() uint32 {
 	i, off := 0, -1
 
 	// Go through all bitmaps in random order to find a free index
@@ -943,7 +944,7 @@ func (ab *accountBifield) assignFreeIndex() uint32 {
 }
 
 // releaseIndex will unset the bit corresponding to given index
-func (ab *accountBifield) releaseIndex(index uint32) {
+func (ab *accountBitfield) releaseIndex(index uint32) {
 	i := index / 64
 	pos := index % 64
 	var mask uint64 = ^(1 << pos)
@@ -954,7 +955,7 @@ func (ab *accountBifield) releaseIndex(index uint32) {
 // Upon account expiry, its index will be freed up by unsetting the
 // corresponding bit. When a new account is opened, it will grab the first
 // available index, effectively recycling the expired account indexes.
-func (ab *accountBifield) buildIndex(accounts map[string]*account) {
+func (ab *accountBitfield) buildIndex(accounts map[string]*account) {
 	var maxIndex uint32
 	for _, acc := range accounts {
 		if acc.index > maxIndex {

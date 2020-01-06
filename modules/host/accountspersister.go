@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -26,10 +27,6 @@ const (
 
 	// fingerprintSize is the fixed fingerprint size in bytes
 	fingerprintSize = 1 << 5 // 32 bytes
-
-	// filenames for fingerprint buckets
-	fingerprintsCurrFilename = "fingerprintsbucket_current.db"
-	fingerprintsNxtFilename  = "fingerprintsbucket_next.db"
 
 	// bucketBlockRange defines the range of expiry block heights the
 	// fingerprints contained in a single bucket can span
@@ -100,11 +97,10 @@ type (
 	// to ensure the files don't grow too large in size. It has its own mutex to
 	// avoid lock contention on the indexLocks.
 	fingerprintManager struct {
-		staticCurrentPath string
-		staticNextPath    string
-
-		current modules.File
-		next    modules.File
+		current     modules.File
+		currentPath string
+		next        modules.File
+		nextPath    string
 
 		staticSaveFingerprintsQueue saveFingerprintsQueue
 		wakeChan                    chan struct{}
@@ -163,22 +159,24 @@ func (h *Host) newAccountsPersister(am *accountManager) (_ *accountsPersister, e
 // newFingerprintManager will create a new fingerprint manager, this manager
 // uses two files to store the fingerprints on disk.
 func (ap *accountsPersister) newFingerprintManager() (_ *fingerprintManager, err error) {
+	currFilename, nextFilename := fingerprintsFilenames(ap.h.blockHeight)
+
 	fm := &fingerprintManager{
-		staticCurrentPath:           filepath.Join(ap.h.persistDir, fingerprintsCurrFilename),
-		staticNextPath:              filepath.Join(ap.h.persistDir, fingerprintsNxtFilename),
+		currentPath:                 filepath.Join(ap.h.persistDir, currFilename),
+		nextPath:                    filepath.Join(ap.h.persistDir, nextFilename),
 		staticSaveFingerprintsQueue: saveFingerprintsQueue{queue: make([]fingerprint, 0)},
 		wakeChan:                    make(chan struct{}, 1),
 		h:                           ap.h,
 	}
 
-	fm.current, err = ap.openFingerprintBucket(fm.staticCurrentPath)
+	fm.current, err = ap.openFingerprintBucket(fm.currentPath)
 	if err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.staticCurrentPath))
+		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.currentPath))
 	}
 
-	fm.next, err = ap.openFingerprintBucket(fm.staticNextPath)
+	fm.next, err = ap.openFingerprintBucket(fm.nextPath)
 	if err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.staticNextPath))
+		return nil, errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket at path %s", fm.nextPath))
 	}
 
 	return fm, nil
@@ -205,8 +203,8 @@ func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
 		fm.mu.Lock()
 		defer fm.mu.Unlock()
 		return errors.Compose(
-			ap.loadFingerprints(fm.staticCurrentPath, fingerprints),
-			ap.loadFingerprints(fm.staticNextPath, fingerprints),
+			ap.loadFingerprints(fm.currentPath, fingerprints),
+			ap.loadFingerprints(fm.nextPath, fingerprints),
 		)
 	}()
 	if err != nil {
@@ -288,26 +286,38 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	defer fm.mu.Unlock()
 
 	// Close the current fingerprint files, this syncs the files before closing
-	if err = fm.close(); err != nil {
+	if err = fm.syncAndClose(); err != nil {
 		return errors.AddContext(err, "could not close fingerprint files")
 	}
 
-	// Swap the fingerprints by renaming the next bucket
-	if err = os.Rename(fm.staticNextPath, fm.staticCurrentPath); err != nil {
-		return errors.AddContext(err, "could not rename next fingerprint bucket")
-	}
+	// Calculate new filenames for the fingerprint buckets
+	currFilename, nextFilename := fingerprintsFilenames(ap.h.blockHeight)
 
 	// Reopen files
-	fm.current, err = ap.openFingerprintBucket(fm.staticCurrentPath)
+	fm.currentPath = filepath.Join(ap.h.persistDir, currFilename)
+	fm.current, err = ap.openFingerprintBucket(fm.currentPath)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.staticCurrentPath))
-	}
-	fm.next, err = ap.openFingerprintBucket(fm.staticNextPath)
-	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.staticNextPath))
+		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.currentPath))
 	}
 
+	fm.nextPath = filepath.Join(ap.h.persistDir, nextFilename)
+	fm.next, err = ap.openFingerprintBucket(fm.nextPath)
+	if err != nil {
+		return errors.AddContext(err, fmt.Sprintf("could not open fingerprint bucket, path %s", fm.nextPath))
+	}
+
+	// Remove old fingerprint buckets in a separate thread
+	go fm.threadedRemoveOldFingerprintBuckets()
+
 	return nil
+}
+
+// callClose will cleanly shutdown the account persister's open file handles
+func (ap *accountsPersister) callClose() error {
+	return errors.Compose(
+		ap.staticFingerprintManager.syncAndClose(),
+		syncAndClose(ap.accounts),
+	)
 }
 
 // managedLockIndex grabs a lock on an (account) index.
@@ -377,26 +387,15 @@ func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metada
 	// If it did not exist prior to calling this method, write header metadata.
 	// Otherwise verify the metadata header.
 	if os.IsNotExist(statErr) {
-		_, err := file.Write(encoding.Marshal(metadata))
-		if err != nil {
-			return nil, err
-		}
+		_, err = file.Write(encoding.Marshal(metadata))
 	} else {
-		_, err := persist.VerifyMetadataHeader(file, metadata)
-		if err != nil {
-			return nil, err
-		}
+		_, err = persist.VerifyMetadataHeader(file, metadata)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return file, nil
-}
-
-// close will cleanly shutdown the account persister's open file handles
-func (ap *accountsPersister) close() error {
-	return errors.Compose(
-		ap.staticFingerprintManager.close(),
-		syncAndClose(ap.accounts),
-	)
 }
 
 // loadAccounts will read the given file and load the accounts into the map
@@ -407,8 +406,7 @@ func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*accou
 	}
 	nBytes := int64(len(bytes))
 
-	var index uint32
-	for ; ; index++ {
+	for index := uint32(0); ; index++ {
 		accLocation := location(index)
 		if accLocation >= nBytes {
 			break
@@ -531,8 +529,45 @@ func (fm *fingerprintManager) staticWake() {
 	}
 }
 
-// close will safely close the current and next bucket file
-func (fm *fingerprintManager) close() error {
+// threadedRemoveOldFingerprintBuckets will remove the fingerprint buckets that
+// are not active and can be safely removed.
+func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
+	if err := fm.h.tg.Add(); err != nil {
+		return
+	}
+	defer fm.h.tg.Done()
+
+	// Grab some variables
+	fm.mu.Lock()
+	current := fm.currentPath
+	next := fm.nextPath
+	fm.mu.Unlock()
+
+	isOld := func(name string) bool {
+		path := filepath.Join(fm.h.persistDir, name)
+		return strings.HasPrefix(name, "fingerprintsbucket") && path != current && path != next
+	}
+
+	// Read directory
+	fileinfos, err := ioutil.ReadDir(fm.h.persistDir)
+	if err != nil {
+		fm.h.log.Fatal("Failed to remove old fingerprint buckets, could not read directory", err)
+		return
+	}
+
+	// Iterate over directory
+	for _, fi := range fileinfos {
+		if isOld(fi.Name()) {
+			err := os.Remove(filepath.Join(fm.h.persistDir, fi.Name()))
+			if err != nil {
+				fm.h.log.Fatal("Failed to remove old fingerprint buckets", err)
+			}
+		}
+	}
+}
+
+// syncAndClose will safely close the current and next bucket file
+func (fm *fingerprintManager) syncAndClose() error {
 	return errors.Compose(
 		syncAndClose(fm.current),
 		syncAndClose(fm.next),
@@ -582,6 +617,17 @@ func currentBucketRange(currentBlockHeight types.BlockHeight) (min, max types.Bl
 	threshold := cbh + (bbr - (cbh % bbr))
 	min = types.BlockHeight(threshold - bucketBlockRange)
 	max = types.BlockHeight(threshold) - 1
+	return
+}
+
+// fingerprintsFilenames will calculate the filenames for the current and next
+// fingerprints bucket.
+func fingerprintsFilenames(currentBlockHeight types.BlockHeight) (current, next string) {
+	min, max := currentBucketRange(currentBlockHeight)
+	current = fmt.Sprintf("fingerprintsbucket_%v-%v.db", min, max)
+	min += bucketBlockRange
+	max += bucketBlockRange
+	next = fmt.Sprintf("fingerprintsbucket_%v-%v.db", min, max)
 	return
 }
 

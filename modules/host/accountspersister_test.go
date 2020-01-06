@@ -245,6 +245,9 @@ func TestFingerprintsRotate(t *testing.T) {
 	_, has1 = data.fingerprints[fp1]
 	_, has2 = data.fingerprints[fp2]
 	if !(has1 == false && has2 == true) {
+		t.Log("Found fp1", fp1, has1)
+		t.Log("Found fp2", fp2, has2)
+		t.Log(data)
 		t.Fatal("Unexpected contents of fingerprint buckets on disk")
 	}
 }
