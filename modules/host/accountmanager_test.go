@@ -1057,7 +1057,7 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 	}
 
 	// Mock a consensus change that indicates the host is not synced
-	am.callConsensusChanged(modules.ConsensusChange{Synced: false})
+	am.callConsensusChanged(modules.ConsensusChange{Synced: false}, 0, 1)
 
 	// Verify withdrawal is active
 	msg, sig = prepareWithdrawal(accountID, oneCurrency, am.h.blockHeight, sk)

@@ -391,9 +391,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 
 // callConsensusChanged is called by the host whenever it processed a change to
 // the consensus. We use it to remove fingerprints which have been expired.
-func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
-	bh := am.h.BlockHeight()
-
+func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHeight, newHeight types.BlockHeight) {
 	// If the host is not synced, withdrawals are disabled. In this case we also
 	// do not want to rotate the fingerprints.
 	am.mu.Lock()
@@ -404,10 +402,13 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange) {
 	}
 	am.withdrawalsInactive = false
 
-	// Only if the current block height is equal to the minimum block height of
-	// the current bucket range, we want to rotate the buckets.
-	min, _ := currentBucketRange(bh)
-	if min != bh {
+	// Rotate only if the new block height is larger than the old block height,
+	// and the min height is between the old and new blockheight. We have to
+	// take into account the old and new height due to blockchain reorgs that
+	// could cause the blockheight to increase (or decrease) by multiple blocks
+	// at a time, potentially skipping over the min height of the bucket.
+	min, _ := currentBucketRange(newHeight)
+	if !(oldHeight < newHeight && oldHeight < min && min <= newHeight) {
 		am.mu.Unlock()
 		return
 	}
