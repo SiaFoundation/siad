@@ -121,7 +121,7 @@ func (fs *fanoutStreamer) ReadAt(b []byte, offset int64) (int, error) {
 		return 0, errors.New("request needs to be aligned to SuggestedRequestSize()")
 	}
 	// Must not go beyond the end of the file.
-	if uint64(offset) + uint64(len(b)) > fs.staticLayout.filesize {
+	if uint64(offset)+uint64(len(b)) > fs.staticLayout.filesize {
 		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
 	}
 
@@ -147,7 +147,7 @@ func (fs *fanoutStreamer) SuggestedRequestSize() uint64 {
 // network.
 func (fs *fanoutStreamer) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
 	// Input verification.
-	if chunkIndex * fs.staticChunkSize >= fs.staticLayout.filesize {
+	if chunkIndex*fs.staticChunkSize >= fs.staticLayout.filesize {
 		return nil, errors.New("requesting a chunk index that does not exist within the file")
 	}
 	if int(fs.staticLayout.fanoutDataPieces) > len(fs.staticChunks[chunkIndex]) {

@@ -197,12 +197,12 @@ func (s *stream) Read(b []byte) (int, error) {
 		return 0, errors.AddContext(dataSection.externErr, "read call failed because data section fetch failed")
 	}
 	// Copy the data into the read request.
-	copy(b, dataSection.externData[offsetInSection:offsetInSection+bytesToRead])
-	s.offset += bytesToRead
+	n := copy(b, dataSection.externData[offsetInSection:offsetInSection+bytesToRead])
+	s.offset += uint64(n)
 
 	// Send the call to prepare the next data section.
 	s.prepareOffset()
-	return int(bytesToRead), nil
+	return n, nil
 }
 
 // Seek will move the read head of the stream to the provided offset.
