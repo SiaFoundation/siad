@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
@@ -188,6 +189,20 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return true
+	}
+
+	// In case of a repair we confirm that root of the piece we are uploading is
+	// the same as the root of the piece we are repairing.
+	zeroHash := crypto.Hash{}
+	expectedHash := uc.verifyPieceRoot[pieceIndex]
+	if expectedHash != zeroHash {
+		hash := crypto.MerkleRoot(uc.physicalChunkData[pieceIndex])
+		if hash != expectedHash {
+			failureErr := fmt.Errorf("merkleroot of piece to repair doesn't match root of already uploaded pieces: %v %v", expectedHash, hash)
+			w.renter.log.Debugln(failureErr)
+			w.managedUploadFailed(uc, pieceIndex, failureErr)
+			return true
+		}
 	}
 
 	// Perform the upload, and update the failure stats based on the success of

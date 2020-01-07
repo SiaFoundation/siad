@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -423,6 +424,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		stuck:         stuck,
 
 		physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
+		verifyPieceRoot:   make([]crypto.Hash, entry.ErasureCode().NumPieces()),
 
 		pieceUsage:  make([]bool, entry.ErasureCode().NumPieces()),
 		unusedHosts: make(map[string]struct{}, len(hosts)),
@@ -473,6 +475,12 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 				// reporting.
 				delete(uuc.unusedHosts, piece.HostPubKey.String())
 			}
+		}
+		// If there are already pieces uploaded for that set, we remember the
+		// root of the uploaded pieces in order to be able to later sanity check
+		// repairs.
+		if len(pieceSet) > 0 {
+			uuc.verifyPieceRoot[pieceIndex] = pieceSet[0].MerkleRoot
 		}
 	}
 	// Now that we have calculated the completed pieces for the chunk we can
