@@ -305,7 +305,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 
 		// Call Peek to make sure that there's more data for another shard.
 		peek, err = ss.Peek()
-		if err == io.EOF {
+		if err == io.EOF || err == io.UnexpectedEOF {
 			break
 		} else if err != nil {
 			return nil, ss.err
