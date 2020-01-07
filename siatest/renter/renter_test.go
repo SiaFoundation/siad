@@ -889,8 +889,8 @@ func testLocalRepairCorrupted(t *testing.T, tg *siatest.TestGroup) {
 	renterNode := tg.Renters()[0]
 
 	// Check that we have enough hosts for this test.
-	if len(tg.Hosts()) < 2 {
-		t.Fatal("This test requires at least 2 hosts")
+	if len(tg.Hosts()) < 3 {
+		t.Fatal("This test requires at least 3 hosts")
 	}
 
 	// Set fileSize and redundancy for upload
