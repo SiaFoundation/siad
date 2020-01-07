@@ -3611,6 +3611,109 @@ Location on disk that the file will be downloaded to.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /renter/fuse [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/renter/fuse"
+```
+
+Lists the set of folders that have been mounted to the user's filesystem and
+which mountpoints have been used for each mount.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "mountpoints": [ // []modules.MountInfo
+    {
+      "mountpoint": "/home/user/siavideos", // string
+      "siapath": "/videos",                 // modules.SiaPath
+
+      "mountoptions": { // []modules.MountOptions
+          "allowother": false, // bool
+          "readonly": true,    // bool
+        },
+    },
+  ]
+}
+```
+**mountpoint** | string  
+The system path that is being used to mount the fuse folder.
+
+**siapath** | string  
+The siapath that has been mounted to the mountpoint.
+
+## /renter/fuse/mount [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/fuse/mount?readonly=true"
+```
+
+Mounts a Sia directory to the local filesystem using FUSE.
+
+### Query String Parameters
+### REQUIRED
+**mount** | string  
+Location on disk to use as the mountpoint.
+
+**readonly** | bool  
+Whether the directory should be mounted as ReadOnly. Currently, readonly is a
+required parameter and must be set to true.
+
+### OPTIONAL
+**siapath** | string  
+Which path should be mounted to the filesystem. If left blank, the user's home
+directory will be used.
+
+**allowother** | boolean  
+By default, only the system user that mounted the fuse directory will be allowed
+to interact with the directory. Often, applications like Plex run as their own
+user, and therefore by default are banned from viewing or otherwise interacting
+with the mounted folder. Setting 'allowother' to true will allow other users to
+see and interact with the mounted folder.
+
+On Linux, if 'allowother' is set to true, /etc/fuse.conf needs to be modified so
+that 'user_allow_other' is set. Typically this involves uncommenting a single
+line of code, see the example below of an /etc/fuse.conf file that has
+'use_allow_other' enabled.
+
+```bash
+# /etc/fuse.conf - Configuration file for Filesystem in Userspace (FUSE)
+
+# Set the maximum number of FUSE mounts allowed to non-root users.
+# The default is 1000.
+#mount_max = 1000
+
+# Allow non-root users to specify the allow_other or allow_root mount options.
+user_allow_other
+```
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+
+## /renter/fuse/unmount [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/fuse/unmount?mount=/home/user/videos"
+```
+
+### Query String Parameters
+### REQUIRED
+**mount** | string  
+Mountpoint that was used when mounting the fuse directory.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /renter/recoveryscan [POST]
 > curl example  
 
