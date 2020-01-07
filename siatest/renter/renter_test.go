@@ -81,6 +81,7 @@ func TestRenterOne(t *testing.T) {
 	subTests := []test{
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
+		{"TestLocalRepairCorrupted", testLocalRepairCorrupted},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
@@ -878,6 +879,67 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// We should be able to download
 	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
+	}
+}
+
+// testLocalRepairCorrupted tests if a renter repairs a file from disk after the
+// file on disk got corrupted.
+func testLocalRepairCorrupted(t *testing.T, tg *siatest.TestGroup) {
+	// Grab the first of the group's renters
+	renterNode := tg.Renters()[0]
+
+	// Check that we have enough hosts for this test.
+	if len(tg.Hosts()) < 2 {
+		t.Fatal("This test requires at least 2 hosts")
+	}
+
+	// Set fileSize and redundancy for upload
+	fileSize := int(modules.SectorSize)
+	dataPieces := uint64(2)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Upload file
+	localFile, remoteFile, err := renterNode.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take down hosts until enough are missing that the chunks get marked as
+	// stuck after repairs.
+	var hostsRemoved uint64
+	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) < renter.AlertSiafileLowRedundancyThreshold; hostsRemoved++ {
+		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	expectedRedundancy := float64(dataPieces+parityPieces-hostsRemoved) / float64(dataPieces)
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// We should still be able to download
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
+		t.Fatal("Failed to download file", err)
+	}
+	// Corrupt the local file.
+	b, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(localFile.Path(), fastrand.Bytes(len(b)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Bring up hosts to replace the ones that went offline.
+	for hostsRemoved > 0 {
+		hostsRemoved--
+		_, err = tg.AddNodes(node.HostTemplate)
+		if err != nil {
+			t.Fatal("Failed to create a new host", err)
+		}
+	}
+	// Wait a second and see if the redundancy is still 'expectedRedundancy'.
+	time.Sleep(time.Second)
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Fatal("File wasn't repaired", err)
 	}
 }
 
