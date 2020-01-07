@@ -233,7 +233,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
 	var peek []byte
-	chunks := make([]*unfinishedUploadChunk, 0)
+	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing connectivity
 		// during the upload.
