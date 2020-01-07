@@ -106,7 +106,7 @@ type unfinishedUploadChunk struct {
 // staticAvailable returns whether or not the chunk is available yet on the Sia
 // network.
 func (uc *unfinishedUploadChunk) staticAvailable() bool {
-	select{
+	select {
 	case <-uc.availableChan:
 		return true
 	default:
