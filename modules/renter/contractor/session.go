@@ -224,7 +224,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	}
 	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
-		return nil, errors.AddContext(err, "error geting host from hostdb:")
+		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	} else if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {

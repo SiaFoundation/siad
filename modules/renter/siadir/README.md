@@ -14,17 +14,17 @@ directory tree
 
 ## Subsystems
 The following subsystems help the SiaDir module execute its responsibilities:
- - [Persistance Subsystem](#persistance-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
  - [File Format Subsystem](#file-format-subsystem)
  - [SiaDirSet Subsystem](#siadirset-subsystem)
  - [DirReader Subsystem](#dirreader-subsystem)
 
- ### Persistance Subsystem
+ ### Persistence Subsystem
  **Key Files**
 - [persist.go](./persist.go)
 - [persistwal.go](./persistwal.go)
 
-The Persistance subsystem is responsible for the disk interaction with the
+The Persistence subsystem is responsible for the disk interaction with the
 `.siadir` files and ensuring safe and performant ACID operations by using the
 [writeaheadlog](https://gitlab.com/NebulousLabs/writeaheadlog) package. There
 are two WAL updates that are used, deletion and metadata updates.

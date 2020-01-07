@@ -39,7 +39,7 @@ func StartCPUProfile(profileDir, identifier string) error {
 	cpuActive = true
 	cpuLock.Unlock()
 
-	// Start profiling into the profile dir, using the identifer. The timestamp
+	// Start profiling into the profile dir, using the identifier. The timestamp
 	// of the start time of the profiling will be included in the filename.
 	cpuProfileFile, err := os.Create(filepath.Join(profileDir, "cpu-profile-"+identifier+"-"+time.Now().Format(time.RFC3339Nano)+".prof"))
 	if err != nil {
@@ -97,7 +97,7 @@ func StartTrace(traceDir, identifier string) error {
 	traceActive = true
 	traceLock.Unlock()
 
-	// Start trace into the trace dir, using the identifer. The timestamp
+	// Start trace into the trace dir, using the identifier. The timestamp
 	// of the start time of the trace will be included in the filename.
 	traceFile, err := os.Create(filepath.Join(traceDir, "trace-"+identifier+"-"+time.Now().Format(time.RFC3339Nano)+".trace"))
 	if err != nil {

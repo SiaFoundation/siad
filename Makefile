@@ -95,6 +95,11 @@ lint-all:
 	GO111MODULE=on go run ./analysis/cmd/analyze.go -- $(pkgs)
 	golangci-lint run -c .golangci.yml
 
+# markdown-spellcheck runs codespell on all markdown files that are not
+# vendored.
+markdown-spellcheck:
+	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
+
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck:
 	misspell -error .

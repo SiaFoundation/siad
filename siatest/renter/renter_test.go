@@ -557,7 +557,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check directory
-	rgd, err := r.RenterGetDir(rd.SiaPath())
+	rgd, err := r.RenterDirGet(rd.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,7 +599,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rgd, err = r.RenterGetDir(siaPath)
+	rgd, err = r.RenterDirGet(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -616,7 +616,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rgd, err = r.RenterGetDir(siaPath)
+	rgd, err = r.RenterDirGet(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,7 +638,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Renamed directory should have 0 files and 1 sub directory.
-	rgd, err = r.RenterGetDir(newSiaPath)
+	rgd, err = r.RenterDirGet(newSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -650,7 +650,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Subdir of renamed dir should have 0 files and 1 sub directory.
-	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	rgd, err = r.RenterDirGet(rgd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -662,7 +662,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// SubSubdir of renamed dir should have 1 file and 0 sub directories.
-	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	rgd, err = r.RenterDirGet(rgd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1151,7 +1151,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 
-	// Upload file, creating a piece for each host in the group
+	// Upload a file, then try to overwrite the file with the force flag set.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
@@ -1164,7 +1164,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 
-	// Upload file, creating a piece for each host in the group
+	// Upload file, then try to overwrite the file without the force flag set.
 	dataPieces = uint64(1)
 	parityPieces = uint64(len(tg.Hosts())) - dataPieces
 	fileSize = 100 + siatest.Fuzz()
@@ -1175,6 +1175,32 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
 	if err == nil {
 		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
+	if err == nil {
+		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 }
 
@@ -3099,13 +3125,36 @@ func TestUploadAfterDelete(t *testing.T) {
 	// closing the entry. That shouldn't cause issues.
 	for i := 0; i < 5; i++ {
 		// Delete the file.
-		if err := renter.RenterDeletePost(remoteFile.SiaPath()); err != nil {
+		if err := renter.RenterFileDeletePost(remoteFile.SiaPath()); err != nil {
 			t.Fatal(err)
 		}
 		// Upload the file again right after deleting it.
 		if _, err := renter.UploadBlocking(localFile, dataPieces, parityPieces, false); err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// Create an empty directory on the renter called 'dir.sia'. This triggers
+	// an edge case where calling /renter/delete on that directory in an old
+	// version of the code would cause the directory to be deleted.
+	sp, err := modules.NewSiaPath("dir.sia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = renter.RenterDirCreatePost(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call delete file on that new dir.
+	err = renter.RenterFileDeletePost(sp)
+	if err == nil {
+		t.Fatal("calling 'delete file' on empty dir should return an error")
+	}
+	// Check that the dir still exists.
+	_, err = renter.RenterDirGet(sp)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -4245,7 +4294,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// The fileupload should have created a dir. That dir should have the same
 	// permissions as the file.
-	rd, err := renter.RenterGetDir(dirSP)
+	rd, err := renter.RenterDirGet(dirSP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4262,7 +4311,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
 		t.Fatal(err)
 	}
-	rd, err = renter.RenterGetDir(dir2SP)
+	rd, err = renter.RenterDirGet(dir2SP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4276,7 +4325,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
 		t.Fatal(err)
 	}
-	rd, err = renter.RenterGetDir(dir3SP)
+	rd, err = renter.RenterDirGet(dir3SP)
 	if err != nil {
 		t.Fatal(err)
 	}
