@@ -40,6 +40,10 @@ var (
 	// initial contract funds and the transaction fee
 	maxInitialContractFundsToFeeRatio = uint64(5)
 
+	// minInitialContractFundsToFeeRatio is the minimum ratio between the
+	// initial contract funds and the transaction fee
+	minInitialContractFundsToFeeRatio = uint64(2)
+
 	// MinContractFundRenewalThreshold defines the ratio of remaining funds to
 	// total contract cost below which the contractor will prematurely renew a
 	// contract.

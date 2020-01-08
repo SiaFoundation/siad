@@ -1149,18 +1149,8 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Estimate initial contract funding
 	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
 	c.mu.RUnlock()
-	// Calculate the anticipated transaction fee.
-	_, maxFee := c.tpool.FeeEstimation()
-	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
-	// Sanity check that the initial funding is not more than 5x the txnFee.
-	// This is to protect against increases to allowances being used up to fast
-	// and not being able to spread the funds across new contracts properly
-	if initialContractFunds.Cmp(txnFee.Mul64(maxInitialContractFundsToFeeRatio)) > 0 {
-		org := initialContractFunds
-		initialContractFunds = txnFee.Mul64(maxInitialContractFundsToFeeRatio)
-		c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, TxnFee %v, New Value %v", org.HumanString(), txnFee.HumanString(), initialContractFunds.HumanString())
-	}
 
+	// Get Hosts
 	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
@@ -1168,9 +1158,28 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
 
+	// Calculate the anticipated transaction fee.
+	_, maxFee := c.tpool.FeeEstimation()
+	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
+		var contractFunds types.Currency
+		// Calculate minFunding with hose
+		minFunding := host.ContractPrice.Add(txnFee)
+		// Sanity check that the initial funding is reasonable compared to the txnFee.
+		// This is to protect against increases to allowances being used up to fast
+		// and not being able to spread the funds across new contracts properly
+		if initialContractFunds.Cmp(minFunding.Mul64(maxInitialContractFundsToFeeRatio)) > 0 {
+			contractFunds = minFunding.Mul64(maxInitialContractFundsToFeeRatio)
+			c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, minFunding %v, New Value %v", initialContractFunds.HumanString(), minFunding.HumanString(), contractFunds.HumanString())
+		}
+		if initialContractFunds.Cmp(minFunding.Mul64(minInitialContractFundsToFeeRatio)) < 0 {
+			contractFunds = minFunding.Mul64(maxInitialContractFundsToFeeRatio)
+			c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, minFunding %v, New Value %v", initialContractFunds.HumanString(), minFunding.HumanString(), contractFunds.HumanString())
+		}
+
 		// If no more contracts are needed, break.
 		if neededContracts <= 0 {
 			break
@@ -1184,7 +1193,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Determine if we have enough money to form a new contract.
-		if fundsRemaining.Cmp(initialContractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+		if fundsRemaining.Cmp(contractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
 			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
@@ -1199,7 +1208,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		// Attempt forming a contract with this host.
 		start := time.Now()
-		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
+		fundsSpent, newContract, err := c.managedNewContract(host, contractFunds, endHeight)
 		if err != nil {
 			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue
