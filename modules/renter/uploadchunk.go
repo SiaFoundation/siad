@@ -463,9 +463,9 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		} else {
 			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		}
-		if !uc.available {
-			close(uc.availableChan)
+		if !uc.staticAvailable() {
 			uc.err = errors.New("unable to upload file, file is not available on the newtork")
+			close(uc.availableChan)
 		}
 		uc.released = true
 	}
