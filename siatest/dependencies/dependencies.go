@@ -73,6 +73,14 @@ type (
 	DependencyPostponeWritePiecesRecovery struct {
 		modules.ProductionDependencies
 	}
+
+	// DependencyWithDisableAndEnable adds the ability to disable the dependency
+	DependencyWithDisableAndEnable struct {
+		disabled bool
+		modules.ProductionDependencies
+		mu  sync.Mutex
+		str string
+	}
 )
 
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
@@ -124,6 +132,12 @@ func NewDependencyInterruptUploadAfterSendingRevision() *DependencyInterruptOnce
 	return newDependencyInterruptOnceOnKeyword("InterruptUploadAfterSendingRevision")
 }
 
+// NewDependencyContractRenewalFail creates a new dependency that simulates
+// getting an error while renewing a contract.
+func NewDependencyContractRenewalFail() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("ContractRenewFail")
+}
+
 // newDependencyInterruptOnceOnKeyword creates a new
 // DependencyInterruptOnceOnKeyword from a given disrupt key.
 func newDependencyInterruptOnceOnKeyword(str string) *DependencyInterruptOnceOnKeyword {
@@ -140,6 +154,14 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 			str: str,
 		},
 		n: n,
+	}
+}
+
+// newDependencywithDisableAndEnable creates a new
+// DependencyWithDisableAndEnable from a given disrupt key.
+func newDependencywithDisableAndEnable(str string) *DependencyWithDisableAndEnable {
+	return &DependencyWithDisableAndEnable{
+		str: str,
 	}
 }
 
@@ -193,6 +215,14 @@ func (d *DependencyInterruptAfterNCalls) Disrupt(s string) bool {
 	return false
 }
 
+// Disrupt returns true if the correct string is provided and the dependency has
+// not been disabled.
+func (d *DependencyWithDisableAndEnable) Disrupt(s string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return !d.disabled && s == d.str
+}
+
 // Fail causes the next call to Disrupt to return true if the correct string is
 // provided.
 func (d *DependencyInterruptOnceOnKeyword) Fail() {
@@ -205,6 +235,20 @@ func (d *DependencyInterruptOnceOnKeyword) Fail() {
 func (d *DependencyInterruptOnceOnKeyword) Disable() {
 	d.mu.Lock()
 	d.f = false
+	d.mu.Unlock()
+}
+
+// Disable sets the flag to true to make sure that the dependency will fail.
+func (d *DependencyWithDisableAndEnable) Disable() {
+	d.mu.Lock()
+	d.disabled = true
+	d.mu.Unlock()
+}
+
+// Enable sets the flag to false to make sure that the dependency won't fail.
+func (d *DependencyWithDisableAndEnable) Enable() {
+	d.mu.Lock()
+	d.disabled = false
 	d.mu.Unlock()
 }
 

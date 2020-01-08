@@ -68,33 +68,19 @@ func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
 	}
 	// The renter should have 1 alert once we have mined enough blocks to trigger a
 	// renewal.
+	expectedAlert := modules.Alert{
+		Severity: modules.SeverityWarning,
+		Msg:      contractor.AlertMSGWalletLockedDuringMaintenance,
+		Cause:    modules.ErrLockedWallet.Error(),
+		Module:   "contractor",
+	}
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Mine a block to trigger contract maintenance.
 		if err := tg.Miners()[0].MineBlock(); err != nil {
 			return err
 		}
-		dag, err = r.DaemonAlertsGet()
-		if err != nil {
-			return err
-		}
-		if len(dag.Alerts) != 1 {
-			return fmt.Errorf("Expected 1 alert but got %v", len(dag.Alerts))
-		}
 		// Make sure the alert is sane.
-		alert := dag.Alerts[0]
-		if alert.Severity != modules.SeverityWarning {
-			t.Fatal("alert has wrong severity")
-		}
-		if alert.Msg != contractor.AlertMSGWalletLockedDuringMaintenance {
-			t.Fatal("alert has wrong msg", alert.Msg)
-		}
-		if alert.Cause != modules.ErrLockedWallet.Error() {
-			t.Fatal("alert has wrong cause", alert.Cause)
-		}
-		if alert.Module != "contractor" {
-			t.Fatal("alert module expected to be contractor but was ", alert.Module)
-		}
-		return nil
+		return r.IsAlertRegistered(expectedAlert)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -416,7 +402,7 @@ func TestRenterContracts(t *testing.T) {
 	endHeight := rc.ActiveContracts[0].EndHeight
 
 	// Renew contracts by running out of funds
-	startingUploadSpend, err := siatest.DrainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	startingUploadSpend, err := siatest.DrainContractsByUploading(r, tg)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -1038,7 +1024,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	miner := tg.Miners()[0]
 	// Drain the contracts until they are supposed to no longer be good for
 	// uploading.
-	_, err = siatest.DrainContractsByUploading(renter, tg, contractor.MinContractFundUploadThreshold)
+	_, err = siatest.DrainContractsByUploading(renter, tg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1116,6 +1102,18 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renter := nodes[0]
 	// Wait for the alert to be registered.
 	numRetries := 0
+	lowFundsAlert := modules.Alert{
+		Cause:    contractor.AlertCauseInsufficientFunds,
+		Msg:      contractor.AlertMSGAllowanceLowFunds,
+		Module:   "contractor",
+		Severity: modules.SeverityWarning,
+	}
+	maintenanceRequired := modules.Alert{
+		Cause:    contractor.AlertCauseInsufficientFunds,
+		Msg:      contractor.AlertMSGContractMaintenanceRequired,
+		Module:   "contractor",
+		Severity: modules.SeverityWarning,
+	}
 	err = build.Retry(100, 600*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			if err := tg.Miners()[0].MineBlock(); err != nil {
@@ -1123,18 +1121,13 @@ func TestLowAllowanceAlert(t *testing.T) {
 			}
 		}
 		numRetries++
-		dag, err := renter.DaemonAlertsGet()
+		err = renter.IsAlertRegistered(lowFundsAlert)
 		if err != nil {
-			t.Fatal(err)
+			return errors.AddContext(err, "Low Funds alert not registered")
 		}
-		var found bool
-		for _, alert := range dag.Alerts {
-			if alert.Msg == contractor.AlertMSGAllowanceLowFunds {
-				found = true
-			}
-		}
-		if !found {
-			return errors.New("alert wasn't registered")
+		err = renter.IsAlertRegistered(maintenanceRequired)
+		if err != nil {
+			return errors.AddContext(err, "Maintenance Required alert not registered")
 		}
 		return nil
 	})
@@ -1152,14 +1145,30 @@ func TestLowAllowanceAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	renter = nodes[0]
-	// Wait for the alert to be registered.
-	alert := modules.Alert{
-		Cause:    "",
-		Module:   "contractor",
-		Msg:      contractor.AlertMSGAllowanceLowFunds,
-		Severity: modules.SeverityWarning,
+	// Drain contracts to force refresh
+	_, err = siatest.DrainContractsByUploading(renter, tg)
+	if err != nil {
+		t.Fatal(err)
 	}
-	err = renter.IsAlertRegistered(alert)
+	// Wait for the alert to be registered.
+	maintenanceRequired.Cause = contractor.AlertCauseFailedContractRenewal
+	err = build.Retry(100, 600*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		err = renter.IsAlertRegistered(lowFundsAlert)
+		if err != nil {
+			return errors.AddContext(err, "Low Funds alert not registered")
+		}
+		err = renter.IsAlertRegistered(maintenanceRequired)
+		if err != nil {
+			return errors.AddContext(err, "Maintenance Required alert not registered")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2050,5 +2059,143 @@ func TestWatchdogExtraDependencyRegression(t *testing.T) {
 		if status.DoubleSpendHeight != 0 {
 			t.Fatal("Found unexpected double spends")
 		}
+	}
+}
+
+// TestContractRenewErrorAlert tests that if a contract is not renewed properly
+// it will register an alert.
+func TestContractMaintenanceRequiredAlert(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Add a renter which won't be able to renew a contract.
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Period = 10
+	renterParams.Allowance.RenewWindow = 5
+	deps := dependencies.NewDependencyContractRenewalFail()
+	renterParams.ContractorDeps = deps
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// The renter shouldn't have any alerts.
+	dag, err := r.DaemonAlertsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dag.Alerts) != 0 {
+		t.Fatal("number of alerts is not 0")
+	}
+
+	// Mine blocks to force contract renewal
+	err = siatest.RenewContractsByRenewWindow(r, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for alert
+	expectedAlert := modules.Alert{
+		Cause:    contractor.AlertCauseFailedContractRenewal,
+		Msg:      contractor.AlertMSGContractMaintenanceRequired,
+		Module:   "contractor",
+		Severity: modules.SeverityWarning,
+	}
+	m := tg.Miners()[0]
+	numTries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		numTries++
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		return r.IsAlertRegistered(expectedAlert)
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Disable the Dependency
+	deps.Disable()
+
+	// The alert should now be cleared
+	numTries = 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		numTries++
+		return r.IsAlertUnregistered(expectedAlert)
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Enable the dependency
+	deps.Enable()
+
+	// Drain contracts
+	_, err = siatest.DrainContractsByUploading(r, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm alert is registered for refresh
+	numTries = 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		numTries++
+		return r.IsAlertRegistered(expectedAlert)
+	})
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Disable the Dependency
+	deps.Disable()
+
+	// The alert should now be cleared
+	numTries = 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		numTries++
+		return r.IsAlertUnregistered(expectedAlert)
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }

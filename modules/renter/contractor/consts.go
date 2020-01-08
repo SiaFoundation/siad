@@ -8,6 +8,10 @@ import (
 
 // Constants related to the contractor's alerts.
 var (
+	// AlertCauseFailedContractRenewal indicates the the cause for the alert is
+	// that the contract renewal failed
+	AlertCauseFailedContractRenewal = "Failed to renew contract"
+
 	// AlertCauseInsufficientFunds indicates that the cause for the alert was
 	// insufficient funds remaining
 	AlertCauseInsufficientFunds = "Insufficient funds remaining"

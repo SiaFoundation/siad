@@ -606,6 +606,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 // managedRenewContract will use the renew instructions to renew a contract,
 // returning the amount of money that was put into the contract for renewal.
 func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal, currentPeriod types.BlockHeight, allowance modules.Allowance, blockHeight, endHeight types.BlockHeight) (fundsSpent types.Currency, err error) {
+	if c.staticDeps.Disrupt("ContractRenewFail") {
+		err = errors.New("Renew failure due to dependency")
+		return
+	}
 	// Pull the variables out of the renewal.
 	id := renewInstructions.id
 	amount := renewInstructions.amount
@@ -1062,7 +1066,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			// Register alert for this contract
-			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, err.Error(), modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseFailedContractRenewal, modules.SeverityWarning)
 			continue
 		} else {
 			c.log.Println("Renewal completed without error")
@@ -1105,7 +1109,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
 			// Register alert for this contract
-			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, err.Error(), modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseFailedContractRenewal, modules.SeverityWarning)
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 
