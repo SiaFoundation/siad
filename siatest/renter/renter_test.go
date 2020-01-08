@@ -2869,6 +2869,10 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 
 // TestSetFileTrackingPath tests if changing the repairPath of a file works.
 func TestSetFileTrackingPath(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// Create a group for the subtests
 	gp := siatest.GroupParams{
 		Hosts:   5,
