@@ -2,9 +2,7 @@
 package lockcheck
 
 import (
-	"bytes"
 	"go/ast"
-	"go/format"
 	"go/types"
 	"strings"
 
@@ -43,70 +41,91 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 		recv := pass.TypesInfo.Defs[fd.Recv.List[0].Names[0]]
-		if !containsMutex(pass, recv) {
+		mu, ok := containsMutex(pass, recv)
+		if !ok {
 			return
 		}
-		checkLockSafety(pass, fd, recv)
+		checkLockSafety(pass, fd, recv, mu)
 	})
 	return nil, nil
 }
 
-func containsMutex(pass *analysis.Pass, recv types.Object) bool {
+func isMutexType(t types.Type) bool {
+	return strings.HasSuffix(t.String(), "Mutex")
+}
+
+func containsMutex(pass *analysis.Pass, recv types.Object) (types.Object, bool) {
 	if p, ok := recv.Type().Underlying().(*types.Pointer); ok {
 		if s, ok := p.Elem().Underlying().(*types.Struct); ok {
 			for i := 0; i < s.NumFields(); i++ {
-				if strings.HasSuffix(s.Field(i).Type().String(), "Mutex") {
-					return true
+				if f := s.Field(i); isMutexType(f.Type()) && s.Field(i).Name() == "mu" {
+					return s.Field(i), true
 				}
 			}
 		}
 	}
-	return false
+	return nil, false
 }
 
-func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv types.Object) {
+func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv types.Object, recvMu types.Object) {
 	name := fd.Name.String()
 	recvIsPrivileged := managesOwnLocking(name)
 
 	cfgs := pass.ResultOf[ctrlflow.Analyzer].(*ctrlflow.CFGs)
 
-	formatNode := func(n ast.Node) string {
-		var buf bytes.Buffer
-		format.Node(&buf, pass.Fset, n)
-		return buf.String()
-	}
-	_ = formatNode
-
-	isLock := func(n ast.Node) bool {
-		if es, ok := n.(*ast.ExprStmt); ok {
-			if ce, ok := es.X.(*ast.CallExpr); ok {
-				if se, ok := ce.Fun.(*ast.SelectorExpr); ok {
-					if se.Sel.Name == "Lock" || se.Sel.Name == "RLock" {
-						if t := pass.TypesInfo.Types[se.X].Type; t != nil && strings.HasSuffix(t.String(), "Mutex") {
-							return true
+	isLock := func(block ast.Node) bool {
+		var found bool
+		ast.Inspect(block, func(n ast.Node) bool {
+			if found {
+				return false
+			}
+			// don't descend into DeferStmt or FuncLit
+			if _, ok := n.(*ast.DeferStmt); ok {
+				return false
+			} else if _, ok := n.(*ast.FuncLit); ok {
+				return false
+			}
+			if ce, ok := n.(*ast.CallExpr); ok {
+				if fnse, ok := ce.Fun.(*ast.SelectorExpr); ok {
+					if strings.HasSuffix(fnse.Sel.Name, "Lock") {
+						if se, ok := fnse.X.(*ast.SelectorExpr); ok {
+							if sel, ok := pass.TypesInfo.Selections[se]; ok && sel.Obj() == recvMu {
+								found = true
+							}
 						}
 					}
 				}
 			}
-		}
-		return false
+			return true
+		})
+		return found
 	}
-	isUnlock := func(n ast.Node) bool {
-		if _, ok := n.(*ast.DeferStmt); ok {
-			return false // ignore defered calls
-		}
-		if es, ok := n.(*ast.ExprStmt); ok {
-			if ce, ok := es.X.(*ast.CallExpr); ok {
-				if se, ok := ce.Fun.(*ast.SelectorExpr); ok {
-					if se.Sel.Name == "Unlock" || se.Sel.Name == "RUnlock" {
-						if t := pass.TypesInfo.Types[se.X].Type; t != nil && strings.HasSuffix(t.String(), "Mutex") {
-							return true
+	isUnlock := func(block ast.Node) bool {
+		var found bool
+		ast.Inspect(block, func(n ast.Node) bool {
+			if found {
+				return false
+			}
+			// don't descend into DeferStmt or FuncLit
+			if _, ok := n.(*ast.DeferStmt); ok {
+				return false
+			} else if _, ok := n.(*ast.FuncLit); ok {
+				return false
+			}
+			if ce, ok := n.(*ast.CallExpr); ok {
+				if fnse, ok := ce.Fun.(*ast.SelectorExpr); ok {
+					if strings.HasSuffix(fnse.Sel.Name, "Unlock") {
+						if se, ok := fnse.X.(*ast.SelectorExpr); ok {
+							if sel, ok := pass.TypesInfo.Selections[se]; ok && sel.Obj() == recvMu {
+								found = true
+							}
 						}
 					}
 				}
 			}
-		}
-		return false
+			return true
+		})
+		return found
 	}
 	isFieldAccess := func(block ast.Node) (field *ast.Ident, ok bool) {
 		ast.Inspect(block, func(n ast.Node) bool {
@@ -121,12 +140,8 @@ func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv types.Object) {
 				return true
 			}
 			if x, ok := se.X.(*ast.Ident); ok && pass.TypesInfo.Uses[x] == recv {
-				if se.Sel.String() == "mu" {
-					return true // ignore accessing the mutex itself
-				}
-				// TODO: these fields should be marked static, but aren't
-				switch se.Sel.String() {
-				case "tg", "log", "deps":
+				// other mutexes are considered safe to access
+				if isMutexType(pass.TypesInfo.TypeOf(se.Sel)) {
 					return true
 				}
 				field = se.Sel
@@ -197,15 +212,15 @@ func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv types.Object) {
 				continue
 			}
 			if isLock(n) {
-				lockHeld = true
 				if !recvIsPrivileged {
 					pass.Reportf(n.Pos(), "unprivileged method %s locks mutex", name)
 				}
+				lockHeld = true
 			} else if isUnlock(n) {
 				lockHeld = false
 			} else if method, ok := isRecvMethodCall(n); ok {
 				if recvIsPrivileged {
-					if managesOwnLocking(method) && lockHeld {
+					if managesOwnLocking(method) && !firstWordIs(method, "threaded") && lockHeld {
 						pass.Reportf(n.Pos(), "privileged method %s calls privileged method %s while holding mutex", name, method)
 					} else if !managesOwnLocking(method) && !lockHeld {
 						pass.Reportf(n.Pos(), "privileged method %s calls unprivileged method %s without holding mutex", name, method)
@@ -247,6 +262,9 @@ func managesOwnLocking(name string) bool {
 // letter. For example, firstWordIs("startsUpper", "starts") == true, but
 // firstWordIs("starts", "starts") == false.
 func firstWordIs(name, prefix string) bool {
+	if !strings.HasPrefix(name, prefix) {
+		return false
+	}
 	suffix := strings.TrimPrefix(name, prefix)
 	return len(suffix) > 0 && ast.IsExported(suffix)
 }
