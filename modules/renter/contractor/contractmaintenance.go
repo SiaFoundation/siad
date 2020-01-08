@@ -901,6 +901,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	// renew and how much extra funds to renew them with.
 	for _, contract := range c.staticContracts.ViewAll() {
 		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
+		// Start by unregistering any alerts
+		c.staticAlerter.UnregisterAlert(modules.AlertIDContractMaintenanceRequired(contract.ID))
+
 		// Skip any host that does not match our whitelist/blacklist filter
 		// settings.
 		host, _, err := c.hdb.Host(contract.HostPublicKey)
@@ -1024,7 +1027,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	var registerLowFundsAlert bool
 	defer func() {
 		if registerLowFundsAlert {
-			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, AlertCauseInsufficientFunds, modules.SeverityWarning)
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterAllowanceLowFunds)
 		}
@@ -1047,6 +1050,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRenewal") {
 			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
 			registerLowFundsAlert = true
+			// Register alert for this contract
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseInsufficientFunds, modules.SeverityWarning)
 			continue
 		}
 
@@ -1056,6 +1061,9 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
 		if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
+			// Register alert for this contract
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, err.Error(), modules.SeverityWarning)
+			continue
 		} else {
 			c.log.Println("Renewal completed without error")
 		}
@@ -1085,6 +1093,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRefresh") {
 			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
 			registerLowFundsAlert = true
+			// Register alert for this contract
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseInsufficientFunds, modules.SeverityWarning)
 			continue
 		}
 
@@ -1094,6 +1104,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
+			// Register alert for this contract
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, err.Error(), modules.SeverityWarning)
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 

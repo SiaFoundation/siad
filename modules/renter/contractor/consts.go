@@ -8,14 +8,22 @@ import (
 
 // Constants related to the contractor's alerts.
 var (
-	// AlertMSGWalletLockedDuringMaintenance indicates that forming/renewing a
-	// contract during contract maintenance isn't possible due to a locked wallet.
-	AlertMSGWalletLockedDuringMaintenance = "contractor is attempting to renew/form contracts, however the wallet is locked"
+	// AlertCauseInsufficientFunds indicates that the cause for the alert was
+	// insufficient funds remaining
+	AlertCauseInsufficientFunds = "Insufficient funds remaining"
 
 	// AlertMSGAllowanceLowFunds indicates that forming/renewing a contract during
 	// contract maintenance isn't possible due to the allowance being low on
 	// funds.
 	AlertMSGAllowanceLowFunds = "At least one contract formation/renewal failed due to the allowance being low on funds"
+
+	// AlertMSGWalletLockedDuringMaintenance indicates that forming/renewing a
+	// contract during contract maintenance isn't possible due to a locked wallet.
+	AlertMSGWalletLockedDuringMaintenance = "contractor is attempting to renew/form contracts, however the wallet is locked"
+
+	// AlertMSGContractMaintenanceRequired indicates that the contractor is
+	// trying to perform a maintenance operation on a contract but is unable to
+	AlertMSGContractMaintenanceRequired = "the contractor is attempting to perform a maintenance operation but can't"
 )
 
 // Constants related to contract formation parameters.

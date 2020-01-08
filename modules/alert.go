@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // The following consts are the different types of severity levels available in
@@ -48,6 +50,12 @@ const (
 	// renew a contract
 	AlertIDHostInsufficientCollateral = "host-insufficient-collateral"
 )
+
+// AlertIDContractMaintenanceRequired uses a contract's ID to create a unique AlertID
+// for a low redundancy alert.
+func AlertIDContractMaintenanceRequired(fcid types.FileContractID) AlertID {
+	return AlertID(fmt.Sprintf("contract-maintenance-required:%v", fcid))
+}
 
 // AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID
 // for a low redundancy alert.
