@@ -193,7 +193,7 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // is true or false, the siafile for the upload will be stored in the siafileset
 // or backupfileset.
 //
-// managedUploadStreamFromReader will return as soon as the data is avaialble on
+// managedUploadStreamFromReader will return as soon as the data is available on
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
