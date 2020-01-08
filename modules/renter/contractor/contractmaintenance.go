@@ -1146,8 +1146,21 @@ func (c *Contractor) threadedContractMaintenance() {
 		blacklist = append(blacklist, contract.HostPublicKey)
 	}
 
+	// Estimate initial contract funding
 	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
 	c.mu.RUnlock()
+	// Calculate the anticipated transaction fee.
+	_, maxFee := c.tpool.FeeEstimation()
+	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	// Sanity check that the initial funding is not more than 5x the txnFee.
+	// This is to protect against increases to allowances being used up to fast
+	// and not being able to spread the funds across new contracts properly
+	if initialContractFunds.Cmp(txnFee.Mul64(maxInitialContractFundsToFeeRatio)) > 0 {
+		org := initialContractFunds
+		initialContractFunds = txnFee.Mul64(maxInitialContractFundsToFeeRatio)
+		c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, TxnFee %v, New Value %v", org.HumanString(), txnFee.HumanString(), initialContractFunds.HumanString())
+	}
+
 	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)

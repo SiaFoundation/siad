@@ -36,6 +36,10 @@ var (
 	// 100SC.
 	fileContractMinimumFunding = float64(0.15)
 
+	// maxInitialContractFundsToFeeRatio is the maximum ratio between the
+	// initial contract funds and the transaction fee
+	maxInitialContractFundsToFeeRatio = uint64(5)
+
 	// MinContractFundRenewalThreshold defines the ratio of remaining funds to
 	// total contract cost below which the contractor will prematurely renew a
 	// contract.
