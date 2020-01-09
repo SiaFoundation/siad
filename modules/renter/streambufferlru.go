@@ -43,6 +43,39 @@ func newLeastRecentlyUsedCache(size uint64, sb *streamBuffer) *leastRecentlyUsed
 	}
 }
 
+// callEvict will evict a node with a specifc index from the LRU. If the node
+// does not exist, this is a no-op.
+func (lru *leastRecentlyUsedCache) callEvict(index uint64) {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+	node, exists := lru.nodes[index]
+
+	// If the index is not in the LRU, there's nothing to do.
+	if !exists {
+		return
+	}
+
+	// Check for the head and tail edge cases.
+	if lru.head == node {
+		lru.head = node.next
+	}
+	if lru.tail == node {
+		lru.tail = node.prev
+	}
+
+	// Update the node's previous and next elements.
+	if node.next != nil {
+		node.next.prev = node.prev
+	}
+	if node.prev != nil {
+		node.prev.next = node.next
+	}
+
+	// Delete the node from the map.
+	delete(lru.nodes, index)
+	lru.staticStreamBuffer.callRemoveDataSection(index)
+}
+
 // callEvictAll will remove all nodes from the lru and release their
 // corresponding data sections on the stream buffer.
 func (lru *leastRecentlyUsedCache) callEvictAll() {

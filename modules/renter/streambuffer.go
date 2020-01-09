@@ -9,8 +9,24 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TODO: Should be able to cancel a fetch in the streamBuffer, though I'm not
-// 100% sure how the semantics of that would work.
+// TODO: Need to be able to cancel unneeded fetches on seek.
+//
+// TODO: Need to be able to dynamically adjust the amount of data that we
+// prepare upon an update of the offset based on how rapidly it appears that
+// data is being consumed vs. what the latency on a fetch is. The streamer is
+// going to have to assume that it can make requests in parallel. On the old
+// fetch system, we can handle this potentially by lumping requests together but
+// this buffering system is really being designed around the idea that a worker
+// can send multiple parallel requests to a host. Even on the old system though
+// we should be able to get a few parallel downloads going without too much
+// trouble because we do have enough redundancy to handle 3 parallel requests at
+// a time. Overdrive degrades this a bit. It might also be fine to just keep
+// around the existing download streamer code as a legacy fetcher until the
+// renter can be fully upgraded to using the MDM and ephemeral accounts.
+//
+// TODO: Need to figure out how to set priorities on data being fetched. Upon a
+// seek I think we can just drop anything that's pending, since we clearly don't
+// actually want it anymore.
 
 const (
 	// bytesBufferedPerStream is the total amount of data that gets allocated

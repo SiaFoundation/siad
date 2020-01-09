@@ -1,20 +1,20 @@
 package renter
 
 import (
-	// "testing"
+	"testing"
 )
 
 // mockDataSource implements a stream buffer data source that can be used to
 // test the stream buffer. It's a simple in-memory buffer.
 type mockDataSource struct {
-	staticData []byte
+	staticData        []byte
 	staticRequestSize uint64
 }
 
 // newMockDataSource will return a data source that is ready to use.
 func newMockDataSource(data []byte, requestSize uint64) *mockDataSource {
 	return &mockDataSource{
-		staticData: data,
+		staticData:        data,
 		staticRequestSize: requestSize,
 	}
 }
@@ -38,10 +38,10 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	if offset < 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(offset + int64(len(b))) > mds.DataSize() {
+	if uint64(offset+int64(len(b))) > mds.DataSize() {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(offset) % mds.RequestSize() != 0 {
+	if uint64(offset)%mds.RequestSize() != 0 {
 		panic("bad call to mocked ReadAt")
 	}
 	if uint64(len(b)) > mds.DataSize() {
@@ -58,4 +58,10 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 func (mds *mockDataSource) Close() error {
 	mds.staticData = nil
 	return nil
+}
+
+// TestStreamSmoke is a basic smoke test for the streamer. Does a mix of reads
+// and seeks, and then closes out, checking that everything cleaned up nicely.
+func TestStreamSmoke(t *testing.T) {
+	// Do nothing yet.
 }
