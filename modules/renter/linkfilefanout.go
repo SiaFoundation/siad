@@ -23,6 +23,7 @@ type fanoutStreamer struct {
 	staticErasureCoder modules.ErasureCoder
 	staticLayout       linkfileLayout
 	staticMasterKey    crypto.CipherKey
+	staticStreamID     streamDataSourceID
 
 	// Utils.
 	staticRenter *Renter
@@ -52,6 +53,7 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 		staticErasureCoder: ec,
 		staticLayout:       ll,
 		staticMasterKey:    masterKey,
+		staticStreamID:     streamDataSourceID(crypto.HashObject(link)),
 
 		staticRenter: r,
 	}
@@ -68,9 +70,8 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 		fs.staticChunks = append(fs.staticChunks, chunk)
 	}
 
-	// TODO: Hash the sialink instead?
-	fsStreamID := streamDataSourceID(crypto.HashObject(link))
-	stream := r.staticStreamBufferSet.callNewStream(fs, fsStreamID, 0)
+	// Grab and return the stream.
+	stream := r.staticStreamBufferSet.callNewStream(fs, 0)
 	fs.stream = stream
 	return fs, nil
 }
@@ -97,13 +98,19 @@ func (fcs *fetchChunkState) completed() bool {
 
 // TODO: We may have some resrouces to clean up, this blank implementation is
 // probably not correct.
-func (fs *fanoutStreamer) Close() error {
-	return nil
+func (fs *fanoutStreamer) SilentClose() {
+	return
 }
 
 // DataSize returns the amount of file data in the underlying linkfile.
 func (fs *fanoutStreamer) DataSize() uint64 {
 	return fs.staticLayout.filesize
+}
+
+// ID returns the id of the sialink being fetched, this is just the hash of the
+// sialink.
+func (fs *fanoutStreamer) ID() streamDataSourceID {
+	return fs.staticStreamID
 }
 
 // ReadAt will fetch data from the siafile at the provided offset.
@@ -114,15 +121,14 @@ func (fs *fanoutStreamer) ReadAt(b []byte, offset int64) (int, error) {
 	}
 	// Can only grab one chunk.
 	if uint64(len(b)) > fs.staticChunkSize {
-		return 0, errors.New("request needs to be no more than SuggestedRequestSize()")
+		return 0, errors.New("request needs to be no more than RequestSize()")
 	}
 	// Must start at the chunk boundary.
 	if uint64(offset)%fs.staticChunkSize != 0 {
-		return 0, errors.New("request needs to be aligned to SuggestedRequestSize()")
+		return 0, errors.New("request needs to be aligned to RequestSize()")
 	}
 	// Must not go beyond the end of the file.
-	if uint64(offset) + uint64(len(b)) > fs.staticLayout.filesize {
-		panic("trace plz")
+	if uint64(offset)+uint64(len(b)) > fs.staticLayout.filesize {
 		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
 	}
 
@@ -138,9 +144,9 @@ func (fs *fanoutStreamer) ReadAt(b []byte, offset int64) (int, error) {
 	return n, nil
 }
 
-// SuggestedRequestSize implements streamBufferDataSource and will return the
+// RequestSize implements streamBufferDataSource and will return the
 // chunk size of the file.
-func (fs *fanoutStreamer) SuggestedRequestSize() uint64 {
+func (fs *fanoutStreamer) RequestSize() uint64 {
 	return fs.staticChunkSize
 }
 
@@ -148,8 +154,7 @@ func (fs *fanoutStreamer) SuggestedRequestSize() uint64 {
 // network.
 func (fs *fanoutStreamer) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
 	// Input verification.
-	if chunkIndex * fs.staticChunkSize >= fs.staticLayout.filesize {
-		panic("get me that juicy trace")
+	if chunkIndex*fs.staticChunkSize >= fs.staticLayout.filesize {
 		return nil, errors.New("requesting a chunk index that does not exist within the file")
 	}
 	if int(fs.staticLayout.fanoutDataPieces) > len(fs.staticChunks[chunkIndex]) {

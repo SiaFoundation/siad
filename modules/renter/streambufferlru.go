@@ -1,5 +1,10 @@
 package renter
 
+// streambufferlru implements an LRU for the streams in streambuffer.go. The LRU
+// is implemented as a doubly-linked list with a map that can index to any node
+// in the linked list. When a node is updated, it is moved to the front of the
+// list. When it's time to evict an element, the element at the end is deleted.
+
 import (
 	"sync"
 )
@@ -38,6 +43,85 @@ func newLeastRecentlyUsedCache(size uint64, sb *streamBuffer) *leastRecentlyUsed
 	}
 }
 
+// callEvict will evict a node with a specifc index from the LRU. If the node
+// does not exist, this is a no-op.
+func (lru *leastRecentlyUsedCache) callEvict(index uint64) {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+	node, exists := lru.nodes[index]
+
+	// If the index is not in the LRU, there's nothing to do.
+	if !exists {
+		return
+	}
+
+	// Check for the head and tail edge cases.
+	if lru.head == node {
+		lru.head = node.next
+	}
+	if lru.tail == node {
+		lru.tail = node.prev
+	}
+
+	// Update the node's previous and next elements.
+	if node.next != nil {
+		node.next.prev = node.prev
+	}
+	if node.prev != nil {
+		node.prev.next = node.next
+	}
+
+	// Delete the node from the map.
+	delete(lru.nodes, index)
+	lru.staticStreamBuffer.callRemoveDataSection(index)
+}
+
+// callEvictAll will remove all nodes from the lru and release their
+// corresponding data sections on the stream buffer.
+func (lru *leastRecentlyUsedCache) callEvictAll() {
+	// Record the head of the lru and then wipe everything clean.
+	lru.mu.Lock()
+	head := lru.head
+	lru.head = nil
+	lru.tail = nil
+	lru.nodes = make(map[uint64]*leastRecentlyUsedCacheNode)
+	lru.mu.Unlock()
+
+	// Loop through the linked list and release every index.
+	for head != nil {
+		lru.staticStreamBuffer.callRemoveDataSection(head.index)
+		head = head.next
+	}
+}
+
+// callUpdate is called when a node in the LRU is accessed. This will cause that
+// node to be placed at the most recent point of the LRU. If the node is not
+// currently in the LRU and the LRU is full, the least recently used node of the
+// LRU will be evicted.
+func (lru *leastRecentlyUsedCache) callUpdate(index uint64) {
+	lru.mu.Lock()
+	// Check if the node is already in the LRU. If so, move that node to the
+	// front of the list.
+	node, exists := lru.nodes[index]
+	if exists {
+		lru.moveToFront(node)
+		lru.mu.Unlock()
+		return
+	}
+	// Create a new node and insert that node at the head. 'insertHead' will
+	// take care of setting all the pointer values.
+	node = &leastRecentlyUsedCacheNode{
+		index: index,
+	}
+	lru.insertHead(node)
+	lru.mu.Unlock()
+	lru.staticStreamBuffer.callFetchDataSection(index)
+
+	// Eviction needs to straddle the consistency domain of the lru and the
+	// consistency domain of the stream buffer, so it has to be a managed call.
+	lru.managedEvict()
+}
+
 // managedEvict will evict the least recently used node of the cache.
 func (lru *leastRecentlyUsedCache) managedEvict() {
 	// Check whether any eviction needs to happen. Nothing to do if not.
@@ -52,29 +136,12 @@ func (lru *leastRecentlyUsedCache) managedEvict() {
 	node.prev.next = nil
 	// Set the previous node to the new tail.
 	lru.tail = node.prev
+	delete(lru.nodes, node.index)
 	lru.mu.Unlock()
 
 	// Once the lru has been updated, get the node's data removed from the
 	// stream buffer.
 	lru.staticStreamBuffer.callRemoveDataSection(node.index)
-}
-
-// managedEvictAll will remove all nodes from the lru and release their
-// corresponding data sections on the stream buffer.
-func (lru *leastRecentlyUsedCache) managedEvictAll() {
-	// Record the head of the lru and then wipe everything clean.
-	lru.mu.Lock()
-	head := lru.head
-	lru.head = nil
-	lru.tail = nil
-	lru.nodes = make(map[uint64]*leastRecentlyUsedCacheNode)
-	lru.mu.Unlock()
-
-	// Loop through the linked list and release every index.
-	for head != nil {
-		lru.staticStreamBuffer.callRemoveDataSection(head.index)
-		head = head.next
-	}
 }
 
 // insertHead will place a new node at the head of the cache.
@@ -111,6 +178,10 @@ func (lru *leastRecentlyUsedCache) moveToFront(node *leastRecentlyUsedCacheNode)
 	if node.next != nil {
 		node.next.prev = node.prev
 	}
+	// If this node is the tail, point the tail to this node.
+	if lru.tail == node {
+		lru.tail = node.prev
+	}
 
 	// Point the node's next value to the current head.
 	node.next = lru.head
@@ -121,32 +192,4 @@ func (lru *leastRecentlyUsedCache) moveToFront(node *leastRecentlyUsedCacheNode)
 	// Point the lru head to the node.
 	lru.head = node
 	return
-}
-
-// callUpdate is called when a node in the LRU is accessed. This will cause that
-// node to be placed at the most recent point of the LRU. If the node is not
-// currently in the LRU and the LRU is full, the least recently used node of the
-// LRU will be evicted.
-func (lru *leastRecentlyUsedCache) callUpdate(index uint64) {
-	lru.mu.Lock()
-	// Check if the node is already in the LRU. If so, move that node to the
-	// front of the list.
-	node, exists := lru.nodes[index]
-	if exists {
-		lru.moveToFront(node)
-		lru.mu.Unlock()
-		return
-	}
-	// Create a new node and insert that node at the head. 'insertHead' will
-	// take care of setting all the pointer values.
-	node = &leastRecentlyUsedCacheNode{
-		index: index,
-	}
-	lru.insertHead(node)
-	lru.staticStreamBuffer.callFetchDataSection(index)
-	lru.mu.Unlock()
-
-	// Eviction needs to straddle the consistency domain of the lru and the
-	// consistency domain of the stream buffer, so it has to be a managed call.
-	lru.managedEvict()
 }
