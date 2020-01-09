@@ -203,10 +203,14 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 	if err != nil {
 		return nil, err
 	}
+	// Need to make a copy of this value for the defer statement. Because
+	// 'fileNode' is a named value, if you run the call `return nil, err`, then
+	// 'fileNode' will be set to 'nil' when defer calls 'fileNode.Close()'.
+	fn := fileNode
 	defer func() {
 		// Ensure the fileNode is closed if there is an error upon return.
 		if err != nil {
-			err = errors.Compose(err, fileNode.Close())
+			err = errors.Compose(err, fn.Close())
 		}
 	}()
 
@@ -320,6 +324,12 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		if err != nil {
 			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
+	}
+
+	// Disrupt to force an error and ensure the fileNode is being closed
+	// correctly.
+	if r.deps.Disrupt("failUploadStreamFromReader") {
+		return nil, errors.New("disrupted by failUploadStreamFromReader")
 	}
 	return fileNode, nil
 }
