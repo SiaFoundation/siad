@@ -15,7 +15,7 @@ Latest:
 
 **Key Updates**
  - Wallet can generate an address before it finishes scanning the blockchain
- - FUSE folders can now be mounted 'AllowOther' as an option
+ - FUSE folders can now be mounted with 'AllowOther' as an option
 
 **Bugs Fixed**
  - Unable to upload a new file if 'force' is set and no file exists to delete.
