@@ -1166,7 +1166,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// contracts.
 	for _, host := range hosts {
 		var contractFunds types.Currency
-		// Calculate minFunding with hose
+		// Calculate minFunding with host
 		minFunding := host.ContractPrice.Add(txnFee)
 		// Sanity check that the initial funding is reasonable compared to the txnFee.
 		// This is to protect against increases to allowances being used up to fast
@@ -1176,7 +1176,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, minFunding %v, New Value %v", initialContractFunds.HumanString(), minFunding.HumanString(), contractFunds.HumanString())
 		}
 		if initialContractFunds.Cmp(minFunding.Mul64(minInitialContractFundsToFeeRatio)) < 0 {
-			contractFunds = minFunding.Mul64(maxInitialContractFundsToFeeRatio)
+			contractFunds = minFunding.Mul64(minInitialContractFundsToFeeRatio)
 			c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, minFunding %v, New Value %v", initialContractFunds.HumanString(), minFunding.HumanString(), contractFunds.HumanString())
 		}
 

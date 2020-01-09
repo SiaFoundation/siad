@@ -24,30 +24,100 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestContractorIncompleteMaintenanceAlert tests that having the wallet locked
-// during maintenance results in an alert.
-func TestContractorIncompleteMaintenanceAlert(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
+// test is a helper struct for running subtests when tests can use the same test
+// group
+type test struct {
+	name string
+	test func(*testing.T, *siatest.TestGroup)
+}
 
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   1,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := contractorTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+// runContractorTests is a helper function to run the subtests when tests can use
+// the same test group
+func runContractorTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
+	tg, err := siatest.NewGroupFromTemplate(contractorTestDir(t.Name()), gp)
 	if err != nil {
-		t.Fatal("Failed to create group: ", err)
+		return errors.AddContext(err, "failed to create group")
 	}
 	defer func() {
 		if err := tg.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
+	// Run subtests
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.test(t, tg)
+		})
+	}
+	return nil
+}
+
+// TestContractorOne executes a number of subtests using the same TestGroup to save
+// time on initialization
+func TestContractorOne(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 1,
+		Miners:  1,
+	}
+
+	// Specify subtests to run
+	subTests := []test{
+		{"TestContractFunding", testContractFunding},
+		{"TestContractorIncompleteMaintenanceAlert", testContractorIncompleteMaintenanceAlert},
+	}
+
+	// Run tests
+	if err := runContractorTests(t, groupParams, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testContractFunding tests that contracts are formed with reasonable funding
+func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
+	// Get Renter
+	r := tg.Renters()[0]
+
+	// Get host
+	h := tg.Hosts()[0]
+	hg, err := h.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get Contract Price from host
+	contractPrice := hg.ExternalSettings.ContractPrice
+	tpoolMaxFee := contractPrice.Div64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
+	txnFee := tpoolMaxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+	minFunding := contractPrice.Add(txnFee)
+
+	// Get Contracts
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contractFunding := rc.ActiveContracts[0].TotalCost
+
+	// Total cost should be between 2x and 5x the min funding
+	lowerLimit := minFunding.Mul64(2)
+	upperLimit := minFunding.Mul64(5)
+	if contractFunding.Cmp(lowerLimit) < 0 {
+		t.Errorf("Contract funding is below the lower limit: Contract Funding %v, Limit %v", contractFunding.HumanString(), lowerLimit.HumanString())
+	}
+	if contractFunding.Cmp(upperLimit) > 0 {
+		t.Errorf("Contract funding is above the upper limit: Contract Funding %v, Limit %v", contractFunding.HumanString(), upperLimit.HumanString())
+	}
+}
+
+// testContractorIncompleteMaintenanceAlert tests that having the wallet locked
+// during maintenance results in an alert.
+func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGroup) {
 	// The renter shouldn't have any alerts.
 	r := tg.Renters()[0]
 	dag, err := r.DaemonAlertsGet()
