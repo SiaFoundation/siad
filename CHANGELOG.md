@@ -12,6 +12,8 @@ Version History
 Latest:
 
 ### v1.4.2.1
+**Key Updates**
+ - Added alerts for contracts that can't be renewed or refreshed
 
 **Key Updates**
  - Wallet can generate an address before it finishes scanning the blockchain

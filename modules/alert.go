@@ -54,7 +54,7 @@ const (
 // AlertIDContractMaintenanceRequired uses a contract's ID to create a unique AlertID
 // for a low redundancy alert.
 func AlertIDContractMaintenanceRequired(fcid types.FileContractID) AlertID {
-	return AlertID(fmt.Sprintf("contract-maintenance-required:%v", fcid))
+	return AlertID(fmt.Sprintf("contract-maintenance-required:%v", fcid.String()))
 }
 
 // AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID
