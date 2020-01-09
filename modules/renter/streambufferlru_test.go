@@ -11,12 +11,16 @@ import (
 //
 // This test has 100% coverage of the streambufferlru.go file.
 func TestStreamLRU(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// Create a usable stream, this creates the stream buffer that the LRU talks
 	// to and gives a good opporutnity to probe the LRU.
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
 	sbs := newStreamBufferSet()
-	stream := sbs.callNewStream(dataSource, streamDataSourceID{}, 0)
+	stream := sbs.callNewStream(dataSource, 0)
 
 	// Extract the LRU from the stream to test it directly.
 	lru := stream.lru
