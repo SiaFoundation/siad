@@ -1261,6 +1261,14 @@ func (api *API) renterFuseMountHandlerPOST(w http.ResponseWriter, req *http.Requ
 		}
 		opts.ReadOnly = readOnly
 	}
+	if req.FormValue("allowother") != "" {
+		allowOther, err := scanBool(req.FormValue("allowother"))
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		opts.AllowOther = allowOther
+	}
 	if err := api.renter.Mount(mount, siaPath, opts); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1898,6 +1906,9 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		ErasureCode:         ec,
 		Force:               force,
 		DisablePartialChunk: true, // TODO: remove this
+
+		// NOTE: can make this an optional param.
+		CipherType: crypto.TypeDefaultRenter,
 	})
 	if err != nil {
 		WriteError(w, Error{"upload failed: " + err.Error()}, http.StatusInternalServerError)
@@ -2025,7 +2036,9 @@ func (api *API) renterUploadStreamHandler(w http.ResponseWriter, req *http.Reque
 		ErasureCode: ec,
 		Force:       force,
 		Repair:      repair,
-		CipherType:  crypto.TypeDefaultRenter,
+
+		// NOTE: can make this an optional param.
+		CipherType: crypto.TypeDefaultRenter,
 	}
 	err = api.renter.UploadStreamFromReader(up, req.Body)
 	if err != nil {
