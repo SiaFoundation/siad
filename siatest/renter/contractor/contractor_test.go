@@ -1100,8 +1100,12 @@ func TestLowAllowanceAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	// Wait for the alert to be registered.
-	numRetries := 0
+	// All the contracts should have the same alert, so just grab one to check
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := rc.ActiveContracts[0]
 	lowFundsAlert := modules.Alert{
 		Cause:    contractor.AlertCauseInsufficientFunds,
 		Msg:      contractor.AlertMSGAllowanceLowFunds,
@@ -1110,10 +1114,12 @@ func TestLowAllowanceAlert(t *testing.T) {
 	}
 	maintenanceRequired := modules.Alert{
 		Cause:    contractor.AlertCauseInsufficientFunds,
-		Msg:      contractor.AlertMSGContractMaintenanceRequired,
+		Msg:      contractor.AlertMSGContractRenewalRequired(contract.ID),
 		Module:   "contractor",
 		Severity: modules.SeverityWarning,
 	}
+	// Wait for the alert to be registered.
+	numRetries := 0
 	err = build.Retry(100, 600*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			if err := tg.Miners()[0].MineBlock(); err != nil {
@@ -1134,24 +1140,31 @@ func TestLowAllowanceAlert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Add a renter which won't be able to renew a contract due to low funds.
+	// Add a renter which won't be able to refresh a contract due to low funds.
 	renterParams = node.Renter(filepath.Join(testDir, "renter_refresh"))
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Period = 10
 	renterParams.Allowance.RenewWindow = 5
+	renterParams.RenterDeps = &dependencies.DependencyDisableUploadGougingCheck{}
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRefreshFail{}
 	nodes, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
 	}
 	renter = nodes[0]
+	// All the contracts should have the same alert, so just grab one to check
+	rc, err = renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract = rc.ActiveContracts[0]
 	// Drain contracts to force refresh
 	_, err = siatest.DrainContractsByUploading(renter, tg)
 	if err != nil {
 		t.Fatal(err)
 	}
+	maintenanceRequired.Msg = contractor.AlertMSGContractRefreshRequired(contract.ID)
 	// Wait for the alert to be registered.
-	maintenanceRequired.Cause = contractor.AlertCauseFailedContractRenewal
 	err = build.Retry(100, 600*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			if err := tg.Miners()[0].MineBlock(); err != nil {
@@ -2072,7 +2085,7 @@ func TestContractMaintenanceRequiredAlert(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:  1,
+		Hosts:  2, // Need two host in order to upload. Min 1 datapiece and 1 paritypiece
 		Miners: 1,
 	}
 	testDir := contractorTestDir(t.Name())
@@ -2090,6 +2103,7 @@ func TestContractMaintenanceRequiredAlert(t *testing.T) {
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Period = 10
 	renterParams.Allowance.RenewWindow = 5
+	renterParams.RenterDeps = &dependencies.DependencyDisableUploadGougingCheck{}
 	deps := dependencies.NewDependencyContractRenewalFail()
 	renterParams.ContractorDeps = deps
 	nodes, err := tg.AddNodes(renterParams)
@@ -2107,6 +2121,13 @@ func TestContractMaintenanceRequiredAlert(t *testing.T) {
 		t.Fatal("number of alerts is not 0")
 	}
 
+	// Both contracts should have the alert so just grab one
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := rc.ActiveContracts[0]
+
 	// Mine blocks to force contract renewal
 	err = siatest.RenewContractsByRenewWindow(r, tg)
 	if err != nil {
@@ -2116,7 +2137,7 @@ func TestContractMaintenanceRequiredAlert(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Cause:    contractor.AlertCauseFailedContractRenewal,
-		Msg:      contractor.AlertMSGContractMaintenanceRequired,
+		Msg:      contractor.AlertMSGContractRenewalRequired(contract.ID),
 		Module:   "contractor",
 		Severity: modules.SeverityWarning,
 	}
@@ -2154,6 +2175,22 @@ func TestContractMaintenanceRequiredAlert(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
+	// Wait for active contracts
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both contracts should have the alert so just grab one
+	rc, err = r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract = rc.ActiveContracts[0]
+	expectedAlert.Msg = contractor.AlertMSGContractRefreshRequired(contract.ID)
 
 	// Enable the dependency
 	deps.Enable()

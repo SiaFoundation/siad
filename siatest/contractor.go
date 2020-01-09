@@ -253,6 +253,11 @@ func CheckRenewedContractsSpending(renewedContracts []api.RenterContract) error 
 // DrainContractsByUploading uploads files until the contracts renew due to
 // running out of funds
 func DrainContractsByUploading(renter *TestNode, tg *TestGroup) (startingUploadSpend types.Currency, err error) {
+	// Sanity check
+	if len(tg.Hosts()) == 1 {
+		return types.ZeroCurrency, errors.New("uploads will fail with only 1 host")
+	}
+
 	// Renew contracts by running out of funds
 	// Set upload price to max price
 	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
@@ -282,7 +287,7 @@ func DrainContractsByUploading(renter *TestNode, tg *TestGroup) (startingUploadS
 	// Upload once to show upload spending
 	_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "failed to upload first file in renewContractsBySpending")
+		return types.ZeroCurrency, errors.AddContext(err, "failed to upload first file in DrainContractsByUploading")
 	}
 
 	// Get current upload spend, previously contracts had zero upload spend

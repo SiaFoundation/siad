@@ -1055,7 +1055,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("Skipping renewal because there are not enough funds remaining in the allowance", renewal.id, renewal.amount, fundsRemaining)
 			registerLowFundsAlert = true
 			// Register alert for this contract
-			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseInsufficientFunds, modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractRenewalRequired(renewal.id), AlertCauseInsufficientFunds, modules.SeverityWarning)
 			continue
 		}
 
@@ -1066,7 +1066,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			// Register alert for this contract
-			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseFailedContractRenewal, modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractRenewalRequired(renewal.id), AlertCauseFailedContractRenewal, modules.SeverityWarning)
 			continue
 		} else {
 			c.log.Println("Renewal completed without error")
@@ -1098,7 +1098,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
 			registerLowFundsAlert = true
 			// Register alert for this contract
-			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseInsufficientFunds, modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractRefreshRequired(renewal.id), AlertCauseInsufficientFunds, modules.SeverityWarning)
 			continue
 		}
 
@@ -1109,7 +1109,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
 			// Register alert for this contract
-			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractMaintenanceRequired, AlertCauseFailedContractRenewal, modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDContractMaintenanceRequired(renewal.id), AlertMSGContractRefreshRequired(renewal.id), AlertCauseFailedContractRenewal, modules.SeverityWarning)
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 

@@ -1,6 +1,8 @@
 package contractor
 
 import (
+	"fmt"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -24,11 +26,19 @@ var (
 	// AlertMSGWalletLockedDuringMaintenance indicates that forming/renewing a
 	// contract during contract maintenance isn't possible due to a locked wallet.
 	AlertMSGWalletLockedDuringMaintenance = "contractor is attempting to renew/form contracts, however the wallet is locked"
-
-	// AlertMSGContractMaintenanceRequired indicates that the contractor is
-	// trying to perform a maintenance operation on a contract but is unable to
-	AlertMSGContractMaintenanceRequired = "the contractor is attempting to perform a maintenance operation but can't"
 )
+
+// AlertMSGContractRefreshRequired returns the alert message for a contract that
+// is unable to refresh
+func AlertMSGContractRefreshRequired(fcid types.FileContractID) string {
+	return fmt.Sprint("Unable to refresh contract:", fcid)
+}
+
+// AlertMSGContractRenewalRequired returns the alert message for a contract that
+// is unable to renew
+func AlertMSGContractRenewalRequired(fcid types.FileContractID) string {
+	return fmt.Sprint("Unable to renew contract:", fcid)
+}
 
 // Constants related to contract formation parameters.
 var (
