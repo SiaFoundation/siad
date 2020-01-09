@@ -1,5 +1,10 @@
 package renter
 
+// streambufferlru implements an LRU for the streams in streambuffer.go. The LRU
+// is implemented as a doubly-linked list with a map that can index to any node
+// in the linked list. When a node is updated, it is moved to the front of the
+// list. When it's time to evict an element, the element at the end is deleted.
+
 import (
 	"sync"
 )
