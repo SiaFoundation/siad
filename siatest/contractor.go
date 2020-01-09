@@ -252,6 +252,9 @@ func CheckRenewedContractsSpending(renewedContracts []api.RenterContract) error 
 
 // DrainContractsByUploading uploads files until the contracts renew due to
 // running out of funds
+//
+// NOTE: in order to use this helper method the renter must use the dependency
+// DependencyDisableUploadGougingCheck so that the uploads succeed
 func DrainContractsByUploading(renter *TestNode, tg *TestGroup) (startingUploadSpend types.Currency, err error) {
 	// Sanity check
 	if len(tg.Hosts()) == 1 {
@@ -343,7 +346,7 @@ func RenewContractsByRenewWindow(renter *TestNode, tg *TestGroup) error {
 		return err
 	}
 	if len(rc.ActiveContracts) == 0 {
-		return errors.New("No ACtive Contracts")
+		return errors.New("No Active Contracts")
 	}
 
 	blocksToMine := rc.ActiveContracts[0].EndHeight - rg.Settings.Allowance.RenewWindow - cg.Height

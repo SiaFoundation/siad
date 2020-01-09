@@ -2075,9 +2075,9 @@ func TestWatchdogExtraDependencyRegression(t *testing.T) {
 	}
 }
 
-// TestContractRenewErrorAlert tests that if a contract is not renewed properly
-// it will register an alert.
-func TestContractMaintenanceRequiredAlert(t *testing.T) {
+// TestContractRenewalAndRefreshRequiredAlert tests that if a contract is not
+// renewed or refreshed properly it will register an alert.
+func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
