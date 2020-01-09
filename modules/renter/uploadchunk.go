@@ -87,7 +87,6 @@ type unfinishedUploadChunk struct {
 	//	+ the worker should increment the number of pieces completed
 	//	+ the worker should decrement the number of pieces registered
 	//	+ the worker should release the memory for the completed piece
-	available        bool
 	availableChan    chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
 	err              error
 	mu               sync.Mutex
@@ -102,6 +101,17 @@ type unfinishedUploadChunk struct {
 	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
 	canceled bool           // cancel the work on this chunk.
 	cancelWG sync.WaitGroup // WaitGroup to wait on after canceling the uploadchunk.
+}
+
+// staticAvailable returns whether or not the chunk is available yet on the Sia
+// network.
+func (uc *unfinishedUploadChunk) staticAvailable() bool {
+	select {
+	case <-uc.availableChan:
+		return true
+	default:
+		return false
+	}
 }
 
 // managedNotifyStandbyWorkers is called when a worker fails to upload a piece, meaning
@@ -438,8 +448,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 
 	// Check if the chunk is now available.
-	if uc.piecesCompleted >= uc.minimumPieces && !uc.available && !uc.released {
-		uc.available = true
+	if uc.piecesCompleted >= uc.minimumPieces && !uc.staticAvailable() && !uc.released {
 		close(uc.availableChan)
 	}
 
@@ -454,9 +463,9 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		} else {
 			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		}
-		if !uc.available {
-			close(uc.availableChan)
+		if !uc.staticAvailable() {
 			uc.err = errors.New("unable to upload file, file is not available on the newtork")
+			close(uc.availableChan)
 		}
 		uc.released = true
 	}

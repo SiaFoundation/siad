@@ -193,26 +193,26 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // is true or false, the siafile for the upload will be stored in the siafileset
 // or backupfileset.
 //
-// managedUploadStreamFromReader will return as soon as the data is avaialble on
+// managedUploadStreamFromReader will return as soon as the data is available on
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (entry *filesystem.FileNode, err error) {
+func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
-	entry, err = r.managedInitUploadStream(up, backup)
+	fileNode, err = r.managedInitUploadStream(up, backup)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
-		// Ensure the entry is closed if there is an error upon return.
+		// Ensure the fileNode is closed if there is an error upon return.
 		if err != nil {
-			err = errors.Compose(err, entry.Close())
+			err = errors.Compose(err, fileNode.Close())
 		}
 	}()
 
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
-	for _, pk := range entry.HostPublicKeys() {
+	for _, pk := range fileNode.HostPublicKeys() {
 		pks[string(pk.Key)] = pk
 	}
 
@@ -220,7 +220,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 	hosts := r.managedRefreshHostsAndWorkers()
 
 	// Check if we currently have enough workers for the specified redundancy.
-	minWorkers := entry.ErasureCode().MinPieces()
+	minWorkers := fileNode.ErasureCode().MinPieces()
 	r.staticWorkerPool.mu.RLock()
 	availableWorkers := len(r.staticWorkerPool.workers)
 	r.staticWorkerPool.mu.RUnlock()
@@ -233,7 +233,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
 	var peek []byte
-	chunks := make([]*unfinishedUploadChunk, 0)
+	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing connectivity
 		// during the upload.
@@ -245,13 +245,13 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 		}
 		// Grow the SiaFile to the right size. Otherwise buildUnfinishedChunk
 		// won't realize that there are pieces which haven't been repaired yet.
-		if err := entry.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
+		if err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
 			return nil, err
 		}
 
 		// Start the chunk upload.
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
-		uuc, err := r.managedBuildUnfinishedChunk(entry, chunkIndex, hosts, pks, true, offline, goodForRenew)
+		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, true, offline, goodForRenew)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
@@ -266,7 +266,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 			if !r.uploadHeap.managedPush(uuc) {
 				// The chunk can't be added to the heap. It's probably already being
 				// repaired. Flush the shard and move on to the next one.
-				_, _ = io.ReadFull(ss, make([]byte, entry.ChunkSize()))
+				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err
 				}
@@ -282,7 +282,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 			// from the shard though. Otherwise we will upload the wrong chunk
 			// for the next chunkIndex. We don't need to check the error though
 			// since we check that anyway at the end of the loop.
-			_, _ = io.ReadFull(ss, make([]byte, entry.ChunkSize()))
+			_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 			if err := ss.Close(); err != nil {
 				return nil, err
 			}
@@ -305,7 +305,7 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 
 		// Call Peek to make sure that there's more data for another shard.
 		peek, err = ss.Peek()
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		} else if err != nil {
 			return nil, ss.err
@@ -321,5 +321,5 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
-	return entry, nil
+	return fileNode, nil
 }

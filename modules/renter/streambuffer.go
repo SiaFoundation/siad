@@ -1,5 +1,16 @@
 package renter
 
+// NOTE: This stream buffer is uninfished in a couple of ways. The first way is
+// that it's not possible to cancel fetches. The second way is that fetches are
+// not prioritized, there should be a higher priority on data that is closer to
+// the current stream offset. The third is that the amount of data which gets
+// fetched is not dynamically adjusted. The streamer really should be monitoring
+// the total amount of time it takes for a call to the data source to return
+// some data, and should buffer accordingly. If auto-adjusting the lookahead
+// size, care needs to be taken to ensure not to exceed the
+// bytedBufferedPerStream size, as exceeding that will cause issues with the
+// lru, and cause data fetches to be evicted before they become useful.
+
 import (
 	"io"
 	"sync"
@@ -9,27 +20,37 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TODO: Should be able to cancel a fetch in the streamBuffer, though I'm not
-// 100% sure how the semantics of that would work.
-
-// TODO: The streams will call blocking / locking calls while holding their own
-// locks. This is techincally safe because the stream locks are never grabbed
-// externally... but... not the best :(
-
 const (
+	// minimumCacheNodes is set to two because the streamer always tries to
+	// buffer at least the current data section and the next data section for
+	// the current offset of a stream.
+	//
+	// Three as a number was considered so that in addition to buffering one
+	// piece ahead, a previous piece could also be cached. This was considered
+	// to be less valuable than keeping memory requirements low -
+	// minimumCacheNodes is only at play if there is not enough room for
+	// multiple cache nodes in the bytesBufferedPerStream.
+	minimumCacheNodes = 2
+)
+
+var (
 	// bytesBufferedPerStream is the total amount of data that gets allocated
-	// per stream. If the SuggestedRequestSize of a stream buffer is less than
-	// twice the bytesBufferedPerStream, that much data will be allocated
+	// per stream. If the RequestSize of a stream buffer is less than three
+	// times the bytesBufferedPerStream, that much data will be allocated
 	// instead.
 	//
-	// For example, if the SuggestedRequestSize is 10kb and the
-	// bytesBufferedPerStream is 100kb, then each stream is going to buffer 10
-	// segments that are each 10kb long in the LRU.
-	//
-	// Buf if the SuggestedRequestSize is 75kb and the bytesBufferedPerStream is
-	// 100kb, then each stream is going to buffer 2 segments that are each 75kb
+	// For example, if the RequestSize is 10kb and the bytesBufferedPerStream is
+	// 100kb, then each stream is going to buffer 10 segments that are each 10kb
 	// long in the LRU.
-	bytesBufferedPerStream = 1 << 25
+	//
+	// But if the RequestSize is 50kb and the bytesBufferedPerStream is 100kb,
+	// then each stream is going to buffer 3 segments that are each 50kb long in
+	// the LRU, for a total of 150kb.
+	bytesBufferedPerStream = build.Select(build.Var{
+		Dev:      uint64(1 << 25), // 32 MiB
+		Standard: uint64(1 << 25), // 32 MiB
+		Testing:  uint64(1 << 8),  // 256 bytes
+	}).(uint64)
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
@@ -43,9 +64,14 @@ type streamBufferDataSource interface {
 	// data section will be correctly short.
 	DataSize() uint64
 
-	// SuggestedRequestSize should return the request size that the dataSource
-	// expects the streamBuffer to use. The streamBuffer will always make ReadAt
-	// calls that are of the suggested request size and byte aligned.
+	// ID returns the ID of the data source. This should be unique to the data
+	// source - that is, every data source that returns the same ID should have
+	// identical data and be fully interchangeable.
+	ID() streamDataSourceID
+
+	// RequestSize should return the request size that the dataSource expects
+	// the streamBuffer to use. The streamBuffer will always make ReadAt calls
+	// that are of the suggested request size and byte aligned.
 	//
 	// If the request size is small, many ReadAt calls will be made in parallel.
 	// If the dataSource can handle high parallelism, a smaller request size
@@ -56,19 +82,15 @@ type streamBufferDataSource interface {
 	// A general rule of thumb is that the streamer should be able to
 	// comfortably handle 100 mbps (high end 4K video) if the user's local
 	// connection has that much throughput.
-	SuggestedRequestSize() uint64
+	RequestSize() uint64
+
+	// SilentClose is an io.Closer that does not return an error. The data
+	// source is expected to handle any logging or reporting that is necessary
+	// if the closing fails.
+	SilentClose()
 
 	// ReaderAt allows the stream buffer to request specific data chunks.
-	//
-	// TODO: At some point we may want to include a priority in the ReadAt
-	// definition, which means we could no longer use the io.ReaderAt interface.
 	io.ReaderAt
-
-	// Allows the streamBuffer to close the data source when there are no more
-	// streams accessing the data. Note that the dataSource may significantly
-	// outlive the original call to open a stream if there are other streams
-	// that are using the same data source.
-	io.Closer
 }
 
 // streamDataSourceID is a type safe crypto.Hash which is used to uniquely
@@ -135,10 +157,62 @@ func newStreamBufferSet() *streamBufferSet {
 	}
 }
 
+// callNewStream will create a stream that implements io.Close and
+// io.ReadSeeker. A dataSource must be provided for the stream so that the
+// stream can fetch data in advance of calls to 'Read' and attempt to provide a
+// smooth streaming experience.
+//
+// The 'sourceID' is a unique identifier for the dataSource which allows
+// multiple streams fetching data from the same source to combine their cache.
+// This shared cache only comes into play if the streams are simultaneously
+// accessing the same data, allowing the buffer to save on memory and access
+// latency.
+//
+// Each stream has a separate LRU for determining what data to buffer. Because
+// the LRU is distinct to the stream, the shared cache feature will not result
+// in one stream evicting data from another stream's LRU.
+func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64) *stream {
+	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
+	// the sourceID exists, create a new one.
+	sourceID := dataSource.ID()
+	sbs.mu.Lock()
+	streamBuf, exists := sbs.streams[sourceID]
+	if !exists {
+		streamBuf = &streamBuffer{
+			dataSections: make(map[uint64]*dataSection),
+
+			staticDataSize:        dataSource.DataSize(),
+			staticDataSource:      dataSource,
+			staticDataSectionSize: dataSource.RequestSize(),
+			staticStreamBufferSet: sbs,
+			staticStreamID:        sourceID,
+		}
+		sbs.streams[sourceID] = streamBuf
+	}
+	streamBuf.externRefCount++
+	sbs.mu.Unlock()
+
+	// Determine how many nodes the stream can cache.
+	nodesToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
+	if nodesToCache < minimumCacheNodes {
+		nodesToCache = minimumCacheNodes
+	}
+
+	// Create a stream that points to the stream buffer.
+	stream := &stream{
+		lru:    newLeastRecentlyUsedCache(nodesToCache, streamBuf),
+		offset: initialOffset,
+
+		staticStreamBuffer: streamBuf,
+	}
+	stream.prepareOffset()
+	return stream
+}
+
 // Close will release all of the resources held by a stream.
 func (s *stream) Close() error {
 	// Drop all nodes from the lru.
-	s.lru.managedEvictAll()
+	s.lru.callEvictAll()
 
 	// Remove the stream from the streamBuffer.
 	streamBuf := s.staticStreamBuffer
@@ -158,6 +232,11 @@ func (s *stream) Read(b []byte) (int, error) {
 	dataSize := s.staticStreamBuffer.staticDataSize
 	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
 	sb := s.staticStreamBuffer
+
+	// Check for EOF.
+	if s.offset == dataSize {
+		return 0, io.EOF
+	}
 
 	// Get the index of the current section and the offset within the current
 	// section.
@@ -197,12 +276,12 @@ func (s *stream) Read(b []byte) (int, error) {
 		return 0, errors.AddContext(dataSection.externErr, "read call failed because data section fetch failed")
 	}
 	// Copy the data into the read request.
-	copy(b, dataSection.externData[offsetInSection:offsetInSection+bytesToRead])
-	s.offset += bytesToRead
+	n := copy(b, dataSection.externData[offsetInSection:offsetInSection+bytesToRead])
+	s.offset += uint64(n)
 
 	// Send the call to prepare the next data section.
 	s.prepareOffset()
-	return int(bytesToRead), nil
+	return n, nil
 }
 
 // Seek will move the read head of the stream to the provided offset.
@@ -233,6 +312,7 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 		}
 		s.offset = dataSize - uint64(offset)
 	}
+
 	// Prepare the fetch of the updated offest.
 	s.prepareOffset()
 	return int64(s.offset), nil
@@ -341,58 +421,6 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	return ds
 }
 
-// callNewStream will create a stream that implements io.Close and
-// io.ReadSeeker. A dataSource must be provided for the stream so that the
-// stream can fetch data in advance of calls to 'Read' and attempt to provide a
-// smooth streaming experience.
-//
-// The 'sourceID' is a unique identifier for the dataSource which allows
-// multiple streams fetching data from the same source to combine their cache.
-// This shared cache only comes into play if the streams are simultaneously
-// accessing the same data, allowing the buffer to save on memory and access
-// latency.
-//
-// Each stream has a separate LRU for determining what data to buffer. Because
-// the LRU is distinct to the stream, the shared cache feature will not result
-// in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, sourceID streamDataSourceID, initialOffset uint64) *stream {
-	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
-	// the sourceID exists, create a new one.
-	sbs.mu.Lock()
-	streamBuf, exists := sbs.streams[sourceID]
-	if !exists {
-		streamBuf = &streamBuffer{
-			dataSections: make(map[uint64]*dataSection),
-
-			staticDataSize:        dataSource.DataSize(),
-			staticDataSource:      dataSource,
-			staticDataSectionSize: dataSource.SuggestedRequestSize(),
-			staticStreamBufferSet: sbs,
-			staticStreamID:        sourceID,
-		}
-		sbs.streams[sourceID] = streamBuf
-	}
-	streamBuf.externRefCount++
-	sbs.mu.Unlock()
-
-	// Determine how many nodes the stream can cache.
-	nodesToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
-	// TODO: Drop the magic numbers for consts.
-	if nodesToCache < 3 {
-		nodesToCache = 3
-	}
-
-	// Create a stream that points to the stream buffer.
-	stream := &stream{
-		lru:    newLeastRecentlyUsedCache(nodesToCache, streamBuf),
-		offset: initialOffset,
-
-		staticStreamBuffer: streamBuf,
-	}
-	stream.prepareOffset()
-	return stream
-}
-
 // RemoveStream will decrement the refcount of a stream buffer by 1. If the
 // refcount reaches zero, the stream buffer will be deleted from the stream
 // buffer set.
@@ -407,10 +435,7 @@ func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 		return
 	}
 
-	// Close out the streamBuffer.
+	// Close out the streamBuffer and its data source.
 	delete(sbs.streams, sb.staticStreamID)
-	err := sb.staticDataSource.Close()
-	if err != nil {
-		// TODO: LOG!
-	}
+	sb.staticDataSource.SilentClose()
 }
