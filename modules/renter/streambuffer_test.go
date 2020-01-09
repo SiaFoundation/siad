@@ -133,7 +133,7 @@ func TestStreamSmoke(t *testing.T) {
 		t.Fatal("bad")
 	}
 	// Seek back to the beginning one more time to do a full read of the data.
-	offset, err = stream.Seek(0, 0)
+	offset, err = stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
