@@ -325,5 +325,11 @@ func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, read
 			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
+
+	// Disrupt to force an error and ensure the fileNode is being closed
+	// correctly.
+	if r.deps.Disrupt("failUploadStreamFromReader") {
+		return nil, errors.New("disrupted by failUploadStreamFromReader")
+	}
 	return fileNode, nil
 }
