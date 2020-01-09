@@ -37,11 +37,13 @@ var (
 	fileContractMinimumFunding = float64(0.15)
 
 	// maxInitialContractFundsToFeeRatio is the maximum ratio between the
-	// initial contract funds and the transaction fee
+	// initial contract funds and the sum of the estimated transaction fee and
+	// the host contract price
 	maxInitialContractFundsToFeeRatio = uint64(5)
 
 	// minInitialContractFundsToFeeRatio is the minimum ratio between the
-	// initial contract funds and the transaction fee
+	// initial contract funds and the sum of the estimated transaction fee and
+	// the host contract price
 	minInitialContractFundsToFeeRatio = uint64(2)
 
 	// MinContractFundRenewalThreshold defines the ratio of remaining funds to

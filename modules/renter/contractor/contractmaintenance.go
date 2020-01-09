@@ -1165,19 +1165,20 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
-		var contractFunds types.Currency
-		// Calculate minFunding with host
-		minFunding := host.ContractPrice.Add(txnFee)
-		// Sanity check that the initial funding is reasonable compared to the txnFee.
-		// This is to protect against increases to allowances being used up to fast
-		// and not being able to spread the funds across new contracts properly
-		if initialContractFunds.Cmp(minFunding.Mul64(maxInitialContractFundsToFeeRatio)) > 0 {
-			contractFunds = minFunding.Mul64(maxInitialContractFundsToFeeRatio)
-			c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, minFunding %v, New Value %v", initialContractFunds.HumanString(), minFunding.HumanString(), contractFunds.HumanString())
+		contractFunds := initialContractFunds
+		// Calculate the min and max funding with host
+		basePrice := host.ContractPrice.Add(txnFee)
+		maxFunding := basePrice.Mul64(maxInitialContractFundsToFeeRatio)
+		minFunding := basePrice.Mul64(minInitialContractFundsToFeeRatio)
+		// Sanity check that the contract funding is reasonable compared to the
+		// min and max funding. This is to protect against increases to
+		// allowances being used up to fast and not being able to spread the
+		// funds across new contracts properly
+		if contractFunds.Cmp(maxFunding) > 0 {
+			contractFunds = maxFunding
 		}
-		if initialContractFunds.Cmp(minFunding.Mul64(minInitialContractFundsToFeeRatio)) < 0 {
-			contractFunds = minFunding.Mul64(minInitialContractFundsToFeeRatio)
-			c.log.Debugf("TESTING: initialContractFunds were too high: Original Value %v, minFunding %v, New Value %v", initialContractFunds.HumanString(), minFunding.HumanString(), contractFunds.HumanString())
+		if contractFunds.Cmp(minFunding) < 0 {
+			contractFunds = minFunding
 		}
 
 		// If no more contracts are needed, break.

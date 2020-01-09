@@ -12,6 +12,8 @@ Version History
 Latest:
 
 ### v1.4.2.1
+**Key Updates**
+ - Initial contract funding limit
 
 **Bugs Fixed**
  - Unable to upload a new file if 'force' is set and no file exists to delete.
