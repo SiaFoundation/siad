@@ -690,6 +690,28 @@ func TestWalletForceInit(t *testing.T) {
 	}
 }
 
+// TestWalletUnsyncedNewAddress confirms that a wallet can create a new address
+// after unlocking it but before being synced with consensus.
+func TestWalletUnsyncedNewAddress(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a wallet with a disable async unlock dependency
+	testDir := walletTestDir(t.Name())
+	walletTemplate := node.Wallet(testDir + "/wallet")
+	walletTemplate.WalletDeps = &dependencies.DependencyDisableAsyncUnlock{}
+	walletTemplate.CreateMiner = true
+	wallet, err := siatest.NewNode(walletTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = wallet.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestWalletVerifyPassword initializes a wallet with a custom password and
 // verifies it through the API.
 func TestWalletVerifyPassword(t *testing.T) {

@@ -69,15 +69,41 @@ func TestFuse(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
+	// Set the default opts for mounting a fuse directory.
+	//
+	// NOTE: Can't test 'AllowOther' in this test, if 'AllowOther' is set to
+	// true, Linux will complain unless the user has changed the default
+	// configuration for fuse established in /etc/fuse.conf.
+	defaultOpts := modules.MountOptions{
+		ReadOnly:   true,
+		AllowOther: false,
+	}
+
 	// Try mounting an empty fuse filesystem.
 	mountpoint1 := filepath.Join(testDir, "mount1")
 	err = os.MkdirAll(mountpoint1, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), true)
+	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Get the list of filesystem mounts and see that the mountpoint is
+	// represented correctly.
+	fi, err := r.RenterFuse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fi.MountPoints) != 1 {
+		t.Fatal("there should be a mountpoint listed")
+	}
+	if !fi.MountPoints[0].MountOptions.ReadOnly {
+		t.Error("ReadOnly should be set to true")
+	}
+	if fi.MountPoints[0].MountOptions.AllowOther {
+		t.Error("AllowOther should be set to false")
 	}
 
 	// Try reading the empty fuse directory.
@@ -136,7 +162,7 @@ func TestFuse(t *testing.T) {
 	// Mount fuse to the empty filesystem again, this time upload a file while
 	// the system is mounted, then try to read the filesystem from the
 	// directory.
-	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), true)
+	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -716,7 +742,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFuseMount(inodeMount, modules.RootSiaPath(), true)
+	err = r.RenterFuseMount(inodeMount, modules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -890,7 +916,7 @@ func TestFuse(t *testing.T) {
 					wg3.Done()
 					return
 				}
-				err = r.RenterFuseMount(threadMount, siaPathToMount, true)
+				err = r.RenterFuseMount(threadMount, siaPathToMount, defaultOpts)
 				if err != nil {
 					err = errors.AddContext(err, "unable to mount thread mount")
 					errMu.Lock()
@@ -920,7 +946,7 @@ func TestFuse(t *testing.T) {
 			// Phase three. Mount the root, and then repeatedly perform actions
 			// on the files and folders in root to verify the concurrency safety
 			// of the ro filesystem.
-			err = r.RenterFuseMount(threadMount, modules.RootSiaPath(), true)
+			err = r.RenterFuseMount(threadMount, modules.RootSiaPath(), defaultOpts)
 			if err != nil {
 				err = errors.AddContext(err, "unable to mount thread mount")
 				errMu.Lock()
@@ -1031,7 +1057,7 @@ func TestFuse(t *testing.T) {
 			} else {
 				siaPathToMount = modules.RootSiaPath()
 			}
-			err = r.RenterFuseMount(threadMount, siaPathToMount, true)
+			err = r.RenterFuseMount(threadMount, siaPathToMount, defaultOpts)
 			if err != nil {
 				err = errors.AddContext(err, "unable to mount thread mount")
 				errMu.Lock()
