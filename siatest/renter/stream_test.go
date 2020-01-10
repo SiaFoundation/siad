@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
 // TestRenterDownloadStreamCache checks that the download stream caching is
@@ -178,6 +180,7 @@ func TestRenterStream(t *testing.T) {
 		{"TestStreamLargeFile", testStreamLargeFile},
 		{"TestStreamRepair", testStreamRepair},
 		{"TestUploadStreaming", testUploadStreaming},
+		{"TestUploadStreamingWithBadDeps", testUploadStreamingWithBadDeps},
 	}
 
 	// Run tests
@@ -330,5 +333,36 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Log("originalData:", data)
 		t.Log("downloadedData:", downloadedData)
 		t.Fatal("Downloaded data doesn't match uploaded data")
+	}
+}
+
+// testUploadStreamingWithBadDeps uploads random data using the upload streaming
+// API, depending on a disrupt to cause a failure. This is a regression test
+// that would have caused a production build panic.
+func testUploadStreamingWithBadDeps(t *testing.T, tg *siatest.TestGroup) {
+	// Create a custom renter with a dependency and remove it after the test is
+	// done.
+	renterParams := node.Renter(filepath.Join(renterTestDir(t.Name()), "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyFailUploadStreamFromReader{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+	defer tg.RemoveNode(renter)
+
+	// Create some random data to write.
+	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes
+	data := fastrand.Bytes(fileSize)
+	d := bytes.NewReader(data)
+
+	// Upload the data.
+	siaPath, err := modules.NewSiaPath("/foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = renter.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
+	if err == nil {
+		t.Fatal("dependency injection should have caused the upload to fail")
 	}
 }
