@@ -249,8 +249,8 @@ func (c *Client) RenterCancelDownloadPost(id modules.DownloadID) (err error) {
 	return
 }
 
-// RenterDeletePost uses the /renter/delete endpoint to delete a file.
-func (c *Client) RenterDeletePost(siaPath modules.SiaPath) (err error) {
+// RenterFileDeletePost uses the /renter/delete endpoint to delete a file.
+func (c *Client) RenterFileDeletePost(siaPath modules.SiaPath) (err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.post(fmt.Sprintf("/renter/delete/%s", sp), "", nil)
 	return
@@ -616,8 +616,8 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 	return
 }
 
-// RenterGetDir uses the /renter/dir/ endpoint to query a directory
-func (c *Client) RenterGetDir(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
+// RenterDirGet uses the /renter/dir/ endpoint to query a directory
+func (c *Client) RenterDirGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.get(fmt.Sprintf("/renter/dir/%s", sp), &rd)
 	return
@@ -660,12 +660,13 @@ func (c *Client) RenterFuse() (fi api.RenterFuseInfo, err error) {
 
 // RenterFuseMount uses the /renter/fuse/mount endpoint to mount a fuse
 // filesystem serving the provided siapath.
-func (c *Client) RenterFuseMount(mount string, siaPath modules.SiaPath, readOnly bool) (err error) {
+func (c *Client) RenterFuseMount(mount string, siaPath modules.SiaPath, opts modules.MountOptions) (err error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("siapath", sp)
 	values.Set("mount", mount)
-	values.Set("readonly", strconv.FormatBool(readOnly))
+	values.Set("readonly", strconv.FormatBool(opts.ReadOnly))
+	values.Set("allowother", strconv.FormatBool(opts.AllowOther))
 	err = c.post("/renter/fuse/mount", values.Encode(), nil)
 	return
 }

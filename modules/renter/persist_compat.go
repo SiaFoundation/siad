@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -54,8 +53,6 @@ type file struct {
 	deleted     bool                     // indicates if the file has been deleted.
 
 	staticUID string // A UID assigned to the file when it gets created.
-
-	mu sync.RWMutex
 }
 
 // The v1.3.7 in-memory format for a contract used by the v1.3.7 file format.

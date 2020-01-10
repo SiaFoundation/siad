@@ -6,6 +6,32 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var (
+	// TestGlobalSiaPathVar tests that the NewGlobalSiaPath initialization
+	// works.
+	TestGlobalSiaPathVar SiaPath = NewGlobalSiaPath("/testdir")
+)
+
+// TestGlobalSiaPath checks that initializing a new global siapath does not
+// cause any issues.
+func TestGlobalSiaPath(t *testing.T) {
+	sp, err := TestGlobalSiaPathVar.Join("testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror, err := NewSiaPath("/testdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := mirror.Join("testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sp.Equals(expected) {
+		t.Error("the separately spawned siapath should equal the global siapath")
+	}
+}
+
 // TestSiapathValidate verifies that the validate function correctly validates
 // SiaPaths.
 func TestSiapathValidate(t *testing.T) {

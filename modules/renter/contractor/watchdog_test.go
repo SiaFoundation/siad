@@ -59,17 +59,6 @@ func createFakeRevisionTxn(fcID types.FileContractID, revNum uint64, windowStart
 	}
 }
 
-func createFakeFormationTxnSet(name string) []types.Transaction {
-	fc := types.FileContract{
-		FileMerkleRoot: crypto.HashObject(name),
-	}
-	return []types.Transaction{
-		{
-			FileContracts: []types.FileContract{fc},
-		},
-	}
-}
-
 // Creates transaction tree with many root transactions, a "subroot" transaction
 // that spends all the root transaction outputs, and a chain of transactions
 // spending the subroot transaction's output.

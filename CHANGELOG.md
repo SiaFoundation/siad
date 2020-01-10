@@ -9,6 +9,60 @@ Sia uses the following versioning scheme, vX.X.X.X
 Version History
 ---------------
 
+Latest:
+
+### v1.4.2.1
+
+**Key Updates**
+ - Wallet can generate an address before it finishes scanning the blockchain
+ - FUSE folders can now be mounted with 'AllowOther' as an option
+
+**Bugs Fixed**
+ - Unable to upload a new file if 'force' is set and no file exists to delete.
+ - Siac would not always delete a file or folder correctly
+ - Divide by zero error when setting the allowance with an empty period
+
+Dec 2019:
+
+### v1.4.2.0
+**Key Updates**
+ - Allowance in Backups
+ - Wallet Password Reset
+ - Bad Contract Utility Add
+ - FUSE
+ - Renter Watchdog
+ - Contract Churn Limiter
+ - Serving Downloads from Disk
+ - Verify Wallet Password Endpoint
+ - Siafilesystem
+ - Sia node scanner
+ - Gateway blacklisting
+ - Contract Extortion Checker
+ - Instant Boot
+ - Alert System
+ - Remove siafile chunks from memory
+ - Additional price change protection for the Renter
+ - siac Alerts command
+ - Critical alerts displayed on every siac call
+ - Single File Get in siac
+ - Gateway bandwidth monitoring
+ - Ability to pause uploads/repairs
+
+**Bugs Fixed**
+ - Missing return statements in API (http: superfluous response.WriteHeader call)
+ - Stuck Loop fixes (chunks not being added due to directory siapath never being set)
+ - Rapid Cycle repair loop on start up
+ - Wallet Init with force flag when no wallet exists previous would error
+
+**Other**
+ - Module READMEs
+ - staticcheck and gosec added
+ - Security.md file created
+ - Community images added for Built On Sia
+ - JSON tag code analyzer 
+ - ResponseWriter code analyzer
+ - boltdb added to gitlab.com/NebulousLabs
+
 Sep 2019:
 
 v1.4.1.2 (hotfix)

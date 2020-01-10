@@ -23,11 +23,6 @@ const (
 	// support 6 month contracts when Sia leaves beta.
 	defaultMaxDuration = 144 * 30 * 6 // 6 months.
 
-	// fileContractNegotiationTimeout indicates the amount of time that a
-	// renter has to negotiate a file contract with the host. A timeout is
-	// necessary to limit the impact of DoS attacks.
-	fileContractNegotiationTimeout = 120 * time.Second
-
 	// iteratedConnectionTime is the amount of time that is allowed to pass
 	// before the host will stop accepting new iterations on an iterated
 	// connection.
@@ -43,10 +38,6 @@ const (
 	// the next RPC ID in the new RPC loop. (More time is alloted for sending
 	// the actual RPC request object.)
 	rpcRequestInterval = 2 * time.Minute
-
-	// keyExchangeMaxLen is the maximum number of bytes the host will read
-	// from the renter during the RPC key exchange.
-	keyExchangeMaxLen = 256
 
 	// maxObligationLockTimeout is the maximum amount of time the host will wait
 	// to lock a storage obligation.
@@ -188,16 +179,6 @@ var (
 		Dev:      uint64(500),
 		Standard: uint64(2500),
 		Testing:  uint64(500),
-	}).(uint64)
-
-	// maximumLockedStorageObligations sets the maximum number of storage
-	// obligations that are allowed to be locked at a time. The map uses an
-	// in-memory lock, but also a locked storage obligation could be reading a
-	// whole sector into memory, which could use a bunch of system resources.
-	maximumLockedStorageObligations = build.Select(build.Var{
-		Dev:      uint64(20),
-		Standard: uint64(100),
-		Testing:  uint64(5),
 	}).(uint64)
 
 	// obligationLockTimeout defines how long a thread will wait to get a lock

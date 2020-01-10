@@ -110,7 +110,7 @@ func NewServer(dir string, APIaddr string, requiredUserAgent string, requiredPas
 	}
 
 	// Load the config file.
-	cfg, err := modules.NewConfig(filepath.Join(dir, "siad.config"))
+	cfg, err := modules.NewConfig(filepath.Join(dir, modules.ConfigName))
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load siad config")
 	}
@@ -490,20 +490,6 @@ func (st *serverTester) reloadedServerTester() (*serverTester, error) {
 		return nil, err
 	}
 	return copyST, nil
-}
-
-// netAddress returns the NetAddress of the caller.
-func (st *serverTester) netAddress() modules.NetAddress {
-	return st.server.api.gateway.Address()
-}
-
-// coinAddress returns a coin address that the caller is able to spend from.
-func (st *serverTester) coinAddress() string {
-	var addr struct {
-		Address string
-	}
-	st.getAPI("/wallet/address", &addr)
-	return addr.Address
 }
 
 // acceptContracts instructs the host to begin accepting contracts.

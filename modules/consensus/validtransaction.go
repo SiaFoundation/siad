@@ -19,7 +19,6 @@ var (
 	errLateRevision               = errors.New("file contract revision submitted after deadline")
 	errLowRevisionNumber          = errors.New("transaction has a file contract with an outdated revision number")
 	errMissingSiacoinOutput       = errors.New("transaction spends a nonexisting siacoin output")
-	errMissingSiafundOutput       = errors.New("transaction spends a nonexisting siafund output")
 	errSiacoinInputOutputMismatch = errors.New("siacoin inputs do not equal siacoin outputs for transaction")
 	errSiafundInputOutputMismatch = errors.New("siafund inputs do not equal siafund outputs for transaction")
 	errUnfinishedFileContract     = errors.New("file contract window has not yet openend")
