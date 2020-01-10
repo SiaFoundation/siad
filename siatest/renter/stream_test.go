@@ -274,18 +274,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't staying at 0", err)
 	}
-	// Use the streaming endpoint to repair the file. It should always reach
-	// 100%. This is done in a retry since right now the stream endpoint returns
-	// before the uploadchunks are removed from the uploadheap. That means a
-	// stream repair that's started right after another might not make it into
-	// the heap.
-	err = build.Retry(10, time.Second, func() error {
-		if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
+	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.WaitForUploadHealth(remoteFile); err != nil {
