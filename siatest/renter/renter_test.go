@@ -83,7 +83,6 @@ func TestRenterOne(t *testing.T) {
 		{"TestLocalRepair", testLocalRepair},
 		{"TestLocalRepairCorrupted", testLocalRepairCorrupted},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDirectories", testDirectories},
 	}
@@ -1213,7 +1212,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 
-	// Upload file, creating a piece for each host in the group
+	// Upload a file, then try to overwrite the file with the force flag set.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
@@ -1226,7 +1225,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 
-	// Upload file, creating a piece for each host in the group
+	// Upload file, then try to overwrite the file without the force flag set.
 	dataPieces = uint64(1)
 	parityPieces = uint64(len(tg.Hosts())) - dataPieces
 	fileSize = 100 + siatest.Fuzz()
@@ -1237,6 +1236,32 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
 	if err == nil {
 		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
+	if err == nil {
+		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 }
 
@@ -2904,8 +2929,28 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Wait()
 }
 
-// testSetFileTrackingPath tests if changing the repairPath of a file works.
-func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
+// TestSetFileTrackingPath tests if changing the repairPath of a file works.
+func TestSetFileTrackingPath(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a group for the subtests
+	gp := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Check that we have enough hosts for this test.

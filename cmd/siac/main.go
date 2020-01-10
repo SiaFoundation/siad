@@ -18,23 +18,24 @@ import (
 
 var (
 	// Flags.
-	dictionaryLanguage      string // dictionary for seed utils
-	uploadedsizeUtilVerbose bool   // display additional info for "utils upload-size"
-	hostContractOutputType  string // output type for host contracts
-	hostVerbose             bool   // display additional host info
-	hostFolderRemoveForce   bool   // force folder remove
-	initForce               bool   // destroy and re-encrypt the wallet on init if it already exists
-	initPassword            bool   // supply a custom password when creating a wallet
-	renterAllContracts      bool   // Show all active and expired contracts
-	renterDownloadAsync     bool   // Downloads files asynchronously
-	renterDownloadRecursive bool   // Downloads folders recursively.
-	renterListVerbose       bool   // Show additional info about uploaded files.
-	renterListRecursive     bool   // List files of folder recursively.
-	renterShowHistory       bool   // Show download history in addition to download queue.
-	renterVerbose           bool   // Show additional info about the renter
-	siaDir                  string // Path to sia data dir
-	statusVerbose           bool   // Display additional siac information
-	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
+	dictionaryLanguage        string // dictionary for seed utils
+	uploadedsizeUtilVerbose   bool   // display additional info for "utils upload-size"
+	hostContractOutputType    string // output type for host contracts
+	hostVerbose               bool   // display additional host info
+	hostFolderRemoveForce     bool   // force folder remove
+	initForce                 bool   // destroy and re-encrypt the wallet on init if it already exists
+	initPassword              bool   // supply a custom password when creating a wallet
+	renterAllContracts        bool   // Show all active and expired contracts
+	renterDownloadAsync       bool   // Downloads files asynchronously
+	renterDownloadRecursive   bool   // Downloads folders recursively.
+	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
+	renterListVerbose         bool   // Show additional info about uploaded files.
+	renterListRecursive       bool   // List files of folder recursively.
+	renterShowHistory         bool   // Show download history in addition to download queue.
+	renterVerbose             bool   // Show additional info about the renter
+	siaDir                    string // Path to sia data dir
+	statusVerbose             bool   // Display additional siac information
+	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
 	allowanceFunds                     string // amount of money to be used within a period
 	allowancePeriod                    string // length of period
@@ -285,6 +286,7 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxUploadBandwidthPrice, "max-upload-bandwidth-price", "", "the maximum price that the renter will pay to upload data to a host")
 
 	renterFuseCmd.AddCommand(renterFuseMountCmd, renterFuseUnmountCmd)
+	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)

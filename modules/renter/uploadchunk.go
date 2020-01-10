@@ -89,6 +89,8 @@ type unfinishedUploadChunk struct {
 	//	+ the worker should increment the number of pieces completed
 	//	+ the worker should decrement the number of pieces registered
 	//	+ the worker should release the memory for the completed piece
+	availableChan    chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
+	err              error
 	mu               sync.Mutex
 	pieceUsage       []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
 	piecesCompleted  int                 // number of pieces that have been fully uploaded.
@@ -101,6 +103,17 @@ type unfinishedUploadChunk struct {
 	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
 	canceled bool           // cancel the work on this chunk.
 	cancelWG sync.WaitGroup // WaitGroup to wait on after canceling the uploadchunk.
+}
+
+// staticAvailable returns whether or not the chunk is available yet on the Sia
+// network.
+func (uc *unfinishedUploadChunk) staticAvailable() bool {
+	select {
+	case <-uc.availableChan:
+		return true
+	default:
+		return false
+	}
 }
 
 // managedNotifyStandbyWorkers is called when a worker fails to upload a piece, meaning
@@ -353,8 +366,13 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 			// Encrypt the piece.
 			key := chunk.fileEntry.MasterKey().Derive(chunk.index, uint64(i))
 			chunk.physicalChunkData[i] = key.EncryptBytes(chunk.physicalChunkData[i])
-			// If the piece was not a full sector, pad it accordingly with random bytes.
-			if short := int(modules.SectorSize) - len(chunk.physicalChunkData[i]); short > 0 {
+			// If the piece was not a full sector, pad it accordingly with
+			// random bytes. Do not however pad the data with random bytes if
+			// the encryption key is 'plaintext', because this will cause
+			// identical pieces to have different Merkle roots, which ruins the
+			// consistency of content addressing.
+			short := int(modules.SectorSize) - len(chunk.physicalChunkData[i])
+			if chunk.fileEntry.MasterKey().Type() != crypto.TypePlain && short > 0 {
 				// The form `append(obj, make([]T, n))` will be optimized by the
 				// compiler to eliminate unneeded allocations starting go 1.11.
 				chunk.physicalChunkData[i] = append(chunk.physicalChunkData[i], make([]byte, short)...)
@@ -431,6 +449,11 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 	}
 
+	// Check if the chunk is now available.
+	if uc.piecesCompleted >= uc.minimumPieces && !uc.staticAvailable() && !uc.released {
+		close(uc.availableChan)
+	}
+
 	// Check if the chunk needs to be removed from the list of active
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
@@ -441,6 +464,10 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		} else {
 			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
+		}
+		if !uc.staticAvailable() {
+			uc.err = errors.New("unable to upload file, file is not available on the newtork")
+			close(uc.availableChan)
 		}
 		uc.released = true
 	}

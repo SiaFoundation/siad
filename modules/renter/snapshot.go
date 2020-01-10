@@ -137,10 +137,13 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		SiaPath:     sp,
 		ErasureCode: ec,
 		Force:       false,
+
+		CipherType: crypto.TypeDefaultRenter,
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.
-	if err := r.managedUploadStreamFromReader(up, backup, true); err != nil {
+	_, err = r.managedUploadStreamFromReader(up, backup, true)
+	if err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}
 	// Save initial snapshot entry.
