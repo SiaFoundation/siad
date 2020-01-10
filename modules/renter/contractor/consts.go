@@ -26,11 +26,11 @@ var (
 
 	// MaxInitialContractFundingDivFactor is the dividing factor for determining
 	// the maximum amound of funds to put into a new contract
-	MaxInitialContractFundingDivFactor = uint64(2)
+	MaxInitialContractFundingDivFactor = uint64(3)
 
 	// MaxInitialContractFundingMulFactor is the multiplying factor for
 	// determining the maximum amound of funds to put into a new contract
-	MaxInitialContractFundingMulFactor = uint64(3)
+	MaxInitialContractFundingMulFactor = uint64(2)
 
 	// MinInitialContractFundingFactor is the dividing factor for determining
 	// the minimum amound of funds to put into a new contract
