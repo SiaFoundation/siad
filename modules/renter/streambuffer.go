@@ -54,14 +54,12 @@ var (
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
-// data. Most importantly, the data source needs to be an io.ReaderAt for
-// fetching data, however other methods such as OptimalFetchSize need to be
-// implemented so that the stream buffer knows how to efficiently query data
-// from the data source.
+// data. This type is internal to the renter as there are plans to expand on the
+// type.
 type streamBufferDataSource interface {
-	// DataSize should return the size of the data. Calls to ReadAt will not go
-	// beyond the offset provided by DataSize. A call to ReadAt for the final
-	// data section will be correctly short.
+	// DataSize should return the size of the data. When the streamBuffer is
+	// reading from the data source, it will ensure that none of the read calls
+	// go beyond the boundary of the data source.
 	DataSize() uint64
 
 	// ID returns the ID of the data source. This should be unique to the data
@@ -318,9 +316,8 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	return int64(s.offset), nil
 }
 
-// mangagedPrepareOffset will ensure that the dataSection containing the offest
-// is made available in the LRU, and that the following dataSection is also
-// available.
+// prepareOffset will ensure that the dataSection containing the offest is made
+// available in the LRU, and that the following dataSection is also available.
 func (s *stream) prepareOffset() {
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
@@ -344,9 +341,9 @@ func (s *stream) prepareOffset() {
 	}
 }
 
-// callFetchNode will increment the refcount of a dataSection in the stream
-// buffer. If the dataSection is not currently available in the stream buffer,
-// the data section will be fetched from the dataSource.
+// callFetchDataSection will increment the refcount of a dataSection in the
+// stream buffer. If the dataSection is not currently available in the stream
+// buffer, the data section will be fetched from the dataSource.
 func (sb *streamBuffer) callFetchDataSection(index uint64) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
@@ -409,9 +406,6 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
-		// This call depends on the implementation requirement of ReadAt that an
-		// error will be returned if the amount of data read is less than the
-		// amount of data requested.
 		_, err := sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
 		if err != nil {
 			ds.externErr = errors.AddContext(err, "data section fetch failed")
@@ -421,9 +415,13 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	return ds
 }
 
-// RemoveStream will decrement the refcount of a stream buffer by 1. If the
-// refcount reaches zero, the stream buffer will be deleted from the stream
-// buffer set.
+// managedRemoveStream will remove a stream from a stream buffer. If the total
+// number of streams using that stream buffer reaches zero, the stream buffer
+// will be removed from the stream buffer set.
+//
+// The reference counter for a stream buffer needs to be in the domain of the
+// stream buffer set because the stream buffer needs to be deleted from the
+// stream buffer set simultaneously with the reference counter reaching zero.
 func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 	sbs.mu.Lock()
 	defer sbs.mu.Unlock()
