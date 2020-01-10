@@ -114,7 +114,7 @@ func TestStreamSmoke(t *testing.T) {
 	if !bytes.Equal(buf, data[:512]) {
 		t.Fatal("bad")
 	}
-	offset, err = stream.Seek(0, 0)
+	offset, err = stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
