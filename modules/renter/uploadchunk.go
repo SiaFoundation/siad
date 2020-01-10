@@ -56,7 +56,14 @@ type unfinishedUploadChunk struct {
 	logicalChunkData  [][]byte
 	physicalChunkData [][]byte
 
-	verifyPieceRoot []crypto.Hash
+	// staticExpectedPieceRoots is a list of piece roots that are known for the
+	// chunk. If the roots are blank, it means there is no expectation for the
+	// root. This field is used to prevent file corruption when repairing from
+	// an authenticated source. For example, if repairing from a local file,
+	// it's possible that the local file has changed since being originally
+	// uploaded. This field allows us to check after we load the file locally
+	// and be confident that the data now is the same as what it used to be.
+	staticExpectedPieceRoots []crypto.Hash
 
 	// sourceReader is an optional source for the logical chunk data. If
 	// available it will be tried before the repair path or remote repair.
@@ -162,19 +169,6 @@ func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][
 		}
 	}
 	return dataPieces, total, nil
-}
-
-// readLogicalData initializes the chunk's logicalChunkData using data read from
-// r, returning the number of bytes read.
-func (uc *unfinishedUploadChunk) readLogicalData(r io.Reader) (uint64, error) {
-	// Allocate data pieces and fill them with data from r.
-	dataPieces, total, err := readDataPieces(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
-	if err != nil {
-		return 0, err
-	}
-	// Encode the data pieces, forming the chunk's logical data.
-	uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
-	return total, nil
 }
 
 // managedDistributeChunkToWorkers will take a chunk with fully prepared
@@ -390,31 +384,114 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	r.managedDistributeChunkToWorkers(chunk)
 }
 
+// staticCheckPhysicalDataIntegrity compares the physical data in the chunk to
+// the known expected roots of the physical data in the chunk. This is important
+// when loading data for repair from an unverified source such as a sourceReader
+// or a file. If the data provided by the sourceReader or file is not the same
+// as the data which was originally uploaded, the repair is incorrect and can
+// cause corruption, and needs to be blocked.
+func (uuc *unfinishedUploadChunk) staticCheckPhysicalDataIntegrity() error {
+	// Verify that all of the shards match the piece roots we are expecting. Use
+	// one thread per piece so that the verification is multicore.
+	var zeroHash crypto.Hash
+	var wg sync.WaitGroup
+	failures := make([]bool, len(uuc.logicalChunkData))
+	for i := range uuc.logicalChunkData {
+		if uuc.staticExpectedPieceRoots[i] == zeroHash {
+			continue
+		}
+		if uuc.logicalChunkData[i] == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(i int) {
+			key := uuc.fileEntry.MasterKey().Derive(uuc.index, uint64(i))
+			enc := key.EncryptBytes(uuc.logicalChunkData[i])
+			root := crypto.MerkleRoot(enc)
+			if root != uuc.staticExpectedPieceRoots[i] {
+				failures[i] = true
+			}
+			wg.Done()
+		}(i)
+
+	}
+	wg.Wait()
+
+	// Scan through and see if there were any failures.
+	for _, failure := range failures {
+		if failure {
+			// Integrity check has failed. Create an error and quit.
+			return errors.New("physical data integrity check has failed")
+		}
+	}
+	return nil
+}
+
+// staticReadLogicalData initializes the chunk's logicalChunkData using data read from
+// r, returning the number of bytes read.
+func (uc *unfinishedUploadChunk) staticReadLogicalData(r io.Reader) (uint64, error) {
+	// Allocate data pieces and fill them with data from r.
+	dataPieces, total, err := readDataPieces(r, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
+	if err != nil {
+		return 0, err
+	}
+	// Encode the data pieces, forming the chunk's logical data.
+	uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
+	return total, nil
+}
+
+// staticFetchLogicalDataFromReader will load the logical data for a chunk from
+// a reader, and perform an integrity check on the chunk to ensure correctness.
+func (r *Renter) staticFetchLogicalDataFromReader(uuc *unfinishedUploadChunk) error {
+	// This function assumes that a sourceReader exists.
+	if uuc.sourceReader == nil {
+		r.log.Critical("reading data from a nil source reader")
+	}
+	defer uuc.sourceReader.Close()
+
+	// Grab the logical data from the reader.
+	n, err := uuc.staticReadLogicalData(uuc.sourceReader)
+	if err != nil {
+		return errors.AddContext(err, "unable to read the chunk data from the source reader")
+	}
+
+	// Perform an integrity check on the data that was pulled from the reader.
+	err = uuc.staticCheckPhysicalDataIntegrity()
+	if err != nil {
+		return errors.AddContext(err, "source data does not match previously uploaded data - blocking corrupt repair")
+	}
+
+	// Adjust the filesize. Since we don't know the length of the stream
+	// beforehand we simply assume that a whole chunk will be added to the
+	// file. That's why we subtract the difference between the size of a
+	// chunk and n here.
+	adjustedSize := uuc.fileEntry.Size() - uuc.length + n
+	if errSize := uuc.fileEntry.SetFileSize(adjustedSize); errSize != nil {
+		return errors.AddContext(errSize, "failed to adjust FileSize")
+	}
+	return nil
+}
+
 // managedFetchLogicalChunkData will get the raw data for a chunk, pulling it from disk if
 // possible but otherwise queueing a download.
 //
-// chunk.data should be passed as 'nil' to the download, to keep memory usage as
+// uuc.data should be passed as 'nil' to the download, to keep memory usage as
 // light as possible.
-func (r *Renter) managedFetchLogicalChunkData(chunk *unfinishedUploadChunk) error {
-	// If a sourceReader is available, use it.
-	if chunk.sourceReader != nil {
-		defer chunk.sourceReader.Close()
-		n, err := chunk.readLogicalData(chunk.sourceReader)
+func (r *Renter) managedFetchLogicalChunkData(uuc *unfinishedUploadChunk) error {
+	// Use a sourceReader if one is available.
+	if uuc.sourceReader != nil {
+		err := r.staticFetchLogicalDataFromReader(uuc)
 		if err != nil {
-			return err
-		}
-		// Adjust the filesize. Since we don't know the length of the stream
-		// beforehand we simply assume that a whole chunk will be added to the
-		// file. That's why we subtract the difference between the size of a
-		// chunk and n here.
-		adjustedSize := chunk.fileEntry.Size() - chunk.length + n
-		if errSize := chunk.fileEntry.SetFileSize(adjustedSize); errSize != nil {
-			return errors.AddContext(errSize, "failed to adjust FileSize")
+			// Attempt to fall back to downloading the data from remote.
+			r.log.Println("Unable to load logical data from source reader:", err)
+			return r.managedDownloadLogicalChunkData(uuc)
 		}
 		return nil
 	}
-	// Download the chunk if it's not being streamed.
-	return r.managedDownloadLogicalChunkData(chunk)
+
+	// No other data source avaialble, fetch the data from the Sia network for
+	// repair.
+	return r.managedDownloadLogicalChunkData(uuc)
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any
@@ -466,7 +543,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		}
 		if !uc.staticAvailable() {
-			uc.err = errors.New("unable to upload file, file is not available on the newtork")
+			uc.err = errors.New("unable to upload file, file is not available on the network")
 			close(uc.availableChan)
 		}
 		uc.released = true

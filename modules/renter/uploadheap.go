@@ -424,7 +424,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		stuck:         stuck,
 
 		physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
-		verifyPieceRoot:   make([]crypto.Hash, entry.ErasureCode().NumPieces()),
+		staticExpectedPieceRoots:   make([]crypto.Hash, entry.ErasureCode().NumPieces()),
 
 		availableChan: make(chan struct{}),
 		pieceUsage:    make([]bool, entry.ErasureCode().NumPieces()),
@@ -481,7 +481,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		// root of the uploaded pieces in order to be able to later sanity check
 		// repairs.
 		if len(pieceSet) > 0 {
-			uuc.verifyPieceRoot[pieceIndex] = pieceSet[0].MerkleRoot
+			uuc.staticExpectedPieceRoots[pieceIndex] = pieceSet[0].MerkleRoot
 		}
 	}
 	// Now that we have calculated the completed pieces for the chunk we can
