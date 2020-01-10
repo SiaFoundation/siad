@@ -1175,8 +1175,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Calculate the contract funding with host
 		contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingFactor)
 
-		// Sanity check that the contract funding is reasonable compared to the
-		// max and min initial funding. This is to protect against increases to
+		// Check that the contract funding is reasonable compared to the max and
+		// min initial funding. This is to protect against increases to
 		// allowances being used up to fast and not being able to spread the
 		// funds across new contracts properly, as well as protecting against
 		// contracts renewing too quickly

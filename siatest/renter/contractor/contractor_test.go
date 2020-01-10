@@ -123,7 +123,7 @@ func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 	contractFunds := rc.ActiveContracts[0].TotalCost
 
 	// The funds put into the contract should equal the contract funding
-	if contractFunds.Cmp(contractFunding) != 0 {
+	if !contractFunds.Equals(contractFunding) {
 		t.Errorf("Contract Funds %v does not equal the Contract Funding %v", contractFunds.HumanString(), contractFunding.HumanString())
 	}
 }
