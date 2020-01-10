@@ -83,6 +83,15 @@ func TestContractorOne(t *testing.T) {
 func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 	// Get Renter
 	r := tg.Renters()[0]
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Determine max and min initial contract funding based on allowance
+	allowance := rg.Settings.Allowance
+	maxInitialContractFunding := allowance.Funds.Div64(allowance.Hosts).Mul64(contractor.MaxInitialContractFundingMulFactor).Div64(contractor.MaxInitialContractFundingDivFactor)
+	minInitialContractFunding := allowance.Funds.Div64(allowance.Hosts).Div64(contractor.MinInitialContractFundingFactor)
 
 	// Get host
 	h := tg.Hosts()[0]
@@ -91,27 +100,31 @@ func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Get Contract Price from host
+	// Get Contract Price from host and determine contract funding based on the
+	// transaction fees
 	contractPrice := hg.ExternalSettings.ContractPrice
 	tpoolMaxFee := contractPrice.Div64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
 	txnFee := tpoolMaxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
-	minFunding := contractPrice.Add(txnFee)
+	contractFunding := contractPrice.Add(txnFee).Mul64(contractor.ContractFeeFundingFactor)
+
+	// Sanity checks on funding
+	if contractFunding.Cmp(maxInitialContractFunding) > 0 {
+		contractFunding = maxInitialContractFunding
+	}
+	if contractFunding.Cmp(minInitialContractFunding) < 0 {
+		contractFunding = minInitialContractFunding
+	}
 
 	// Get Contracts
 	rc, err := r.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	contractFunding := rc.ActiveContracts[0].TotalCost
+	contractFunds := rc.ActiveContracts[0].TotalCost
 
-	// Total cost should be between 2x and 5x the min funding
-	lowerLimit := minFunding.Mul64(2)
-	upperLimit := minFunding.Mul64(5)
-	if contractFunding.Cmp(lowerLimit) < 0 {
-		t.Errorf("Contract funding is below the lower limit: Contract Funding %v, Limit %v", contractFunding.HumanString(), lowerLimit.HumanString())
-	}
-	if contractFunding.Cmp(upperLimit) > 0 {
-		t.Errorf("Contract funding is above the upper limit: Contract Funding %v, Limit %v", contractFunding.HumanString(), upperLimit.HumanString())
+	// The funds put into the contract should equal the contract funding
+	if contractFunds.Cmp(contractFunding) != 0 {
+		t.Errorf("Contract Funds %v does not equal the Contract Funding %v", contractFunds.HumanString(), contractFunding.HumanString())
 	}
 }
 

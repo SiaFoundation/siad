@@ -20,6 +20,22 @@ var (
 
 // Constants related to contract formation parameters.
 var (
+	// ContractFeeFundingFactor is the multiplying factor for contract fees to
+	// determine the funding for a new contract
+	ContractFeeFundingFactor = uint64(10)
+
+	// MaxInitialContractFundingDivFactor is the dividing factor for determining
+	// the maximum amound of funds to put into a new contract
+	MaxInitialContractFundingDivFactor = uint64(2)
+
+	// MaxInitialContractFundingMulFactor is the multiplying factor for
+	// determining the maximum amound of funds to put into a new contract
+	MaxInitialContractFundingMulFactor = uint64(3)
+
+	// MinInitialContractFundingFactor is the dividing factor for determining
+	// the minimum amound of funds to put into a new contract
+	MinInitialContractFundingFactor = uint64(20)
+
 	// consecutiveRenewalsBeforeReplacement is the number of times a contract
 	// attempt to be renewed before it is marked as !goodForRenew.
 	consecutiveRenewalsBeforeReplacement = build.Select(build.Var{
@@ -35,16 +51,6 @@ var (
 	// that a contract would be allowed to have is fileContractMinimumFunding *
 	// 100SC.
 	fileContractMinimumFunding = float64(0.15)
-
-	// maxInitialContractFundsToFeeRatio is the maximum ratio between the
-	// initial contract funds and the sum of the estimated transaction fee and
-	// the host contract price
-	maxInitialContractFundsToFeeRatio = uint64(5)
-
-	// minInitialContractFundsToFeeRatio is the minimum ratio between the
-	// initial contract funds and the sum of the estimated transaction fee and
-	// the host contract price
-	minInitialContractFundsToFeeRatio = uint64(2)
 
 	// MinContractFundRenewalThreshold defines the ratio of remaining funds to
 	// total contract cost below which the contractor will prematurely renew a

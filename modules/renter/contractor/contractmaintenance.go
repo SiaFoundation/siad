@@ -1146,8 +1146,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		blacklist = append(blacklist, contract.HostPublicKey)
 	}
 
-	// Estimate initial contract funding
-	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
+	// Determine the max and min initial contract funding based on the allowance
+	// settings
+	maxInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Mul64(MaxInitialContractFundingMulFactor).Div64(MaxInitialContractFundingDivFactor)
+	minInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(MinInitialContractFundingFactor)
 	c.mu.RUnlock()
 
 	// Get Hosts
@@ -1165,27 +1167,27 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
-		contractFunds := initialContractFunds
-		// Calculate the min and max funding with host
-		basePrice := host.ContractPrice.Add(txnFee)
-		maxFunding := basePrice.Mul64(maxInitialContractFundsToFeeRatio)
-		minFunding := basePrice.Mul64(minInitialContractFundsToFeeRatio)
-		// Sanity check that the contract funding is reasonable compared to the
-		// min and max funding. This is to protect against increases to
-		// allowances being used up to fast and not being able to spread the
-		// funds across new contracts properly
-		if contractFunds.Cmp(maxFunding) > 0 {
-			contractFunds = maxFunding
-		}
-		if contractFunds.Cmp(minFunding) < 0 {
-			contractFunds = minFunding
-		}
-
 		// If no more contracts are needed, break.
 		if neededContracts <= 0 {
 			break
 		}
 
+		// Calculate the contract funding with host
+		contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingFactor)
+
+		// Sanity check that the contract funding is reasonable compared to the
+		// max and min initial funding. This is to protect against increases to
+		// allowances being used up to fast and not being able to spread the
+		// funds across new contracts properly, as well as protecting against
+		// contracts renewing too quickly
+		if contractFunds.Cmp(maxInitialContractFunds) > 0 {
+			contractFunds = maxInitialContractFunds
+		}
+		if contractFunds.Cmp(minInitialContractFunds) < 0 {
+			contractFunds = minInitialContractFunds
+		}
+
+		// Confirm the wallet is still unlocked
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
