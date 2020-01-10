@@ -130,7 +130,7 @@ type streamBuffer struct {
 
 	// externRefCount is in the same consistency domain as the streamBufferSet,
 	// it needs to be incremented and deceremented simulatenously with the
-	// creation and deleteion of the streamBuffer.
+	// creation and deletion of the streamBuffer.
 	externRefCount uint64
 
 	mu                    sync.Mutex
