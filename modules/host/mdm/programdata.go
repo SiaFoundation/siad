@@ -116,8 +116,9 @@ func (pd *programData) threadedFetchData() {
 	}
 }
 
-// managedBytes tries to fetch length bytes at offset from the underlying data slice of
-// the ProgramData. If the data is not available yet,
+// managedBytes tries to fetch length bytes at offset from the underlying data
+// slice of the ProgramData. If the data is not available yet, a request will be
+// queued up and the method will block for the data to be read.
 func (pd *programData) managedBytes(offset, length uint64) ([]byte, error) {
 	// Check if request is valid.
 	if offset+length > pd.staticLength {
@@ -131,6 +132,7 @@ func (pd *programData) managedBytes(offset, length uint64) ([]byte, error) {
 	}
 	// Check for previous error.
 	if pd.readErr != nil {
+		defer pd.mu.Unlock()
 		return nil, pd.readErr
 	}
 	// If not, queue up a request.

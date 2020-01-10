@@ -95,7 +95,7 @@ func WriteSectorCost(contractSize uint64) Cost {
 	return Cost{
 		Compute:      1 + (contractSize / 1 << 40),
 		DiskAccesses: 1,
-		DiskRead:     1 << 22, // TODO: Why?
+		DiskRead:     1 << 22, // 4 MiB
 		DiskWrite:    1 << 22, // 4 MiB
 		Memory:       1 << 22, // 4 MiB
 	}

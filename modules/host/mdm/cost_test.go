@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// TestCostSub tests subtracting a cost from another one.
 func TestCostSub(t *testing.T) {
 	cost := Cost{
 		Compute:      10,
@@ -51,8 +52,8 @@ func TestCostSub(t *testing.T) {
 		DiskWrite:    11,
 		Memory:       11,
 	})
-	if err == nil {
-		t.Fatal("expected underflow error")
+	if !errors.Contains(err, ErrInsufficientBudget) {
+		t.Fatal("expected ErrInsufficientBudget error")
 	}
 	if !errors.Contains(err, ErrInsufficientBudget) {
 		t.Fatal("expected err to contain", ErrInsufficientBudget)

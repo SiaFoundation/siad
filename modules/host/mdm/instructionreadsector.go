@@ -9,12 +9,14 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// instructionReadSector is an instruction which reads from a sector specified
+// by a merkle root.
 type instructionReadSector struct {
 	commonInstruction
 
-	lengthOffset  uint64
-	offsetOffset  uint64
-	merkleRootOff uint64
+	lengthOffset     uint64
+	offsetOffset     uint64
+	merkleRootOffset uint64
 }
 
 // staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the
@@ -41,9 +43,9 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 			staticMerkleProof:  instruction.Args[24] == 1,
 			staticState:        p.staticProgramState,
 		},
-		lengthOffset:  lengthOffset,
-		merkleRootOff: rootOffset,
-		offsetOffset:  offsetOffset,
+		lengthOffset:     lengthOffset,
+		merkleRootOffset: rootOffset,
+		offsetOffset:     offsetOffset,
 	}, nil
 }
 
@@ -69,7 +71,7 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	if err != nil {
 		return outputFromError(err)
 	}
-	sectorRoot, err := i.staticData.Hash(i.merkleRootOff)
+	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
 	if err != nil {
 		return outputFromError(err)
 	}
