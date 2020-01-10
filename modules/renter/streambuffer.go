@@ -326,7 +326,7 @@ func (s *stream) prepareOffset() {
 	dataSize := s.staticStreamBuffer.staticDataSize
 	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
 
-	// If the offset is already at the end of the file, there is nothing to do.
+	// If the offset is already at the end of the data, there is nothing to do.
 	if s.offset == dataSize {
 		return
 	}
