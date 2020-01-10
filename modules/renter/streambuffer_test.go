@@ -82,14 +82,14 @@ func TestStreamSmoke(t *testing.T) {
 
 	// Perform the ritual that the http.ResponseWriter performs - seek to front,
 	// seek to back, read 512 bytes, seek to front, read a bigger chunk of data.
-	offset, err := stream.Seek(0, 0)
+	offset, err := stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if offset != 0 {
 		t.Fatal("bad")
 	}
-	offset, err = stream.Seek(0, 2)
+	offset, err = stream.Seek(0, io.SeekEnd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestStreamSmoke(t *testing.T) {
 	if !bytes.Equal(buf, data[:512]) {
 		t.Fatal("bad")
 	}
-	offset, err = stream.Seek(0, 0)
+	offset, err = stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}

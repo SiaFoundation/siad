@@ -127,8 +127,8 @@ type streamBuffer struct {
 	dataSections map[uint64]*dataSection
 
 	// externRefCount is in the same consistency domain as the streamBufferSet,
-	// it needs to be incremented and deceremented simulatenously with the
-	// creation and deleteion of the streamBuffer.
+	// it needs to be incremented and decremented simulatenously with the
+	// creation and deletion of the streamBuffer.
 	externRefCount uint64
 
 	mu                    sync.Mutex
@@ -323,7 +323,7 @@ func (s *stream) prepareOffset() {
 	dataSize := s.staticStreamBuffer.staticDataSize
 	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
 
-	// If the offset is already at the end of the file, there is nothing to do.
+	// If the offset is already at the end of the data, there is nothing to do.
 	if s.offset == dataSize {
 		return
 	}
