@@ -1100,21 +1100,9 @@ func TestLowAllowanceAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	// All the contracts should have the same alert, so just grab one to check
-	rc, err := renter.RenterContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract := rc.ActiveContracts[0]
 	lowFundsAlert := modules.Alert{
-		Cause:    contractor.AlertCauseInsufficientFunds,
+		Cause:    contractor.AlertCauseInsufficientAllowanceFunds,
 		Msg:      contractor.AlertMSGAllowanceLowFunds,
-		Module:   "contractor",
-		Severity: modules.SeverityWarning,
-	}
-	maintenanceRequired := modules.Alert{
-		Cause:    contractor.AlertCauseInsufficientFunds,
-		Msg:      contractor.AlertMSGContractRenewalRequired(contract.ID),
 		Module:   "contractor",
 		Severity: modules.SeverityWarning,
 	}
@@ -1127,15 +1115,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 			}
 		}
 		numRetries++
-		err = renter.IsAlertRegistered(lowFundsAlert)
-		if err != nil {
-			return errors.AddContext(err, "Low Funds alert not registered")
-		}
-		err = renter.IsAlertRegistered(maintenanceRequired)
-		if err != nil {
-			return errors.AddContext(err, "Maintenance Required alert not registered")
-		}
-		return nil
+		return renter.IsAlertRegistered(lowFundsAlert)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1152,18 +1132,11 @@ func TestLowAllowanceAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	renter = nodes[0]
-	// All the contracts should have the same alert, so just grab one to check
-	rc, err = renter.RenterContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract = rc.ActiveContracts[0]
 	// Drain contracts to force refresh
 	_, err = siatest.DrainContractsByUploading(renter, tg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	maintenanceRequired.Msg = contractor.AlertMSGContractRefreshRequired(contract.ID)
 	// Wait for the alert to be registered.
 	err = build.Retry(100, 600*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
@@ -1172,15 +1145,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 			}
 		}
 		numRetries++
-		err = renter.IsAlertRegistered(lowFundsAlert)
-		if err != nil {
-			return errors.AddContext(err, "Low Funds alert not registered")
-		}
-		err = renter.IsAlertRegistered(maintenanceRequired)
-		if err != nil {
-			return errors.AddContext(err, "Maintenance Required alert not registered")
-		}
-		return nil
+		return renter.IsAlertRegistered(lowFundsAlert)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2075,9 +2040,9 @@ func TestWatchdogExtraDependencyRegression(t *testing.T) {
 	}
 }
 
-// TestContractRenewalAndRefreshRequiredAlert tests that if a contract is not
-// renewed or refreshed properly it will register an alert.
-func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
+// TestFailedContractRenewalAlert tests that if a contract is not renewed or
+// refreshed properly it will register an alert.
+func TestFailedContractRenewalAlert(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -2121,13 +2086,6 @@ func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 		t.Fatal("number of alerts is not 0")
 	}
 
-	// Both contracts should have the alert so just grab one
-	rc, err := r.RenterContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract := rc.ActiveContracts[0]
-
 	// Mine blocks to force contract renewal
 	err = siatest.RenewContractsByRenewWindow(r, tg)
 	if err != nil {
@@ -2136,10 +2094,10 @@ func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 
 	// Check for alert
 	expectedAlert := modules.Alert{
-		Cause:    contractor.AlertCauseFailedContractRenewal,
-		Msg:      contractor.AlertMSGContractRenewalRequired(contract.ID),
+		Cause:    "Renew failure due to dependency",
+		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
-		Severity: modules.SeverityWarning,
+		Severity: modules.SeverityError,
 	}
 	m := tg.Miners()[0]
 	numTries := 0
@@ -2151,7 +2109,18 @@ func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 				return err
 			}
 		}
-		return r.IsAlertRegistered(expectedAlert)
+		// Since this alert casuse can be multiple composed errors it can not
+		// use the IsAlertRegistered helper method
+		dag, err := r.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+				return nil
+			}
+		}
+		return errors.New("alert is not registered")
 	})
 	if err != nil {
 		t.Error(err)
@@ -2170,7 +2139,18 @@ func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 			}
 		}
 		numTries++
-		return r.IsAlertUnregistered(expectedAlert)
+		// Since this alert casuse can be multiple composed errors it can not
+		// use the IsAlertUnregistered helper method
+		dag, err := r.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+				return errors.New("alert is registered")
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		t.Error(err)
@@ -2183,14 +2163,6 @@ func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Both contracts should have the alert so just grab one
-	rc, err = r.RenterContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract = rc.ActiveContracts[0]
-	expectedAlert.Msg = contractor.AlertMSGContractRefreshRequired(contract.ID)
 
 	// Enable the dependency
 	deps.Enable()
@@ -2211,7 +2183,18 @@ func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 			}
 		}
 		numTries++
-		return r.IsAlertRegistered(expectedAlert)
+		// Since this alert casuse can be multiple composed errors it can not
+		// use the IsAlertRegistered helper method
+		dag, err := r.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+				return nil
+			}
+		}
+		return errors.New("alert is not registered")
 	})
 	if err != nil {
 		t.Error(err)
@@ -2230,7 +2213,18 @@ func TestContractRenewalAndRefreshRequiredAlert(t *testing.T) {
 			}
 		}
 		numTries++
-		return r.IsAlertUnregistered(expectedAlert)
+		// Since this alert casuse can be multiple composed errors it can not
+		// use the IsAlertUnregistered helper method
+		dag, err := r.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+				return errors.New("alert is registered")
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		t.Error(err)

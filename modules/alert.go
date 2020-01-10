@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
-
-	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // The following consts are the different types of severity levels available in
@@ -38,6 +37,9 @@ const (
 	// AlertIDRenterAllowanceLowFunds is the id of the alert that is registered if at least one
 	// contract failed to renew/form due to low allowance.
 	AlertIDRenterAllowanceLowFunds = "low-funds"
+	// AlertIDRenterContractRenewalError is the id of the alert that is
+	// registered if at least once contract renewal or refresh failed
+	AlertIDRenterContractRenewalError = "contract-renewal-error"
 	// AlertIDGatewayOffline is the id of the alert that is registered upon a
 	// call to 'gateway.Offline' if the value returned is 'false' and
 	// unregistered when it returns 'true'.
@@ -50,12 +52,6 @@ const (
 	// renew a contract
 	AlertIDHostInsufficientCollateral = "host-insufficient-collateral"
 )
-
-// AlertIDContractMaintenanceRequired uses a contract's ID to create a unique AlertID
-// for a low redundancy alert.
-func AlertIDContractMaintenanceRequired(fcid types.FileContractID) AlertID {
-	return AlertID(fmt.Sprintf("contract-maintenance-required:%v", fcid.String()))
-}
 
 // AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID
 // for a low redundancy alert.
@@ -94,6 +90,14 @@ type (
 // Equals returns true if x and y are identical alerts
 func (x Alert) Equals(y Alert) bool {
 	return x.Module == y.Module && x.Cause == y.Cause && x.Msg == y.Msg && x.Severity == y.Severity
+}
+
+// EqualsWithErrorCause returns true if x and y have the same module, message,
+// and severity and if the provided error is in both of the alert's causes
+func (x Alert) EqualsWithErrorCause(y Alert, causeErr string) bool {
+	firstCheck := x.Module == y.Module && x.Msg == y.Msg && x.Severity == y.Severity
+	causeCheck := strings.Contains(x.Cause, causeErr) && strings.Contains(y.Cause, causeErr)
+	return firstCheck && causeCheck
 }
 
 // MarshalJSON defines a JSON encoding for the AlertSeverity.

@@ -1,8 +1,6 @@
 package contractor
 
 import (
-	"fmt"
-
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -10,35 +8,22 @@ import (
 
 // Constants related to the contractor's alerts.
 var (
-	// AlertCauseFailedContractRenewal indicates the the cause for the alert is
-	// that the contract renewal failed
-	AlertCauseFailedContractRenewal = "Failed to renew contract"
-
-	// AlertCauseInsufficientFunds indicates that the cause for the alert was
-	// insufficient funds remaining
-	AlertCauseInsufficientFunds = "Insufficient funds remaining"
+	// AlertCauseInsufficientAllowanceFunds indicates that the cause for the
+	// alert was insufficient allowance funds remaining
+	AlertCauseInsufficientAllowanceFunds = "Insufficient allowance funds remaining"
 
 	// AlertMSGAllowanceLowFunds indicates that forming/renewing a contract during
 	// contract maintenance isn't possible due to the allowance being low on
 	// funds.
 	AlertMSGAllowanceLowFunds = "At least one contract formation/renewal failed due to the allowance being low on funds"
 
+	// AlertMSGFailedContractRenewal indicates that the contract renewal failed
+	AlertMSGFailedContractRenewal = "Contractor is attempting to renew/refresh contracts but failed"
+
 	// AlertMSGWalletLockedDuringMaintenance indicates that forming/renewing a
 	// contract during contract maintenance isn't possible due to a locked wallet.
-	AlertMSGWalletLockedDuringMaintenance = "contractor is attempting to renew/form contracts, however the wallet is locked"
+	AlertMSGWalletLockedDuringMaintenance = "At least one contract failed to form/renew due to the wallet being locked"
 )
-
-// AlertMSGContractRefreshRequired returns the alert message for a contract that
-// is unable to refresh
-func AlertMSGContractRefreshRequired(fcid types.FileContractID) string {
-	return fmt.Sprint("Unable to refresh contract:", fcid)
-}
-
-// AlertMSGContractRenewalRequired returns the alert message for a contract that
-// is unable to renew
-func AlertMSGContractRenewalRequired(fcid types.FileContractID) string {
-	return fmt.Sprint("Unable to renew contract:", fcid)
-}
 
 // Constants related to contract formation parameters.
 var (
