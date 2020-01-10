@@ -8,7 +8,7 @@ package renter
 // the total amount of time it takes for a call to the data source to return
 // some data, and should buffer accordingly. If auto-adjusting the lookahead
 // size, care needs to be taken to ensure not to exceed the
-// bytedBufferedPerStream size, as exceeding that will cause issues with the
+// bytesBufferedPerStream size, as exceeding that will cause issues with the
 // lru, and cause data fetches to be evicted before they become useful.
 
 import (
