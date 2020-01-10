@@ -1068,7 +1068,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
-			continue
 		} else {
 			c.log.Println("Renewal completed without error")
 		}
@@ -1108,6 +1107,8 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
+		} else {
+			c.log.Println("Refresh completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
 
