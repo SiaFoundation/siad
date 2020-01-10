@@ -170,7 +170,6 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	if uc == nil {
 		return true
 	}
-
 	// Open an editing connection to the host.
 	e, err := w.renter.hostContractor.Editor(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
