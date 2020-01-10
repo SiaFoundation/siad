@@ -89,7 +89,7 @@ func TestStreamSmoke(t *testing.T) {
 	if offset != 0 {
 		t.Fatal("bad")
 	}
-	offset, err = stream.Seek(0, 2)
+	offset, err = stream.Seek(0, io.SeekEnd)
 	if err != nil {
 		t.Fatal(err)
 	}
