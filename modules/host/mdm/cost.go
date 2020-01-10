@@ -90,7 +90,7 @@ func ReadSectorCost() Cost {
 	}
 }
 
-// WriteSectorCost is the cost of executing a 'ReadSector' instruction.
+// WriteSectorCost is the cost of executing a 'WriteSector' instruction.
 func WriteSectorCost(contractSize uint64) Cost {
 	return Cost{
 		Compute:      1 + (contractSize / 1 << 40),
