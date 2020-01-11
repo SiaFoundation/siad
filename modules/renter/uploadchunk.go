@@ -489,7 +489,7 @@ func (r *Renter) managedFetchLogicalChunkData(uuc *unfinishedUploadChunk) error 
 		return nil
 	}
 
-	// No other data source avaialble, fetch the data from the Sia network for
+	// No other data source available, fetch the data from the Sia network for
 	// repair.
 	return r.managedDownloadLogicalChunkData(uuc)
 }
