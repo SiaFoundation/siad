@@ -423,8 +423,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		piecesNeeded:  entry.ErasureCode().NumPieces(),
 		stuck:         stuck,
 
-		physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
-		staticExpectedPieceRoots:   make([]crypto.Hash, entry.ErasureCode().NumPieces()),
+		physicalChunkData:        make([][]byte, entry.ErasureCode().NumPieces()),
+		staticExpectedPieceRoots: make([]crypto.Hash, entry.ErasureCode().NumPieces()),
 
 		availableChan: make(chan struct{}),
 		pieceUsage:    make([]bool, entry.ErasureCode().NumPieces()),
