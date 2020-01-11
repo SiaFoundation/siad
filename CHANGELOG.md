@@ -56,6 +56,10 @@ Latest:
    used.
  -
  -
+ - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
+   to safely acquire the host pubkey.
+ -
+ -
 
 **Other**
  - Split out renter siatests into 2 groups for faster pipelines
