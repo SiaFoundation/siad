@@ -397,10 +397,17 @@ func (uuc *unfinishedUploadChunk) staticCheckPhysicalDataIntegrity() error {
 	var wg sync.WaitGroup
 	failures := make([]bool, len(uuc.logicalChunkData))
 	for i := range uuc.logicalChunkData {
+		// Skip the integrity check on this piece if there is no hash available.
 		if uuc.staticExpectedPieceRoots[i] == zeroHash {
 			continue
 		}
+		// Skip the integrity check on this piece if there is no data.
 		if uuc.logicalChunkData[i] == nil {
+			continue
+		}
+		// Skip the integrity check on this piece if the piece does not need to
+		// be repaired.
+		if uuc.pieceUsage[i] {
 			continue
 		}
 		wg.Add(1)
