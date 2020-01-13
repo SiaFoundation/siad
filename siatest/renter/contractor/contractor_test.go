@@ -91,7 +91,7 @@ func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 	// Determine max and min initial contract funding based on allowance
 	allowance := rg.Settings.Allowance
 	maxInitialContractFunding := allowance.Funds.Div64(allowance.Hosts).Mul64(contractor.MaxInitialContractFundingMulFactor).Div64(contractor.MaxInitialContractFundingDivFactor)
-	minInitialContractFunding := allowance.Funds.Div64(allowance.Hosts).Div64(contractor.MinInitialContractFundingFactor)
+	minInitialContractFunding := allowance.Funds.Div64(allowance.Hosts).Div64(contractor.MinInitialContractFundingDivFactor)
 
 	// Get host
 	h := tg.Hosts()[0]
@@ -105,7 +105,7 @@ func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 	contractPrice := hg.ExternalSettings.ContractPrice
 	tpoolMaxFee := contractPrice.Div64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
 	txnFee := tpoolMaxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
-	contractFunding := contractPrice.Add(txnFee).Mul64(contractor.ContractFeeFundingFactor)
+	contractFunding := contractPrice.Add(txnFee).Mul64(contractor.ContractFeeFundingMulFactor)
 
 	// Sanity checks on funding
 	if contractFunding.Cmp(maxInitialContractFunding) > 0 {

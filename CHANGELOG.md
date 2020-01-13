@@ -20,6 +20,7 @@ Latest:
 
 **Bugs Fixed**
  - Repair operations would sometimes perform useless and redundant repairs
+ - Siafiles were not pruning hosts correctly
  - Unable to upload a new file if 'force' is set and no file exists to delete
  - Siac would not always delete a file or folder correctly
  - Divide by zero error when setting the allowance with an empty period
