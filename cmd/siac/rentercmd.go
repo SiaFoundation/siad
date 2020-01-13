@@ -1027,9 +1027,8 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected upload")
 		}
-		// User provdies setting in terms of period, need to normalize to
-		// per-block.
-		expectedUpload /= uint64(allowance.Period)
+		// User set field in terms of period, need to normalize to per-block.
+		expectedUpload /= uint64(period)
 	}
 	req = req.WithExpectedUpload(expectedUpload)
 
@@ -1067,7 +1066,7 @@ consider repair bandwidth separately.`)
 			die("Could not parse expected download")
 		}
 		// User set field in terms of period, need to normalize to per-block.
-		expectedDownload /= uint64(allowance.Period)
+		expectedDownload /= uint64(period)
 	}
 	req = req.WithExpectedDownload(expectedDownload)
 
@@ -1500,7 +1499,7 @@ func renterfilesdeletecmd(path string) {
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
-	} else if !strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) {
+	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
 		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Try to delete folder.
@@ -2010,7 +2009,11 @@ func renterfusemountcmd(path, siaPathStr string) {
 			die("Unable to parse the siapath that should be mounted:", err)
 		}
 	}
-	err = httpClient.RenterFuseMount(path, siaPath, true)
+	opts := modules.MountOptions{
+		ReadOnly:   true,
+		AllowOther: renterFuseMountAllowOther,
+	}
+	err = httpClient.RenterFuseMount(path, siaPath, opts)
 	if err != nil {
 		die("Unable to mount the directory:", err)
 	}

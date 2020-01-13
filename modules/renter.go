@@ -357,8 +357,6 @@ func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
 func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
 
 // Mode implements os.FileInfo.
-//
-// TODO: get the real mode
 func (d DirectoryInfo) Mode() os.FileMode { return d.DirMode }
 
 // ModTime implements os.FileInfo.
@@ -397,6 +395,10 @@ type FileUploadParams struct {
 	Force               bool
 	DisablePartialChunk bool
 	Repair              bool
+
+	// CipherType was added later. If it is left blank, the renter will use the
+	// default encryption method (as of writing, Threefish)
+	CipherType crypto.CipherType
 }
 
 // FileInfo provides information about a file.
@@ -513,6 +515,8 @@ type HostScoreBreakdown struct {
 type MountInfo struct {
 	MountPoint string  `json:"mountpoint"`
 	SiaPath    SiaPath `json:"siapath"`
+
+	MountOptions MountOptions `json:"mountoptions"`
 }
 
 // RenterPriceEstimation contains a bunch of files estimating the costs of
@@ -594,7 +598,8 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 
 // MountOptions specify various settings of a FUSE filesystem mount.
 type MountOptions struct {
-	ReadOnly bool
+	AllowOther bool `json:"allowother"`
+	ReadOnly   bool `json:"readonly"`
 }
 
 // RecoverableContract is a types.FileContract as it appears on the blockchain
