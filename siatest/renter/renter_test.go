@@ -1949,26 +1949,9 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
-	// All contracts should be disabled.
+	// All contracts should be expired.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have num of hosts expired contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.PassiveContracts) != 0 {
-			return fmt.Errorf("expected 0 passive contracts, got %v", len(rc.PassiveContracts))
-		}
-		if len(rc.RefreshedContracts) != 0 {
-			return fmt.Errorf("expected 0 refreshed contracts, got %v", len(rc.RefreshedContracts))
-		}
-		if len(rc.DisabledContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v disabled contracts, got %v", len(tg.Hosts()), len(rc.DisabledContracts))
-		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
