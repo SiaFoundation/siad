@@ -213,25 +213,26 @@ func CheckExpectedNumberOfContracts(r *TestNode, numActive, numPassive, numRefre
 	if err != nil {
 		return err
 	}
+	var combinedError error
 	if len(rc.ActiveContracts) != numActive {
-		return fmt.Errorf("Expected %v active contracts, got %v", numActive, len(rc.ActiveContracts))
+		combinedError = errors.Compose(combinedError, fmt.Errorf("Expected %v active contracts, got %v", numActive, len(rc.ActiveContracts)))
 	}
 	if len(rc.PassiveContracts) != numPassive {
-		return fmt.Errorf("Expected %v passive contracts, got %v", numPassive, len(rc.PassiveContracts))
+		combinedError = errors.Compose(combinedError, fmt.Errorf("Expected %v passive contracts, got %v", numPassive, len(rc.PassiveContracts)))
 	}
 	if len(rc.RefreshedContracts) != numRefreshed {
-		return fmt.Errorf("Expected %v refreshed contracts, got %v", numRefreshed, len(rc.RefreshedContracts))
+		combinedError = errors.Compose(combinedError, fmt.Errorf("Expected %v refreshed contracts, got %v", numRefreshed, len(rc.RefreshedContracts)))
 	}
 	if len(rc.DisabledContracts) != numDisabled {
-		return fmt.Errorf("Expected %v disabled contracts, got %v", numDisabled, len(rc.DisabledContracts))
+		combinedError = errors.Compose(combinedError, fmt.Errorf("Expected %v disabled contracts, got %v", numDisabled, len(rc.DisabledContracts)))
 	}
 	if len(rc.ExpiredContracts) != numExpired {
-		return fmt.Errorf("Expected %v expired contracts, got %v", numExpired, len(rc.ExpiredContracts))
+		combinedError = errors.Compose(combinedError, fmt.Errorf("Expected %v expired contracts, got %v", numExpired, len(rc.ExpiredContracts)))
 	}
 	if len(rc.ExpiredRefreshedContracts) != numExpiredRefreshed {
-		return fmt.Errorf("Expected %v expired refreshed contracts, got %v", numExpiredRefreshed, len(rc.ExpiredRefreshedContracts))
+		combinedError = errors.Compose(combinedError, fmt.Errorf("Expected %v expired refreshed contracts, got %v", numExpiredRefreshed, len(rc.ExpiredRefreshedContracts)))
 	}
-	return nil
+	return combinedError
 }
 
 // CheckRenewedContractsSpending confirms that renewed contracts have zero
