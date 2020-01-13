@@ -63,7 +63,7 @@ func (ld *LinkData) LoadSialink(s Sialink) error {
 func (ld *LinkData) LoadString(s string) error {
 	// Trim any 'sia://' that has tagged along.
 	noPrefix := strings.TrimPrefix(s, "sia://")
-	// Trim any parameters that may exist after an amperstand. Eventually, it
+	// Trim any parameters that may exist after an ampersand. Eventually, it
 	// will be possible to parse these separately as additional/optional
 	// arguments, for now anything after an ampersand is just ignored.
 	splits := strings.SplitN(noPrefix, "&", 2)
