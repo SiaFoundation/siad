@@ -1149,7 +1149,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Determine the max and min initial contract funding based on the allowance
 	// settings
 	maxInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Mul64(MaxInitialContractFundingMulFactor).Div64(MaxInitialContractFundingDivFactor)
-	minInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(MinInitialContractFundingFactor)
+	minInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
 	c.mu.RUnlock()
 
 	// Get Hosts
@@ -1173,7 +1173,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Calculate the contract funding with host
-		contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingFactor)
+		contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingMulFactor)
 
 		// Check that the contract funding is reasonable compared to the max and
 		// min initial funding. This is to protect against increases to
