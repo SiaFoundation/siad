@@ -21,16 +21,16 @@ import (
 )
 
 const (
-	// minimumCacheNodes is set to two because the streamer always tries to
+	// minimumDataSections is set to two because the streamer always tries to
 	// buffer at least the current data section and the next data section for
 	// the current offset of a stream.
 	//
 	// Three as a number was considered so that in addition to buffering one
 	// piece ahead, a previous piece could also be cached. This was considered
 	// to be less valuable than keeping memory requirements low -
-	// minimumCacheNodes is only at play if there is not enough room for
+	// minimumDataSections is only at play if there is not enough room for
 	// multiple cache nodes in the bytesBufferedPerStream.
-	minimumCacheNodes = 2
+	minimumDataSections = 2
 )
 
 var (
@@ -190,15 +190,15 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
 
-	// Determine how many nodes the stream can cache.
-	nodesToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
-	if nodesToCache < minimumCacheNodes {
-		nodesToCache = minimumCacheNodes
+	// Determine how many data sections the stream should cache.
+	dataSectionsToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
+	if dataSectionsToCache < minimumDataSections {
+		dataSectionsToCache = minimumDataSections
 	}
 
 	// Create a stream that points to the stream buffer.
 	stream := &stream{
-		lru:    newLeastRecentlyUsedCache(nodesToCache, streamBuf),
+		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, streamBuf),
 		offset: initialOffset,
 
 		staticStreamBuffer: streamBuf,

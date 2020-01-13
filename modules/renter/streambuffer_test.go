@@ -65,7 +65,7 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	return n, nil
 }
 
-// Close implements streamBufferDataSource.
+// SilentClose implements streamBufferDataSource.
 func (mds *mockDataSource) SilentClose() {
 	mds.staticData = nil
 }
