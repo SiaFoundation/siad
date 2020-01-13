@@ -967,7 +967,7 @@ func TestLocalRepairCorrupted(t *testing.T) {
 			t.Fatal("Failed to create a new host", err)
 		}
 	}
-	// Host should get back to full health.
+	// File should get back to full health.
 	err = renterNode.WaitForUploadHealth(remoteFile)
 	if err != nil {
 		t.Fatal(err)
