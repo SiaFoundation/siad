@@ -77,8 +77,7 @@ util-pkgs = ./cmd/sia-node-scanner
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.
 dependencies:
-	$(info golangci-lint (Check https://github.com/golangci/golangci-lint for installation instructions))
-	$(info codespell (Install using pip: 'pip3 install codespell'))
+	./install-dependencies.sh
 
 # fmt calls go fmt on all packages.
 fmt:
