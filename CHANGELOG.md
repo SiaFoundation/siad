@@ -15,8 +15,14 @@ Latest:
 **Key Updates**
  - Added the ability to upload linkfiles and create sialinks
 
+**Key Updates**
+ - Wallet can generate an address before it finishes scanning the blockchain
+ - FUSE folders can now be mounted with 'AllowOther' as an option
+
 **Bugs Fixed**
  - Unable to upload a new file if 'force' is set and no file exists to delete.
+ - Siac would not always delete a file or folder correctly
+ - Divide by zero error when setting the allowance with an empty period
 
 Dec 2019:
 

@@ -29,6 +29,17 @@ func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops"
 }
 
+// DependencyFailUploadStreamFromRaeder prevents SiaFileEntries in the upload code
+// from being closed.
+type DependencyFailUploadStreamFromReader struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt prevents SiafileEntries in the upload code from being closed.
+func (d *DependencyFailUploadStreamFromReader) Disrupt(s string) bool {
+	return s == "failUploadStreamFromReader"
+}
+
 // DependencyToggleWatchdogBroadcast can toggle the watchdog's ability to
 // broadcast transactions.
 type DependencyToggleWatchdogBroadcast struct {
