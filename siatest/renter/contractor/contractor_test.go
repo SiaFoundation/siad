@@ -2052,3 +2052,74 @@ func TestWatchdogExtraDependencyRegression(t *testing.T) {
 		}
 	}
 }
+
+// TestExtendPeriod probes the case around extending the period after contracts
+// have been created
+func TestExtendPeriod(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create Test Group
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	renter := tg.Renters()[0]
+
+	// Confirm number of contracts
+	err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the current allowance and current contract end heights
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
+	rc, err := renter.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	endheight := rc.Contracts[0].EndHeight
+
+	// Increase the allowance so that the endheights are well within period
+	allowance.Period = allowance.Period * 3
+	err = renter.RenterPostAllowance(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine blocks until after the previous end height
+	cg, err := renter.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	miner := tg.Miners()[0]
+	for i := 0; i <= int(endheight-cg.Height); i++ {
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Confirm the previously active contracts are now marked as expired and
+	// were replaced with new active contracts
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
