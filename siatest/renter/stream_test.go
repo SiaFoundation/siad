@@ -361,8 +361,7 @@ func testUploadStreamingWithBadDeps(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := tg.Renters()[0]
-	err = r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
+	err = renter.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
 	if err == nil {
 		t.Fatal("dependency injection should have caused the upload to fail")
 	}
