@@ -237,7 +237,7 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	}
 
 	// Round the length value to the length increment. This is going to round
-	// down, but that's okay because the length is sematically downshifted by 1.
+	// down, but that's okay because the length is semantically downshifted by 1.
 	if offsetAlign > 1<<12 {
 		length = length - lengthAlign<<3
 	}
