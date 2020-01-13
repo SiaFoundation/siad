@@ -191,23 +191,23 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 }
 
 // padAndEncryptPiece will add padding to a piece and then encrypt it.
-func (uuc *unfinishedUploadChunk) padAndEncryptPiece(i int) {
+func (uc *unfinishedUploadChunk) padAndEncryptPiece(i int) {
 	// If the piece is not a full sector, pad it with empty bytes. The padding
 	// is done before applying encryption, meaning the data fed to the host does
 	// not have a bunch of zeroes in it.
 	//
 	// This has the extra benefit of making the result deterministic, which is
 	// important when checking the integrity of a local file later on.
-	short := int(modules.SectorSize) - len(uuc.logicalChunkData[i])
+	short := int(modules.SectorSize) - len(uc.logicalChunkData[i])
 	if short > 0 {
 		// The form `append(obj, make([]T, n))` will be optimized by the
 		// compiler to eliminate unneeded allocations starting go 1.11.
-		uuc.logicalChunkData[i] = append(uuc.logicalChunkData[i], make([]byte, short)...)
+		uc.logicalChunkData[i] = append(uc.logicalChunkData[i], make([]byte, short)...)
 	}
 	// Encrypt the piece.
-	key := uuc.fileEntry.MasterKey().Derive(uuc.index, uint64(i))
+	key := uc.fileEntry.MasterKey().Derive(uc.index, uint64(i))
 	// TODO: Switch this to perform in-place encryption.
-	uuc.logicalChunkData[i] = key.EncryptBytes(uuc.logicalChunkData[i])
+	uc.logicalChunkData[i] = key.EncryptBytes(uc.logicalChunkData[i])
 }
 
 // managedDownloadLogicalChunkData will fetch the logical chunk data by sending a
@@ -386,20 +386,20 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 // presented, assumed to be already erasure coded. The integrity check will
 // perform the encryption on the pieces and then ensure that the result matches
 // any known roots for the renter.
-func (uuc *unfinishedUploadChunk) staticEncryptAndCheckIntegrity() error {
+func (uc *unfinishedUploadChunk) staticEncryptAndCheckIntegrity() error {
 	// Verify that all of the shards match the piece roots we are expecting. Use
 	// one thread per piece so that the verification is multicore.
 	var zeroHash crypto.Hash
 	var wg sync.WaitGroup
-	failures := make([]bool, len(uuc.logicalChunkData))
-	for i := range uuc.logicalChunkData {
+	failures := make([]bool, len(uc.logicalChunkData))
+	for i := range uc.logicalChunkData {
 		// Skip if there is no data.
-		if uuc.logicalChunkData[i] == nil {
+		if uc.logicalChunkData[i] == nil {
 			continue
 		}
 		// Skip if this piece is not needed.
-		if uuc.pieceUsage[i] {
-			uuc.logicalChunkData[i] = nil
+		if uc.pieceUsage[i] {
+			uc.logicalChunkData[i] = nil
 			continue
 		}
 		wg.Add(1)
@@ -407,15 +407,15 @@ func (uuc *unfinishedUploadChunk) staticEncryptAndCheckIntegrity() error {
 			defer wg.Done()
 
 			// Encrypt and pad the piece with the given index.
-			uuc.padAndEncryptPiece(i)
+			uc.padAndEncryptPiece(i)
 
 			// Perform the integrity check. Skip the integrity check on this
 			// piece if there is no hash available.
-			if uuc.staticExpectedPieceRoots[i] == zeroHash {
+			if uc.staticExpectedPieceRoots[i] == zeroHash {
 				return
 			}
-			root := crypto.MerkleRoot(uuc.logicalChunkData[i])
-			if root != uuc.staticExpectedPieceRoots[i] {
+			root := crypto.MerkleRoot(uc.logicalChunkData[i])
+			if root != uc.staticExpectedPieceRoots[i] {
 				failures[i] = true
 			}
 		}(i)
@@ -450,17 +450,17 @@ func (uc *unfinishedUploadChunk) staticReadLogicalData(r io.Reader) (uint64, err
 
 // staticFetchLogicalDataFromReader will load the logical data for a chunk from
 // a reader, and perform an integrity check on the chunk to ensure correctness.
-func (r *Renter) staticFetchLogicalDataFromReader(uuc *unfinishedUploadChunk) error {
-	defer uuc.sourceReader.Close()
+func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) error {
+	defer uc.sourceReader.Close()
 
 	// Grab the logical data from the reader.
-	n, err := uuc.staticReadLogicalData(uuc.sourceReader)
+	n, err := uc.staticReadLogicalData(uc.sourceReader)
 	if err != nil {
 		return errors.AddContext(err, "unable to read the chunk data from the source reader")
 	}
 
 	// Perform an integrity check on the data that was pulled from the reader.
-	err = uuc.staticEncryptAndCheckIntegrity()
+	err = uc.staticEncryptAndCheckIntegrity()
 	if err != nil {
 		return errors.AddContext(err, "source data does not match previously uploaded data - blocking corrupt repair")
 	}
@@ -469,8 +469,8 @@ func (r *Renter) staticFetchLogicalDataFromReader(uuc *unfinishedUploadChunk) er
 	// beforehand we simply assume that a whole chunk will be added to the
 	// file. That's why we subtract the difference between the size of a
 	// chunk and n here.
-	adjustedSize := uuc.fileEntry.Size() - uuc.length + n
-	if errSize := uuc.fileEntry.SetFileSize(adjustedSize); errSize != nil {
+	adjustedSize := uc.fileEntry.Size() - uc.length + n
+	if errSize := uc.fileEntry.SetFileSize(adjustedSize); errSize != nil {
 		return errors.AddContext(errSize, "failed to adjust FileSize")
 	}
 	return nil
@@ -479,12 +479,12 @@ func (r *Renter) staticFetchLogicalDataFromReader(uuc *unfinishedUploadChunk) er
 // managedFetchLogicalChunkData will get the raw data for a chunk, pulling it from disk if
 // possible but otherwise queueing a download.
 //
-// uuc.data should be passed as 'nil' to the download, to keep memory usage as
+// uc.data should be passed as 'nil' to the download, to keep memory usage as
 // light as possible.
-func (r *Renter) managedFetchLogicalChunkData(uuc *unfinishedUploadChunk) error {
+func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 	// Use a sourceReader if one is available.
-	if uuc.sourceReader != nil {
-		err := r.staticFetchLogicalDataFromReader(uuc)
+	if uc.sourceReader != nil {
+		err := r.staticFetchLogicalDataFromReader(uc)
 		if err != nil {
 			// Attempt to fall back to downloading the data from remote.
 			r.repairLog.Println("Unable to load logical data from source reader, falling back to remote download:", err)
@@ -496,36 +496,36 @@ func (r *Renter) managedFetchLogicalChunkData(uuc *unfinishedUploadChunk) error 
 	// No source reader available. Check if there's potentially a local file. If
 	// there is no local file, fall back to doing a remote repair.
 	// disk.
-	if uuc.fileEntry.LocalPath() == "" {
-		return r.managedDownloadLogicalChunkData(uuc)
+	if uc.fileEntry.LocalPath() == "" {
+		return r.managedDownloadLogicalChunkData(uc)
 	}
 
 	//  Try to fetch the file from the local path and upload there.
 	err := func() error {
-		osFile, err := os.Open(uuc.fileEntry.LocalPath())
+		osFile, err := os.Open(uc.fileEntry.LocalPath())
 		if os.IsNotExist(err) {
 			// The file doesn't exist on disk anymore, drop the local path.
-			err = errors.Compose(err, uuc.fileEntry.SetLocalPath(""))
+			err = errors.Compose(err, uc.fileEntry.SetLocalPath(""))
 		}
 		if err != nil {
 			return errors.AddContext(err, "unable to open file locally")
 		}
 		defer osFile.Close()
-		sr := io.NewSectionReader(osFile, uuc.offset, int64(uuc.length))
-		dataPieces, _, err := readDataPieces(sr, uuc.fileEntry.ErasureCode(), uuc.fileEntry.PieceSize())
+		sr := io.NewSectionReader(osFile, uc.offset, int64(uc.length))
+		dataPieces, _, err := readDataPieces(sr, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
 		if err != nil {
 			return errors.AddContext(err, "unable to read the data from the local file")
 		}
-		uuc.logicalChunkData, _ = uuc.fileEntry.ErasureCode().EncodeShards(dataPieces)
-		err = uuc.staticEncryptAndCheckIntegrity()
+		uc.logicalChunkData, _ = uc.fileEntry.ErasureCode().EncodeShards(dataPieces)
+		err = uc.staticEncryptAndCheckIntegrity()
 		if err != nil {
 			return errors.AddContext(err, "local file failed the integrity check")
 		}
 		return nil
 	}()
 	if err != nil {
-		r.log.Printf("falling back to remote download for repair: fetch from local file %v failed: %v", uuc.fileEntry.LocalPath(), err)
-		return r.managedDownloadLogicalChunkData(uuc)
+		r.log.Printf("falling back to remote download for repair: fetch from local file %v failed: %v", uc.fileEntry.LocalPath(), err)
+		return r.managedDownloadLogicalChunkData(uc)
 	}
 	return nil
 }
