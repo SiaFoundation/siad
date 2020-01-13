@@ -7,21 +7,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// Below is the table of values that are possible when setting the length in the
-// linkdata. The column is decided by the 3 bits of length data that get read,
-// the row gets decided by the total size. If the total size is 32 kib or less,
-// the first row is used. If the total size is 64 kib or less, the second row is
-// used, and so on.
-//
-//	   4,    8,   12,   16,   20,   24,   28,   32,
-//	  36,   40,   44,   48,   52,   56,   60,   64,
-//	  72,   80,   88,   96,  104,  112,  120,  128,
-//	 144,  160,  176,  192,  208,  224,  240,  256,
-//	 288,  320,  352,  384,  416,  448,  480,  512,
-//	 576,  640,  704,  768,  832,  896,  960, 1024,
-//	1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,
-//	2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096,
-
 // TestSialink checks that the linkformat is correctly encoding to and decoding
 // from a string.
 func TestSialink(t *testing.T) {

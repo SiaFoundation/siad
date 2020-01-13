@@ -109,6 +109,48 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 // is fuzzy. The exact length of the file is stored inside the leading bytes of
 // the data downloaded at the offset, the 'length' only ensures that in a single
 // request enough data can be downloaded to retrieve the whole file.
+//
+// The encoding is pretty fancy. There are 16 bits total in the olv. 2 of those
+// bits are reserved for the version, which means 14 bits remain to indicate the
+// offset and length of the data within the sector that the linkfile points to.
+//
+// 14 bits is not enough to properly encode both an offset and a length within a
+// 4 MiB sector. So restrictions are placed on the offset and length. If the
+// offset is restricted to being a factor of 4096, it only takes 10 bits to
+// precisely identify where in the sector the file is located. That leaves 4
+// bits to encode the length, meaning that the length can be one of 16 values.
+//
+// Instead of using all 4 bits, we only use 3, meaning that the 'length' can be
+// one of 8 values over the semantic range [1, 8]. Because the offset is as
+// precise as 4 kib, the length of the fetch is determined by 'length * 4
+// kib'... but only if the final bit is not set.
+//
+// If the final bit is set, the entire meaning of the other 13 bits change. The
+// offset is now restricted to a factor of 8192. It only takes 9 bits to
+// precisely identify where in the sector the file is located. That leaves 4
+// bits to encode the length, meaning that the length can be one of 16 values.
+//
+// Instead of using all 4 bits, we only use 3... so that the pattern can be
+// repeated. For the 8 kib case only, the fetch length is not doubled. That
+// means that the fetch length for the 8 kib case is determined by 'length * 4
+// kib + 32 kib'. This is because all of the values up to 32 kib in size are
+// already represented by 4 kib, and so it would be wasteful/redundant to have 8
+// kib repeat them.
+//
+// Below is the table of values that are possible when setting the length in the
+// linkdata. The column is decided by the 3 bits of length data that get read,
+// the row gets decided by the total size. If the total size is 32 kib or less,
+// the first row is used. If the total size is 64 kib or less, the second row is
+// used, and so on.
+//
+//	   4,    8,   12,   16,   20,   24,   28,   32,
+//	  36,   40,   44,   48,   52,   56,   60,   64,
+//	  72,   80,   88,   96,  104,  112,  120,  128,
+//	 144,  160,  176,  192,  208,  224,  240,  256,
+//	 288,  320,  352,  384,  416,  448,  480,  512,
+//	 576,  640,  704,  768,  832,  896,  960, 1024,
+//	1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,
+//	2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096,
 func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 	// Grab the current window. As we parse through it, we will be sliding bits
 	// out of the window.
@@ -167,7 +209,7 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 // SetOffsetAndLen will set the offset and length of the data within the
 // sialink. Offset must be aligned correctly.
 func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
-	if offset+length > SialinkMaxFetchSize {
+	if offset + length > SialinkMaxFetchSize {
 		return errors.New("offset plus length cannot exceed the size of one sector - 4 MiB")
 	}
 
