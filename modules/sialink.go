@@ -33,34 +33,18 @@ const (
 )
 
 // LinkData defines the data that appears in a linkfile. It is a highly
-// compressed data structure that encodes into 48 or fewer base64 bytes. The
-// goal of LinkData is not to provide a complete set of information, but rather
-// to provide enough information to efficiently recover a file.
+// compressed data structure that encodes into 46 base64 bytes. The goal of
+// LinkData is not to provide a complete set of information, but rather to
+// provide enough information to efficiently recover a file.
 //
-// Because the values are compressed, they are unexpectored and must be accessed
+// Because the values are compressed, they are unexported and must be accessed
 // using helper methods.
 type LinkData struct {
-	vdp            uint8
-	fetchMagnitude uint8
-	merkleRoot     crypto.Hash
-}
-
-// DataPieces will return the data pieces from the linkdata. At this time, the
-// DataPieces should be considered undefined, will always return '1'.
-func (ld LinkData) DataPieces() uint8 {
-	return 1
-}
-
-// FetchSize determines how many logical bytes should be fetched based on the
-// magnitude of the fetch request.
-func (ld LinkData) FetchSize() uint64 {
-	// If the fetch magnitude is maxed out, fetch everything.
-	if ld.fetchMagnitude == 255 {
-		return SialinkMaxFetchSize
-	}
-	// Increment the magnitude so the '0' value is fetching data.
-	fm := uint64(ld.fetchMagnitude + 1)
-	return SialinkMaxFetchSize / 256 * fm
+	// olv stands for 'offset', 'len', and 'version'.
+	//
+	// The version gets the first two bits.kjkj
+	olv        uint16
+	merkleRoot crypto.Hash
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
@@ -100,9 +84,10 @@ func (ld *LinkData) LoadString(s string) error {
 		return errors.New("unable to decode input as base64")
 	}
 
+	// TODO: Perform a check on 'olv', certain values are illegal.
+
 	// Load the raw data.
-	ld.vdp = raw[0]
-	ld.fetchMagnitude = raw[1]
+	ld.olv = binary.LittleEndian.Uint64(raw)
 	copy(ld.merkleRoot[:], raw[2:])
 	return nil
 }
@@ -112,41 +97,117 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 	return ld.merkleRoot
 }
 
-// ParityPieces returns the number of ParityPieces from the linkdata. At this
-// time, ParityPieces should be considered undefined, will always return '0'.
-func (ld LinkData) ParityPieces() uint8 {
-	return 0
+// OffsetAndLen returns the offset of a file within a sialink as well as the
+// fetch-length of the file. Note that the offset is exact, but the fetch-length
+// is fuzzy. The exact length of the file is stored inside the leading bytes of
+// the data downloaded at the offset, the 'length' only ensures that in a single
+// request enough data can be downloaded to retrieve the whole file.
+func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
+	// Grab the current window. As we parse through it, we will be sliding bits
+	// out of the window.
+	currentWindow := ld.olv
+
+	// Slide the version bits out of the window. 14 bits remaining.
+	currentWindow = 4 >> 2
+
+	// Keep sliding bits out of the window for as long as the final bit is equal
+	// to '1'. This should happen at most 7 times.
+	var shifts int
+	for shifts < 8 {
+		if currentWindow & 1 == 0 {
+			break
+		}
+		shifts++
+		currentWindow = currentWindow >> 1
+	}
+	if shifts == 8 {
+		// Illegal olv value. Return an indicator that all data should be
+		// fetched.
+		//
+		// build.Critical because this value should have been caught during
+		// either the Load() functions or in the setter functions.
+		build.Critical("illegal value in linkdata, olv should never indicate more than 7 shifts")
+		return 0, SialinkMaxFetchSize
+	}
+
+	// Determine the offset alignment and the step size.
+	offsetAlign := uint64(4096)
+	stepSize := uint64(4096)
+	for i := 1; i < shifts; i++ {
+		offsetAlign *= 2
+		stepSize *= 2
+	}
+	if shifts == 1 {
+		offsetAlign *= 2
+	}
+
+	// The next three bits decide the length.
+	length = uint64(currentWindow & 7)
+	length *= stepSize
+	length += stepSize * 9 // TODO: Missing the edge case around 4 kib
+	currentWindow >> 3
+
+	// The remaining bits decide the offset.
+	offset = uint64(currentWindow) * offsetAlign
+
+	return offset, length
 }
 
-// SetDataPieces will set the data pieces for the LinkData.
-func (ld *LinkData) SetDataPieces(dp uint8) {
-	if dp != 1 {
-		build.Critical("SetDataPieces can only be 1 right now")
-	}
-	// Do nothing - value is already '0', which implies a value of '1'.
-}
-
-// SetFetchSize will compress the fetch size into a uint8. This is a lossy
-// process that will round the value up to the nearest multiple of 16,384
-// (2^14). Storing only a uint8 allows for shorter sialinks and better
-// compatibility with the IPFS standard of 46 byte links.
-//
-// If the input is 2^22 or larger, a value of '255' will be set, indicating that
-// the full initial root should be downloaded.
-func (ld *LinkData) SetFetchSize(size uint64) {
-	if size >= SialinkMaxFetchSize {
-		ld.fetchMagnitude = 255
-	}
-	// Subtract one from the size so the operation to round-up will not round
-	// sizes that divide perfectly evenly. The increment to round up is
-	// performed in the FetchSize() function so that the '0' value of
-	// ld.fetchMagnitude indicatese that 16,384 bytes should be fetched.
+// SetOffsetAndLen will set the offset and length of the data within the
+// sialink. Offset must be aligned correctly.
+func (ld LinkData) SetOffsetAndLen(offset, length uint64) error {
+	// Given the length, determine the appropriate offset alignment.
 	//
-	// Check for underflow.
-	if size != 0 {
-		size--
+	// The largest alignment is 256 kib, which is used if the length is 2 MiB or
+	// over. Each time the length is halved, the alginment is also halved. The
+	// smallest alignment allowed is 4 kib.
+	minLength := uint64(1 << 17)
+	offsetAlign := uint64(1 << 18)
+	for length <= minLength && offsetAlign > (1 << 12) {
+		offsetAlign >> 1
+		minLength >> 1
 	}
-	ld.fetchMagnitude = uint8(size / (SialinkMaxFetchSize / 256))
+	if offset & (offsetAlign-1) != 0 {
+		return errors.New("offset is not aligned correctly")
+	}
+
+	// Unless the offsetAlign is 1 << 12, the length increment is 1/2 the
+	// offsetAlign.
+	lengthAlign = 1 << 12
+	if offsetAlign > 1 << 13 {
+		lengthAlign = offsetAlign >> 1
+	}
+
+	// Round the length value to the length increment.
+	if length & (lengthAlign-1) != 0 {
+		length += lengthAlign
+		length = length & (^(lengthAlign-1))
+	}
+
+	// Set the offset for the olv.
+	olv := uint16(offset / offsetAlign)
+	// Shift up three bits and insert the length for the olv.
+	olv <<= 3
+	length = length - lengthAlign * 9
+	length = length / lengthAlign
+	olv += uint64(length)
+	// Shift in a zero to indicate the end of the shifting.
+	olv <<= 1
+	// Shift in 1's until the offset align is correct.
+	baseAlign := 1 << 12
+	for baseAlign < offsetAlign {
+		baseAlign <<= 1
+		olv <<= 1
+		olv += 1
+	}
+	// Shift 2 more bits for the version, this should now be 16 bits total.
+	olv <<= 2
+
+	// Save the version bits of ld.olv.
+	versionBits := ld.olv & 3
+	ld.olv = olv
+	ld.olv += versionBits
+	return nil
 }
 
 // SetMerkleRoot will set the merkle root of the LinkData. This is the one
@@ -156,14 +217,6 @@ func (ld *LinkData) SetMerkleRoot(mr crypto.Hash) {
 	ld.merkleRoot = mr
 }
 
-// SetParityPieces will set the parity pieces of the LinkData.
-func (ld *LinkData) SetParityPieces(pp uint8) {
-	if pp != 0 {
-		build.Critical("SetParityPieces can only be 0 right now")
-	}
-	// Do nothing - value is already '0', which implies a value of '0'.
-}
-
 // SetVersion sets the version of the LinkData. Value must be in the range
 // [1, 4].
 func (ld *LinkData) SetVersion(version uint8) error {
@@ -171,13 +224,13 @@ func (ld *LinkData) SetVersion(version uint8) error {
 	if version < 1 || version > 4 {
 		return errors.New("version must be in the range [1, 4]")
 	}
-	// Convert the version to its bitwise value.
+	// Convert the version to its bitwise value, which covers the range [0, 3].
 	version--
 
-	// Zero out the version bits of the vdp.
-	ld.vdp &= 252
-	// Set the version bits of the vdp.
-	ld.vdp += version
+	// Zero out the version bits of the olv. These are the first two bits.
+	ld.olv &= 65532
+	// Set the version bits of the olv.
+	ld.olv += version
 	return nil
 }
 
@@ -191,8 +244,7 @@ func (ld LinkData) Sialink() Sialink {
 func (ld LinkData) String() string {
 	// Build the raw string.
 	raw := make([]byte, rawLinkDataSize)
-	raw[0] = ld.vdp
-	raw[1] = ld.fetchMagnitude
+	binary.LittleEndian.PutUint16(raw, ld.olv)
 	copy(raw[2:], ld.merkleRoot[:])
 
 	// Encode the raw bytes to base64. TWe have to use a a buffer and a base64
@@ -206,10 +258,10 @@ func (ld LinkData) String() string {
 	return "sia://" + buf.String()
 }
 
-// Version will pull the version out of the vdp and return it. Version is a 2
+// Version will pull the version out of the olv and return it. Version is a 2
 // bit number, meaning there are 4 possible values. The bitwise values cover the
 // range [0, 3], however we want to return a value in the range [1, 4], so we
 // increment the bitwise result.
 func (ld LinkData) Version() uint8 {
-	return (ld.vdp & 3) + 1
+	return (ld.olv & 3) + 1
 }
