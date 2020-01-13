@@ -216,7 +216,7 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	// Given the length, determine the appropriate offset alignment.
 	//
 	// The largest alignment is 256 kib, which is used if the length is 2 MiB or
-	// over. Each time the length is halved, the alginment is also halved. The
+	// over. Each time the length is halved, the alignment is also halved. The
 	// smallest alignment allowed is 4 kib.
 	minLength := uint64(1 << 20)
 	offsetAlign := uint64(1 << 18)
