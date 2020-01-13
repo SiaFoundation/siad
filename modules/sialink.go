@@ -180,17 +180,15 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 	}
 
 	// Determine the offset alignment and the step size.
-	println(".")
 	offsetAlign := uint64(4096)
 	stepSize := uint64(4096)
 	for i := 1; i < shifts; i++ {
 		offsetAlign <<= 1
 		stepSize <<= 1
 	}
-	if shifts == 1 {
+	if shifts > 0 {
 		offsetAlign <<= 1
 	}
-	println(offsetAlign)
 
 	// The next three bits decide the length.
 	length = uint64(currentWindow & 7)
@@ -203,7 +201,6 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 
 	// The remaining bits decide the offset.
 	offset = uint64(currentWindow) * offsetAlign
-	println(offset)
 
 	return offset, length
 }
@@ -229,9 +226,7 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	if offset&(offsetAlign-1) != 0 {
 		return errors.New("offset is not aligned correctly")
 	}
-	println(offset)
 	offset = offset / offsetAlign
-	println(offset)
 
 	// Unless the offsetAlign is 1 << 12, the length increment is 1/2 the
 	// offsetAlign.
