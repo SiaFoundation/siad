@@ -49,7 +49,7 @@ type Sialink string
 type LinkData struct {
 	// olv stands for 'offset', 'len', and 'version'.
 	//
-	// The version gets the first two bits.kjkj
+	// The version gets the first two bits.
 	olv        uint16
 	merkleRoot crypto.Hash
 }
