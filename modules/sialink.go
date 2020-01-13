@@ -68,7 +68,7 @@ func (ld *LinkData) LoadString(s string) error {
 	// arguments, for now anything after an ampersand is just ignored.
 	splits := strings.SplitN(noPrefix, "&", 2)
 	if len(splits) == 0 {
-		return errors.New("not a sialnik, no base sialink provided")
+		return errors.New("not a sialink, no base sialink provided")
 	}
 	base := []byte(splits[0])
 
