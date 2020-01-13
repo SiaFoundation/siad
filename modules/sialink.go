@@ -1,8 +1,7 @@
 package modules
 
-// sialink.go creates links that can be used to reference specific sector
-// data in a siafile. The links are base58 encoded structs prepended with
-// 'sia://'
+// sialink.go creates links that can be used to reference specific sector data
+// in a siafile. The links are base64 encoded structs prepended with 'sia://'
 
 import (
 	"bytes"
