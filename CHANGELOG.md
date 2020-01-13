@@ -20,6 +20,7 @@ Latest:
    that corrupted / altered data is not used to perform repairs
 
 **Bugs Fixed**
+ - Repair operations would sometimes perform useless and redundant repairs
  - Unable to upload a new file if 'force' is set and no file exists to delete
  - Siac would not always delete a file or folder correctly
  - Divide by zero error when setting the allowance with an empty period
