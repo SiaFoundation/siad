@@ -13,14 +13,14 @@ Latest:
 
 ### v1.4.2.1
 **Key Updates**
- - Added alerts for when contracts can't be renewed or refreshed
-
-**Key Updates**
  - Wallet can generate an address before it finishes scanning the blockchain
  - FUSE folders can now be mounted with 'AllowOther' as an option
+ - Added alerts for when contracts can't be renewed or refreshed
+ - Smarter fund allocation when initially forming contracts
 
 **Bugs Fixed**
- - Unable to upload a new file if 'force' is set and no file exists to delete.
+ - Repair operations would sometimes perform useless and redundant repairs
+ - Unable to upload a new file if 'force' is set and no file exists to delete
  - Siac would not always delete a file or folder correctly
  - Divide by zero error when setting the allowance with an empty period
 
