@@ -106,11 +106,11 @@ lint-analysis:
 # custom analyzers, and also a markdown spellchecker.
 lint-all: markdown-spellcheck
 	GO111MODULE=on go run ./analysis/cmd/analyze.go -- $(pkgs)
-	golangci-lint run -c .golangci.yml
+	GO111MODULE=on golangci-lint run -c .golangci.yml
 
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck: markdown-spellcheck
-	golangci-lint run -c .golangci.yml -E misspell
+	GO111MODULE=on golangci-lint run -c .golangci.yml -E misspell
 
 # staticcheck runs the staticcheck tool
 # NOTE: this is not yet enabled in the CI system.
