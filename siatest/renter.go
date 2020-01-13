@@ -489,8 +489,8 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 	return nil
 }
 
-// WaitForFileAvailable waits for a file to reach a health better than the
-// RepairThreshold.
+// WaitForFileAvailable waits for a file to become available on the Sia network
+// (redundancy of 1).
 func (tn *TestNode) WaitForFileAvailable(rf *RemoteFile) error {
 	// Check if file is tracked by renter at all
 	if _, err := tn.File(rf); err != nil {
