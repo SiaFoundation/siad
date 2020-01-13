@@ -192,7 +192,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 
 	// An entire integrity check can't performed, however we can at least check
 	// that the filesize is the same.
-	fi , err := file.Stat()
+	fi, err := file.Stat()
 	if err != nil {
 		r.log.Printf("local file %v of file %v was not used for download because the statistics could not be fetched: %v", localPath, fileName, err)
 		return false

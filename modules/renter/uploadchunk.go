@@ -362,8 +362,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 	// Return the erasure coding memory. This is not handled by the data
 	// fetching, where the erasure coding occurs.
-	r.memoryManager.Return(erasureCodingMemory+pieceCompletedMemory)
-	chunk.memoryReleased += erasureCodingMemory+pieceCompletedMemory
+	r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+	chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 	// Swap the physical chunk data and the logical chunk data. There is
 	// probably no point to having both, given that we perform such a clean
 	// handoff here, but since the code is already written this way, it may be
