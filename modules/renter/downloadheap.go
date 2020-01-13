@@ -194,7 +194,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	// check that the filesize is the same.
 	fi, err := file.Stat()
 	if err != nil {
-		r.log.Printf("local file %v of file %v was not used for download because the statistics could not be fetched: %v", localPath, fileName, err)
+		r.log.Printf("local file %v of file %v was not used for download because stat failed: %v", localPath, fileName, err)
 		return false
 	}
 	fiSize := uint64(fi.Size())
@@ -231,7 +231,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 			return false
 		default:
 		}
-		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticFetchLength))
+		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",

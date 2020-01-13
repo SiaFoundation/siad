@@ -222,8 +222,6 @@ func TestFuse(t *testing.T) {
 	if bytes.Compare(data, localFileData) != 0 {
 		t.Log(len(data))
 		t.Log(len(localFileData))
-		t.Log(data)
-		t.Log(localFileData)
 		t.Fatal("data from the local file and data from the fuse file do not match")
 	}
 	err = fuseFile.Close()
@@ -675,8 +673,6 @@ func TestFuse(t *testing.T) {
 	if !bytes.Equal(fuseData, sourceData) {
 		t.Log(len(fuseData))
 		t.Log(len(sourceData))
-		t.Log(fuseData)
-		t.Log(sourceData)
 		t.Fatal("custom mode data and source data do not match")
 	}
 	// Open the custom file in fuse. Note that for this test to provide proper
