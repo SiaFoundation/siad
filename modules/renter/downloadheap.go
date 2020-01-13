@@ -190,7 +190,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		return false
 	}
 
-	// An entire integrity check can't performed, however we can at least check
+	// An entire integrity check can't be performed, however we can at least check
 	// that the filesize is the same.
 	fi, err := file.Stat()
 	if err != nil {
