@@ -209,7 +209,7 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 // SetOffsetAndLen will set the offset and length of the data within the
 // sialink. Offset must be aligned correctly.
 func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
-	if offset + length > SialinkMaxFetchSize {
+	if offset+length > SialinkMaxFetchSize {
 		return errors.New("offset plus length cannot exceed the size of one sector - 4 MiB")
 	}
 
