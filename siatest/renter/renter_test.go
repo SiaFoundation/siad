@@ -81,7 +81,6 @@ func TestRenterOne(t *testing.T) {
 	subTests := []test{
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
-		{"TestLocalRepairCorrupted", testLocalRepairCorrupted},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDirectories", testDirectories},
@@ -881,19 +880,32 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testLocalRepairCorrupted tests if a renter repairs a file from disk after the
+// TestLocalRepairCorrupted tests if a renter repairs a file from disk after the
 // file on disk got corrupted.
-func testLocalRepairCorrupted(t *testing.T, tg *siatest.TestGroup) {
+//
+// The test has certain timing contraints, in particular we wait 20 seconds at
+// the end to ensure that a file cannot be repaired. Because of these timing
+// constraints, the test is run standalone and without t.Parallel().
+func TestLocalRepairCorrupted(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a group for the subtests
+	gp := siatest.GroupParams{
+		Hosts:   3,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Grab the first of the group's renters
 	renterNode := tg.Renters()[0]
 
-	// Check that we have enough hosts for this test.
-	if len(tg.Hosts()) < 3 {
-		t.Fatal("This test requires at least 3 hosts")
-	}
-
 	// Set fileSize and redundancy for upload
-	fileSize := int(modules.SectorSize)
+	fileSize := int(modules.SectorSize) + siatest.Fuzz()
 	dataPieces := uint64(2)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
@@ -903,23 +915,41 @@ func testLocalRepairCorrupted(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Take down hosts until enough are missing that the chunks get marked as
-	// stuck after repairs.
+	// Take down hosts until the file is unable to be repaired from remote. This
+	// will check that the local repair process is working.
 	var hostsRemoved uint64
-	for hostsRemoved = 0; float64(hostsRemoved)/float64(parityPieces) < renter.AlertSiafileLowRedundancyThreshold; hostsRemoved++ {
-		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+	hostsToRemove := parityPieces + 1
+	for hostsRemoved = 0; hostsRemoved < hostsToRemove; hostsRemoved++ {
+		hostToRemove := tg.Hosts()[0]
+		err := tg.RemoveNode(hostToRemove)
+		if err != nil {
 			t.Fatal("Failed to shutdown host", err)
 		}
 	}
-	expectedRedundancy := float64(dataPieces+parityPieces-hostsRemoved) / float64(dataPieces)
+	expectedRedundancy := float64(dataPieces-1) / float64(dataPieces)
 	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)
 	}
-	// We should still be able to download
-	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
+	// Download should fail, there are not enough hosts online.
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err == nil {
+		t.Fatal("download is succeeding even though there are not enough hosts to carry the file.")
+		t.Log(err)
 	}
-	// Corrupt the local file.
+	// Bring a host back up and see that the file completes a local repair.
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostsRemoved--
+	err = renterNode.WaitForFileAvailable(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Corrupt the local file, so that repairs will cause problems.
 	b, err := localFile.Data()
 	if err != nil {
 		t.Fatal(err)
@@ -927,7 +957,9 @@ func testLocalRepairCorrupted(t *testing.T, tg *siatest.TestGroup) {
 	if err := ioutil.WriteFile(localFile.Path(), fastrand.Bytes(len(b)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	// Bring up hosts to replace the ones that went offline.
+
+	// Bring more hosts online, check that repair will failover to remote
+	// repair.
 	for hostsRemoved > 0 {
 		hostsRemoved--
 		_, err = tg.AddNodes(node.HostTemplate)
@@ -935,10 +967,46 @@ func testLocalRepairCorrupted(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to create a new host", err)
 		}
 	}
-	// Wait a second and see if the redundancy is still 'expectedRedundancy'.
-	time.Sleep(time.Second)
+	// Host should get back to full health.
+	err = renterNode.WaitForUploadHealth(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify that a download works.
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bring hosts offline again. Now that the local file is corrupted,
+	// repairing should be impossible.
+	for hostsRemoved = 0; hostsRemoved < hostsToRemove; hostsRemoved++ {
+		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	// Wait for the redundancy to drop.
 	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
-		t.Fatal("File wasn't repaired", err)
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// Bring a host back online so that the file can be repaired to be
+	// available. Because the local file is corrupt, the repair should be
+	// blocked.
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostsRemoved--
+
+	// Give the renter some time to complete the repair. I'm not really sure if
+	// there's a better way than waiting to ensure that the repair loop has had
+	// a couple of iterations to attempt the repair.
+	time.Sleep(time.Second * 20)
+	file, err := renterNode.File(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.Available {
+		t.Fatal("file should not be available when its only source of repair data is corrupt")
 	}
 }
 
