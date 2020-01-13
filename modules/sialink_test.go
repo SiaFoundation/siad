@@ -7,6 +7,61 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestSialinkManualExamples checks a pile of manual examples using table driven
+// tests.
+func TestSialinkManualExamples(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	var sialinkExamples = []struct {
+		offset         uint64
+		length         uint64
+		expectedLength uint64
+	}{
+		{0, 0, 4096},
+		{0, 1, 4096},
+		{0, 4095, 4096},
+		{0, 4096, 4096},
+		{0, 4097, 8192},
+		{4096 * 45, 0, 4096},
+		{0, 10e3, 4096 * 3},
+		{0, 33e3, 4096 * 9},
+		{0, 39e3, 4096 * 10},
+		{8192 * 350, 39e3, 4096 * 10},
+		{0, 71 * 1024, 72 * 1024},
+		{0, (32 * 1024) - 1, 32 * 1024},
+		{0, 32 * 1024, 32 * 1024},
+		{0, (32 * 1024) + 1, 36 * 1024},
+		{0, (64 * 1024) - 1, 64 * 1024},
+		{8 * 1024, (64 * 1024) - 1, 64 * 1024},
+		{16 * 1024, (64 * 1024) - 1, 64 * 1024},
+		{0, (64 * 1024), 64 * 1024},
+		{24 * 1024, (64 * 1024), 64 * 1024},
+		{56 * 1024, (64 * 1024), 64 * 1024},
+		{0, (64 * 1024) + 1, 72 * 1024},
+		{16 * 1024, (64 * 1024) + 1, 72 * 1024},
+		{48 * 1024, (64 * 1024) + 1, 72 * 1024},
+	}
+
+	// Try each example.
+	for i, example := range sialinkExamples {
+		println("----------")
+		var ld LinkData
+		err := ld.SetOffsetAndLen(example.offset, example.length)
+		if err != nil {
+			t.Error(err)
+		}
+		offset, length := ld.OffsetAndLen()
+		if offset != example.offset {
+			t.Error("bad offset:", offset, example.offset, i)
+		}
+		if length != example.expectedLength {
+			t.Error("bad length:", length, example.length, i)
+		}
+	}
+}
+
 // TestSialink checks that the linkformat is correctly encoding to and decoding
 // from a string.
 func TestSialink(t *testing.T) {
@@ -92,118 +147,6 @@ func TestSialink(t *testing.T) {
 	err = ldMax.SetVersion(5)
 	if err == nil {
 		t.Error("should not be able to set an invalid version")
-	}
-
-	// Try a manual value to probe the OffsetAndLen functions.
-	var ld1 LinkData
-	err = ld1.SetOffsetAndLen(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	offset, length := ld1.OffsetAndLen()
-	if offset != 0 {
-		t.Error("Offset should be 0 when set to 0")
-	}
-	if length != 4096 {
-		t.Logf("%b", ld1.olv)
-		t.Log(ld1.olv)
-		t.Error("Length should be rounded up to 4kib when set to 0", length)
-	}
-
-	// Try a manual value to probe the OffsetAndLen functions.
-	var ld1a LinkData
-	err = ld1a.SetOffsetAndLen(4096*45, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	offset, length = ld1a.OffsetAndLen()
-	if offset != 4096*45 {
-		t.Error("Offset should be 0 when set to 0")
-	}
-	if length != 4096 {
-		t.Logf("%b", ld1a.olv)
-		t.Log(ld1a.olv)
-		t.Error("Length should be rounded up to 4kib when set to 0", length)
-	}
-
-	// Try a manual value to probe the OffsetAndLen functions.
-	var ld2 LinkData
-	err = ld2.SetOffsetAndLen(0, 10e3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	offset, length = ld2.OffsetAndLen()
-	if offset != 0 {
-		t.Error("Offset should be 0 when set to 0")
-	}
-	if length != 4096*3 {
-		t.Logf("%b", ld2.olv)
-		t.Log(ld2.olv)
-		t.Error("Length should be rounded to 12 kib when set to 10e3", length)
-	}
-
-	// Try a manual value to probe the OffsetAndLen functions.
-	var ld3 LinkData
-	err = ld3.SetOffsetAndLen(0, 33e3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	offset, length = ld3.OffsetAndLen()
-	if offset != 0 {
-		t.Error("Offset should be 0 when set to 0")
-	}
-	if length != 4096*9 {
-		t.Logf("%b", ld3.olv)
-		t.Log(ld3.olv)
-		t.Error("Length should be rounded to 12 kib when set to 10e3", length)
-	}
-
-	// Try a manual value to probe the OffsetAndLen functions.
-	var ld4 LinkData
-	err = ld4.SetOffsetAndLen(0, 39e3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	offset, length = ld4.OffsetAndLen()
-	if offset != 0 {
-		t.Error("Offset should be 0 when set to 0")
-	}
-	if length != 4096*10 {
-		t.Logf("%b", ld4.olv)
-		t.Log(ld4.olv)
-		t.Error("Length should be rounded to 12 kib when set to 10e3", length)
-	}
-
-	// Try a manual value to probe the OffsetAndLen functions.
-	var ld4a LinkData
-	err = ld4a.SetOffsetAndLen(8192*350, 39e3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	offset, length = ld4a.OffsetAndLen()
-	if offset != 8192*350 {
-		t.Error("Offset should be 0 when set to 0")
-	}
-	if length != 4096*10 {
-		t.Logf("%b", ld4a.olv)
-		t.Log(ld4a.olv)
-		t.Error("Length should be rounded to 12 kib when set to 10e3", length)
-	}
-
-	// Try a manual value to probe the OffsetAndLen functions.
-	var ld5 LinkData
-	err = ld5.SetOffsetAndLen(0, 71*1024)
-	if err != nil {
-		t.Fatal(err)
-	}
-	offset, length = ld5.OffsetAndLen()
-	if offset != 0 {
-		t.Error("Offset should be 0 when set to 0")
-	}
-	if length != 72*1024 {
-		t.Logf("%b", ld5.olv)
-		t.Log(ld5.olv)
-		t.Error("Length should be rounded to 12 kib when set to 10e3", length)
 	}
 
 	// Some longer fuzzing sorts of tests below, skip for short tests.

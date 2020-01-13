@@ -180,27 +180,30 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 	}
 
 	// Determine the offset alignment and the step size.
+	println(".")
 	offsetAlign := uint64(4096)
 	stepSize := uint64(4096)
 	for i := 1; i < shifts; i++ {
-		offsetAlign *= 2
-		stepSize *= 2
+		offsetAlign <<= 1
+		stepSize <<= 1
 	}
 	if shifts == 1 {
-		offsetAlign *= 2
+		offsetAlign <<= 1
 	}
+	println(offsetAlign)
 
 	// The next three bits decide the length.
 	length = uint64(currentWindow & 7)
 	length++ // semantic upstep
 	length *= stepSize
 	if shifts > 0 {
-		length += stepSize * 8 // TODO: Missing the edge case around 4 kib
+		length += stepSize * 8
 	}
 	currentWindow >>= 3
 
 	// The remaining bits decide the offset.
 	offset = uint64(currentWindow) * offsetAlign
+	println(offset)
 
 	return offset, length
 }
@@ -226,7 +229,9 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	if offset&(offsetAlign-1) != 0 {
 		return errors.New("offset is not aligned correctly")
 	}
+	println(offset)
 	offset = offset / offsetAlign
+	println(offset)
 
 	// Unless the offsetAlign is 1 << 12, the length increment is 1/2 the
 	// offsetAlign.
@@ -239,6 +244,9 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	// down, but that's okay because the length is semantically downshifted by 1.
 	if offsetAlign > 1<<12 {
 		length = length - lengthAlign<<3
+	}
+	if length != 0 && length == (length>>3)<<3 {
+		length--
 	}
 	length = length & (^(lengthAlign - 1))
 	length = length / lengthAlign
