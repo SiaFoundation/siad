@@ -16,6 +16,6 @@ additional information or to find a support contact before using the binary
    **If the output of that command fails STOP AND DO NOT USE THAT BINARY.**
 
 4. Hash your downloaded binary.
-	- `shasum256 ./siad` or similar, providing the path to the binary as the first argument.
+  - `shasum256 ./siad` or similar, providing the path to the binary as the first argument.
 	 
    **If the output of that command is not found in `Sia-1.x.x-SHA256SUMS.txt.asc` STOP AND DO NOT USE THAT BINARY.**
