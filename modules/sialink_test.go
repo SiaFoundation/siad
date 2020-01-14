@@ -3,7 +3,6 @@ package modules
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -52,12 +51,17 @@ func TestSialinkManualExamples(t *testing.T) {
 		{48 * 1024, (72 * 1024), 72 * 1024},
 		{16 * 1024, (72 * 1024) + 1, 80 * 1024},
 		{48 * 1024, (72 * 1024) + 1, 80 * 1024},
+		{192 * 1024, (288 * 1024) - 1, 288 * 1024},
 	}
 
 	// Try each example.
 	for i, example := range sialinkExamples {
 		var ld LinkData
-		err := ld.SetOffsetAndLen(example.offset, example.length)
+		err := ld.SetVersion(1)
+		if err != nil {
+			t.Error(err)
+		}
+		err = ld.SetOffsetAndLen(example.offset, example.length)
 		if err != nil {
 			t.Error(err)
 		}
@@ -97,6 +101,10 @@ func TestSialink(t *testing.T) {
 	ldMax := LinkData{
 		olv: 65535,
 	}
+	err = ldMax.SetVersion(1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < len(ldMax.merkleRoot); i++ {
 		ldMax.merkleRoot[i] = 255
 	}
@@ -126,8 +134,8 @@ func TestSialink(t *testing.T) {
 	// Try loading a siafile that's just arbitrary/meaningless data.
 	arb = arb + "a"
 	err = ld.LoadString(arb)
-	if err != nil {
-		t.Error(err)
+	if err == nil {
+		t.Error("arbitrary string should not decode")
 	}
 	// Try loading a siafile that's too large.
 	long := arb + "a"
@@ -141,8 +149,20 @@ func TestSialink(t *testing.T) {
 	if err == nil {
 		t.Error("expecting an error when loading a blank sialink")
 	}
-	// Try adding some extra params after a valid siafile.
-	params := arb + "&fdsafdsafdsa"
+
+	// Try giving a sialink extra params and loading that.
+	err = ld.SetVersion(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ldStr := ld.String()
+	params := ldStr + "&fdsafdsafdsa"
+	err = ld.LoadString(params)
+	if err != nil {
+		t.Error("should be no issues loading a sialink with params")
+	}
+	// Add more ampersands
+	params = params + "&fffffdsafdsafdsa"
 	err = ld.LoadString(params)
 	if err != nil {
 		t.Error("should be no issues loading a sialink with params")
@@ -162,145 +182,96 @@ func TestSialink(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	// Create a bunch of random values and run the same test.
-	for i := 0; i < 100e3; i++ {
-		ldRand := LinkData{
-			// TODO: not all values of olv are valid, may need to rng the olv a
-			// few times until a valid value is achieved.
-			olv:        uint16(fastrand.Intn(65536)),
-			merkleRoot: crypto.HashObject(i),
-		}
-		sialink = ldRand.Sialink()
-		if len(sialink) != 52 {
-			t.Error("sialink is not 52 bytes")
-			t.Log(ldRand.String())
-			t.Log(len(ldRand.String()))
-			t.Log(ldRand)
-		}
-		var ldRandDecoded LinkData
-		err = ldRandDecoded.LoadSialink(sialink)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if ldRandDecoded != ldRand {
-			t.Error("encoding and decoding is not symmetric")
-			t.Log(ldRand.String())
-			t.Log(len(ldRand.String()))
-			t.Log(ldRand)
-			t.Log(ldRandDecoded)
-		}
+}
 
-		// Test the setters and getters of the LinkData when the rest of the
-		// values are randomized.
-		ldChanged := ldRand
-		err = ldChanged.SetVersion(1)
-		if err != nil {
-			t.Error(err)
-		}
-		if ldChanged.Version() != 1 {
-			t.Error("version setting and getting is incorrect")
-			t.Log(ldRand)
-			t.Log(ldChanged)
-		}
-		err = ldChanged.SetVersion(2)
-		if err != nil {
-			t.Error(err)
-		}
-		if ldChanged.Version() != 2 {
-			t.Error("version setting and getting is incorrect")
-			t.Log(ldRand)
-			t.Log(ldChanged)
-		}
-		err = ldChanged.SetVersion(3)
-		if err != nil {
-			t.Error(err)
-		}
-		if ldChanged.Version() != 3 {
-			t.Error("version setting and getting is incorrect")
-			t.Log(ldRand)
-			t.Log(ldChanged)
-		}
-		err = ldChanged.SetVersion(4)
-		if err != nil {
-			t.Error(err)
-		}
-		if ldChanged.Version() != 4 {
-			t.Error("version setting and getting is incorrect")
-			t.Log(ldRand)
-			t.Log(ldChanged)
-		}
-		// Reset to original.
-		err = ldChanged.SetVersion(ldRand.Version())
-		if err != nil {
-			t.Error(err)
-		}
-		if ldChanged != ldRand {
-			t.Error("ldChanged should match ldRand after reverting version changes")
-		}
-
-		// TODO: Make the new format equivalent for these.
-		/*
-			// Set and fetch a random fetch size. Ensure that fetch constraints are
-			// followed correctly.
-			randFetchSize := fastrand.Intn(int(SialinkMaxFetchSize)) + 1
-			ldChanged.SetFetchSize(uint64(randFetchSize))
-			resultFetchSize := ldChanged.FetchSize()
-			if resultFetchSize < uint64(randFetchSize) {
-				t.Error("FetchSize() should never return a value lower than what was submitted to SetFetchSize()", resultFetchSize, randFetchSize)
-			}
-			// The resulting fetch size should be no more than 16384 bytes larger
-			// than the input fetch size.
-			if resultFetchSize > uint64(randFetchSize)+(SialinkMaxFetchSize/256) {
-				t.Error("resulting fetch size is too large!")
-			}
-			// Check that setting and getting the fetch size with the compressed
-			// value returns the same compressed value.
-			ldChanged.SetFetchSize(resultFetchSize)
-			if ldChanged.FetchSize() != resultFetchSize {
-				t.Error("setting and getting a fetch size is not always consistent")
-			}
-			// Check that resetting the fetch magnitude to the original value
-			// results in the same struct - meaning that no other values were
-			// incorrectly changed.
-			ldChanged.SetFetchSize(ldRand.FetchSize())
-			if ldChanged != ldRand {
-				t.Error("resetting fetch size didn't result in original value")
-				t.Log(ldRand.fetchMagnitude)
-				t.Log(ldChanged.fetchMagnitude)
-			}
-		*/
+// TestSialinkAutoExamples performs a brute force test over lots of values for
+// the sialink olv to ensure correctness.
+func TestSialinkAutoExamples(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
 	}
 
-	// TODO: Do the equivalent for these.
-	/*
-		// Test a bunch of different packet sizes with fuzz for the set fetch size
-		// function.
-		fetchIncrement := uint64(SialinkMaxFetchSize / 256)
-		for i := uint64(0); i < 255; i++ {
+	// Helper function to try some values.
+	tryValues := func(offset, length, expectedLength uint64) {
+		var ld LinkData
+		err := ld.SetVersion(1)
+		if err != nil {
+			t.Error(err)
+		}
+		err = ld.SetOffsetAndLen(offset, length)
+		if err != nil {
+			t.Error(err)
+		}
+		offsetOut, lengthOut := ld.OffsetAndLen()
+		if offset != offsetOut {
+			t.Error("bad offset:", offset, length, expectedLength, offsetOut)
+		}
+		if expectedLength != lengthOut {
+			t.Error("bad length:", offset, length, expectedLength, lengthOut)
+		}
+	}
+
+	// Check every length in the first row. The first row must be offset by 4
+	// kib.
+	for i := uint64(0); i < 8; i++ {
+		// Check every possible offset for each length.
+		for j := uint64(0); j < 1024-i; j++ {
 			var ld LinkData
-			// Try one less byte less than i packets.
-			ld.SetFetchSize((i * fetchIncrement) - 1)
-			fs := ld.FetchSize()
-			ld.SetFetchSize(fs)
-			if ld.FetchSize() != fs {
-				t.Error("inconsistency")
+			err := ld.SetVersion(1)
+			if err != nil {
+				t.Error(err)
 			}
 
-			// Try exactly i packets.
-			ld.SetFetchSize(i * fetchIncrement)
-			fs = ld.FetchSize()
-			ld.SetFetchSize(fs)
-			if ld.FetchSize() != fs {
-				t.Error("inconsistency")
-			}
+			// Try the edge cases. One byte into the lenght, one byte before the
+			// end of the length, the very end of the length.
+			shift := uint64(0)
+			offsetAlign := uint64(4096)
+			lengthAlign := uint64(4096)
+			tryValues(offsetAlign*j, shift+((lengthAlign*i)+1), shift+(lengthAlign*(i+1)))
+			tryValues(offsetAlign*j, shift+((lengthAlign*(i+1))-1), shift+(lengthAlign*(i+1)))
+			tryValues(offsetAlign*j, shift+(lengthAlign*(i+1)), shift+(lengthAlign*(i+1)))
 
-			// Try one more byte than i packets.
-			ld.SetFetchSize((i * fetchIncrement) + 1)
-			fs = ld.FetchSize()
-			ld.SetFetchSize(fs)
-			if ld.FetchSize() != fs {
-				t.Error("inconsistency")
+			// Try some random values.
+			for k := uint64(0); k < 5; k++ {
+				rand := uint64(fastrand.Intn(int(lengthAlign)))
+				rand++                            // move range from [0, lengthAlign) to [1, lengthAlign].
+				rand += shift + (lengthAlign * i) // Move range into the range being tested.
+				tryValues(offsetAlign*j, rand, shift+(lengthAlign*(i+1)))
 			}
 		}
-	*/
+	}
+
+	// The first row is a special case, a general loop can be used for the
+	// remaining 7 rows.
+	for r := uint64(1); r < 7; r++ {
+		// Check every length in the second row.
+		for i := uint64(0); i < 8; i++ {
+			// Check every possible offset for each length.
+			offsets := uint64(1024 >> r)
+			for j := uint64(0); j < offsets-4-(i/2); j++ {
+				var ld LinkData
+				err := ld.SetVersion(1)
+				if err != nil {
+					t.Error(err)
+				}
+
+				// Try the edge cases. One byte into the lenght, one byte before the
+				// end of the length, the very end of the length.
+				shift := uint64(1 << (14 + r))
+				offsetAlign := uint64(1 << (12 + r))
+				lengthAlign := uint64(1 << (11 + r))
+				tryValues(offsetAlign*j, shift+((lengthAlign*i)+1), shift+(lengthAlign*(i+1)))
+				tryValues(offsetAlign*j, shift+((lengthAlign*(i+1))-1), shift+(lengthAlign*(i+1)))
+				tryValues(offsetAlign*j, shift+(lengthAlign*(i+1)), shift+(lengthAlign*(i+1)))
+
+				// Try some random values.
+				for k := uint64(0); k < 25; k++ {
+					rand := uint64(fastrand.Intn(int(lengthAlign)))
+					rand++                            // move range from [0, lengthAlign) to [1, lengthAlign].
+					rand += shift + (lengthAlign * i) // Move range into the range being tested.
+					tryValues(offsetAlign*j, rand, shift+(lengthAlign*(i+1)))
+				}
+			}
+		}
+	}
 }

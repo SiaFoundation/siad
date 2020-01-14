@@ -95,6 +95,11 @@ func (ld *LinkData) LoadString(s string) error {
 	// Load the raw data.
 	ld.olv = binary.LittleEndian.Uint16(raw)
 	copy(ld.merkleRoot[:], raw[2:])
+
+	// Check the version.
+	if ld.Version() != 1 {
+		return errors.New("sialink is not v1, version is not supported")
+	}
 	return nil
 }
 
@@ -238,7 +243,7 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	// Round the length value to the length increment. This is going to round
 	// down, but that's okay because the length is semantically downshifted by 1.
 	if offsetAlign > 1<<12 {
-		length = length - lengthAlign<<3
+		length = length - lengthAlign*8
 	}
 	if length != 0 && length == (length>>3)<<3 {
 		length--
