@@ -207,7 +207,7 @@ func TestSialinkAutoExamples(t *testing.T) {
 	for i := uint64(0); i < 8; i++ {
 		// Check every possible offset for each length.
 		for j := uint64(0); j < 1024-i; j++ {
-			// Try the edge cases. One byte into the lenght, one byte before the
+			// Try the edge cases. One byte into the length, one byte before the
 			// end of the length, the very end of the length.
 			shift := uint64(0)
 			offsetAlign := uint64(4096)
@@ -234,7 +234,7 @@ func TestSialinkAutoExamples(t *testing.T) {
 			// Check every possible offset for each length.
 			offsets := uint64(1024 >> r)
 			for j := uint64(0); j < offsets-4-(i/2); j++ {
-				// Try the edge cases. One byte into the lenght, one byte before the
+				// Try the edge cases. One byte into the length, one byte before the
 				// end of the length, the very end of the length.
 				shift := uint64(1 << (14 + r))
 				offsetAlign := uint64(1 << (12 + r))
