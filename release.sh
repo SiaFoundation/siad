@@ -36,7 +36,7 @@ for os in darwin linux windows; do
 	echo Packaging ${os}...
 	folder=release/Sia-$version-$os-amd64
 
-  # add other artifacts and file of hashes.
+	# add other artifacts and file of hashes.
 	cp -r release/Sia-$version-SHA256SUMS.txt doc LICENSE README.md $folder
 	# zip
 	(
