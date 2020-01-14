@@ -101,6 +101,7 @@ func TestSialink(t *testing.T) {
 	ldMax := LinkData{
 		olv: 65535,
 	}
+	ldMax.olv -= 4 // set the third bit to 0 to make this a valid sialink.
 	err = ldMax.SetVersion(1)
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +209,19 @@ func TestSialinkAutoExamples(t *testing.T) {
 		}
 		if expectedLength != lengthOut {
 			t.Error("bad length:", offset, length, expectedLength, lengthOut)
+		}
+
+		// Encode the sialink and then decode the sialink. There should be no
+		// errors in doing so, and the result should equal the initial.
+		sl := ld.Sialink()
+		var ldDecode LinkData
+		err = ldDecode.LoadSialink(sl)
+		if err != nil {
+			t.Error(err)
+		}
+		if ldDecode != ld {
+			t.Log(ld)
+			t.Error("linkdata does not maintain its fields when encoded and decoded")
 		}
 	}
 

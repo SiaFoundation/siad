@@ -71,7 +71,7 @@ func (ld *LinkData) LoadString(s string) error {
 	}
 	base := []byte(splits[0])
 
-	// Input check, ensure that this is an expected string.
+	// Input check, ensure that this string is the expected size.
 	if len(base) != encodedLinkDataSize {
 		return errors.New("not a sialink, sialinks are always 46 bytes")
 	}
@@ -90,16 +90,21 @@ func (ld *LinkData) LoadString(s string) error {
 		return errors.New("unable to decode input as base64")
 	}
 
-	// TODO: Perform a check on 'olv', certain values are illegal.
-
-	// Load the raw data.
-	ld.olv = binary.LittleEndian.Uint16(raw)
-	copy(ld.merkleRoot[:], raw[2:])
-
 	// Check the version.
-	if ld.Version() != 1 {
+	olv := binary.LittleEndian.Uint16(raw)
+	version := (olv & 3) + 1
+	if version != 1 {
 		return errors.New("sialink is not v1, version is not supported")
 	}
+	// Check for an illegal run of shift values. If the 8 bits after the version
+	// are all '1', this is an illegal olv.
+	if olv>>2&255 == 255 {
+		return errors.New("sialink is not valid, length and offset are illegal")
+	}
+
+	// Load the raw data.
+	ld.olv = olv
+	copy(ld.merkleRoot[:], raw[2:])
 	return nil
 }
 
@@ -164,7 +169,7 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 	currentWindow >>= 2
 
 	// Keep sliding bits out of the window for as long as the final bit is equal
-	// to '1'. This should happen at most 7 times.
+	// to '1'. This should happen at most 8 times.
 	var shifts int
 	for shifts < 8 {
 		if currentWindow&1 == 0 {
