@@ -21,15 +21,17 @@ require (
 	gitlab.com/NebulousLabs/errors v0.0.0-20171229012116-7ead97ef90b8
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	gitlab.com/NebulousLabs/go-upnp v0.0.0-20181011194642-3a71999ed0d3
-	gitlab.com/NebulousLabs/merkletree v0.0.0-20190207030457-bc4a11e31a0d
+	gitlab.com/NebulousLabs/merkletree v0.0.0-20200114043711-1b864c41fecc
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20180716154200-1308156c2eaf
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190729190618-012a9d4274dd
-	golang.org/x/crypto v0.0.0-20191105034135-c7e5f84aec59
+	golang.org/x/crypto v0.0.0-20200109152110-61a87790db17
 	golang.org/x/lint v0.0.0-20191125180803-fdd1cda4f05f // indirect
 	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f
 	honnef.co/go/tools v0.0.1-2019.2.3 // indirect
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
+
+replace gitlab.com/NebulousLabs/merkletree => ../merkletree
