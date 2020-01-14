@@ -65,7 +65,7 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	return n, nil
 }
 
-// Close implements streamBufferDataSource.
+// SilentClose implements streamBufferDataSource.
 func (mds *mockDataSource) SilentClose() {
 	mds.staticData = nil
 }
@@ -82,21 +82,21 @@ func TestStreamSmoke(t *testing.T) {
 
 	// Perform the ritual that the http.ResponseWriter performs - seek to front,
 	// seek to back, read 512 bytes, seek to front, read a bigger chunk of data.
-	offset, err := stream.Seek(0, 0)
+	offset, err := stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if offset != 0 {
 		t.Fatal("bad")
 	}
-	offset, err = stream.Seek(0, 2)
+	offset, err = stream.Seek(0, io.SeekEnd)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if offset != 15999 {
 		t.Fatal("bad")
 	}
-	offset, err = stream.Seek(0, 0)
+	offset, err = stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestStreamSmoke(t *testing.T) {
 	if !bytes.Equal(buf, data[:512]) {
 		t.Fatal("bad")
 	}
-	offset, err = stream.Seek(0, 0)
+	offset, err = stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestStreamSmoke(t *testing.T) {
 		t.Fatal("bad")
 	}
 	// Seek back to the beginning one more time to do a full read of the data.
-	offset, err = stream.Seek(0, 0)
+	offset, err = stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}

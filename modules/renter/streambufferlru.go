@@ -178,7 +178,7 @@ func (lru *leastRecentlyUsedCache) moveToFront(node *leastRecentlyUsedCacheNode)
 	if node.next != nil {
 		node.next.prev = node.prev
 	}
-	// If this node is the tail, point the tail to this node.
+	// If this node is the tail, point the tail to the previous node.
 	if lru.tail == node {
 		lru.tail = node.prev
 	}
