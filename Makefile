@@ -32,6 +32,7 @@ pkgs = ./build \
 	./modules/gateway \
 	./modules/host \
 	./modules/host/contractmanager \
+	./modules/host/mdm \
 	./modules/miner \
 	./modules/renter \
 	./modules/renter/contractor \
