@@ -1006,6 +1006,10 @@ fetches status information about the host.
     "minsectoraccessprice":      "123",                        //hastings
     "minstorageprice":           "231481481481",               // hastings / byte / block
     "minuploadbandwidthprice":   "100000000000000"             // hastings / byte
+
+    "ephemeralaccountexpiry":     "604800",                          // seconds
+    "maxephemeralaccountbalance": "2000000000000000000000000000000", // hastings
+    "maxephemeralaccountrisk":    "2000000000000000000000000000000", // hastings
   },
 
   "networkmetrics": {
@@ -1266,6 +1270,39 @@ The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
 
+**ephemeralaccountexpiry** | seconds  
+The  maximum amount of time an ephemeral account can be inactive before it is
+considered to be expired and gets deleted. After an account has expired, the
+account owner has no way of retrieving the funds. Setting this value to 0 means
+ephemeral accounts never expire, regardless of how long they have been inactive.
+
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
+
+**maxephemeralaccountrisk** | hastings  
+To increase performance, the host will allow a user to withdraw from an
+ephemeral account without requiring the user to wait until the host has
+persisted the updated ephemeral account balance to complete a transaction. This
+means that the user can perform actions such as downloads with significantly
+less latency. This also means that if the host loses power at that exact moment,
+the host will forget that the user has spent money and the user will be able to
+spend that money again.
+
+maxephemeralaccountrisk is the maximum amount of money that the host is willing
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
+widthdrawal, to prevent the host from having too much money at risk.
+
+Note that money is only at risk if the host experiences an unclean shutdown
+while in the middle of a transaction with a user, and generally the amount at
+risk will be minuscule unless the host experiences an unclean shutdown while in
+the middle of many transactions with many users at once. This value should be
+larger than maxephemeralaccountbalance but does not need to be significantly
+larger.
+
 **networkmetrics**    
 Information about the network, specifically various ways in which renters have
 contacted the host.  
@@ -1403,6 +1440,33 @@ higher than the minimum.
 The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
+
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
+
+**maxephemeralaccountrisk** | hastings  
+To increase performance, the host will allow a user to withdraw from an
+ephemeral account without requiring the user to wait until the host has
+persisted the updated ephemeral account balance to complete a transaction. This
+means that the user can perform actions such as downloads with significantly
+less latency. This also means that if the host loses power at that exact moment,
+the host will forget that the user has spent money and the user will be able to
+spend that money again.
+
+maxephemeralaccountrisk is the maximum amount of money that the host is willing
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
+widthdrawal, to prevent the host from having too much money at risk.
+
+Note that money is only at risk if the host experiences an
+unclean shutdown while in the middle of a transaction with a user, and generally
+the amount at risk will be minuscule unless the host experiences an unclean
+shutdown while in the middle of many transactions with many users at once. This
+value should be larger than 'maxephemeralaccountbalance but does not need to be
+significantly larger.
 
 ### Response
 
@@ -1740,7 +1804,10 @@ See [host internal settings](#internalsettings)
  - mincontractprice          
  - mindownloadbandwidthprice  
  - minstorageprice            
- - minuploadbandwidthprice    
+ - minuploadbandwidthprice
+ - ephemeralaccountexpiry    
+ - maxephemeralaccountbalance
+ - maxephemeralaccountrisk
 
 ### JSON Response
 > JSON Response Example

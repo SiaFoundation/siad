@@ -101,19 +101,22 @@ seed into itself. This can be used for wallet recovery and merging.
 
 is used to configure hosting.
 
-In version `1.2.2`, sia hosting is configured as follows:
+In version `1.4.3.0`, sia hosting is configured as follows:
 
-| Setting                  | Value                                           |
-| -------------------------|-------------------------------------------------|
-| acceptingcontracts       | Yes or No                                       |
-| maxduration              | in weeks, at least 12                           |
-| collateral               | in SC / TB / Month, 10-1000                     |
-| collateralbudget         | in SC                                           |
-| maxcollateral            | in SC, max per contract                         |
-| mincontractprice         | minimum price in SC per contract                |
-| mindownloadbandwidthprice| in SC / TB                                      |
-| minstorageprice          | in SC / TB                                      |
-| minuploadbandwidthprice  | in SC / TB                                      |
+| Setting                    | Value                                           |
+| ---------------------------|-------------------------------------------------|
+| acceptingcontracts         | Yes or No                                       |
+| collateral                 | in SC / TB / Month, 10-1000                     |
+| collateralbudget           | in SC                                           |
+| ephemeralaccountexpiry     | in seconds                                      |
+| maxcollateral              | in SC, max per contract                         |
+| maxduration                | in weeks, at least 12                           |
+| maxephemeralaccountbalance | in SC                                           |
+| maxephemeralaccountrisk    | in SC                                           |
+| mincontractprice           | minimum price in SC per contract                |
+| mindownloadbandwidthprice  | in SC / TB                                      |
+| minstorageprice            | in SC / TB                                      |
+| minuploadbandwidthprice    | in SC / TB                                      |
 
 You can call this many times to configure you host before
 announcing. Alternatively, you can manually adjust these parameters
