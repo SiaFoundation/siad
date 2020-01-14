@@ -57,11 +57,7 @@ func TestSialinkManualExamples(t *testing.T) {
 	// Try each example.
 	for i, example := range sialinkExamples {
 		var ld LinkData
-		err := ld.SetVersion(1)
-		if err != nil {
-			t.Error(err)
-		}
-		err = ld.SetOffsetAndLen(example.offset, example.length)
+		err := ld.SetOffsetAndLen(example.offset, example.length)
 		if err != nil {
 			t.Error(err)
 		}
@@ -71,6 +67,9 @@ func TestSialinkManualExamples(t *testing.T) {
 		}
 		if length != example.expectedLength {
 			t.Error("bad length:", length, example.length, i)
+		}
+		if ld.Version() != 1 {
+			t.Error("bad version:", ld.Version())
 		}
 	}
 }
@@ -101,11 +100,7 @@ func TestSialink(t *testing.T) {
 	ldMax := LinkData{
 		olv: 65535,
 	}
-	ldMax.olv -= 4 // set the third bit to 0 to make this a valid sialink.
-	err = ldMax.SetVersion(1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ldMax.olv -= 7 // set the final three bits to 0 to make this a valid sialink.
 	for i := 0; i < len(ldMax.merkleRoot); i++ {
 		ldMax.merkleRoot[i] = 255
 	}
@@ -152,10 +147,6 @@ func TestSialink(t *testing.T) {
 	}
 
 	// Try giving a sialink extra params and loading that.
-	err = ld.SetVersion(1)
-	if err != nil {
-		t.Fatal(err)
-	}
 	ldStr := ld.String()
 	params := ldStr + "&fdsafdsafdsa"
 	err = ld.LoadString(params)
@@ -167,16 +158,6 @@ func TestSialink(t *testing.T) {
 	err = ld.LoadString(params)
 	if err != nil {
 		t.Error("should be no issues loading a sialink with params")
-	}
-
-	// Try setting bad version numbers on the LinkData.
-	err = ldMax.SetVersion(0)
-	if err == nil {
-		t.Error("should not be able to set an invalid version")
-	}
-	err = ldMax.SetVersion(5)
-	if err == nil {
-		t.Error("should not be able to set an invalid version")
 	}
 
 	// Some longer fuzzing sorts of tests below, skip for short tests.
@@ -195,11 +176,7 @@ func TestSialinkAutoExamples(t *testing.T) {
 	// Helper function to try some values.
 	tryValues := func(offset, length, expectedLength uint64) {
 		var ld LinkData
-		err := ld.SetVersion(1)
-		if err != nil {
-			t.Error(err)
-		}
-		err = ld.SetOffsetAndLen(offset, length)
+		err := ld.SetOffsetAndLen(offset, length)
 		if err != nil {
 			t.Error(err)
 		}
@@ -230,12 +207,6 @@ func TestSialinkAutoExamples(t *testing.T) {
 	for i := uint64(0); i < 8; i++ {
 		// Check every possible offset for each length.
 		for j := uint64(0); j < 1024-i; j++ {
-			var ld LinkData
-			err := ld.SetVersion(1)
-			if err != nil {
-				t.Error(err)
-			}
-
 			// Try the edge cases. One byte into the lenght, one byte before the
 			// end of the length, the very end of the length.
 			shift := uint64(0)
@@ -263,12 +234,6 @@ func TestSialinkAutoExamples(t *testing.T) {
 			// Check every possible offset for each length.
 			offsets := uint64(1024 >> r)
 			for j := uint64(0); j < offsets-4-(i/2); j++ {
-				var ld LinkData
-				err := ld.SetVersion(1)
-				if err != nil {
-					t.Error(err)
-				}
-
 				// Try the edge cases. One byte into the lenght, one byte before the
 				// end of the length, the very end of the length.
 				shift := uint64(1 << (14 + r))

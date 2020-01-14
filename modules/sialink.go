@@ -221,7 +221,8 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 }
 
 // SetOffsetAndLen will set the offset and length of the data within the
-// sialink. Offset must be aligned correctly.
+// sialink. Offset must be aligned correctly. SetOffsetAndLen implies that the
+// version is 1, so the version will also be set to 1.
 func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	if offset+length > SialinkMaxFetchSize {
 		return errors.New("offset plus length cannot exceed the size of one sector - 4 MiB")
@@ -278,10 +279,9 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	// Shift 2 more bits for the version, this should now be 16 bits total.
 	olv <<= 2
 
-	// Save the version bits of ld.olv.
-	versionBits := ld.olv & 3
+	// Calling SetOffsetAndLen implies that the sialink is version 1. Version 1
+	// has 2 '0' bits as the final bits, so no updates need to be made to olv.
 	ld.olv = olv
-	ld.olv += versionBits
 	return nil
 }
 
@@ -290,23 +290,6 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 // that the field remains consistent with all other fields.
 func (ld *LinkData) SetMerkleRoot(mr crypto.Hash) {
 	ld.merkleRoot = mr
-}
-
-// SetVersion sets the version of the LinkData. Value must be in the range
-// [1, 4].
-func (ld *LinkData) SetVersion(version uint16) error {
-	// Check that the version is in the valid range for versions.
-	if version < 1 || version > 4 {
-		return errors.New("version must be in the range [1, 4]")
-	}
-	// Convert the version to its bitwise value, which covers the range [0, 3].
-	version--
-
-	// Zero out the version bits of the olv. These are the first two bits.
-	ld.olv &= 65532
-	// Set the version bits of the olv.
-	ld.olv += version
-	return nil
 }
 
 // Sialink returns the type safe 'sialink' of the link data, which is just a
