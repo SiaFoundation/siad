@@ -16,6 +16,7 @@ Latest:
  - Wallet can generate an address before it finishes scanning the blockchain
  - FUSE folders can now be mounted with 'AllowOther' as an option
  - Smarter fund allocation when initially forming contracts
+ - CPU optimizations during downloading
 
 **Bugs Fixed**
  - Repair operations would sometimes perform useless and redundant repairs
