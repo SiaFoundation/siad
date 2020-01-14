@@ -204,7 +204,11 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		return false
 	}
 
-	// Fetch the chunk from disk.
+	// After a quick check the remaining work is done in a goroutine. That way
+	// the download code can move on to popping the next download chunk from the
+	// heap, reserving memory for it and then either serve it from the network
+	// or disk. No need to wait for the relatively slow erasure coding and disk
+	// i/o here.
 	if err := r.tg.Add(); err != nil {
 		return false
 	}
@@ -231,7 +235,8 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 			return false
 		default:
 		}
-		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
+		// Fetch the chunk from disk.
+		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticFetchLength))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
@@ -244,6 +249,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 				localPath, fileName, err)
 			return false
 		}
+		// Write the data to the destination.
 		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
