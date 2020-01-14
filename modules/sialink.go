@@ -70,7 +70,6 @@ func (ld *LinkData) LoadString(s string) error {
 		return errors.New("not a sialink, no base sialink provided")
 	}
 	base := []byte(splits[0])
-
 	// Input check, ensure that this string is the expected size.
 	if len(base) != encodedLinkDataSize {
 		return errors.New("not a sialink, sialinks are always 46 bytes")
@@ -90,14 +89,20 @@ func (ld *LinkData) LoadString(s string) error {
 		return errors.New("unable to decode input as base64")
 	}
 
-	// Check the version.
+	// Check the olv. The olv is checked before modifying the LinkData so that
+	// the LinkData remains unchanged if there is any error parsing the string.
 	olv := binary.LittleEndian.Uint16(raw)
+	// Check that the version is set to 1.
 	version := (olv & 3) + 1
 	if version != 1 {
 		return errors.New("sialink is not v1, version is not supported")
 	}
 	// Check for an illegal run of shift values. If the 8 bits after the version
-	// are all '1', this is an illegal olv.
+	// are all '1', this is an illegal olv. This is because the olv is a
+	// probabilistic data structure with 8 different modes, each mode signaled
+	// by a run of 1's following the version that is 'mode' long. The valid
+	// lengths are 0-7 1's in a row, if there are 8 1's in a row, the data
+	// structure becomes undefined.
 	if olv>>2&255 == 255 {
 		return errors.New("sialink is not valid, length and offset are illegal")
 	}
