@@ -489,6 +489,40 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 	return nil
 }
 
+// WaitForFileAvailable waits for a file to become available on the Sia network
+// (redundancy of 1).
+func (tn *TestNode) WaitForFileAvailable(rf *RemoteFile) error {
+	// Check if file is tracked by renter at all
+	if _, err := tn.File(rf); err != nil {
+		return ErrFileNotTracked
+	}
+	// Wait until the file is viewed as available by the renter
+	err := Retry(1000, 100*time.Millisecond, func() error {
+		file, err := tn.File(rf)
+		if err != nil {
+			return ErrFileNotTracked
+		}
+		if !file.Available {
+			return fmt.Errorf("file is not available yet, redundancy is %v", file.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		rc, err2 := tn.RenterContractsGet()
+		if err2 != nil {
+			return errors.Compose(err, err2)
+		}
+		goodHosts := 0
+		for _, contract := range rc.Contracts {
+			if contract.GoodForUpload {
+				goodHosts++
+			}
+		}
+		return errors.Compose(err, fmt.Errorf("%v available hosts", goodHosts))
+	}
+	return nil
+}
+
 // WaitForDecreasingRedundancy waits until the redundancy decreases to a
 // certain point.
 func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float64) error {
