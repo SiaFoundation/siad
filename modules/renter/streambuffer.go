@@ -209,6 +209,13 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	return stream
 }
 
+// managedData will block until the data for a data section is available, and
+// then return the data. The data is not safe to modify.
+func (ds *dataSection) managedData() ([]byte, error) {
+	<-ds.dataAvailable
+	return ds.externData, ds.externErr
+}
+
 // Close will release all of the resources held by a stream.
 func (s *stream) Close() error {
 	// Drop all nodes from the lru.
@@ -270,13 +277,12 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Block until the data is available.
-	<-dataSection.dataAvailable
-	// Check the error on fetching the data.
-	if dataSection.externErr != nil {
-		return 0, errors.AddContext(dataSection.externErr, "read call failed because data section fetch failed")
+	data, err := dataSection.managedData()
+	if err != nil {
+		return 0, errors.AddContext(err, "read call failed because data section fetch failed")
 	}
 	// Copy the data into the read request.
-	n := copy(b, dataSection.externData[offsetInSection:offsetInSection+bytesToRead])
+	n := copy(b, data[offsetInSection:offsetInSection+bytesToRead])
 	s.offset += uint64(n)
 
 	// Send the call to prepare the next data section.
