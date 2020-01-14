@@ -10,7 +10,7 @@ additional information or to find a support contact before using the binary
 2. Download the `SHA256SUMS` file for the release.
 	- `wget -c http://gitlab.com/NebulousLabs/Sia/doc/Sia-1.x.x-SHA256SUMS.txt.asc`
 
-3. 	Verify the signature.
+3. Verify the signature.
    - `gpg --verify Sia-1.x.x-SHA256SUMS.txt.asc`
    
    **If the output of that command fails STOP AND DO NOT USE THAT BINARY.**
