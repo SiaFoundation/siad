@@ -147,14 +147,12 @@ func linkfileBuildBaseSector(layoutBytes, metadataBytes, fanoutBytes, fileBytes 
 
 // linkfileBuildSialink will build a sialink given all of the inputs to the
 // sialink.
-func linkfileBuildSialink(version uint8, merkleRoot crypto.Hash, lup modules.LinkfileUploadParameters, fetchSize uint64) modules.Sialink {
-	var ld modules.LinkData
-	ld.SetVersion(version)
-	ld.SetMerkleRoot(merkleRoot)
-	ld.SetDataPieces(lup.IntraSectorDataPieces)
-	ld.SetParityPieces(lup.IntraSectorParityPieces)
-	ld.SetFetchSize(uint64(fetchSize))
-	return ld.Sialink()
+func linkfileBuildSialink(version uint8, merkleRoot crypto.Hash, lup modules.LinkfileUploadParameters, fetchSize uint64) (modules.Sialink, error) {
+	ld, err := modules.NewLinkDataV1(merkleRoot, 0, fetchSize)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to build sialink")
+	}
+	return ld.Sialink(), nil
 }
 
 // linkfileEstablishDefaults will set any zero values in the lup to be equal to
@@ -345,7 +343,10 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 
 	// Create the sialink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector)
-	sialink := linkfileBuildSialink(LinkfileVersion, baseSectorRoot, lup, fetchSize)
+	sialink, err := linkfileBuildSialink(LinkfileVersion, baseSectorRoot, lup, fetchSize)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to build sialink")
+	}
 
 	// Add the sialink to the siafiles.
 	err1 := fileNode.AddSialink(sialink)
@@ -365,23 +366,14 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
 	}
 
-	// Check that the link follows the restrictions of the current software
-	// capabilities.
-	if ld.Version() < 1 || ld.Version() < LinkfileVersion {
-		return modules.LinkfileMetadata{}, nil, errors.New("link version is not recognized")
-	}
-	if ld.DataPieces() != 1 || ld.ParityPieces() != 0 {
-		return modules.LinkfileMetadata{}, nil, errors.New("intra-root erasure coding not supported")
-	}
-	// NOTE: Once intra-sector erasure coding is in play, this check has to
-	// change to account for the fact that a lot of the bytes are redundant.
-	fetchSize := ld.FetchSize()
-	if fetchSize > modules.SectorSize {
-		fetchSize = modules.SectorSize
+	// Pull the offset and fetchSize out of the linkfile.
+	offset, fetchSize, err := ld.OffsetAndFetchSize()
+	if offset+fetchSize > modules.SectorSize {
+		return modules.LinkfileMetadata{}, nil, errors.New("illegal fetch size provided by sialink")
 	}
 
 	// Fetch the leading sector.
-	baseSector, err := r.DownloadByRoot(ld.MerkleRoot(), 0, fetchSize)
+	baseSector, err := r.DownloadByRoot(ld.MerkleRoot(), offset, fetchSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of sialink")
 	}
@@ -390,7 +382,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	}
 
 	// Parse out the linkfileLayout.
-	offset := uint64(0)
 	var ll linkfileLayout
 	ll.decode(baseSector)
 	offset += LinkfileLayoutSize
@@ -576,8 +567,13 @@ func (r *Renter) uploadLinkfileSmallFile(lup modules.LinkfileUploadParameters, m
 
 	// Create the sialink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
-	sialink := linkfileBuildSialink(LinkfileVersion, baseSectorRoot, lup, fetchSize)
-	// Add the sialink to the Siafile.
+	sialink, err := linkfileBuildSialink(LinkfileVersion, baseSectorRoot, lup, fetchSize)
+	if err != nil {
+		return "", errors.AddContext(err, "failed to build sialink")
+	}
+	// Add the sialink to the Siafile. The sialink is returned even if there is
+	// an error, because the sialink itself is available on the Sia network now,
+	// even if the file metadata couldn't be properly updated.
 	err = fileNode.AddSialink(sialink)
 	return sialink, errors.AddContext(err, "unable to add sialink to siafile")
 }

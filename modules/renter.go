@@ -226,11 +226,6 @@ type (
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType
 	}
-
-	// Sialink is a specific type of string that refers to a sialink. A sialink
-	// is always prefixed by 'sia://', and can be used to fetch data from the
-	// Sia network knowing nothing more than the root of the data.
-	Sialink string
 )
 
 // An Allowance dictates how much the Renter is allowed to spend in a given

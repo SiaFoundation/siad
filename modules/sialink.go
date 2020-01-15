@@ -1,15 +1,15 @@
 package modules
 
-// linkformat.go creates links that can be used to reference specific sector
-// data in a siafile. The links are base58 encoded structs prepended with
-// 'sia://'
+// sialink.go creates links that can be used to reference specific sector data
+// in a siafile. The links are base64 encoded structs prepended with 'sia://'
 
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
+	"math/bits"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -32,35 +32,61 @@ const (
 	SialinkMaxFetchSize = 1 << 22
 )
 
-// LinkData defines the data that appears in a linkfile. It is a highly
-// compressed data structure that encodes into 48 or fewer base64 bytes. The
-// goal of LinkData is not to provide a complete set of information, but rather
-// to provide enough information to efficiently recover a file.
+// Sialink defines a link that can be used to fetch data from the Sia network.
+// Context clues provided by the blockchain combined with the information in the
+// Sialink is all that is needed to uniquely identify and retrieve a file from
+// the Sia network.
+type Sialink string
+
+// The LinkData contains all of the information that can be encoded into a
+// sialink. This information consists of a 32 byte MerkleRoot and a 2 byte
+// bitfield.
 //
-// Because the values are compressed, they are unexpectored and must be accessed
-// using helper methods.
+// The first two bits of the bitfield (values 1 and 2 in decimal) determine the
+// version of the sialink. The sialink version determines how the remaining bits
+// are used. Not all values of the bitfield are legal.
 type LinkData struct {
-	vdp            uint8
-	fetchMagnitude uint8
-	merkleRoot     crypto.Hash
+	bitfield   uint16
+	merkleRoot crypto.Hash
 }
 
-// DataPieces will return the data pieces from the linkdata. At this time, the
-// DataPieces should be considered undefined, will always return '1'.
-func (ld LinkData) DataPieces() uint8 {
-	return 1
-}
-
-// FetchSize determines how many logical bytes should be fetched based on the
-// magnitude of the fetch request.
-func (ld LinkData) FetchSize() uint64 {
-	// If the fetch magnitude is maxed out, fetch everything.
-	if ld.fetchMagnitude == 255 {
-		return SialinkMaxFetchSize
+// NewLinkDataV1 will return a v1 LinkData object with the version set to 1 and
+// the remaining fields set appropriately. Note that the offset needs to be
+// aligned correctly. Check OffsetAndFetchSize for a full list of rules on legal
+// offsets - the value of a legal offset depends on the provided length.
+//
+// The input length will automatically be converted to the nearest fetch size.
+func NewLinkDataV1(merkleRoot crypto.Hash, offset, length uint64) (LinkData, error) {
+	var ld LinkData
+	err := ld.setOffsetAndFetchSize(offset, length)
+	if err != nil {
+		return LinkData{}, errors.AddContext(err, "Invalid LinkData")
 	}
-	// Increment the magnitude so the '0' value is fetching data.
-	fm := uint64(ld.fetchMagnitude + 1)
-	return SialinkMaxFetchSize / 256 * fm
+	ld.merkleRoot = merkleRoot
+	return ld, nil
+}
+
+// validateLinkDataV1Bitfield checks that the
+func validateLinkDataV1Bitfield(bitfield uint16) error {
+	// Ensure that the version is set to v1.
+	version := (bitfield & 3) + 1
+	if version != 1 {
+		return errors.New("bitfield is not set to v1")
+	}
+
+	// The v1 bitfield has a requirement that there is at least one '0' in the
+	// bitrange 3-10. Each consecutive '1' bit starting from the 3rd index
+	// indicates that the next version of the data structure should be used.
+	// After 8 consecutive 1's, there are no more versions of the data structure
+	// available, and the bitfield is invalid.
+	if bitfield>>2&255 == 255 {
+		return errors.New("sialink is not valid, length and offset are illegal")
+	}
+
+	// TODO: Check for any of the invalid mode states. Nontrivial, easiest thing
+	// might actually be to just parse it like normal and see if the parser ends
+	// up with an illegal offset+len total size.
+	return nil
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
@@ -72,16 +98,15 @@ func (ld *LinkData) LoadSialink(s Sialink) error {
 func (ld *LinkData) LoadString(s string) error {
 	// Trim any 'sia://' that has tagged along.
 	noPrefix := strings.TrimPrefix(s, "sia://")
-	// Trim any parameters that may exist after an amperstand. Eventually, it
+	// Trim any parameters that may exist after an ampersand. Eventually, it
 	// will be possible to parse these separately as additional/optional
-	// argumetns, for now anything after an amperstand is just ignored.
+	// arguments, for now anything after an ampersand is just ignored.
 	splits := strings.SplitN(noPrefix, "&", 2)
 	if len(splits) == 0 {
-		return errors.New("not a sialnik, no base sialink provided")
+		return errors.New("not a sialink, no base sialink provided")
 	}
 	base := []byte(splits[0])
-
-	// Input check, ensure that this is an expected string.
+	// Input check, ensure that this string is the expected size.
 	if len(base) != encodedLinkDataSize {
 		return errors.New("not a sialink, sialinks are always 46 bytes")
 	}
@@ -100,9 +125,17 @@ func (ld *LinkData) LoadString(s string) error {
 		return errors.New("unable to decode input as base64")
 	}
 
+	// Load and check the bitfield. The bitfield is checked before modifying the
+	// LinkData so that the LinkData remains unchanged if there is any error
+	// parsing the string.
+	bitfield := binary.LittleEndian.Uint16(raw)
+	err = validateLinkDataV1Bitfield(bitfield)
+	if err != nil {
+		return errors.AddContext(err, "sialink failed verification")
+	}
+
 	// Load the raw data.
-	ld.vdp = raw[0]
-	ld.fetchMagnitude = raw[1]
+	ld.bitfield = bitfield
 	copy(ld.merkleRoot[:], raw[2:])
 	return nil
 }
@@ -112,73 +145,161 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 	return ld.merkleRoot
 }
 
-// ParityPieces returns the number of ParityPieces from the linkdata. At this
-// time, ParityPieces should be considered undefined, will always return '0'.
-func (ld LinkData) ParityPieces() uint8 {
-	return 0
-}
-
-// SetDataPieces will set the data pieces for the LinkData.
-func (ld *LinkData) SetDataPieces(dp uint8) {
-	if dp != 1 {
-		build.Critical("SetDataPieces can only be 1 right now")
-	}
-	// Do nothing - value is already '0', which implies a value of '1'.
-}
-
-// SetFetchSize will compress the fetch size into a uint8. This is a lossy
-// process that will round the value up to the nearest multiple of 16,384
-// (2^14). Storing only a uint8 allows for shorter sialinks and better
-// compatibility with the IPFS standard of 46 byte links.
+// OffsetAndFetchSize returns the offset and fetch length of a file that sits
+// within a sialink sector. All sialinks point to one sector of data. If the
+// file is large enough that more data is necessary, a "fanout" is used to point
+// to more sectors.
 //
-// If the input is 2^22 or larger, a value of '255' will be set, indicating that
-// the full initial root should be downloaded.
-func (ld *LinkData) SetFetchSize(size uint64) {
-	if size >= SialinkMaxFetchSize {
-		ld.fetchMagnitude = 255
+// NOTE: To fully understand the bitfield of the v1 Sialink, it is recommended
+// that the following documentation is read alongside the code.
+//
+// Sectors are 4 MiB large. To enable the support of efficiently storing and
+// downloading smaller files, the sialink allows an offset and a length to be
+// specified for a file, which means many files can be stored within a single
+// sector root, and each file can get a unique 46 byte sialink.
+//
+// IPFS set an industry standard of 46 bytes in base64, which we have chosen to
+// adhere to. That only gives us 34 bytes to work with for storing extra
+// information such as the version, offset, and length of a file. The tight data
+// constraints resulted in this compact format.
+//
+// Sialinks are given 2 bits for a version. These bits are always the first 2
+// bits of the bitfield, which correspond to the values '1' and '2' when the
+// bitfield is interpreted as a uint16. The version must be set to 1 to retrieve
+// an offset and a length.
+//
+// That leaves 14 bits to determine the actual offset and length of the file.
+// The first 8 of those 14 bits are conditional bits, operating somewhat like
+// varints. There are 8 total "modes" that can be triggered by these 8 bits.
+// The first mode is triggered if the first of the 8 bits is a "0". That mode
+// indicates that the 13 remaining bits should be used to compute the offset and
+// fetch size using mode 1. If the first of the 8 bits is a "1", it means check
+// the next bit. If that next bit is a "0", the second mode is triggered,
+// meaning that the remaining 12 bits should be used to compute the offset and
+// fetch size using mode 2.
+//
+// Out of the 8 modes total, each mode has 1 fewer bit than the previous mode
+// for computing the offset and fetch size. The first mode has 13 bits total,
+// and the final mode has 6 bits total. The first three of these bits always
+// indicates the fetch size. More on that later.
+//
+// The modes themselves are fairly simple. The first mode indicates that the
+// file is stored on an offset that is aligned to 4096 (1 << 12) bytes. With
+// that alignment, there are 1024 possible offsets for the file to start at
+// within a 4 MiB sector. That takes 10 bits to represent with perfect
+// precision, and is conveniently the number of remaining bits to determine the
+// offset after the fetch size has been parsed.
+//
+// The second mode indicates that the file is stored on an offset that is
+// aligned to 8192 (1 << 13) bytes, which means there are 512 possible offsets.
+// Because a bit was consumed to switch modes, only 9 bits are available to
+// indicate what the offset is. But as there are only 512 possible offsets, only
+// 9 bits are needed.
+//
+// This continues until the final mode, which indicates that the file is stored
+// on an offset that is alinged to 512 kib (1 << 19). This is where it stops,
+// larger offsets are unnecessary. Having 8 consecutive 1's in a v1 Sialink is
+// invalid, which means means there are 64 total unused states (all states where
+// the first 8 of 14 non-version bits are set to '1').
+//
+// The fetch size is an upper bound that says 'the file is no more than this
+// many bytes', and tells the client to download that many bytes to get the
+// whole file. The actual length of the file is in the metadata that gets
+// downloaded along with the file.
+//
+// For every mode, there are 8 possible fetch sizes. For the first mode, the
+// first possible fetch size is 4 kib, and each additional possible fetch size
+// is another 4 kib. That means files in the first mode can be placed on any
+// 4096 byte aligned offset within the Merkle root and can be up to 32 kib
+// large.
+//
+// For the second mode, the lengths also increase by 4 kib at a time, starting
+// where the first mode left off. The smallest fetch size that a file in the
+// second mode can have is 36 kib, and the largest fetch size that a file in the
+// second mode can have is 64 kib.
+//
+// Each mode after that, the increment of the fetch size doubles. So the third
+// mode starts at a fetch size of 72 kib, and goes up to a fetch size of 128
+// kib. And the fourth mode starts at a fetch size of 144 kib, and goes up to a
+// fetch size of 256 kib. The eighth and final mode extends up to a fetch size
+// of 4 MiB, which is the full size of the sector.
+//
+// A full table of fetch sizes is presented here:
+//
+//	   4,    8,   12,   16,   20,   24,   28,   32,
+//	  36,   40,   44,   48,   52,   56,   60,   64,
+//	  72,   80,   88,   96,  104,  112,  120,  128,
+//	 144,  160,  176,  192,  208,  224,  240,  256,
+//	 288,  320,  352,  384,  416,  448,  480,  512,
+//	 576,  640,  704,  768,  832,  896,  960, 1024,
+//	1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,
+//	2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096,
+//
+// Certain combinations of offset + fetch size are illegal. Specifically, it is
+// illegal to indicate a fetch size that goes beyond the boundary of the file.
+// Every single mode therefore has 28 illegal states (7+6+...+1), for a total of
+// 224 illegal states. Combined with the 64 illegal states created by the mode
+// bits, there are a total of 288 illegal states for v1 of the Sialink.
+//
+// It's possible that these illegal states get repurposed in the future, giving
+// a little bit of extra functionality to v1 Sialinks. No plans at this time,
+// more likely we'd just switch to v2, which has a full 14 bits available.
+//
+// NOTE: If there is an error, OffsetAndLen will return a signal to download the
+// entire sector. This means that any code which is ignoring the error will
+// still have mostly sane behavior.
+func (ld LinkData) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err error) {
+	// Validate the bitfield.
+	err = validateLinkDataV1Bitfield(ld.bitfield)
+	if err != nil {
+		return 0, SialinkMaxFetchSize, errors.AddContext(err, "invalid bitfield, cannot parse offset and len")
 	}
-	// Subtract one from the size so the operation to round-up will not round
-	// sizes that divide perfectly evenly. The increment to round up is
-	// performed in the FetchSize() function so that the '0' value of
-	// ld.fetchMagnitude indicatese that 16,384 bytes should be fetched.
-	//
-	// Check for underflow.
-	if size != 0 {
-		size--
+
+	// Grab the current window. As we parse through it, we will be sliding bits
+	// out of the window.
+	bitfield := ld.bitfield
+	if bitfield&3 != 0 {
+		return 0, SialinkMaxFetchSize, errors.New("invalid bitfield, version is not set to v1")
 	}
-	ld.fetchMagnitude = uint8(size / (SialinkMaxFetchSize / 256))
-}
+	// Shift out the version bits.
+	bitfield >>= 2
 
-// SetMerkleRoot will set the merkle root of the LinkData. This is the one
-// function that doesn't need to be wrapped for safety, however it is wrapped so
-// that the field remains consistent with all other fields.
-func (ld *LinkData) SetMerkleRoot(mr crypto.Hash) {
-	ld.merkleRoot = mr
-}
-
-// SetParityPieces will set the parity pieces of the LinkData.
-func (ld *LinkData) SetParityPieces(pp uint8) {
-	if pp != 0 {
-		build.Critical("SetParityPieces can only be 0 right now")
+	// Determine how many mode bits are set.
+	modeBits := uint16(bits.TrailingZeros16(^bitfield))
+	// A number of 8 or larger is illegal.
+	if modeBits > 7 {
+		return 0, SialinkMaxFetchSize, errors.New("bitfield has invalid mode bits")
 	}
-	// Do nothing - value is already '0', which implies a value of '0'.
-}
+	// Shift the mode bits out. The mode bits is the number of trailing '1's
+	// plus an additional '0' which is necessary to signal the end of the mode
+	// bits.
+	bitfield >>= modeBits + 1
 
-// SetVersion sets the version of the LinkData. Value must be in the range
-// [1, 4].
-func (ld *LinkData) SetVersion(version uint8) error {
-	// Check that the version is in the valid range for versions.
-	if version < 1 || version > 4 {
-		return errors.New("version must be in the range [1, 4]")
+	// Determine the offset alignment and the step size. The offset alignment
+	// starts at 4kb and doubles once per modeBit.
+	offsetAlign := uint64(4096)
+	fetchSizeAlign := uint64(4096)
+	offsetAlign <<= modeBits
+	if modeBits > 0 {
+		fetchSizeAlign <<= modeBits - 1
 	}
-	// Convert the version to its bitwise value.
-	version--
 
-	// Zero out the version bits of the vdp.
-	ld.vdp &= 252
-	// Set the version bits of the vdp.
-	ld.vdp += version
-	return nil
+	// The next three bits decide the fetch size.
+	fetchSize = uint64(bitfield & 7)
+	fetchSize++ // semantic upstep, cover the range [1, 8] instead of [0, 8).
+	fetchSize *= fetchSizeAlign
+	if modeBits > 0 {
+		fetchSize += fetchSizeAlign << 3
+	}
+	bitfield >>= 3
+
+	// The remaining bits decide the offset.
+	offset = uint64(bitfield) * offsetAlign
+	if offset+fetchSize > SialinkMaxFetchSize {
+		return 0, SialinkMaxFetchSize, errors.New("invalid bitfield, fetching beyond the limits of the sector")
+	}
+
+	return offset, fetchSize, nil
 }
 
 // Sialink returns the type safe 'sialink' of the link data, which is just a
@@ -191,8 +312,7 @@ func (ld LinkData) Sialink() Sialink {
 func (ld LinkData) String() string {
 	// Build the raw string.
 	raw := make([]byte, rawLinkDataSize)
-	raw[0] = ld.vdp
-	raw[1] = ld.fetchMagnitude
+	binary.LittleEndian.PutUint16(raw, ld.bitfield)
 	copy(raw[2:], ld.merkleRoot[:])
 
 	// Encode the raw bytes to base64. TWe have to use a a buffer and a base64
@@ -206,10 +326,82 @@ func (ld LinkData) String() string {
 	return "sia://" + buf.String()
 }
 
-// Version will pull the version out of the vdp and return it. Version is a 2
-// bit number, meaning there are 4 possible values. The bitwise values cover the
-// range [0, 3], however we want to return a value in the range [1, 4], so we
-// increment the bitwise result.
-func (ld LinkData) Version() uint8 {
-	return (ld.vdp & 3) + 1
+// Version will pull the version out of the bitfield and return it. The version
+// is a 2 bit number, meaning there are 4 possible values. The bitwise values
+// cover the range [0, 3], however we want to return a value in the range
+// [1, 4], so we increment the bitwise result.
+func (ld LinkData) Version() uint16 {
+	return (ld.bitfield & 3) + 1
+}
+
+// setOffsetAndFetchSize will set the offset and length of the data within the
+// sialink. Offset must be aligned correctly. setOffsetAndLen implies that the
+// version is 1, so the version will also be set to 1.
+func (ld *LinkData) setOffsetAndFetchSize(offset, fetchSize uint64) error {
+	if offset+fetchSize > SialinkMaxFetchSize {
+		return errors.New("offset plus length cannot exceed the size of one sector - 4 MiB")
+	}
+
+	// Given the fetch size, determine the appropriate offset alignment.
+	//
+	// The largest offset alignment is 512 kib, which is used if the fetch size
+	// of 2 MiB or over. Each time the fetch size is halved, the offset
+	// alignment is also halved. The smallest offset alignment is 4 kib.
+	minFetchSize := uint64(1 << 21)
+	offsetAlign := uint64(1 << 19)
+	for fetchSize <= minFetchSize && offsetAlign > (1<<12) {
+		offsetAlign >>= 1
+		minFetchSize >>= 1
+	}
+	if offset&(offsetAlign-1) != 0 {
+		return errors.New("offset is not aligned correctly")
+	}
+	// The bitwise representation of the offset is the actual offset divided by
+	// the offset alignment.
+	bitwiseOffset := uint16(offset / offsetAlign)
+
+	// Unless the offsetAlign is 1 << 12, the fetch size alignment is 1/2 the
+	// offsetAlign. If the offsetAlign is 1 << 12, the fetch size alignment is
+	// also 1 << 12.
+	fetchSizeAlign := uint64(1 << 12)
+	if offsetAlign > 1<<13 {
+		fetchSizeAlign = offsetAlign >> 1
+	}
+	// If the the mode is anything besides the first mode, there is a length
+	// shift by 8 times the length size. We know that the mode is not the first
+	// mode if the offsetAlign is not 1 << 12
+	if offsetAlign > 1<<12 {
+		fetchSize = fetchSize - fetchSizeAlign*8
+	}
+	// Round the fetch size to the fetchSizeAlign. Because the fetch size is
+	// semantically shifted from the range [0, 8) to [1, 8], we round down. If
+	// the fetch size is already evenly divisible by the , it's not going to be
+	// rounded down so it needs to be decremented manually.
+	if fetchSize != 0 && fetchSize == (fetchSize/fetchSizeAlign)*fetchSizeAlign {
+		fetchSize--
+	}
+	fetchSize = fetchSize & (^(fetchSizeAlign - 1))
+	bitwiseFetchSize := uint16(fetchSize / fetchSizeAlign)
+
+	// Add the offset to the bitfield.
+	bitfield := bitwiseOffset
+	// Shift the bitfield up to add the fetch size.
+	bitfield <<= 3
+	bitfield += bitwiseFetchSize
+	// Shift the bitfield up to add the 0 bit that terminates the mode bits.
+	bitfield <<= 1
+	// Shift in all of the mode bits.
+	baseAlign := uint64(1 << 12)
+	for baseAlign < offsetAlign {
+		baseAlign <<= 1
+		bitfield <<= 1
+		bitfield += 1
+	}
+	// Shift 2 more bits for the version, this should now be 16 bits total. The
+	// two final bits for the version are both kept at 0 to siganl version 1.
+	bitfield <<= 2
+
+	// Set the bitfield and return.
+	ld.bitfield = bitfield
+	return nil
 }
