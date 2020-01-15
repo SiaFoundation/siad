@@ -260,10 +260,19 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Failed to create a new host", err)
 		}
 	}
-	// Use the streaming endpoint to repair the file. It should always reach 100%.
+	// Read the contents of the file from disk.
 	b, err := ioutil.ReadFile(localFile.Path())
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Prepare fake, corrupt contents as well.
+	corruptB := fastrand.Bytes(len(b))
+	// Try repairing the file with the corrupt data. This should fail.
+	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(corruptB), remoteFile.SiaPath()); err == nil {
+		t.Fatal(err)
+	}
+	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
+		t.Fatal("Redundancy isn't staying at 0", err)
 	}
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(b), remoteFile.SiaPath()); err != nil {
 		t.Fatal(err)
@@ -361,8 +370,7 @@ func testUploadStreamingWithBadDeps(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := tg.Renters()[0]
-	err = r.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
+	err = renter.RenterUploadStreamPost(d, siaPath, 1, uint64(len(tg.Hosts())-1), false)
 	if err == nil {
 		t.Fatal("dependency injection should have caused the upload to fail")
 	}

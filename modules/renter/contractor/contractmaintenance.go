@@ -1175,14 +1175,23 @@ func (c *Contractor) threadedContractMaintenance() {
 		blacklist = append(blacklist, contract.HostPublicKey)
 	}
 
-	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
+	// Determine the max and min initial contract funding based on the allowance
+	// settings
+	maxInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Mul64(MaxInitialContractFundingMulFactor).Div64(MaxInitialContractFundingDivFactor)
+	minInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
 	c.mu.RUnlock()
+
+	// Get Hosts
 	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
 		return
 	}
 	c.log.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
+
+	// Calculate the anticipated transaction fee.
+	_, maxFee := c.tpool.FeeEstimation()
+	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
@@ -1192,6 +1201,22 @@ func (c *Contractor) threadedContractMaintenance() {
 			break
 		}
 
+		// Calculate the contract funding with host
+		contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingMulFactor)
+
+		// Check that the contract funding is reasonable compared to the max and
+		// min initial funding. This is to protect against increases to
+		// allowances being used up to fast and not being able to spread the
+		// funds across new contracts properly, as well as protecting against
+		// contracts renewing too quickly
+		if contractFunds.Cmp(maxInitialContractFunds) > 0 {
+			contractFunds = maxInitialContractFunds
+		}
+		if contractFunds.Cmp(minInitialContractFunds) < 0 {
+			contractFunds = minInitialContractFunds
+		}
+
+		// Confirm the wallet is still unlocked
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1200,7 +1225,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Determine if we have enough money to form a new contract.
-		if fundsRemaining.Cmp(initialContractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+		if fundsRemaining.Cmp(contractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
 			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
@@ -1215,7 +1240,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		// Attempt forming a contract with this host.
 		start := time.Now()
-		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
+		fundsSpent, newContract, err := c.managedNewContract(host, contractFunds, endHeight)
 		if err != nil {
 			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue

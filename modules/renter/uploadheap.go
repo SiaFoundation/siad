@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -422,7 +423,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		piecesNeeded:  entry.ErasureCode().NumPieces(),
 		stuck:         stuck,
 
-		physicalChunkData: make([][]byte, entry.ErasureCode().NumPieces()),
+		physicalChunkData:        make([][]byte, entry.ErasureCode().NumPieces()),
+		staticExpectedPieceRoots: make([]crypto.Hash, entry.ErasureCode().NumPieces()),
 
 		availableChan: make(chan struct{}),
 		pieceUsage:    make([]bool, entry.ErasureCode().NumPieces()),
@@ -447,33 +449,36 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 	}
 	for pieceIndex, pieceSet := range pieces {
 		for _, piece := range pieceSet {
+			// Determine whether this piece counts towards the redundancy.
+			// Several criteria must be met:
+			//
+			// + The host much be online and marked as GoodForRenew
+			// + A different piece with the same index must not have been
+			//   counted already.
+			// + The host must not be holding any other piece which was already
+			//   counted (this shouldn't happen under the current code, but
+			//   previous and possibly future bugs have allowed hosts to
+			//   sometimes wind up holding multiple piece of the same chunk)
 			hpk := piece.HostPubKey.String()
-			goodForRenew, exists2 := goodForRenew[hpk]
-			offline, exists := offline[hpk]
-			if !exists || !exists2 || !goodForRenew || offline {
-				// This piece cannot be counted towards redundancy if the host
-				// is offline, is marked no good for renew, or is not available
-				// in the lookup maps.
-				continue
-			}
-
-			// Mark the chunk set based on the pieces in this contract.
-			_, exists = uuc.unusedHosts[piece.HostPubKey.String()]
+			goodForRenew, exists := goodForRenew[hpk]
+			offline, exists2 := offline[hpk]
 			redundantPiece := uuc.pieceUsage[pieceIndex]
-			if exists && !redundantPiece {
+			_, exists3 := uuc.unusedHosts[hpk]
+			if exists && goodForRenew && exists2 && !offline && exists3 && !redundantPiece {
 				uuc.pieceUsage[pieceIndex] = true
 				uuc.piecesCompleted++
-				delete(uuc.unusedHosts, piece.HostPubKey.String())
-			} else if exists {
-				// This host has a piece, but it is the same piece another
-				// host has. We should still remove the host from the
-				// unusedHosts since one host having multiple pieces of a
-				// chunk might lead to unexpected issues. e.g. if a host
-				// has multiple pieces and another host with redundant
-				// pieces goes offline, we end up with false redundancy
-				// reporting.
-				delete(uuc.unusedHosts, piece.HostPubKey.String())
 			}
+
+			// In all cases, if this host already has a piece, the host cannot
+			// appear in the set of unused hosts.
+			delete(uuc.unusedHosts, hpk)
+		}
+		// If there are already pieces uploaded for that set, we remember the
+		// roots of the uploaded pieces in order to be able to later perform an
+		// integrity check while repairing if the repair pulls information from
+		// a local (and therefore potentially altered or corrupt) file.
+		if len(pieceSet) > 0 {
+			uuc.staticExpectedPieceRoots[pieceIndex] = pieceSet[0].MerkleRoot
 		}
 	}
 	// Now that we have calculated the completed pieces for the chunk we can

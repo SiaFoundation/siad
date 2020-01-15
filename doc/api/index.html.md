@@ -1006,6 +1006,10 @@ fetches status information about the host.
     "minsectoraccessprice":      "123",                        //hastings
     "minstorageprice":           "231481481481",               // hastings / byte / block
     "minuploadbandwidthprice":   "100000000000000"             // hastings / byte
+
+    "ephemeralaccountexpiry":     "604800",                          // seconds
+    "maxephemeralaccountbalance": "2000000000000000000000000000000", // hastings
+    "maxephemeralaccountrisk":    "2000000000000000000000000000000", // hastings
   },
 
   "networkmetrics": {
@@ -1266,6 +1270,39 @@ The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
 
+**ephemeralaccountexpiry** | seconds  
+The  maximum amount of time an ephemeral account can be inactive before it is
+considered to be expired and gets deleted. After an account has expired, the
+account owner has no way of retrieving the funds. Setting this value to 0 means
+ephemeral accounts never expire, regardless of how long they have been inactive.
+
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
+
+**maxephemeralaccountrisk** | hastings  
+To increase performance, the host will allow a user to withdraw from an
+ephemeral account without requiring the user to wait until the host has
+persisted the updated ephemeral account balance to complete a transaction. This
+means that the user can perform actions such as downloads with significantly
+less latency. This also means that if the host loses power at that exact moment,
+the host will forget that the user has spent money and the user will be able to
+spend that money again.
+
+maxephemeralaccountrisk is the maximum amount of money that the host is willing
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
+widthdrawal, to prevent the host from having too much money at risk.
+
+Note that money is only at risk if the host experiences an unclean shutdown
+while in the middle of a transaction with a user, and generally the amount at
+risk will be minuscule unless the host experiences an unclean shutdown while in
+the middle of many transactions with many users at once. This value should be
+larger than maxephemeralaccountbalance but does not need to be significantly
+larger.
+
 **networkmetrics**    
 Information about the network, specifically various ways in which renters have
 contacted the host.  
@@ -1403,6 +1440,33 @@ higher than the minimum.
 The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
+
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
+
+**maxephemeralaccountrisk** | hastings  
+To increase performance, the host will allow a user to withdraw from an
+ephemeral account without requiring the user to wait until the host has
+persisted the updated ephemeral account balance to complete a transaction. This
+means that the user can perform actions such as downloads with significantly
+less latency. This also means that if the host loses power at that exact moment,
+the host will forget that the user has spent money and the user will be able to
+spend that money again.
+
+maxephemeralaccountrisk is the maximum amount of money that the host is willing
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
+widthdrawal, to prevent the host from having too much money at risk.
+
+Note that money is only at risk if the host experiences an
+unclean shutdown while in the middle of a transaction with a user, and generally
+the amount at risk will be minuscule unless the host experiences an unclean
+shutdown while in the middle of many transactions with many users at once. This
+value should be larger than 'maxephemeralaccountbalance but does not need to be
+significantly larger.
 
 ### Response
 
@@ -1740,7 +1804,10 @@ See [host internal settings](#internalsettings)
  - mincontractprice          
  - mindownloadbandwidthprice  
  - minstorageprice            
- - minuploadbandwidthprice    
+ - minuploadbandwidthprice
+ - ephemeralaccountexpiry    
+ - maxephemeralaccountbalance
+ - maxephemeralaccountrisk
 
 ### JSON Response
 > JSON Response Example
@@ -2721,23 +2788,24 @@ continue to be available to be downloaded from. Refreshed contracts are
 contracts that ran out of funds and needed to be renewed so more money could be
 added to the contract with the host. The data reported in these contracts is
 duplicate data and should not be included in any accounting. Disabled contracts
-are contracts that are in the current period that are not being used for
-uploading as they were replaced instead of renewed. Expired contracts are
-contracts not in the current period, where no more data is being stored and
-excess funds have been released to the renter. Expired Refreshed contracts are
-contracts that were refreshed at some point in a previous period. The data
-reported in these contracts is duplicate data and should not be included in any
-accounting. Recoverable contracts are contracts which the contractor is
-currently trying to recover and which haven't expired yet.
+are contracts that are in the current period and have not yet expired that are
+not being used for uploading as they were replaced instead of renewed. Expired
+contracts are contracts with an `EndHeight` in the past, where no more data is
+being stored and excess funds have been released to the renter. Expired
+Refreshed contracts are contracts that were refreshed at some point in a
+previous period. The data reported in these contracts is duplicate data and
+should not be included in any accounting. Recoverable contracts are contracts
+which the contractor is currently trying to recover and which haven't expired
+yet.
 
-| Type              | GoodForUpload | GoodForRenew | In Current Period | Data Counted Elsewhere Already|
-| ----------------- | :-----------: | :----------: | :---------------: | :---------------------------: |
-| Active            | Yes           | Yes          | Yes               | No                            |
-| Passive           | No            | Yes          | Yes               | No                            |
-| Refreshed         | No            | No           | Yes               | Yes                           |
-| Disabled          | No            | No           | Yes               | No                            |
-| Expired           | No            | No           | No                | No                            |
-| Expired Refreshed | No            | No           | No                | Yes                           |
+| Type              | GoodForUpload | GoodForRenew | Endheight in the Future | Data Counted Elsewhere Already|
+| ----------------- | :-----------: | :----------: | :---------------------: | :---------------------------: |
+| Active            | Yes           | Yes          | Yes                     | No                            |
+| Passive           | No            | Yes          | Yes                     | No                            |
+| Refreshed         | No            | No           | Yes                     | Yes                           |
+| Disabled          | No            | No           | Yes                     | No                            |
+| Expired           | No            | No           | No                      | No                            |
+| Expired Refreshed | No            | No           | No                      | Yes                           |
 
 **NOTE:** No spending is double counted anywhere in the contracts, only the data
 is double counted in the refreshed contracts. For spending totals in the current
@@ -3936,7 +4004,7 @@ of the file. This is a Unix timestamp.
 **convertpath** string  
 The siapath of an existing siafile that should be converted to a sialink. A new
 linkfile will be created. Both the new linkfile and the existing siafile are
-required to be maintained on the netowrk in order for the sialink to remain
+required to be maintained on the network in order for the sialink to remain
 active.
 
 **force** | bool  

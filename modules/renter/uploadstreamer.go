@@ -32,7 +32,8 @@ import (
 
 // StreamShard is a helper type that allows us to split an io.Reader up into
 // multiple readers, wait for the shard to finish reading and then check the
-// error for that Read.
+// error for that Read. SignalChan will be closed when the shard has been
+// closed.
 type StreamShard struct {
 	n    int
 	peek []byte
@@ -88,8 +89,7 @@ func (ss *StreamShard) Result() (int, error) {
 	return ss.n, ss.err
 }
 
-// Read implements the io.Reader interface. It closes signalChan after Read
-// returns.
+// Read implements the io.Reader interface.
 func (ss *StreamShard) Read(b []byte) (int, error) {
 	if ss.closed {
 		return 0, errors.New("StreamShard already closed")
