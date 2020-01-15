@@ -208,9 +208,10 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 // downloaded along with the file.
 //
 // For every mode, there are 8 possible fetch sizes. For the first mode, the
-// first possible fetch size is 4 kib, and each additonal possible fetch size is
-// another 4 kib. That means files in the first mode can be placed on any 4096
-// byte aligned offset within the Merkle root and can be up to 32 kib large.
+// first possible fetch size is 4 kib, and each additional possible fetch size
+// is another 4 kib. That means files in the first mode can be placed on any
+// 4096 byte aligned offset within the Merkle root and can be up to 32 kib
+// large.
 //
 // For the second mode, the lengths also increase by 4 kib at a time, starting
 // where the first mode left off. The smallest fetch size that a file in the
@@ -220,8 +221,8 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 // Each mode after that, the increment of the fetch size doubles. So the third
 // mode starts at a fetch size of 72 kib, and goes up to a fetch size of 128
 // kib. And the fourth mode starts at a fetch size of 144 kib, and goes up to a
-// fetch size of 256 kib. The eigth and final mode extends up to a fetch size of
-// 4 MiB, which is the full size of the sector.
+// fetch size of 256 kib. The eighth and final mode extends up to a fetch size
+// of 4 MiB, which is the full size of the sector.
 //
 // A full table of fetch sizes is presented here:
 //
