@@ -152,7 +152,7 @@ func linkfileBuildSialink(version uint8, merkleRoot crypto.Hash, lup modules.Lin
 	if err != nil {
 		return "", errors.AddContext(err, "unable to build sialink")
 	}
-	return ld.Sialink(), nil
+	return ld.Sialink()
 }
 
 // linkfileEstablishDefaults will set any zero values in the lup to be equal to
