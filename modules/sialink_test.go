@@ -61,7 +61,10 @@ func TestSialinkManualExamples(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		offset, length := ld.OffsetAndLen()
+		offset, length, err := ld.OffsetAndFetchSize()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if offset != example.offset {
 			t.Error("bad offset:", offset, example.offset, i)
 		}
@@ -180,7 +183,10 @@ func TestSialinkAutoExamples(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		offsetOut, lengthOut := ld.OffsetAndLen()
+		offsetOut, lengthOut, err := ld.OffsetAndFetchSize()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if offset != offsetOut {
 			t.Error("bad offset:", offset, length, expectedLength, offsetOut)
 		}

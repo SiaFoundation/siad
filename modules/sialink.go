@@ -7,9 +7,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"math/bits"
 	"strings"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -50,7 +50,7 @@ type LinkData struct {
 	merkleRoot crypto.Hash
 }
 
-// validateLinkDataV1Bitfield checks that the 
+// validateLinkDataV1Bitfield checks that the
 func validateLinkDataV1Bitfield(bitfield uint16) error {
 	// Ensure that the version is set to v1.
 	version := (bitfield & 3) + 1
@@ -66,6 +66,10 @@ func validateLinkDataV1Bitfield(bitfield uint16) error {
 	if bitfield>>2&255 == 255 {
 		return errors.New("sialink is not valid, length and offset are illegal")
 	}
+
+	// TODO: Check for any of the invalid mode states. Nontrivial, easiest thing
+	// might actually be to just parse it like normal and see if the parser ends
+	// up with an illegal offset+len total size.
 	return nil
 }
 
@@ -111,7 +115,7 @@ func (ld *LinkData) LoadString(s string) error {
 	bitfield := binary.LittleEndian.Uint16(raw)
 	err = validateLinkDataV1Bitfield(bitfield)
 	if err != nil {
-		return errors.AddContext("sialink failed verification")
+		return errors.AddContext(err, "sialink failed verification")
 	}
 
 	// Load the raw data.
@@ -125,58 +129,13 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 	return ld.merkleRoot
 }
 
-// OffsetAndLen returns the offset of a file within a sialink as well as the
-// fetch-length of the file. Note that the offset is exact, but the fetch-length
-// is fuzzy. The exact length of the file is stored inside the leading bytes of
-// the data downloaded at the offset, the 'length' only ensures that in a single
-// request enough data can be downloaded to retrieve the whole file.
+// OffsetAndFetchSize returns the offset and fetch length of a file that sits
+// within a sialink sector. All sialinks point to one sector of data. If the
+// file is large enough that more data is necessary, a "fanout" is used to point
+// to more sectors.
 //
-// The encoding is pretty fancy. There are 16 bits total in the olv. 2 of those
-// bits are reserved for the version, which means 14 bits remain to indicate the
-// offset and length of the data within the sector that the linkfile points to.
-//
-// 14 bits is not enough to properly encode both an offset and a length within a
-// 4 MiB sector. So restrictions are placed on the offset and length. If the
-// offset is restricted to being a factor of 4096, it only takes 10 bits to
-// precisely identify where in the sector the file is located. That leaves 4
-// bits to encode the length, meaning that the length can be one of 16 values.
-//
-// Instead of using all 4 bits, we only use 3, meaning that the 'length' can be
-// one of 8 values over the semantic range [1, 8]. Because the offset is as
-// precise as 4 kib, the length of the fetch is determined by 'length * 4
-// kib'... but only if the final bit is not set.
-//
-// If the final bit is set, the entire meaning of the other 13 bits change. The
-// offset is now restricted to a factor of 8192. It only takes 9 bits to
-// precisely identify where in the sector the file is located. That leaves 4
-// bits to encode the length, meaning that the length can be one of 16 values.
-//
-// Instead of using all 4 bits, we only use 3... so that the pattern can be
-// repeated. For the 8 kib case only, the fetch length is not doubled. That
-// means that the fetch length for the 8 kib case is determined by 'length * 4
-// kib + 32 kib'. This is because all of the values up to 32 kib in size are
-// already represented by 4 kib, and so it would be wasteful/redundant to have 8
-// kib repeat them.
-//
-// Below is the table of values that are possible when setting the length in the
-// linkdata. The column is decided by the 3 bits of length data that get read,
-// the row gets decided by the total size. If the total size is 32 kib or less,
-// the first row is used. If the total size is 64 kib or less, the second row is
-// used, and so on.
-//
-//	   4,    8,   12,   16,   20,   24,   28,   32,
-//	  36,   40,   44,   48,   52,   56,   60,   64,
-//	  72,   80,   88,   96,  104,  112,  120,  128,
-//	 144,  160,  176,  192,  208,  224,  240,  256,
-//	 288,  320,  352,  384,  416,  448,  480,  512,
-//	 576,  640,  704,  768,  832,  896,  960, 1024,
-//	1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,
-//	2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096,
-
-// OffsetAndLen returns the offset and fetch length of a file that sits within a
-// sialink sector. All sialinks point to one sector of data. If the file is
-// large enough that more data is necessary, a "fanout" is used to point to more
-// sectors.
+// NOTE: To fully understand the bitfield of the v1 Sialink, it is recommended
+// that the following documentation is read alongside the code.
 //
 // Sectors are 4 MiB large. To enable the support of efficiently storing and
 // downloading smaller files, the sialink allows an offset and a length to be
@@ -193,57 +152,134 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 // bitfield is interpreted as a uint16. The version must be set to 1 to retrieve
 // an offset and a length.
 //
-// TODO: Resume
-func (ld LinkData) OffsetAndLen() (offset uint64, length uint64, err error) {
-	// Validate the bitfield. 
-	err := validateLinkDataV1Bitfield(ld.bitfield)
+// That leaves 14 bits to determine the actual offset and length of the file.
+// The first 8 of those 14 bits are conditional bits, operating somewhat like
+// varints. There are 8 total "modes" that can be triggered by these 8 bits.
+// The first mode is triggered if the first of the 8 bits is a "0". That mode
+// indicates that the 13 remaining bits should be used to compute the offset and
+// fetch size using mode 1. If the first of the 8 bits is a "1", it means check
+// the next bit. If that next bit is a "0", the second mode is triggered,
+// meaning that the remaining 12 bits should be used to compute the offset and
+// fetch size using mode 2.
+//
+// Out of the 8 modes total, each mode has 1 fewer bit than the previous mode
+// for computing the offset and fetch size. The first mode has 13 bits total,
+// and the final mode has 6 bits total. The first three of these bits always
+// indicates the fetch size. More on that later.
+//
+// The modes themselves are fairly simple. The first mode indicates that the
+// file is stored on an offset that is aligned to 4096 (1 << 12) bytes. With
+// that alignment, there are 1024 possible offsets for the file to start at
+// within a 4 MiB sector. That takes 10 bits to represent with perfect
+// precision, and is conveniently the number of remaining bits to determine the
+// offset after the fetch size has been parsed.
+//
+// The second mode indicates that the file is stored on an offset that is
+// aligned to 8192 (1 << 13) bytes, which means there are 512 possible offsets.
+// Because a bit was consumed to switch modes, only 9 bits are available to
+// indicate what the offset is. But as there are only 512 possible offsets, only
+// 9 bits are needed.
+//
+// This continues until the final mode, which indicates that the file is stored
+// on an offset that is alinged to 512 kib (1 << 19). This is where it stops,
+// larger offsets are unnecessary. Having 8 consecutive 1's in a v1 Sialink is
+// invalid, which means means there are 64 total unused states (all states where
+// the first 8 of 14 non-version bits are set to '1').
+//
+// The fetch size is an upper bound that says 'the file is no more than this
+// many bytes', and tells the client to download that many bytes to get the
+// whole file. The actual length of the file is in the metadata that gets
+// downloaded along with the file.
+//
+// For every mode, there are 8 possible fetch sizes. For the first mode, the
+// first possible fetch size is 4 kib, and each additonal possible fetch size is
+// another 4 kib. That means files in the first mode can be placed on any 4096
+// byte aligned offset within the Merkle root and can be up to 32 kib large.
+//
+// For the second mode, the lengths also increase by 4 kib at a time, starting
+// where the first mode left off. The smallest fetch size that a file in the
+// second mode can have is 36 kib, and the largest fetch size that a file in the
+// second mode can have is 64 kib.
+//
+// Each mode after that, the increment of the fetch size doubles. So the third
+// mode starts at a fetch size of 72 kib, and goes up to a fetch size of 128
+// kib. And the fourth mode starts at a fetch size of 144 kib, and goes up to a
+// fetch size of 256 kib. The eigth and final mode extends up to a fetch size of
+// 4 MiB, which is the full size of the sector.
+//
+// A full table of fetch sizes is presented here:
+//
+//	   4,    8,   12,   16,   20,   24,   28,   32,
+//	  36,   40,   44,   48,   52,   56,   60,   64,
+//	  72,   80,   88,   96,  104,  112,  120,  128,
+//	 144,  160,  176,  192,  208,  224,  240,  256,
+//	 288,  320,  352,  384,  416,  448,  480,  512,
+//	 576,  640,  704,  768,  832,  896,  960, 1024,
+//	1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,
+//	2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096,
+//
+// Certain combinations of offset + fetch size are illegal. Specifically, it is
+// illegal to indicate a fetch size that goes beyond the boundary of the file.
+// Every single mode therefore has 28 illegal states (7+6+...+1), for a total of
+// 224 illegal states. Combined with the 64 illegal states created by the mode
+// bits, there are a total of 288 illegal states for v1 of the Sialink.
+//
+// It's possible that these illegal states get repurposed in the future, giving
+// a little bit of extra functionality to v1 Sialinks. No plans at this time,
+// more likely we'd just switch to v2, which has a full 14 bits available.
+//
+// NOTE: If there is an error, OffsetAndLen will return a signal to download the
+// entire sector. This means that any code which is ignoring the error will
+// still have mostly sane behavior.
+func (ld LinkData) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err error) {
+	// Validate the bitfield.
+	err = validateLinkDataV1Bitfield(ld.bitfield)
 	if err != nil {
-		return 0, SialinkMaxFetchSize, errors.AddContext("invalid bitfield, cannot parse offset and len")
+		return 0, SialinkMaxFetchSize, errors.AddContext(err, "invalid bitfield, cannot parse offset and len")
 	}
 
 	// Grab the current window. As we parse through it, we will be sliding bits
 	// out of the window.
-	currentWindow := ld.olv
-
-	// Slide the version bits out of the window. 14 bits remaining.
-	currentWindow >>= 2
-
-	// Keep sliding bits out of the window for as long as the final bit is equal
-	// to '1'. This should happen at most 8 times.
-	var shifts int
-	for shifts < 8 {
-		if currentWindow&1 == 0 {
-			currentWindow >>= 1
-			break
-		}
-		shifts++
-		currentWindow >>= 1
+	bitfield := ld.bitfield
+	if bitfield&3 != 0 {
+		return 0, SialinkMaxFetchSize, errors.New("invalid bitfield, version is not set to v1")
 	}
+	// Shift out the version bits.
+	bitfield >>= 2
 
-	// Determine the offset alignment and the step size.
+	// Determine how many mode bits are set.
+	modeBits := uint16(bits.TrailingZeros16(^bitfield))
+	// A number of 8 or larger is illegal.
+	if modeBits > 7 {
+		return 0, SialinkMaxFetchSize, errors.New("bitfield has invalid mode bits")
+	}
+	// Shift the mode bits out. The mode bits is the number of trailing '1's
+	// plus an additional '0' which is necessary to signal the end of the mode
+	// bits.
+	bitfield >>= modeBits + 1
+
+	// Determine the offset alignment and the step size. The offset alignment
+	// starts at 4kb and doubles once per modeBit.
 	offsetAlign := uint64(4096)
-	stepSize := uint64(4096)
-	for i := 1; i < shifts; i++ {
-		offsetAlign <<= 1
-		stepSize <<= 1
-	}
-	if shifts > 0 {
-		offsetAlign <<= 1
+	fetchSizeAlign := uint64(4096)
+	offsetAlign <<= modeBits
+	if modeBits > 0 {
+		fetchSizeAlign <<= modeBits - 1
 	}
 
-	// The next three bits decide the length.
-	length = uint64(currentWindow & 7)
-	length++ // semantic upstep
-	length *= stepSize
-	if shifts > 0 {
-		length += stepSize * 8
+	// The next three bits decide the fetch size.
+	fetchSize = uint64(bitfield & 7)
+	fetchSize++ // semantic upstep, cover the range [1, 8] instead of [0, 8).
+	fetchSize *= fetchSizeAlign
+	if modeBits > 0 {
+		fetchSize += fetchSizeAlign << 3
 	}
-	currentWindow >>= 3
+	bitfield >>= 3
 
 	// The remaining bits decide the offset.
-	offset = uint64(currentWindow) * offsetAlign
+	offset = uint64(bitfield) * offsetAlign
 
-	return offset, length
+	return offset, fetchSize, nil
 }
 
 // SetOffsetAndLen will set the offset and length of the data within the
@@ -307,7 +343,7 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 
 	// Calling SetOffsetAndLen implies that the sialink is version 1. Version 1
 	// has 2 '0' bits as the final bits, so no updates need to be made to olv.
-	ld.olv = olv
+	ld.bitfield = olv
 	return nil
 }
 
@@ -337,7 +373,7 @@ func (ld LinkData) String() string {
 
 // Version will pull the version out of the bitfield and return it. The version
 // is a 2 bit number, meaning there are 4 possible values. The bitwise values
-// cover the range [0, 3], however we want to return a value in the range 
+// cover the range [0, 3], however we want to return a value in the range
 // [1, 4], so we increment the bitwise result.
 func (ld LinkData) Version() uint16 {
 	return (ld.bitfield & 3) + 1
