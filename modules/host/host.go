@@ -140,6 +140,9 @@ type Host struct {
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
+	// Subsystems
+	staticAccountManager *accountManager
+
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
 	announced    bool
@@ -163,7 +166,7 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// Utilities.
+	// Misc state.
 	db         *persist.BoltDatabase
 	listener   net.Listener
 	log        *persist.Logger
@@ -229,13 +232,12 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 
 	// Create the host object.
 	h := &Host{
-		cs:            cs,
-		g:             g,
-		tpool:         tpool,
-		wallet:        wallet,
-		staticAlerter: modules.NewAlerter("host"),
-		dependencies:  dependencies,
-
+		cs:                       cs,
+		g:                        g,
+		tpool:                    tpool,
+		wallet:                   wallet,
+		staticAlerter:            modules.NewAlerter("host"),
+		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
 		persistDir: persistDir,
@@ -261,6 +263,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	if err != nil {
 		return nil, err
 	}
+
 	h.tg.AfterStop(func() {
 		err = h.log.Close()
 		if err != nil {
@@ -296,6 +299,18 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 			h.log.Println("Could not save host upon shutdown:", err)
 		}
 	})
+
+	// Add the account manager subsystem
+	h.staticAccountManager, err = h.newAccountManager()
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to the consensus set.
+	err = h.initConsensusSubscription()
+	if err != nil {
+		return nil, err
+	}
 
 	// Ensure the host is consistent by pruning any stale storage obligations.
 	if err := h.PruneStaleStorageObligations(); err != nil {
@@ -446,4 +461,11 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 	}
 	defer h.tg.Done()
 	return h.settings
+}
+
+// BlockHeight returns the host's current blockheight.
+func (h *Host) BlockHeight() types.BlockHeight {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.blockHeight
 }

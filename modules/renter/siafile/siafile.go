@@ -920,29 +920,27 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	// want to remove them from the table but only if we have enough used hosts.
 	// Otherwise we might be pruning hosts that could become used again since
 	// the file might be in flux while it uploads or repairs
-	pruned := false
 	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
 	enoughUsedHosts := len(usedMap) > sf.staticMetadata.staticErasureCode.NumPieces()
+	var updates []writeaheadlog.Update
 	if tooManyUnusedHosts && enoughUsedHosts {
-		sf.pruneHosts()
-		pruned = true
-	}
-	// Save the header to disk.
-	updates, err := sf.saveHeaderUpdates()
-	if err != nil {
-		return err
-	}
-	// If we pruned the hosts we also need to save the body.
-	if pruned {
-		chunkUpdates, err := sf.iterateChunks(func(chunk *chunk) (bool, error) {
-			return true, nil
-		})
+		// If we prune the hosts the pruneUpdates already include the updates to
+		// save the header.
+		pruneUpdates, err := sf.pruneHosts()
+		if err != nil {
+			return errors.AddContext(err, "pruneHosts failed")
+		}
+		updates = append(updates, pruneUpdates...)
+	} else {
+		// If we don't prune the hosts we explicitly save the header.
+		headerUpdates, err := sf.saveHeaderUpdates()
 		if err != nil {
 			return err
 		}
-		updates = append(updates, chunkUpdates...)
+		updates = append(updates, headerUpdates...)
 	}
-	err = sf.createAndApplyTransaction(updates...)
+	// Apply all updates.
+	err := sf.createAndApplyTransaction(updates...)
 	if err != nil {
 		return err
 	}
@@ -1035,7 +1033,7 @@ func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
 	sf.pubKeyTable = prunedTable
 	// With this map we loop over all the chunks and pieces and update the ones
 	// who got a new offset and remove the ones that no longer have one.
-	return sf.iterateChunks(func(chunk *chunk) (bool, error) {
+	chunkUpdates, err := sf.iterateChunks(func(chunk *chunk) (bool, error) {
 		for pieceIndex, pieceSet := range chunk.Pieces {
 			var newPieceSet []piece
 			for i, piece := range pieceSet {
@@ -1049,6 +1047,15 @@ func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
 		}
 		return true, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	// The header needs to be saved too due to the changed pubKeyTable.
+	headerUpdates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return nil, err
+	}
+	return append(headerUpdates, chunkUpdates...), nil
 }
 
 // GoodPieces loops over the pieces of a chunk and tracks the number of unique
