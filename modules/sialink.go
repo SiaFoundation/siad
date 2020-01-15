@@ -102,9 +102,9 @@ func (ld *LinkData) LoadString(s string) error {
 	// will be possible to parse these separately as additional/optional
 	// arguments, for now anything after an ampersand is just ignored.
 	splits := strings.SplitN(noPrefix, "&", 2)
-	if len(splits) == 0 {
-		return errors.New("not a sialink, no base sialink provided")
-	}
+	// No need to check if there is an element returned by strings.SplitN, so
+	// long as the second arg is not-nil (in this case, '&'), SplitN cannot
+	// return an empty slice.
 	base := []byte(splits[0])
 	// Input check, ensure that this string is the expected size.
 	if len(base) != encodedLinkDataSize {
@@ -304,12 +304,19 @@ func (ld LinkData) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err er
 
 // Sialink returns the type safe 'sialink' of the link data, which is just a
 // typecast string.
-func (ld LinkData) Sialink() Sialink {
-	return Sialink(ld.String())
+func (ld LinkData) Sialink() (Sialink, error) {
+	sl, err := ld.String()
+	return Sialink(sl), err
 }
 
 // String converts LinkData to a string.
-func (ld LinkData) String() string {
+func (ld LinkData) String() (string, error) {
+	// Check for illegal values in the bitfield.
+	err := validateLinkDataV1Bitfield(ld.bitfield)
+	if err != nil {
+		return "", errors.AddContext(err, "cannot marshal invalid sialink")
+	}
+
 	// Build the raw string.
 	raw := make([]byte, rawLinkDataSize)
 	binary.LittleEndian.PutUint16(raw, ld.bitfield)
@@ -323,7 +330,7 @@ func (ld LinkData) String() string {
 	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
 	encoder.Write(raw)
 	encoder.Close()
-	return "sia://" + buf.String()
+	return "sia://" + buf.String(), nil
 }
 
 // Version will pull the version out of the bitfield and return it. The version
