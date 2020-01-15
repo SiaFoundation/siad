@@ -236,7 +236,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		default:
 		}
 		// Fetch the chunk from disk.
-		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticFetchLength))
+		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize)+int64(chunk.staticFetchOffset), int64(chunk.staticFetchLength))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
@@ -250,7 +250,7 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 			return false
 		}
 		// Write the data to the destination.
-		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
+		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, 0, chunk.staticWriteOffset, chunk.staticFetchLength)
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
 				localPath, fileName, err)
