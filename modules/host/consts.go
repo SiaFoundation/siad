@@ -148,6 +148,22 @@ var (
 	// data.
 	defaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
 
+	// defaultEphemeralAccountExpiry defines the default maximum amount of
+	// time an ephemeral account can be inactive before it expires and gets
+	// deleted.
+	defaultEphemeralAccountExpiry = uint64(604800) // 1 week
+
+	// defaultMaxEphemeralAccountBalance defines the default maximum amount of
+	// money that the host will allow to deposit into a single ephemeral account
+	defaultMaxEphemeralAccountBalance = types.SiacoinPrecision
+
+	// defaultMaxEphemeralAccountRisk is the maximum amount of money that the
+	// host is willing to risk to a power loss. If a user's withdrawal would put
+	// the host over the maxunsaveddelat, the host will wait to complete the
+	// user's transaction until the host has persisted the widthdrawal, to
+	// prevent the host from having too much money at risk.
+	defaultMaxEphemeralAccountRisk = types.SiacoinPrecision.Mul64(5)
+
 	// defaultWindowSize is the size of the proof of storage window requested
 	// by the host. The host will not delete any obligations until the window
 	// has closed and buried under several confirmations. For release builds,

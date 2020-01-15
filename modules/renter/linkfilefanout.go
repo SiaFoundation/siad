@@ -1,6 +1,6 @@
 package renter
 
-// TODO: This file is pretty much going to devlove into just implementing a
+// TODO: This file is pretty much going to devolve into just implementing a
 // dataSource for the streambuffer.
 
 import (
