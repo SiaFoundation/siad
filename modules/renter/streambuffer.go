@@ -129,7 +129,7 @@ type streamBuffer struct {
 	dataSections map[uint64]*dataSection
 
 	// externRefCount is in the same consistency domain as the streamBufferSet,
-	// it needs to be incremented and deceremented simulatenously with the
+	// it needs to be incremented and deceremented simultaneously with the
 	// creation and deleteion of the streamBuffer.
 	externRefCount uint64
 

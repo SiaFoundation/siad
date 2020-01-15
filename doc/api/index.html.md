@@ -3943,7 +3943,7 @@ of the file. This is a Unix timestamp.
 **convertpath** string  
 The siapath of an existing siafile that should be converted to a sialink. A new
 linkfile will be created. Both the new linkfile and the existing siafile are
-required to be maintained on the netowrk in order for the sialink to remain
+required to be maintained on the network in order for the sialink to remain
 active.
 
 **force** | bool  
