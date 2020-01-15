@@ -38,19 +38,35 @@ const (
 // the Sia network.
 type Sialink string
 
-// LinkData defines the data that appears in a linkfile. It is a highly
-// compressed data structure that encodes into 46 base64 bytes. The goal of
-// LinkData is not to provide a complete set of information, but rather to
-// provide enough information to efficiently recover a file.
+// The LinkData contains all of the information that can be encoded into a
+// sialink. This information consists of a 32 byte MerkleRoot and a 2 byte
+// bitfield.
 //
-// Because the values are compressed, they are unexported and must be accessed
-// using helper methods.
+// The first two bits of the bitfield (values 1 and 2 in decimal) determine the
+// version of the sialink. The sialink version determines how the remaining bits
+// are used. Not all values of the bitfield are legal.
 type LinkData struct {
-	// olv stands for 'offset', 'len', and 'version'.
-	//
-	// The version gets the first two bits.
-	olv        uint16
+	bitfield   uint16
 	merkleRoot crypto.Hash
+}
+
+// validateLinkDataV1Bitfield checks that the 
+func validateLinkDataV1Bitfield(bitfield uint16) error {
+	// Ensure that the version is set to v1.
+	version := (bitfield & 3) + 1
+	if version != 1 {
+		return errors.New("bitfield is not set to v1")
+	}
+
+	// The v1 bitfield has a requirement that there is at least one '0' in the
+	// bitrange 3-10. Each consecutive '1' bit starting from the 3rd index
+	// indicates that the next version of the data structure should be used.
+	// After 8 consecutive 1's, there are no more versions of the data structure
+	// available, and the bitfield is invalid.
+	if bitfield>>2&255 == 255 {
+		return errors.New("sialink is not valid, length and offset are illegal")
+	}
+	return nil
 }
 
 // LoadSialink returns the linkdata associated with an input sialink.
@@ -89,26 +105,17 @@ func (ld *LinkData) LoadString(s string) error {
 		return errors.New("unable to decode input as base64")
 	}
 
-	// Check the olv. The olv is checked before modifying the LinkData so that
-	// the LinkData remains unchanged if there is any error parsing the string.
-	olv := binary.LittleEndian.Uint16(raw)
-	// Check that the version is set to 1.
-	version := (olv & 3) + 1
-	if version != 1 {
-		return errors.New("sialink is not v1, version is not supported")
-	}
-	// Check for an illegal run of shift values. If the 8 bits after the version
-	// are all '1', this is an illegal olv. This is because the olv is a
-	// probabilistic data structure with 8 different modes, each mode signaled
-	// by a run of 1's following the version that is 'mode' long. The valid
-	// lengths are 0-7 1's in a row, if there are 8 1's in a row, the data
-	// structure becomes undefined.
-	if olv>>2&255 == 255 {
-		return errors.New("sialink is not valid, length and offset are illegal")
+	// Load and check the bitfield. The bitfield is checked before modifying the
+	// LinkData so that the LinkData remains unchanged if there is any error
+	// parsing the string.
+	bitfield := binary.LittleEndian.Uint16(raw)
+	err = validateLinkDataV1Bitfield(bitfield)
+	if err != nil {
+		return errors.AddContext("sialink failed verification")
 	}
 
 	// Load the raw data.
-	ld.olv = olv
+	ld.bitfield = bitfield
 	copy(ld.merkleRoot[:], raw[2:])
 	return nil
 }
@@ -165,7 +172,35 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 //	 576,  640,  704,  768,  832,  896,  960, 1024,
 //	1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,
 //	2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096,
-func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
+
+// OffsetAndLen returns the offset and fetch length of a file that sits within a
+// sialink sector. All sialinks point to one sector of data. If the file is
+// large enough that more data is necessary, a "fanout" is used to point to more
+// sectors.
+//
+// Sectors are 4 MiB large. To enable the support of efficiently storing and
+// downloading smaller files, the sialink allows an offset and a length to be
+// specified for a file, which means many files can be stored within a single
+// sector root, and each file can get a unique 46 byte sialink.
+//
+// IPFS set an industry standard of 46 bytes in base64, which we have chosen to
+// adhere to. That only gives us 34 bytes to work with for storing extra
+// information such as the version, offset, and length of a file. The tight data
+// constraints resulted in this compact format.
+//
+// Sialinks are given 2 bits for a version. These bits are always the first 2
+// bits of the bitfield, which correspond to the values '1' and '2' when the
+// bitfield is interpreted as a uint16. The version must be set to 1 to retrieve
+// an offset and a length.
+//
+// TODO: Resume
+func (ld LinkData) OffsetAndLen() (offset uint64, length uint64, err error) {
+	// Validate the bitfield. 
+	err := validateLinkDataV1Bitfield(ld.bitfield)
+	if err != nil {
+		return 0, SialinkMaxFetchSize, errors.AddContext("invalid bitfield, cannot parse offset and len")
+	}
+
 	// Grab the current window. As we parse through it, we will be sliding bits
 	// out of the window.
 	currentWindow := ld.olv
@@ -183,15 +218,6 @@ func (ld LinkData) OffsetAndLen() (offset uint64, length uint64) {
 		}
 		shifts++
 		currentWindow >>= 1
-	}
-	if shifts == 8 {
-		// Illegal olv value. Return an indicator that all data should be
-		// fetched.
-		//
-		// build.Critical because this value should have been caught during
-		// either the Load() functions or in the setter functions.
-		build.Critical("illegal value in linkdata, olv should never indicate more than 7 shifts")
-		return 0, SialinkMaxFetchSize
 	}
 
 	// Determine the offset alignment and the step size.
@@ -285,13 +311,6 @@ func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
 	return nil
 }
 
-// SetMerkleRoot will set the merkle root of the LinkData. This is the one
-// function that doesn't need to be wrapped for safety, however it is wrapped so
-// that the field remains consistent with all other fields.
-func (ld *LinkData) SetMerkleRoot(mr crypto.Hash) {
-	ld.merkleRoot = mr
-}
-
 // Sialink returns the type safe 'sialink' of the link data, which is just a
 // typecast string.
 func (ld LinkData) Sialink() Sialink {
@@ -302,7 +321,7 @@ func (ld LinkData) Sialink() Sialink {
 func (ld LinkData) String() string {
 	// Build the raw string.
 	raw := make([]byte, rawLinkDataSize)
-	binary.LittleEndian.PutUint16(raw, ld.olv)
+	binary.LittleEndian.PutUint16(raw, ld.bitfield)
 	copy(raw[2:], ld.merkleRoot[:])
 
 	// Encode the raw bytes to base64. TWe have to use a a buffer and a base64
@@ -316,10 +335,10 @@ func (ld LinkData) String() string {
 	return "sia://" + buf.String()
 }
 
-// Version will pull the version out of the olv and return it. Version is a 2
-// bit number, meaning there are 4 possible values. The bitwise values cover the
-// range [0, 3], however we want to return a value in the range [1, 4], so we
-// increment the bitwise result.
+// Version will pull the version out of the bitfield and return it. The version
+// is a 2 bit number, meaning there are 4 possible values. The bitwise values
+// cover the range [0, 3], however we want to return a value in the range 
+// [1, 4], so we increment the bitwise result.
 func (ld LinkData) Version() uint16 {
-	return (ld.olv & 3) + 1
+	return (ld.bitfield & 3) + 1
 }

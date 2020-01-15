@@ -98,9 +98,9 @@ func TestSialink(t *testing.T) {
 	// sialink is 52 bytes, and check that the struct encodes and decodes
 	// without problems.
 	ldMax := LinkData{
-		olv: 65535,
+		bitfield: 65535,
 	}
-	ldMax.olv -= 7 // set the final three bits to 0 to make this a valid sialink.
+	ldMax.bitfield -= 7 // set the final three bits to 0 to make this a valid sialink.
 	for i := 0; i < len(ldMax.merkleRoot); i++ {
 		ldMax.merkleRoot[i] = 255
 	}
@@ -167,7 +167,7 @@ func TestSialink(t *testing.T) {
 }
 
 // TestSialinkAutoExamples performs a brute force test over lots of values for
-// the sialink olv to ensure correctness.
+// the sialink bitfield to ensure correctness.
 func TestSialinkAutoExamples(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
