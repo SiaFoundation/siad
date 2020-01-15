@@ -3,6 +3,8 @@ package modules
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -13,16 +15,31 @@ func TestSialinkManualExamples(t *testing.T) {
 		t.SkipNow()
 	}
 
+	// Good Examples.
 	var sialinkExamples = []struct {
 		offset         uint64
 		length         uint64
 		expectedLength uint64
 	}{
-		{0, 0, 4096},
+		// Try a valid offset for each mode.
+		{4096, 1, 4096},
+		{4096 * 2, (32 * 1024) + 1, 32*1024 + 4096},
+		{4096 * 4, (64 * 1024) + 1, 64*1024 + 4096*2},
+		{4096 * 8, (128 * 1024) + 1, 128*1024 + 4096*4},
+		{4096 * 16, (256 * 1024) + 1, 256*1024 + 4096*8},
+		{4096 * 32, (512 * 1024) + 1, 512*1024 + 4096*16},
+		{4096 * 64, (1024 * 1024) + 1, 1024*1024 + 4096*32},
+		{4096 * 128, (2048 * 1024) + 1, 2048*1024 + 4096*64},
+		// Smattering of random examples.
+		{4096, 0, 4096},
+		{4096 * 2, 0, 4096},
+		{4096 * 3, 0, 4096},
+		{4096 * 3, 4096 * 8, 4096 * 8},
 		{0, 1, 4096},
 		{0, 4095, 4096},
 		{0, 4096, 4096},
 		{0, 4097, 8192},
+		{0, 8192, 8192},
 		{4096 * 45, 0, 4096},
 		{0, 10e3, 4096 * 3},
 		{0, 33e3, 4096 * 9},
@@ -52,12 +69,12 @@ func TestSialinkManualExamples(t *testing.T) {
 		{16 * 1024, (72 * 1024) + 1, 80 * 1024},
 		{48 * 1024, (72 * 1024) + 1, 80 * 1024},
 		{192 * 1024, (288 * 1024) - 1, 288 * 1024},
+		{128 * 2 * 1024, 1025 * 1024, (1024 + 128) * 1024},
+		{512 * 1024, 2050 * 1024, (2048 + 256) * 1024},
 	}
-
 	// Try each example.
-	for i, example := range sialinkExamples {
-		var ld LinkData
-		err := ld.SetOffsetAndLen(example.offset, example.length)
+	for _, example := range sialinkExamples {
+		ld, err := NewLinkDataV1(crypto.Hash{}, example.offset, example.length)
 		if err != nil {
 			t.Error(err)
 		}
@@ -66,13 +83,36 @@ func TestSialinkManualExamples(t *testing.T) {
 			t.Fatal(err)
 		}
 		if offset != example.offset {
-			t.Error("bad offset:", offset, example.offset, i)
+			t.Error("bad offset:", example.offset, example.length, example.expectedLength, offset)
 		}
 		if length != example.expectedLength {
-			t.Error("bad length:", length, example.length, i)
+			t.Error("bad length:", example.offset, example.length, example.expectedLength, length)
 		}
 		if ld.Version() != 1 {
 			t.Error("bad version:", ld.Version())
+		}
+	}
+
+	// Invalid Examples.
+	var badSialinkExamples = []struct {
+		offset uint64
+		length uint64
+	}{
+		// Try an invalid offset for each mode.
+		{2048, 4096},
+		{4096, (4096 * 8) + 1},
+		{4096 * 2, (4096 * 2 * 8) + 1},
+		{4096 * 4, (4096 * 4 * 8) + 1},
+		{4096 * 8, (4096 * 8 * 8) + 1},
+		{4096 * 16, (4096 * 16 * 8) + 1},
+		{4096 * 32, (4096 * 32 * 8) + 1},
+		{4096 * 64, (4096 * 64 * 8) + 1},
+	}
+	// Try each example.
+	for _, example := range badSialinkExamples {
+		_, err := NewLinkDataV1(crypto.Hash{}, example.offset, example.length)
+		if err == nil {
+			t.Error("expecting a failure:", example.offset, example.length)
 		}
 	}
 }
@@ -178,8 +218,7 @@ func TestSialinkAutoExamples(t *testing.T) {
 
 	// Helper function to try some values.
 	tryValues := func(offset, length, expectedLength uint64) {
-		var ld LinkData
-		err := ld.SetOffsetAndLen(offset, length)
+		ld, err := NewLinkDataV1(crypto.Hash{}, offset, length)
 		if err != nil {
 			t.Error(err)
 		}
@@ -249,7 +288,7 @@ func TestSialinkAutoExamples(t *testing.T) {
 				tryValues(offsetAlign*j, shift+((lengthAlign*(i+1))-1), shift+(lengthAlign*(i+1)))
 				tryValues(offsetAlign*j, shift+(lengthAlign*(i+1)), shift+(lengthAlign*(i+1)))
 
-				// Try some random values.
+				// Try some random values for the length.
 				for k := uint64(0); k < 25; k++ {
 					rand := uint64(fastrand.Intn(int(lengthAlign)))
 					rand++                            // move range from [0, lengthAlign) to [1, lengthAlign].

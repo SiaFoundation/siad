@@ -50,6 +50,22 @@ type LinkData struct {
 	merkleRoot crypto.Hash
 }
 
+// NewLinkDataV1 will return a v1 LinkData object with the version set to 1 and
+// the remaining fields set appropriately. Note that the offset needs to be
+// aligned correctly. Check OffsetAndFetchSize for a full list of rules on legal
+// offsets - the value of a legal offset depends on the provided length.
+//
+// The input length will automatically be converted to the nearest fetch size.
+func NewLinkDataV1(merkleRoot crypto.Hash, offset, length uint64) (LinkData, error) {
+	var ld LinkData
+	err := ld.setOffsetAndFetchSize(offset, length)
+	if err != nil {
+		return LinkData{}, errors.AddContext(err, "Invalid LinkData")
+	}
+	ld.merkleRoot = merkleRoot
+	return ld, nil
+}
+
 // validateLinkDataV1Bitfield checks that the
 func validateLinkDataV1Bitfield(bitfield uint16) error {
 	// Ensure that the version is set to v1.
@@ -278,73 +294,11 @@ func (ld LinkData) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err er
 
 	// The remaining bits decide the offset.
 	offset = uint64(bitfield) * offsetAlign
+	if offset+fetchSize > SialinkMaxFetchSize {
+		return 0, SialinkMaxFetchSize, errors.New("invalid bitfield, fetching beyond the limits of the sector")
+	}
 
 	return offset, fetchSize, nil
-}
-
-// SetOffsetAndLen will set the offset and length of the data within the
-// sialink. Offset must be aligned correctly. SetOffsetAndLen implies that the
-// version is 1, so the version will also be set to 1.
-func (ld *LinkData) SetOffsetAndLen(offset, length uint64) error {
-	if offset+length > SialinkMaxFetchSize {
-		return errors.New("offset plus length cannot exceed the size of one sector - 4 MiB")
-	}
-
-	// Given the length, determine the appropriate offset alignment.
-	//
-	// The largest alignment is 256 kib, which is used if the length is 2 MiB or
-	// over. Each time the length is halved, the alignment is also halved. The
-	// smallest alignment allowed is 4 kib.
-	minLength := uint64(1 << 20)
-	offsetAlign := uint64(1 << 18)
-	for length <= minLength && offsetAlign > (1<<12) {
-		offsetAlign >>= 1
-		minLength >>= 1
-	}
-	if offset&(offsetAlign-1) != 0 {
-		return errors.New("offset is not aligned correctly")
-	}
-	offset = offset / offsetAlign
-
-	// Unless the offsetAlign is 1 << 12, the length increment is 1/2 the
-	// offsetAlign.
-	lengthAlign := uint64(1 << 12)
-	if offsetAlign > 1<<13 {
-		lengthAlign = offsetAlign >> 1
-	}
-
-	// Round the length value to the length increment. This is going to round
-	// down, but that's okay because the length is semantically downshifted by 1.
-	if offsetAlign > 1<<12 {
-		length = length - lengthAlign*8
-	}
-	if length != 0 && length == (length>>3)<<3 {
-		length--
-	}
-	length = length & (^(lengthAlign - 1))
-	length = length / lengthAlign
-
-	// Set the offset for the olv.
-	olv := uint16(offset)
-	// Shift up three bits and insert the length for the olv.
-	olv <<= 3
-	olv += uint16(length)
-	// Shift in a zero to indicate the end of the shifting.
-	olv <<= 1
-	// Shift in 1's until the offset align is correct.
-	baseAlign := uint64(1 << 12)
-	for baseAlign < offsetAlign {
-		baseAlign <<= 1
-		olv <<= 1
-		olv += 1
-	}
-	// Shift 2 more bits for the version, this should now be 16 bits total.
-	olv <<= 2
-
-	// Calling SetOffsetAndLen implies that the sialink is version 1. Version 1
-	// has 2 '0' bits as the final bits, so no updates need to be made to olv.
-	ld.bitfield = olv
-	return nil
 }
 
 // Sialink returns the type safe 'sialink' of the link data, which is just a
@@ -377,4 +331,76 @@ func (ld LinkData) String() string {
 // [1, 4], so we increment the bitwise result.
 func (ld LinkData) Version() uint16 {
 	return (ld.bitfield & 3) + 1
+}
+
+// setOffsetAndFetchSize will set the offset and length of the data within the
+// sialink. Offset must be aligned correctly. setOffsetAndLen implies that the
+// version is 1, so the version will also be set to 1.
+func (ld *LinkData) setOffsetAndFetchSize(offset, fetchSize uint64) error {
+	if offset+fetchSize > SialinkMaxFetchSize {
+		return errors.New("offset plus length cannot exceed the size of one sector - 4 MiB")
+	}
+
+	// Given the fetch size, determine the appropriate offset alignment.
+	//
+	// The largest offset alignment is 512 kib, which is used if the fetch size
+	// of 2 MiB or over. Each time the fetch size is halved, the offset
+	// alignment is also halved. The smallest offset alignment is 4 kib.
+	minFetchSize := uint64(1 << 21)
+	offsetAlign := uint64(1 << 19)
+	for fetchSize <= minFetchSize && offsetAlign > (1<<12) {
+		offsetAlign >>= 1
+		minFetchSize >>= 1
+	}
+	if offset&(offsetAlign-1) != 0 {
+		return errors.New("offset is not aligned correctly")
+	}
+	// The bitwise representation of the offset is the actual offset divided by
+	// the offset alignment.
+	bitwiseOffset := uint16(offset / offsetAlign)
+
+	// Unless the offsetAlign is 1 << 12, the fetch size alignment is 1/2 the
+	// offsetAlign. If the offsetAlign is 1 << 12, the fetch size alignment is
+	// also 1 << 12.
+	fetchSizeAlign := uint64(1 << 12)
+	if offsetAlign > 1<<13 {
+		fetchSizeAlign = offsetAlign >> 1
+	}
+	// If the the mode is anything besides the first mode, there is a length
+	// shift by 8 times the length size. We know that the mode is not the first
+	// mode if the offsetAlign is not 1 << 12
+	if offsetAlign > 1<<12 {
+		fetchSize = fetchSize - fetchSizeAlign*8
+	}
+	// Round the fetch size to the fetchSizeAlign. Because the fetch size is
+	// semantically shifted from the range [0, 8) to [1, 8], we round down. If
+	// the fetch size is already evenly divisible by the , it's not going to be
+	// rounded down so it needs to be decremented manually.
+	if fetchSize != 0 && fetchSize == (fetchSize/fetchSizeAlign)*fetchSizeAlign {
+		fetchSize--
+	}
+	fetchSize = fetchSize & (^(fetchSizeAlign - 1))
+	bitwiseFetchSize := uint16(fetchSize / fetchSizeAlign)
+
+	// Add the offset to the bitfield.
+	bitfield := bitwiseOffset
+	// Shift the bitfield up to add the fetch size.
+	bitfield <<= 3
+	bitfield += bitwiseFetchSize
+	// Shift the bitfield up to add the 0 bit that terminates the mode bits.
+	bitfield <<= 1
+	// Shift in all of the mode bits.
+	baseAlign := uint64(1 << 12)
+	for baseAlign < offsetAlign {
+		baseAlign <<= 1
+		bitfield <<= 1
+		bitfield += 1
+	}
+	// Shift 2 more bits for the version, this should now be 16 bits total. The
+	// two final bits for the version are both kept at 0 to siganl version 1.
+	bitfield <<= 2
+
+	// Set the bitfield and return.
+	ld.bitfield = bitfield
+	return nil
 }
