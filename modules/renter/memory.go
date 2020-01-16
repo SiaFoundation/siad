@@ -6,6 +6,8 @@ package renter
 // memory for the memory manager.
 
 import (
+	"runtime"
+	"runtime/debug"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -21,10 +23,18 @@ import (
 // block until all memory is available, and then grant the request, blocking all
 // future requests for memory until the memory is returned. This allows large
 // requests to go through even if there is not enough base memory.
+//
+// The memoryManager keeps track of how much memory has been returned since the
+// last manual call to runtime.GC(). After enough memory has been returned since
+// the previous manual call, the memoryManager will run a manual call to
+// runtime.GC() and follow that up with a call to debug.FreeOSMemory(). This has
+// been shown in production to significantly reduce the amount of RES that siad
+// consumes, without a significant hit to performance.
 type memoryManager struct {
 	available    uint64
 	base         uint64
 	fifo         []*memoryRequest
+	memSinceGC   uint64
 	mu           sync.Mutex
 	priorityFifo []*memoryRequest
 	stop         <-chan struct{}
@@ -100,6 +110,16 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 func (mm *memoryManager) Return(amount uint64) {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
+
+	// Check how much memory has been returned since the last call to
+	// runtime.GC(). If enough memory has been returned, call runtime.GC()
+	// manually and reset the counter.
+	mm.memSinceGC += amount
+	if mm.memSinceGC > defaultMemory {
+		runtime.GC()
+		debug.FreeOSMemory()
+		mm.memSinceGC = 0
+	}
 
 	// Add the remaining memory to the pool of available memory, clearing out
 	// the underflow if needed.

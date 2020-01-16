@@ -79,19 +79,22 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 	// The purpose of the chunk heap is to block work from happening until there
 	// is enough memory available to send off the work. If the chunk does not
 	// need any memory to be allocated, it should be given to the workers
-	// directly and immediately. This is actually a requirement in our memory
-	// model. If a download chunk does not need memory, that means that the
-	// memory has already been allocated and will actually be blocking new
-	// memory from being allocated until the download is complete. If the job is
-	// put in the heap and ends up behind a job which get stuck allocating
-	// memory, you get a deadlock.
+	// immediately.
 	//
-	// This is functionally equivalent to putting the chunk in the heap with
-	// maximum priority, such that the chunk is immediately removed from the
-	// heap and distributed to workers - the sole purpose of the heap is to
-	// block workers from receiving a chunk until memory has been allocated.
+	// When a chunk does not need memory, that is most commonly because the
+	// repair loop has already allocated memory for the download and is waiting
+	// until the download returns before it can release the memory. If the chunk
+	// goes into the heap and waits until other chunks are selected, that memory
+	// will not be released until other downloads have been processed. If those
+	// other downloads need memory and this chunk has consumed the last
+	// remaining memory, you get a deadlock.
 	if !udc.staticNeedsMemory {
-		if !r.managedTryFetchChunkFromDisk(udc) {
+		// If fetching the file from disk is disabled, the chunk will be
+		// immediately distributed to the workers. If fetching from disk is not
+		// disabled, there will be an attempt to fetch the data from disk, and
+		// the work will only be distributed for downloading if the disk fetch
+		// fails.
+		if udc.staticDisableDiskFetch || !r.managedTryFetchChunkFromDisk(udc) {
 			r.managedDistributeDownloadChunkToWorkers(udc)
 		}
 		return
@@ -156,10 +159,23 @@ func (r *Renter) managedNextDownloadChunk() *unfinishedDownloadChunk {
 
 // managedTryFetchChunkFromDisk will try to fetch the chunk from disk if
 // possible.
-// NOTE: we can only confirm that the file has the right name and size but not
-// the it wasn't modified on disk without us knowing. If that's the case then we
-// are going to return the updated file to the user which might not be the same
-// data that was uploaded.
+//
+// NOTE: Unable to do an integrity check on the data if fetched locally because
+// we only have checksum information on entire chunks, while the user may only
+// be requesting a small piece. It seems a bit aggressive to perform an
+// integrity check on an entire chunk if there is a user requesting just 1 kb of
+// data. Such a check could also be a DoS vector for entities serving many
+// users, such as viewnodes.
+//
+// NOTE: If there is a failure, we could wipe the local path of the file, since
+// it no longer matches. The challenge of doing that is that the download chunk
+// only has a snapshot instead of the actual file, meaning we can't be certain
+// when we clear the local path that we are actually clearing the right object -
+// there could be a rename or similar event. To clear the local path, the
+// download object would have to retain the fileNode as well as the snapshot.
+// Snapshot needs to be retained because the download will fetch the file as it
+// was when the download as issued, ignoring any updates or modifications to the
+// file that happen throughout the download.
 func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bool {
 	// Get path at which we expect to find the file.
 	fileName := chunk.renterFile.SiaPath().Name()
@@ -173,20 +189,26 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 		r.log.Debugf("managedTryFetchChunkFromDisk failed to open file %v for %v: %v", localPath, fileName, err)
 		return false
 	}
-	// If the file on disk doesn't have the right size we don't use it
-	// for repairing. This protects in case the user creates a different
-	// file at the same location.
+
+	// An entire integrity check can't be performed, however we can at least
+	// check that the filesize is the same.
 	fi, err := file.Stat()
 	if err != nil {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed to stat file %v for %v: %v", localPath, fileName, err)
+		r.log.Printf("local file %v of file %v was not used for download because stat failed: %v", localPath, fileName, err)
 		return false
 	}
-	if err == nil && uint64(fi.Size()) != chunk.renterFile.Size() {
-		r.log.Debugf("managedTryFetchChunkFromDisk failed due to filesize not matching %v != %v between file at %v and %v",
-			fi.Size(), chunk.renterFile.Size(), localPath, fileName)
+	fiSize := uint64(fi.Size())
+	rfSize := chunk.renterFile.Size()
+	if fiSize != rfSize {
+		r.log.Printf("local file %v of file %v was not used for download: filesizes are mismatched: %v vs %v", localPath, fileName, fiSize, rfSize)
 		return false
 	}
-	// Fetch the chunk from disk.
+
+	// After a quick check the remaining work is done in a goroutine. That way
+	// the download code can move on to popping the next download chunk from the
+	// heap, reserving memory for it and then either serve it from the network
+	// or disk. No need to wait for the relatively slow erasure coding and disk
+	// i/o here.
 	if err := r.tg.Add(); err != nil {
 		return false
 	}
@@ -213,7 +235,8 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 			return false
 		default:
 		}
-		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize), int64(chunk.staticChunkSize))
+		// Fetch the chunk from disk.
+		sr := io.NewSectionReader(file, int64(chunk.staticChunkIndex*chunk.staticChunkSize)+int64(chunk.staticFetchOffset), int64(chunk.staticFetchLength))
 		pieces, _, err := readDataPieces(sr, chunk.renterFile.ErasureCode(), chunk.renterFile.PieceSize())
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to read data pieces from %v for %v: %v\n",
@@ -226,7 +249,8 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 				localPath, fileName, err)
 			return false
 		}
-		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, chunk.staticFetchOffset, chunk.staticWriteOffset, chunk.staticFetchLength)
+		// Write the data to the destination.
+		err = chunk.destination.WritePieces(chunk.renterFile.ErasureCode(), shards, 0, chunk.staticWriteOffset, chunk.staticFetchLength)
 		if err != nil {
 			r.log.Debugf("managedTryFetchChunkFromDisk failed to write data pieces from %v for %v: %v",
 				localPath, fileName, err)
@@ -287,18 +311,6 @@ LOOP:
 			// Check if we can serve the chunk from disk.
 			if !nextChunk.staticDisableDiskFetch && r.managedTryFetchChunkFromDisk(nextChunk) {
 				continue
-			} else if !nextChunk.staticDisableDiskFetch && nextChunk.renterFile.LocalPath() != "" {
-				// If the local path is set and we still weren't able to load
-				// the chunk from disk, set the localpath to "" for safety.
-				entry, err := r.staticFileSystem.OpenSiaFile(nextChunk.renterFile.SiaPath())
-				if err == nil {
-					err = entry.SetLocalPath("")
-					entry.Close()
-				}
-				if err != nil {
-					r.log.Debugf("localpath is set but couldn't serve file %v from %v: %v",
-						entry.LocalPath(), nextChunk.renterFile.SiaPath().Name(), err)
-				}
 			}
 			// Distribute the chunk to workers.
 			r.managedDistributeDownloadChunkToWorkers(nextChunk)

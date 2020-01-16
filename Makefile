@@ -32,6 +32,7 @@ pkgs = ./build \
 	./modules/gateway \
 	./modules/host \
 	./modules/host/contractmanager \
+	./modules/host/mdm \
 	./modules/miner \
 	./modules/renter \
 	./modules/renter/contractor \
@@ -77,6 +78,11 @@ run = .
 # 'make utils'
 util-pkgs = ./cmd/sia-node-scanner
 
+# dependencies list all packages needed to run make commands used to build, test
+# and lint siac/siad locally and in CI systems.
+dependencies:
+	./install-dependencies.sh
+
 # fmt calls go fmt on all packages.
 fmt:
 	gofmt -s -l -w $(pkgs)
@@ -86,6 +92,12 @@ fmt:
 vet:
 	GO111MODULE=on go vet $(pkgs)
 
+# markdown-spellcheck runs codespell on all markdown files that are not
+# vendored.
+markdown-spellcheck:
+	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
+
+# lint runs golint and custom analyzers.
 lint:
 	GO111MODULE=on go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
@@ -94,20 +106,18 @@ lint:
 lint-analysis:
 	GO111MODULE=on go run ./analysis/cmd/analyze.go -- $(pkgs)
 
-lint-all:
+# lint-all runs golangci-lint (which includes golint and other linters), the
+# custom analyzers, and also a markdown spellchecker.
+lint-all: markdown-spellcheck
 	GO111MODULE=on go run ./analysis/cmd/analyze.go -- $(pkgs)
-	golangci-lint run -c .golangci.yml
-
-# markdown-spellcheck runs codespell on all markdown files that are not
-# vendored.
-markdown-spellcheck:
-	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
+	GO111MODULE=on golangci-lint run -c .golangci.yml
 
 # spellcheck checks for misspelled words in comments or strings.
-spellcheck:
-	misspell -error .
+spellcheck: markdown-spellcheck
+	GO111MODULE=on golangci-lint run -c .golangci.yml -E misspell
 
 # staticcheck runs the staticcheck tool
+# NOTE: this is not yet enabled in the CI system.
 staticcheck:
 	staticcheck $(pkgs)
 
@@ -140,7 +150,7 @@ test-v:
 	GO111MODULE=on go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
 test-long: clean fmt vet lint
 	@mkdir -p cover
-	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=1800s $(pkgs) -run=$(run) -count=$(count)
+	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
 	GO111MODULE=on go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
