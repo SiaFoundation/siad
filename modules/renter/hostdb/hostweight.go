@@ -360,13 +360,16 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 // version reported by the host.
 func versionAdjustments(entry modules.HostDBEntry) float64 {
 	base := float64(1)
-	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.2.2") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
+	}
+	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
+		base = base * 0.9 // Slight penalty against slightly out of date hosts.
 	}
 	// Penalty for hosts that are below version v1.4.1.2 because there were
 	// transaction pool updates which reduces overall network congestion.
 	if build.VersionCmp(entry.Version, "1.4.1.2") < 0 {
-		base = base * 0.75
+		base = base * 0.70
 	}
 	// Heavy penalty for hosts that cannot use the current renter-host protocol.
 	if build.VersionCmp(entry.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
