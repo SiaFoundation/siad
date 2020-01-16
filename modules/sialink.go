@@ -322,7 +322,7 @@ func (ld LinkData) String() (string, error) {
 	binary.LittleEndian.PutUint16(raw, ld.bitfield)
 	copy(raw[2:], ld.merkleRoot[:])
 
-	// Encode the raw bytes to base64. TWe have to use a a buffer and a base64
+	// Encode the raw bytes to base64. We have to use a buffer and a base64
 	// encoder because the other functions that the stdlib provides will add
 	// padding to the end unnecessarily.
 	bufBytes := make([]byte, 0, encodedLinkDataSize)
