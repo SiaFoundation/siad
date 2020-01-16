@@ -197,7 +197,7 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 // 9 bits are needed.
 //
 // This continues until the final mode, which indicates that the file is stored
-// on an offset that is alinged to 512 kib (1 << 19). This is where it stops,
+// on an offset that is aligned to 512 kib (1 << 19). This is where it stops,
 // larger offsets are unnecessary. Having 8 consecutive 1's in a v1 Sialink is
 // invalid, which means means there are 64 total unused states (all states where
 // the first 8 of 14 non-version bits are set to '1').
