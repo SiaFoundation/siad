@@ -3,6 +3,13 @@ package renter
 // projectdownloadbyroot.go creates a worker project to fetch the data of an
 // underlying sector root.
 
+// NOTE: This is a prototype build of the DownloadByRoot project. It is slow
+// because it does not have any sense of which workers have good throughput. It
+// selects a worker based on which worker has the fastest response to a request
+// to download a single byte. Eventually this project will be re-written to be a
+// bit more sensitive to the known timings of each worker to select them more
+// carefully.
+
 import (
 	"fmt"
 	"sync"
@@ -133,6 +140,8 @@ func checkGougingDownloadByRoot(allowance modules.Allowance, hostSettings module
 
 // callPerformJobDownloadByRoot will perform a download by root job.
 func (jdbr *jobDownloadByRoot) callPerformJobDownloadByRoot(w *worker) {
+	// The job is broken into two phases, startup and resume. A bool in the
+	// worker indicates which phase needs to be run.
 	if jdbr.staticStartupCompleted {
 		jdbr.staticProject.managedResumeJobDownloadByRoot(w)
 	} else {
@@ -140,7 +149,8 @@ func (jdbr *jobDownloadByRoot) callPerformJobDownloadByRoot(w *worker) {
 	}
 }
 
-// managedRemoveWorker will remove a worker from the project.
+// managedRemoveWorker will remove a worker from the project. This is typically
+// called after a worker has finished its job, successfully or unsuccessfully.
 func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 	pdbr.mu.Lock()
 	defer pdbr.mu.Unlock()
@@ -183,30 +193,13 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 	}
 }
 
-// managedResult is a convenience function to return the result of the project.
-func (pdbr *projectDownloadByRoot) managedResult() ([]byte, error) {
-	// Sanity check - should not be accessing the error of the pdbr until the
-	// completeChan has closed.
-	select {
-	case <-pdbr.completeChan:
-	default:
-		build.Critical("error field of pdbr is being accessed before the pdbr has finished")
-	}
-
-	pdbr.mu.Lock()
-	defer pdbr.mu.Unlock()
-	return pdbr.data, pdbr.err
-}
-
 // managedResumeJobDownloadByRoot is called after a worker has confirmed that a
 // root exists on a host, and after the worker has gained the imperative to
 // fetch the data from the host.
 func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	// Fetch a session to use in retrieving the sector.
-	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
+	downloader, err := w.Downloader()
 	if err != nil {
-		// TODO: run error code here to indicate to the worker that attempts to
-		// grab the downloader are failing.
 		w.renter.log.Debugln("worker failed a projectDownloadByRoot because downloader could not be opened:", err)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
@@ -215,12 +208,14 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	defer downloader.Close()
 
 	// Check for price gouging before completing the job.
+	//
+	// TODO: Split these into fields that the worker owns and continuously
+	// updates. Can't be done immediately because there needs to be some system
+	// in place to update these values periodically.
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := downloader.HostSettings()
 	err = checkGougingDownloadByRoot(allowance, hostSettings)
 	if err != nil {
-		//  TODO: run error code here to indicate to the worker that price
-		//  gouging warnings are being hit.
 		w.renter.log.Debugln("worker failed a projectDownloadByRoot because gouging protection kicked in:", err)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
@@ -367,12 +362,6 @@ func (pdbr *projectDownloadByRoot) staticComplete() bool {
 
 // DownloadByRoot will spin up a project to locate a root and then download that
 // root.
-//
-// TODO: Update the function, or perhaps create a separate project, to handle
-// intra-root erasure coding. For speed, going to need some updates anyway
-// that's better about worker selection and making sure we go for hosts that can
-// provide excellent ttfb, while making the selection process aware of the
-// workload of existing workers.
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{
