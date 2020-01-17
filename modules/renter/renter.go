@@ -26,7 +26,6 @@ package renter
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -38,9 +37,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -81,9 +79,16 @@ type hostContractor interface {
 	// ContractByPublicKey returns the contract associated with the host key.
 	ContractByPublicKey(types.SiaPublicKey) (modules.RenterContract, bool)
 
+	// ChurnStatus returns contract churn stats for the current period.
+	ChurnStatus() modules.ContractorChurnStatus
+
 	// ContractUtility returns the utility field for a given contract, along
 	// with a bool indicating if it exists.
 	ContractUtility(types.SiaPublicKey) (modules.ContractUtility, bool)
+
+	// ContractStatus returns the status of the given contract within the
+	// watchdog.
+	ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool)
 
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
@@ -140,6 +145,18 @@ type hostContractor interface {
 	Synced() <-chan struct{}
 }
 
+type renterFuseManager interface {
+	// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+	// the local filesystem.
+	Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) (err error)
+
+	// MountInfo returns the list of currently mounted fuse filesystems.
+	MountInfo() []modules.MountInfo
+
+	// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+	Unmount(mountPoint string) error
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -147,12 +164,7 @@ type Renter struct {
 	staticAlerter *modules.GenericAlerter
 
 	// File management.
-	staticFileSet       *siafile.SiaFileSet
-	staticBackupFileSet *siafile.SiaFileSet
-
-	// Directory Management
-	staticDirSet       *siadir.SiaDirSet
-	staticBackupDirSet *siadir.SiaDirSet
+	staticFileSystem *filesystem.FileSystem
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -187,33 +199,33 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 
 	// Utilities.
-	cs               modules.ConsensusSet
-	deps             modules.Dependencies
-	g                modules.Gateway
-	w                modules.Wallet
-	hostContractor   hostContractor
-	hostDB           modules.HostDB
-	log              *persist.Logger
-	persist          persistence
-	persistDir       string
-	staticFilesDir   string
-	staticBackupsDir string
-	memoryManager    *memoryManager
-	mu               *siasync.RWMutex
-	tg               threadgroup.ThreadGroup
-	tpool            modules.TransactionPool
-	wal              *writeaheadlog.WAL
-	staticWorkerPool *workerPool
+	cs                modules.ConsensusSet
+	deps              modules.Dependencies
+	g                 modules.Gateway
+	w                 modules.Wallet
+	hostContractor    hostContractor
+	hostDB            modules.HostDB
+	log               *persist.Logger
+	persist           persistence
+	persistDir        string
+	memoryManager     *memoryManager
+	mu                *siasync.RWMutex
+	repairLog         *persist.Logger
+	staticFuseManager renterFuseManager
+	tg                threadgroup.ThreadGroup
+	tpool             modules.TransactionPool
+	wal               *writeaheadlog.WAL
+	staticWorkerPool  *workerPool
 }
 
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
+	// TODO: Is this check needed?
 	if r == nil {
 		return nil
 	}
-	r.tg.Stop()
-	r.hostDB.Close()
-	return r.hostContractor.Close()
+
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -441,7 +453,7 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 // Additionally a map of host pubkeys to renter contract is returned.  The
 // offline and goodforrenew maps are needed for calculating redundancy and other
 // file metrics.
-func (r *Renter) managedRenterContractsAndUtilities(entrys []*siafile.SiaFileSetEntry) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FileNode) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
 	// Save host keys in map.
 	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew = make(map[string]bool)
@@ -521,7 +533,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 	}
 
 	// Set IPViolationsCheck
-	r.hostDB.SetIPViolationCheck(s.IPViolationsCheck)
+	r.hostDB.SetIPViolationCheck(s.IPViolationCheck)
 
 	// Set the bandwidth limits.
 	err = r.setBandwidthLimits(s.MaxDownloadSpeed, s.MaxUploadSpeed)
@@ -556,7 +568,7 @@ func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) er
 	}
 	defer r.tg.Done()
 	// Check if file exists and is being tracked.
-	entry, err := r.staticFileSet.Open(siaPath)
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return err
 	}
@@ -667,6 +679,17 @@ func (r *Renter) ContractUtility(pk types.SiaPublicKey) (modules.ContractUtility
 	return r.hostContractor.ContractUtility(pk)
 }
 
+// ContractStatus returns the status of the given contract within the watchdog,
+// and a bool indicating whether or not it is being monitored.
+func (r *Renter) ContractStatus(fcID types.FileContractID) (modules.ContractWatchStatus, bool) {
+	return r.hostContractor.ContractStatus(fcID)
+}
+
+// ContractorChurnStatus returns contract churn stats for the current period.
+func (r *Renter) ContractorChurnStatus() modules.ContractorChurnStatus {
+	return r.hostContractor.ChurnStatus()
+}
+
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
 // contracts within a separate thread.
 func (r *Renter) InitRecoveryScan() error {
@@ -700,18 +723,27 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.hostContractor.RefreshedContract(fcid)
 }
 
-// Settings returns the renter's allowance
+// Settings returns the Renter's current settings.
 func (r *Renter) Settings() (modules.RenterSettings, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.RenterSettings{}, err
+	}
+	defer r.tg.Done()
 	download, upload, _ := r.hostContractor.RateLimits()
 	enabled, err := r.hostDB.IPViolationsCheck()
 	if err != nil {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
+	paused, endTime := r.uploadHeap.managedPauseStatus()
 	return modules.RenterSettings{
-		Allowance:         r.hostContractor.Allowance(),
-		IPViolationsCheck: enabled,
-		MaxDownloadSpeed:  download,
-		MaxUploadSpeed:    upload,
+		Allowance:        r.hostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
+		UploadsStatus: modules.UploadsStatus{
+			Paused:       paused,
+			PauseEndTime: endTime,
+		},
 	}, nil
 }
 
@@ -726,6 +758,22 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 // same name.
 func (r *Renter) SetIPViolationCheck(enabled bool) {
 	r.hostDB.SetIPViolationCheck(enabled)
+}
+
+// MountInfo returns the list of currently mounted fusefilesystems.
+func (r *Renter) MountInfo() []modules.MountInfo {
+	return r.staticFuseManager.MountInfo()
+}
+
+// Mount mounts the files under the specified siapath under the 'mountPoint' folder on
+// the local filesystem.
+func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.MountOptions) error {
+	return r.staticFuseManager.Mount(mountPoint, sp, opts)
+}
+
+// Unmount unmounts the fuse filesystem currently mounted at mountPoint.
+func (r *Renter) Unmount(mountPoint string) error {
+	return r.staticFuseManager.Unmount(mountPoint)
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.
@@ -770,6 +818,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			repairNeeded:      make(chan struct{}, 1),
 			stuckChunkFound:   make(chan struct{}, 1),
 			stuckChunkSuccess: make(chan struct{}, 1),
+
+			pauseChan: make(chan struct{}),
 		},
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
@@ -778,20 +828,20 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		cs:               cs,
-		deps:             deps,
-		g:                g,
-		w:                w,
-		hostDB:           hdb,
-		hostContractor:   hc,
-		persistDir:       persistDir,
-		staticAlerter:    modules.NewAlerter("renter"),
-		staticFilesDir:   filepath.Join(persistDir, modules.SiapathRoot),
-		staticBackupsDir: filepath.Join(persistDir, modules.BackupRoot),
-		mu:               siasync.New(modules.SafeMutexDelay, 1),
-		tpool:            tpool,
+		cs:             cs,
+		deps:           deps,
+		g:              g,
+		w:              w,
+		hostDB:         hdb,
+		hostContractor: hc,
+		persistDir:     persistDir,
+		staticAlerter:  modules.NewAlerter("renter"),
+		mu:             siasync.New(modules.SafeMutexDelay, 1),
+		tpool:          tpool,
 	}
+	close(r.uploadHeap.pauseChan)
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
 	// Load all saved data.

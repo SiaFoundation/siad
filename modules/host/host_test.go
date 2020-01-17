@@ -23,11 +23,9 @@ import (
 // A hostTester is the helper object for host testing, including helper modules
 // and methods for controlling synchronization.
 type hostTester struct {
-	cs      modules.ConsensusSet
-	gateway modules.Gateway
-	miner   modules.TestMiner
-	// renter    modules.Renter
-	renting   bool
+	cs        modules.ConsensusSet
+	gateway   modules.Gateway
+	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
 	walletKey crypto.CipherKey
@@ -132,7 +130,7 @@ func blankMockHostTester(d modules.Dependencies, name string) (*hostTester, erro
 	if err != nil {
 		return nil, err
 	}
-	h, err := newHost(d, cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := NewCustomHost(d, cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +284,7 @@ func TestHostMultiClose(t *testing.T) {
 	// Set ht.host to something non-nil - nil was returned because startup was
 	// incomplete. If ht.host is nil at the end of the function, the ht.Close()
 	// operation will fail.
-	ht.host, err = newHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	ht.host, err = NewCustomHost(modules.ProdDependencies, ht.cs, ht.gateway, ht.tpool, ht.wallet, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,6 +374,15 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {
+		t.Error("settings retrieval did not return default value")
+	}
+	if settings.EphemeralAccountExpiry != (defaultEphemeralAccountExpiry) {
+		t.Error("settings retrieval did not return default value")
+	}
+	if !settings.MaxEphemeralAccountBalance.Equals(defaultMaxEphemeralAccountBalance) {
+		t.Error("settings retrieval did not return default value")
+	}
+	if !settings.MaxEphemeralAccountRisk.Equals(defaultMaxEphemeralAccountRisk) {
 		t.Error("settings retrieval did not return default value")
 	}
 

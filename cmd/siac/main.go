@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/errors"
@@ -17,36 +18,46 @@ import (
 
 var (
 	// Flags.
-	dictionaryLanguage      string // dictionary for seed utils
-	hostContractOutputType  string // output type for host contracts
-	hostVerbose             bool   // display additional host info
-	initForce               bool   // destroy and re-encrypt the wallet on init if it already exists
-	initPassword            bool   // supply a custom password when creating a wallet
-	renterAllContracts      bool   // Show all active and expired contracts
-	renterDownloadAsync     bool   // Downloads files asynchronously
-	renterDownloadRecursive bool   // Downloads folders recursively.
-	renterListVerbose       bool   // Show additional info about uploaded files.
-	renterListRecursive     bool   // List files of folder recursively.
-	renterShowHistory       bool   // Show download history in addition to download queue.
-	renterVerbose           bool   // Show additional info about the renter
-	siaDir                  string // Path to sia data dir
-	statusVerbose           bool   // Display additional siac information
-	walletRawTxn            bool   // Encode/decode transactions in base64-encoded binary.
+	dictionaryLanguage        string // dictionary for seed utils
+	uploadedsizeUtilVerbose   bool   // display additional info for "utils upload-size"
+	hostContractOutputType    string // output type for host contracts
+	hostVerbose               bool   // display additional host info
+	hostFolderRemoveForce     bool   // force folder remove
+	initForce                 bool   // destroy and re-encrypt the wallet on init if it already exists
+	initPassword              bool   // supply a custom password when creating a wallet
+	renterAllContracts        bool   // Show all active and expired contracts
+	renterDownloadAsync       bool   // Downloads files asynchronously
+	renterDownloadRecursive   bool   // Downloads folders recursively.
+	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
+	renterListVerbose         bool   // Show additional info about uploaded files.
+	renterListRecursive       bool   // List files of folder recursively.
+	renterShowHistory         bool   // Show download history in addition to download queue.
+	renterVerbose             bool   // Show additional info about the renter
+	siaDir                    string // Path to sia data dir
+	statusVerbose             bool   // Display additional siac information
+	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
-	allowanceFunds              string // amount of money to be used within a period
-	allowancePeriod             string // length of period
-	allowanceHosts              string // number of hosts to form contracts with
-	allowanceRenewWindow        string // renew window of allowance
-	allowanceExpectedStorage    string // expected storage stored on hosts before redundancy
-	allowanceExpectedUpload     string // expected data uploaded within period
-	allowanceExpectedDownload   string // expected data downloaded within period
-	allowanceExpectedRedundancy string // expected redundancy of most uploaded files
+	allowanceFunds                     string // amount of money to be used within a period
+	allowancePeriod                    string // length of period
+	allowanceHosts                     string // number of hosts to form contracts with
+	allowanceRenewWindow               string // renew window of allowance
+	allowanceExpectedStorage           string // expected storage stored on hosts before redundancy
+	allowanceExpectedUpload            string // expected data uploaded within period
+	allowanceExpectedDownload          string // expected data downloaded within period
+	allowanceExpectedRedundancy        string // expected redundancy of most uploaded files
+	allowanceMaxRPCPrice               string // maximum allowed base price for RPCs
+	allowanceMaxContractPrice          string // maximum allowed price to form a contract
+	allowanceMaxDownloadBandwidthPrice string // max allowed price to download data from a host
+	allowanceMaxSectorAccessPrice      string // max allowed price to access a sector on a host
+	allowanceMaxStoragePrice           string // max allowed price to store data on a host
+	allowanceMaxUploadBandwidthPrice   string // max allowed price to upload data to a host
 )
 
 var (
 	// Globals.
-	rootCmd    *cobra.Command // Root command cobra object, used by bash completion cmd.
-	httpClient client.Client
+	rootCmd           *cobra.Command // Root command cobra object, used by bash completion cmd.
+	httpClient        client.Client
+	numCriticalAlerts int
 )
 
 // Exit codes.
@@ -214,6 +225,7 @@ func main() {
 	hostSectorCmd.AddCommand(hostSectorDeleteCmd)
 	hostCmd.Flags().BoolVarP(&hostVerbose, "verbose", "v", false, "Display detailed host info")
 	hostContractCmd.Flags().StringVarP(&hostContractOutputType, "type", "t", "value", "Select output type")
+	hostFolderRemoveCmd.Flags().BoolVarP(&hostFolderRemoveForce, "force", "f", false, "Force the removal of the folder and its data")
 
 	root.AddCommand(hostdbCmd)
 	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd, hostdbSetFiltermodeCmd)
@@ -240,10 +252,11 @@ func main() {
 	renterCmd.AddCommand(renterFilesDeleteCmd, renterFilesDownloadCmd,
 		renterDownloadsCmd, renterAllowanceCmd, renterSetAllowanceCmd,
 		renterContractsCmd, renterFilesListCmd, renterFilesRenameCmd,
-		renterFilesUploadCmd, renterUploadsCmd, renterExportCmd,
-		renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
+		renterSetLocalPathCmd, renterFilesUploadCmd, renterUploadsCmd,
+		renterExportCmd, renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
-		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd)
+		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd,
+		renterFuseCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -265,16 +278,28 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedRedundancy, "expected-redundancy", "", "expected redundancy of most uploaded files")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxRPCPrice, "max-rpc-price", "", "the maximum RPC base price that is allowed for a host")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxContractPrice, "max-contract-price", "", "the maximum price that the renter will pay to form a contract with a host")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxDownloadBandwidthPrice, "max-download-bandwidth-price", "", "the maximum price that the renter will pay to download from a host")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxSectorAccessPrice, "max-sector-access-price", "", "the maximum price that the renter will pay to access a sector on a host")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxStoragePrice, "max-storage-price", "", "the maximum price that the renter will pay to store data on a host")
+	renterSetAllowanceCmd.Flags().StringVar(&allowanceMaxUploadBandwidthPrice, "max-upload-bandwidth-price", "", "the maximum price that the renter will pay to upload data to a host")
+
+	renterFuseCmd.AddCommand(renterFuseMountCmd, renterFuseUnmountCmd)
+	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(gatewayCmd)
-	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd)
+	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
+	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
 
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
 	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
-		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd, utilsBruteForceSeedCmd)
+		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd, utilsBruteForceSeedCmd,
+		utilsUploadedsizeCmd)
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
+	utilsUploadedsizeCmd.Flags().BoolVarP(&uploadedsizeUtilVerbose, "verbose", "v", false, "Display more information")
 	root.AddCommand(utilsCmd)
 
 	// initialize client
@@ -305,6 +330,27 @@ func main() {
 
 		}
 	})
+
+	// Check for Critical Alerts
+	alerts, err := httpClient.DaemonAlertsGet()
+	if err == nil {
+		for _, a := range alerts.Alerts {
+			if a.Severity != modules.SeverityCritical {
+				continue
+			}
+			numCriticalAlerts++
+			fmt.Printf(`------------------
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s
+`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+		}
+		if numCriticalAlerts > 0 {
+			fmt.Println("------------------")
+			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", numCriticalAlerts)
+		}
+	}
 
 	// run
 	if err := root.Execute(); err != nil {

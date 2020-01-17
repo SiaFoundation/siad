@@ -3,7 +3,7 @@ package explorer
 import (
 	"fmt"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -392,9 +392,6 @@ func dbRemoveSiacoinOutputID(tx *bolt.Tx, id types.SiacoinOutputID, txid types.T
 // Add/Remove siafund output
 func dbAddSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID, output types.SiafundOutput) {
 	mustPut(tx.Bucket(bucketSiafundOutputs), id, output)
-}
-func dbRemoveSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID) {
-	mustDelete(tx.Bucket(bucketSiafundOutputs), id)
 }
 
 // Add/Remove txid from siafund output ID bucket

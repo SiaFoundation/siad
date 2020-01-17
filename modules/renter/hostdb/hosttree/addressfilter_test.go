@@ -12,16 +12,6 @@ var (
 	ipv6Localhost = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 )
 
-// host is a implementation of the address interface for testing.
-type host struct {
-	address string
-}
-
-// Host returns the address field of the host struct.
-func (h host) Host() string {
-	return h.address
-}
-
 // testTooManyAddressesResolver is a resolver for the TestTwoAddresses test.
 type testTooManyAddressesResolver struct{}
 

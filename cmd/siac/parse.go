@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"math/big"
 	"os"
 	"strconv"
@@ -21,20 +20,14 @@ var (
 	// into a file size unit
 	errUnableToParseSize = errors.New("unable to parse size")
 
+	// errUnableToParseTimeout is returned when the input is unable to be parsed
+	// into a timeout unit
+	errUnableToParseTimeout = errors.New("unable to parse timeout")
+
 	// errUnableToParseRateLimit is returned when the input is unable to be
 	// parsed into a rate limit unit
 	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
 )
-
-// filesize returns a string that displays a filesize in human-readable units.
-func filesizeUnits(size uint64) string {
-	if size == 0 {
-		return "0  B"
-	}
-	sizes := []string{" B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
-	i := int(math.Log10(float64(size)) / 3)
-	return fmt.Sprintf("%.*f %s", i, float64(size)/math.Pow10(3*i), sizes[i])
-}
 
 // parseFilesize converts strings of form 10GB to a size in bytes. Fractional
 // sizes are truncated at the byte size.
@@ -113,6 +106,43 @@ func parsePeriod(period string) (string, error) {
 	}
 
 	return "", errUnableToParseSize
+}
+
+// parseTimeout converts a duration specified in seconds, hours, days or weeks
+// to a number of seconds
+func parseTimeout(duration string) (string, error) {
+	units := []struct {
+		suffix     string
+		multiplier float64
+	}{
+		{"s", 1},          // seconds
+		{"second", 1},     // seconds
+		{"seconds", 1},    // seconds
+		{"h", 3600},       // hours
+		{"hour", 3600},    // hours
+		{"hours", 3600},   // hours
+		{"d", 86400},      // days
+		{"day", 86400},    // days
+		{"days", 86400},   // days
+		{"w", 604800},     // weeks
+		{"week", 604800},  // weeks
+		{"weeks", 604800}, // weeks
+	}
+
+	duration = strings.ToLower(duration)
+	for _, unit := range units {
+		if strings.HasSuffix(duration, unit.suffix) {
+			var base float64
+			_, err := fmt.Sscan(strings.TrimSuffix(duration, unit.suffix), &base)
+			if err != nil {
+				return "", errUnableToParseTimeout
+			}
+			seconds := int(base * unit.multiplier)
+			return fmt.Sprint(seconds), nil
+		}
+	}
+
+	return "", errUnableToParseTimeout
 }
 
 // currencyUnits converts a types.Currency to a string with human-readable

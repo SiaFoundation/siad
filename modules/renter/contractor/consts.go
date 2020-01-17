@@ -20,6 +20,22 @@ var (
 
 // Constants related to contract formation parameters.
 var (
+	// ContractFeeFundingMulFactor is the multiplying factor for contract fees
+	// to determine the funding for a new contract
+	ContractFeeFundingMulFactor = uint64(10)
+
+	// MaxInitialContractFundingDivFactor is the dividing factor for determining
+	// the maximum amount of funds to put into a new contract
+	MaxInitialContractFundingDivFactor = uint64(3)
+
+	// MaxInitialContractFundingMulFactor is the multiplying factor for
+	// determining the maximum amount of funds to put into a new contract
+	MaxInitialContractFundingMulFactor = uint64(2)
+
+	// MinInitialContractFundingDivFactor is the dividing factor for determining
+	// the minimum amount of funds to put into a new contract
+	MinInitialContractFundingDivFactor = uint64(20)
+
 	// consecutiveRenewalsBeforeReplacement is the number of times a contract
 	// attempt to be renewed before it is marked as !goodForRenew.
 	consecutiveRenewalsBeforeReplacement = build.Select(build.Var{

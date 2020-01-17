@@ -39,6 +39,7 @@ type (
 		NetworkMetrics       modules.HostNetworkMetrics       `json:"networkmetrics"`
 		ConnectabilityStatus modules.HostConnectabilityStatus `json:"connectabilitystatus"`
 		WorkingStatus        modules.HostWorkingStatus        `json:"workingstatus"`
+		PublicKey            types.SiaPublicKey               `json:"publickey"`
 	}
 
 	// HostEstimateScoreGET contains the information that is returned from a
@@ -85,6 +86,7 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 	nm := api.host.NetworkMetrics()
 	cs := api.host.ConnectabilityStatus()
 	ws := api.host.WorkingStatus()
+	pk := api.host.PublicKey()
 	hg := HostGET{
 		ExternalSettings:     es,
 		FinancialMetrics:     fm,
@@ -92,6 +94,7 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 		NetworkMetrics:       nm,
 		ConnectabilityStatus: cs,
 		WorkingStatus:        ws,
+		PublicKey:            pk,
 	}
 	WriteJSON(w, hg)
 }
@@ -223,6 +226,30 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 			return modules.HostInternalSettings{}, err
 		}
 		settings.MinUploadBandwidthPrice = x
+	}
+	if req.FormValue("ephemeralaccountexpiry") != "" {
+		var x uint64
+		_, err := fmt.Sscan(req.FormValue("ephemeralaccountexpiry"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.EphemeralAccountExpiry = x
+	}
+	if req.FormValue("maxephemeralaccountbalance") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountbalance"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MaxEphemeralAccountBalance = x
+	}
+	if req.FormValue("maxephemeralaccountrisk") != "" {
+		var x types.Currency
+		_, err := fmt.Sscan(req.FormValue("maxephemeralaccountrisk"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.MaxEphemeralAccountRisk = x
 	}
 
 	return settings, nil

@@ -52,6 +52,15 @@ const (
 	HostParamMaxReviseBatchSize = HostParam("maxrevisebatchsize")
 	// HostParamNetAddress is the announced netaddress of the host.
 	HostParamNetAddress = HostParam("netaddress")
+	// HostParamEphemeralAccountExpiry is the maximum amount of time an
+	// ephemeral account can be inactive before it expires and gets deleted.
+	HostParamEphemeralAccountExpiry = HostParam("ephemeralaccountexpiry")
+	// HostParamMaxEphemeralAccountBalance is the maximum ephemeral account
+	// balance in hastings
+	HostParamMaxEphemeralAccountBalance = HostParam("maxephemeralaccountbalance")
+	// HostParamMaxEphemeralAccountRisk is the maximum ephemeral account risk in
+	// hastings
+	HostParamMaxEphemeralAccountRisk = HostParam("maxephemeralaccountrisk")
 )
 
 // HostAnnouncePost uses the /host/announce endpoint to announce the host to
@@ -106,9 +115,10 @@ func (c *Client) HostStorageFoldersAddPost(path string, size uint64) (err error)
 
 // HostStorageFoldersRemovePost uses the /host/storage/folders/remove api
 // endpoint to remove a storage folder from a host.
-func (c *Client) HostStorageFoldersRemovePost(path string) (err error) {
+func (c *Client) HostStorageFoldersRemovePost(path string, force bool) (err error) {
 	values := url.Values{}
 	values.Set("path", path)
+	values.Set("force", strconv.FormatBool(force))
 	err = c.post("/host/storage/folders/remove", values.Encode(), nil)
 	return
 }

@@ -14,10 +14,6 @@ var (
 	// errAnnWalletLocked is returned during a host announcement if the wallet
 	// is locked.
 	errAnnWalletLocked = errors.New("cannot announce the host while the wallet is locked")
-
-	// errUnknownAddress is returned if the host is unable to determine a
-	// public address for itself to use in the announcement.
-	errUnknownAddress = errors.New("host cannot announce, does not seem to have a valid address")
 )
 
 // differentTypeIPs is a helper that returns true if two IPs are of a different

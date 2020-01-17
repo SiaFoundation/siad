@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"net/url"
 	"strconv"
 
@@ -16,6 +17,12 @@ var (
 	// gateway package is changed.
 	ErrPeerExists = errors.New("already connected to this peer")
 )
+
+// GatewayBandwidthGet requests the /gateway/bandwidth api resource
+func (c *Client) GatewayBandwidthGet() (gbg api.GatewayBandwidthGET, err error) {
+	err = c.get("/gateway/bandwidth", &gbg)
+	return
+}
 
 // GatewayConnectPost uses the /gateway/connect/:address endpoint to connect to
 // the gateway at address
@@ -48,5 +55,57 @@ func (c *Client) GatewayRateLimitPost(downloadSpeed, uploadSpeed int64) (err err
 	values.Set("maxdownloadspeed", strconv.FormatInt(downloadSpeed, 10))
 	values.Set("maxuploadspeed", strconv.FormatInt(uploadSpeed, 10))
 	err = c.post("/gateway", values.Encode(), nil)
+	return
+}
+
+// GatewayBlacklistGet uses the /gateway/blacklist endpoint to request the
+// Gateway's blacklist
+func (c *Client) GatewayBlacklistGet() (gbg api.GatewayBlacklistGET, err error) {
+	err = c.get("/gateway/blacklist", &gbg)
+	return
+}
+
+// GatewayAppendBlacklistPost uses the /gateway/blacklist endpoint to append
+// addresses to the Gateway's blacklist
+func (c *Client) GatewayAppendBlacklistPost(addresses []string) (err error) {
+	gbp := api.GatewayBlacklistPOST{
+		Action:    "append",
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(gbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/gateway/blacklist", string(data), nil)
+	return
+}
+
+// GatewayRemoveBlacklistPost uses the /gateway/blacklist endpoint to remove
+// addresses from the Gateway's blacklist
+func (c *Client) GatewayRemoveBlacklistPost(addresses []string) (err error) {
+	gbp := api.GatewayBlacklistPOST{
+		Action:    "remove",
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(gbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/gateway/blacklist", string(data), nil)
+	return
+}
+
+// GatewaySetBlacklistPost uses the /gateway/blacklist endpoint to set the
+// Gateway's blacklist
+func (c *Client) GatewaySetBlacklistPost(addresses []string) (err error) {
+	gbp := api.GatewayBlacklistPOST{
+		Action:    "set",
+		Addresses: addresses,
+	}
+	data, err := json.Marshal(gbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/gateway/blacklist", string(data), nil)
 	return
 }

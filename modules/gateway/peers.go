@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -38,6 +39,7 @@ func (s invalidVersionError) Error() string {
 
 type peer struct {
 	modules.Peer
+	m    *connmonitor.Monitor
 	rl   *ratelimit.RateLimit
 	sess streamSession
 }
@@ -126,6 +128,8 @@ func (g *Gateway) permanentListen(closeChan chan struct{}) {
 			g.log.Debugln("[PL] Closing permanentListen:", err)
 			return
 		}
+		// Monitor bandwidth on conn
+		conn = connmonitor.NewMonitoredConn(conn, g.m)
 
 		go g.threadedAcceptConn(conn)
 
@@ -241,6 +245,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 			NetAddress: remoteAddr,
 			Version:    remoteVersion,
 		},
+		m:    g.m,
 		rl:   rl,
 		sess: newServerStream(conn, remoteVersion),
 	}
@@ -495,6 +500,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 			NetAddress: addr,
 			Version:    remoteVersion,
 		},
+		m:    g.m,
 		rl:   g.rl,
 		sess: newClientStream(conn, remoteVersion),
 	})
@@ -524,7 +530,7 @@ func (g *Gateway) Connect(addr modules.NetAddress) error {
 }
 
 // Disconnect terminates a connection to a peer and removes it from the
-// Gateway's peer list. The peer's address remains in the node list.
+// Gateway's peer list.
 func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 	g.log.Debugln("Attempting to Disconnect from", addr)
 	if err := g.threads.Add(); err != nil {

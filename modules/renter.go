@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -26,6 +27,7 @@ var (
 		ExpectedUpload:     uint64(200e9) / uint64(types.BlocksPerMonth), // 200 GB per month
 		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
+		MaxPeriodChurn:     uint64(250e9),                                // 250 GB
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
@@ -45,7 +47,7 @@ var (
 	}).(int)
 	// BackupKeySpecifier is a specifier that is hashed with the wallet seed to
 	// create a key for encrypting backups.
-	BackupKeySpecifier = types.Specifier{'b', 'a', 'c', 'k', 'u', 'p', 'k', 'e', 'y'}
+	BackupKeySpecifier = types.NewSpecifier("backupkey")
 )
 
 // FilterMode is the helper type for the enum constants for the HostDB filter
@@ -60,6 +62,14 @@ const (
 	HostDBDisableFilter
 	HostDBActivateBlacklist
 	HostDBActiveWhitelist
+)
+
+// Filesystem related consts.
+const (
+	// DefaultDirPerm defines the default permissions used for a new dir if no
+	// permissions are supplied. Changing this value is a compatibility issue
+	// since users expect dirs to have these permissions.
+	DefaultDirPerm = 0755
 )
 
 // String returns the string value for the FilterMode
@@ -89,7 +99,7 @@ func (fm *FilterMode) FromString(s string) error {
 		*fm = HostDBActiveWhitelist
 	default:
 		*fm = HostDBFilterError
-		return fmt.Errorf("Could not assigned FilterMode from string %v", s)
+		return fmt.Errorf("could not assigned FilterMode from string %v", s)
 	}
 	return nil
 }
@@ -104,9 +114,17 @@ const (
 	// renter's persistent data.
 	RenterDir = "renter"
 
-	// SiapathRoot is the name of the directory that is used to store the
+	// FileSystemRoot is the name of the directory that is used as the root of
+	// the renter's filesystem.
+	FileSystemRoot = "fs"
+
+	// HomeFolderRoot is the name of the directory that is used to store all of
+	// the user accessible data.
+	HomeFolderRoot = "home"
+
+	// UserRoot is the name of the directory that is used to store the
 	// renter's siafiles.
-	SiapathRoot = "siafiles"
+	UserRoot = "user"
 
 	// BackupRoot is the name of the directory that is used to store the renter's
 	// snapshot siafiles.
@@ -127,6 +145,14 @@ const (
 	// estimated blockchain size of a transaction set used by the host to
 	// provide the storage proof at the end of the contract duration.
 	EstimatedFileContractRevisionAndProofTransactionSetSize = 5000
+
+	// StreamDownloadSize is the size of downloaded in a single streaming download
+	// request.
+	StreamDownloadSize = uint64(1 << 16) // 64 KiB
+
+	// StreamUploadSize is the size of downloaded in a single streaming upload
+	// request.
+	StreamUploadSize = uint64(1 << 16) // 64 KiB
 )
 
 type (
@@ -199,6 +225,11 @@ type (
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
+//
+// NOTE: When changing the allowance struct, any new or adjusted fields are
+// going to be loaded as blank when the contractor first starts up. The startup
+// code either needs to set sane defaults, or the code which depends on the
+// values needs to appropriately handle the values being empty.
 type Allowance struct {
 	Funds       types.Currency    `json:"funds"`
 	Hosts       uint64            `json:"hosts"`
@@ -218,6 +249,39 @@ type Allowance struct {
 
 	// ExpectedRedundancy is the average redundancy of files being uploaded.
 	ExpectedRedundancy float64 `json:"expectedredundancy"`
+
+	// MaxPeriodChurn is maximum amount of contract churn allowed in a single
+	// period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
+
+	// The following fields provide price gouging protection for the user. By
+	// setting a particular maximum price for each mechanism that a host can use
+	// to charge users, the workers know to avoid hosts that go outside of the
+	// safety range.
+	//
+	// The intention is that if the fields are not set, a reasonable value will
+	// be derived from the other allowance settings. The intention is that the
+	// hostdb will pay attention to these limits when forming contracts,
+	// understanding that a certain feature (such as storage) will not be used
+	// if the host price is above the limit. If the hostdb believes that a host
+	// is valuable for its other, more reasonably priced features, the hostdb
+	// may choose to form a contract with the host anyway.
+	//
+	// NOTE: If the allowance max price fields are ever extended, all of the
+	// price gouging checks throughout the worker code and contract formation
+	// code also need to be extended.
+	MaxRPCPrice               types.Currency `json:"maxrpcprice"`
+	MaxContractPrice          types.Currency `json:"maxcontractprice"`
+	MaxDownloadBandwidthPrice types.Currency `json:"maxdownloadbandwidthprice"`
+	MaxSectorAccessPrice      types.Currency `json:"maxsectoraccessprice"`
+	MaxStoragePrice           types.Currency `json:"maxstorageprice"`
+	MaxUploadBandwidthPrice   types.Currency `json:"maxuploadbandwidthprice"`
+}
+
+// Active returns true if and only if this allowance has been set in the
+// contractor.
+func (a Allowance) Active() bool {
+	return a.Period != 0
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the
@@ -225,8 +289,30 @@ type Allowance struct {
 type ContractUtility struct {
 	GoodForUpload bool
 	GoodForRenew  bool
-	LastOOSErr    types.BlockHeight // OOS means Out Of Storage
-	Locked        bool              // Locked utilities can only be set to false.
+
+	// BadContract will be set to true if there's good reason to believe that
+	// the contract is unusable and will continue to be unusable. For example,
+	// if the host is claiming that the contract does not exist, the contract
+	// should be marked as bad.
+	BadContract bool
+	LastOOSErr  types.BlockHeight // OOS means Out Of Storage
+
+	// If a contract is locked, the utility should not be updated. 'Locked' is a
+	// value that gets persisted.
+	Locked bool
+}
+
+// ContractWatchStatus provides information about the status of a contract in
+// the renter's watchdog.
+type ContractWatchStatus struct {
+	Archived                  bool              `json:"archived"`
+	FormationSweepHeight      types.BlockHeight `json:"formationsweepheight"`
+	ContractFound             bool              `json:"contractfound"`
+	LatestRevisionFound       uint64            `json:"latestrevisionfound"`
+	StorageProofFoundAtHeight types.BlockHeight `json:"storageprooffoundatheight"`
+	DoubleSpendHeight         types.BlockHeight `json:"doublespendheight"`
+	WindowStart               types.BlockHeight `json:"windowstart"`
+	WindowEnd                 types.BlockHeight `json:"windowend"`
 }
 
 // DirectoryInfo provides information about a siadir
@@ -248,19 +334,39 @@ type DirectoryInfo struct {
 
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
-	Health              float64   `json:"health"`
-	LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
-	MaxHealthPercentage float64   `json:"maxhealthpercentage"`
-	MaxHealth           float64   `json:"maxhealth"`
-	MinRedundancy       float64   `json:"minredundancy"`
-	MostRecentModTime   time.Time `json:"mostrecentmodtime"`
-	NumFiles            uint64    `json:"numfiles"`
-	NumStuckChunks      uint64    `json:"numstuckchunks"`
-	NumSubDirs          uint64    `json:"numsubdirs"`
-	SiaPath             SiaPath   `json:"siapath"`
-	Size                uint64    `json:"size"`
-	StuckHealth         float64   `json:"stuckhealth"`
+	Health              float64     `json:"health"`
+	LastHealthCheckTime time.Time   `json:"lasthealthchecktime"`
+	MaxHealthPercentage float64     `json:"maxhealthpercentage"`
+	MaxHealth           float64     `json:"maxhealth"`
+	MinRedundancy       float64     `json:"minredundancy"`
+	DirMode             os.FileMode `json:"mode,siamismatch"` // Field is called DirMode for fuse compatibility
+	MostRecentModTime   time.Time   `json:"mostrecentmodtime"`
+	NumFiles            uint64      `json:"numfiles"`
+	NumStuckChunks      uint64      `json:"numstuckchunks"`
+	NumSubDirs          uint64      `json:"numsubdirs"`
+	SiaPath             SiaPath     `json:"siapath"`
+	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
+	StuckHealth         float64     `json:"stuckhealth"`
+	UID                 uint64      `json:"uid"`
 }
+
+// Name implements os.FileInfo.
+func (d DirectoryInfo) Name() string { return d.SiaPath.Name() }
+
+// Size implements os.FileInfo.
+func (d DirectoryInfo) Size() int64 { return int64(d.DirSize) }
+
+// Mode implements os.FileInfo.
+func (d DirectoryInfo) Mode() os.FileMode { return d.DirMode }
+
+// ModTime implements os.FileInfo.
+func (d DirectoryInfo) ModTime() time.Time { return d.MostRecentModTime }
+
+// IsDir implements os.FileInfo.
+func (d DirectoryInfo) IsDir() bool { return true }
+
+// Sys implements os.FileInfo.
+func (d DirectoryInfo) Sys() interface{} { return nil }
 
 // DownloadInfo provides information about a file that has been requested for
 // download.
@@ -289,6 +395,10 @@ type FileUploadParams struct {
 	Force               bool
 	DisablePartialChunk bool
 	Repair              bool
+
+	// CipherType was added later. If it is left blank, the renter will use the
+	// default encryption method (as of writing, Threefish)
+	CipherType crypto.CipherType
 }
 
 // FileInfo provides information about a file.
@@ -304,7 +414,8 @@ type FileInfo struct {
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
 	MaxHealthPercent float64           `json:"maxhealthpercent"`
-	ModTime          time.Time         `json:"modtime"`
+	ModificationTime time.Time         `json:"modtime,siamismatch"` // Stays as 'modtime' in json for compatibility
+	FileMode         os.FileMode       `json:"mode,siamismatch"`    // Field is called FileMode for fuse compatibility
 	NumStuckChunks   uint64            `json:"numstuckchunks"`
 	OnDisk           bool              `json:"ondisk"`
 	Recoverable      bool              `json:"recoverable"`
@@ -313,9 +424,28 @@ type FileInfo struct {
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
+	UID              uint64            `json:"uid"`
 	UploadedBytes    uint64            `json:"uploadedbytes"`
 	UploadProgress   float64           `json:"uploadprogress"`
 }
+
+// Name implements os.FileInfo.
+func (f FileInfo) Name() string { return f.SiaPath.Name() }
+
+// Size implements os.FileInfo.
+func (f FileInfo) Size() int64 { return int64(f.Filesize) }
+
+// Mode implements os.FileInfo.
+func (f FileInfo) Mode() os.FileMode { return f.FileMode }
+
+// ModTime implements os.FileInfo.
+func (f FileInfo) ModTime() time.Time { return f.ModificationTime }
+
+// IsDir implements os.FileInfo.
+func (f FileInfo) IsDir() bool { return false }
+
+// Sys implements os.FileInfo.
+func (f FileInfo) Sys() interface{} { return nil }
 
 // A HostDBEntry represents one host entry in the Renter's host DB. It
 // aggregates the host's external settings and metrics with its public key.
@@ -375,10 +505,18 @@ type HostScoreBreakdown struct {
 	CollateralAdjustment       float64 `json:"collateraladjustment"`
 	DurationAdjustment         float64 `json:"durationadjustment"`
 	InteractionAdjustment      float64 `json:"interactionadjustment"`
-	PriceAdjustment            float64 `json:"pricesmultiplier"`
+	PriceAdjustment            float64 `json:"pricesmultiplier,siamismatch"`
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
 	UptimeAdjustment           float64 `json:"uptimeadjustment"`
 	VersionAdjustment          float64 `json:"versionadjustment"`
+}
+
+// MountInfo contains information about a mounted FUSE filesystem.
+type MountInfo struct {
+	MountPoint string  `json:"mountpoint"`
+	SiaPath    SiaPath `json:"siapath"`
+
+	MountOptions MountOptions `json:"mountoptions"`
 }
 
 // RenterPriceEstimation contains a bunch of files estimating the costs of
@@ -400,10 +538,17 @@ type RenterPriceEstimation struct {
 
 // RenterSettings control the behavior of the Renter.
 type RenterSettings struct {
-	Allowance         Allowance `json:"allowance"`
-	IPViolationsCheck bool      `json:"ipviolationcheck"`
-	MaxUploadSpeed    int64     `json:"maxuploadspeed"`
-	MaxDownloadSpeed  int64     `json:"maxdownloadspeed"`
+	Allowance        Allowance     `json:"allowance"`
+	IPViolationCheck bool          `json:"ipviolationcheck"`
+	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
+	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
+	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
+}
+
+// UploadsStatus contains information about the Renter's Uploads
+type UploadsStatus struct {
+	Paused       bool      `json:"paused"`
+	PauseEndTime time.Time `json:"pauseendtime"`
 }
 
 // HostDBScans represents a sortable slice of scans.
@@ -449,6 +594,12 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 	}
 	*mrs = umrs
 	return nil
+}
+
+// MountOptions specify various settings of a FUSE filesystem mount.
+type MountOptions struct {
+	AllowOther bool `json:"allowother"`
+	ReadOnly   bool `json:"readonly"`
 }
 
 // RecoverableContract is a types.FileContract as it appears on the blockchain
@@ -535,7 +686,7 @@ type ContractorSpending struct {
 	Unspent types.Currency `json:"unspent"`
 	// ContractSpendingDeprecated was renamed to TotalAllocated and always has the
 	// same value as TotalAllocated.
-	ContractSpendingDeprecated types.Currency `json:"contractspending"`
+	ContractSpendingDeprecated types.Currency `json:"contractspending,siamismatch"`
 	// WithheldFunds are the funds from the previous period that are tied up
 	// in contracts and have not been released yet
 	WithheldFunds types.Currency `json:"withheldfunds"`
@@ -546,6 +697,16 @@ type ContractorSpending struct {
 	// PreviousSpending is the total spend funds from old contracts
 	// that are not included in the current period spending
 	PreviousSpending types.Currency `json:"previousspending"`
+}
+
+// ContractorChurnStatus contains the current churn budgets for the Contractor's
+// churnLimiter and the aggregate churn for the current period.
+type ContractorChurnStatus struct {
+	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
+	// period.
+	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
+	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
+	MaxPeriodChurn uint64 `json:"maxperiodchurn"`
 }
 
 // UploadedBackup contains metadata about an uploaded backup.
@@ -578,6 +739,10 @@ type Renter interface {
 	// Contracts returns the staticContracts of the renter's hostContractor.
 	Contracts() []RenterContract
 
+	// ContractStatus returns the status of the contract with the given ID in the
+	// watchdog, and a bool indicating whether or not the watchdog is aware of it.
+	ContractStatus(fcID types.FileContractID) (ContractWatchStatus, bool)
+
 	// CreateBackup creates a backup of the renter's siafiles. If a secret is not
 	// nil, the backup will be encrypted using the provided secret.
 	CreateBackup(dst string, secret []byte) error
@@ -598,12 +763,25 @@ type Renter interface {
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []RenterContract
 
+	// ContractorChurnStatus returns contract churn stats for the current period.
+	ContractorChurnStatus() ContractorChurnStatus
+
 	// ContractUtility provides the contract utility for a given host key.
 	ContractUtility(pk types.SiaPublicKey) (ContractUtility, bool)
 
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
+
+	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
+	// available via the local filesystem.
+	Mount(mountPoint string, sp SiaPath, opts MountOptions) error
+
+	// MountInfo returns the list of currently mounted FUSE filesystems.
+	MountInfo() []MountInfo
+
+	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
+	Unmount(mountPoint string) error
 
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
@@ -713,10 +891,17 @@ type Renter interface {
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
 
+	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
+	// duration
+	PauseRepairsAndUploads(duration time.Duration) error
+
+	// ResumeRepairsAndUploads resumes the renter's repairs and uploads
+	ResumeRepairsAndUploads() error
+
 	// Streamer creates a io.ReadSeeker that can be used to stream downloads
 	// from the Sia network and also returns the fileName of the streamed
 	// resource.
-	Streamer(siapath SiaPath) (string, Streamer, error)
+	Streamer(siapath SiaPath, disableLocalFetch bool) (string, Streamer, error)
 
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
@@ -726,7 +911,7 @@ type Renter interface {
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
-	CreateDir(siaPath SiaPath) error
+	CreateDir(siaPath SiaPath, mode os.FileMode) error
 
 	// DeleteDir deletes a directory from the renter
 	DeleteDir(siaPath SiaPath) error
@@ -745,12 +930,31 @@ type Streamer interface {
 // RenterDownloadParameters defines the parameters passed to the Renter's
 // Download method.
 type RenterDownloadParameters struct {
-	Async       bool
-	Httpwriter  io.Writer
-	Length      uint64
-	Offset      uint64
-	SiaPath     SiaPath
-	Destination string
+	Async            bool
+	Httpwriter       io.Writer
+	Length           uint64
+	Offset           uint64
+	SiaPath          SiaPath
+	Destination      string
+	DisableDiskFetch bool
+}
+
+// HealthPercentage returns the health in a more human understandable format out
+// of 100%
+//
+// The percentage is out of 1.25, this is to account for the RepairThreshold of
+// 0.25 and assumes that the worst health is 1.5. Since we do not repair until
+// the health is worse than the RepairThreshold, a health of 0 - 0.25 is full
+// health. Likewise, a health that is greater than 1.25 is essentially 0 health.
+func HealthPercentage(health float64) float64 {
+	healthPercent := 100 * (1.25 - health)
+	if healthPercent > 100 {
+		healthPercent = 100
+	}
+	if healthPercent < 0 {
+		healthPercent = 0
+	}
+	return healthPercent
 }
 
 // A HostDB is a database of hosts that the renter can use for figuring out who

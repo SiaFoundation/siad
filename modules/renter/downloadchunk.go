@@ -51,10 +51,11 @@ type unfinishedDownloadChunk struct {
 	staticWriteOffset int64 // Offset within the writer to write the completed data.
 
 	// Fetch + Write instructions - read only or otherwise thread safe.
-	staticLatencyTarget time.Duration
-	staticNeedsMemory   bool // Set to true if memory was not pre-allocated for this chunk.
-	staticOverdrive     int
-	staticPriority      uint64
+	staticDisableDiskFetch bool
+	staticLatencyTarget    time.Duration
+	staticNeedsMemory      bool // Set to true if memory was not pre-allocated for this chunk.
+	staticOverdrive        int
+	staticPriority         uint64
 
 	// Download chunk state - need mutex to access.
 	completedPieces   []bool    // Which pieces were downloaded successfully.
@@ -134,6 +135,26 @@ func (udc *unfinishedDownloadChunk) managedCleanUp() {
 	}
 }
 
+// managedFinalizeRecovery sets recoveryComplete to 'true' and also marks
+// the download as complete if there are no more chunks remaining.
+func (udc *unfinishedDownloadChunk) managedFinalizeRecovery() {
+	// Directly nil out the physical chunk data, it's not going to be used
+	// anymore. Also signal that data recovery has completed.
+	udc.mu.Lock()
+	udc.physicalChunkData = nil
+	udc.recoveryComplete = true
+	udc.mu.Unlock()
+
+	// Update the download and signal completion of this chunk.
+	udc.download.mu.Lock()
+	defer udc.download.mu.Unlock()
+	udc.download.chunksRemaining--
+	if udc.download.chunksRemaining == 0 {
+		// Download is complete, send out a notification.
+		udc.download.markComplete()
+	}
+}
+
 // managedRemoveWorker will decrement a worker from the set of remaining workers
 // in the udc. After a worker has been removed, the udc needs to be cleaned up.
 func (udc *unfinishedDownloadChunk) managedRemoveWorker() {
@@ -208,23 +229,8 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 		udc.mu.Unlock()
 		return errors.AddContext(err, "unable to write to download destination")
 	}
-
-	// Directly nil out the physical chunk data, it's not going to be used
-	// anymore. Also signal that data recovery has completed.
-	udc.mu.Lock()
-	udc.physicalChunkData = nil
-	udc.recoveryComplete = true
-	udc.mu.Unlock()
-
-	// Update the download and signal completion of this chunk.
-	udc.download.mu.Lock()
-	defer udc.download.mu.Unlock()
-	udc.download.chunksRemaining--
-	if udc.download.chunksRemaining == 0 {
-		// Download is complete, send out a notification.
-		udc.download.markComplete()
-		return err
-	}
+	// finalize the chunk.
+	udc.managedFinalizeRecovery()
 	return nil
 }
 

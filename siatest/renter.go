@@ -3,6 +3,7 @@ package siatest
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"time"
@@ -26,6 +27,12 @@ var (
 // DownloadToDisk downloads a previously uploaded file. The file will be downloaded
 // to a random location and returned as a LocalFile object.
 func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (modules.DownloadID, *LocalFile, error) {
+	return tn.DownloadToDiskWithDiskFetch(rf, async, true)
+}
+
+// DownloadToDiskWithDiskFetch downloads a previously uploaded file. The file
+// will be downloaded to a random location and returned as a LocalFile object.
+func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disableLocalFetch bool) (modules.DownloadID, *LocalFile, error) {
 	fi, err := tn.File(rf)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
@@ -33,7 +40,7 @@ func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (modules.Download
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	uid, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async)
+	uid, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async, disableLocalFetch)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to download file")
 	}
@@ -71,7 +78,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	uid, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async)
+	uid, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async, true)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to download file")
 	}
@@ -111,13 +118,22 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 
 // DownloadByStream downloads a file and returns its contents as a slice of bytes.
 func (tn *TestNode) DownloadByStream(rf *RemoteFile) (uid modules.DownloadID, data []byte, err error) {
+	return tn.DownloadByStreamWithDiskFetch(rf, true)
+}
+
+// DownloadByStreamWithDiskFetch downloads a file and returns its contents as a
+// slice of bytes.
+func (tn *TestNode) DownloadByStreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (uid modules.DownloadID, data []byte, err error) {
 	fi, err := tn.File(rf)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
-	uid, data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize)
+	uid, data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize, disableLocalFetch)
 	if err == nil && rf.Checksum() != crypto.HashBytes(data) {
 		err = fmt.Errorf("downloaded bytes don't match requested data (len %v)", len(data))
+	}
+	if err != nil {
+		return
 	}
 	// Make sure the download is in the history.
 	_, err = tn.RenterDownloadInfoGet(uid)
@@ -147,7 +163,12 @@ func (tn *TestNode) SetFileRepairPath(rf *RemoteFile, lf *LocalFile) error {
 
 // Stream uses the streaming endpoint to download a file.
 func (tn *TestNode) Stream(rf *RemoteFile) (data []byte, err error) {
-	data, err = tn.RenterStreamGet(rf.siaPath)
+	return tn.StreamWithDiskFetch(rf, true)
+}
+
+// StreamWithDiskFetch uses the streaming endpoint to download a file.
+func (tn *TestNode) StreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (data []byte, err error) {
+	data, err = tn.RenterStreamGet(rf.siaPath, disableLocalFetch)
 	if err == nil && rf.checksum != crypto.HashBytes(data) {
 		err = errors.New("downloaded bytes don't match requested data")
 	}
@@ -158,7 +179,7 @@ func (tn *TestNode) Stream(rf *RemoteFile) (data []byte, err error) {
 // range [from;to]. A local file can be provided optionally to implicitly check
 // the checksum of the downloaded data.
 func (tn *TestNode) StreamPartial(rf *RemoteFile, lf *LocalFile, from, to uint64) (data []byte, err error) {
-	data, err = tn.RenterStreamPartialGet(rf.siaPath, from, to)
+	data, err = tn.RenterStreamPartialGet(rf.siaPath, from, to, true)
 	if err != nil {
 		return
 	}
@@ -258,16 +279,38 @@ func (tn *TestNode) Upload(lf *LocalFile, siapath modules.SiaPath, dataPieces, p
 
 // UploadDirectory uses the node to upload a directory
 func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
-	// Upload Directory
-	siapath := tn.SiaPath(ld.path)
-	err := tn.RenterDirCreatePost(siapath)
+	// Check for edge cases.
+	if ld == nil {
+		return nil, errors.New("cannot upload a nil localdir")
+	}
+	stat, err := os.Stat(ld.path)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to upload directory")
+		return nil, errors.AddContext(err, "unable to stat local dir path")
+	}
+	if !stat.IsDir() {
+		return nil, errors.AddContext(err, "cannot upload a directory if it's a file")
+	}
+
+	// Walk through the directory and create any dirs.
+	err = filepath.Walk(ld.path, func(path string, info os.FileInfo, err error) error {
+		// Upload the directory if it is a directory.
+		if info.IsDir() {
+			createErr := tn.RenterDirCreatePost(tn.SiaPath(path))
+			return errors.AddContext(createErr, "unable to upload a directory")
+		}
+
+		// Upload the file because it's a file.
+		siapath := tn.SiaPath(path)
+		uploadErr := tn.RenterUploadDefaultPost(path, siapath)
+		return errors.AddContext(uploadErr, "unable to upload a file")
+	})
+	if err != nil {
+		return nil, errors.AddContext(err, "ran into issues during filepath.Walk")
 	}
 
 	// Create remote directory object
 	rd := &RemoteDir{
-		siapath: siapath,
+		siapath: tn.SiaPath(ld.path),
 	}
 	return rd, nil
 }
@@ -275,7 +318,11 @@ func (tn *TestNode) UploadDirectory(ld *LocalDir) (*RemoteDir, error) {
 // UploadNewDirectory uses the node to create and upload a directory with a
 // random name
 func (tn *TestNode) UploadNewDirectory() (*RemoteDir, error) {
-	return tn.UploadDirectory(tn.NewLocalDir())
+	ld, err := tn.NewLocalDir()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new directory for uploading")
+	}
+	return tn.UploadDirectory(ld)
 }
 
 // UploadNewFile initiates the upload of a filesize bytes large file with the option to overwrite if exists.
@@ -326,7 +373,7 @@ func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
 		dirs = append(dirs, d)
 
 		// Get the dir info.
-		rd, err := tn.RenterGetDir(d)
+		rd, err := tn.RenterDirGet(d)
 		if err != nil {
 			return nil, err
 		}
@@ -442,6 +489,40 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 	return nil
 }
 
+// WaitForFileAvailable waits for a file to become available on the Sia network
+// (redundancy of 1).
+func (tn *TestNode) WaitForFileAvailable(rf *RemoteFile) error {
+	// Check if file is tracked by renter at all
+	if _, err := tn.File(rf); err != nil {
+		return ErrFileNotTracked
+	}
+	// Wait until the file is viewed as available by the renter
+	err := Retry(1000, 100*time.Millisecond, func() error {
+		file, err := tn.File(rf)
+		if err != nil {
+			return ErrFileNotTracked
+		}
+		if !file.Available {
+			return fmt.Errorf("file is not available yet, redundancy is %v", file.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		rc, err2 := tn.RenterContractsGet()
+		if err2 != nil {
+			return errors.Compose(err, err2)
+		}
+		goodHosts := 0
+		for _, contract := range rc.Contracts {
+			if contract.GoodForUpload {
+				goodHosts++
+			}
+		}
+		return errors.Compose(err, fmt.Errorf("%v available hosts", goodHosts))
+	}
+	return nil
+}
+
 // WaitForDecreasingRedundancy waits until the redundancy decreases to a
 // certain point.
 func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float64) error {
@@ -467,7 +548,7 @@ func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float
 func (tn *TestNode) WaitForStuckChunksToBubble() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterGetDir(modules.RootSiaPath())
+		rd, err := tn.RenterDirGet(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -483,7 +564,7 @@ func (tn *TestNode) WaitForStuckChunksToBubble() error {
 func (tn *TestNode) WaitForStuckChunksToRepair() error {
 	// Wait until the root directory no long reports no stuck chunks
 	return build.Retry(1000, 100*time.Millisecond, func() error {
-		rd, err := tn.RenterGetDir(modules.RootSiaPath())
+		rd, err := tn.RenterDirGet(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}

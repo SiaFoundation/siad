@@ -4,6 +4,8 @@ import (
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/monitor"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
@@ -48,5 +50,8 @@ func (g *Gateway) staticDial(addr modules.NetAddress) (net.Conn, error) {
 		return nil, err
 	}
 	conn.SetDeadline(time.Now().Add(connStdDeadline))
+
+	// Monitor the conn bandwidth
+	conn = connmonitor.NewMonitoredConn(conn, g.m)
 	return conn, nil
 }

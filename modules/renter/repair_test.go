@@ -7,13 +7,16 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
@@ -65,6 +68,16 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)
 	}
 	return nil
+}
+
+// openAndUpdateDir is a helper method for updating a siadir metadata
+func (rt *renterTester) openAndUpdateDir(siapath modules.SiaPath, metadata siadir.Metadata) error {
+	siadir, err := rt.renter.staticFileSystem.OpenSiaDir(siapath)
+	if err != nil {
+		return err
+	}
+	defer siadir.Close()
+	return siadir.UpdateMetadata(metadata)
 }
 
 // TestBubbleHealth tests to make sure that the health of the most in need file
@@ -135,10 +148,10 @@ func TestBubbleHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_1); err != nil {
+	if err := rt.renter.CreateDir(subDir1_1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_2); err != nil {
+	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,21 +167,22 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: checkTime,
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(modules.RootSiaPath(), metadataUpdate); err != nil {
+	// Create OpenAndUpdateDir helper method
+	if err := rt.openAndUpdateDir(modules.RootSiaPath(), metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	siaPath = subDir1
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	siaPath = subDir1_1
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 	// Set health of subDir1/subDir2 to be the worst and set the
 	siaPath = subDir1_2
 	metadataUpdate.Health = 4
-	if err := rt.renter.staticDirSet.UpdateMetadata(siaPath, metadataUpdate); err != nil {
+	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -215,7 +229,11 @@ func TestBubbleHealth(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +244,7 @@ func TestBubbleHealth(t *testing.T) {
 	//
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{f})
+	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FileNode{f})
 	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
@@ -296,7 +314,7 @@ func TestBubbleHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_2_1); err != nil {
+	if err := rt.renter.CreateDir(subDir1_2_1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Reset metadataUpdate with expected values
@@ -306,7 +324,7 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: time.Now(),
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(subDir1_2_1, expectedHealth); err != nil {
+	if err := rt.openAndUpdateDir(subDir1_2_1, expectedHealth); err != nil {
 		t.Fatal(err)
 	}
 	rt.renter.managedBubbleMetadata(siaPath)
@@ -358,17 +376,17 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1); err != nil {
+	if err := rt.renter.CreateDir(subDir1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir2); err != nil {
+	if err := rt.renter.CreateDir(subDir2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_2); err != nil {
+	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -379,7 +397,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		StuckHealth:         0,
 		LastHealthCheckTime: oldestCheckTime,
 	}
-	if err := rt.renter.staticDirSet.UpdateMetadata(subDir1_2, oldestHealthCheckUpdate); err != nil {
+	if err := rt.openAndUpdateDir(subDir1_2, oldestHealthCheckUpdate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -436,14 +454,14 @@ func TestNumFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1); err != nil {
+	if err := rt.renter.CreateDir(subDir1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_2); err != nil {
+	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Add files
@@ -453,7 +471,7 @@ func TestNumFiles(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +479,7 @@ func TestNumFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +488,7 @@ func TestNumFiles(t *testing.T) {
 	// of files and aggregate number of files
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -517,14 +535,14 @@ func TestDirectorySize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1); err != nil {
+	if err := rt.renter.CreateDir(subDir1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_2); err != nil {
+	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Add files
@@ -535,7 +553,7 @@ func TestDirectorySize(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +561,7 @@ func TestDirectorySize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 2*fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,7 +569,7 @@ func TestDirectorySize(t *testing.T) {
 	// Call bubble on lowest lever and confirm top level reports accurate size
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -595,14 +613,14 @@ func TestDirectoryModTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1); err != nil {
+	if err := rt.renter.CreateDir(subDir1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_2); err != nil {
+	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	// Add files
@@ -613,7 +631,7 @@ func TestDirectoryModTime(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
-	_, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +639,11 @@ func TestDirectoryModTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +652,7 @@ func TestDirectoryModTime(t *testing.T) {
 	// update time
 	rt.renter.managedBubbleMetadata(subDir1_2)
 	build.Retry(100, 100*time.Millisecond, func() error {
-		dirInfo, err := rt.renter.staticDirSet.DirInfo(modules.RootSiaPath())
+		dirInfo, err := rt.renter.staticFileSystem.DirInfo(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
@@ -661,10 +683,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 
 	// Create a test directory with sub folders
 	//
-	// root/
-	// root/SubDir1/
-	// root/SubDir1/SubDir2/
-	// root/SubDir2/
+	// root/home/siafiles/
+	// root/home/siafiles/SubDir1/
+	// root/home/siafiles/SubDir1/SubDir2/
+	// root/home/siafiles/SubDir2/
 	subDir1, err := modules.NewSiaPath("SubDir1")
 	if err != nil {
 		t.Fatal(err)
@@ -673,22 +695,22 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1); err != nil {
+	if err := rt.renter.CreateDir(subDir1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir2); err != nil {
+	if err := rt.renter.CreateDir(subDir2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 	subDir1_2, err := subDir1.Join(subDir2.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rt.renter.CreateDir(subDir1_2); err != nil {
+	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
 
-	// Add a file to root and SubDir1/SubDir2 and mark the first chunk as stuck
-	// in each file
+	// Add a file to siafiles and SubDir1/SubDir2 and mark the first chunk as
+	// stuck in each file
 	//
 	// This will test the edge case of continuing to find stuck files when a
 	// directory has no files only directories
@@ -698,7 +720,11 @@ func TestRandomStuckDirectory(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -706,14 +732,19 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.Close(); err != nil {
+	if err = f.SetStuck(uint64(0), true); err != nil {
 		t.Fatal(err)
 	}
+	f.Close()
 	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err = rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err = rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -725,9 +756,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.Close(); err != nil {
+	if err = f.SetStuck(uint64(0), true); err != nil {
 		t.Fatal(err)
 	}
+	f.Close()
 
 	// Bubble directory information so NumStuckChunks is updated, there should
 	// be at least 3 stuck chunks because of the 3 we manually marked as stuck,
@@ -735,7 +767,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	// to ensure that the root directory reflects at least the 3 we marked as
 	// stuck
 	rt.renter.managedBubbleMetadata(subDir1_2)
-	build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Get Root Directory Metadata
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
@@ -753,7 +785,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 
 	// Find a stuck directory randomly, it should never find root/SubDir1 or
 	// root/SubDir2 and should find root/SubDir1/SubDir2 more than root
-	var count1_2, countRoot int
+	var count1_2, countRoot, countSiaFiles int
 	for i := 0; i < 100; i++ {
 		dir, err := rt.renter.managedStuckDirectory()
 		if err != nil {
@@ -765,6 +797,10 @@ func TestRandomStuckDirectory(t *testing.T) {
 		}
 		if dir.Equals(modules.RootSiaPath()) {
 			countRoot++
+			continue
+		}
+		if dir.Equals(modules.UserSiaPath()) {
+			countSiaFiles++
 			continue
 		}
 		t.Fatal("Unstuck dir found", dir.String())
@@ -802,7 +838,7 @@ func TestRandomStuckFile(t *testing.T) {
 	}
 	defer rt.Close()
 
-	// Create 3 files
+	// Create 3 files at root
 	//
 	// File 1 will have all chunks stuck
 	file1, err := rt.renter.newRenterTestFile()
@@ -813,7 +849,7 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath1 := rt.renter.staticFileSet.SiaPath(file1)
+	siaPath1 := rt.renter.staticFileSystem.FileSiaPath(file1)
 	err = rt.renter.SetFileStuck(siaPath1, true)
 	if err != nil {
 		t.Fatal(err)
@@ -824,7 +860,7 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath2 := rt.renter.staticFileSet.SiaPath(file2)
+	siaPath2 := rt.renter.staticFileSystem.FileSiaPath(file2)
 	err = file2.SetStuck(0, true)
 	if err != nil {
 		t.Fatal(err)
@@ -835,20 +871,113 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	siaPath3 := rt.renter.staticFileSet.SiaPath(file3)
+	siaPath3 := rt.renter.staticFileSystem.FileSiaPath(file3)
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+	err = rt.renter.managedBubbleMetadata(modules.UserSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	i := 0
+	build.Retry(100, 100*time.Millisecond, func() error {
+		i++
+		if i%10 == 0 {
+			err = rt.renter.managedBubbleMetadata(modules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+		}
+		// Get Root Directory Metadata
+		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		// Check Aggregate number of stuck chunks
+		if metadata.AggregateNumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFindRandomFile(t, rt.renter, modules.RootSiaPath(), siaPath1, siaPath2, siaPath3)
 
+	// Create a directory
+	dir, err := modules.NewSiaPath("Dir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.renter.CreateDir(dir, modules.DefaultDirPerm); err != nil {
+		t.Fatal(err)
+	}
+
+	// Move siafiles to dir
+	newSiaPath1, err := dir.Join(siaPath1.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath1, newSiaPath1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSiaPath2, err := dir.Join(siaPath2.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath2, newSiaPath2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSiaPath3, err := dir.Join(siaPath3.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.RenameFile(siaPath3, newSiaPath3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Since we disabled the health loop for this test, call it manually to
+	// update the directory metadata
+	err = rt.renter.managedBubbleMetadata(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i = 0
+	build.Retry(100, 100*time.Millisecond, func() error {
+		i++
+		if i%10 == 0 {
+			err = rt.renter.managedBubbleMetadata(dir)
+			if err != nil {
+				return err
+			}
+		}
+		// Get Directory Metadata
+		metadata, err := rt.renter.managedDirectoryMetadata(dir)
+		if err != nil {
+			return err
+		}
+		// Check Aggregate number of stuck chunks
+		if metadata.AggregateNumStuckChunks == 0 {
+			return errors.New("no stuck chunks found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFindRandomFile(t, rt.renter, dir, newSiaPath1, newSiaPath2, newSiaPath3)
+}
+
+// checkFindRandomFile is a helper function that checks the output from
+// managedStuckFile in a loop
+func checkFindRandomFile(t *testing.T, r *Renter, dir, siaPath1, siaPath2, siaPath3 modules.SiaPath) {
 	// Find a stuck file randomly, it should never find file 3 and should find
 	// file 1 more than file 2.
 	var count1, count2 int
 	for i := 0; i < 100; i++ {
-		siaPath, err := rt.renter.managedStuckFile(modules.RootSiaPath())
+		siaPath, err := r.managedStuckFile(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -907,13 +1036,17 @@ func TestCalculateFileMetadata(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
-	sf, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Grab initial metadata values
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*siafile.SiaFileSetEntry{sf})
+	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FileNode{sf})
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {
@@ -970,7 +1103,7 @@ func TestCreateMissingSiaDir(t *testing.T) {
 	defer rt.Close()
 
 	// Confirm the siadir file is on disk
-	siaDirPath := modules.RootSiaPath().SiaDirMetadataSysPath(rt.renter.staticFilesDir)
+	siaDirPath := modules.RootSiaPath().SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root())
 	_, err = os.Stat(siaDirPath)
 	if err != nil {
 		t.Fatal(err)
@@ -1023,7 +1156,11 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1064,5 +1201,65 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	}
 	if rt.renter.uploadHeap.managedLen() != 1 {
 		t.Fatal("Expected uploadHeap to be of length 1 got", rt.renter.uploadHeap.managedLen())
+	}
+
+	// Pop chunk, chunk should be marked as fileRecentlySuccessful true
+	chunk := rt.renter.uploadHeap.managedPop()
+	if !chunk.fileRecentlySuccessful {
+		t.Fatal("chunk not marked as fileRecentlySuccessful true")
+	}
+}
+
+// TestRandomStuckFileRegression tests an edge case where no siapath was being
+// returned from managedStuckFile.
+func TestRandomStuckFileRegression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create 1 file at root with all chunks stuck
+	file, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath := rt.renter.staticFileSystem.FileSiaPath(file)
+	err = rt.renter.SetFileStuck(siaPath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the root directories metadata to have a large number of aggregate
+	// stuck chunks. Since there is only 1 stuck chunk this was causing the
+	// likelihood of the stuck file being chosen to be very low.
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, err := rootDir.Metadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	md.AggregateNumStuckChunks = 50000
+	md.NumStuckChunks = 1
+	md.NumFiles = 1
+	err = rootDir.UpdateMetadata(md)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stuckSiaPath, err := rt.renter.managedStuckFile(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stuckSiaPath.Equals(siaPath) {
+		t.Fatalf("Stuck siapath should have been the one file in the directory, expected %v got %v", siaPath, stuckSiaPath)
 	}
 }

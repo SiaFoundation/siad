@@ -7,8 +7,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
@@ -43,7 +44,11 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +149,11 @@ func TestBuildChunkHeap(t *testing.T) {
 		SiaPath:     modules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	f1, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f1, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,6 +174,41 @@ func TestBuildChunkHeap(t *testing.T) {
 	}
 }
 
+// addChunksOfDifferentHealth is a helper function for TestUploadHeap to add
+// numChunks number of chunks that each have different healths to the uploadHeap
+func addChunksOfDifferentHealth(r *Renter, numChunks int, stuck, fileRecentlySuccessful, priority bool) error {
+	var UID siafile.SiafileUID
+	if priority {
+		UID = "priority"
+	} else if fileRecentlySuccessful {
+		UID = "fileRecentlySuccessful"
+	} else if stuck {
+		UID = "stuck"
+	} else {
+		UID = "unstuck"
+	}
+
+	// Add numChunks number of chunks to the upload heap. Set the id index and
+	// health to the value of health. Since health of 0 is full health, start i
+	// at 1
+	for i := 1; i <= numChunks; i++ {
+		chunk := &unfinishedUploadChunk{
+			id: uploadChunkID{
+				fileUID: UID,
+				index:   uint64(i),
+			},
+			stuck:                  stuck,
+			fileRecentlySuccessful: fileRecentlySuccessful,
+			priority:               priority,
+			health:                 float64(i),
+		}
+		if !r.uploadHeap.managedPush(chunk) {
+			return fmt.Errorf("unable to push chunk: %v", chunk)
+		}
+	}
+	return nil
+}
+
 // TestUploadHeap probes the upload heap to make sure chunks are sorted
 // correctly
 func TestUploadHeap(t *testing.T) {
@@ -183,65 +227,71 @@ func TestUploadHeap(t *testing.T) {
 	// Add chunks to heap. Chunks are prioritize by stuck status first and then
 	// by piecesComplete/piecesNeeded
 	//
-	// Adding 2 stuck chunks then 2 unstuck chunks, each set has a chunk with 1
-	// piece completed and 2 pieces completed. If the heap doesn't sort itself
-	// then this would put an unstuck chunk with the highest completion at the
-	// top of the heap which would be wrong
-	chunk := &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "stuck",
-			index:   1,
-		},
-		stuck:           true,
-		piecesCompleted: 1,
-		piecesNeeded:    1,
+	// Add 2 chunks of each type to confirm the type and the health is
+	// prioritized properly
+	err = addChunksOfDifferentHealth(rt.renter, 2, true, false, false)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, true, false)
+	if err != nil {
+		t.Fatal(err)
 	}
-	chunk = &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "stuck",
-			index:   2,
-		},
-		stuck:           true,
-		piecesCompleted: 2,
-		piecesNeeded:    1,
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, true)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
-	}
-	chunk = &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "unstuck",
-			index:   1,
-		},
-		stuck:           true,
-		piecesCompleted: 1,
-		piecesNeeded:    1,
-	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
-	}
-	chunk = &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "unstuck",
-			index:   2,
-		},
-		stuck:           true,
-		piecesCompleted: 2,
-		piecesNeeded:    1,
-	}
-	if !rt.renter.uploadHeap.managedPush(chunk) {
-		t.Fatal("unable to push chunk", chunk)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, false)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	chunk = rt.renter.uploadHeap.managedPop()
-	if !chunk.stuck {
-		t.Fatal("top chunk should be stuck")
+	// There should be 8 chunks in the heap
+	if rt.renter.uploadHeap.managedLen() != 8 {
+		t.Fatalf("Expected %v chunks in heap found %v",
+			8, rt.renter.uploadHeap.managedLen())
 	}
-	if chunk.piecesCompleted != 1 {
-		t.Fatal("top chunk should have the less amount of completed chunks")
+
+	// Check order of chunks
+	//  - First 2 chunks should be priority
+	//  - Second 2 chunks should be fileRecentlyRepair
+	//  - Third 2 chunks should be stuck
+	//  - Last 2 chunks should be unstuck
+	chunk1 := rt.renter.uploadHeap.managedPop()
+	chunk2 := rt.renter.uploadHeap.managedPop()
+	if !chunk1.priority || !chunk2.priority {
+		t.Fatalf("Expected chunks to be priority, got priority %v and %v",
+			chunk1.priority, chunk2.priority)
+	}
+	if chunk1.health < chunk2.health {
+		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
+			chunk1.health, chunk2.health)
+	}
+	chunk1 = rt.renter.uploadHeap.managedPop()
+	chunk2 = rt.renter.uploadHeap.managedPop()
+	if !chunk1.fileRecentlySuccessful || !chunk2.fileRecentlySuccessful {
+		t.Fatalf("Expected chunks to be fileRecentlySuccessful, got fileRecentlySuccessful %v and %v",
+			chunk1.fileRecentlySuccessful, chunk2.fileRecentlySuccessful)
+	}
+	if chunk1.health < chunk2.health {
+		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
+			chunk1.health, chunk2.health)
+	}
+	chunk1 = rt.renter.uploadHeap.managedPop()
+	chunk2 = rt.renter.uploadHeap.managedPop()
+	if !chunk1.stuck || !chunk2.stuck {
+		t.Fatalf("Expected chunks to be stuck, got stuck %v and %v",
+			chunk1.stuck, chunk2.stuck)
+	}
+	if chunk1.health < chunk2.health {
+		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
+			chunk1.health, chunk2.health)
+	}
+	chunk1 = rt.renter.uploadHeap.managedPop()
+	chunk2 = rt.renter.uploadHeap.managedPop()
+	if chunk1.health < chunk2.health {
+		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
+			chunk1.health, chunk2.health)
 	}
 }
 
@@ -281,7 +331,11 @@ func TestAddChunksToHeap(t *testing.T) {
 			t.Fatal(err)
 		}
 		up.SiaPath = siaPath
-		f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -292,8 +346,8 @@ func TestAddChunksToHeap(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Make sure directories are created
-		err = rt.renter.CreateDir(dirSiaPath)
-		if err != nil && err != siadir.ErrPathOverload {
+		err = rt.renter.CreateDir(dirSiaPath, modules.DefaultDirPerm)
+		if err != nil && err != filesystem.ErrExists {
 			t.Fatal(err)
 		}
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
@@ -368,7 +422,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	f, err := rt.renter.staticFileSet.NewSiaFile(up, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, 0777)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +459,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	rt.renter.directoryHeap.managedReset()
 
 	// Add chunks from file to uploadHeap
-	rt.renter.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.callBuildAndPushChunks([]*filesystem.FileNode{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// Upload heap should now have NumChunks chunks and directory heap should still be empty
 	if rt.renter.uploadHeap.managedLen() != int(f.NumChunks()) {
@@ -437,7 +495,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	uploadHeapLen := rt.renter.uploadHeap.managedLen()
 
 	// Try and add chunks to upload heap again
-	rt.renter.callBuildAndPushChunks([]*siafile.SiaFileSetEntry{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
+	rt.renter.callBuildAndPushChunks([]*filesystem.FileNode{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 	// No chunks should have been added to the upload heap
 	if rt.renter.uploadHeap.managedLen() != uploadHeapLen {
@@ -487,11 +545,6 @@ func TestUploadHeapMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := uint64(0); i < numHeapChunks; i++ {
-		// Create copy of siafile entry to be closed by reset
-		copy, err := sf.CopyEntry()
-		if err != nil {
-			t.Fatal(err)
-		}
 		// Create minimum chunk
 		stuck := i%2 == 0
 		chunk := &unfinishedUploadChunk{
@@ -499,7 +552,7 @@ func TestUploadHeapMaps(t *testing.T) {
 				fileUID: siafile.SiafileUID(fmt.Sprintf("chunk - %v", i)),
 				index:   i,
 			},
-			fileEntry:       copy,
+			fileEntry:       sf.Copy(),
 			stuck:           stuck,
 			piecesCompleted: 1,
 			piecesNeeded:    1,
@@ -523,9 +576,7 @@ func TestUploadHeapMaps(t *testing.T) {
 	}
 
 	// Close original siafile entry
-	if err := sf.Close(); err != nil {
-		t.Fatal(err)
-	}
+	sf.Close()
 
 	// Confirm length of maps
 	if len(rt.renter.uploadHeap.unstuckHeapChunks) != int(numHeapChunks/2) {
@@ -576,4 +627,28 @@ func TestUploadHeapMaps(t *testing.T) {
 	if remainingChunks != 0 {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", 0, remainingChunks)
 	}
+}
+
+// TestUploadHeapPauseChan makes sure that sequential calls to pause and resume
+// won't cause panics for closing a closed channel
+func TestUploadHeapPauseChan(t *testing.T) {
+	// Initial UploadHeap with the pauseChan initialized such that the uploads
+	// and repairs are not paused
+	uh := uploadHeap{
+		pauseChan: make(chan struct{}),
+	}
+	close(uh.pauseChan)
+	if uh.managedIsPaused() {
+		t.Error("Repairs and Uploads should not be paused")
+	}
+
+	// Call resume on an initialized heap
+	uh.managedResume()
+
+	// Call Pause twice in a row
+	uh.managedPause(DefaultPauseDuration)
+	uh.managedPause(DefaultPauseDuration)
+	// Call Resume twice in a row
+	uh.managedResume()
+	uh.managedResume()
 }

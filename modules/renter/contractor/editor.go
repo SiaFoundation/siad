@@ -14,9 +14,6 @@ import (
 
 var errInvalidEditor = errors.New("editor has been invalidated because its contract is being renewed")
 
-// the contractor will cap host's MaxCollateral setting to this value
-var maxUploadCollateral = types.SiacoinPrecision.Mul64(1e3).Div(modules.BlockBytesPerMonthTerabyte) // 1k SC / TB / Month
-
 // An Editor modifies a Contract by communicating with a host. It uses the
 // contract revision protocol to send modification requests to the host.
 // Editors are the means by which the renter uploads data to hosts.
@@ -36,6 +33,10 @@ type Editor interface {
 
 	// Close terminates the connection to the host.
 	Close() error
+
+	// HostSettings returns the host settings that are currently active for the
+	// underlying session.
+	HostSettings() modules.HostExternalSettings
 }
 
 // A hostEditor modifies a Contract by calling the revise RPC on a host. It
@@ -97,6 +98,12 @@ func (he *hostEditor) Close() error {
 	return he.editor.Close()
 }
 
+// HostSettings returns the host settings that are currently active for the
+// underlying session.
+func (he *hostEditor) HostSettings() modules.HostExternalSettings {
+	return he.editor.HostSettings()
+}
+
 // Upload negotiates a revision that adds a sector to a file contract.
 func (he *hostEditor) Upload(data []byte) (_ crypto.Hash, err error) {
 	he.mu.Lock()
@@ -148,11 +155,11 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	// sanity checks to see that the host is not swindling us.
 	contract, haveContract := c.staticContracts.View(id)
 	if !haveContract {
-		return nil, errors.New("no record of that contract")
+		return nil, errors.New("contract was not found in the renter's contract set")
 	}
 	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
-		return nil, errors.AddContext(err, "error geting host from hostdb:")
+		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	} else if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {

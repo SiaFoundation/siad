@@ -21,14 +21,14 @@ Common tasks
 * `siac consensus` view block height
 
 Wallet:
-* `siac wallet init [-p]` initilize a wallet
+* `siac wallet init [-p]` initialize a wallet
 * `siac wallet unlock` unlock a wallet
 * `siac wallet balance` retrieve wallet balance
 * `siac wallet address` get a wallet address
 * `siac wallet send [amount] [dest]` sends siacoin to an address
 
 Renter:
-* `siac renter list` list all renter files
+* `siac renter ls` list all renter files
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
 
@@ -101,19 +101,22 @@ seed into itself. This can be used for wallet recovery and merging.
 
 is used to configure hosting.
 
-In version `1.2.2`, sia hosting is configured as follows:
+In version `1.4.3.0`, sia hosting is configured as follows:
 
-| Setting                  | Value                                           |
-| -------------------------|-------------------------------------------------|
-| acceptingcontracts       | Yes or No                                       |
-| maxduration              | in weeks, at least 12                           |
-| collateral               | in SC / TB / Month, 10-1000                     |
-| collateralbudget         | in SC                                           |
-| maxcollateral            | in SC, max per contract                         |
-| mincontractprice         | minimum price in SC per contract                |
-| mindownloadbandwidthprice| in SC / TB                                      |
-| minstorageprice          | in SC / TB                                      |
-| minuploadbandwidthprice  | in SC / TB                                      |
+| Setting                    | Value                                           |
+| ---------------------------|-------------------------------------------------|
+| acceptingcontracts         | Yes or No                                       |
+| collateral                 | in SC / TB / Month, 10-1000                     |
+| collateralbudget           | in SC                                           |
+| ephemeralaccountexpiry     | in seconds                                      |
+| maxcollateral              | in SC, max per contract                         |
+| maxduration                | in weeks, at least 12                           |
+| maxephemeralaccountbalance | in SC                                           |
+| maxephemeralaccountrisk    | in SC                                           |
+| mincontractprice           | minimum price in SC per contract                |
+| mindownloadbandwidthprice  | in SC / TB                                      |
+| minstorageprice            | in SC / TB                                      |
+| minuploadbandwidthprice    | in SC / TB                                      |
 
 You can call this many times to configure you host before
 announcing. Alternatively, you can manually adjust these parameters
@@ -148,7 +151,7 @@ nickname is what you will use to refer to that file in the
 network. For example, it is common to have the nickname be the same as
 the filename.
 
-* `siac renter list` displays a list of the your uploaded files
+* `siac renter ls` displays a list of the your uploaded files
 currently on the sia network by nickname, and their filesizes.
 
 * `siac renter download [nickname] [destination]` downloads a file

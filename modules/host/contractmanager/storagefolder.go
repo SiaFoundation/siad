@@ -20,24 +20,15 @@ var (
 	// that does not have the correct index.
 	errBadStorageFolderIndex = errors.New("no storage folder exists at that index")
 
-	// errIncompleteOffload is returned when the host is tasked with offloading
-	// sectors from a storage folder but is unable to offload the requested
-	// number - but is able to offload some of them.
-	errIncompleteOffload = errors.New("could not successfully offload specified number of sectors from storage folder")
+	minFolderSize = MinimumSectorsPerStorageFolder * modules.SectorSize
+	// ErrSmallStorageFolder is returned if a new storage folder is not large
+	// enough to meet the requirements for the minimum storage folder size.
+	ErrSmallStorageFolder = fmt.Errorf("minimum allowed size for a storage folder is %v (%v bytes)", modules.FilesizeUnits(minFolderSize), minFolderSize)
 
-	// errInsufficientRemainingStorageForRemoval is returned if the remaining
-	// storage folders do not have enough space remaining to support being
-	// removed.
-	errInsufficientRemainingStorageForRemoval = errors.New("not enough storage remaining to support removal of disk")
-
-	// errInsufficientRemainingStorageForShrink is returned if the remaining
-	// storage folders do not have enough space remaining to support being
-	// reduced in size.
-	errInsufficientRemainingStorageForShrink = errors.New("not enough storage remaining to support shrinking of disk")
-
+	maxFolderSize = MaximumSectorsPerStorageFolder * modules.SectorSize
 	// ErrLargeStorageFolder is returned if a new storage folder or a resized
 	// storage folder would exceed the maximum allowed size.
-	ErrLargeStorageFolder = fmt.Errorf("maximum allowed size for a storage folder is %v bytes", MaximumSectorsPerStorageFolder*modules.SectorSize)
+	ErrLargeStorageFolder = fmt.Errorf("maximum allowed size for a storage folder is %v (%v bytes)", modules.FilesizeUnits(maxFolderSize), maxFolderSize)
 
 	// errMaxStorageFolders indicates that the limit on the number of allowed
 	// storage folders has been reached.
@@ -60,10 +51,6 @@ var (
 	// a path that is already in use by another storage folder. Only exact path
 	// matches will trigger the error.
 	ErrRepeatFolder = errors.New("selected path is already in use as a storage folder, please use 'resize'")
-
-	// ErrSmallStorageFolder is returned if a new storage folder is not large
-	// enough to meet the requirements for the minimum storage folder size.
-	ErrSmallStorageFolder = fmt.Errorf("minimum allowed size for a storage folder is %v bytes", MinimumSectorsPerStorageFolder*modules.SectorSize)
 
 	// errStorageFolderGranularity is returned if a call to AddStorageFolder
 	// tries to use a storage folder size that does not evenly fit into a

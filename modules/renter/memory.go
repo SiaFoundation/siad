@@ -24,10 +24,12 @@ import (
 // future requests for memory until the memory is returned. This allows large
 // requests to go through even if there is not enough base memory.
 //
-// The memoryManager counts how much memory has been returned to it since the
-// most recent call to runtime.GC(). If memory is returned that puts the memory
-// manager over the limit, the memory manager will call runtime.GC(). This helps
-// to keep the amount of system memory consumed by siad under control.
+// The memoryManager keeps track of how much memory has been returned since the
+// last manual call to runtime.GC(). After enough memory has been returned since
+// the previous manual call, the memoryManager will run a manual call to
+// runtime.GC() and follow that up with a call to debug.FreeOSMemory(). This has
+// been shown in production to significantly reduce the amount of RES that siad
+// consumes, without a significant hit to performance.
 type memoryManager struct {
 	available    uint64
 	base         uint64
@@ -109,10 +111,9 @@ func (mm *memoryManager) Return(amount uint64) {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
 
-	// Check if the garbage collector should be run now that memory has been
-	// released. If the garbage collector does not run soon, this released
-	// memory can build up and really increase the total amount of memory that
-	// the renter consumes.
+	// Check how much memory has been returned since the last call to
+	// runtime.GC(). If enough memory has been returned, call runtime.GC()
+	// manually and reset the counter.
 	mm.memSinceGC += amount
 	if mm.memSinceGC > defaultMemory {
 		runtime.GC()

@@ -5,7 +5,73 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/errors"
 )
+
+const (
+	// uploadGougingFractionDenom sets the gouging fraction to 1/4 based on the
+	// idea that the user should be able to hit at least some fraction of their
+	// desired upload volume using some fraction of hosts.
+	uploadGougingFractionDenom = 4
+)
+
+// checkUploadGouging looks at the current renter allowance and the active
+// settings for a host and determines whether an upload should be halted due to
+// price gouging.
+//
+// NOTE: Currently this function treats all uploads as being the stream upload
+// size and assumes that data is actually being appended to the host. As the
+// worker gains more modification actions on the host, this check can be split
+// into different checks that vary based on the operation being performed.
+func checkUploadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the base RPC price is too high.
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
+		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
+		return errors.New(errStr)
+	}
+	// Check whether the sector access price is too high.
+	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) < 0 {
+		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
+		return errors.New(errStr)
+	}
+	// Check whether the storage price is too high.
+	if !allowance.MaxStoragePrice.IsZero() && allowance.MaxStoragePrice.Cmp(hostSettings.StoragePrice) < 0 {
+		errStr := fmt.Sprintf("storage price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.StoragePrice, allowance.MaxStoragePrice)
+		return errors.New(errStr)
+	}
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(hostSettings.UploadBandwidthPrice) < 0 {
+		errStr := fmt.Sprintf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.UploadBandwidthPrice, allowance.MaxUploadBandwidthPrice)
+		return errors.New(errStr)
+	}
+
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// Check that the combined prices make sense in the context of the overall
+	// allowance. The general idea is to compute the total cost of performing
+	// the same action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached. The fraction
+	// is determined on a case-by-case basis. If the host is too expensive to
+	// even satisfy a fraction of the user's total desired resource consumption,
+	// the action will be blocked for price gouging.
+	singleUploadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamUploadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.StreamUploadSize))
+	fullCostPerByte := singleUploadCost.Div64(modules.StreamUploadSize)
+	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
+	reducedCost := allowanceStorageCost.Div64(uploadGougingFractionDenom)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined upload pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		return errors.New(errStr)
+	}
+
+	return nil
+}
 
 // managedDropChunk will remove a worker from the responsibility of tracking a chunk.
 //
@@ -72,7 +138,8 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) {
 	w.staticWake()
 }
 
-// managedPerformUploadChunkJob will perform some upload work.
+// managedPerformUploadChunkJob will perform some upload work and return 'false'
+// if there is no work to be done.
 func (w *worker) managedPerformUploadChunkJob() bool {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
@@ -102,7 +169,6 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	if uc == nil {
 		return true
 	}
-
 	// Open an editing connection to the host.
 	e, err := w.renter.hostContractor.Editor(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
@@ -112,6 +178,17 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		return true
 	}
 	defer e.Close()
+
+	// Before performing the upload, check for price gouging.
+	allowance := w.renter.hostContractor.Allowance()
+	hostSettings := e.HostSettings()
+	err = checkUploadGouging(allowance, hostSettings)
+	if err != nil {
+		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
+		w.renter.log.Debugln(failureErr)
+		w.managedUploadFailed(uc, pieceIndex, failureErr)
+		return true
+	}
 
 	// Perform the upload, and update the failure stats based on the success of
 	// the upload attempt.
@@ -223,7 +300,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
-	if w.renter.g.Online() {
+	if w.renter.g.Online() && !errors.Contains(failureErr, siafile.ErrDeleted) {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr

@@ -1,7 +1,6 @@
 package host
 
 import (
-	"errors"
 	"net"
 	"time"
 
@@ -9,12 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-)
-
-var (
-	// errRenewDoesNotExtend is returned if a file contract renewal is
-	// presented which does not extend the existing file contract.
-	errRenewDoesNotExtend = errors.New("file contract renewal does not extend the existing file contract")
 )
 
 // renewBaseCollateral returns the base collateral on the storage in the file
@@ -215,6 +208,16 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 // managedVerifyRenewedContract checks that the contract renewal matches the
 // previous contract and makes all of the appropriate payments.
 func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types.Transaction, renterPK crypto.PublicKey) error {
+	// Register the HostInsufficientCollateral alert if necessary.
+	var registerHostInsufficientCollateral bool
+	defer func() {
+		if registerHostInsufficientCollateral {
+			h.staticAlerter.RegisterAlert(modules.AlertIDHostInsufficientCollateral, AlertMSGHostInsufficientCollateral, "", modules.SeverityWarning)
+		} else {
+			h.staticAlerter.UnregisterAlert(modules.AlertIDHostInsufficientCollateral)
+		}
+	}()
+
 	// Check that the transaction set is not empty.
 	if len(txnSet) < 1 {
 		return extendErr("zero-length transaction set: ", errEmptyObject)
@@ -278,8 +281,10 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	// Check that the host has enough room in the collateral budget to add this
 	// collateral.
 	if lockedStorageCollateral.Add(expectedCollateral).Cmp(internalSettings.CollateralBudget) > 0 {
+		registerHostInsufficientCollateral = true
 		return errCollateralBudgetExceeded
 	}
+
 	// Check that the missed proof outputs contain enough money, and that the
 	// void output contains enough money.
 	basePrice := renewBasePrice(so, externalSettings, fc)

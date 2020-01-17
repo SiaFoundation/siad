@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/pbkdf2"
@@ -52,7 +52,8 @@ func walletPasswordEncryptionKey(seed modules.Seed, salt walletSalt) (key crypto
 func verifyEncryption(key crypto.CipherKey, encrypted crypto.Ciphertext) error {
 	verification, err := key.DecryptBytes(encrypted)
 	if err != nil {
-		return modules.ErrBadEncryptionKey
+		contextErr := errors.AddContext(modules.ErrBadEncryptionKey, "failed to decrypt key")
+		return errors.Compose(err, contextErr)
 	}
 	if !bytes.Equal(verificationPlaintext, verification) {
 		return modules.ErrBadEncryptionKey
@@ -60,7 +61,8 @@ func verifyEncryption(key crypto.CipherKey, encrypted crypto.Ciphertext) error {
 	return nil
 }
 
-// checkMasterKey verifies that the masterKey is the key used to encrypt the wallet.
+// checkMasterKey verifies that the masterKey is the key used to encrypt the
+// wallet.
 func checkMasterKey(tx *bolt.Tx, masterKey crypto.CipherKey) error {
 	if masterKey == nil {
 		return modules.ErrBadEncryptionKey
@@ -145,15 +147,45 @@ func (w *Wallet) managedMasterKey(seed modules.Seed) (crypto.CipherKey, error) {
 // managedUnlock loads all of the encrypted file structures into wallet memory. Even
 // after loading, the structures are kept encrypted, but some data such as
 // addresses are decrypted so that the wallet knows what to track.
-func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
+func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) <-chan error {
+	errChan := make(chan error, 1)
+
+	// Blocking unlock
+	lastChange, err := w.managedBlockingUnlock(masterKey)
+	if err != nil {
+		errChan <- err
+		return errChan
+	}
+
+	// non-blocking unlock
+	go func() {
+		defer close(errChan)
+		if err := w.tg.Add(); err != nil {
+			errChan <- err
+			return
+		}
+		defer w.tg.Done()
+		if w.deps.Disrupt("DisableAsyncUnlock") {
+			return
+		}
+		err := w.managedAsyncUnlock(lastChange)
+		if err != nil {
+			errChan <- err
+		}
+	}()
+	return errChan
+}
+
+// managedBlockingUnlock handles the blocking part of hte managedUnlock method.
+func (w *Wallet) managedBlockingUnlock(masterKey crypto.CipherKey) (modules.ConsensusChangeID, error) {
 	w.mu.RLock()
 	unlocked := w.unlocked
 	encrypted := w.encrypted
 	w.mu.RUnlock()
 	if unlocked {
-		return errAlreadyUnlocked
+		return modules.ConsensusChangeID{}, errAlreadyUnlocked
 	} else if !encrypted {
-		return errUnencryptedWallet
+		return modules.ConsensusChangeID{}, errUnencryptedWallet
 	}
 
 	// Load db objects into memory.
@@ -208,7 +240,7 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		return nil
 	}()
 	if err != nil {
-		return err
+		return modules.ConsensusChangeID{}, err
 	}
 
 	// Decrypt + load keys.
@@ -261,9 +293,17 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		return nil
 	}()
 	if err != nil {
-		return err
+		return modules.ConsensusChangeID{}, err
 	}
 
+	w.mu.Lock()
+	w.unlocked = true
+	w.mu.Unlock()
+	return lastChange, nil
+}
+
+// managedAsyncUnlock handles the async part of hte managedUnlock method.
+func (w *Wallet) managedAsyncUnlock(lastChange modules.ConsensusChangeID) error {
 	// Subscribe to the consensus set if this is the first unlock for the
 	// wallet object.
 	w.mu.RLock()
@@ -277,7 +317,7 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		go w.rescanMessage(done)
 		defer close(done)
 
-		err = w.cs.ConsensusSetSubscribe(w, lastChange, w.tg.StopChan())
+		err := w.cs.ConsensusSetSubscribe(w, lastChange, w.tg.StopChan())
 		if err == modules.ErrInvalidConsensusChangeID {
 			// something went wrong; resubscribe from the beginning
 			err = dbPutConsensusChangeID(w.dbTx, modules.ConsensusChangeBeginning)
@@ -295,9 +335,7 @@ func (w *Wallet) managedUnlock(masterKey crypto.CipherKey) error {
 		}
 		w.tpool.TransactionPoolSubscribe(w)
 	}
-
 	w.mu.Lock()
-	w.unlocked = true
 	w.subscribed = true
 	w.mu.Unlock()
 	return nil
@@ -509,9 +547,33 @@ func (w *Wallet) ChangeKeyWithSeed(seed modules.Seed, newKey crypto.CipherKey) e
 	return w.managedChangeKey(mk, newKey)
 }
 
-// Unlock will decrypt the wallet seed and load all of the addresses into
+// IsMasterKey verifies that the masterKey is the key used to encrypt the
+// wallet.
+func (w *Wallet) IsMasterKey(masterKey crypto.CipherKey) (bool, error) {
+	if err := w.tg.Add(); err != nil {
+		return false, err
+	}
+	defer w.tg.Done()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Check provided key
+	err := checkMasterKey(w.dbTx, masterKey)
+	if errors.Contains(err, modules.ErrBadEncryptionKey) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+
+}
+
+// UnlockAsync will decrypt the wallet seed and load all of the addresses into
 // memory.
-func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
+func (w *Wallet) UnlockAsync(masterKey crypto.CipherKey) <-chan error {
+	errChan := make(chan error, 1)
+	defer close(errChan)
 	// By having the wallet's ThreadGroup track the Unlock method, we ensure
 	// that Unlock will never unlock the wallet once the ThreadGroup has been
 	// stopped. Without this precaution, the wallet's Close method would be
@@ -519,12 +581,14 @@ func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
 	// to Unlock the wallet in the short interval after Close calls w.Lock
 	// and before Close calls w.mu.Lock.
 	if err := w.tg.Add(); err != nil {
-		return err
+		errChan <- err
+		return errChan
 	}
 	defer w.tg.Done()
 
 	if !w.scanLock.TryLock() {
-		return errScanInProgress
+		errChan <- errScanInProgress
+		return errChan
 	}
 	defer w.scanLock.Unlock()
 
@@ -533,6 +597,12 @@ func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
 	// Initialize all of the keys in the wallet under a lock. While holding the
 	// lock, also grab the subscriber status.
 	return w.managedUnlock(masterKey)
+}
+
+// Unlock will decrypt the wallet seed and load all of the addresses into
+// memory.
+func (w *Wallet) Unlock(masterKey crypto.CipherKey) error {
+	return <-w.UnlockAsync(masterKey)
 }
 
 // managedChangeKey safely performs the database operations required to change
@@ -557,7 +627,7 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 		// verify masterKey
 		err := checkMasterKey(w.dbTx, masterKey)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to verify master key")
 		}
 
 		wb := w.dbTx.Bucket(bucketWallet)
@@ -565,19 +635,19 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 		// primarySeedFile
 		err = encoding.Unmarshal(wb.Get(keyPrimarySeedFile), &primarySeedFile)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decode primary seed file")
 		}
 
 		// auxiliarySeedFiles
 		err = encoding.Unmarshal(wb.Get(keyAuxiliarySeedFiles), &auxiliarySeedFiles)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decode auxiliary seed file")
 		}
 
 		// unseededKeyFiles
 		err = encoding.Unmarshal(wb.Get(keySpendableKeyFiles), &unseededKeyFiles)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decode unseeded key file")
 		}
 
 		return nil
@@ -593,19 +663,19 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 
 	primarySeed, err = decryptSeedFile(masterKey, primarySeedFile)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to decrypt primary seed file")
 	}
 	for _, sf := range auxiliarySeedFiles {
 		auxSeed, err := decryptSeedFile(masterKey, sf)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decrypt auxiliary seed file")
 		}
 		auxiliarySeeds = append(auxiliarySeeds, auxSeed)
 	}
 	for _, uk := range unseededKeyFiles {
 		sk, err := decryptSpendableKeyFile(masterKey, uk)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to decrypt unseed key file")
 		}
 		spendableKeys = append(spendableKeys, sk)
 	}
@@ -640,21 +710,21 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 
 		err = wb.Put(keyPrimarySeedFile, encoding.Marshal(newPrimarySeedFile))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put primary key into db")
 		}
 		err = wb.Put(keyAuxiliarySeedFiles, encoding.Marshal(newAuxiliarySeedFiles))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put auxiliary key into db")
 		}
 		err = wb.Put(keySpendableKeyFiles, encoding.Marshal(newUnseededKeyFiles))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put unseeded key into db")
 		}
 
 		uk := saltedEncryptionKey(newKey, dbGetWalletSalt(w.dbTx))
 		err = wb.Put(keyEncryptionVerification, uk.EncryptBytes(verificationPlaintext))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put key encryption verification into db")
 		}
 
 		wpk := walletPasswordEncryptionKey(primarySeed, dbGetWalletSalt(w.dbTx))
@@ -662,7 +732,7 @@ func (w *Wallet) managedChangeKey(masterKey crypto.CipherKey, newKey crypto.Ciph
 		mke := newKey.Key()
 		err = wb.Put(keyWalletPassword, wpk.EncryptBytes(append(mkt[:], mke...)))
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to put wallet password into db")
 		}
 
 		return nil

@@ -55,10 +55,7 @@ func (r *Renter) managedDownloadSnapshotTable(session contractor.Session) ([]sna
 		// equivalent to having no entry table at all. This is not an error; it
 		// just means that when we upload a snapshot, we'll have to create a new
 		// table.
-		//
-		// TODO: Should return an error that decryption failed / there appears
-		// to be corruption.
-		return nil, nil
+		return nil, errors.AddContext(err, "error decrypting bytes")
 	}
 
 	var entryTable []snapshotEntry

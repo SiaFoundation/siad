@@ -3,6 +3,7 @@ package siatest
 import (
 	"net"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/node"
@@ -11,13 +12,13 @@ import (
 // TestNextNodeAddress probes nextNodeAddress to verify that the addresses are
 // indexing properly
 func TestNextNodeAddress(t *testing.T) {
-	if !testing.Short() {
+	if !testing.Short() || runtime.GOOS == "darwin" {
 		t.SkipNow()
 	}
 	// Confirm testNodeAddressCounter is initialized correctly
 	ac := newNodeAddressCounter()
 	if ac.address.String() != "127.1.0.0" {
-		t.Fatalf("testNodeAddressCounter inital value incorrect; got %v expected %v", ac.address.String(), "127.1.0.0")
+		t.Fatalf("testNodeAddressCounter initial value incorrect; got %v expected %v", ac.address.String(), "127.1.0.0")
 	}
 
 	// Check address iteration
@@ -60,7 +61,8 @@ func TestNextNodeAddress(t *testing.T) {
 // TestNodeBlacklistConnections probes the functionality of connecting nodes and
 // blacklisting nodes to confirm nodes connect as intended
 func TestNodeBlacklistConnections(t *testing.T) {
-	if testing.Short() {
+	// Skip if testing short or running on mac
+	if testing.Short() || runtime.GOOS == "darwin" {
 		t.SkipNow()
 	}
 	t.Parallel()
@@ -83,7 +85,7 @@ func TestNodeBlacklistConnections(t *testing.T) {
 	}
 
 	// Have the host Blacklist the renter, confirm they are no longer peers
-	err = host.GatewayDisconnectPost(renter.GatewayAddress())
+	err = host.GatewaySetBlacklistPost([]string{renter.GatewayAddress().Host()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +139,17 @@ func TestNodeBlacklistConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = connectNodes(renterTwo, miner)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reset the Host blacklist, now renterTwo should be able to connect to the
+	// host
+	err = host.GatewaySetBlacklistPost([]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = connectNodes(renterTwo, host)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 )

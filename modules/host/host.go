@@ -94,10 +94,6 @@ var (
 		Version: "0.5.2",
 	}
 
-	// errHostClosed gets returned when a call is rejected due to the host
-	// having been closed.
-	errHostClosed = errors.New("call is disabled because the host is closed")
-
 	// Nil dependency errors.
 	errNilCS      = errors.New("host cannot use a nil state")
 	errNilTpool   = errors.New("host cannot use a nil transaction pool")
@@ -136,22 +132,25 @@ type Host struct {
 	atomicNormalErrors        uint64
 
 	// Dependencies.
-	cs           modules.ConsensusSet
-	g            modules.Gateway
-	tpool        modules.TransactionPool
-	wallet       modules.Wallet
-	dependencies modules.Dependencies
+	cs            modules.ConsensusSet
+	g             modules.Gateway
+	tpool         modules.TransactionPool
+	wallet        modules.Wallet
+	staticAlerter *modules.GenericAlerter
+	dependencies  modules.Dependencies
 	modules.StorageManager
+
+	// Subsystems
+	staticAccountManager *accountManager
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
-	announced         bool
-	announceConfirmed bool
-	blockHeight       types.BlockHeight
-	publicKey         types.SiaPublicKey
-	secretKey         crypto.SecretKey
-	recentChange      modules.ConsensusChangeID
-	unlockHash        types.UnlockHash // A wallet address that can receive coins.
+	announced    bool
+	blockHeight  types.BlockHeight
+	publicKey    types.SiaPublicKey
+	secretKey    crypto.SecretKey
+	recentChange modules.ConsensusChangeID
+	unlockHash   types.UnlockHash // A wallet address that can receive coins.
 
 	// Host transient fields - these fields are either determined at startup or
 	// otherwise are not critical to always be correct.
@@ -167,7 +166,7 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// Utilities.
+	// Misc state.
 	db         *persist.BoltDatabase
 	listener   net.Listener
 	log        *persist.Logger
@@ -216,7 +215,7 @@ func (h *Host) checkUnlockHash() error {
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, listenerAddress string, persistDir string) (*Host, error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -233,12 +232,12 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 	// Create the host object.
 	h := &Host{
-		cs:           cs,
-		g:            g,
-		tpool:        tpool,
-		wallet:       wallet,
-		dependencies: dependencies,
-
+		cs:                       cs,
+		g:                        g,
+		tpool:                    tpool,
+		wallet:                   wallet,
+		staticAlerter:            modules.NewAlerter("host"),
+		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
 		persistDir: persistDir,
@@ -264,6 +263,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 	if err != nil {
 		return nil, err
 	}
+
 	h.tg.AfterStop(func() {
 		err = h.log.Close()
 		if err != nil {
@@ -275,7 +275,7 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 	// Add the storage manager to the host, and set up the stop call that will
 	// close the storage manager.
-	h.StorageManager, err = contractmanager.New(filepath.Join(persistDir, "contractmanager"))
+	h.StorageManager, err = contractmanager.NewCustomContractManager(smDeps, filepath.Join(persistDir, "contractmanager"))
 	if err != nil {
 		h.log.Println("Could not open the storage manager:", err)
 		return nil, err
@@ -300,6 +300,18 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 		}
 	})
 
+	// Add the account manager subsystem
+	h.staticAccountManager, err = h.newAccountManager()
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to the consensus set.
+	err = h.initConsensusSubscription()
+	if err != nil {
+		return nil, err
+	}
+
 	// Ensure the host is consistent by pruning any stale storage obligations.
 	if err := h.PruneStaleStorageObligations(); err != nil {
 		h.log.Println("Could not prune stale storage obligations:", err)
@@ -320,7 +332,19 @@ func newHost(dependencies modules.Dependencies, cs modules.ConsensusSet, g modul
 
 // New returns an initialized Host.
 func New(cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(modules.ProdDependencies, cs, g, tpool, wallet, address, persistDir)
+	return newHost(modules.ProdDependencies, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
+}
+
+// NewCustomHost returns an initialized Host using the provided dependencies.
+func NewCustomHost(deps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
+	return newHost(deps, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
+}
+
+// NewCustomTestHost allows passing in both host dependencies and storage
+// manager dependencies. Used solely for testing purposes, to allow dependency
+// injection into the host's submodules.
+func NewCustomTestHost(deps modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
+	return newHost(deps, smDeps, cs, g, tpool, wallet, address, persistDir)
 }
 
 // Close shuts down the host.
@@ -416,6 +440,10 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	h.settings = settings
 	h.revisionNumber++
 
+	// The locked storage collateral was altered, we potentially want to
+	// unregister the insufficient collateral budget alert
+	h.TryUnregisterInsufficientCollateralBudgetAlert()
+
 	err = h.saveSync()
 	if err != nil {
 		return errors.New("internal settings updated, but failed saving to disk: " + err.Error())
@@ -433,4 +461,11 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 	}
 	defer h.tg.Done()
 	return h.settings
+}
+
+// BlockHeight returns the host's current blockheight.
+func (h *Host) BlockHeight() types.BlockHeight {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.blockHeight
 }

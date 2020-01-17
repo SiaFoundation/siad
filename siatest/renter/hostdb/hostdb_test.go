@@ -40,7 +40,7 @@ func TestInitialScanComplete(t *testing.T) {
 	renterTemplate.HostDBDeps = deps
 
 	tg, err := siatest.NewGroup(testDir, renterTemplate, node.Host(filepath.Join(testDir, "host")),
-		siatest.Miner(filepath.Join(testDir, "miner")))
+		node.Miner(filepath.Join(testDir, "miner")))
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
 	}

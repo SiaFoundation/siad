@@ -23,6 +23,25 @@ const (
 	// MinimumSupportedRenterHostProtocolVersion is the minimum version of Sia
 	// that supports the currently used version of the renter-host protocol.
 	MinimumSupportedRenterHostProtocolVersion = "1.4.1"
+
+	// V1420HostOutOfStorageErrString is the string used by hosts since before
+	// version 1.4.2 to indicate that they have run out of storage.
+	//
+	// Any update to this string needs to be done by making a new variable. This
+	// variable should not be changed. IsOOSErr() needs to be updated to include
+	// the new string while also still checking the old string as well to
+	// preserve compatibility.
+	V1420HostOutOfStorageErrString = "not enough storage remaining to accept sector"
+
+	// V1420ContractNotRecognizedErrString is the string used by hosts since
+	// before version 1.4.2 to indicate that they do not recognize the
+	// contract that the renter is trying to update.
+	//
+	// Any update to this string needs to be done by making a new variable. This
+	// variable should not be changed. IsContractNotRecognizedErr() needs to be
+	// updated to include the new string while also still checking the old
+	// string as well to preserve compatibility.
+	V1420ContractNotRecognizedErrString = "no record of that contract"
 )
 
 const (
@@ -112,18 +131,6 @@ const (
 )
 
 var (
-	// ErrInsufficientStorageForSector is returned if the host tries to add a
-	// sector when there is not enough storage remaining on the host to accept
-	// the sector.
-	//
-	// Ideally, the host will adjust pricing as the host starts to fill up, so
-	// this error should be pretty rare. Demand should drive the price up
-	// faster than the Host runs out of space, such that the host is always
-	// hovering around 95% capacity and rarely over 98% or under 90% capacity.
-	ErrInsufficientStorageForSector = errors.New("not enough storage remaining to accept sector")
-)
-
-var (
 	// NegotiateSettingsTime establishes the minimum amount of time that the
 	// connection deadline is expected to be set to when settings are being
 	// requested from the host. The deadline is long enough that the connection
@@ -138,15 +145,15 @@ var (
 var (
 	// ActionDelete is the specifier for a RevisionAction that deletes a
 	// sector.
-	ActionDelete = types.Specifier{'D', 'e', 'l', 'e', 't', 'e'}
+	ActionDelete = types.NewSpecifier("Delete")
 
 	// ActionInsert is the specifier for a RevisionAction that inserts a
 	// sector.
-	ActionInsert = types.Specifier{'I', 'n', 's', 'e', 'r', 't'}
+	ActionInsert = types.NewSpecifier("Insert")
 
 	// ActionModify is the specifier for a RevisionAction that modifies sector
 	// data.
-	ActionModify = types.Specifier{'M', 'o', 'd', 'i', 'f', 'y'}
+	ActionModify = types.NewSpecifier("Modify")
 
 	// ErrAnnNotAnnouncement indicates that the provided host announcement does
 	// not use a recognized specifier, indicating that it's either not a host
@@ -174,28 +181,28 @@ var (
 	// PrefixHostAnnouncement is used to indicate that a transaction's
 	// Arbitrary Data field contains a host announcement. The encoded
 	// announcement will follow this prefix.
-	PrefixHostAnnouncement = types.Specifier{'H', 'o', 's', 't', 'A', 'n', 'n', 'o', 'u', 'n', 'c', 'e', 'm', 'e', 'n', 't'}
+	PrefixHostAnnouncement = types.NewSpecifier("HostAnnouncement")
 
 	// PrefixFileContractIdentifier is used to indicate that a transaction's
 	// Arbitrary Data field contains a file contract identifier. The identifier
 	// and its signature will follow this prefix.
-	PrefixFileContractIdentifier = types.Specifier{'F', 'C', 'I', 'd', 'e', 'n', 't', 'i', 'f', 'i', 'e', 'r'}
+	PrefixFileContractIdentifier = types.NewSpecifier("FCIdentifier")
 
 	// RPCDownload is the specifier for downloading a file from a host.
-	RPCDownload = types.Specifier{'D', 'o', 'w', 'n', 'l', 'o', 'a', 'd', 2}
+	RPCDownload = types.NewSpecifier("Download" + string(2))
 
 	// RPCFormContract is the specifier for forming a contract with a host.
-	RPCFormContract = types.Specifier{'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't', 2}
+	RPCFormContract = types.NewSpecifier("FormContract" + string(2))
 
 	// RPCRenewContract is the specifier to renewing an existing contract.
-	RPCRenewContract = types.Specifier{'R', 'e', 'n', 'e', 'w', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't', 2}
+	RPCRenewContract = types.NewSpecifier("RenewContract" + string(2))
 
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.
-	RPCReviseContract = types.Specifier{'R', 'e', 'v', 'i', 's', 'e', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't', 2}
+	RPCReviseContract = types.NewSpecifier("ReviseContract" + string(2))
 
 	// RPCSettings is the specifier for requesting settings from the host.
-	RPCSettings = types.Specifier{'S', 'e', 't', 't', 'i', 'n', 'g', 's', 2}
+	RPCSettings = types.NewSpecifier("Settings" + string(2))
 
 	// SectorSize defines how large a sector should be in bytes. The sector
 	// size needs to be a power of two to be compatible with package
@@ -234,6 +241,10 @@ type (
 	// HostExternalSettings are the parameters advertised by the host. These
 	// are the values that the renter will request from the host in order to
 	// build its database.
+	//
+	// NOTE: Anytime the pricing is extended for the HostExternalSettings, the
+	// Allowance also needs to be extended to support manually setting a maximum
+	// reasonable price.
 	HostExternalSettings struct {
 		// MaxBatchSize indicates the maximum size in bytes that a batch is
 		// allowed to be. A batch is an array of revision actions; each
@@ -344,41 +355,41 @@ type (
 
 // New RPC IDs
 var (
-	RPCLoopEnter         = types.Specifier{'L', 'o', 'o', 'p', 'E', 'n', 't', 'e', 'r'}
-	RPCLoopExit          = types.Specifier{'L', 'o', 'o', 'p', 'E', 'x', 'i', 't'}
-	RPCLoopFormContract  = types.Specifier{'L', 'o', 'o', 'p', 'F', 'o', 'r', 'm', 'C', 'o', 'n', 't', 'r', 'a', 'c', 't'}
-	RPCLoopLock          = types.Specifier{'L', 'o', 'o', 'p', 'L', 'o', 'c', 'k'}
-	RPCLoopRead          = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'a', 'd'}
-	RPCLoopRenewContract = types.Specifier{'L', 'o', 'o', 'p', 'R', 'e', 'n', 'e', 'w'}
-	RPCLoopSectorRoots   = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 'c', 't', 'o', 'r', 'R', 'o', 'o', 't', 's'}
-	RPCLoopSettings      = types.Specifier{'L', 'o', 'o', 'p', 'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
-	RPCLoopUnlock        = types.Specifier{'L', 'o', 'o', 'p', 'U', 'n', 'l', 'o', 'c', 'k'}
-	RPCLoopWrite         = types.Specifier{'L', 'o', 'o', 'p', 'W', 'r', 'i', 't', 'e'}
+	RPCLoopEnter         = types.NewSpecifier("LoopEnter")
+	RPCLoopExit          = types.NewSpecifier("LoopExit")
+	RPCLoopFormContract  = types.NewSpecifier("LoopFormContract")
+	RPCLoopLock          = types.NewSpecifier("LoopLock")
+	RPCLoopRead          = types.NewSpecifier("LoopRead")
+	RPCLoopRenewContract = types.NewSpecifier("LoopRenew")
+	RPCLoopSectorRoots   = types.NewSpecifier("LoopSectorRoots")
+	RPCLoopSettings      = types.NewSpecifier("LoopSettings")
+	RPCLoopUnlock        = types.NewSpecifier("LoopUnlock")
+	RPCLoopWrite         = types.NewSpecifier("LoopWrite")
 )
 
 // RPC ciphers
 var (
-	CipherChaCha20Poly1305 = types.Specifier{'C', 'h', 'a', 'C', 'h', 'a', '2', '0', 'P', 'o', 'l', 'y', '1', '3', '0', '5'}
-	CipherNoOverlap        = types.Specifier{'N', 'o', 'O', 'v', 'e', 'r', 'l', 'a', 'p'}
+	CipherChaCha20Poly1305 = types.NewSpecifier("ChaCha20Poly1305")
+	CipherNoOverlap        = types.NewSpecifier("NoOverlap")
 )
 
 // Write actions
 var (
-	WriteActionAppend = types.Specifier{'A', 'p', 'p', 'e', 'n', 'd'}
-	WriteActionTrim   = types.Specifier{'T', 'r', 'i', 'm'}
-	WriteActionSwap   = types.Specifier{'S', 'w', 'a', 'p'}
-	WriteActionUpdate = types.Specifier{'U', 'p', 'd', 'a', 't', 'e'}
+	WriteActionAppend = types.NewSpecifier("Append")
+	WriteActionTrim   = types.NewSpecifier("Trim")
+	WriteActionSwap   = types.NewSpecifier("Swap")
+	WriteActionUpdate = types.NewSpecifier("Update")
 )
 
 // Read interrupt
 var (
-	RPCLoopReadStop = types.Specifier{'R', 'e', 'a', 'd', 'S', 't', 'o', 'p'}
+	RPCLoopReadStop = types.NewSpecifier("ReadStop")
 )
 
 var (
 	// RPCChallengePrefix is the prefix prepended to the challenge data
 	// supplied by the host when proving ownership of a contract's secret key.
-	RPCChallengePrefix = types.Specifier{'c', 'h', 'a', 'l', 'l', 'e', 'n', 'g', 'e'}
+	RPCChallengePrefix = types.NewSpecifier("challenge")
 )
 
 // New RPC request and response types
@@ -852,10 +863,37 @@ func DecodeAnnouncement(fullAnnouncement []byte) (na NetAddress, spk types.SiaPu
 	return ha.NetAddress, ha.PublicKey, nil
 }
 
-// IsOOSErr is a helper function to determine whether an error is a
-// ErrInsufficientStorageForSector.
+// IsOOSErr is a helper function to determine whether an error from a host is
+// indicating that they are out of storage.
+//
+// Note: To preserve compatibility, this function needsd to be extended
+// exclusively by adding more checks, the existing checks should not be altered
+// or removed.
 func IsOOSErr(err error) bool {
-	return strings.Contains(err.Error(), ErrInsufficientStorageForSector.Error())
+	if err == nil {
+		return false
+	}
+	if strings.Contains(err.Error(), V1420HostOutOfStorageErrString) {
+		return true
+	}
+	return false
+}
+
+// IsContractNotRecognizedErr is a helper function to determine whether an error
+// from a host is a indicating that they do not recognize a contract that the
+// renter is updating.
+//
+// Note: To preserve compatibility, this function needsd to be extended
+// exclusively by adding more checks, the existing checks should not be altered
+// or removed.
+func IsContractNotRecognizedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if strings.Contains(err.Error(), V1420ContractNotRecognizedErrString) {
+		return true
+	}
+	return false
 }
 
 // VerifyFileContractRevisionTransactionSignatures checks that the signatures

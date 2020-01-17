@@ -76,11 +76,17 @@ type Contractor struct {
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
+	// doubleSpentContracts keep track of all contracts that were double spent by
+	// either the renter or host.
 	staticContracts      *proto.ContractSet
 	oldContracts         map[types.FileContractID]modules.RenterContract
+	doubleSpentContracts map[types.FileContractID]types.BlockHeight
 	recoverableContracts map[types.FileContractID]modules.RecoverableContract
 	renewedFrom          map[types.FileContractID]types.FileContractID
 	renewedTo            map[types.FileContractID]types.FileContractID
+
+	staticChurnLimiter *churnLimiter
+	staticWatchdog     *watchdog
 }
 
 // Allowance returns the current allowance.
@@ -97,7 +103,7 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	return c.managedInitRecoveryScan(modules.ConsensusChangeBeginning)
+	return c.callInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
@@ -109,6 +115,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 
 	var spending modules.ContractorSpending
 	for _, contract := range allContracts {
+		// Don't count double-spent contracts.
+		if _, doubleSpent := c.doubleSpentContracts[contract.ID]; doubleSpent {
+			continue
+		}
+
 		// Calculate ContractFees
 		spending.ContractFees = spending.ContractFees.Add(contract.ContractFee)
 		spending.ContractFees = spending.ContractFees.Add(contract.TxnFee)
@@ -124,6 +135,11 @@ func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 
 	// Calculate needed spending to be reported from old contracts
 	for _, contract := range c.oldContracts {
+		// Don't count double-spent contracts.
+		if _, doubleSpent := c.doubleSpentContracts[contract.ID]; doubleSpent {
+			continue
+		}
+
 		host, exist, err := c.hdb.Host(contract.HostPublicKey)
 		if contract.StartHeight >= c.currentPeriod {
 			// Calculate spending from contracts that were renewed during the current period
@@ -205,14 +221,14 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	// contract was renewed
 	newFCID, renewed := c.renewedTo[fcid]
 	if !renewed {
-		return renewed
+		return false
 	}
 
 	// Grab the contract to check its end height
 	contract, ok := c.oldContracts[fcid]
 	if !ok {
-		build.Critical("contract not found in oldContracts, this should never happen")
-		return renewed
+		c.log.Debugln("Contract not found in oldContracts, despite there being a renewal to the contract")
+		return false
 	}
 
 	// Grab the contract it was renewed to to check its end height
@@ -220,8 +236,8 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	if !ok {
 		newContract, ok = c.oldContracts[newFCID]
 		if !ok {
-			build.Critical("contract not tracked in staticContracts of old contracts, this should never happen")
-			return renewed
+			c.log.Debugln("Contract was not found in the database, despite their being another contract that claims to have renewed to it.")
+			return false
 		}
 	}
 
@@ -321,12 +337,15 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		editors:              make(map[types.FileContractID]*hostEditor),
 		sessions:             make(map[types.FileContractID]*hostSession),
 		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
+		doubleSpentContracts: make(map[types.FileContractID]types.BlockHeight),
 		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
 		pubKeysToContractID:  make(map[string]types.FileContractID),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
 	}
+	c.staticChurnLimiter = newChurnLimiter(c)
+	c.staticWatchdog = newWatchdog(c)
 
 	// Close the contract set and logger upon shutdown.
 	c.tg.AfterStop(func() {
@@ -425,9 +444,9 @@ func NewCustomContractor(cs modules.ConsensusSet, w modules.Wallet, tp modules.T
 	return c, errChan
 }
 
-// managedInitRecoveryScan starts scanning the whole blockchain at a certain
+// callInitRecoveryScan starts scanning the whole blockchain at a certain
 // ChangeID for recoverable contracts within a separate thread.
-func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
+func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
 	// Check if we are already scanning the blockchain.
 	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")

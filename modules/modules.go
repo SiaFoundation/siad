@@ -4,6 +4,8 @@
 package modules
 
 import (
+	"fmt"
+	"math"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -35,4 +37,14 @@ func PeekErr(errChan <-chan error) (err error) {
 	default:
 	}
 	return
+}
+
+// FilesizeUnits returns a string that displays a filesize in human-readable units.
+func FilesizeUnits(size uint64) string {
+	if size == 0 {
+		return "0  B"
+	}
+	sizes := []string{" B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
+	i := int(math.Log10(float64(size)) / 3)
+	return fmt.Sprintf("%.*f %s", i, float64(size)/math.Pow10(3*i), sizes[i])
 }

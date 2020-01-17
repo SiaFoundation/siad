@@ -106,18 +106,17 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
 
-var (
-	errNoPeers     = errors.New("no peers")
-	errUnreachable = errors.New("peer did not respond to ping")
-)
+var errNoPeers = errors.New("no peers")
 
 // Gateway implements the modules.Gateway interface.
 type Gateway struct {
 	listener net.Listener
+	m        *connmonitor.Monitor
 	myAddr   modules.NetAddress
 	port     string
 	rl       *ratelimit.RateLimit
@@ -165,6 +164,36 @@ type Gateway struct {
 
 type gatewayID [8]byte
 
+// addToBlacklist adds addresses to the Gateway's blacklist
+func (g *Gateway) addToBlacklist(addresses []string) error {
+	// Add addresses to the blacklist and disconnect from them
+	var err error
+	for _, addr := range addresses {
+		// Check Gateway peer map for address
+		for peerAddr, peer := range g.peers {
+			// If the address corresponds with a peer, close the peer session
+			// and remove the peer from the peer map
+			if peerAddr.Host() == addr {
+				err = errors.Compose(err, peer.sess.Close())
+				delete(g.peers, peerAddr)
+			}
+		}
+		// Check Gateway node map for address
+		for nodeAddr := range g.nodes {
+			// If the address corresponds with a node remove the node from the
+			// node map to prevent the node from being re-connected while
+			// looking for a replacement peer
+			if nodeAddr.Host() == addr {
+				delete(g.nodes, nodeAddr)
+			}
+		}
+
+		// Add address to the blacklist
+		g.blacklist[addr] = struct{}{}
+	}
+	return errors.Compose(err, g.saveSync())
+}
+
 // managedSleep will sleep for the given period of time. If the full time
 // elapses, 'true' is returned. If the sleep is interrupted for shutdown,
 // 'false' is returned.
@@ -200,6 +229,44 @@ func (g *Gateway) Address() modules.NetAddress {
 	return g.myAddr
 }
 
+// AddToBlacklist adds addresses to the Gateway's blacklist
+func (g *Gateway) AddToBlacklist(addresses []string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.addToBlacklist(addresses)
+}
+
+// BandwidthCounters returns the Gateway's upload and download bandwidth
+func (g *Gateway) BandwidthCounters() (uint64, uint64, time.Time, error) {
+	if err := g.threads.Add(); err != nil {
+		return 0, 0, time.Time{}, err
+	}
+	defer g.threads.Done()
+	writeBytes, readBytes := g.m.Counts()
+	startTime := g.m.StartTime()
+	return writeBytes, readBytes, startTime, nil
+}
+
+// Blacklist returns the Gateway's blacklist
+func (g *Gateway) Blacklist() ([]string, error) {
+	if err := g.threads.Add(); err != nil {
+		return nil, err
+	}
+	defer g.threads.Done()
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	var blacklist []string
+	for addr := range g.blacklist {
+		blacklist = append(blacklist, addr)
+	}
+	return blacklist, nil
+}
+
 // Close saves the state of the Gateway and stops its listener process.
 func (g *Gateway) Close() error {
 	if err := g.threads.Stop(); err != nil {
@@ -233,6 +300,44 @@ func (g *Gateway) RateLimits() (int64, int64) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed
+}
+
+// RemoveFromBlacklist removes addresses from the Gateway's blacklist
+func (g *Gateway) RemoveFromBlacklist(addresses []string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Remove addresses from the blacklist
+	for _, addr := range addresses {
+		delete(g.blacklist, addr)
+	}
+	return g.saveSync()
+}
+
+// SetBlacklist sets the blacklist of the gateway
+func (g *Gateway) SetBlacklist(addresses []string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Reset the gateway blacklist since we are replacing the list with the new
+	// list of peers
+	g.blacklist = make(map[string]struct{})
+
+	// If the length of addresses is 0 we are done, save and return
+	if len(addresses) == 0 {
+		return g.saveSync()
+	}
+
+	// Add addresses to the blacklist and disconnect from them
+	return g.addToBlacklist(addresses)
 }
 
 // SetRateLimits changes the rate limits for the peer-connections of the
@@ -318,13 +423,15 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	// problem, but if it does, we want to know about any errors preventing us
 	// from loading it.
 	if loadErr := g.load(); loadErr != nil && !os.IsNotExist(loadErr) {
-		return nil, loadErr
+		return nil, errors.AddContext(loadErr, "unable to load gateway")
 	}
 	// Create the ratelimiter and set it to the persisted limits.
 	g.rl = ratelimit.NewRateLimit(0, 0, 0)
 	if err := setRateLimits(g.rl, g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to set rate limits for the gateway")
 	}
+	// Create a Bandwidth monitor
+	g.m = connmonitor.NewMonitor()
 	// Spawn the thread to periodically save the gateway.
 	go g.threadedSaveLoop()
 	// Make sure that the gateway saves after shutdown.
@@ -353,7 +460,8 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	permanentListenClosedChan := make(chan struct{})
 	g.listener, err = net.Listen("tcp", addr)
 	if err != nil {
-		return nil, err
+		context := fmt.Sprintf("unable to create gateway tcp listener with address %v", addr)
+		return nil, errors.AddContext(err, context)
 	}
 	// Automatically close the listener when g.threads.Stop() is called.
 	g.threads.OnStop(func() {
@@ -367,7 +475,8 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	host, port, err := net.SplitHostPort(g.listener.Addr().String())
 	g.port = port
 	if err != nil {
-		return nil, err
+		context := fmt.Sprintf("unable to split host and port from address %v", g.listener.Addr().String())
+		return nil, errors.AddContext(err, context)
 	}
 
 	if ip := net.ParseIP(host); ip.IsUnspecified() && ip != nil {

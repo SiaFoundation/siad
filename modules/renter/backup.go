@@ -10,17 +10,17 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/twofish"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 )
 
 // backupHeader defines the structure of the backup's JSON header.
@@ -103,8 +103,20 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 		gzwErr := gzw.Close()
 		return errors.Compose(err, twErr, gzwErr)
 	}
-	// Close writers to flush them before computing the hash.
+	// Close tar writer to flush it before writing the allowance.
 	twErr := tw.Close()
+	// Write the allowance.
+	allowanceBytes, err := json.Marshal(r.hostContractor.Allowance())
+	if err != nil {
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
+	_, err = gzw.Write(allowanceBytes)
+	if err != nil {
+		gzwErr := gzw.Close()
+		return errors.Compose(err, twErr, gzwErr)
+	}
+	// Close the gzip writer to flush it.
 	gzwErr := gzw.Close()
 	// Write the hash to the beginning of the file.
 	_, err = f.WriteAt(h.Sum(nil), 0)
@@ -121,7 +133,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	defer r.tg.Done()
 
 	// Only load a backup if there are no siafiles yet.
-	root, err := r.staticDirSet.Open(modules.RootSiaPath())
+	root, err := r.staticFileSystem.OpenSiaDir(modules.UserSiaPath())
 	if err != nil {
 		return err
 	}
@@ -147,30 +159,25 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err := dec.Decode(&bh); err != nil {
 		return err
 	}
-	// Seek back by the amount of data left in the decoder's buffer. That gives
-	// us the offset of the body.
-	var off int64
-	if buf, ok := dec.Buffered().(*bytes.Reader); ok {
-		off, err = f.Seek(int64(1-buf.Len()), io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-	} else {
-		build.Critical("Buffered should return a bytes.Reader")
-	}
 	// Check the version number.
 	if bh.Version != encryptionVersion {
 		return errors.New("unknown version")
 	}
-	// Wrap the file in the correct streamcipher.
-	archive, err = wrapReaderInCipher(f, bh, secret)
+	// Wrap the file in the correct streamcipher. Consider the data remaining in
+	// the decoder's buffer by using a multireader.
+	archive = io.MultiReader(dec.Buffered(), archive)
+	_, err = archive.Read(make([]byte, 1)) // Ignore first byte of buffer to get to the body of the backup
+	if err != nil {
+		return err
+	}
+	archive, err = wrapReaderInCipher(io.MultiReader(archive, f), bh, secret)
 	if err != nil {
 		return err
 	}
 	// Pipe the remaining file into the hasher to verify that the hash is
 	// correct.
 	h := crypto.NewHash()
-	_, err = io.Copy(h, archive)
+	n, err := io.Copy(h, archive)
 	if err != nil {
 		return err
 	}
@@ -179,7 +186,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 		return errors.New("checksum doesn't match")
 	}
 	// Seek back to the beginning of the body.
-	if _, err := f.Seek(off, io.SeekStart); err != nil {
+	if _, err := f.Seek(-n, io.SeekCurrent); err != nil {
 		return err
 	}
 	// Wrap the file again.
@@ -196,14 +203,34 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	// Wrap the gzip reader in a tar reader.
 	tr := tar.NewReader(gzr)
 	// Untar the files.
-	return r.managedUntarDir(tr)
+	if err := r.managedUntarDir(tr); err != nil {
+		return errors.AddContext(err, "failed to untar dir")
+	}
+	// Unmarshal the allowance if available. This needs to happen after adding
+	// decryption and confirming the hash but before adding decompression.
+	dec = json.NewDecoder(gzr)
+	var allowance modules.Allowance
+	if err := dec.Decode(&allowance); err != nil {
+		// legacy backup without allowance
+		r.log.Println("WARN: Decoding the backup's allowance failed: ", err)
+	}
+	// If the backup contained a valid allowance and we currently don't have an
+	// allowance set, import it.
+	if !reflect.DeepEqual(allowance, modules.Allowance{}) &&
+		reflect.DeepEqual(r.hostContractor.Allowance(), modules.Allowance{}) {
+		if err := r.hostContractor.SetAllowance(allowance); err != nil {
+			return errors.AddContext(err, "unable to set allowance from backup")
+		}
+	}
+	return nil
 }
 
 // managedTarSiaFiles creates a tarball from the renter's siafiles and writes
 // it to dst.
 func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
-	// Walk over all the siafiles and add them to the tarball.
-	return filepath.Walk(r.staticFilesDir, func(path string, info os.FileInfo, err error) error {
+	// Walk over all the siafiles in in the user's home and add them to the
+	// tarball.
+	return r.staticFileSystem.Walk(modules.UserSiaPath(), func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -219,7 +246,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		if err != nil {
 			return err
 		}
-		relPath := strings.TrimPrefix(path, r.staticFilesDir)
+		relPath := strings.TrimPrefix(path, r.staticFileSystem.DirPath(modules.UserSiaPath()))
 		header.Name = relPath
 		// If the info is a dir there is nothing more to do besides writing the
 		// header.
@@ -230,11 +257,11 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		var file io.Reader
 		if filepath.Ext(path) == modules.SiaFileExtension {
 			// Get the siafile.
-			siaPath, err := modules.NewSiaPath(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+			siaPath, err := modules.UserSiaPath().Join(strings.TrimSuffix(relPath, modules.SiaFileExtension))
 			if err != nil {
 				return err
 			}
-			entry, err := r.staticFileSet.Open(siaPath)
+			entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 			if err != nil {
 				return err
 			}
@@ -258,19 +285,19 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			var siaPath modules.SiaPath
 			siaPathStr := strings.TrimSuffix(relPath, modules.SiaDirExtension)
 			if siaPathStr == string(filepath.Separator) {
-				siaPath = modules.RootSiaPath()
+				siaPath = modules.UserSiaPath()
 			} else {
-				siaPath, err = modules.NewSiaPath(siaPathStr)
+				siaPath, err = modules.UserSiaPath().Join(siaPathStr)
 				if err != nil {
 					return err
 				}
 			}
-			entry, err := r.staticDirSet.Open(siaPath)
+			entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
 			if err != nil {
 				return err
 			}
 			defer entry.Close()
-			// Get a reader to read from the siafile.
+			// Get a reader to read from the siadir.
 			dr, err := entry.DirReader()
 			if err != nil {
 				return err
@@ -298,6 +325,12 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 // managedUntarDir untars the archive from src and writes the contents to dstFolder
 // while preserving the relative paths within the archive.
 func (r *Renter) managedUntarDir(tr *tar.Reader) error {
+	// dirsToUpdate are all the directories that will need bubble to be called
+	// on them so that the renter's directory metadata from the back up is
+	// updated
+	dirsToUpdate := r.newUniqueRefreshPaths()
+	defer dirsToUpdate.callRefreshAll()
+
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
@@ -306,7 +339,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		} else if err != nil {
 			return err
 		}
-		dst := filepath.Join(r.staticFilesDir, header.Name)
+		dst := filepath.Join(r.staticFileSystem.DirPath(modules.UserSiaPath()), header.Name)
 
 		// Check for dir.
 		info := header.FileInfo()
@@ -330,40 +363,47 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			}
 			// Try creating a new SiaDir.
 			var siaPath modules.SiaPath
-			if err := siaPath.LoadSysPath(r.staticFilesDir, dst); err != nil {
+			if err := siaPath.LoadSysPath(r.staticFileSystem.DirPath(modules.UserSiaPath()), dst); err != nil {
 				return err
 			}
 			siaPath, err = siaPath.Dir()
 			if err != nil {
 				return err
 			}
-			dirEntry, err := r.staticDirSet.NewSiaDir(siaPath)
-			if err == siadir.ErrPathOverload {
+			err := r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
+			if err == filesystem.ErrExists {
 				// .siadir exists already
 				continue
 			} else if err != nil {
 				return err // unexpected error
 			}
 			// Update the metadata.
+			dirEntry, err := r.staticFileSystem.OpenSiaDir(siaPath)
+			if err != nil {
+				return err
+			}
 			if err := dirEntry.UpdateMetadata(md); err != nil {
 				dirEntry.Close()
 				return err
 			}
-			if err := dirEntry.Close(); err != nil {
-				return err
-			}
+			// Metadata was updated so add to list of directories to be updated
+			dirsToUpdate.callAdd(siaPath)
+			// Close Directory
+			dirEntry.Close()
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
-			// Load the file as a SiaFile.
-			reader := bytes.NewReader(b)
-			sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(reader, dst, r.wal)
-			if err != nil {
-				return err
-			}
 			// Add the file to the SiaFileSet.
-			err = r.staticFileSet.AddExistingSiaFile(sf, chunks)
+			reader := bytes.NewReader(b)
+			siaPath, err := modules.UserSiaPath().Join(strings.TrimSuffix(header.Name, modules.SiaFileExtension))
 			if err != nil {
 				return err
 			}
+			err = r.staticFileSystem.AddSiaFileFromReader(reader, siaPath)
+			if err != nil {
+				return err
+			}
+			// Add directory that siafile resides in to the list of directories
+			// to be updated
+			dirsToUpdate.callAdd(siaPath)
 		}
 	}
 	return nil

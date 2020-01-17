@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -115,13 +115,13 @@ type (
 func (h *Host) loadCompatV100(p *persistence) error {
 	var compatPersistence struct {
 		FinancialMetrics struct {
-			PotentialStorageRevenue types.Currency `json:"potentialerevenue"`
+			PotentialStorageRevenue types.Currency `json:"potentialerevenue,siamismatch"`
 		}
 		Settings struct {
-			MinContractPrice          types.Currency `json:"contractprice"`
-			MinDownloadBandwidthPrice types.Currency `json:"minimumdownloadbandwidthprice"`
-			MinStoragePrice           types.Currency `json:"storageprice"`
-			MinUploadBandwidthPrice   types.Currency `json:"minimumuploadbandwidthprice"`
+			MinContractPrice          types.Currency `json:"contractprice,siamismatch"`
+			MinDownloadBandwidthPrice types.Currency `json:"minimumdownloadbandwidthprice,siamismatch"`
+			MinStoragePrice           types.Currency `json:"storageprice,siamismatch"`
+			MinUploadBandwidthPrice   types.Currency `json:"minimumuploadbandwidthprice,siamismatch"`
 		}
 	}
 	err := h.dependencies.LoadFile(v112PersistMetadata, &compatPersistence, filepath.Join(h.persistDir, settingsFile))
