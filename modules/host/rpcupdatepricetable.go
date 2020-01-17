@@ -1,7 +1,6 @@
 package host
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 
@@ -18,28 +17,28 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	pt := h.priceTable
 	h.mu.RUnlock()
 
-	// take a snapshot of the host's price table
-	var encoded []byte
-	if encoded, err = json.Marshal(pt); err != nil {
+	// json encode and decode the host's current price table
+	json, err := pt.MarshalJSON()
+	if err != nil {
 		errors.AddContext(err, "Failed to JSON encode the RPC price table")
 		return
 	}
-	if err = json.Unmarshal(encoded, &update); err != nil {
-		errors.AddContext(err, "Failed to decode the RPC price table")
+	if err = update.UnmarshalJSON(json); err != nil {
+		errors.AddContext(err, "Failed to JSON decode the RPC price table")
 		return
 	}
 
-	// encode it as JSON and send it to the renter. Note that we send the price
-	// table before we process payment. This allows the renter to close the
-	// stream if it decides the host's gouging the prices.
-	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: encoded}
+	// send it to the renter, note we send it before we process payment, this
+	// allows the renter to close the stream if it decides the host is gouging
+	// the price
+	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: json}
 	if err = encoding.WriteObject(stream, uptResponse); err != nil {
 		errors.AddContext(err, "Failed to write response")
 		return
 	}
 
 	// TODO: process payment for this RPC call (introduced in other MR)
-	amountPaid := types.ZeroCurrency
+	amountPaid := update.Costs[modules.RPCUpdatePriceTable]
 
 	// verify the renter payment was sufficient, since the renter already has
 	// the updated prices, we expect he will have paid the latest price
@@ -48,6 +47,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 		errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
 		return
 	}
+
 	return
 }
 

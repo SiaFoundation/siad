@@ -225,13 +225,11 @@ func (h *Host) checkUnlockHash() error {
 // managedUpdatePriceTable will recalculate the price of every RPC and update
 // the host's RPC price table.
 func (h *Host) managedUpdatePriceTable() {
-	bh := h.BlockHeight()
+	currentBlockHeight := h.BlockHeight()
 
-	// build a new price table
-	priceTable := modules.RPCPriceTable{
-		Costs:  make(map[types.Specifier]types.Currency),
-		Expiry: bh + rpcPriceGuaranteePeriod,
-	}
+	// create a new RPC price table and set the expiry
+	priceTable := modules.NewRPCPriceTable()
+	priceTable.Expiry = currentBlockHeight + rpcPriceGuaranteePeriod
 
 	// recalculate the price for every RPC
 	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
