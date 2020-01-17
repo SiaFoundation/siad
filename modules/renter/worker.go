@@ -7,9 +7,13 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See snapshotworkerfetchbackups.go for
-// a clean example.
-
+// exists and complete that piece of work. See workerfetchbackups.go for a clean
+// example.
+//
+// The worker has an ephemeral account on the host. It can use this account to
+// pay for downloads and uploads. In order to ensure the account's balance does
+// not run out, it maintains a balance target by refilling it when necessary.
+//
 // TODO: A single session should be added to the worker that gets maintained
 // within the work loop. All jobs performed by the worker will use the worker's
 // single session.
@@ -25,6 +29,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A worker listens for work on a certain host.
@@ -71,6 +76,14 @@ type worker struct {
 	uploadRecentFailure       time.Time                // How recent was the last failure?
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
+
+	// The staticFundAccountJobQueue holds the fund account jobs
+	staticFundAccountJobQueue fundAccountJobQueue
+
+	// Account represents the account on the host. The worker will maintain a
+	// certain account balance defined by the max and target balance.
+	staticBalanceTarget types.Currency
+	account             *account
 
 	// Utilities.
 	//
@@ -142,6 +155,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
+	defer w.managedKillFundAccountJobs()
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -161,8 +175,11 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		var workAttempted bool
+		// Refill the account in a background thread.
+		go w.threadedRefillAccount()
+
 		// Perform any job to fetch the list of backups from the host.
+		var workAttempted bool
 		workAttempted = w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
@@ -191,14 +208,63 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
+// threadedRefillAccount will check if the account needs to be refilled every
+// time a worker spends from the account
+func (w *worker) threadedRefillAccount() {
+	if err := w.renter.tg.Add(); err != nil {
+		return
+	}
+	defer w.renter.tg.Done()
+
+	var balance, refill types.Currency
+
+	w.mu.Lock()
+	balance = w.account.Balance()
+	w.mu.Unlock()
+
+	// If the account's eventual balance is below the threshold, we want to
+	// trigger a refill. The amount to refill is the difference between the
+	// eventual balance and our target balance. We only refill if we drop below
+	// a threshold because we want to avoid refilling every time we drop 1
+	// hasting below the target.
+	threshold := w.staticBalanceTarget.Mul64(8).Div64(10)
+	if balance.Cmp(threshold) < 0 {
+		refill = w.staticBalanceTarget.Sub(balance)
+	}
+	if refill.IsZero() {
+		return
+	}
+
+	w.callQueueFundAccount(refill)
+	w.threadedPerformFundAcountJob()
+}
+
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+	host, ok, err := r.hostDB.Host(hostPubKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "could not find host entry")
+	}
+	if !ok {
+		return nil, errors.New("host does not exist")
+	}
+
+	id := r.mu.Lock()
+	account := r.openAccount(host.PublicKey)
+	r.mu.Unlock(id)
+
 	return &worker{
 		staticHostPubKey: hostPubKey,
+		killChan:         make(chan struct{}),
+		wakeChan:         make(chan struct{}, 1),
+		renter:           r,
 
-		killChan: make(chan struct{}),
-		wakeChan: make(chan struct{}, 1),
-
-		renter: r,
-	}
+		// TODO the balance target is currently hardcoded and does not take into
+		// account the max ephemeral account balance (configured by the host).
+		// The target balance should be calculated based off of that and
+		// probably also a max configurable in the renter. For now the target is
+		// temporarily set to half the default ephemeral account max balance
+		staticBalanceTarget: types.SiacoinPrecision.Div64(2),
+		account:             account,
+	}, nil
 }

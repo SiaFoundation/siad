@@ -60,7 +60,10 @@ func (wp *workerPool) callUpdate() {
 	for id, contract := range contractMap {
 		_, exists := wp.workers[id]
 		if !exists {
-			w := wp.renter.newWorker(contract.HostPublicKey)
+			w, err := wp.renter.newWorker(contract.HostPublicKey)
+			if err != nil {
+				wp.renter.log.Critical(errors.AddContext(err, "could not create a new worker for host"))
+			}
 			wp.workers[id] = w
 			if err := wp.renter.tg.Add(); err != nil {
 				// Renter shutdown is happening, abort the loop to create more
