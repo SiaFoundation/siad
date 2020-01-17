@@ -227,32 +227,47 @@ func (ht *hostTester) Close() error {
 // TestHostInitialization checks that the host initializes to sensible default
 // values.
 func TestHostInitialization(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
 	t.Parallel()
-	// Create a blank host tester and check that the height is zero.
-	bht, err := blankHostTester("TestHostInitialization")
+
+	// create a blank host tester
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer bht.Close()
-	if bht.host.blockHeight != 0 {
-		t.Error("host initialized to the wrong block height")
+	defer ht.Close()
+
+	// verify its initial block height is zero
+	if ht.host.blockHeight != 0 {
+		t.Fatal("host initialized to the wrong block height")
 	}
 
-	// Initialize the wallet so that a block can be mined, then mine a block
-	// and check that it sets the host height to 1.
-	err = bht.initWallet()
+	// verify its RPC price table was properly initialised
+	if ht.host.priceTable.Costs == nil || ht.host.priceTable.Expiry != rpcPriceGuaranteePeriod {
+		t.Fatal("RPC price table was not properly initialised")
+	}
+
+	// unlock the wallet
+	err = ht.wallet.Reset()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = bht.miner.AddBlock()
+	err = ht.initWallet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bht.host.blockHeight != 1 {
-		t.Fatal("block height did not increase correctly after first block mined:", bht.host.blockHeight, 1)
+
+	// mine a block and verify its blockheight increased
+	if _, err := ht.miner.AddBlock(); err != nil {
+		t.Fatal("Failed to mine block", err)
+	}
+	if ht.host.blockHeight != 1 {
+		t.Fatal("block height did not increase correctly after first block mined:", ht.host.blockHeight, 1)
+	}
+
+	// trigger an update and verify if it was updated
+	ht.host.managedUpdatePriceTable()
+	if ht.host.priceTable.Expiry != rpcPriceGuaranteePeriod+1 {
+		t.Fatal("RPC price table's expriy was not properly updated")
 	}
 }
 

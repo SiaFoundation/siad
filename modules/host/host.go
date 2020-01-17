@@ -84,6 +84,11 @@ const (
 	dbFilename   = modules.HostDir + ".db"
 	logFile      = modules.HostDir + ".log"
 	settingsFile = modules.HostDir + ".json"
+
+	// rpcPriceGuaranteePeriod defines for how many blocks the host guarantees a
+	// fixed set of RPC prices to the renter. Current block height + this period
+	// defines the expiry block height on the RPC price table.
+	rpcPriceGuaranteePeriod = 6 // ~1h
 )
 
 var (
@@ -225,7 +230,7 @@ func (h *Host) managedUpdatePriceTable() {
 	// build a new price table
 	priceTable := modules.RPCPriceTable{
 		Costs:  make(map[types.Specifier]types.Currency),
-		Expiry: bh + 6, // prices are guaranteed for ~1h
+		Expiry: bh + rpcPriceGuaranteePeriod,
 	}
 
 	// recalculate the price for every RPC
@@ -354,6 +359,10 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		h.log.Println("Could not initialize host networking:", err)
 		return nil, err
 	}
+
+	// Initialize the RPC price table.
+	h.managedUpdatePriceTable()
+
 	return h, nil
 }
 
