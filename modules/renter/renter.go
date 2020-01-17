@@ -254,6 +254,8 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
+	accounts map[string]*account
+
 	// Utilities.
 	cs                modules.ConsensusSet
 	deps              modules.Dependencies
@@ -886,6 +888,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		directoryHeap: directoryHeap{
 			heapDirectories: make(map[modules.SiaPath]*directory),
 		},
+
+		accounts: make(map[string]*account),
 
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
