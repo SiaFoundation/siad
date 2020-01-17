@@ -478,8 +478,7 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 
 // managedRPCClient returns an RPC client for the host with given key
 func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
-	// TODO: added in separate MR
-	return nil, nil
+	return &MockRPCClient{}, nil
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
