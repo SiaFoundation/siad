@@ -322,7 +322,7 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	return int64(s.offset), nil
 }
 
-// prepareOffset will ensure that the dataSection containing the offest is made
+// prepareOffset will ensure that the dataSection containing the offset is made
 // available in the LRU, and that the following dataSection is also available.
 func (s *stream) prepareOffset() {
 	// Convenience variables.
