@@ -170,8 +170,7 @@ type Host struct {
 	// that is callable on the host. These prices are dynamic, and are subject
 	// to various conditions specific to the RPC in question. Examples of such
 	// conditions are congestion, load, liquidity, etc. Alongside the costs, the
-	// host will set an expiry block height. Up until that block height, the
-	// prices are guaranteed.
+	// host sets an expiry block height up until which it guarantees pricing.
 	priceTable modules.RPCPriceTable
 
 	// Misc state.
@@ -219,8 +218,7 @@ func (h *Host) checkUnlockHash() error {
 }
 
 // managedUpdatePriceTable will recalculate the price of every RPC and update
-// the host's RPC price table. The prices are dependant on numerous factors that
-// vary for every RPC. Examples are congestion, load, liquidity, etc.
+// the host's RPC price table.
 func (h *Host) managedUpdatePriceTable() {
 	bh := h.BlockHeight()
 
