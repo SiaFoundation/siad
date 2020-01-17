@@ -1022,7 +1022,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
-	c.log.Debugln("Remaining funds in allowance:", fundsRemaining)
+	c.log.Debugln("Remaining funds in allowance:", fundsRemaining.HumanString())
 
 	// Register or unregister and alerts related to contract renewal or
 	// formation.
@@ -1095,7 +1095,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Skip this renewal if we don't have enough funds remaining.
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRefresh") {
-			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
+			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount.HumanString(), fundsRemaining.HumanString())
 			registerLowFundsAlert = true
 			continue
 		}

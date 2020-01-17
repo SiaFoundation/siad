@@ -1189,7 +1189,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 		Module:   "contractor",
 		Severity: modules.SeverityWarning,
 	}
-	// Wait for the alert to be registered.
+	// Mine blocks and wait for the alert to be registered.
 	numRetries := 0
 	err = build.Retry(100, 600*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
@@ -1206,8 +1206,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	// Add a renter which won't be able to refresh a contract due to low funds.
 	renterParams = node.Renter(filepath.Join(testDir, "renter_refresh"))
 	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Period = 10
-	renterParams.Allowance.RenewWindow = 5
+	renterParams.Allowance.Hosts = 2
 	renterParams.RenterDeps = &dependencies.DependencyDisableUploadGougingCheck{}
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRefreshFail{}
 	nodes, err = tg.AddNodes(renterParams)
@@ -1218,6 +1217,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	// Drain contracts to force refresh
 	_, err = siatest.DrainContractsByUploading(renter, tg)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, false, true)
 		t.Fatal(err)
 	}
 	// Wait for the alert to be registered.
