@@ -32,7 +32,7 @@ type fundAccountJobResult struct {
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
 func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJobResult {
-	resultChan := make(chan fundAccountJobResult)
+	resultChan := make(chan fundAccountJobResult, 1)
 	w.staticFundAccountJobQueue.mu.Lock()
 	w.staticFundAccountJobQueue.queue = append(w.staticFundAccountJobQueue.queue, &fundAccountJob{
 		amount:     amount,
@@ -79,23 +79,15 @@ func (w *worker) threadedPerformFundAcountJob() {
 
 	client, err := w.renter.managedRPCClient(w.staticHostPubKey)
 	if err != nil {
-		job.resultChan <- fundAccountJobResult{
-			funded: types.ZeroCurrency,
-			err:    err,
-		}
+		job.resultChan <- fundAccountJobResult{err: err}
 		return
 	}
 
 	err = client.FundEphemeralAccount(w.account.staticID, job.amount)
 	if err != nil {
-		job.resultChan <- fundAccountJobResult{
-			funded: types.ZeroCurrency,
-			err:    err,
-		}
+		job.resultChan <- fundAccountJobResult{err: err}
 		return
 	}
 
-	job.resultChan <- fundAccountJobResult{
-		funded: job.amount,
-	}
+	job.resultChan <- fundAccountJobResult{funded: job.amount}
 }
