@@ -166,6 +166,14 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
+	// The price table holds a list of prices, which is the cost of every RPC
+	// that is callable on the host. These prices are dynamic, and are subject
+	// to various conditions specific to the RPC in question. Examples of such
+	// conditions are congestion, load, liquidity, etc. Alongside the costs, the
+	// host will set an expiry block height. Up until that block height, the
+	// prices are guaranteed.
+	priceTable modules.RPCPriceTable
+
 	// Misc state.
 	db         *persist.BoltDatabase
 	listener   net.Listener
@@ -208,6 +216,27 @@ func (h *Host) checkUnlockHash() error {
 		}
 	}
 	return nil
+}
+
+// managedUpdatePriceTable will recalculate the price of every RPC and update
+// the host's RPC price table. The prices are dependant on numerous factors that
+// vary for every RPC. Examples are congestion, load, liquidity, etc.
+func (h *Host) managedUpdatePriceTable() {
+	bh := h.BlockHeight()
+
+	// build a new price table
+	priceTable := modules.RPCPriceTable{
+		Costs:  make(map[types.Specifier]types.Currency),
+		Expiry: bh + 6, // prices are guaranteed for ~1h
+	}
+
+	// recalculate the price for every RPC
+	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
+
+	// update the pricetable
+	h.mu.Lock()
+	h.priceTable = priceTable
+	h.mu.Unlock()
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.
