@@ -113,7 +113,13 @@ type dataSection struct {
 	refCount uint64
 }
 
-// stream is a single stream that uses a stream buffer.
+// stream is a single stream that uses a stream buffer. The stream implements
+// io.ReadSeeker and io.Closer, and must be closed when it is done being used.
+// The stream will cache data, both data that has been accessed recently as well
+// as data that is in front of the current read head. The stream buffer is a
+// common cache that is used between all streams that are using the same data
+// source, allowing each stream to depend on the other streams if data has
+// already been loaded.
 type stream struct {
 	lru    *leastRecentlyUsedCache
 	offset uint64
@@ -139,9 +145,9 @@ type streamBuffer struct {
 	staticStreamID        streamDataSourceID
 }
 
-// streamBufferSet is the set of streams that are currently being processed. A
-// global list is needed so that multiple streams on the same file can be
-// combined.
+// streamBufferSet tracks all of the stream buffers that are currently active.
+// When a new stream is created, the stream buffer set is referenced to check
+// whether another stream using the same data source already exists.
 type streamBufferSet struct {
 	streams map[streamDataSourceID]*streamBuffer
 
@@ -294,30 +300,30 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	if offset < 0 {
 		return int64(s.offset), errors.New("offset cannot be negative in call to seek")
 	}
-	if whence != io.SeekStart && whence != io.SeekCurrent && whence != io.SeekEnd {
-		return int64(s.offset), errors.New("invalid value for 'whence' in call to seek")
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Update the offset of the stream according to the inputs.
 	dataSize := s.staticStreamBuffer.staticDataSize
-	if whence == io.SeekStart {
+	switch whence {
+	case io.SeekStart:
 		s.offset = uint64(offset)
-	} else if whence == io.SeekCurrent {
+	case io.SeekCurrent:
 		newOffset := s.offset + uint64(offset)
 		if newOffset > dataSize {
 			return int64(s.offset), errors.New("offset cannot seek beyond the bounds of the file")
 		}
 		s.offset = newOffset
-	} else {
+	case io.SeekEnd:
 		if uint64(offset) > dataSize {
 			return int64(s.offset), errors.New("cannot seek before the front of the file")
 		}
 		s.offset = dataSize - uint64(offset)
+	default:
+		return int64(s.offset), errors.New("invalid value for 'whence' in call to seek")
 	}
 
-	// Prepare the fetch of the updated offest.
+	// Prepare the fetch of the updated offset.
 	s.prepareOffset()
 	return int64(s.offset), nil
 }
