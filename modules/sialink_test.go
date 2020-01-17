@@ -148,7 +148,7 @@ func TestSialink(t *testing.T) {
 	ldMax := LinkData{
 		bitfield: 65535,
 	}
-	ldMax.bitfield -= 7 // set the final three bits to 0 to make this a valid sialink.
+	ldMax.bitfield -= 7175 // set the final three bits to 0, and also bits 10, 11, 12 to zer oto make this a valid sialink.
 	for i := 0; i < len(ldMax.merkleRoot); i++ {
 		ldMax.merkleRoot[i] = 255
 	}
@@ -235,7 +235,6 @@ func TestSialink(t *testing.T) {
 	// Try setting invalid mode bits.
 	ldBad.bitfield = ^uint16(0) - 3
 	_, _, err = ldBad.OffsetAndFetchSize()
-	t.Log(err)
 	if err == nil {
 		t.Error("should not be able to get offset and fetch size of bad sialink")
 	}
