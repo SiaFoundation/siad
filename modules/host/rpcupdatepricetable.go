@@ -19,12 +19,15 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	h.mu.RUnlock()
 
 	// take a snapshot of the host's price table
-	encoded, err := json.Marshal(pt)
-	if err != nil {
-		errors.AddContext(err, "Failed to JSON encode the price table")
+	var encoded []byte
+	if encoded, err = json.Marshal(pt); err != nil {
+		errors.AddContext(err, "Failed to JSON encode the RPC price table")
 		return
 	}
-	_ = json.Unmarshal(encoded, &update)
+	if err = json.Unmarshal(encoded, &update); err != nil {
+		errors.AddContext(err, "Failed to decode the RPC price table")
+		return
+	}
 
 	// encode it as JSON and send it to the renter. Note that we send the price
 	// table before we process payment. This allows the renter to close the
