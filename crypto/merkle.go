@@ -75,10 +75,9 @@ func (ct *CachedMerkleTree) Prove(base []byte, cachedHashSet []Hash) []Hash {
 	return hashSet
 }
 
-// Push is a redefinition of merkletree.CachedTree.Push, with the added type
-// safety of only accepting a hash.
+// Push is shorthand for PushSubTree(0, h).
 func (ct *CachedMerkleTree) Push(h Hash) {
-	ct.CachedTree.Push(h[:])
+	ct.CachedTree.PushSubTree(0, h)
 }
 
 // PushSubTree is a redefinition of merkletree.CachedTree.PushSubTree, with the
