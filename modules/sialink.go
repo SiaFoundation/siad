@@ -5,7 +5,6 @@ package modules
 // subsections of a sector.
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/binary"
 	"math/bits"
@@ -131,24 +130,16 @@ func (sl *Sialink) LoadString(s string) error {
 	// No need to check if there is an element returned by strings.SplitN, so
 	// long as the second arg is not-nil (in this case, '&'), SplitN cannot
 	// return an empty slice.
-	base := []byte(splits[0])
+	base := splits[0]
 	// Input check, ensure that this string is the expected size.
 	if len(base) != encodedSialinkSize {
 		return errors.New("not a sialink, sialinks are always 46 bytes")
 	}
 
-	// Decode the sialink from base64 into raw. I believe that only
-	// 'rawSialinkSize' bytes are necessary to decode successfully, however the
-	// stdlib will panic if you run a decode operation on a slice that is too
-	// small, so 4 extra bytes are added to cover any potential situation where
-	// a sialink needs extra space to decode. 4 is chosen because that's the
-	// size of a base64 word, meaning that there's an entire extra word of
-	// cushion. Because we check the size upon receiving the sialink, we will
-	// never need more than one extra word.
-	raw := make([]byte, rawSialinkSize+4)
-	_, err := base64.RawURLEncoding.Decode(raw, base)
+	// Decode the sialink from base64 into raw.
+	raw, err := base64.RawURLEncoding.DecodeString(base)
 	if err != nil {
-		return errors.New("unable to decode input as base64")
+		return errors.AddContext(err, "unable to decode sialink")
 	}
 
 	// Load and check the bitfield. The bitfield is checked before modifying the
@@ -293,15 +284,8 @@ func (sl Sialink) String() (string, error) {
 	binary.LittleEndian.PutUint16(raw, sl.bitfield)
 	copy(raw[2:], sl.merkleRoot[:])
 
-	// Encode the raw bytes to base64. We have to use a buffer and a base64
-	// encoder because the other functions that the stdlib provides will add
-	// padding to the end unnecessarily.
-	bufBytes := make([]byte, 0, encodedSialinkSize)
-	buf := bytes.NewBuffer(bufBytes)
-	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
-	encoder.Write(raw)
-	encoder.Close()
-	return buf.String(), nil
+	// Encode the raw bytes to base64.
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 // Version will pull the version out of the bitfield and return it. The version
