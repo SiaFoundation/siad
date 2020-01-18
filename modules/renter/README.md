@@ -62,6 +62,7 @@ responsibilities.
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
+ - [Download By Root Subsystem](#download-by-root-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
@@ -434,6 +435,22 @@ merkle root and the contract revision.
  - `Upload` calls `callBuildAndPushChunks` to add upload chunks to the
    `uploadHeap` and then signals the heap's `newUploads` channel so that the
    Repair Loop will work through the heap and upload the chunks
+
+### Download By Root Subsystem
+**Key Files**
+ - [projectdownloadbyroot.go](./projectdownloadbyroot.go)
+ - [workerdownloadbyroot.go](./workerdownloadbyroot.go)
+
+The download by root subsystem exports a single method that allows a caller to
+download or partially download a sector from the Sia network knowing only the
+Merkle root of that sector, and not necessarily knowing which host on the
+network has that sector. The single exported method is 'DownloadByRoot'.
+
+This subsystem was created primarily as a facilitator for the sialinks of
+Skynet. Sialinks provide a merkle root and some offset+length information, but
+do not provide any information about which hosts are storing the sectors. The
+exported method of this subsystem will primarily be called by sialink methods,
+as opposed to being used directly by external users.
 
 ### Upload Streaming Subsystem
 **Key Files**
