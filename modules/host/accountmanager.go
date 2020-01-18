@@ -14,11 +14,6 @@ import (
 )
 
 var (
-	// ErrWithdrawalsInactive occurs when the host is not synced yet. If that is
-	// the case the account manager does not allow trading money from the
-	// ephemeral accounts.
-	ErrWithdrawalsInactive = errors.New("ephemeral account withdrawals are inactive because the host is not synced")
-
 	// ErrAccountPersist occurs when an ephemeral account could not be persisted
 	// to disk.
 	ErrAccountPersist = errors.New("ephemeral account could not be persisted to disk")
@@ -35,29 +30,17 @@ var (
 	// balance over the maximum allowed ephemeral account balance.
 	ErrBalanceMaxExceeded = errors.New("ephemeral account maximam balance exceeded")
 
-	// ErrWithdrawalSpent occurs when a withdrawal is requested using a
-	// withdrawal message that has been spent already.
-	ErrWithdrawalSpent = errors.New("withdrawal message was already spent")
-
-	// ErrWithdrawalExpired occurs when the withdrawal message's expiry
-	// block height is in the past.
-	ErrWithdrawalExpired = errors.New("ephemeral account withdrawal message expired")
-
-	// ErrWithdrawalExtremeFuture occurs when the withdrawal message's expiry
-	// block height is too far into the future.
-	ErrWithdrawalExtremeFuture = errors.New("ephemeral account withdrawal message expires too far into the future")
-
-	// ErrWithdrawalInvalidSignature occurs when the signature provided with the
-	// withdrawal message was invalid.
-	ErrWithdrawalInvalidSignature = errors.New("ephemeral account withdrawal message signature is invalid")
+	// ErrDepositCancelled occurs when the host was willingly or unwillingly
+	// stopped in the midst of a deposit process.
+	ErrDepositCancelled = errors.New("ephemeral account deposit cancelled due to a shutdown")
 
 	// ErrWithdrawalCancelled occurs when the host was willingly or unwillingly
 	// stopped in the midst of a withdrawal process.
 	ErrWithdrawalCancelled = errors.New("ephemeral account withdrawal cancelled due to a shutdown")
 
-	// ErrDepositCancelled occurs when the host was willingly or unwillingly
-	// stopped in the midst of a deposit process.
-	ErrDepositCancelled = errors.New("ephemeral account deposit cancelled due to a shutdown")
+	// ErrWithdrawalSpent occurs when a withdrawal is requested using a
+	// withdrawal message that has been spent already.
+	ErrWithdrawalSpent = errors.New("withdrawal message was already spent")
 
 	// When the errMaxRiskReached dependency is specified this error is returned
 	// on withdraw or deposit when max risk is reached. It enables easy
@@ -94,14 +77,6 @@ var (
 // refill the ephemeral accounts frequently, even on the order of multiple times
 // per minute.
 type (
-	// withdrawalMessage contains all details to process a withdrawal
-	withdrawalMessage struct {
-		account string
-		expiry  types.BlockHeight
-		amount  types.Currency
-		nonce   uint64
-	}
-
 	// The accountManager manages all deposits and withdrawals to and from an
 	// ephemeral account. It uses an accounts persister to save the account data
 	// to disk. It keeps track of the fingerprints, which are hashes of the
@@ -189,7 +164,7 @@ type (
 	// executed but is stalled because either maxRisk is reached or the
 	// account's balance is insufficient.
 	blockedWithdrawal struct {
-		withdrawal   *withdrawalMessage
+		withdrawal   *modules.WithdrawalMessage
 		priority     int64
 		commitResult chan error
 	}
@@ -246,7 +221,7 @@ func (bwh *blockedWithdrawalHeap) Pop() interface{} {
 func (bwh blockedWithdrawalHeap) Value() types.Currency {
 	var total types.Currency
 	for _, bw := range bwh {
-		total = total.Add(bw.withdrawal.amount)
+		total = total.Add(bw.withdrawal.Amount)
 	}
 	return total
 }
@@ -362,7 +337,7 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 // caller can specify a priority. This priority defines the order in which the
 // withdrawals get processed in the event they are blocked due to insufficient
 // funds.
-func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signature, priority int64) error {
+func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypto.Signature, priority int64) error {
 	// Gather some variables
 	his := am.h.InternalSettings()
 	bh := am.h.BlockHeight()
@@ -370,7 +345,7 @@ func (am *accountManager) callWithdraw(msg *withdrawalMessage, sig crypto.Signat
 
 	// Validate the message's expiry and signature first
 	fingerprint := crypto.HashAll(*msg)
-	if err := msg.validate(bh, fingerprint, sig); err != nil {
+	if err := msg.Validate(bh, bh+bucketBlockRange, fingerprint, sig); err != nil {
 		return err
 	}
 
@@ -456,8 +431,8 @@ func (am *accountManager) managedDeposit(id string, amount, maxRisk, maxBalance 
 
 // managedWithdraw performs a couple of steps in preparation of the
 // withdrawal. If everything checks out it will commit the withdrawal.
-func (am *accountManager) managedWithdraw(msg *withdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (err error) {
-	amount, id, expiry := msg.amount, msg.account, msg.expiry
+func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp crypto.Hash, priority int64, maxRisk types.Currency, blockHeight types.BlockHeight, commitResultChan chan error) (err error) {
+	amount, id, expiry := msg.Amount, msg.Account, msg.Expiry
 
 	am.mu.Lock()
 	defer func() {
@@ -470,7 +445,7 @@ func (am *accountManager) managedWithdraw(msg *withdrawalMessage, fp crypto.Hash
 	// Check if withdrawals are inactive. This will be the case when the host is
 	// not synced yet. Until that is not the case, we do not allow trading.
 	if am.withdrawalsInactive {
-		return ErrWithdrawalsInactive
+		return modules.ErrWithdrawalsInactive
 	}
 
 	// Save the fingerprint in memory. If the fingerprint is known we return an
@@ -637,7 +612,7 @@ func (am *accountManager) commitDeposit(a *account, amount types.Currency, block
 	// Unblock withdrawals that were waiting for more funds.
 	for a.blockedWithdrawals.Len() > 0 {
 		bw := a.blockedWithdrawals.Pop().(*blockedWithdrawal)
-		err := bw.withdrawal.validateExpiry(blockHeight)
+		err := bw.withdrawal.ValidateExpiry(blockHeight, blockHeight+bucketBlockRange)
 		if err != nil {
 			select {
 			case bw.commitResult <- err:
@@ -647,13 +622,13 @@ func (am *accountManager) commitDeposit(a *account, amount types.Currency, block
 		}
 
 		// Requeue if balance is insufficient
-		if bw.withdrawal.amount.Cmp(a.balance) > 0 {
+		if bw.withdrawal.Amount.Cmp(a.balance) > 0 {
 			a.blockedWithdrawals.Push(*bw)
 			break
 		}
 
 		// Commit the withdrawal
-		am.commitWithdrawal(a, bw.withdrawal.amount, blockHeight, bw.commitResult)
+		am.commitWithdrawal(a, bw.withdrawal.Amount, blockHeight, bw.commitResult)
 	}
 	am.schedulePersist(a, persistResultChan)
 }
@@ -755,7 +730,7 @@ func (am *accountManager) unblockDeposits(allowance types.Currency, bh types.Blo
 func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.BlockHeight) {
 	var numUnblocked int
 	for i, bw := range am.blockedWithdrawals {
-		amount, id := bw.withdrawal.amount, bw.withdrawal.account
+		amount, id := bw.withdrawal.Amount, bw.withdrawal.Account
 		acc, exists := am.accounts[id]
 		if !exists {
 			// Account has expired
@@ -765,7 +740,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 		// Validate the expiry - this is necessary seeing as the blockheight can
 		// have been changed since the withdrawal was blocked, potentially
 		// pushing it over its expiry.
-		if err := bw.withdrawal.validateExpiry(bh); err != nil {
+		if err := bw.withdrawal.ValidateExpiry(bh, bh+bucketBlockRange); err != nil {
 			select {
 			case bw.commitResult <- err:
 			default:
@@ -785,7 +760,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 		}
 
 		// Commit the withdrawal
-		am.commitWithdrawal(acc, bw.withdrawal.amount, bh, bw.commitResult)
+		am.commitWithdrawal(acc, bw.withdrawal.Amount, bh, bw.commitResult)
 		allowance = allowance.Sub(amount)
 	}
 	am.blockedWithdrawals = am.blockedWithdrawals[numUnblocked:]
@@ -1003,45 +978,6 @@ func (fm *fingerprintMap) has(fp crypto.Hash) bool {
 func (fm *fingerprintMap) rotate() {
 	fm.current = fm.next
 	fm.next = make(map[crypto.Hash]struct{})
-}
-
-// validate is a helper function that composes validateExpiry and
-// validateSignature
-func (wm *withdrawalMessage) validate(blockHeight types.BlockHeight, hash crypto.Hash, sig crypto.Signature) error {
-	return errors.Compose(
-		wm.validateExpiry(blockHeight),
-		wm.validateSignature(hash, sig),
-	)
-}
-
-// validateExpiry returns an error if the withdrawal message is either already
-// expired or if it expires too far into the future
-func (wm *withdrawalMessage) validateExpiry(blockHeight types.BlockHeight) error {
-	// Verify the current blockheight does not exceed the expiry
-	if blockHeight > wm.expiry {
-		return ErrWithdrawalExpired
-	}
-
-	// Verify the withdrawal is not too far into the future
-	if wm.expiry > blockHeight+bucketBlockRange {
-		return ErrWithdrawalExtremeFuture
-	}
-
-	return nil
-}
-
-// validateSignature returns an error if the provided signature is invalid
-func (wm *withdrawalMessage) validateSignature(hash crypto.Hash, sig crypto.Signature) error {
-	var spk types.SiaPublicKey
-	spk.LoadString(wm.account)
-	var pk crypto.PublicKey
-	copy(pk[:], spk.Key)
-
-	err := crypto.VerifyHash(hash, pk, sig)
-	if err != nil {
-		return errors.Extend(err, ErrWithdrawalInvalidSignature)
-	}
-	return nil
 }
 
 // depositExceedsMaxBalance returns whether or not the deposit would exceed the
