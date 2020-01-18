@@ -15,6 +15,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -288,7 +289,7 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	diff := types.NewCurrency64(5)
 	msg, sig := prepareWithdrawal(accountID, diff, am.h.blockHeight-1, sk)
 	err = callWithdraw(am, msg, sig)
-	if !errors.Contains(err, ErrWithdrawalExpired) {
+	if !errors.Contains(err, modules.ErrWithdrawalExpired) {
 		t.Fatal("Expected withdrawal expired error", err)
 	}
 }
@@ -326,13 +327,13 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	oneCurrency := types.NewCurrency64(1)
 	msg, sig := prepareWithdrawal(accountID, oneCurrency, shouldExpire, sk)
 	err = callWithdraw(am, msg, sig)
-	if !errors.Contains(err, ErrWithdrawalExtremeFuture) {
+	if !errors.Contains(err, modules.ErrWithdrawalExtremeFuture) {
 		t.Fatal("Expected withdrawal extreme future error", err)
 	}
 
 	msg, sig = prepareWithdrawal(accountID, oneCurrency, shouldNotExpire, sk)
 	err = callWithdraw(am, msg, sig)
-	if errors.Contains(err, ErrWithdrawalExtremeFuture) {
+	if errors.Contains(err, modules.ErrWithdrawalExtremeFuture) {
 		t.Fatal("Expected withdrawal to be valid", err)
 	}
 }
@@ -368,7 +369,7 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	_, sig2 := prepareWithdrawal(spk1.String(), diff, am.h.blockHeight+5, sk2)
 
 	err = callWithdraw(am, msg1, sig2)
-	if !errors.Contains(err, ErrWithdrawalInvalidSignature) {
+	if !errors.Contains(err, modules.ErrWithdrawalInvalidSignature) {
 		t.Fatal("Expected withdrawal invalid signature error", err)
 	}
 }
@@ -613,10 +614,10 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 
 		// Prepare withdrawals and signatures
 		oneCurr := types.NewCurrency64(1)
-		msgs := make([][]*withdrawalMessage, threads)
+		msgs := make([][]*modules.WithdrawalMessage, threads)
 		sigs := make([][]crypto.Signature, threads)
 		for t := 0; t < threads; t++ {
-			msgs[t] = make([]*withdrawalMessage, withdrawals/threads)
+			msgs[t] = make([]*modules.WithdrawalMessage, withdrawals/threads)
 			sigs[t] = make([]crypto.Signature, withdrawals/threads)
 			for w := 0; w < withdrawals/threads; w++ {
 				randIndex := rand.Intn(len(accountIDs))
@@ -707,7 +708,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	}
 
 	// Prepare withdrawals and signatures
-	msgs := make([]*withdrawalMessage, withdrawals)
+	msgs := make([]*modules.WithdrawalMessage, withdrawals)
 	sigs := make([]crypto.Signature, withdrawals)
 	for w := 0; w < int(withdrawals); w++ {
 		msgs[w], sigs[w] = prepareWithdrawal(account, withdrawalSize, am.h.blockHeight, sk)
@@ -774,7 +775,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	withdrawalAmount := 1
 
 	// Prepare withdrawals and signatures
-	msgs := make([]*withdrawalMessage, withdrawals)
+	msgs := make([]*modules.WithdrawalMessage, withdrawals)
 	sigs := make([]crypto.Signature, withdrawals)
 	for w := 0; w < withdrawals; w++ {
 		msgs[w], sigs[w] = prepareWithdrawal(account, types.NewCurrency64(uint64(withdrawalAmount)), am.h.blockHeight, sk)
@@ -1062,7 +1063,7 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 	// Verify withdrawal is active
 	msg, sig = prepareWithdrawal(accountID, oneCurrency, am.h.blockHeight, sk)
 	err = callWithdraw(am, msg, sig)
-	if !errors.Contains(err, ErrWithdrawalsInactive) {
+	if !errors.Contains(err, modules.ErrWithdrawalsInactive) {
 		t.Fatal(err)
 	}
 }
@@ -1097,7 +1098,7 @@ func managedAccountIndexCheck(am *accountManager) string {
 }
 
 // callWithdraw will perform the withdrawal using a timestamp for the priority
-func callWithdraw(am *accountManager, msg *withdrawalMessage, sig crypto.Signature) error {
+func callWithdraw(am *accountManager, msg *modules.WithdrawalMessage, sig crypto.Signature) error {
 	return am.callWithdraw(msg, sig, time.Now().UnixNano())
 }
 
@@ -1131,13 +1132,14 @@ func callDeposit(am *accountManager, id string, amount types.Currency) error {
 
 // prepareWithdrawal prepares a withdrawal message, signs it using the provided
 // secret key and returns the message and the signature
-func prepareWithdrawal(id string, amount types.Currency, expiry types.BlockHeight, sk crypto.SecretKey) (*withdrawalMessage, crypto.Signature) {
-	msg := &withdrawalMessage{
-		account: id,
-		expiry:  expiry,
-		amount:  amount,
-		nonce:   randuint64(),
+func prepareWithdrawal(id string, amount types.Currency, expiry types.BlockHeight, sk crypto.SecretKey) (*modules.WithdrawalMessage, crypto.Signature) {
+	msg := &modules.WithdrawalMessage{
+		Account: id,
+		Expiry:  expiry,
+		Amount:  amount,
 	}
+	copy(msg.Nonce[:], fastrand.Bytes(modules.WithdrawalNonceSize))
+
 	hash := crypto.HashObject(*msg)
 	sig := crypto.SignHash(hash, sk)
 	return msg, sig
