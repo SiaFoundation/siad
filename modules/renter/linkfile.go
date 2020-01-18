@@ -145,16 +145,6 @@ func linkfileBuildBaseSector(layoutBytes, metadataBytes, fanoutBytes, fileBytes 
 	return baseSector, uint64(offset)
 }
 
-// linkfileBuildSialink will build a sialink given all of the inputs to the
-// sialink.
-func linkfileBuildSialink(version uint8, merkleRoot crypto.Hash, lup modules.LinkfileUploadParameters, fetchSize uint64) (modules.Sialink, error) {
-	ld, err := modules.NewLinkDataV1(merkleRoot, 0, fetchSize)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to build sialink")
-	}
-	return ld.Sialink()
-}
-
 // linkfileEstablishDefaults will set any zero values in the lup to be equal to
 // the desired defaults.
 func linkfileEstablishDefaults(lup *modules.LinkfileUploadParameters) error {
@@ -249,7 +239,7 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 	// Grab the filenode for the provided siapath.
 	fileNode, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to open siafile")
+		return modules.Sialink{}, errors.AddContext(err, "unable to open siafile")
 	}
 	defer fileNode.Close()
 	return r.createSialinkFromFileNode(lup, fileNode, siaPath)
@@ -263,7 +253,7 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 	// Set reasonable default values for any lup fields that are blank.
 	err := linkfileEstablishDefaults(&lup)
 	if err != nil {
-		return "", errors.AddContext(err, "linkfile upload parameters are incorrect")
+		return modules.Sialink{}, errors.AddContext(err, "linkfile upload parameters are incorrect")
 	}
 
 	// Check that the encryption key and erasure code is compatible with the
@@ -272,11 +262,11 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 	var ll linkfileLayout
 	masterKey := fileNode.MasterKey()
 	if len(masterKey.Key()) > len(ll.cipherKey) {
-		return "", errors.AddContext(err, "cipher key is not supported by the linkfile format")
+		return modules.Sialink{}, errors.AddContext(err, "cipher key is not supported by the linkfile format")
 	}
 	ec := fileNode.ErasureCode()
 	if ec.Type() != siafile.ECReedSolomonSubShards64 {
-		return "", errors.AddContext(err, "siafile has unsupported erasure code type")
+		return modules.Sialink{}, errors.AddContext(err, "siafile has unsupported erasure code type")
 	}
 
 	// Create the metadata for this siafile and compute the resulting header
@@ -291,7 +281,7 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 	}
 	metadataBytes, err := linkfileMetadataBytes(fm)
 	if err != nil {
-		return "", errors.AddContext(err, "error retrieving linkfile metadata bytes")
+		return modules.Sialink{}, errors.AddContext(err, "error retrieving linkfile metadata bytes")
 	}
 
 	// Implementation gap - if the file is small enough to fit entirely within
@@ -299,17 +289,17 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 	// linkfile should be created instead.
 	noFanoutHeaderSize := uint64(LinkfileLayoutSize + len(metadataBytes))
 	if noFanoutHeaderSize+fileNode.Size() <= modules.SectorSize {
-		return "", errors.New("cannot convert siafiles that are small enough to fit inside a fanout")
+		return modules.Sialink{}, errors.New("cannot convert siafiles that are small enough to fit inside a fanout")
 	}
 
 	// Create the fanout for the siafile.
 	fanoutBytes, err := linkfileEncodeFanout(fileNode)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to encode the fanout of the siafile")
+		return modules.Sialink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
 	}
 	headerSize := noFanoutHeaderSize + uint64(len(fanoutBytes))
 	if headerSize+uint64(len(fanoutBytes)) > modules.SectorSize {
-		return "", errors.New("siafile is too large to be turned into a sialink")
+		return modules.Sialink{}, errors.New("siafile is too large to be turned into a sialink")
 	}
 
 	// Assemble the first chunk of the linkfile.
@@ -331,21 +321,21 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 	baseSectorReader := bytes.NewReader(baseSector)
 	fileUploadParams, err := linkfileUploadParams(lup)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to build the file upload parameters")
+		return modules.Sialink{}, errors.AddContext(err, "unable to build the file upload parameters")
 	}
 
 	// Perform the full upload.
 	newFileNode, err := r.managedUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
 	if err != nil {
-		return "", errors.AddContext(err, "linkfile base chunk upload failed")
+		return modules.Sialink{}, errors.AddContext(err, "linkfile base chunk upload failed")
 	}
 	defer newFileNode.Close()
 
 	// Create the sialink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector)
-	sialink, err := linkfileBuildSialink(LinkfileVersion, baseSectorRoot, lup, fetchSize)
+	sialink, err := modules.NewSialinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to build sialink")
+		return modules.Sialink{}, errors.AddContext(err, "unable to build sialink")
 	}
 
 	// Add the sialink to the siafiles.
@@ -358,22 +348,14 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 // DownloadSialink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata, modules.Streamer, error) {
-	start = time.Now()
-	// Parse the provided link into a usable structure for fetching downloads.
-	var ld modules.LinkData
-	err := ld.LoadSialink(link)
-	if err != nil {
-		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse link for download")
-	}
-
 	// Pull the offset and fetchSize out of the linkfile.
-	offset, fetchSize, err := ld.OffsetAndFetchSize()
+	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if offset+fetchSize > modules.SectorSize {
 		return modules.LinkfileMetadata{}, nil, errors.New("illegal fetch size provided by sialink")
 	}
 
 	// Fetch the leading sector.
-	baseSector, err := r.DownloadByRoot(ld.MerkleRoot(), offset, fetchSize)
+	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of sialink")
 	}
@@ -503,13 +485,13 @@ func (r *Renter) uploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, m
 	// redundancy for the base chunk.
 	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to create erasure coder for large file")
+		return modules.Sialink{}, errors.AddContext(err, "unable to create erasure coder for large file")
 	}
 	// Create the siapath for the linkfile extra data. This is going to be the
 	// same as the linkfile upload siapath, except with a suffix.
 	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + "-extended")
 	if err != nil {
-		return "", errors.AddContext(err, "unable to create SiaPath for large linkfile extended data")
+		return modules.Sialink{}, errors.AddContext(err, "unable to create SiaPath for large linkfile extended data")
 	}
 	fup := modules.FileUploadParams{
 		SiaPath:             siaPath,
@@ -524,7 +506,7 @@ func (r *Renter) uploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, m
 	// Upload the file using a streamer.
 	fileNode, err := r.managedUploadStreamFromReader(fup, fileReader, false)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to upload large linkfile")
+		return modules.Sialink{}, errors.AddContext(err, "unable to upload large linkfile")
 	}
 	// TODO: Right now, 'managedUploadStreamFromReader' returns as soon as the
 	// file is 'available' on the Sia network, this can have adverse effects for
@@ -556,20 +538,20 @@ func (r *Renter) uploadLinkfileSmallFile(lup modules.LinkfileUploadParameters, m
 	// a reader.
 	fileUploadParams, err := linkfileUploadParams(lup)
 	if err != nil {
-		return "", errors.AddContext(err, "failed to create siafile upload parameters")
+		return modules.Sialink{}, errors.AddContext(err, "failed to create siafile upload parameters")
 	}
 	baseSectorReader := bytes.NewReader(baseSector)
 	fileNode, err := r.managedUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
 	if err != nil {
-		return "", errors.AddContext(err, "failed to small linkfile")
+		return modules.Sialink{}, errors.AddContext(err, "failed to small linkfile")
 	}
 	defer fileNode.Close()
 
 	// Create the sialink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
-	sialink, err := linkfileBuildSialink(LinkfileVersion, baseSectorRoot, lup, fetchSize)
+	sialink, err := modules.NewSialinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
-		return "", errors.AddContext(err, "failed to build sialink")
+		return modules.Sialink{}, errors.AddContext(err, "failed to build sialink")
 	}
 	// Add the sialink to the Siafile. The sialink is returned even if there is
 	// an error, because the sialink itself is available on the Sia network now,
@@ -591,19 +573,19 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	// Set reasonable default values for any lup fields that are blank.
 	err := linkfileEstablishDefaults(&lup)
 	if err != nil {
-		return "", errors.AddContext(err, "linkfile upload parameters are incorrect")
+		return modules.Sialink{}, errors.AddContext(err, "linkfile upload parameters are incorrect")
 	}
 	// Additional input check - this check is unique to uploading a linkfile
 	// from a streamer. The convert siafile function does not need to be passed
 	// a reader.
 	if lup.Reader == nil {
-		return "", errors.New("need to provide a stream of upload data")
+		return modules.Sialink{}, errors.New("need to provide a stream of upload data")
 	}
 
 	// Fetch the bytes for the metadata and the data.
 	metadataBytes, err := linkfileMetadataBytes(lup.FileMetadata)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to retrieve linkfile metadata bytes")
+		return modules.Sialink{}, errors.AddContext(err, "unable to retrieve linkfile metadata bytes")
 	}
 
 	// Read data from the lup reader. If the file data provided fits entirely
@@ -615,7 +597,7 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes))
 	fileBytes, fileReader, largeFile, err := uploadLinkfileReadLeadingChunk(lup, headerSize)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to retrieve leading chunk file bytes")
+		return modules.Sialink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
 	if largeFile {
 		return r.uploadLinkfileLargeFile(lup, metadataBytes, fileReader)

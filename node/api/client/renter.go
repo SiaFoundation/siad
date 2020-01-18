@@ -722,9 +722,11 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 // RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
 // file.
 func (c *Client) RenterSialinkGet(sialink modules.Sialink) (fileData []byte, err error) {
-	str := string(sialink)
-	trimmed := strings.TrimPrefix(str, "sia://")
-	getQuery := fmt.Sprintf("/renter/sialink/%s", trimmed)
+	sialinkStr, err := sialink.String()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to format sialink")
+	}
+	getQuery := fmt.Sprintf("/renter/sialink/%s", sialinkStr)
 	_, fileData, err = c.getRawResponse(getQuery)
 	return
 }
@@ -748,14 +750,14 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modul
 	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to "+query+" failed")
+		return modules.Sialink{}, errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the sialink.
 	var rshp api.RenterLinkfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+		return modules.Sialink{}, errors.AddContext(err, "unable to parse the sialink upload response")
 	}
 	return rshp.Sialink, err
 }
@@ -783,14 +785,14 @@ func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadPa
 	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to "+query+" failed")
+		return modules.Sialink{}, errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the sialink.
 	var rshp api.RenterLinkfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+		return modules.Sialink{}, errors.AddContext(err, "unable to parse the sialink upload response")
 	}
 	return rshp.Sialink, err
 }
