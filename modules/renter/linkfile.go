@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -18,58 +17,32 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// Profiling singleton
-var start time.Time
-
 const (
 	// LinkfileLayoutSize describes the amount of space within the first sector
 	// of a linkfile used to describe the rest of the linkfile.
-	LinkfileLayoutSize = 256
+	LinkfileLayoutSize = 99
 
 	// LinkfileDefaultBaseChunkRedundancy establishes the default redundancy for
 	// the base chunk of a linkfile.
 	LinkfileDefaultBaseChunkRedundancy = 10
 
-	// LinkfileDefaultIntraSectorDataPieces defines the default number of data
-	// pieces that are used for the intra-sector erasure coding.
-	LinkfileDefaultIntraSectorDataPieces = 1
-
-	// LinkfileDefaultIntraSectorParityPieces defines the default number of
-	// parity pieces that are used for the intra-sector erasure coding.
-	LinkfileDefaultIntraSectorParityPieces = 0
-
 	// LinkfileVersion establishes the current version for creating linkfiles.
-	// The sialinks will share the same version.
+	// The linkfile versions are different from the siafile versions.
 	LinkfileVersion = 1
 )
 
 // linkfileLayout explains the layout information that is used for storing data
 // inside of the linkfile. The linkfileLayout always appears as the first bytes
-// of the leading chunk, and no intra-sector erasure coding is every applied to
-// these bytes.
-//
-// The linkfile layout contains all of the information necessary to reconstruct
-// the sialink:
-//
-// Version:      matches ll.version
-// MerkleRoot:   the merkle root of the leading sector - must be determined some other way
-// HeaderSize:   LinkfileLayoutSize + ll.metadataSize + ll.fanoutHeaderSize
-// FileSize:     ll.filesize
-// DataPieces:   ll.intraSectorDataPieces
-// ParityPieces: ll.intraSectorParityPieces
+// of the leading chunk.
 type linkfileLayout struct {
-	version                 uint8
-	filesize                uint64
-	metadataSize            uint32
-	intraSectorDataPieces   uint8
-	intraSectorParityPieces uint8
-	fanoutHeaderSize        uint32
-	fanoutExtensionSize     uint64
-	fanoutDataPieces        uint8
-	fanoutParityPieces      uint8
-	cipherType              crypto.CipherType
-	cipherKey               [64]byte  // cipherKey is incompatible with ciphers that need keys larger than 64 bytes
-	reserved                [155]byte // in case more fields are needed for future extensions
+	version            uint8
+	filesize           uint64
+	metadataSize       uint64
+	fanoutSize         uint64
+	fanoutDataPieces   uint8
+	fanoutParityPieces uint8
+	cipherType         crypto.CipherType
+	cipherKey          [64]byte // cipherKey is incompatible with ciphers that need keys larger than 64 bytes
 }
 
 // encode will return a []byte that has compactly encoded all of the layout
@@ -81,15 +54,9 @@ func (ll *linkfileLayout) encode() []byte {
 	offset += 1
 	binary.LittleEndian.PutUint64(b[offset:], ll.filesize)
 	offset += 8
-	binary.LittleEndian.PutUint32(b[offset:], ll.metadataSize)
-	offset += 4
-	b[offset] = ll.intraSectorDataPieces
-	offset += 1
-	b[offset] = ll.intraSectorParityPieces
-	offset += 1
-	binary.LittleEndian.PutUint32(b[offset:], ll.fanoutHeaderSize)
-	offset += 4
-	binary.LittleEndian.PutUint64(b[offset:], ll.fanoutExtensionSize)
+	binary.LittleEndian.PutUint64(b[offset:], ll.metadataSize)
+	offset += 8
+	binary.LittleEndian.PutUint64(b[offset:], ll.fanoutSize)
 	offset += 8
 	b[offset] = ll.fanoutDataPieces
 	offset += 1
@@ -99,6 +66,12 @@ func (ll *linkfileLayout) encode() []byte {
 	offset += len(ll.cipherType)
 	copy(b[offset:], ll.cipherKey[:])
 	offset += len(ll.cipherKey)
+
+	// Sanity check. If this check fails, encode() does not match the
+	// LinkfileLayoutSize.
+	if offset != LinkfileLayoutSize {
+		panic("layout size does not match the amount of data encoded")
+	}
 	return b
 }
 
@@ -109,15 +82,9 @@ func (ll *linkfileLayout) decode(b []byte) {
 	offset += 1
 	ll.filesize = binary.LittleEndian.Uint64(b[offset:])
 	offset += 8
-	ll.metadataSize = binary.LittleEndian.Uint32(b[offset:])
-	offset += 4
-	ll.intraSectorDataPieces = b[offset]
-	offset += 1
-	ll.intraSectorParityPieces = b[offset]
-	offset += 1
-	ll.fanoutHeaderSize = binary.LittleEndian.Uint32(b[offset:])
-	offset += 4
-	ll.fanoutExtensionSize = binary.LittleEndian.Uint64(b[offset:])
+	ll.metadataSize = binary.LittleEndian.Uint64(b[offset:])
+	offset += 8
+	ll.fanoutSize = binary.LittleEndian.Uint64(b[offset:])
 	offset += 8
 	ll.fanoutDataPieces = b[offset]
 	offset += 1
@@ -127,6 +94,12 @@ func (ll *linkfileLayout) decode(b []byte) {
 	offset += len(ll.cipherType)
 	copy(ll.cipherKey[:], b[offset:])
 	offset += len(ll.cipherKey)
+
+	// Sanity check. If this check fails, decode() does not match the
+	// LinkfileLayoutSize.
+	if offset != LinkfileLayoutSize {
+		panic("layout size does not match the amount of data decdoed")
+	}
 }
 
 // linkfileBuildBaseSector will take all of the elements of the base sector and
@@ -150,26 +123,6 @@ func linkfileBuildBaseSector(layoutBytes, metadataBytes, fanoutBytes, fileBytes 
 func linkfileEstablishDefaults(lup *modules.LinkfileUploadParameters) error {
 	if lup.BaseChunkRedundancy == 0 {
 		lup.BaseChunkRedundancy = LinkfileDefaultBaseChunkRedundancy
-	}
-	if lup.IntraSectorDataPieces == 0 {
-		lup.IntraSectorDataPieces = LinkfileDefaultIntraSectorDataPieces
-	}
-	if lup.IntraSectorParityPieces == 0 {
-		lup.IntraSectorParityPieces = LinkfileDefaultIntraSectorParityPieces
-	}
-	if lup.FileMetadata.Mode == 0 {
-		lup.FileMetadata.Mode = modules.DefaultFilePerm
-	}
-	if lup.FileMetadata.CreateTime == 0 {
-		lup.FileMetadata.CreateTime = time.Now().Unix()
-	}
-
-	// Input checks - ensure the settings are compatible.
-	if lup.IntraSectorDataPieces != 1 {
-		return errors.New("intra-sector erasure coding not yet supported, intra sector data pieces must be set to 1")
-	}
-	if lup.IntraSectorParityPieces != 0 {
-		return errors.New("intra-sector erasure coding not yet supported, intra sector parity pieces must be set to 0")
 	}
 	return nil
 }
@@ -242,14 +195,15 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 		return modules.Sialink{}, errors.AddContext(err, "unable to open siafile")
 	}
 	defer fileNode.Close()
-	return r.createSialinkFromFileNode(lup, fileNode, siaPath)
+	return r.managedCreateSialinkFromFileNode(lup, fileNode, siaPath.Name())
 }
 
-// createSialinkFromFileNode creates a sialink from a file node.
+// managedCreateSialinkFromFileNode creates a sialink from a file node.
 //
-// TODO: The siaPath needs to be passed in because at this time I do not believe
-// there is any way to extract the siaPath from the fileNode.
-func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters, fileNode *filesystem.FileNode, siaPath modules.SiaPath) (modules.Sialink, error) {
+// The name needs to be passed in explicity because a file node does not track
+// its own name, which allows the file to be renamed concurrently without
+// causing any race conditions.
+func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadParameters, fileNode *filesystem.FileNode, filename string) (modules.Sialink, error) {
 	// Set reasonable default values for any lup fields that are blank.
 	err := linkfileEstablishDefaults(&lup)
 	if err != nil {
@@ -271,22 +225,20 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 
 	// Create the metadata for this siafile and compute the resulting header
 	// size.
-	//
-	// TODO: 'lup' has an fm in it, need to figure out if those values should
-	// obliterate these ones or not.
 	fm := modules.LinkfileMetadata{
-		Name:       siaPath.Name(),
-		Mode:       fileNode.Mode(),
-		CreateTime: fileNode.CreateTime().Unix(),
+		Filename: filename,
 	}
 	metadataBytes, err := linkfileMetadataBytes(fm)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "error retrieving linkfile metadata bytes")
 	}
 
-	// Implementation gap - if the file is small enough to fit entirely within
-	// one sector, return an error. A full fanout is not necessary, a simple
-	// linkfile should be created instead.
+	// Download the leading bytes of the file. These get packed into the first
+	// sector so that load times for the first few megabytes can be fetched
+	// without needing an extra round trip.
+
+	// TODO: If the entire file fits within one sector, construct a small
+	// linkfile instead of a fanout based linkfile.
 	noFanoutHeaderSize := uint64(LinkfileLayoutSize + len(metadataBytes))
 	if noFanoutHeaderSize+fileNode.Size() <= modules.SectorSize {
 		return modules.Sialink{}, errors.New("cannot convert siafiles that are small enough to fit inside a fanout")
@@ -304,15 +256,13 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 
 	// Assemble the first chunk of the linkfile.
 	ll = linkfileLayout{
-		version:                 1,
-		filesize:                fileNode.Size(),
-		metadataSize:            uint32(len(metadataBytes)),
-		intraSectorDataPieces:   LinkfileDefaultIntraSectorDataPieces,
-		intraSectorParityPieces: LinkfileDefaultIntraSectorParityPieces,
-		fanoutHeaderSize:        uint32(len(fanoutBytes)),
-		fanoutDataPieces:        uint8(ec.MinPieces()),
-		fanoutParityPieces:      uint8(ec.NumPieces() - ec.MinPieces()),
-		cipherType:              masterKey.Type(),
+		version:            1,
+		filesize:           fileNode.Size(),
+		metadataSize:       uint64(len(metadataBytes)),
+		fanoutSize:         uint64(len(fanoutBytes)),
+		fanoutDataPieces:   uint8(ec.MinPieces()),
+		fanoutParityPieces: uint8(ec.NumPieces() - ec.MinPieces()),
+		cipherType:         masterKey.Type(),
 	}
 	copy(ll.cipherKey[:], masterKey.Key())
 
@@ -350,8 +300,8 @@ func (r *Renter) createSialinkFromFileNode(lup modules.LinkfileUploadParameters,
 func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata, modules.Streamer, error) {
 	// Pull the offset and fetchSize out of the linkfile.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
-	if offset+fetchSize > modules.SectorSize {
-		return modules.LinkfileMetadata{}, nil, errors.New("illegal fetch size provided by sialink")
+	if err != nil {
+		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse sialink")
 	}
 
 	// Fetch the leading sector.
@@ -368,12 +318,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	ll.decode(baseSector)
 	offset += LinkfileLayoutSize
 
-	// Check that there is no fanout extension, as that is not currently
-	// supported.
-	if ll.fanoutExtensionSize != 0 {
-		return modules.LinkfileMetadata{}, nil, errors.New("downloading large siafiles is not supported in this version of siad")
-	}
-
 	// Parse out the linkfile metadata.
 	var lfm modules.LinkfileMetadata
 	metadataSize := uint64(ll.metadataSize)
@@ -385,13 +329,18 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 
 	// If there is no fanout, all of the data will be contained in the base
 	// sector, return a streamer using the data from the base sector.
-	if ll.fanoutHeaderSize == 0 {
+	if ll.fanoutSize == 0 {
 		streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
 		return lfm, streamer, nil
 	}
 
+	// TODO: Support fanout extensions.
+	if offset+ll.fanoutSize > modules.SectorSize {
+		return modules.LinkfileMetadata{}, nil, errors.New("fanout is more than one sector, that is unsupported in this version")
+	}
+
 	// There is a fanout, create a fanout streamer and return that.
-	fanoutBytes := baseSector[offset : offset+uint64(ll.fanoutHeaderSize)]
+	fanoutBytes := baseSector[offset : offset+uint64(ll.fanoutSize)]
 	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
@@ -474,13 +423,13 @@ func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, header
 	return nil, prependReader, true, nil
 }
 
-// uploadLinkfileLargeFile will accept a fileReader containing all of the data
+// managedUploadLinkfileLargeFile will accept a fileReader containing all of the data
 // to a large siafile and upload it to the Sia network using
 // 'managedUploadStreamFromReader'. The final sialink is created by calling
 // 'CreateSialinkFromSiafile' on the resulting siafile.
-func (r *Renter) uploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Sialink, error) {
+func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Sialink, error) {
 	// Create the erasure coder to use when uploading the file bulk. When going
-	// through the 'uploadLinkfile' command, a 1-of-N scheme is always used,
+	// through the 'managedUploadLinkfile' command, a 1-of-N scheme is always used,
 	// where the redundancy of the data as a whole matches the propsed
 	// redundancy for the base chunk.
 	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
@@ -508,26 +457,21 @@ func (r *Renter) uploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, m
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "unable to upload large linkfile")
 	}
-	// TODO: Right now, 'managedUploadStreamFromReader' returns as soon as the
-	// file is 'available' on the Sia network, this can have adverse effects for
-	// the fanout if using anything besides 1-of-N erasure coding settings. Need
-	// to update the code here to work around that.
 
 	// Convert the new siafile we just uploaded into a linkfile using the
 	// convert function.
-	return r.createSialinkFromFileNode(lup, fileNode, siaPath)
+	return r.managedCreateSialinkFromFileNode(lup, fileNode, siaPath.Name())
 }
 
-// uploadLinkfileSmallFile uploads a file that fits entirely in the leading
-// chunk of a linkfile to the Sia network and returns the sialink that can be
-// used to access the file.
-func (r *Renter) uploadLinkfileSmallFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileBytes []byte) (modules.Sialink, error) {
+// managedUploadLinkfileSmallFile uploads a file that fits entirely in the
+// leading chunk of a linkfile to the Sia network and returns the sialink that
+// can be used to access the file.
+func (r *Renter) managedUploadLinkfileSmallFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileBytes []byte) (modules.Sialink, error) {
 	ll := linkfileLayout{
-		version:                 LinkfileVersion,
-		filesize:                uint64(len(fileBytes)),
-		metadataSize:            uint32(len(metadataBytes)),
-		intraSectorDataPieces:   lup.IntraSectorDataPieces,
-		intraSectorParityPieces: lup.IntraSectorParityPieces,
+		version:      LinkfileVersion,
+		filesize:     uint64(len(fileBytes)),
+		metadataSize: uint64(len(metadataBytes)),
+		// No fanout, no encryption.
 	}
 
 	// Create the base sector. This is done as late as possible so that any
@@ -600,7 +544,7 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 		return modules.Sialink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
 	if largeFile {
-		return r.uploadLinkfileLargeFile(lup, metadataBytes, fileReader)
+		return r.managedUploadLinkfileLargeFile(lup, metadataBytes, fileReader)
 	}
-	return r.uploadLinkfileSmallFile(lup, metadataBytes, fileBytes)
+	return r.managedUploadLinkfileSmallFile(lup, metadataBytes, fileBytes)
 }

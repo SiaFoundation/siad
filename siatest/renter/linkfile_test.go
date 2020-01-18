@@ -57,9 +57,8 @@ func TestLinkfile(t *testing.T) {
 		Force:               force,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.LinkfileMetadata{
-			Name:       filename,
-			Mode:       0600, // intentionally not the default
-			CreateTime: 1e6,  // intentionally before current time
+			Filename:   filename,
+			Executable: false,
 		},
 
 		Reader: reader,
@@ -99,7 +98,7 @@ func TestLinkfile(t *testing.T) {
 		Force:               force2,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.LinkfileMetadata{
-			Name: largeFilename,
+			Filename: largeFilename,
 			// Remaining fields intentionally left to default
 		},
 
@@ -166,9 +165,8 @@ func TestLinkfile(t *testing.T) {
 		Force:               !force,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.LinkfileMetadata{
-			Name:       filename2,
-			Mode:       0600, // intentionally not the default
-			CreateTime: 1e6,  // intentionally before current time
+			Executable: true,
+			Filename:   filename2,
 		},
 	}
 	sialink2, err := r.RenterConvertSiafileToLinkfilePost(lup, remoteFile.SiaPath())

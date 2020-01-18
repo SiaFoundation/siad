@@ -988,14 +988,8 @@ func HealthPercentage(health float64) float64 {
 // leading bytes of the linkfile, meaning that this struct can be extended
 // without breaking compatibility.
 type LinkfileMetadata struct {
-	// Filename.
-	Name string `json:"name"`
-
-	// Permissions.
-	Mode os.FileMode `json:"mode"`
-
-	// Timestamp information, in 64bit Unix.
-	CreateTime int64 `json:"createtime"`
+	Executable bool   `json:"executable"`
+	Filename   string `json:"name"`
 }
 
 // LinkfileUploadParameters establishes the parameters such as the intra-root
@@ -1014,12 +1008,6 @@ type LinkfileUploadParameters struct {
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.
 	BaseChunkRedundancy uint8
-
-	// The intra sector erasure coding settings establish how the gets erasure
-	// coded within the base chunk. This is an optimization to improve download
-	// speeds.
-	IntraSectorDataPieces   uint8
-	IntraSectorParityPieces uint8
 
 	FileMetadata LinkfileMetadata
 

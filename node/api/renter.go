@@ -1727,7 +1727,7 @@ func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	http.ServeContent(w, req, metadata.Name, time.Time{}, streamer)
+	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
 // renterLinkfileHandlerPOST accepts some data and some metadata and then turns
@@ -1768,29 +1768,23 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Call the renter to upload the linkfile and create a sialink.
-	name := queryForm.Get("name")
-	modeStr := queryForm.Get("mode")
-	var mode os.FileMode
-	if modeStr != "" {
-		_, err := fmt.Sscanf(modeStr, "%o", &mode)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to parse file mode: %v", err)}, http.StatusBadRequest)
-			return
+	//
+	// TODO: Need to parsebool here on the mode - changed to executable.
+	filename := queryForm.Get("filename")
+	/*
+		modeStr := queryForm.Get("mode")
+		var mode os.FileMode
+		if modeStr != "" {
+			_, err := fmt.Sscanf(modeStr, "%o", &mode)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("failed to parse file mode: %v", err)}, http.StatusBadRequest)
+				return
+			}
 		}
-	}
-	createTimeStr := queryForm.Get("createtime")
-	var createTime int64
-	if createTimeStr != "" {
-		_, err := fmt.Sscan(createTimeStr, &createTime)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to parse file create time: %v", err)}, http.StatusBadRequest)
-			return
-		}
-	}
+	*/
 	lfm := modules.LinkfileMetadata{
-		Name:       name,
-		Mode:       mode,
-		CreateTime: createTime,
+		Executable: false, // TODO: Use parsed value.
+		Filename:   filename,
 	}
 	lup := modules.LinkfileUploadParameters{
 		SiaPath:             siaPath,

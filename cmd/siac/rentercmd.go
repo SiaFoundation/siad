@@ -2297,9 +2297,8 @@ func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
 		SiaPath: siaPath,
 
 		FileMetadata: modules.LinkfileMetadata{
-			Name:       sourceName,
-			Mode:       fi.Mode(),
-			CreateTime: time.Now().Unix(),
+			Executable: fi.Mode()&1 == 1,
+			Filename:   sourceName,
 		},
 
 		Reader: file,

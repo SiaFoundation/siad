@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -13,16 +15,16 @@ import (
 func TestLinkfileLayoutEncoding(t *testing.T) {
 	// Try encoding an decoding a simple example.
 	llOriginal := linkfileLayout{
-		version:                 LinkfileVersion,
-		filesize:                1e6,
-		metadataSize:            14e3,
-		intraSectorDataPieces:   8,
-		intraSectorParityPieces: 3,
-		fanoutHeaderSize:        75e3,
-		fanoutExtensionSize:     9e9,
-		fanoutDataPieces:        10,
-		fanoutParityPieces:      20,
+		version:            LinkfileVersion,
+		filesize:           1e6,
+		metadataSize:       14e3,
+		fanoutSize:         75e3,
+		fanoutDataPieces:   10,
+		fanoutParityPieces: 20,
+		cipherType:         crypto.TypePlain,
 	}
+	rand := fastrand.Bytes(64)
+	copy(llOriginal.cipherKey[:], rand)
 	encoded := llOriginal.encode()
 	var llRecovered linkfileLayout
 	llRecovered.decode(encoded)

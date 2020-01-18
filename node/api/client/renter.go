@@ -732,13 +732,14 @@ func (c *Client) RenterSialinkGet(sialink string) (fileData []byte, err error) {
 func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (string, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("name", lup.FileMetadata.Name)
-	createTimeStr := fmt.Sprintf("%v", lup.FileMetadata.CreateTime)
-	values.Set("createtime", createTimeStr)
+	values.Set("filename", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-	values.Set("mode", modeStr)
+	// TODO: Handle mode properly.
+	/*
+		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+		values.Set("mode", modeStr)
+	*/
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 
@@ -766,13 +767,14 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (strin
 func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("name", lup.FileMetadata.Name)
-	createTimeStr := fmt.Sprintf("%v", lup.FileMetadata.CreateTime)
-	values.Set("createtime", createTimeStr)
+	values.Set("name", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-	values.Set("mode", modeStr)
+	// TODO: Update mode
+	/*
+		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+		values.Set("mode", modeStr)
+	*/
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
