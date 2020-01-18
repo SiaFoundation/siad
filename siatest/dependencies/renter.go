@@ -29,7 +29,7 @@ func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops"
 }
 
-// DependencyFailUploadStreamFromRaeder prevents SiaFileEntries in the upload code
+// DependencyFailUploadStreamFromReader prevents SiaFileEntries in the upload code
 // from being closed.
 type DependencyFailUploadStreamFromReader struct {
 	modules.ProductionDependencies

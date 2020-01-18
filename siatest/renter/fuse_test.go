@@ -220,7 +220,9 @@ func TestFuse(t *testing.T) {
 		t.Error(err)
 	}
 	if bytes.Compare(data, localFileData) != 0 {
-		t.Error("data from the local file and data from the fuse file do not match")
+		t.Log(len(data))
+		t.Log(len(localFileData))
+		t.Fatal("data from the local file and data from the fuse file do not match")
 	}
 	err = fuseFile.Close()
 	if err != nil {
@@ -387,7 +389,9 @@ func TestFuse(t *testing.T) {
 		t.Error(err)
 	}
 	if bytes.Compare(data, localFileData) != 0 {
-		t.Error("data from the local file and data from the fuse file do not match", len(data), len(localFileData))
+		t.Log(len(data))
+		t.Log(len(localFileData))
+		t.Fatal("data from the local file and data from the fuse file do not match", len(data), len(localFileData))
 	}
 	err = fuseFile.Close()
 	if err != nil {
@@ -667,7 +671,9 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(fuseData, sourceData) {
-		t.Error("custom mode data and source data do not match")
+		t.Log(len(fuseData))
+		t.Log(len(sourceData))
+		t.Fatal("custom mode data and source data do not match")
 	}
 	// Open the custom file in fuse. Note that for this test to provide proper
 	// regression coverage, the streamer shouldn't be opened until after the
@@ -691,7 +697,9 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(renamedFuseData, sourceData) {
-		t.Error("data mismatch after file was renamed")
+		t.Log(renamedFuseData)
+		t.Log(sourceData)
+		t.Fatal("data mismatch after file was renamed")
 	}
 	// Close the fuseFile.
 	err = fuseFile.Close()
