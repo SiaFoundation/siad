@@ -3,6 +3,7 @@ package dependencies
 import (
 	"net"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
@@ -259,4 +260,31 @@ func (d *dependencyCustomResolver) Disrupt(s string) bool {
 // Resolver creates a new custom resolver.
 func (d *dependencyCustomResolver) Resolver() modules.Resolver {
 	return customResolver{d.lookupIP}
+}
+
+// DependencyAddLatency will introduce a latency by sleeping for the
+// specified duration if the argument passed to Distrupt equals str.
+type DependencyAddLatency struct {
+	str      string
+	duration time.Duration
+	modules.ProductionDependencies
+}
+
+// newDependencyAddLatency creates a new DependencyAddLatency from a given
+// disrupt string and duration
+func newDependencyAddLatency(str string, d time.Duration) *DependencyAddLatency {
+	return &DependencyAddLatency{
+		str:      str,
+		duration: d,
+	}
+}
+
+// Disrupt will sleep for the specified duration if the correct string is
+// provided.
+func (d *DependencyAddLatency) Disrupt(s string) bool {
+	if s == d.str {
+		time.Sleep(d.duration)
+		return true
+	}
+	return false
 }

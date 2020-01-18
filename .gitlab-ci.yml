@@ -50,15 +50,15 @@ lint:
       - .cache
   script: 
     ## This is the recommended way to install golang-ci lint.
-    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.21.0
-    - ./bin/golangci-lint run -c .golangci.yml ./...
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - make lint-analysis
-    - make test
+    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.22.2
     - apt-get update
     - apt-get -y install python3-pip
     - pip3 install codespell
+    - ./bin/golangci-lint run -c .golangci.yml ./...
+    - make lint-analysis
     - make markdown-spellcheck
+    - make test
 
 build:
   stage: lint
@@ -87,7 +87,7 @@ package-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
+    - make test-long run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/host/mdm ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
 
 siatest-tests:
   <<: *default_test_params
@@ -117,7 +117,7 @@ legacy-tests-nightly:
 package-tests-nightly:
   <<: *default_nightly_params
   script: 
-    - make test-vlong run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
+    - make test-vlong run=. pkgs="./build ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/host/mdm ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./types"
 
 siatest-tests-nightly:
   <<: *default_nightly_params

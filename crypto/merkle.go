@@ -245,7 +245,6 @@ func VerifyDiffProof(ranges []ProofRange, numLeaves uint64, proofHashes, leafHas
 	if root == (Hash{}) {
 		rootBytes = nil // empty trees hash to nil, not 32 zeros
 	}
-	lh := merkletree.NewCachedLeafHasher(leafBytes)
-	ok, _ := merkletree.VerifyDiffProof(lh, numLeaves, NewHash(), ranges, proofBytes, rootBytes)
+	ok, _ := merkletree.VerifyDiffProof(leafBytes, numLeaves, NewHash(), ranges, proofBytes, rootBytes)
 	return ok
 }

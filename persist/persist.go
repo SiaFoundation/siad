@@ -1,15 +1,22 @@
 package persist
 
 import (
+	"bytes"
 	"encoding/base32"
-	"errors"
+	"io"
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
 const (
+	// FixedMetadataSize is the size of the FixedMetadata header in bytes
+	FixedMetadataSize = 32
+
 	// DefaultDiskPermissionsTest when creating files or directories in tests.
 	DefaultDiskPermissionsTest = 0750
 
@@ -54,7 +61,15 @@ var (
 
 // Metadata contains the header and version of the data being stored.
 type Metadata struct {
-	Header, Version string
+	Header  string
+	Version string
+}
+
+// FixedMetadata contains the header and version of the data being stored as a
+// fixed-length byte-array.
+type FixedMetadata struct {
+	Header  types.Specifier
+	Version types.Specifier
 }
 
 // RandomSuffix returns a 20 character base32 suffix for a filename. There are
@@ -77,4 +92,32 @@ func RemoveFile(filename string) error {
 		return err
 	}
 	return nil
+}
+
+// VerifyMetadataHeader will take in a reader and an expected metadata header,
+// if the file's header has a different header or version it will return the
+// corresponding error and the actual metadata header
+func VerifyMetadataHeader(r io.Reader, expected FixedMetadata) (FixedMetadata, error) {
+	b := make([]byte, FixedMetadataSize)
+
+	// Read metadata from file
+	_, err := r.Read(b)
+	if err != nil {
+		return FixedMetadata{}, errors.AddContext(err, "could not read metadata header")
+	}
+	actual := FixedMetadata{}
+	err = encoding.Unmarshal(b[:], &actual)
+	if err != nil {
+		return actual, errors.AddContext(err, "could not decode metadata header")
+	}
+
+	// Verify metadata header and version
+	if !bytes.Equal(actual.Header[:], expected.Header[:]) {
+		return actual, ErrBadHeader
+	}
+	if !bytes.Equal(actual.Version[:], expected.Version[:]) {
+		return actual, ErrBadVersion
+	}
+
+	return actual, nil
 }

@@ -138,7 +138,8 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) {
 	w.staticWake()
 }
 
-// managedPerformUploadChunkJob will perform some upload work.
+// managedPerformUploadChunkJob will perform some upload work and return 'false'
+// if there is no work to be done.
 func (w *worker) managedPerformUploadChunkJob() bool {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
@@ -168,7 +169,6 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	if uc == nil {
 		return true
 	}
-
 	// Open an editing connection to the host.
 	e, err := w.renter.hostContractor.Editor(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
