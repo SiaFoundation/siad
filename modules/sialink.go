@@ -16,12 +16,12 @@ import (
 )
 
 const (
-	// rawLinkDataSize is the raw size of the data that gets put into a link.
-	rawLinkDataSize = 34
+	// rawSialinkSize is the raw size of the data that gets put into a link.
+	rawSialinkSize = 34
 
-	// encodedLinkDataSize is the size of the LinkData after it has been encoded
+	// encodedSialinkSize is the size of the Sialink after it has been encoded
 	// using base64. This size excludes the 'sia://' prefix.
-	encodedLinkDataSize = 46
+	encodedSialinkSize = 46
 )
 
 const (
@@ -33,38 +33,31 @@ const (
 	SialinkMaxFetchSize = 1 << 22
 )
 
-// Sialink defines a link that can be used to fetch data from the Sia network.
-// Context clues provided by the blockchain combined with the information in the
-// Sialink is all that is needed to uniquely identify and retrieve a file from
-// the Sia network.
-type Sialink string
-
-// The LinkData contains all of the information that can be encoded into a
-// sialink. This information consists of a 32 byte MerkleRoot and a 2 byte
-// bitfield.
+// Sialink contains all of the information that can be encoded into a sialink.
+// This information consists of a 32 byte MerkleRoot and a 2 byte bitfield.
 //
 // The first two bits of the bitfield (values 1 and 2 in decimal) determine the
 // version of the sialink. The sialink version determines how the remaining bits
 // are used. Not all values of the bitfield are legal.
-type LinkData struct {
+type Sialink struct {
 	bitfield   uint16
 	merkleRoot crypto.Hash
 }
 
-// NewLinkDataV1 will return a v1 LinkData object with the version set to 1 and
+// NewSialinkV1 will return a v1 Sialink object with the version set to 1 and
 // the remaining fields set appropriately. Note that the offset needs to be
 // aligned correctly. Check OffsetAndFetchSize for a full list of rules on legal
 // offsets - the value of a legal offset depends on the provided length.
 //
 // The input length will automatically be converted to the nearest fetch size.
-func NewLinkDataV1(merkleRoot crypto.Hash, offset, length uint64) (LinkData, error) {
-	var ld LinkData
-	err := ld.setOffsetAndFetchSize(offset, length)
+func NewSialinkV1(merkleRoot crypto.Hash, offset, length uint64) (Sialink, error) {
+	var sl Sialink
+	err := sl.setOffsetAndFetchSize(offset, length)
 	if err != nil {
-		return LinkData{}, errors.AddContext(err, "Invalid LinkData")
+		return Sialink{}, errors.AddContext(err, "Invalid Sialink")
 	}
-	ld.merkleRoot = merkleRoot
-	return ld, nil
+	sl.merkleRoot = merkleRoot
+	return sl, nil
 }
 
 // validateAndParseV1Bitfield is a helper method which validates that a bitfield
@@ -129,13 +122,8 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 	return offset, fetchSize, nil
 }
 
-// LoadSialink returns the linkdata associated with an input sialink.
-func (ld *LinkData) LoadSialink(s Sialink) error {
-	return ld.LoadString(string(s))
-}
-
-// LoadString converts from a string and loads the result into ld.
-func (ld *LinkData) LoadString(s string) error {
+// LoadString converts from a string and loads the result into sl.
+func (sl *Sialink) LoadString(s string) error {
 	// Trim any 'sia://' that has tagged along.
 	noPrefix := strings.TrimPrefix(s, "sia://")
 	// Trim any parameters that may exist after an ampersand. Eventually, it
@@ -147,26 +135,26 @@ func (ld *LinkData) LoadString(s string) error {
 	// return an empty slice.
 	base := []byte(splits[0])
 	// Input check, ensure that this string is the expected size.
-	if len(base) != encodedLinkDataSize {
+	if len(base) != encodedSialinkSize {
 		return errors.New("not a sialink, sialinks are always 46 bytes")
 	}
 
 	// Decode the sialink from base64 into raw. I believe that only
-	// 'rawLinkDataSize' bytes are necessary to decode successfully, however the
+	// 'rawSialinkSize' bytes are necessary to decode successfully, however the
 	// stdlib will panic if you run a decode operation on a slice that is too
 	// small, so 4 extra bytes are added to cover any potential situation where
 	// a sialink needs extra space to decode. 4 is chosen because that's the
 	// size of a base64 word, meaning that there's an entire extra word of
 	// cushion. Because we check the size upon receiving the sialink, we will
 	// never need more than one extra word.
-	raw := make([]byte, rawLinkDataSize+4)
+	raw := make([]byte, rawSialinkSize+4)
 	_, err := base64.RawURLEncoding.Decode(raw, base)
 	if err != nil {
 		return errors.New("unable to decode input as base64")
 	}
 
 	// Load and check the bitfield. The bitfield is checked before modifying the
-	// LinkData so that the LinkData remains unchanged if there is any error
+	// Sialink so that the Sialink remains unchanged if there is any error
 	// parsing the string.
 	bitfield := binary.LittleEndian.Uint16(raw)
 	_, _, err = validateAndParseV1Bitfield(bitfield)
@@ -175,14 +163,14 @@ func (ld *LinkData) LoadString(s string) error {
 	}
 
 	// Load the raw data.
-	ld.bitfield = bitfield
-	copy(ld.merkleRoot[:], raw[2:])
+	sl.bitfield = bitfield
+	copy(sl.merkleRoot[:], raw[2:])
 	return nil
 }
 
-// MerkleRoot returns the merkle root of the LinkData.
-func (ld LinkData) MerkleRoot() crypto.Hash {
-	return ld.merkleRoot
+// MerkleRoot returns the merkle root of the Sialink.
+func (sl Sialink) MerkleRoot() crypto.Hash {
+	return sl.merkleRoot
 }
 
 // OffsetAndFetchSize returns the offset and fetch size of a file that sits
@@ -290,34 +278,27 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 // NOTE: If there is an error, OffsetAndLen will return a signal to download the
 // entire sector. This means that any code which is ignoring the error will
 // still have mostly sane behavior.
-func (ld LinkData) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err error) {
-	return validateAndParseV1Bitfield(ld.bitfield)
+func (sl Sialink) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err error) {
+	return validateAndParseV1Bitfield(sl.bitfield)
 }
 
-// Sialink returns the type safe 'sialink' of the link data, which is just a
-// typecast string.
-func (ld LinkData) Sialink() (Sialink, error) {
-	sl, err := ld.String()
-	return Sialink(sl), err
-}
-
-// String converts LinkData to a string.
-func (ld LinkData) String() (string, error) {
+// String converts Sialink to a string.
+func (sl Sialink) String() (string, error) {
 	// Check for illegal values in the bitfield.
-	_, _, err := validateAndParseV1Bitfield(ld.bitfield)
+	_, _, err := validateAndParseV1Bitfield(sl.bitfield)
 	if err != nil {
 		return "", errors.AddContext(err, "cannot marshal invalid sialink")
 	}
 
 	// Build the raw string.
-	raw := make([]byte, rawLinkDataSize)
-	binary.LittleEndian.PutUint16(raw, ld.bitfield)
-	copy(raw[2:], ld.merkleRoot[:])
+	raw := make([]byte, rawSialinkSize)
+	binary.LittleEndian.PutUint16(raw, sl.bitfield)
+	copy(raw[2:], sl.merkleRoot[:])
 
 	// Encode the raw bytes to base64. We have to use a buffer and a base64
 	// encoder because the other functions that the stdlib provides will add
 	// padding to the end unnecessarily.
-	bufBytes := make([]byte, 0, encodedLinkDataSize)
+	bufBytes := make([]byte, 0, encodedSialinkSize)
 	buf := bytes.NewBuffer(bufBytes)
 	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
 	encoder.Write(raw)
@@ -329,14 +310,14 @@ func (ld LinkData) String() (string, error) {
 // is a 2 bit number, meaning there are 4 possible values. The bitwise values
 // cover the range [0, 3], however we want to return a value in the range
 // [1, 4], so we increment the bitwise result.
-func (ld LinkData) Version() uint16 {
-	return (ld.bitfield & 3) + 1
+func (sl Sialink) Version() uint16 {
+	return (sl.bitfield & 3) + 1
 }
 
 // setOffsetAndFetchSize will set the offset and fetch size of the data within
 // the sialink. Offset must be aligned correctly. setOffsetAndLen implies that
 // the version is 1, so the version will also be set to 1.
-func (ld *LinkData) setOffsetAndFetchSize(offset, fetchSize uint64) error {
+func (sl *Sialink) setOffsetAndFetchSize(offset, fetchSize uint64) error {
 	if offset+fetchSize > SialinkMaxFetchSize {
 		return errors.New("offset plus fetch size cannot exceed the size of one sector - 4 MiB")
 	}
@@ -401,6 +382,6 @@ func (ld *LinkData) setOffsetAndFetchSize(offset, fetchSize uint64) error {
 	bitfield <<= 2
 
 	// Set the bitfield and return.
-	ld.bitfield = bitfield
+	sl.bitfield = bitfield
 	return nil
 }

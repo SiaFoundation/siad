@@ -74,11 +74,11 @@ func TestSialinkManualExamples(t *testing.T) {
 	}
 	// Try each example.
 	for _, example := range sialinkExamples {
-		ld, err := NewLinkDataV1(crypto.Hash{}, example.offset, example.length)
+		sl, err := NewSialinkV1(crypto.Hash{}, example.offset, example.length)
 		if err != nil {
 			t.Error(err)
 		}
-		offset, length, err := ld.OffsetAndFetchSize()
+		offset, length, err := sl.OffsetAndFetchSize()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,8 +88,8 @@ func TestSialinkManualExamples(t *testing.T) {
 		if length != example.expectedLength {
 			t.Error("bad length:", example.offset, example.length, example.expectedLength, length)
 		}
-		if ld.Version() != 1 {
-			t.Error("bad version:", ld.Version())
+		if sl.Version() != 1 {
+			t.Error("bad version:", sl.Version())
 		}
 	}
 
@@ -112,7 +112,7 @@ func TestSialinkManualExamples(t *testing.T) {
 	}
 	// Try each example.
 	for _, example := range badSialinkExamples {
-		_, err := NewLinkDataV1(crypto.Hash{}, example.offset, example.length)
+		_, err := NewSialinkV1(crypto.Hash{}, example.offset, example.length)
 		if err == nil {
 			t.Error("expecting a failure:", example.offset, example.length)
 		}
@@ -125,127 +125,127 @@ func TestSialink(t *testing.T) {
 	// Create a linkdata struct that is all 0's, check that the resulting
 	// sialink is 52 bytes, and check that the struct encodes and decodes
 	// without problems.
-	var ldMin LinkData
-	sialink, err := ldMin.Sialink()
+	var slMin Sialink
+	str, err := slMin.String()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sialink) != 52 {
+	if len(str) != 52 {
 		t.Error("sialink is not 52 bytes")
 	}
-	var ldMinDecoded LinkData
-	err = ldMinDecoded.LoadSialink(sialink)
+	var slMinDecoded Sialink
+	err = slMinDecoded.LoadString(str)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ldMinDecoded != ldMin {
+	if slMinDecoded != slMin {
 		t.Error("encoding and decoding is not symmetric")
 	}
 
 	// Create a linkdata struct that is all 1's, check that the resulting
 	// sialink is 52 bytes, and check that the struct encodes and decodes
 	// without problems.
-	ldMax := LinkData{
+	slMax := Sialink{
 		bitfield: 65535,
 	}
-	ldMax.bitfield -= 7175 // set the final three bits to 0, and also bits 10, 11, 12 to zer oto make this a valid sialink.
-	for i := 0; i < len(ldMax.merkleRoot); i++ {
-		ldMax.merkleRoot[i] = 255
+	slMax.bitfield -= 7175 // set the final three bits to 0, and also bits 10, 11, 12 to zer oto make this a valid sialink.
+	for i := 0; i < len(slMax.merkleRoot); i++ {
+		slMax.merkleRoot[i] = 255
 	}
-	sialink, err = ldMax.Sialink()
+	str, err = slMax.String()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sialink) != 52 {
-		t.Error("sialink is not 52 bytes")
+	if len(str) != 52 {
+		t.Error("str is not 52 bytes")
 	}
-	var ldMaxDecoded LinkData
-	err = ldMaxDecoded.LoadSialink(sialink)
+	var slMaxDecoded Sialink
+	err = slMaxDecoded.LoadString(str)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ldMaxDecoded != ldMax {
+	if slMaxDecoded != slMax {
 		t.Error("encoding and decoding is not symmetric")
 	}
 
 	// Try loading an arbitrary string that is too small.
-	var ld LinkData
+	var sl Sialink
 	var arb string
-	for i := 0; i < encodedLinkDataSize-1; i++ {
+	for i := 0; i < encodedSialinkSize-1; i++ {
 		arb = arb + "a"
 	}
-	err = ld.LoadString(arb)
+	err = sl.LoadString(arb)
 	if err == nil {
 		t.Error("expecting error when loading string that is too small")
 	}
 	// Try loading a siafile that's just arbitrary/meaningless data.
 	arb = arb + "a"
-	err = ld.LoadString(arb)
+	err = sl.LoadString(arb)
 	if err == nil {
 		t.Error("arbitrary string should not decode")
 	}
 	// Try loading a siafile that's too large.
 	long := arb + "a"
-	err = ld.LoadString(long)
+	err = sl.LoadString(long)
 	if err == nil {
 		t.Error("expecting error when loading string that is too large")
 	}
 	// Try loading a blank siafile.
 	blank := ""
-	err = ld.LoadString(blank)
+	err = sl.LoadString(blank)
 	if err == nil {
 		t.Error("expecting an error when loading a blank sialink")
 	}
 
 	// Try giving a sialink extra params and loading that.
-	ldStr, err := ld.String()
+	slStr, err := sl.String()
 	if err != nil {
 		t.Fatal(err)
 	}
-	params := ldStr + "&fdsafdsafdsa"
-	err = ld.LoadString(params)
+	params := slStr + "&fdsafdsafdsa"
+	err = sl.LoadString(params)
 	if err != nil {
 		t.Error("should be no issues loading a sialink with params")
 	}
 	// Add more ampersands
 	params = params + "&fffffdsafdsafdsa"
-	err = ld.LoadString(params)
+	err = sl.LoadString(params)
 	if err != nil {
 		t.Error("should be no issues loading a sialink with params")
 	}
 
 	// Try loading a non base64 string.
-	nonb64 := "sia://%" + ldStr
-	err = ld.LoadString(nonb64[:len(ldStr)])
+	nonb64 := "sia://%" + slStr
+	err = sl.LoadString(nonb64[:len(slStr)])
 	if err == nil {
 		t.Error("should not be able to load non base64 string")
 	}
 
 	// Try parsing a linkfile that's got a bad version.
-	var ldBad LinkData
-	ldBad.bitfield = 1
-	sialink, err = ldBad.Sialink()
+	var slBad Sialink
+	slBad.bitfield = 1
+	str, err = slBad.String()
 	if err == nil {
 		t.Error("expecting an error when marshalling a sialink with a bad version")
 	}
-	_, _, err = ldBad.OffsetAndFetchSize()
+	_, _, err = slBad.OffsetAndFetchSize()
 	if err == nil {
 		t.Error("should not be able to get offset and fetch size of bad sialink")
 	}
 	// Try setting invalid mode bits.
-	ldBad.bitfield = ^uint16(0) - 3
-	_, _, err = ldBad.OffsetAndFetchSize()
+	slBad.bitfield = ^uint16(0) - 3
+	_, _, err = slBad.OffsetAndFetchSize()
 	if err == nil {
 		t.Error("should not be able to get offset and fetch size of bad sialink")
 	}
 
 	// Check the MerkleRoot() function.
 	mr := crypto.HashObject("fdsa")
-	ld, err = NewLinkDataV1(mr, 4096, 4096)
+	sl, err = NewSialinkV1(mr, 4096, 4096)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ld.MerkleRoot() != mr {
+	if sl.MerkleRoot() != mr {
 		t.Fatal("root mismatch")
 	}
 }
@@ -259,11 +259,11 @@ func TestSialinkAutoExamples(t *testing.T) {
 
 	// Helper function to try some values.
 	tryValues := func(offset, length, expectedLength uint64) {
-		ld, err := NewLinkDataV1(crypto.Hash{}, offset, length)
+		sl, err := NewSialinkV1(crypto.Hash{}, offset, length)
 		if err != nil {
 			t.Error(err)
 		}
-		offsetOut, lengthOut, err := ld.OffsetAndFetchSize()
+		offsetOut, lengthOut, err := sl.OffsetAndFetchSize()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -276,17 +276,17 @@ func TestSialinkAutoExamples(t *testing.T) {
 
 		// Encode the sialink and then decode the sialink. There should be no
 		// errors in doing so, and the result should equal the initial.
-		sl, err := ld.Sialink()
+		str, err := sl.String()
 		if err != nil {
 			t.Fatal(err)
 		}
-		var ldDecode LinkData
-		err = ldDecode.LoadSialink(sl)
+		var slDecode Sialink
+		err = slDecode.LoadString(str)
 		if err != nil {
 			t.Error(err)
 		}
-		if ldDecode != ld {
-			t.Log(ld)
+		if slDecode != sl {
+			t.Log(sl)
 			t.Error("linkdata does not maintain its fields when encoded and decoded")
 		}
 	}
