@@ -69,11 +69,10 @@ gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40 h1:dizWJqTWj
 gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40/go.mod h1:rOnSnoRyxMI3fe/7KIbVcsHRGxe30OONv8dEgo+vCfA=
 gitlab.com/NebulousLabs/go-upnp v0.0.0-20181011194642-3a71999ed0d3 h1:qXqiXDgeQxspR3reot1pWme00CX1pXbxesdzND+EjbU=
 gitlab.com/NebulousLabs/go-upnp v0.0.0-20181011194642-3a71999ed0d3/go.mod h1:sleOmkovWsDEQVYXmOJhx69qheoMTmCuPYyiCFCihlg=
-gitlab.com/NebulousLabs/merkletree v0.0.0-20190207030457-bc4a11e31a0d h1:ObC0V0W72CGqAliMv63xNEzKI6V0FnKcNHfi4+X5jiY=
-gitlab.com/NebulousLabs/merkletree v0.0.0-20190207030457-bc4a11e31a0d/go.mod h1:xItahGeKIkh9BQfxDEX6O3eWxOxbLBPX738sXm0uVaQ=
-gitlab.com/NebulousLabs/merkletree v0.0.0-20191001163158-1a1cd50334d4 h1:k+9TkSymRzHI2q1N7FUYefbg67UC7gMwBXz1pjvJ1SM=
 gitlab.com/NebulousLabs/merkletree v0.0.0-20200114043711-1b864c41fecc h1:7IRZWkuHsL2T/X7bPXXGv3gkJe00hy4tNJlAvwZVQ8I=
 gitlab.com/NebulousLabs/merkletree v0.0.0-20200114043711-1b864c41fecc/go.mod h1:0cjDwhA+Pv9ZQXHED7HUSS3sCvo2zgsoaMgE7MeGBWo=
+gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4 h1:iuNdBfBg0umjOvrEf9MxGzK+NwAyE2oCZjDqUx9zVFs=
+gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4/go.mod h1:0cjDwhA+Pv9ZQXHED7HUSS3sCvo2zgsoaMgE7MeGBWo=
 gitlab.com/NebulousLabs/monitor v0.0.0-20191109031941-72461aa791aa h1:07PSXLGBSAUXC1l/mtlXq9YV3sy+6rszsgD8wjs+nMg=
 gitlab.com/NebulousLabs/monitor v0.0.0-20191109031941-72461aa791aa/go.mod h1:QxXtb5hIp2xQkfb+lzBDIqQIGEj22U7AkYCXO3hkhqc=
 gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a h1:fs891phmYZrVdaCVPXfHGDMpV5LWPKvnOMjx70EpJkw=
