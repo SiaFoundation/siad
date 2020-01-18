@@ -123,15 +123,15 @@ func TestSialinkManualExamples(t *testing.T) {
 // from a string.
 func TestSialink(t *testing.T) {
 	// Create a linkdata struct that is all 0's, check that the resulting
-	// sialink is 52 bytes, and check that the struct encodes and decodes
+	// sialink is the right size, and check that the struct encodes and decodes
 	// without problems.
 	var slMin Sialink
 	str, err := slMin.String()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(str) != 52 {
-		t.Error("sialink is not 52 bytes")
+	if len(str) != encodedSialinkSize {
+		t.Error("sialink is not the right size")
 	}
 	var slMinDecoded Sialink
 	err = slMinDecoded.LoadString(str)
@@ -143,7 +143,7 @@ func TestSialink(t *testing.T) {
 	}
 
 	// Create a linkdata struct that is all 1's, check that the resulting
-	// sialink is 52 bytes, and check that the struct encodes and decodes
+	// sialink is the right size, and check that the struct encodes and decodes
 	// without problems.
 	slMax := Sialink{
 		bitfield: 65535,
@@ -156,8 +156,8 @@ func TestSialink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(str) != 52 {
-		t.Error("str is not 52 bytes")
+	if len(str) != encodedSialinkSize {
+		t.Error("str is not the right size")
 	}
 	var slMaxDecoded Sialink
 	err = slMaxDecoded.LoadString(str)

@@ -20,7 +20,7 @@ const (
 	rawSialinkSize = 34
 
 	// encodedSialinkSize is the size of the Sialink after it has been encoded
-	// using base64. This size excludes the 'sia://' prefix.
+	// using base64.
 	encodedSialinkSize = 46
 )
 
@@ -124,12 +124,10 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 
 // LoadString converts from a string and loads the result into sl.
 func (sl *Sialink) LoadString(s string) error {
-	// Trim any 'sia://' that has tagged along.
-	noPrefix := strings.TrimPrefix(s, "sia://")
 	// Trim any parameters that may exist after an ampersand. Eventually, it
 	// will be possible to parse these separately as additional/optional
 	// arguments, for now anything after an ampersand is just ignored.
-	splits := strings.SplitN(noPrefix, "&", 2)
+	splits := strings.SplitN(s, "&", 2)
 	// No need to check if there is an element returned by strings.SplitN, so
 	// long as the second arg is not-nil (in this case, '&'), SplitN cannot
 	// return an empty slice.
@@ -303,7 +301,7 @@ func (sl Sialink) String() (string, error) {
 	encoder := base64.NewEncoder(base64.RawURLEncoding, buf)
 	encoder.Write(raw)
 	encoder.Close()
-	return "sia://" + buf.String(), nil
+	return buf.String(), nil
 }
 
 // Version will pull the version out of the bitfield and return it. The version
