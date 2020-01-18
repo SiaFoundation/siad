@@ -272,20 +272,14 @@ func (sl Sialink) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err err
 }
 
 // String converts Sialink to a string.
-func (sl Sialink) String() (string, error) {
-	// Check for illegal values in the bitfield.
-	_, _, err := validateAndParseV1Bitfield(sl.bitfield)
-	if err != nil {
-		return "", errors.AddContext(err, "cannot marshal invalid sialink")
-	}
-
+func (sl Sialink) String() string {
 	// Build the raw string.
 	raw := make([]byte, rawSialinkSize)
 	binary.LittleEndian.PutUint16(raw, sl.bitfield)
 	copy(raw[2:], sl.merkleRoot[:])
 
 	// Encode the raw bytes to base64.
-	return base64.RawURLEncoding.EncodeToString(raw), nil
+	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
 // Version will pull the version out of the bitfield and return it. The version
