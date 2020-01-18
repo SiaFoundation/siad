@@ -30,8 +30,8 @@ import (
 
 // skipWriter is a helper type that ignores the first 'skip' bytes written to it.
 type skipWriter struct {
-	writer    io.Writer
-	skip int
+	writer io.Writer
+	skip   int
 }
 
 // Write will write bytes to the skipWriter, being sure to skip over any bytes
@@ -138,7 +138,7 @@ func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces 
 	}
 	skipWriter := &skipWriter{
 		writer: sectionWriter,
-		skip: int(dataOffset),
+		skip:   int(dataOffset),
 	}
 	bufioWriter := bufio.NewWriter(skipWriter)
 	err := ec.Recover(pieces, dataOffset+length, bufioWriter)
