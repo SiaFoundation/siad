@@ -126,15 +126,12 @@ func TestSialink(t *testing.T) {
 	// sialink is the right size, and check that the struct encodes and decodes
 	// without problems.
 	var slMin Sialink
-	str, err := slMin.String()
-	if err != nil {
-		t.Fatal(err)
-	}
+	str := slMin.String()
 	if len(str) != encodedSialinkSize {
 		t.Error("sialink is not the right size")
 	}
 	var slMinDecoded Sialink
-	err = slMinDecoded.LoadString(str)
+	err := slMinDecoded.LoadString(str)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,10 +149,7 @@ func TestSialink(t *testing.T) {
 	for i := 0; i < len(slMax.merkleRoot); i++ {
 		slMax.merkleRoot[i] = 255
 	}
-	str, err = slMax.String()
-	if err != nil {
-		t.Fatal(err)
-	}
+	str = slMax.String()
 	if len(str) != encodedSialinkSize {
 		t.Error("str is not the right size")
 	}
@@ -198,10 +192,7 @@ func TestSialink(t *testing.T) {
 	}
 
 	// Try giving a sialink extra params and loading that.
-	slStr, err := sl.String()
-	if err != nil {
-		t.Fatal(err)
-	}
+	slStr := sl.String()
 	params := slStr + "&fdsafdsafdsa"
 	err = sl.LoadString(params)
 	if err != nil {
@@ -224,10 +215,7 @@ func TestSialink(t *testing.T) {
 	// Try parsing a linkfile that's got a bad version.
 	var slBad Sialink
 	slBad.bitfield = 1
-	str, err = slBad.String()
-	if err == nil {
-		t.Error("expecting an error when marshalling a sialink with a bad version")
-	}
+	str = slBad.String()
 	_, _, err = slBad.OffsetAndFetchSize()
 	if err == nil {
 		t.Error("should not be able to get offset and fetch size of bad sialink")
@@ -276,10 +264,7 @@ func TestSialinkAutoExamples(t *testing.T) {
 
 		// Encode the sialink and then decode the sialink. There should be no
 		// errors in doing so, and the result should equal the initial.
-		str, err := sl.String()
-		if err != nil {
-			t.Fatal(err)
-		}
+		str := sl.String()
 		var slDecode Sialink
 		err = slDecode.LoadString(str)
 		if err != nil {
