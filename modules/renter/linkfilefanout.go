@@ -53,7 +53,7 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 		staticErasureCoder: ec,
 		staticLayout:       ll,
 		staticMasterKey:    masterKey,
-		staticStreamID:     streamDataSourceID(crypto.HashObject(link)),
+		staticStreamID:     streamDataSourceID(crypto.HashObject(link.String())),
 
 		staticRenter: r,
 	}

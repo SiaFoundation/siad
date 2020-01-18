@@ -159,7 +159,7 @@ type (
 		// Sialink tracking. If this siafile is known to have sectors of any
 		// linkfiles, those linkfiles will be listed here. It should be noted
 		// that a single siafile can be responsible for tracking many linkfiles.
-		Sialinks []modules.Sialink `json:"sialinks"`
+		Sialinks []string `json:"sialinks"`
 	}
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
@@ -194,7 +194,7 @@ func (sf *SiaFile) AccessTime() time.Time {
 func (sf *SiaFile) AddSialink(s modules.Sialink) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.staticMetadata.Sialinks = append(sf.staticMetadata.Sialinks, s)
+	sf.staticMetadata.Sialinks = append(sf.staticMetadata.Sialinks, s.String())
 
 	// Save changes to metadata to disk.
 	updates, err := sf.saveMetadataUpdates()

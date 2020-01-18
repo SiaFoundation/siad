@@ -721,19 +721,15 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 
 // RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
 // file.
-func (c *Client) RenterSialinkGet(sialink modules.Sialink) (fileData []byte, err error) {
-	sialinkStr, err := sialink.String()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to format sialink")
-	}
-	getQuery := fmt.Sprintf("/renter/sialink/%s", sialinkStr)
+func (c *Client) RenterSialinkGet(sialink string) (fileData []byte, err error) {
+	getQuery := fmt.Sprintf("/renter/sialink/%s", sialink)
 	_, fileData, err = c.getRawResponse(getQuery)
 	return
 }
 
 // RenterLinkfilePost uses the /renter/linkfile endpoint to upload a linkfile.
 // The resulting sialink is returned along with an error.
-func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
+func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("name", lup.FileMetadata.Name)
@@ -750,14 +746,14 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modul
 	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return modules.Sialink{}, errors.AddContext(err, "post call to "+query+" failed")
+		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the sialink.
 	var rshp api.RenterLinkfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return modules.Sialink{}, errors.AddContext(err, "unable to parse the sialink upload response")
+		return "", errors.AddContext(err, "unable to parse the sialink upload response")
 	}
 	return rshp.Sialink, err
 }
@@ -767,7 +763,7 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modul
 // siapath of the siafile that should be converted. The siapath provided inside
 // of the upload params is the name that will be used for the base sector of the
 // linkfile.
-func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (modules.Sialink, error) {
+func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("name", lup.FileMetadata.Name)
@@ -785,14 +781,14 @@ func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadPa
 	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return modules.Sialink{}, errors.AddContext(err, "post call to "+query+" failed")
+		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the sialink.
 	var rshp api.RenterLinkfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return modules.Sialink{}, errors.AddContext(err, "unable to parse the sialink upload response")
+		return "", errors.AddContext(err, "unable to parse the sialink upload response")
 	}
 	return rshp.Sialink, err
 }

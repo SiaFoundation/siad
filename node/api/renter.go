@@ -249,7 +249,7 @@ type (
 	// RenterLinkfileHandlerPOST is the response that the api returns after the
 	// /renter/linkfile/ POST endpoint has been used.
 	RenterLinkfileHandlerPOST struct {
-		Sialink modules.Sialink `json:"sialink"`
+		Sialink string `json:"sialink"`
 	}
 )
 
@@ -1812,7 +1812,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 			return
 		}
 		WriteJSON(w, RenterLinkfileHandlerPOST{
-			Sialink: sialink,
+			Sialink: sialink.String(),
 		})
 		return
 	}
@@ -1834,7 +1834,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		return
 	}
 	WriteJSON(w, RenterLinkfileHandlerPOST{
-		Sialink: sialink,
+		Sialink: sialink.String(),
 	})
 }
 
