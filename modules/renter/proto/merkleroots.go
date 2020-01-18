@@ -306,7 +306,7 @@ func (mr *merkleRoots) push(root crypto.Hash) error {
 func (mr *merkleRoots) root() crypto.Hash {
 	tree := crypto.NewTree()
 	for _, st := range mr.cachedSubTrees {
-		if err := tree.PushSubTree(st.height, st.sum[:]); err != nil {
+		if err := tree.PushSubTree(st.height, st.sum); err != nil {
 			// This should never fail.
 			build.Critical(err)
 		}
