@@ -1,7 +1,6 @@
 package siafile
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -173,7 +172,6 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	}
 
 	// Extract the segment from the pieces.
-	bw := bufio.NewWriter(w)
 	decodedSegmentSize := rs.staticSegmentSize * uint64(rs.MinPieces())
 	segment := make([][]byte, len(pieces))
 	for i := range segment {
@@ -192,12 +190,12 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 		if n < decodedSegmentSize {
 			decodedSegmentSize = n
 		}
-		if err := rs.RSCode.Recover(segment, decodedSegmentSize, bw); err != nil {
+		if err := rs.RSCode.Recover(segment, decodedSegmentSize, w); err != nil {
 			return err
 		}
 		n -= decodedSegmentSize
 	}
-	return bw.Flush()
+	return nil
 }
 
 // SupportsPartialEncoding returns true for the custom reed-solomon encoder.
