@@ -63,6 +63,7 @@ responsibilities.
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
+ - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
@@ -447,6 +448,23 @@ price and total throughput.
 
 *TODO* 
   - fill out subsystem explanation
+
+### Stream Buffer Subsystem
+
+**Key Files**
+ - [streambuffer.go](./streambuffer.go)
+ - [streambufferlru.go](./streambufferlru.go)
+
+The stream buffer subsystem coordinates buffering for a set of streams. Each
+stream has an LRU which includes both the recently visited data as well as data
+that is being buffered in front of the current read position. The LRU is
+implemented in [streambufferlru.go](./streambufferlru.go).
+
+If there are multiple streams open from the same data source at once, they will
+share their cache. Each stream will maintain its own LRU, but the data is stored
+in a common stream buffer. The stream buffers draw their data from a data source
+interface, which allows multiple different types of data sources to use the
+stream buffer.
 
 ### Upload Subsystem
 **Key Files**
