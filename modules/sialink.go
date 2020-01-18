@@ -238,7 +238,7 @@ func (ld LinkData) MerkleRoot() crypto.Hash {
 // 9 bits are needed.
 //
 // This continues until the final mode, which indicates that the file is stored
-// on an offset that is alinged to 512 kib (1 << 19). This is where it stops,
+// on an offset that is aligned to 512 kib (1 << 19). This is where it stops,
 // larger offsets are unnecessary. Having 8 consecutive 1's in a v1 Sialink is
 // invalid, which means means there are 64 total unused states (all states where
 // the first 8 of 14 non-version bits are set to '1').
@@ -314,7 +314,7 @@ func (ld LinkData) String() (string, error) {
 	binary.LittleEndian.PutUint16(raw, ld.bitfield)
 	copy(raw[2:], ld.merkleRoot[:])
 
-	// Encode the raw bytes to base64. TWe have to use a a buffer and a base64
+	// Encode the raw bytes to base64. We have to use a buffer and a base64
 	// encoder because the other functions that the stdlib provides will add
 	// padding to the end unnecessarily.
 	bufBytes := make([]byte, 0, encodedLinkDataSize)
