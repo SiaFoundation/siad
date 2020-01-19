@@ -142,9 +142,10 @@ func linkfileMetadataBytes(fm modules.LinkfileMetadata) ([]byte, error) {
 	return metadataBytes, nil
 }
 
-// linkfileUploadParams will derive the siafile upload parameters for the base
-// chunk siafile of the linkfile from the LinkfileUploadParameters.
-func linkfileUploadParams(lup modules.LinkfileUploadParameters) (modules.FileUploadParams, error) {
+// fileUploadParamsFromLUP will dervie the FileUploadParams to use when
+// uploading the base chunk siafile of a linkfile using the linkfile's upload
+// parameters.
+func fileUploadParamsFromLUP(lup modules.LinkfileUploadParameters) (modules.FileUploadParams, error) {
 	// Create parameters to upload the file with 1-of-N erasure coding and no
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
@@ -269,7 +270,7 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 	// Create the base sector.
 	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, fanoutBytes, nil)
 	baseSectorReader := bytes.NewReader(baseSector)
-	fileUploadParams, err := linkfileUploadParams(lup)
+	fileUploadParams, err := fileUploadParamsFromLUP(lup)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "unable to build the file upload parameters")
 	}
@@ -390,10 +391,7 @@ func newPrependReader(prepend []byte, reader io.Reader) io.Reader {
 // the file was too large to fit into the leading chunk.
 func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, headerSize uint64) ([]byte, io.Reader, bool, error) {
 	// Read data from the reader to fill out the remainder of the first sector.
-	//
-	// NOTE: When intra-sector erasure coding is added to improve download
-	// speeds, the fileData buffer size will need to be adjusted.
-	fileBytes := make([]byte, modules.SectorSize-headerSize)
+	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
 	size, err := io.ReadFull(lup.Reader, fileBytes)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
 		err = nil
@@ -404,9 +402,9 @@ func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, header
 	// Set fileBytes to the right size.
 	fileBytes = fileBytes[:size]
 
-	// Attempt to read more data from the reader. If reading more data is
-	// successful, there is too much data to create a linkfile, an error must be
-	// returned.
+	// See whether there is more data in the reader. If there is no more data in
+	// the reader, a small file will be signaled and the data that has been read
+	// will be returned.
 	peek := make([]byte, 1)
 	n, peekErr := io.ReadFull(lup.Reader, peek)
 	if peekErr == io.EOF || peekErr == io.ErrUnexpectedEOF {
@@ -416,8 +414,14 @@ func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, header
 		return nil, nil, false, errors.AddContext(err, "too much data provided, cannot create linkfile")
 	}
 	if n == 0 {
+		// There is no more data, return the data that was read from the reader
+		// and signal a small file.
 		return fileBytes, nil, false, nil
 	}
+
+	// There is more data. Create a prepend reader using the data we've already
+	// read plus the reader that we read from, effectively creating a new reader
+	// that is identical to the one that was passed in if no data had been read.
 	prependData := append(fileBytes, peek...)
 	prependReader := newPrependReader(prependData, lup.Reader)
 	return nil, prependReader, true, nil
@@ -476,11 +480,11 @@ func (r *Renter) managedUploadLinkfileSmallFile(lup modules.LinkfileUploadParame
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, nil, fileBytes)
+	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, nil, fileBytes) // 'nil' because there is no fanout
 
 	// Perform the actual upload. This will require turning the base sector into
 	// a reader.
-	fileUploadParams, err := linkfileUploadParams(lup)
+	fileUploadParams, err := fileUploadParamsFromLUP(lup)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "failed to create siafile upload parameters")
 	}
@@ -497,6 +501,7 @@ func (r *Renter) managedUploadLinkfileSmallFile(lup modules.LinkfileUploadParame
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "failed to build sialink")
 	}
+
 	// Add the sialink to the Siafile. The sialink is returned even if there is
 	// an error, because the sialink itself is available on the Sia network now,
 	// even if the file metadata couldn't be properly updated.
@@ -504,15 +509,10 @@ func (r *Renter) managedUploadLinkfileSmallFile(lup modules.LinkfileUploadParame
 	return sialink, errors.AddContext(err, "unable to add sialink to siafile")
 }
 
-// UploadLinkfile will upload the provided data with the provided name and
-// metadata, returning a sialink which can be used by any viewnode to recover
-// the full original file and metadata.
-//
-// UploadLinkfile accepts a data stream directly. This method of generating a
-// linkfile is limited to files where the data + metadata fully fits within a
-// single sector. Larger files will need to be uploaded as siafiles first, and
-// then converted using a convert function (as of writing this comment, no
-// convert function exists).
+// UploadLinkfile will upload the provided data with the provided metadata,
+// returning a sialink which can be used by any viewnode to recover the full
+// original file and metadata. The sialink will be unique to the combination of
+// both the file data and metadata.
 func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
 	// Set reasonable default values for any lup fields that are blank.
 	err := linkfileEstablishDefaults(&lup)
@@ -526,7 +526,7 @@ func (r *Renter) UploadLinkfile(lup modules.LinkfileUploadParameters) (modules.S
 		return modules.Sialink{}, errors.New("need to provide a stream of upload data")
 	}
 
-	// Fetch the bytes for the metadata and the data.
+	// Grab the metadata bytes.
 	metadataBytes, err := linkfileMetadataBytes(lup.FileMetadata)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "unable to retrieve linkfile metadata bytes")
