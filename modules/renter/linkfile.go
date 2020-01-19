@@ -129,9 +129,9 @@ func linkfileEstablishDefaults(lup *modules.LinkfileUploadParameters) error {
 
 // linkfileMetadataBytes will return the marshalled/encoded bytes for the
 // linkfile metadata.
-func linkfileMetadataBytes(fm modules.LinkfileMetadata) ([]byte, error) {
+func linkfileMetadataBytes(lm modules.LinkfileMetadata) ([]byte, error) {
 	// Compose the metadata into the leading sector.
-	metadataBytes, err := json.Marshal(fm)
+	metadataBytes, err := json.Marshal(lm)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to marshal the link file metadata")
 	}
@@ -190,6 +190,12 @@ func streamerFromSlice(b []byte) modules.Streamer {
 // sector linkfile will be placed, and the siaPath provided as its own input is
 // the siaPath of the file that is being used to create the linkfile.
 func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, siaPath modules.SiaPath) (modules.Sialink, error) {
+	// Set reasonable default values for any lup fields that are blank.
+	err := linkfileEstablishDefaults(&lup)
+	if err != nil {
+		return modules.Sialink{}, errors.AddContext(err, "linkfile upload parameters are incorrect")
+	}
+
 	// Grab the filenode for the provided siapath.
 	fileNode, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
@@ -205,44 +211,33 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
 func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadParameters, fileNode *filesystem.FileNode, filename string) (modules.Sialink, error) {
-	// Set reasonable default values for any lup fields that are blank.
-	err := linkfileEstablishDefaults(&lup)
-	if err != nil {
-		return modules.Sialink{}, errors.AddContext(err, "linkfile upload parameters are incorrect")
-	}
-
 	// Check that the encryption key and erasure code is compatible with the
 	// linkfile format. This is intentionally done before any heavy computation
 	// to catch early errors.
 	var ll linkfileLayout
 	masterKey := fileNode.MasterKey()
 	if len(masterKey.Key()) > len(ll.cipherKey) {
-		return modules.Sialink{}, errors.AddContext(err, "cipher key is not supported by the linkfile format")
+		return modules.Sialink{}, errors.New("cipher key is not supported by the linkfile format")
 	}
 	ec := fileNode.ErasureCode()
 	if ec.Type() != siafile.ECReedSolomonSubShards64 {
-		return modules.Sialink{}, errors.AddContext(err, "siafile has unsupported erasure code type")
+		return modules.Sialink{}, errors.New("siafile has unsupported erasure code type")
+	}
+	// Deny the conversion of siafiles that are not 1 data piece. Not because we
+	// cannot download them, but because it is currently inefficient to download
+	// them.
+	if ec.MinPieces() != 1 {
+		return modules.Sialink{}, errors.New("sialinks currently only support 1-of-N redundancy, other redundancies will be supported in a later version")
 	}
 
-	// Create the metadata for this siafile and compute the resulting header
-	// size.
+	// Create the metadata for this siafile.
 	fm := modules.LinkfileMetadata{
-		Filename: filename,
+		Executable: fileNode.Mode()&1 == 1,
+		Filename:   filename,
 	}
 	metadataBytes, err := linkfileMetadataBytes(fm)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "error retrieving linkfile metadata bytes")
-	}
-
-	// Download the leading bytes of the file. These get packed into the first
-	// sector so that load times for the first few megabytes can be fetched
-	// without needing an extra round trip.
-
-	// TODO: If the entire file fits within one sector, construct a small
-	// linkfile instead of a fanout based linkfile.
-	noFanoutHeaderSize := uint64(LinkfileLayoutSize + len(metadataBytes))
-	if noFanoutHeaderSize+fileNode.Size() <= modules.SectorSize {
-		return modules.Sialink{}, errors.New("cannot convert siafiles that are small enough to fit inside a fanout")
 	}
 
 	// Create the fanout for the siafile.
@@ -250,9 +245,9 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
 	}
-	headerSize := noFanoutHeaderSize + uint64(len(fanoutBytes))
-	if headerSize+uint64(len(fanoutBytes)) > modules.SectorSize {
-		return modules.Sialink{}, errors.New("siafile is too large to be turned into a sialink")
+	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
+	if headerSize > modules.SectorSize {
+		return modules.Sialink{}, errors.New("siafile is too large to be turned into a sialink - large files will be supported in a later version")
 	}
 
 	// Assemble the first chunk of the linkfile.

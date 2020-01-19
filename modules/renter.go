@@ -988,8 +988,8 @@ func HealthPercentage(health float64) float64 {
 // leading bytes of the linkfile, meaning that this struct can be extended
 // without breaking compatibility.
 type LinkfileMetadata struct {
-	Executable bool   `json:"executable"`
-	Filename   string `json:"name"`
+	Executable bool   `json:"executable,omitempty"`
+	Filename   string `json:"name,omitempty"`
 }
 
 // LinkfileUploadParameters establishes the parameters such as the intra-root
