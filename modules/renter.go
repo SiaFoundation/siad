@@ -997,20 +997,20 @@ type LinkfileMetadata struct {
 type LinkfileUploadParameters struct {
 	// SiaPath defines the siapath that the linkfile is going to be uploaded to.
 	// Recommended that the linkfile is placed in /var/linkfiles
-	SiaPath SiaPath
+	SiaPath SiaPath `json:"siapath"`
 
 	// Force determines whether the upload should overwrite an existing siafile
 	// at 'SiaPath'. If set to false, an error will be returned if there is
 	// already a file at 'SiaPath'. If set to true, any existing siafile at
 	// SiaPath will be deleted and over-written.
-	Force bool
+	Force bool `json:"force"`
 
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.
-	BaseChunkRedundancy uint8
+	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
 
-	FileMetadata LinkfileMetadata
+	FileMetadata LinkfileMetadata `json:"filemetadata"`
 
 	// Reader supplies the file data for the linkfile.
-	Reader io.Reader
+	Reader io.Reader `json:"reader"`
 }
