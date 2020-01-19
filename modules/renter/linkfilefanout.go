@@ -65,7 +65,7 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
 		// Quick sanity check - the fanout bytes should be an even number of
 		// chunks.
-		if len(fanoutBytes) % crypto.HashSize != 0 {
+		if len(fanoutBytes)%crypto.HashSize != 0 {
 			return nil, errors.New("the fanout bytes are not a multiple of crypto.HashSize")
 		}
 		piecesPerChunk = 1
@@ -77,7 +77,7 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 		// Sanity check - the fanout bytes should be an even number of chunks.
 		piecesPerChunk := uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
 		chunkRootsSize := crypto.HashSize * piecesPerChunk
-		if uint64(len(fanoutBytes)) % chunkRootsSize != 0 {
+		if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
 			return nil, errors.New("the fanout bytes do not contain an even number of chunks")
 		}
 	}
@@ -96,20 +96,6 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 	stream := r.staticStreamBufferSet.callNewStream(fs, 0)
 	fs.stream = stream
 	return fs, nil
-}
-
-// fetchChunkState is a helper struct for coordinating goroutines that are
-// attempting to download a chunk for a fanout streamer.
-type fetchChunkState struct {
-	staticDataPieces uint64
-	staticChunkSize  uint64
-
-	pieces          [][]byte
-	piecesCompleted uint64
-	piecesFailed    uint64
-
-	doneChan chan struct{}
-	mu       sync.Mutex
 }
 
 // completed returns whether enough data pieces were retrieved for the chunk to
@@ -174,6 +160,20 @@ func (fs *fanoutStreamer) ReadAt(b []byte, offset int64) (int, error) {
 // chunk size of the file.
 func (fs *fanoutStreamer) RequestSize() uint64 {
 	return fs.staticChunkSize
+}
+
+// fetchChunkState is a helper struct for coordinating goroutines that are
+// attempting to download a chunk for a fanout streamer.
+type fetchChunkState struct {
+	staticDataPieces uint64
+	staticChunkSize  uint64
+
+	pieces          [][]byte
+	piecesCompleted uint64
+	piecesFailed    uint64
+
+	doneChan chan struct{}
+	mu       sync.Mutex
 }
 
 // managedFetchChunk will grab the data of a specific chunk index from the Sia
@@ -298,9 +298,9 @@ func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 	// Allocate the memory for the fanout.
 	var fanout []byte
 	if onlyOnePieceNeeded {
-		fanout = make([]byte, 0, fileNode.NumChunks() * crypto.HashSize)
+		fanout = make([]byte, 0, fileNode.NumChunks()*crypto.HashSize)
 	} else {
-		fanout = make([]byte, 0, fileNode.NumChunks() * uint64(numPieces) * crypto.HashSize)
+		fanout = make([]byte, 0, fileNode.NumChunks()*uint64(numPieces)*crypto.HashSize)
 	}
 
 	var emptyHash crypto.Hash
