@@ -207,7 +207,7 @@ func (r *Renter) CreateSialinkFromSiafile(lup modules.LinkfileUploadParameters, 
 
 // managedCreateSialinkFromFileNode creates a sialink from a file node.
 //
-// The name needs to be passed in explicity because a file node does not track
+// The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
 func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadParameters, fileNode *filesystem.FileNode, filename string) (modules.Sialink, error) {
