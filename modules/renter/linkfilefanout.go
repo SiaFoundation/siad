@@ -1,8 +1,5 @@
 package renter
 
-// TODO: This file is pretty much going to devolve into just implementing a
-// dataSource for the streambuffer.
-
 import (
 	"bytes"
 	"sync"
@@ -14,7 +11,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// fanoutStreamer implements modules.Streamer for a linkfile fanout.
+// fanoutStreamer implements streamBufferDataSource with the linkfile so that it
+// can open a stream from the streamBufferSet. That stream is then embedded in
+// the fanoutStreamer so that the fanoutStreamer satisfies the modules.Streamer
+// interface necessary for streaming data.
 type fanoutStreamer struct {
 	// Each chunk is an array of sector hashes that correspond to pieces which
 	// can be fetched.
@@ -57,15 +57,37 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 
 		staticRenter: r,
 	}
+	// Special case: if the data of the file is using 1-of-N erasure coding,
+	// each piece will be identical, so the fanout will only encode a single
+	// piece for each chunk.
+	var piecesPerChunk uint64
+	var chunkRootsSize uint64
+	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
+		// Quick sanity check - the fanout bytes should be an even number of
+		// chunks.
+		if len(fanoutBytes) % crypto.HashSize != 0 {
+			return nil, errors.New("the fanout bytes are not a multiple of crypto.HashSize")
+		}
+		piecesPerChunk = 1
+		chunkRootsSize = crypto.HashSize
+	} else {
+		// This is the case where the file data is not 1-of-N. Every piece is
+		// different, so every piece must get enumerated.
+		//
+		// Sanity check - the fanout bytes should be an even number of chunks.
+		piecesPerChunk := uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
+		chunkRootsSize := crypto.HashSize * piecesPerChunk
+		if uint64(len(fanoutBytes)) % chunkRootsSize != 0 {
+			return nil, errors.New("the fanout bytes do not contain an even number of chunks")
+		}
+	}
 
-	// Decode the fanout to get the chunk fetch data.
-	piecesPerChunk := uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
-	chunkSize := crypto.HashSize * piecesPerChunk
-	for uint64(len(fanoutBytes)) >= chunkSize {
+	// Copy the fanout data into the list of chunks for the fanoutStreamer.
+	fs.staticChunks = make([][]crypto.Hash, 0, uint64(len(fanoutBytes))/chunkRootsSize)
+	for i := uint64(0); i < uint64(len(fanoutBytes)); i += chunkRootsSize {
 		chunk := make([]crypto.Hash, piecesPerChunk)
-		for i := 0; i < len(chunk); i++ {
-			copy(chunk[i][:], fanoutBytes)
-			fanoutBytes = fanoutBytes[crypto.HashSize:]
+		for j := uint64(0); j < uint64(len(chunk)); j += crypto.HashSize {
+			copy(chunk[j/chunkRootsSize][:], fanoutBytes[i+j:])
 		}
 		fs.staticChunks = append(fs.staticChunks, chunk)
 	}
@@ -96,9 +118,13 @@ func (fcs *fetchChunkState) completed() bool {
 	return fcs.piecesCompleted >= fcs.staticDataPieces
 }
 
-// TODO: We may have some resrouces to clean up, this blank implementation is
-// probably not correct.
+// SilentClose will clean up any resources that the fanoutStreamer keeps open.
 func (fs *fanoutStreamer) SilentClose() {
+	// Close the stream.
+	err := fs.stream.Close()
+	if err != nil {
+		fs.staticRenter.log.Println("error closing stream opened by fanoutStreamer:", err)
+	}
 	return
 }
 
@@ -254,9 +280,29 @@ func (fs *fanoutStreamer) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// linkfileEncodeFanout will create the serialized fanout for a fileNode.
+// linkfileEncodeFanout will create the serialized fanout for a fileNode. The
+// encoded fanout is just the list of hashes that can be used to retrieve a file
+// concatenated together, where piece 0 of chunk 0 is first, piece 1 of chunk 0
+// is second, etc. The full set of erasure coded pieces are included.
+//
+// There is a special case for unencrypted 1-of-N files. Because every piece is
+// identical for an unencrypted 1-of-N file, only the first piece of each chunk
+// is included.
 func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
+	// Grab the erasure coding scheme and encryption scheme from the file.
+	cipherType := fileNode.MasterKey().Type()
+	dataPieces := fileNode.ErasureCode().MinPieces()
+	numPieces := fileNode.ErasureCode().NumPieces()
+	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
+
+	// Allocate the memory for the fanout.
 	var fanout []byte
+	if onlyOnePieceNeeded {
+		fanout = make([]byte, 0, fileNode.NumChunks() * crypto.HashSize)
+	} else {
+		fanout = make([]byte, 0, fileNode.NumChunks() * uint64(numPieces) * crypto.HashSize)
+	}
+
 	var emptyHash crypto.Hash
 	for i := uint64(0); i < fileNode.NumChunks(); i++ {
 		pieces, err := fileNode.Pieces(i)
@@ -268,6 +314,9 @@ func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 				fanout = append(fanout, pieceSet[0].MerkleRoot[:]...)
 			} else {
 				fanout = append(fanout, emptyHash[:]...)
+			}
+			if onlyOnePieceNeeded {
+				break
 			}
 		}
 	}

@@ -264,6 +264,11 @@ func (sf *SiaFile) MasterKey() crypto.CipherKey {
 	return sk
 }
 
+// MasterKeyType returns the type of encryption used for the siafile.
+func (sf *SiaFile) MasterKeyType() crypto.CipherType {
+	return sf.staticMetadata.StaticMasterKeyType
+}
+
 // Metadata returns the SiaFile's metadata, resolving any fields related to
 // partial chunks.
 func (sf *SiaFile) Metadata() Metadata {

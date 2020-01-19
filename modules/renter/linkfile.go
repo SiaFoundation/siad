@@ -330,7 +330,9 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		return lfm, streamer, nil
 	}
 
-	// TODO: Support fanout extensions.
+	// TODO: Support fanout extensions. This is only necessary for very large
+	// files, a 1-of-N file can get over 400 GB with no fanout extension, a
+	// 10-of-30 file can get over 100 GB with no fanout extension.
 	if offset+ll.fanoutSize > modules.SectorSize {
 		return modules.LinkfileMetadata{}, nil, errors.New("fanout is more than one sector, that is unsupported in this version")
 	}
