@@ -18,7 +18,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	pt := h.priceTable
 	h.mu.RUnlock()
 
-	// json encode and decode the host's current price table
+	// deepcopy the host's price table by json encoding and decoding it
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
 		errors.AddContext(err, "Failed to JSON encode the RPC price table")
