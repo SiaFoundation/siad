@@ -22,21 +22,26 @@ type account struct {
 	r  *Renter
 }
 
-// openAccount returns a new account for the given host. Every time this
+// managedOpenAccount returns a new account for the given host. Every time this
 // a new account is opened, it's created using a new keypair.
-func (r *Renter) openAccount(hostKey types.SiaPublicKey) *account {
+func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+
 	hpk := hostKey.String()
 	acc, exists := r.accounts[hpk]
 	if exists {
 		return acc
 	}
 
+	// generate a new key pair
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
 
+	// create the account and set it on the renter
 	acc = &account{
 		staticID:        spk.String(),
 		staticHostKey:   hostKey,
@@ -55,9 +60,8 @@ func (a *account) AvailableBalance() types.Currency {
 	defer a.mu.Unlock()
 
 	total := a.balance.Add(a.pendingFunds)
-	var eventual types.Currency
 	if a.pendingSpends.Cmp(total) < 0 {
-		eventual = total.Sub(a.pendingSpends)
+		return total.Sub(a.pendingSpends)
 	}
-	return eventual
+	return types.ZeroCurrency
 }
