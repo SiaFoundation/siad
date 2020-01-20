@@ -17,32 +17,33 @@ package renter
 // as well.
 
 import (
-	"errors"
+	"bufio"
 	"io"
 	"os"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // skipWriter is a helper type that ignores the first 'skip' bytes written to it.
 type skipWriter struct {
-	w    io.Writer
-	skip int
+	writer io.Writer
+	skip   int
 }
 
 // Write will write bytes to the skipWriter, being sure to skip over any bytes
 // which the skipWriter was initialized to skip
 func (sw *skipWriter) Write(p []byte) (int, error) {
 	if sw.skip == 0 {
-		return sw.w.Write(p)
+		return sw.writer.Write(p)
 	} else if sw.skip > len(p) {
 		sw.skip -= len(p)
 		return len(p), nil
 	}
-	n, err := sw.w.Write(p[sw.skip:])
+	n, err := sw.writer.Write(p[sw.skip:])
 	n += sw.skip
 	sw.skip = 0
 	return n, err
@@ -131,11 +132,18 @@ func (ddf *downloadDestinationFile) Close() error {
 // WritePieces will decode the pieces and write them to a file at the provided
 // offset, using the provided length.
 func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
-	sw := NewSectionWriter(ddf.f, offset, ddf.staticChunkSize)
+	sectionWriter := NewSectionWriter(ddf.f, offset, ddf.staticChunkSize)
 	if ddf.deps.Disrupt("PostponeWritePiecesRecovery") {
 		time.Sleep(time.Duration(fastrand.Intn(1000)) * time.Millisecond)
 	}
-	return ec.Recover(pieces, dataOffset+length, &skipWriter{w: sw, skip: int(dataOffset)})
+	skipWriter := &skipWriter{
+		writer: sectionWriter,
+		skip:   int(dataOffset),
+	}
+	bufioWriter := bufio.NewWriter(skipWriter)
+	err := ec.Recover(pieces, dataOffset+length, bufioWriter)
+	err2 := bufioWriter.Flush()
+	return errors.AddContext(errors.Compose(err, err2), "unable to write pieces to destination file")
 }
 
 // downloadDestinationWriter is a downloadDestination that writes to an
@@ -230,7 +238,7 @@ func (ddw *downloadDestinationWriter) WritePieces(ec modules.ErasureCoder, piece
 
 		// Write the data to the stream, and the update the progress and unblock
 		// the next write.
-		err := ec.Recover(pieces, dataOffset+length, &skipWriter{w: ddw, skip: int(dataOffset)})
+		err := ec.Recover(pieces, dataOffset+length, &skipWriter{writer: ddw, skip: int(dataOffset)})
 		ddw.progress += int64(length)
 		ddw.unblockNextWrites()
 		return err
