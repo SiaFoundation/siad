@@ -2,8 +2,6 @@ module gitlab.com/NebulousLabs/Sia
 
 go 1.13
 
-replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
-
 require (
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
 	github.com/hanwen/go-fuse/v2 v2.0.2
@@ -30,3 +28,5 @@ require (
 	golang.org/x/lint v0.0.0-20191125180803-fdd1cda4f05f // indirect
 	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f
 )
+
+replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
