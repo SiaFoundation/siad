@@ -138,7 +138,7 @@ func MerkleProof(b []byte, proofIndex uint64) (base []byte, hashSet []Hash) {
 
 	// Sanity check - the proof provided by the prover should pass verification.
 	if build.DEBUG && !merkletree.VerifyProof(root, proof, proofIndex, numLeaves) {
-		build.Critical("The merkle tree code build a proof that fails its own verification.")
+		build.Critical("The Merkle tree code built a proof that fails its own verification.")
 	}
 
 	proof = proof[1:]
