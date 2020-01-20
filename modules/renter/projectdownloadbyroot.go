@@ -134,6 +134,8 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 		pdbr.managedRemoveWorker(w)
 		return
 	}
+
+	// Set the data and perform cleanup.
 	pdbr.mu.Lock()
 	pdbr.data = data
 	pdbr.mu.Unlock()
@@ -146,6 +148,7 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// Check if the project is already complete, do no more work if so.
 	if pdbr.staticComplete() {
+		pdbr.managedRemoveWorker(w)
 		return
 	}
 
@@ -154,6 +157,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	if err != nil {
 		w.renter.log.Debugln("worker failed a download by root job:", err)
 		pdbr.managedRemoveWorker(w)
+		return
 	}
 
 	// The host has the root. Check in with the project and see if the root
@@ -241,8 +245,8 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 	wp.mu.RLock()
 	workers := make([]*worker, 0, len(wp.workers))
 	for _, w := range wp.workers {
-		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 		workers = append(workers, w)
+		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 	}
 	wp.mu.RUnlock()
 	// Queue the jobs in the workers.
