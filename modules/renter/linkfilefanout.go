@@ -270,6 +270,13 @@ func (fs *fanoutStreamer) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
 		return nil, errors.New("not enough pieces could be recovered to fetch chunk")
 	}
 
+	// Special case: if there is only 1 data piece, return the data directly.
+	//
+	// TODO: May need to parse these pieces out.
+	if fs.staticLayout.fanoutDataPieces == 1 {
+		return pieces[0], nil
+	}
+
 	// Recover the data.
 	buf := bytes.NewBuffer(nil)
 	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
@@ -303,21 +310,45 @@ func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 		fanout = make([]byte, 0, fileNode.NumChunks()*uint64(numPieces)*crypto.HashSize)
 	}
 
+	// findPieceInPieceSet will scan through a piece set and return the first
+	// non-empty piece in the set. If the set is empty, or every piece in the
+	// set is empty, then the emptyHash is returned.
 	var emptyHash crypto.Hash
+	findPieceInPieceSet := func (pieceSet []siafile.Piece) crypto.Hash {
+		for _, piece := range pieceSet {
+			if piece.MerkleRoot != emptyHash {
+				return piece.MerkleRoot
+			}
+		}
+		return emptyHash
+	}
+
+	// Build the fanout one chunk at a time.
 	for i := uint64(0); i < fileNode.NumChunks(); i++ {
-		pieces, err := fileNode.Pieces(i)
+		// Get the pieces for this chunk.
+		allPieces, err := fileNode.Pieces(i)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to get sector roots from file")
 		}
-		for _, pieceSet := range pieces {
-			if len(pieceSet) > 0 {
-				fanout = append(fanout, pieceSet[0].MerkleRoot[:]...)
-			} else {
-				fanout = append(fanout, emptyHash[:]...)
+
+		// Special case: if only one piece is needed, only use the first piece
+		// that is available. This is because 1-of-N files are encoded more
+		// compactly in the fanout.
+		if onlyOnePieceNeeded {
+			for _, pieceSet := range allPieces {
+				root := findPieceInPieceSet(pieceSet)
+				if root != emptyHash {
+					fanout = append(fanout, root[:]...)
+					break
+				}
 			}
-			if onlyOnePieceNeeded {
-				break
-			}
+			continue
+		}
+
+		// General case: get one root per piece.
+		for _, pieceSet := range allPieces {
+			root := findPieceInPieceSet(pieceSet)
+			fanout = append(fanout, root[:]...)
 		}
 	}
 	return fanout, nil

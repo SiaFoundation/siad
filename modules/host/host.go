@@ -453,13 +453,14 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 
 // InternalSettings returns the settings of a host.
 func (h *Host) InternalSettings() modules.HostInternalSettings {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
 	err := h.tg.Add()
 	if err != nil {
 		return modules.HostInternalSettings{}
 	}
 	defer h.tg.Done()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
 	return h.settings
 }
 

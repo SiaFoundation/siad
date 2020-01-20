@@ -724,7 +724,7 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 func (c *Client) RenterSialinkGet(sialink string) (fileData []byte, err error) {
 	getQuery := fmt.Sprintf("/renter/sialink/%s", sialink)
 	_, fileData, err = c.getRawResponse(getQuery)
-	return
+	return fileData, errors.AddContext(err, "unable to fetch sialink data")
 }
 
 // RenterLinkfilePost uses the /renter/linkfile endpoint to upload a linkfile.
