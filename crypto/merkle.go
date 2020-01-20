@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/merkletree/merkletree-blake"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 )
 
@@ -135,8 +136,9 @@ func MerkleProof(b []byte, proofIndex uint64) (base []byte, hashSet []Hash) {
 		return nil, nil
 	}
 
-	if !merkletree.VerifyProof(root, proof, proofIndex, numLeaves) {
-		panic("mismatch")
+	// Sanity check - the proof provided by the prover should pass verification.
+	if build.DEBUG && !merkletree.VerifyProof(root, proof, proofIndex, numLeaves) {
+		build.Critical("The merkle tree code build a proof that fails its own verification.")
 	}
 
 	proof = proof[1:]
