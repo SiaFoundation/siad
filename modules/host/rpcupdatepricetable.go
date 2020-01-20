@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 
@@ -18,12 +19,12 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	h.mu.RUnlock()
 
 	// json encode and decode the host's current price table
-	json, err := pt.MarshalJSON()
+	ptBytes, err := json.Marshal(pt)
 	if err != nil {
 		errors.AddContext(err, "Failed to JSON encode the RPC price table")
 		return
 	}
-	if err = update.UnmarshalJSON(json); err != nil {
+	if err = json.Unmarshal(ptBytes, &update); err != nil {
 		errors.AddContext(err, "Failed to JSON decode the RPC price table")
 		return
 	}
@@ -31,7 +32,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	// send it to the renter, note we send it before we process payment, this
 	// allows the renter to close the stream if it decides the host is gouging
 	// the price
-	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: json}
+	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
 	if err = encoding.WriteObject(stream, uptResponse); err != nil {
 		errors.AddContext(err, "Failed to write response")
 		return

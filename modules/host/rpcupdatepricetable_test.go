@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"net"
 	"sync"
 	"testing"
@@ -18,13 +19,13 @@ func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
 	pt.Costs[types.NewSpecifier("RPC1")] = types.NewCurrency64(1)
 	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
 
-	bytes, err := pt.MarshalJSON()
+	bytes, err := json.Marshal(pt)
 	if err != nil {
 		t.Fatal("Failed to marshal RPC price table", err)
 	}
 
 	var ptUmar modules.RPCPriceTable
-	err = ptUmar.UnmarshalJSON(bytes)
+	err = json.Unmarshal(bytes, &ptUmar)
 	if err != nil {
 		t.Fatal("Failed to unmarshal RPC price table", err)
 	}
@@ -85,7 +86,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 	// unmarshal the JSON into a price table
 	var pt modules.RPCPriceTable
-	if err = pt.UnmarshalJSON(update.PriceTableJSON); err != nil {
+	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
 		t.Fatal("Failed to unmarshal the JSON encoded RPC price table")
 	}
 
