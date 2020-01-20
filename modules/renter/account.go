@@ -22,8 +22,9 @@ type account struct {
 	r  *Renter
 }
 
-// managedOpenAccount returns a new account for the given host. Every time this
-// a new account is opened, it's created using a new keypair.
+// managedOpenAccount returns an account for the given host. In the case it does
+// not exist yet, it gets created. Every time a new account is created, a new
+// keypair is used.
 func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)

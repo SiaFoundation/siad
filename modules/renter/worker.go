@@ -240,16 +240,15 @@ func (w *worker) threadedScheduleRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	host, ok, err := r.hostDB.Host(hostPubKey)
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, error) {
+	// TODO: we'll need the host to figure out a balance target
+	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
 	if !ok {
 		return nil, errors.New("host does not exist")
 	}
-
-	account := r.managedOpenAccount(host.PublicKey)
 
 	return &worker{
 		staticHostPubKey: hostPubKey,
@@ -263,6 +262,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		// probably also a max configurable in the renter. For now the target is
 		// temporarily set to half the default ephemeral account max balance
 		staticBalanceTarget: types.SiacoinPrecision.Div64(2),
-		account:             account,
+		account:             a,
 	}, nil
 }
