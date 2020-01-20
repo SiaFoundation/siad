@@ -42,7 +42,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) (update modules.RPCPr
 	amountPaid := update.Costs[modules.RPCUpdatePriceTable]
 
 	// verify the renter payment was sufficient, since the renter already has
-	// the updated prices, we expect he will have paid the latest price
+	// the updated prices, we expect it will have paid the latest price
 	expected := update.Costs[modules.RPCUpdatePriceTable]
 	if amountPaid.Cmp(expected) < 0 {
 		errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
