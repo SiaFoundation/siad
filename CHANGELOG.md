@@ -26,6 +26,7 @@ Latest:
  - Unable to upload a new file if 'force' is set and no file exists to delete
  - Siac would not always delete a file or folder correctly
  - Divide by zero error when setting the allowance with an empty period
+ - Host would sometimes deadlock upon shutdown due to thread group misuse
 
 Dec 2019:
 
