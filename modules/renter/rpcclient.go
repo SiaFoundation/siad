@@ -10,8 +10,7 @@ type RPCClient interface {
 	FundEphemeralAccount(id string, amount types.Currency) error
 }
 
-// MockRPCClient is a temporary mock object of the RPC Client.
-// TODO: replace
+// MockRPCClient mocks the RPC Client
 type MockRPCClient struct{}
 
 // UpdatePriceTable updates the price table

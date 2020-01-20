@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -62,7 +63,8 @@ func (wp *workerPool) callUpdate() {
 		if !exists {
 			w, err := wp.renter.newWorker(contract.HostPublicKey)
 			if err != nil {
-				wp.renter.log.Critical(errors.AddContext(err, "could not create a new worker for host"))
+				wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
+				continue
 			}
 			wp.workers[id] = w
 			if err := wp.renter.tg.Add(); err != nil {
