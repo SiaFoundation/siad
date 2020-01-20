@@ -219,12 +219,12 @@ func (w *worker) threadedRefillAccount() {
 	var balance, refill types.Currency
 
 	w.mu.Lock()
-	balance = w.account.Balance()
+	balance = w.account.AvailableBalance()
 	w.mu.Unlock()
 
-	// If the account's eventual balance is below the threshold, we want to
+	// If the account's available balance is below the threshold, we want to
 	// trigger a refill. The amount to refill is the difference between the
-	// eventual balance and our target balance. We only refill if we drop below
+	// available balance and our target balance. We only refill if we drop below
 	// a threshold because we want to avoid refilling every time we drop 1
 	// hasting below the target.
 	threshold := w.staticBalanceTarget.Mul64(8).Div64(10)

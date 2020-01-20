@@ -48,9 +48,9 @@ func (r *Renter) openAccount(hostKey types.SiaPublicKey) *account {
 	return acc
 }
 
-// Balance returns the eventual account balance. This is calculated taking into
-// account pending spends and pending funds.
-func (a *account) Balance() types.Currency {
+// AvailableBalance returns the amount of money that is available to spend. It
+// is calculated by taking into account pending spends and pending funds.
+func (a *account) AvailableBalance() types.Currency {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
