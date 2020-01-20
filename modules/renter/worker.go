@@ -175,8 +175,8 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Refill the account in a background thread.
-		go w.threadedRefillAccount()
+		// Check if the account needs to be refilled in a background thread.
+		go w.threadedScheduleRefillAccount()
 
 		// Perform any fund account jobs in a background thread.
 		go w.threadedPerformFundAcountJob()
@@ -211,9 +211,10 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
-// threadedRefillAccount will check if the account needs to be refilled every
-// time a worker spends from the account
-func (w *worker) threadedRefillAccount() {
+// threadedScheduleRefillAccount will check if the account needs to be refilled,
+// and will schedule a fund account job if so. This is called every time the
+// worker spends from the account.
+func (w *worker) threadedScheduleRefillAccount() {
 	if err := w.renter.tg.Add(); err != nil {
 		return
 	}
