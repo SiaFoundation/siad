@@ -17,4 +17,6 @@ type MockRPCClient struct{}
 func (m *MockRPCClient) UpdatePriceTable() error { return nil }
 
 // FundEphemeralAccount funds the given ephemeral account by given amount
-func (m *MockRPCClient) FundEphemeralAccount(id string, amount types.Currency) error { return nil }
+func (m *MockRPCClient) FundEphemeralAccount(id string, amount types.Currency) error {
+	return nil
+}

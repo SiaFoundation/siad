@@ -236,12 +236,14 @@ func (w *worker) threadedScheduleRefillAccount() {
 	// If it's below the threshold, calculate the refill amount and enqueue a
 	// new fund account job
 	refill := w.staticBalanceTarget.Sub(balance)
-	w.callQueueFundAccount(refill)
+	_ = w.callQueueFundAccount(refill)
+
+	// TODO: handle result chan
+	// TODO: add cooldown in case of failure
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, error) {
-	// TODO: we'll need the host to figure out a balance target
 	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -249,6 +251,21 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 	if !ok {
 		return nil, errors.New("host does not exist")
 	}
+	// TODO: use the host's external settings settings to calc. an appropriate
+	// balance target
+
+	// TODO: enable the account refiller by setting a balance target greater
+	// than the zero currency
+
+	// TODO: (TL;DR mock causes infinite loop if target is not set to zero) the
+	// target is set to zero because as long as FundEphemeralAccount is mocked,
+	// setting a target larger than zero would create an endless refill loop,
+	// just because there is nothing holding back consecutive refill jobs from
+	// being enqueued (which wakes the workerloop and so on). This is due to
+	// pendingFunds not increasing, which causes the AvailableBalance to remain
+	// the same, which causes a fund account job to be scheduled on every
+	// iteration.
+	balanceTarget := types.ZeroCurrency
 
 	return &worker{
 		staticHostPubKey: hostPubKey,
@@ -256,12 +273,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 		wakeChan:         make(chan struct{}, 1),
 		renter:           r,
 
-		// TODO: the balance target is currently hardcoded and does not take
-		// into account the max ephemeral account balance (configured by the
-		// host). The target balance should be calculated based off of that and
-		// probably also a max configurable in the renter. For now the target is
-		// temporarily set to half the default ephemeral account max balance
-		staticBalanceTarget: types.SiacoinPrecision.Div64(2),
+		staticBalanceTarget: balanceTarget,
 		account:             a,
 	}, nil
 }
