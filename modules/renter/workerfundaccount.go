@@ -78,10 +78,10 @@ func (w *worker) managedKillFundAccountJobs() {
 // is one in the queue.
 func (w *worker) threadedPerformFundAcountJob() {
 	// Register ourselves with the threadgroup
-	if err := w.renter.tg.Add(); err != nil {
-		return
-	}
-	defer w.renter.tg.Done()
+	// if err := w.renter.tg.Add(); err != nil {
+	// 	return
+	// }
+	// defer w.renter.tg.Done()
 
 	// Try to dequeue a job, return if there's no work to be performed
 	w.staticFundAccountJobQueue.mu.Lock()
