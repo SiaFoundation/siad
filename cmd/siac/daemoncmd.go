@@ -66,6 +66,10 @@ func alertscmd() {
 		fmt.Println("Could not get daemon alerts:", err)
 		return
 	}
+	if len(al.Alerts) == 0 {
+		fmt.Println("There are no alerts registered.")
+		return
+	}
 	if len(al.Alerts) == numCriticalAlerts {
 		// Return since critical alerts are already displayed
 		return

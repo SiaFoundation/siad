@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -252,7 +253,15 @@ func CheckRenewedContractsSpending(renewedContracts []api.RenterContract) error 
 
 // DrainContractsByUploading uploads files until the contracts renew due to
 // running out of funds
-func DrainContractsByUploading(renter *TestNode, tg *TestGroup, maxPercentageRemaining float64) (startingUploadSpend types.Currency, err error) {
+//
+// NOTE: in order to use this helper method the renter must use the dependency
+// DependencyDisableUploadGougingCheck so that the uploads succeed
+func DrainContractsByUploading(renter *TestNode, tg *TestGroup) (startingUploadSpend types.Currency, err error) {
+	// Sanity check
+	if len(tg.Hosts()) == 1 {
+		return types.ZeroCurrency, errors.New("uploads will fail with only 1 host")
+	}
+
 	// Renew contracts by running out of funds
 	// Set upload price to max price
 	maxStoragePrice := types.SiacoinPrecision.Mul64(3e6).Div(modules.BlockBytesPerMonthTerabyte)
@@ -282,7 +291,7 @@ func DrainContractsByUploading(renter *TestNode, tg *TestGroup, maxPercentageRem
 	// Upload once to show upload spending
 	_, _, err = renter.UploadNewFileBlocking(int(chunkSize), dataPieces, parityPieces, false)
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "failed to upload first file in renewContractsBySpending")
+		return types.ZeroCurrency, errors.AddContext(err, "failed to upload first file in DrainContractsByUploading")
 	}
 
 	// Get current upload spend, previously contracts had zero upload spend
@@ -298,7 +307,7 @@ LOOP:
 		// To protect against contracts not renewing during uploads
 		for _, c := range rc.ActiveContracts {
 			percentRemaining, _ := big.NewRat(0, 1).SetFrac(c.RenterFunds.Big(), c.TotalCost.Big()).Float64()
-			if percentRemaining < maxPercentageRemaining {
+			if percentRemaining < contractor.MinContractFundRenewalThreshold {
 				break LOOP
 			}
 		}
@@ -337,6 +346,10 @@ func RenewContractsByRenewWindow(renter *TestNode, tg *TestGroup) error {
 	if err != nil {
 		return err
 	}
+	if len(rc.ActiveContracts) == 0 {
+		return errors.New("No Active Contracts")
+	}
+
 	blocksToMine := rc.ActiveContracts[0].EndHeight - rg.Settings.Allowance.RenewWindow - cg.Height
 	m := tg.Miners()[0]
 	for i := 0; i < int(blocksToMine); i++ {
