@@ -65,10 +65,7 @@ func (w *worker) managedKillFundAccountJobs() {
 
 	// send an error result to all result chans that were enqueued
 	for _, job := range queue {
-		job.sendResult(
-			types.ZeroCurrency,
-			errors.New("worker killed before account could be funded")
-		)
+		job.sendResult(types.ZeroCurrency, errors.New("worker killed before account could be funded"))
 	}
 }
 
