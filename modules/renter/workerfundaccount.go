@@ -57,15 +57,19 @@ func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJob
 // managedKillFundAccountJobs will throw an error for all queued fund account
 // jobs, as they will not complete due to the worker being shut down.
 func (w *worker) managedKillFundAccountJobs() {
+	// clear the queue
 	w.staticFundAccountJobQueue.mu.Lock()
-	for _, job := range w.staticFundAccountJobQueue.queue {
-		result := fundAccountJobResult{
-			funded: types.ZeroCurrency,
-			err:    errors.New("worker killed before account could be funded"),
-		}
-		job.resultChan <- result
-	}
+	queue := w.staticFundAccountJobQueue.queue
+	w.staticFundAccountJobQueue.queue = nil
 	w.staticFundAccountJobQueue.mu.Unlock()
+
+	// send an error result to all result chans that were enqueued
+	for _, job := range queue {
+		job.sendResult(
+			types.ZeroCurrency,
+			errors.New("worker killed before account could be funded")
+		)
+	}
 }
 
 // threadedPerformFundAcountJob will try and execute a fund account job if there
