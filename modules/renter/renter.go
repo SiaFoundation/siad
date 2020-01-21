@@ -478,6 +478,8 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 
 // managedRPCClient returns an RPC client for the host with given key
 func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
 	return &MockRPCClient{}, nil
 }
 
