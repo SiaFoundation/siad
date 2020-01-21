@@ -28,6 +28,16 @@ type fundAccountJobResult struct {
 	err    error
 }
 
+// sendResult is a helper function that sends the rsult to the resultChan and
+// closes the result channel
+func (job *fundAccountJob) sendResult(funded types.Currency, err error) {
+	job.resultChan <- fundAccountJobResult{
+		funded: funded,
+		err:    err,
+	}
+	close(job.resultChan)
+}
+
 // callQueueFundAccountJob will add a fund account job to the worker's
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
@@ -79,15 +89,15 @@ func (w *worker) threadedPerformFundAcountJob() {
 
 	client, err := w.renter.managedRPCClient(w.staticHostPubKey)
 	if err != nil {
-		job.resultChan <- fundAccountJobResult{err: err}
+		job.sendResult(types.ZeroCurrency, err)
 		return
 	}
 
 	err = client.FundEphemeralAccount(w.account.staticID, job.amount)
 	if err != nil {
-		job.resultChan <- fundAccountJobResult{err: err}
+		job.sendResult(types.ZeroCurrency, err)
 		return
 	}
 
-	job.resultChan <- fundAccountJobResult{funded: job.amount}
+	job.sendResult(job.amount, nil)
 }
