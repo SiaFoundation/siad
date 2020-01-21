@@ -178,7 +178,7 @@ func (w *worker) threadedWorkLoop() {
 		// Check if the account needs to be refilled. This is done in a separate
 		// goroutine to ensure other jobs are not blocked by it.
 		go func() {
-			// w.threadedScheduleRefillAccount()
+			w.threadedScheduleRefillAccount()
 			w.threadedPerformFundAcountJob()
 		}()
 
@@ -236,15 +236,7 @@ func (w *worker) threadedScheduleRefillAccount() {
 	// If it's below the threshold, calculate the refill amount and enqueue a
 	// new fund account job
 	refill := w.staticBalanceTarget.Sub(balance)
-	resultChan := w.callQueueFundAccount(refill)
-
-	// Handle the result in a separate goroutine.
-	//
-	// TODO: handle this properly - perhaps cool down in case there's
-	// consecutive failures to fund the account. Make sure to not just block
-	// here until we have a result, so the defer to tg.Done is executed
-	// immediately.
-	go func() { <-resultChan }()
+	w.callQueueFundAccount(refill)
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
