@@ -100,7 +100,7 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 		}
 	}
 	if totalRemoved > 0 {
-		build.Critical("one worker appeared in the standby list multiple times")
+		w.renter.log.Critical("one worker appeared in the standby list multiple times")
 	}
 
 	// Check whether the pdbr is already completed. If so, nothing else needs to
