@@ -183,8 +183,7 @@ func (w *worker) threadedWorkLoop() {
 		}()
 
 		// Perform any job to fetch the list of backups from the host.
-		var workAttempted bool
-		workAttempted = w.managedPerformFetchBackupsJob()
+		workAttempted := w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}

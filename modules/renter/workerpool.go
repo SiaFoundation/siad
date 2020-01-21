@@ -68,24 +68,29 @@ func (wp *workerPool) callUpdate() {
 	// Add a worker for any contract that does not already have a worker.
 	for id, contract := range contractMap {
 		_, exists := wp.workers[id]
-		if !exists {
-			w, err := wp.renter.newWorker(contract.HostPublicKey, accountsMap[contract.HostPublicKey.String()])
-			if err != nil {
-				wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
-				continue
-			}
-			wp.workers[id] = w
-			go func() {
-				// We have to call tg.Add inside of the goroutine because we are
-				// holding the workerpool's mutex lock and it's not permitted to
-				// call tg.Add while holding a lock.
-				if err := wp.renter.tg.Add(); err != nil {
-					return
-				}
-				defer wp.renter.tg.Done()
-				w.threadedWorkLoop()
-			}()
+		if exists {
+			continue
 		}
+
+		// Create a new worker and add it to the map
+		w, err := wp.renter.newWorker(contract.HostPublicKey, accountsMap[contract.HostPublicKey.String()])
+		if err != nil {
+			wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
+			continue
+		}
+		wp.workers[id] = w
+
+		// Start the work loop in a separate goroutine
+		go func() {
+			// We have to call tg.Add inside of the goroutine because we are
+			// holding the workerpool's mutex lock and it's not permitted to
+			// call tg.Add while holding a lock.
+			if err := wp.renter.tg.Add(); err != nil {
+				return
+			}
+			defer wp.renter.tg.Done()
+			w.threadedWorkLoop()
+		}()
 	}
 
 	// Remove a worker for any worker that is not in the set of new contracts.
