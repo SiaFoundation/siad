@@ -227,6 +227,9 @@ func (ht *hostTester) Close() error {
 // TestHostInitialization checks that the host initializes to sensible default
 // values.
 func TestHostInitialization(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// create a blank host tester
