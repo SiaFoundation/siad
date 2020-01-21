@@ -175,11 +175,12 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Check if the account needs to be refilled in a background thread.
-		go w.threadedScheduleRefillAccount()
-
-		// Perform any fund account jobs in a background thread.
-		go w.threadedPerformFundAcountJob()
+		// Check if the account needs to be refilled. This is done in a separate
+		// goroutine to ensure other jobs are not blocked by it.
+		go func() {
+			w.threadedScheduleRefillAccount()
+			w.threadedPerformFundAcountJob()
+		}()
 
 		// Perform any job to fetch the list of backups from the host.
 		var workAttempted bool
