@@ -63,5 +63,5 @@ for os in darwin linux windows; do
   package "$os" "amd64"
 done
 
-# Pacakge Raspberry Pi binaries.
+# Package Raspberry Pi binaries.
 package "linux" "arm64"
