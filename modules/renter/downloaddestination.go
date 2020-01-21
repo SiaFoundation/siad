@@ -142,7 +142,7 @@ func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces 
 	bufioWriter := bufio.NewWriter(skipWriter)
 	err := ec.Recover(pieces, dataOffset+length, bufioWriter)
 	err2 := bufioWriter.Flush()
-	return errors.AddContext(errors.Compose(err, err2), "unable to wrtie pieces to destination file")
+	return errors.AddContext(errors.Compose(err, err2), "unable to write pieces to destination file")
 }
 
 // downloadDestinationWriter is a downloadDestination that writes to an

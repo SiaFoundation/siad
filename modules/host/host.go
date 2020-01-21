@@ -356,13 +356,13 @@ func (h *Host) Close() error {
 // set by the user (host is configured through InternalSettings), and are the
 // values that get displayed to other hosts on the network.
 func (h *Host) ExternalSettings() modules.HostExternalSettings {
-	h.mu.Lock()
-	defer h.mu.Unlock()
 	err := h.tg.Add()
 	if err != nil {
 		build.Critical("Call to ExternalSettings after close")
 	}
 	defer h.tg.Done()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	return h.externalSettings()
 }
 
@@ -386,13 +386,13 @@ func (h *Host) ConnectabilityStatus() modules.HostConnectabilityStatus {
 // FinancialMetrics returns information about the financial commitments,
 // rewards, and activities of the host.
 func (h *Host) FinancialMetrics() modules.HostFinancialMetrics {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
 	err := h.tg.Add()
 	if err != nil {
 		build.Critical("Call to FinancialMetrics after close")
 	}
 	defer h.tg.Done()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return h.financialMetrics
 }
 
@@ -406,13 +406,13 @@ func (h *Host) PublicKey() types.SiaPublicKey {
 
 // SetInternalSettings updates the host's internal HostInternalSettings object.
 func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
 	err := h.tg.Add()
 	if err != nil {
 		return err
 	}
 	defer h.tg.Done()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	// The host should not be accepting file contracts if it does not have an
 	// unlock hash.
@@ -460,7 +460,6 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 	defer h.tg.Done()
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-
 	return h.settings
 }
 

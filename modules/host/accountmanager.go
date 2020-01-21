@@ -684,10 +684,14 @@ func (am *accountManager) schedulePersist(acc *account, persistResultChan chan e
 		return
 	}
 
-	if err := am.h.tg.Add(); err != nil {
-		return
-	}
 	go func() {
+		// Need to call tg.Add inside of the goroutine because 'schedulePersist'
+		// is holding a lock and it's not okay to call tg.Add() while holding a
+		// lock (can cause a deadlock at shutdown if the accountManager mutex is
+		// grabbed during an OnStop or AfterStop function).
+		if err := am.h.tg.Add(); err != nil {
+			return
+		}
 		defer am.h.tg.Done()
 		waiting := am.threadedSaveAccount(acc.id)
 		for waiting > 0 {
