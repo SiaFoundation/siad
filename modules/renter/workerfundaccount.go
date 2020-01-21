@@ -32,7 +32,7 @@ type fundAccountJobResult struct {
 // queue. A channel will be returned, this channel will have the result of the
 // job returned down it when the job is completed.
 func (w *worker) callQueueFundAccount(amount types.Currency) chan fundAccountJobResult {
-	resultChan := make(chan fundAccountJobResult, 1)
+	resultChan := make(chan fundAccountJobResult)
 	w.staticFundAccountJobQueue.mu.Lock()
 	w.staticFundAccountJobQueue.queue = append(w.staticFundAccountJobQueue.queue, &fundAccountJob{
 		amount:     amount,
