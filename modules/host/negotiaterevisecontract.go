@@ -20,7 +20,7 @@ func cachedMerkleRoot(roots []crypto.Hash) crypto.Hash {
 	}
 	ct := crypto.NewCachedTree(log2SectorSize)
 	for _, root := range roots {
-		ct.Push(root)
+		ct.PushSubTree(0, root)
 	}
 	return ct.Root()
 }

@@ -16,6 +16,7 @@ Latest:
  - Wallet can generate an address before it finishes scanning the blockchain
  - FUSE folders can now be mounted with 'AllowOther' as an option
  - Smarter fund allocation when initially forming contracts
+ - Decrease memory usage and cpu usage when uploading and downloading
  - When repairing files from disk, an integrity check is performed to ensure
    that corrupted / altered data is not used to perform repairs
 
@@ -25,6 +26,7 @@ Latest:
  - Unable to upload a new file if 'force' is set and no file exists to delete
  - Siac would not always delete a file or folder correctly
  - Divide by zero error when setting the allowance with an empty period
+ - Host would sometimes deadlock upon shutdown due to thread group misuse
 
 Dec 2019:
 
