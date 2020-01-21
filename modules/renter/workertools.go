@@ -11,7 +11,7 @@ import (
 // workertools.go provides a set of high level tools for workers to use when
 // performing jobs. The goal is to enable the jobs to worry about the high level
 // tasks that need to be accomplished, while allowing the toolkit to worry about
-// lower level concerns such monitoring failure rates and host performance.
+// lower level concerns such as monitoring failure rates and host performance.
 
 // checkDownloadPriceProtections looks at the current renter allowance and the
 // active settings for a host and determines whether a download by root job
@@ -60,8 +60,12 @@ func (w *worker) Download(root crypto.Hash, offset, length uint64) ([]byte, erro
 
 	// Fetch the data. Need to ensure that the length is a factor of 64, need to
 	// add and remove padding.
-	padding := 64 - length%64
-	if padding == 64 {
+	//
+	// NOTE: This padding is a requirement of the current Downloader, when the
+	// MDM gets deployed and used, this download operation shouldn't need any
+	// padding anymore.
+	padding := crypto.SegmentSize - length%crypto.SegmentSize
+	if padding == crypto.SegmentSize {
 		padding = 0
 	}
 	sectorData, err := downloader.Download(root, uint32(offset), uint32(length+padding))

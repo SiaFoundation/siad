@@ -21,7 +21,7 @@ func (w *worker) callQueueJobDownloadByRoot(jdbr jobDownloadByRoot) error {
 }
 
 // managedKillJobsDownloadByRoot will remove the worker from all pending
-// download by root prjects.
+// download by root projects.
 func (w *worker) managedKillJobsDownloadByRoot() {
 	// Grab the queue from the worker, and then nil out the queue so that no
 	// other thread can get access to the objects within. managedRemoveWorker
@@ -34,7 +34,7 @@ func (w *worker) managedKillJobsDownloadByRoot() {
 
 	// Loop through the queue and remove the worker from each job.
 	for _, jdbr := range queueJobDownloadByRoot {
-		w.renter.log.Debugln("worker was killed before being able to attempt a downloadByRoot job")
+		w.renter.log.Debugf("worker %v was killed before being able to attempt a downloadByRoot job", w.staticHostPubKeyStr)
 		jdbr.staticProject.managedRemoveWorker(w)
 	}
 }

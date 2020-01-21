@@ -91,11 +91,16 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 	// Delete every instance of the worker in the list of standby workers. The
 	// worker should only be in the list once, but we check the whole list
 	// anyway.
+	totalRemoved := 0
 	for i := 0; i < len(pdbr.workersStandby); i++ {
 		if pdbr.workersStandby[i] == w {
 			pdbr.workersStandby = append(pdbr.workersStandby[:i], pdbr.workersStandby[i+1:]...)
 			i-- // Since the array has been shifted, adjust the iterator to ensure every item is visited.
+			totalRemoved++
 		}
+	}
+	if totalRemoved > 0 {
+		build.Critical("one worker appeared in the standby list multiple times")
 	}
 
 	// Check whether the pdbr is already completed. If so, nothing else needs to
@@ -182,7 +187,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 // workers, one of the standby workers will assume its place.
 //
 // managedWakeStandbyWorker assumes that rootFound is currently set to true,
-// because it will be called by a worker that failed an had set rootFound to
+// because it will be called by a worker that failed and had set rootFound to
 // true.
 func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 	// If there are no workers on standby, set rootFound to false, indicating
