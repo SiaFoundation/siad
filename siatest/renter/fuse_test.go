@@ -43,7 +43,6 @@ func siaPathToFusePath(sp modules.SiaPath, fuseRoot modules.SiaPath, mountpoint 
 
 // TestFuse tests the renter's Fuse filesystem support. This test is only run on Linux.
 func TestFuse(t *testing.T) {
-	t.Skip("Tmp skip to trace deadlock")
 	if testing.Short() {
 		t.SkipNow()
 	}

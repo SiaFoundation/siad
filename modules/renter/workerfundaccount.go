@@ -78,10 +78,10 @@ func (w *worker) managedKillFundAccountJobs() {
 // is one in the queue.
 func (w *worker) threadedPerformFundAcountJob() {
 	// Register ourselves with the threadgroup
-	// if err := w.renter.tg.Add(); err != nil {
-	// 	return
-	// }
-	// defer w.renter.tg.Done()
+	if err := w.renter.tg.Add(); err != nil {
+		return
+	}
+	defer w.renter.tg.Done()
 
 	// Try to dequeue a job, return if there's no work to be performed
 	w.staticFundAccountJobQueue.mu.Lock()
@@ -93,17 +93,17 @@ func (w *worker) threadedPerformFundAcountJob() {
 	w.staticFundAccountJobQueue.queue = w.staticFundAccountJobQueue.queue[1:]
 	w.staticFundAccountJobQueue.mu.Unlock()
 
-	// client, err := w.renter.managedRPCClient(w.staticHostPubKey)
-	// if err != nil {
-	// 	job.sendResult(types.ZeroCurrency, err)
-	// 	return
-	// }
+	client, err := w.renter.managedRPCClient(w.staticHostPubKey)
+	if err != nil {
+		job.sendResult(types.ZeroCurrency, err)
+		return
+	}
 
-	// err = client.FundEphemeralAccount(w.account.staticID, job.amount)
-	// if err != nil {
-	// 	job.sendResult(types.ZeroCurrency, err)
-	// 	return
-	// }
+	err = client.FundEphemeralAccount(w.account.staticID, job.amount)
+	if err != nil {
+		job.sendResult(types.ZeroCurrency, err)
+		return
+	}
 
 	job.sendResult(job.amount, nil)
 }

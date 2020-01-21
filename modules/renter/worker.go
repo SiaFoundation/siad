@@ -178,7 +178,7 @@ func (w *worker) threadedWorkLoop() {
 		// Check if the account needs to be refilled. This is done in a separate
 		// goroutine to ensure other jobs are not blocked by it.
 		go func() {
-			// w.threadedScheduleRefillAccount()
+			w.threadedScheduleRefillAccount()
 			w.threadedPerformFundAcountJob()
 		}()
 
