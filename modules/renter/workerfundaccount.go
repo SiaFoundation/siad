@@ -31,11 +31,16 @@ type fundAccountJobResult struct {
 // sendResult is a helper function that sends the rsult to the resultChan and
 // closes the result channel
 func (job *fundAccountJob) sendResult(funded types.Currency, err error) {
-	job.resultChan <- fundAccountJobResult{
+	result := fundAccountJobResult{
 		funded: funded,
 		err:    err,
 	}
-	close(job.resultChan)
+
+	select {
+	case job.resultChan <- result:
+		close(job.resultChan)
+	default:
+	}
 }
 
 // callQueueFundAccountJob will add a fund account job to the worker's
