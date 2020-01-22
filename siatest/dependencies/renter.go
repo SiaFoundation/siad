@@ -40,6 +40,16 @@ func (d *DependencyFailUploadStreamFromReader) Disrupt(s string) bool {
 	return s == "failUploadStreamFromReader"
 }
 
+// DependencyDisableUploadGougingCheck ignores the upload gouging check
+type DependencyDisableUploadGougingCheck struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will prevent the uploads to fail due to upload gouging
+func (d *DependencyDisableUploadGougingCheck) Disrupt(s string) bool {
+	return s == "DisableUploadGouging"
+}
+
 // DependencyToggleWatchdogBroadcast can toggle the watchdog's ability to
 // broadcast transactions.
 type DependencyToggleWatchdogBroadcast struct {
