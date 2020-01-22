@@ -1298,8 +1298,9 @@ func TestRenterBadContracts(t *testing.T) {
 	// Create a second host, but perform a dependency injection that will cause
 	// the host to reject the contract when the renter tries to grab a session
 	// lock.
+	hrasl := &dependencies.HostRejectAllSessionLocks{}
 	secondHostParams := node.HostTemplate
-	secondHostParams.HostDeps = &dependencies.HostRejectAllSessionLocks{}
+	secondHostParams.HostDeps = hrasl
 	_, err = tg.AddNodes(secondHostParams)
 	if err != nil {
 		t.Fatal("Failed to add node to group:", err)
@@ -1320,6 +1321,12 @@ func TestRenterBadContracts(t *testing.T) {
 	if len(rcg.ActiveContracts) != 2 {
 		t.Fatal("expecting 2 active contracts formed with the 2 hosts", len(rcg.ActiveContracts))
 	}
+
+	// Now that everything is set up, enable the dependency that rejects all
+	// session locks. Can't immediately be rejecting locks because the renter
+	// does enough background work that this can prevent the contract from ever
+	// forming in the first place, providing the wrong test coverage.
+	hrasl.StartRejectingLocks()
 
 	// Upload a file, which will cause the renter to open a session with all of
 	// the hosts, including the host that is explicitly rejecting session locks
