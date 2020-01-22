@@ -234,6 +234,15 @@ func (h *Host) managedUpdatePriceTable() {
 	// recalculate the price for every RPC
 	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
 
+	// TODO: for now just hardcode the cost of the MDM operations, needs a
+	// better place
+	his := h.InternalSettings()
+	priceTable.Costs[modules.ComponentCompute] = types.ZeroCurrency
+	priceTable.Costs[modules.ComponentMemory] = types.ZeroCurrency
+	priceTable.Costs[modules.OperationDiskAccess] = types.ZeroCurrency
+	priceTable.Costs[modules.OperationDiskRead] = his.MinBaseRPCPrice
+	priceTable.Costs[modules.OperationDiskWrite] = his.MinBaseRPCPrice
+
 	// update the pricetable
 	h.mu.Lock()
 	h.priceTable = priceTable

@@ -15,6 +15,15 @@ type (
 	InstructionSpecifier types.Specifier
 )
 
+// MDM instruction cost component specifiers
+var (
+	ComponentCompute    = types.NewSpecifier("Compute")
+	ComponentMemory     = types.NewSpecifier("Memory")
+	OperationDiskAccess = types.NewSpecifier("DiskAccess")
+	OperationDiskRead   = types.NewSpecifier("DiskRead")
+	OperationDiskWrite  = types.NewSpecifier("DiskWrite")
+)
+
 const (
 	// RPCIReadSectorLen is the expected length of the 'Args' of an Instruction.
 	RPCIReadSectorLen = 25
