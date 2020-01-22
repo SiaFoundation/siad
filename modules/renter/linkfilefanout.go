@@ -314,7 +314,7 @@ func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 	// non-empty piece in the set. If the set is empty, or every piece in the
 	// set is empty, then the emptyHash is returned.
 	var emptyHash crypto.Hash
-	findPieceInPieceSet := func (pieceSet []siafile.Piece) crypto.Hash {
+	findPieceInPieceSet := func(pieceSet []siafile.Piece) crypto.Hash {
 		for _, piece := range pieceSet {
 			if piece.MerkleRoot != emptyHash {
 				return piece.MerkleRoot
