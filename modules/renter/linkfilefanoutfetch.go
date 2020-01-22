@@ -1,5 +1,14 @@
 package renter
 
+import (
+	"bytes"
+	"sync"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
+)
+
 // fetchChunkState is a helper struct for coordinating goroutines that are
 // attempting to download a chunk for a fanout streamer.
 type fetchChunkState struct {
@@ -16,7 +25,7 @@ type fetchChunkState struct {
 
 // managedFetchChunk will grab the data of a specific chunk index from the Sia
 // network.
-func (fs *fanoutStreamer) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
+func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
 	// Input verification.
 	if chunkIndex*fs.staticChunkSize >= fs.staticLayout.filesize {
 		return nil, errors.New("requesting a chunk index that does not exist within the file")
