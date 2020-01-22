@@ -347,13 +347,8 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	if err != nil {
 		return nil, nil, err
 	}
-	// Wait until upload reached the specified progress
-	if err = tn.WaitForUploadProgress(remoteFile, 1); err != nil {
-		return nil, nil, err
-	}
-	// Wait until upload reaches a certain health
-	err = tn.WaitForUploadHealth(remoteFile)
-	return localFile, remoteFile, err
+	// Wait until upload reaches the repair threshold
+	return localFile, remoteFile, tn.WaitForUploadHealth(remoteFile)
 }
 
 // Dirs returns the siapaths of all dirs of the TestNode's renter in no
