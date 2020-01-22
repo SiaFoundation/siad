@@ -244,7 +244,7 @@ func (sf *storageFolder) clearUsage(sectorIndex uint32) {
 	if usageElementIndex >= uint32(len(sf.usage)) {
 		// This would be out-of-bounds, do nothing and assume it's going to be
 		// okay.
-		println("clearUsage called on index that does not appear in the usage field")
+		println("clearUsage called on index that does not appear in the usage field: ", sectorIndex, " :: ", usageElementIndex, " :: ", len(sf.usage))
 		return
 	}
 	usageElement := sf.usage[usageElementIndex]
@@ -266,7 +266,7 @@ func (sf *storageFolder) setUsage(sectorIndex uint32) {
 	if usageElementIndex >= uint32(len(sf.usage)) {
 		// This would be out-of-bounds, do nothing and assume it's going to be
 		// okay.
-		println("setUsage called on index that does not appear in the usage field")
+		println("setUsage called on index that does not appear in the usage field: ", sectorIndex, " :: ", usageElementIndex, " :: ", len(sf.usage))
 		return
 	}
 	usageElement := sf.usage[usageElementIndex]
