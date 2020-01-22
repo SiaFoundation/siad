@@ -76,6 +76,8 @@ func (h *Host) establishDefaults() error {
 		MaxEphemeralAccountRisk:    defaultMaxEphemeralAccountRisk,
 	}
 
+	// TODO: load this key pair from the specified location in siamux_keys.go
+
 	// Generate signing key, for revising contracts.
 	sk, pk := crypto.GenerateKeyPair()
 	h.secretKey = sk

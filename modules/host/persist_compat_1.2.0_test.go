@@ -25,6 +25,12 @@ const (
 func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, error) {
 	testdir := build.TempDir(modules.HostDir, modulesDir)
 
+	// Create the siamux
+	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the host dependencies.
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
@@ -44,7 +50,7 @@ func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, erro
 	}
 
 	// Create the host.
-	h, err := NewCustomHost(modules.ProdDependencies, cs, g, tp, w, "localhost:0", hostDir)
+	h, err := NewCustomHost(modules.ProdDependencies, cs, g, tp, w, sm, "localhost:0", hostDir)
 	if err != nil {
 		return nil, err
 	}

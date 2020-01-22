@@ -154,6 +154,12 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 		panic("assembleServerTester called during short tests")
 	}
 
+	// Create the siamux
+	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the modules.
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
@@ -189,11 +195,11 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(cs, g, tp, w, sm, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := renter.New(g, cs, w, tp, sm, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -238,6 +244,12 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 		panic("assembleServerTester called during short tests")
 	}
 
+	// Create the siamux.
+	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the modules.
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
@@ -273,11 +285,11 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(cs, g, tp, w, sm, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := renter.New(g, cs, w, tp, sm, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

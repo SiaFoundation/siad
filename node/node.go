@@ -30,6 +30,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // NodeParams contains a bunch of parameters for creating a new test node. As
@@ -93,11 +94,12 @@ type NodeParams struct {
 	StorageManagerDeps modules.Dependencies
 
 	// Custom settings for modules
-	Allowance   modules.Allowance
-	Bootstrap   bool
-	HostAddress string
-	HostStorage uint64
-	RPCAddress  string
+	Allowance     modules.Allowance
+	Bootstrap     bool
+	HostAddress   string
+	HostStorage   uint64
+	RPCAddress    string
+	SiaMuxAddress string
 
 	// Initialize node from existing seed.
 	PrimarySeed string
@@ -223,9 +225,23 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	dir := params.Dir
 	errChan := make(chan error, 1)
 
+	// SiaMux.
+	sm, err := func() (*siamux.SiaMux, error) {
+		if params.SiaMuxAddress == "" {
+			params.SiaMuxAddress = "localhost:0"
+		}
+		return modules.NewSiaMux(dir, params.SiaMuxAddress)
+	}()
+	if err != nil {
+		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
+		return nil, errChan
+	}
+
+	// Load all modules
 	numModules := params.NumModules()
 	i := 1
 	printfRelease("(%d/%d) Loading siad...\n", i, numModules)
+
 	// Gateway.
 	g, err := func() (modules.Gateway, error) {
 		if params.CreateGateway && params.Gateway != nil {
@@ -396,7 +412,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading host...\n", i, numModules)
-		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, sm, params.HostAddress, filepath.Join(dir, modules.HostDir))
 		return host, err
 	}()
 	if err != nil {
@@ -468,7 +484,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			close(c)
 			return nil, c
 		}
-		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, persistDir, renterDeps)
+		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, sm, persistDir, renterDeps)
 		go func() {
 			c <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
 			close(c)
