@@ -238,7 +238,7 @@ func (sf *storageFolder) clearUsage(sectorIndex uint32) {
 	// TODO: Bandaid - because the wal is not perfectly consistent, an index out
 	// of bounds can happen here. Need to look at the consistency code and
 	// figure out what is wrong. It seems as though shrinking a storage folder
-	// and then crashing at the wrong time can cause the wall to call
+	// and then crashing at the wrong time can cause the wal to call
 	// 'clearUsage' on an index that doesn't appear in the storage folder usage
 	// field anymore.
 	if usageElementIndex >= uint32(len(sf.usage)) {
