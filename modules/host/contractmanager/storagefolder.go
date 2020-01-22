@@ -241,7 +241,7 @@ func (sf *storageFolder) clearUsage(sectorIndex uint32) {
 	// and then crashing at the wrong time can cause the wall to call
 	// 'clearUsage' on an index that doesn't appear in the storage folder usage
 	// field anymore.
-	if usageElementIndex >= len(sf.usage) {
+	if usageElementIndex >= uint32(len(sf.usage)) {
 		// This would be out-of-bounds, do nothing and assume it's going to be
 		// okay.
 		println("clearUsage called on index that does not appear in the usage field")
@@ -263,7 +263,7 @@ func (sf *storageFolder) setUsage(sectorIndex uint32) {
 	// TODO: Bandaid - put here because of issues seen with clearUsage. The same
 	// issues may or may not be present for setUsage, so a check is put here
 	// defensively.
-	if usageElementIndex >= len(sf.usage) {
+	if usageElementIndex >= uint32(len(sf.usage)) {
 		// This would be out-of-bounds, do nothing and assume it's going to be
 		// okay.
 		println("setUsage called on index that does not appear in the usage field")
