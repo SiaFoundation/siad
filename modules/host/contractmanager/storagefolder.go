@@ -234,7 +234,7 @@ func vacancyStorageFolder(sfs []*storageFolder) (*storageFolder, int) {
 // clearUsage will unset the usage bit at the provided sector index for this
 // storage folder.
 func (sf *storageFolder) clearUsage(sectorIndex uint32) {
-	usageElementIndex := sectorIndex/storageFolderGranularity
+	usageElementIndex := sectorIndex / storageFolderGranularity
 	// TODO: Bandaid - because the wal is not perfectly consistent, an index out
 	// of bounds can happen here. Need to look at the consistency code and
 	// figure out what is wrong. It seems as though shrinking a storage folder
@@ -259,7 +259,7 @@ func (sf *storageFolder) clearUsage(sectorIndex uint32) {
 // setUsage will set the usage bit at the provided sector index for this
 // storage folder.
 func (sf *storageFolder) setUsage(sectorIndex uint32) {
-	usageElementIndex := sectorIndex/storageFolderGranularity
+	usageElementIndex := sectorIndex / storageFolderGranularity
 	// TODO: Bandaid - put here because of issues seen with clearUsage. The same
 	// issues may or may not be present for setUsage, so a check is put here
 	// defensively.
