@@ -28,6 +28,8 @@ Latest:
  - Siac would not always delete a file or folder correctly
  - Divide by zero error when setting the allowance with an empty period
  - Host would sometimes deadlock upon shutdown due to thread group misuse
+ - Crash preventing host from starting up correctly after an unclean shutdown
+   while resizing a storage folder
 
 Dec 2019:
 
