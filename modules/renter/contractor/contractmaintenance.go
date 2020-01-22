@@ -1046,6 +1046,17 @@ func (c *Contractor) threadedContractMaintenance() {
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
 	for _, renewal := range renewSet {
+		// Return here if an interrupt or kill signal has been sent.
+		select {
+		case <-c.tg.StopChan():
+			c.log.Println("returning because the renter was stopped")
+			return
+		case <-c.interruptMaintenance:
+			c.log.Println("returning because maintenance was interrupted")
+			return
+		default:
+		}
+
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1072,7 +1083,8 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("Renewal completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
-
+	}
+	for _, renewal := range refreshSet {
 		// Return here if an interrupt or kill signal has been sent.
 		select {
 		case <-c.tg.StopChan():
@@ -1083,8 +1095,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			return
 		default:
 		}
-	}
-	for _, renewal := range refreshSet {
+
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1111,17 +1122,6 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("Refresh completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
-
-		// Return here if an interrupt or kill signal has been sent.
-		select {
-		case <-c.tg.StopChan():
-			c.log.Println("returning because the renter was stopped")
-			return
-		case <-c.interruptMaintenance:
-			c.log.Println("returning because maintenance was interrupted")
-			return
-		default:
-		}
 	}
 
 	// Count the number of contracts which are good for uploading, and then make
@@ -1182,6 +1182,17 @@ func (c *Contractor) threadedContractMaintenance() {
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
+		// Return here if an interrupt or kill signal has been sent.
+		select {
+		case <-c.tg.StopChan():
+			c.log.Println("returning because the renter was stopped")
+			return
+		case <-c.interruptMaintenance:
+			c.log.Println("returning because maintenance was interrupted")
+			return
+		default:
+		}
+
 		// If no more contracts are needed, break.
 		if neededContracts <= 0 {
 			break
@@ -1263,15 +1274,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.mu.Unlock()
 		if err != nil {
 			c.log.Println("Unable to save the contractor:", err)
-		}
-
-		// Soft sleep before making the next contract.
-		select {
-		case <-c.tg.StopChan():
-			return
-		case <-c.interruptMaintenance:
-			return
-		default:
 		}
 	}
 }
