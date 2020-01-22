@@ -99,7 +99,7 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 			totalRemoved++
 		}
 	}
-	if totalRemoved > 0 {
+	if totalRemoved > 1 {
 		w.renter.log.Critical("one worker appeared in the standby list multiple times")
 	}
 
