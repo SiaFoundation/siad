@@ -50,6 +50,17 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
+func isSyncObject(t types.Type) bool {
+	switch t.String() {
+	case "sync.Mutex",
+		"sync.RWMutex",
+		"gitlab.com/NebulousLabs/Sia/sync.TryMutex",
+		"gitlab.com/NebulousLabs/threadgroup.ThreadGroup":
+		return true
+	}
+	return false
+}
+
 func isMutexType(t types.Type) bool {
 	return strings.HasSuffix(t.String(), "Mutex")
 }
@@ -140,8 +151,8 @@ func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv types.Object, r
 				return true
 			}
 			if x, ok := se.X.(*ast.Ident); ok && pass.TypesInfo.Uses[x] == recv {
-				// other mutexes are considered safe to access
-				if isMutexType(pass.TypesInfo.TypeOf(se.Sel)) {
+				// "sync objects" such as mutexes and threadgroups can be accessed without a lock
+				if isSyncObject(pass.TypesInfo.TypeOf(se.Sel)) {
 					return true
 				}
 				field = se.Sel
