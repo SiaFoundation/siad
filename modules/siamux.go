@@ -10,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
@@ -25,6 +24,13 @@ const (
 	// logfile is the filename of the siamux log file
 	logfile = "siamux.log"
 )
+
+// siamuxKeysMetadata contains the header and version strings that identify
+// the siamux keys
+var siamuxKeysMetadata = persist.Metadata{
+	Header:  "SiaMux Keys",
+	Version: "1.4.2.2",
+}
 
 type (
 	// SiaMux wraps the siamux to allow decorating it with the siamux keys
@@ -43,6 +49,27 @@ type (
 	}
 )
 
+// NewSiaMux returns a new SiaMux object
+func NewSiaMux(dir, address string) (*SiaMux, error) {
+	// create the logger
+	logger, err := newLogger(dir)
+	if err != nil {
+		return &SiaMux{}, err
+	}
+
+	// create the siamux
+	keys := loadKeys(dir)
+	smux, _, err := siamux.New(address, keys.PublicKey, keys.SecretKey, logger)
+	if err != nil {
+		return &SiaMux{}, err
+	}
+
+	// wrap it
+	mux := &SiaMux{Keys: keys}
+	mux.SiaMux = smux
+	return mux, nil
+}
+
 // SafeClose ensures Close is never called twice on the SiaMux
 func (mux *SiaMux) SafeClose() error {
 	mux.mu.Lock()
@@ -54,23 +81,6 @@ func (mux *SiaMux) SafeClose() error {
 	return mux.Close()
 }
 
-// NewSiaMux returns a new SiaMux object
-func NewSiaMux(dir, address string) (*SiaMux, error) {
-	// create the logger
-	logger, err := newLogger(dir)
-	if err != nil {
-		return &SiaMux{}, err
-	}
-
-	// create the siamux
-	sk, pk := loadKeys(dir)
-	smux, _, err := siamux.New(address, pk, sk, logger)
-
-	mux := &SiaMux{Keys: SiaMuxKeys{sk, pk}}
-	mux.SiaMux = smux
-	return mux, nil
-}
-
 // newLogger creates a new logger
 func newLogger(dir string) (*persist.Logger, error) {
 	// create the directory if it doesn't exist.
@@ -79,15 +89,9 @@ func newLogger(dir string) (*persist.Logger, error) {
 		return nil, err
 	}
 
-	// create the logfile
-	logfilePath := filepath.Join(dir, logfile)
-	_, err = os.OpenFile(logfilePath, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-
 	// create the logger
-	logger, err := persist.NewFileLogger(filepath.Join(dir, logfile))
+	logfilePath := filepath.Join(dir, logfile)
+	logger, err := persist.NewFileLogger(logfilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -96,82 +100,31 @@ func newLogger(dir string) (*persist.Logger, error) {
 
 // loadKeys loads the siamux keys, it has several fallbacks. Most importantly it
 // will reuse the host's keys as the siamux keys.
-func loadKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey) {
-	sk, pk, err := loadSiaMuxKeys(dir)
-	if err == nil {
-		return
-	}
-
-	// defer a persist if the keys are recycled from the host or if we generate
-	// a new key pair
-	defer func() {
-		err := persistKeys(dir, sk, pk)
-		if err != nil {
-			println("Could not persist siamux keys", err)
-		}
-	}()
-
-	sk, pk, err = loadHostKeys(dir)
-	if err == nil {
-		return
-	}
-
-	sk, pk = mux.GenerateED25519KeyPair()
-	return
-}
-
-// persistKeys will persist the given keys at the keyfile location.
-func persistKeys(dir string, sk mux.ED25519SecretKey, pk mux.ED25519PublicKey) (err error) {
-	// open keyfile
+func loadKeys(dir string) (keys SiaMuxKeys) {
 	keyfilePath := filepath.Join(dir, keyfile)
-	file, err := os.OpenFile(keyfilePath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
-	if err != nil {
-		return errors.AddContext(err, "could not open siamux keyfile")
-	}
-	defer func() {
-		err = errors.Compose(err, file.Close())
-	}()
 
-	// encode the keys
-	keys := SiaMuxKeys{sk, pk}
-	bytes, err := json.Marshal(keys)
-	if err != nil {
-		return errors.AddContext(err, "could not encode siamux keys")
-	}
-
-	// persist the keys
-	_, err = file.Write(bytes)
-	if err != nil {
-		return errors.AddContext(err, "could not persist siamux keys")
-	}
-
-	err = file.Sync()
-	return
-}
-
-// loadSiaMuxKeys loads the siamux keys from the keyfile
-func loadSiaMuxKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey, err error) {
-	// read the keyfile
-	var bytes []byte
-	bytes, err = ioutil.ReadFile(filepath.Join(dir, keyfile))
-	if err != nil {
+	// load the siamux keys from the keyfile
+	err := persist.LoadJSON(siamuxKeysMetadata, keys, keyfilePath)
+	if err == nil {
 		return
 	}
 
-	// unmarshal the keys
-	var keys SiaMuxKeys
-	err = json.Unmarshal(bytes, &keys)
-	if err != nil {
-		return
+	// if that failed, recycle the host's keys and use those as siamux keys
+	if keys, err = loadHostKeys(dir); err != nil {
+		sk, pk := mux.GenerateED25519KeyPair()
+		keys = SiaMuxKeys{sk, pk}
 	}
 
-	sk = keys.SecretKey
-	pk = keys.PublicKey
+	// save the siamux keys to the keyfile
+	err = persist.SaveJSON(siamuxKeysMetadata, keys, keyfilePath)
+	if err != nil {
+		println("Could not persist siamux keys", err)
+	}
 	return
 }
 
 // loadHostKeys looks for the host's key pair in the persistence object
-func loadHostKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey, err error) {
+func loadHostKeys(dir string) (keys SiaMuxKeys, err error) {
 	settingsPath := filepath.Join(dir, HostDir, HostDir, ".json")
 
 	// read the host persistence file
@@ -191,7 +144,7 @@ func loadHostKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey,
 		return
 	}
 
-	copy(sk[:], hostkeys.SecretKey[:])
-	copy(pk[:], hostkeys.PublicKey.Key[:])
+	copy(keys.SecretKey[:], hostkeys.SecretKey[:])
+	copy(keys.PublicKey[:], hostkeys.PublicKey.Key[:])
 	return
 }

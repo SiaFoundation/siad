@@ -249,7 +249,6 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	numModules := params.NumModules()
 	i := 1
 	printfRelease("(%d/%d) Loading siad...\n", i, numModules)
-
 	// Gateway.
 	g, err := func() (modules.Gateway, error) {
 		if params.CreateGateway && params.Gateway != nil {
