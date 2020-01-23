@@ -1001,14 +1001,17 @@ type LinkfileUploadParameters struct {
 
 	// Force determines whether the upload should overwrite an existing siafile
 	// at 'SiaPath'. If set to false, an error will be returned if there is
-	// already a file at 'SiaPath'. If set to true, any existing siafile at
-	// SiaPath will be deleted and over-written.
+	// already a file or folder at 'SiaPath'. If set to true, any existing file
+	// or folder at 'SiaPath' will be deleted and over-written.
 	Force bool `json:"force"`
 
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.
 	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
 
+	// This metadata will be included in the base chunk, meaning that this
+	// metadata is visible to the downloader before any of the file data is
+	// visible.
 	FileMetadata LinkfileMetadata `json:"filemetadata"`
 
 	// Reader supplies the file data for the linkfile.

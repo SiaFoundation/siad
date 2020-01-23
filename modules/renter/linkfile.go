@@ -165,7 +165,8 @@ func fileUploadParamsFromLUP(lup modules.LinkfileUploadParameters) (modules.File
 	}, nil
 }
 
-// streamerFromReader wraps a bytes.Reader to give it a Close() method.
+// streamerFromReader wraps a bytes.Reader to give it a Close() method, which
+// allows it to satisfy the modules.Streamer interface.
 type streamerFromReader struct {
 	*bytes.Reader
 }
