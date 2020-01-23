@@ -142,7 +142,7 @@ func linkfileMetadataBytes(lm modules.LinkfileMetadata) ([]byte, error) {
 	return metadataBytes, nil
 }
 
-// fileUploadParamsFromLUP will dervie the FileUploadParams to use when
+// fileUploadParamsFromLUP will derive the FileUploadParams to use when
 // uploading the base chunk siafile of a linkfile using the linkfile's upload
 // parameters.
 func fileUploadParamsFromLUP(lup modules.LinkfileUploadParameters) (modules.FileUploadParams, error) {
