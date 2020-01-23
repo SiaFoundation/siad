@@ -437,7 +437,7 @@ func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, header
 func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Sialink, error) {
 	// Create the erasure coder to use when uploading the file bulk. When going
 	// through the 'managedUploadLinkfile' command, a 1-of-N scheme is always used,
-	// where the redundancy of the data as a whole matches the propsed
+	// where the redundancy of the data as a whole matches the proposed
 	// redundancy for the base chunk.
 	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
