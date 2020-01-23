@@ -2,10 +2,10 @@ package mdm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -84,7 +84,6 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		so:         so,
 		tg:         &mdm.tg,
 	}
-	defer p.staticData.Close()
 
 	// Convert the instructions.
 	var err error
@@ -97,27 +96,29 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 			err = fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errors.Compose(err, p.staticData.Close())
 		}
 		p.instructions = append(p.instructions, instruction)
 	}
 	// Make sure that the contract is locked unless the program we're executing
 	// is a readonly program.
 	if !p.readOnly() && !p.so.Locked() {
-		return nil, nil, errors.New("contract needs to be locked for a program with one or more write instructions")
+		err = errors.New("contract needs to be locked for a program with one or more write instructions")
+		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	// Make sure the budget covers the initial cost.
 	ps := p.staticProgramState
 	ps.remainingBudget, err = ps.remainingBudget.Sub(InitCost(p.staticData.Len()))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 
 	// Execute all the instructions.
 	if err := p.tg.Add(); err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	go func() {
+		defer p.staticData.Close()
 		defer p.tg.Done()
 		defer close(p.outputChan)
 		p.executeInstructions(ctx, initialMerkleRoot)
