@@ -15,14 +15,14 @@ type fetchChunkState struct {
 	staticChunkIndex uint64
 	staticChunkSize  uint64
 	staticDataPieces uint64
-	staticMasterKey crypto.CipherKey
+	staticMasterKey  crypto.CipherKey
 
 	pieces          [][]byte
 	piecesCompleted uint64
 	piecesFailed    uint64
 
-	doneChan chan struct{}
-	mu       sync.Mutex
+	doneChan     chan struct{}
+	mu           sync.Mutex
 	staticRenter *Renter
 }
 
@@ -103,11 +103,11 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 		staticChunkIndex: chunkIndex,
 		staticChunkSize:  fs.staticChunkSize,
 		staticDataPieces: uint64(fs.staticLayout.fanoutDataPieces),
-		staticMasterKey: fs.staticMasterKey,
+		staticMasterKey:  fs.staticMasterKey,
 
-		pieces:   make([][]byte, len(fs.staticChunks[chunkIndex])),
+		pieces: make([][]byte, len(fs.staticChunks[chunkIndex])),
 
-		doneChan: make(chan struct{}),
+		doneChan:     make(chan struct{}),
 		staticRenter: fs.staticRenter,
 	}
 

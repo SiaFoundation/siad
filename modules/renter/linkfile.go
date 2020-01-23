@@ -232,8 +232,8 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 
 	// Create the metadata for this siafile.
 	fm := modules.LinkfileMetadata{
-		Executable: fileNode.Mode()&1 == 1,
-		Filename:   filename,
+		Filename: filename,
+		Mode:     fileNode.Mode(),
 	}
 	metadataBytes, err := linkfileMetadataBytes(fm)
 	if err != nil {
