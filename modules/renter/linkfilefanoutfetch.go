@@ -23,6 +23,12 @@ type fetchChunkState struct {
 	mu       sync.Mutex
 }
 
+// completed returns whether enough data pieces were retrieved for the chunk to
+// be recovered successfully.
+func (fcs *fetchChunkState) completed() bool {
+	return fcs.piecesCompleted >= fcs.staticDataPieces
+}
+
 // managedFetchChunk will grab the data of a specific chunk index from the Sia
 // network.
 func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]byte, error) {

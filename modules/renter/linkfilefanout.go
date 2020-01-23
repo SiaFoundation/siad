@@ -52,9 +52,22 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 
 		staticRenter: r,
 	}
+	err = fs.decodeFanout(fanoutBytes)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to decode fanout of linkfile")
+	}
+
+	// Grab and return the stream.
+	stream := r.staticStreamBufferSet.callNewStream(fs, 0)
+	return stream, nil
+}
+
+// decodeFanout will take the fanout bytes from a linkfile and decode them in to
+// the staticChunks filed of the fanoutStreamBufferDataSource.
+func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 	// Special case: if the data of the file is using 1-of-N erasure coding,
-	// each piece will be identical, so the fanout will only encode a single
-	// piece for each chunk.
+	// each piece will be identical, so the fanout will only have encoded a
+	// single piece for each chunk.
 	var piecesPerChunk uint64
 	var chunkRootsSize uint64
 	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
@@ -68,11 +81,11 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 	}
 	// Sanity check - the fanout bytes should be an even number of chunks.
 	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
-		return nil, errors.New("the fanout bytes do not contain an even number of chunks")
+		return errors.New("the fanout bytes do not contain an even number of chunks")
 	}
 	numChunks := uint64(len(fanoutBytes))/chunkRootsSize
 
-	// Copy the fanout data into the list of chunks for the
+	// Decode the fanout data into the list of chunks for the
 	// fanoutStreamBufferDataSource.
 	fs.staticChunks = make([][]crypto.Hash, 0, numChunks)
 	for i := uint64(0); i < numChunks; i++ {
@@ -83,71 +96,7 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 		}
 		fs.staticChunks = append(fs.staticChunks, chunk)
 	}
-
-	// Grab and return the stream.
-	stream := r.staticStreamBufferSet.callNewStream(fs, 0)
-	return stream, nil
-}
-
-// completed returns whether enough data pieces were retrieved for the chunk to
-// be recovered successfully.
-func (fcs *fetchChunkState) completed() bool {
-	return fcs.piecesCompleted >= fcs.staticDataPieces
-}
-
-// SilentClose will clean up any resources that the fanoutStreamBufferDataSource
-// keeps open.
-func (fs *fanoutStreamBufferDataSource) SilentClose() {
-	// Nothing to clean up.
-	return
-}
-
-// DataSize returns the amount of file data in the underlying linkfile.
-func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
-	return fs.staticLayout.filesize
-}
-
-// ID returns the id of the sialink being fetched, this is just the hash of the
-// sialink.
-func (fs *fanoutStreamBufferDataSource) ID() streamDataSourceID {
-	return fs.staticStreamID
-}
-
-// ReadAt will fetch data from the siafile at the provided offset.
-func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, error) {
-	// Input checking.
-	if offset < 0 {
-		return 0, errors.New("cannot read from a negative offset")
-	}
-	// Can only grab one chunk.
-	if uint64(len(b)) > fs.staticChunkSize {
-		return 0, errors.New("request needs to be no more than RequestSize()")
-	}
-	// Must start at the chunk boundary.
-	if uint64(offset)%fs.staticChunkSize != 0 {
-		return 0, errors.New("request needs to be aligned to RequestSize()")
-	}
-	// Must not go beyond the end of the file.
-	if uint64(offset)+uint64(len(b)) > fs.staticLayout.filesize {
-		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
-	}
-
-	// Determine which chunk contains the data.
-	chunkIndex := uint64(offset) / fs.staticChunkSize
-
-	// Perform a download to fetch the chunk.
-	chunkData, err := fs.managedFetchChunk(chunkIndex)
-	if err != nil {
-		return 0, errors.AddContext(err, "unable to fetch chunk in ReadAt call on fanout streamer")
-	}
-	n := copy(b, chunkData)
-	return n, nil
-}
-
-// RequestSize implements streamBufferDataSource and will return the
-// chunk size of the file.
-func (fs *fanoutStreamBufferDataSource) RequestSize() uint64 {
-	return fs.staticChunkSize
+	return nil
 }
 
 // linkfileEncodeFanout will create the serialized fanout for a fileNode. The
@@ -215,4 +164,59 @@ func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 		}
 	}
 	return fanout, nil
+}
+
+// DataSize returns the amount of file data in the underlying linkfile.
+func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
+	return fs.staticLayout.filesize
+}
+
+// ID returns the id of the sialink being fetched, this is just the hash of the
+// sialink.
+func (fs *fanoutStreamBufferDataSource) ID() streamDataSourceID {
+	return fs.staticStreamID
+}
+
+// ReadAt will fetch data from the siafile at the provided offset.
+func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, error) {
+	// Input checking.
+	if offset < 0 {
+		return 0, errors.New("cannot read from a negative offset")
+	}
+	// Can only grab one chunk.
+	if uint64(len(b)) > fs.staticChunkSize {
+		return 0, errors.New("request needs to be no more than RequestSize()")
+	}
+	// Must start at the chunk boundary.
+	if uint64(offset)%fs.staticChunkSize != 0 {
+		return 0, errors.New("request needs to be aligned to RequestSize()")
+	}
+	// Must not go beyond the end of the file.
+	if uint64(offset)+uint64(len(b)) > fs.staticLayout.filesize {
+		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
+	}
+
+	// Determine which chunk contains the data.
+	chunkIndex := uint64(offset) / fs.staticChunkSize
+
+	// Perform a download to fetch the chunk.
+	chunkData, err := fs.managedFetchChunk(chunkIndex)
+	if err != nil {
+		return 0, errors.AddContext(err, "unable to fetch chunk in ReadAt call on fanout streamer")
+	}
+	n := copy(b, chunkData)
+	return n, nil
+}
+
+// RequestSize implements streamBufferDataSource and will return the size of a
+// logical data chunk.
+func (fs *fanoutStreamBufferDataSource) RequestSize() uint64 {
+	return fs.staticChunkSize
+}
+
+// SilentClose will clean up any resources that the fanoutStreamBufferDataSource
+// keeps open.
+func (fs *fanoutStreamBufferDataSource) SilentClose() {
+	// Nothing to clean up.
+	return
 }
