@@ -27,7 +27,7 @@ const (
 )
 
 type (
-	// SiaMux wraps the siamux to allow decorating it with the persistDir
+	// SiaMux wraps the siamux to allow decorating it with the siamux keys
 	SiaMux struct {
 		*siamux.SiaMux
 		Keys SiaMuxKeys
