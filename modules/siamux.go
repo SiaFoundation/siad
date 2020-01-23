@@ -15,6 +15,8 @@ import (
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
+// TODO: add test to verify host keys are recycled as siamux keys properly
+
 const (
 	// keyfile is the filename of the siamux keys file
 	keyfile = "siamuxkeys.json"

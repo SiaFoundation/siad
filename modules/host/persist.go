@@ -77,7 +77,7 @@ func (h *Host) establishDefaults() error {
 		MaxEphemeralAccountRisk:    defaultMaxEphemeralAccountRisk,
 	}
 
-	// TODO: load this key pair from the specified location in siamux_keys.go
+	// Load the host's key pair, use the same keys as the SiaMux.
 	keys := modules.LoadSiaMuxKeys(path.Join(h.persistDir, ".."))
 	var sk crypto.SecretKey
 	var pk crypto.PublicKey
