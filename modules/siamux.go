@@ -16,7 +16,6 @@ import (
 )
 
 // TODO: add test to verify host keys are recycled as siamux keys properly
-
 const (
 	// keyfile is the filename of the siamux keys file
 	keyfile = "siamuxkeys.json"
@@ -30,6 +29,13 @@ type SiaMuxKeys struct {
 	PublicKey mux.ED25519PublicKey `json:"publickey"`
 }
 
+// siamuxdir points to the directory where the SiaMux was loaded
+//
+// TODO: this is a temporary workaround until we have siamux persistence, new
+// hosts need the SiaMux keys, and they have no context to figure out where the
+// SiaMux was loaded
+var siamuxdir string
+
 // NewSiaMux returns a new SiaMux object
 func NewSiaMux(dir, address string) (*siamux.SiaMux, error) {
 	// create the logger
@@ -38,17 +44,18 @@ func NewSiaMux(dir, address string) (*siamux.SiaMux, error) {
 		return &siamux.SiaMux{}, err
 	}
 
-	// load the keys
-	sk, pk := loadKeys(dir)
+	// save the siamux persist dir
+	siamuxdir = dir
 
 	// create the siamux
+	sk, pk := loadKeys(dir)
 	mux, _, err := siamux.New(address, pk, sk, logger)
 	return mux, err
 }
 
 // LoadSiaMuxKeys try to load the siamux's keys from the given directory
-func LoadSiaMuxKeys(dir string) *SiaMuxKeys {
-	sk, pk, err := loadSiaMuxKeys(dir)
+func LoadSiaMuxKeys() *SiaMuxKeys {
+	sk, pk, err := loadSiaMuxKeys(siamuxdir)
 	if err != nil {
 		// due to order of execution, this should never happen, in case it does
 		// though we definitely want to be made aware as we depend on the host's

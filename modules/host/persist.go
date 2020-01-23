@@ -3,7 +3,6 @@ package host
 import (
 	"encoding/json"
 	"os"
-	"path"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/bolt"
@@ -78,7 +77,7 @@ func (h *Host) establishDefaults() error {
 	}
 
 	// Load the host's key pair, use the same keys as the SiaMux.
-	keys := modules.LoadSiaMuxKeys(path.Join(h.persistDir, ".."))
+	keys := modules.LoadSiaMuxKeys()
 	var sk crypto.SecretKey
 	var pk crypto.PublicKey
 	copy(sk[:], keys.SecretKey[:])
