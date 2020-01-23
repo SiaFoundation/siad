@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -16,6 +16,9 @@ import (
 )
 
 // TODO: add test to verify host keys are recycled as siamux keys properly
+// TODO: add persistence to SiaMux so we can get rid of the SiaMux wrap
+// TODO: get rid of SafeClose - added due to failing TestWatchdogSweep test
+
 const (
 	// keyfile is the filename of the siamux keys file
 	keyfile = "siamuxkeys.json"
@@ -23,47 +26,49 @@ const (
 	logfile = "siamux.log"
 )
 
-// SiaMuxKeys contains the siamux's public and secret key
-type SiaMuxKeys struct {
-	SecretKey mux.ED25519SecretKey `json:"secretkey"`
-	PublicKey mux.ED25519PublicKey `json:"publickey"`
+type (
+	// SiaMux wraps the siamux to allow decorating it with the persistDir
+	SiaMux struct {
+		*siamux.SiaMux
+		Keys SiaMuxKeys
+
+		closed bool
+		mu     sync.Mutex
+	}
+
+	// SiaMuxKeys contains the siamux's public and secret key
+	SiaMuxKeys struct {
+		SecretKey mux.ED25519SecretKey `json:"secretkey"`
+		PublicKey mux.ED25519PublicKey `json:"publickey"`
+	}
+)
+
+// SafeClose ensures Close is never called twice on the SiaMux
+func (mux *SiaMux) SafeClose() error {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+	if mux.closed {
+		return nil
+	}
+	mux.closed = true
+	return mux.Close()
 }
 
-// siamuxdir points to the directory where the SiaMux was loaded
-//
-// TODO: this is a temporary workaround until we have siamux persistence, new
-// hosts need the SiaMux keys, and they have no context to figure out where the
-// SiaMux was loaded
-var siamuxdir string
-
 // NewSiaMux returns a new SiaMux object
-func NewSiaMux(dir, address string) (*siamux.SiaMux, error) {
+func NewSiaMux(dir, address string) (*SiaMux, error) {
 	// create the logger
 	logger, err := newLogger(dir)
 	if err != nil {
-		return &siamux.SiaMux{}, err
+		return &SiaMux{}, err
 	}
-
-	// save the siamux persist dir
-	siamuxdir = dir
 
 	// create the siamux
 	sk, pk := loadKeys(dir)
-	mux, _, err := siamux.New(address, pk, sk, logger)
-	return mux, err
-}
+	smux, _, err := siamux.New(address, pk, sk, logger)
 
-// LoadSiaMuxKeys try to load the siamux's keys from the given directory
-func LoadSiaMuxKeys() *SiaMuxKeys {
-	sk, pk, err := loadSiaMuxKeys(siamuxdir)
-	if err != nil {
-		// due to order of execution, this should never happen, in case it does
-		// though we definitely want to be made aware as we depend on the host's
-		// keys being equal to the siamux's
-		build.Critical("SiaMux keys not found")
-		sk, pk = mux.GenerateED25519KeyPair()
-	}
-	return &SiaMuxKeys{sk, pk}
+	mux := &SiaMux{Keys: SiaMuxKeys{sk, pk}}
+	mux.SiaMux = smux
+	return mux, nil
 }
 
 // newLogger creates a new logger

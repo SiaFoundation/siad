@@ -30,7 +30,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // NodeParams contains a bunch of parameters for creating a new test node. As
@@ -120,7 +119,7 @@ type NodeParams struct {
 // Node is a collection of Sia modules operating together as a Sia node.
 type Node struct {
 	// The mux of the node.
-	Mux *siamux.SiaMux
+	Mux *modules.SiaMux
 
 	// The modules of the node. Modules that are not initialized will be nil.
 	ConsensusSet    modules.ConsensusSet
@@ -220,7 +219,7 @@ func (n *Node) Close() (err error) {
 	}
 	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
-		err = errors.Compose(n.Mux.Close())
+		err = errors.Compose(n.Mux.SafeClose())
 	}
 	return err
 }
@@ -235,7 +234,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Create the siamux.
-	mux, err := func() (*siamux.SiaMux, error) {
+	mux, err := func() (*modules.SiaMux, error) {
 		if params.SiaMuxAddress == "" {
 			params.SiaMuxAddress = "localhost:0"
 		}
