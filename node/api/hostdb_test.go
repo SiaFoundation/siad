@@ -250,7 +250,7 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	}
 
 	// Create the siamux
-	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -290,11 +290,11 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, sm, hostHostname, filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(cs, g, tp, w, mux, hostHostname, filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, sm, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := renter.New(g, cs, w, tp, mux, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

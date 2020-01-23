@@ -259,7 +259,7 @@ func reloadHost(ht *hostTester) error {
 		return err
 	}
 
-	host, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.sm, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	host, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		return err
 	}

@@ -45,8 +45,8 @@ func NewSiaMux(dir, address string) (*siamux.SiaMux, error) {
 	}
 
 	// create the siamux
-	sm, _, err := siamux.New(address, pk, sk, logger)
-	return sm, err
+	mux, _, err := siamux.New(address, pk, sk, logger)
+	return mux, err
 }
 
 // LoadSiaMuxKeys returns the siamux keys

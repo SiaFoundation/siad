@@ -273,7 +273,7 @@ type Renter struct {
 	tpool             modules.TransactionPool
 	wal               *writeaheadlog.WAL
 	staticWorkerPool  *workerPool
-	staticSiaMux      *siamux.SiaMux
+	staticMux         *siamux.SiaMux
 }
 
 // Close closes the Renter and its dependencies
@@ -838,7 +838,7 @@ func (r *Renter) Unmount(mountPoint string) error {
 var _ modules.Renter = (*Renter)(nil)
 
 // renterBlockingStartup handles the blocking portion of NewCustomRenter.
-func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, sm *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -894,7 +894,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		hostContractor: hc,
 		persistDir:     persistDir,
 		staticAlerter:  modules.NewAlerter("renter"),
-		staticSiaMux:   sm,
+		staticMux:      mux,
 		mu:             siasync.New(modules.SafeMutexDelay, 1),
 		tpool:          tpool,
 	}
@@ -958,11 +958,11 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 }
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, sm *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, <-chan error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb hostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
-	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, sm, persistDir, deps)
+	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, mux, persistDir, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -985,7 +985,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 }
 
 // New returns an initialized renter.
-func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, sm *siamux.SiaMux, persistDir string) (*Renter, <-chan error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 	hdb, errChanHDB := hostdb.New(g, cs, tpool, persistDir)
 	if err := modules.PeekErr(errChanHDB); err != nil {
@@ -997,7 +997,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 		errChan <- err
 		return nil, errChan
 	}
-	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, sm, persistDir, modules.ProdDependencies)
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, modules.ProdDependencies)
 	if err := modules.PeekErr(errChanRenter); err != nil {
 		errChan <- err
 		return nil, errChan

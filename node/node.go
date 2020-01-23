@@ -119,8 +119,8 @@ type NodeParams struct {
 
 // Node is a collection of Sia modules operating together as a Sia node.
 type Node struct {
-	// The siamux of the node.
-	SiaMux *siamux.SiaMux
+	// The mux of the node.
+	Mux *siamux.SiaMux
 
 	// The modules of the node. Modules that are not initialized will be nil.
 	ConsensusSet    modules.ConsensusSet
@@ -218,9 +218,9 @@ func (n *Node) Close() (err error) {
 		printlnRelease("Closing gateway...")
 		err = errors.Compose(n.Gateway.Close())
 	}
-	if n.SiaMux != nil {
+	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
-		err = errors.Compose(n.SiaMux.Close())
+		err = errors.Compose(n.Mux.Close())
 	}
 	return err
 }
@@ -235,7 +235,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Create the siamux.
-	sm, err := func() (*siamux.SiaMux, error) {
+	mux, err := func() (*siamux.SiaMux, error) {
 		if params.SiaMuxAddress == "" {
 			params.SiaMuxAddress = "localhost:0"
 		}
@@ -421,7 +421,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading host...\n", i, numModules)
-		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, sm, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, mux, params.HostAddress, filepath.Join(dir, modules.HostDir))
 		return host, err
 	}()
 	if err != nil {
@@ -493,7 +493,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			close(c)
 			return nil, c
 		}
-		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, sm, persistDir, renterDeps)
+		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterDeps)
 		go func() {
 			c <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
 			close(c)
@@ -511,7 +511,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}()
 
 	return &Node{
-		SiaMux: sm,
+		Mux: mux,
 
 		ConsensusSet:    cs,
 		Explorer:        e,

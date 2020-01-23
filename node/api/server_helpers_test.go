@@ -155,7 +155,7 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	}
 
 	// Create the siamux
-	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -195,11 +195,11 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, sm, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, sm, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := renter.New(g, cs, w, tp, mux, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	}
 
 	// Create the siamux.
-	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -285,11 +285,11 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, sm, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, sm, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := renter.New(g, cs, w, tp, mux, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

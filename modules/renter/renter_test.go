@@ -30,7 +30,8 @@ type renterTester struct {
 	miner   modules.TestMiner
 	tpool   modules.TransactionPool
 	wallet  modules.Wallet
-	sm      *siamux.SiaMux
+
+	mux *siamux.SiaMux
 
 	renter *Renter
 	dir    string
@@ -78,7 +79,7 @@ func newRenterTester(name string) (*renterTester, error) {
 		return nil, err
 	}
 
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.sm, filepath.Join(testdir, modules.RenterDir))
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -94,7 +95,7 @@ func newRenterTester(name string) (*renterTester, error) {
 // the wallet.
 func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	// Create the siamux
-	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -132,12 +133,13 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 
 	// Assemble all pieces into a renter tester.
 	return &renterTester{
+		mux: mux,
+
 		cs:      cs,
 		gateway: g,
 		miner:   m,
 		tpool:   tp,
 		wallet:  w,
-		sm:      sm,
 
 		dir: testdir,
 	}, nil
@@ -153,12 +155,12 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 	}
 
 	// Create the siamux
-	sm, err := modules.NewSiaMux(testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
 
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, sm, filepath.Join(testdir, modules.RenterDir), deps)
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, mux, filepath.Join(testdir, modules.RenterDir), deps)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +172,7 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 }
 
 // newRenterWithDependency creates a Renter with custom dependency
-func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, sm *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
 	hdb, errChan := hostdb.New(g, cs, tpool, persistDir)
 	if err := <-errChan; err != nil {
 		return nil, err
@@ -179,7 +181,7 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, sm, persistDir, deps)
+	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, deps)
 	return renter, <-errChan
 }
 
