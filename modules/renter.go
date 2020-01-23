@@ -988,8 +988,8 @@ func HealthPercentage(health float64) float64 {
 // leading bytes of the linkfile, meaning that this struct can be extended
 // without breaking compatibility.
 type LinkfileMetadata struct {
-	Executable bool   `json:"executable,omitempty"`
-	Filename   string `json:"filename,omitempty"`
+	Filename string      `json:"filename,omitempty"`
+	Mode     os.FileMode `json:"mode,omitempty"`
 }
 
 // LinkfileUploadParameters establishes the parameters such as the intra-root
@@ -1001,14 +1001,17 @@ type LinkfileUploadParameters struct {
 
 	// Force determines whether the upload should overwrite an existing siafile
 	// at 'SiaPath'. If set to false, an error will be returned if there is
-	// already a file at 'SiaPath'. If set to true, any existing siafile at
-	// SiaPath will be deleted and over-written.
+	// already a file or folder at 'SiaPath'. If set to true, any existing file
+	// or folder at 'SiaPath' will be deleted and over-written.
 	Force bool `json:"force"`
 
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.
 	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
 
+	// This metadata will be included in the base chunk, meaning that this
+	// metadata is visible to the downloader before any of the file data is
+	// visible.
 	FileMetadata LinkfileMetadata `json:"filemetadata"`
 
 	// Reader supplies the file data for the linkfile.

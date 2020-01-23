@@ -25,7 +25,6 @@ type fanoutStreamBufferDataSource struct {
 	// Utils.
 	staticRenter *Renter
 	mu           sync.Mutex
-
 }
 
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
@@ -84,7 +83,7 @@ func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
 		return errors.New("the fanout bytes do not contain an even number of chunks")
 	}
-	numChunks := uint64(len(fanoutBytes))/chunkRootsSize
+	numChunks := uint64(len(fanoutBytes)) / chunkRootsSize
 
 	// Decode the fanout data into the list of chunks for the
 	// fanoutStreamBufferDataSource.

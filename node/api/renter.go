@@ -1768,23 +1768,19 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Call the renter to upload the linkfile and create a sialink.
-	//
-	// TODO: Need to parsebool here on the mode - changed to executable.
 	filename := queryForm.Get("filename")
-	/*
-		modeStr := queryForm.Get("mode")
-		var mode os.FileMode
-		if modeStr != "" {
-			_, err := fmt.Sscanf(modeStr, "%o", &mode)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("failed to parse file mode: %v", err)}, http.StatusBadRequest)
-				return
-			}
+	modeStr := queryForm.Get("mode")
+	var mode os.FileMode
+	if modeStr != "" {
+		_, err := fmt.Sscanf(modeStr, "%o", &mode)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to parse file mode: %v", err)}, http.StatusBadRequest)
+			return
 		}
-	*/
+	}
 	lfm := modules.LinkfileMetadata{
-		Executable: false, // TODO: Use parsed value.
 		Filename:   filename,
+		Mode:       mode,
 	}
 	lup := modules.LinkfileUploadParameters{
 		SiaPath:             siaPath,

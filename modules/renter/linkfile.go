@@ -165,7 +165,8 @@ func fileUploadParamsFromLUP(lup modules.LinkfileUploadParameters) (modules.File
 	}, nil
 }
 
-// streamerFromReader wraps a bytes.Reader to give it a Close() method.
+// streamerFromReader wraps a bytes.Reader to give it a Close() method, which
+// allows it to satisfy the modules.Streamer interface.
 type streamerFromReader struct {
 	*bytes.Reader
 }
@@ -232,8 +233,8 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 
 	// Create the metadata for this siafile.
 	fm := modules.LinkfileMetadata{
-		Executable: fileNode.Mode()&1 == 1,
-		Filename:   filename,
+		Filename: filename,
+		Mode:     fileNode.Mode(),
 	}
 	metadataBytes, err := linkfileMetadataBytes(fm)
 	if err != nil {
