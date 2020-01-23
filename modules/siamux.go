@@ -40,10 +40,6 @@ func NewSiaMux(dir, address string) (*siamux.SiaMux, error) {
 
 	// load the keys
 	sk, pk := loadKeys(dir)
-	if err := persistKeys(dir, sk, pk); err != nil {
-
-		logger.Println(err)
-	}
 
 	// create the siamux
 	mux, _, err := siamux.New(address, pk, sk, logger)
@@ -94,6 +90,8 @@ func loadKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey) {
 		return
 	}
 
+	// defer a persist if the keys are recycled from the host or if we generate
+	// a new key pair
 	defer func() {
 		err := persistKeys(dir, sk, pk)
 		if err != nil {
@@ -172,16 +170,16 @@ func loadHostKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey,
 	}
 
 	// parse the key pair out of the host's persist file
-	keys := struct {
+	hostkeys := struct {
 		PublicKey types.SiaPublicKey `json:"publickey"`
 		SecretKey crypto.SecretKey   `json:"secretkey"`
 	}{}
-	err = json.Unmarshal(bytes, &keys)
+	err = json.Unmarshal(bytes, &hostkeys)
 	if err != nil {
 		return
 	}
 
-	copy(sk[:], keys.SecretKey[:])
-	copy(pk[:], keys.PublicKey.Key[:])
+	copy(sk[:], hostkeys.SecretKey[:])
+	copy(pk[:], hostkeys.PublicKey.Key[:])
 	return
 }
