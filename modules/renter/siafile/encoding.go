@@ -144,9 +144,9 @@ func unmarshalErasureCoder(ecType [4]byte, ecParams [8]byte) (modules.ErasureCod
 	parityPieces := int(binary.LittleEndian.Uint32(ecParams[4:]))
 	// Create correct erasure coder.
 	switch ecType {
-	case ecReedSolomon:
+	case ECReedSolomon:
 		return NewRSCode(dataPieces, parityPieces)
-	case ecReedSolomonSubShards64:
+	case ECReedSolomonSubShards64:
 		return NewRSSubCode(dataPieces, parityPieces, 64)
 	default:
 		return nil, errors.New("unknown erasure code type")
