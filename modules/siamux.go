@@ -16,12 +16,10 @@ import (
 )
 
 const (
-	// keyFile is the filename of the siamux keys file
-	keyFile = "siamuxkeys.json"
-	// logFile is the filename of the siamux log file
-	logFile = "siamux.log"
-	// flags specify the flags used when opening the siamux files
-	flags = os.O_RDWR | os.O_TRUNC | os.O_CREATE
+	// keyfile is the filename of the siamux keys file
+	keyfile = "siamuxkeys.json"
+	// logfile is the filename of the siamux log file
+	logfile = "siamux.log"
 )
 
 // SiaMuxKeys contains the siamux's public and secret key
@@ -41,6 +39,7 @@ func NewSiaMux(dir, address string) (*siamux.SiaMux, error) {
 	// load the keys
 	sk, pk := loadKeys(dir)
 	if err := persistKeys(dir, sk, pk); err != nil {
+
 		logger.Println(err)
 	}
 
@@ -49,10 +48,13 @@ func NewSiaMux(dir, address string) (*siamux.SiaMux, error) {
 	return mux, err
 }
 
-// LoadSiaMuxKeys returns the siamux keys
+// LoadSiaMuxKeys try to load the siamux's keys from the given directory
 func LoadSiaMuxKeys(dir string) *SiaMuxKeys {
 	sk, pk, err := loadSiaMuxKeys(dir)
 	if err != nil {
+		// due to order of execution, this should never happen, in case it does
+		// though we definitely want to be made aware as we depend on the host's
+		// keys being equal to the siamux's
 		build.Critical("SiaMux keys not found")
 		sk, pk = mux.GenerateED25519KeyPair()
 	}
@@ -68,28 +70,34 @@ func newLogger(dir string) (*persist.Logger, error) {
 	}
 
 	// create the logfile
-	logFilePath := filepath.Join(dir, logFile)
-	_, err = os.OpenFile(logFilePath, flags, 0600)
+	logfilePath := filepath.Join(dir, logfile)
+	_, err = os.OpenFile(logfilePath, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, err
 	}
 
 	// create the logger
-	logger, err := persist.NewFileLogger(filepath.Join(dir, logFile))
+	logger, err := persist.NewFileLogger(filepath.Join(dir, logfile))
 	if err != nil {
 		return nil, err
 	}
 	return logger, nil
 }
 
-// loadKeys will load the siamux keys. It will first try to load the keys from
-// the siamux key file. If that does not exist, it will try to recycle the
-// host's keys, if that does not work it generates a new key pair.
+// loadKeys loads the siamux keys, it has several fallbacks. Most importantly it
+// will reuse the host's keys as the siamux keys.
 func loadKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey) {
 	sk, pk, err := loadSiaMuxKeys(dir)
 	if err == nil {
 		return
 	}
+
+	defer func() {
+		err := persistKeys(dir, sk, pk)
+		if err != nil {
+			println("Could not persist siamux keys", err)
+		}
+	}()
 
 	sk, pk, err = loadHostKeys(dir)
 	if err == nil {
@@ -102,7 +110,9 @@ func loadKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey) {
 
 // persistKeys will persist the given keys at the keyfile location.
 func persistKeys(dir string, sk mux.ED25519SecretKey, pk mux.ED25519PublicKey) (err error) {
-	file, err := os.OpenFile(filepath.Join(dir, keyFile), os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
+	// open keyfile
+	keyfilePath := filepath.Join(dir, keyfile)
+	file, err := os.OpenFile(keyfilePath, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0600)
 	if err != nil {
 		return errors.AddContext(err, "could not open siamux keyfile")
 	}
@@ -127,13 +137,11 @@ func persistKeys(dir string, sk mux.ED25519SecretKey, pk mux.ED25519PublicKey) (
 	return
 }
 
-// loadSiaMuxKeys loads a siamux key pair. If it can not reuse the host's pubkey
-// pair it will generate a new pair and persist them in a location that's used
-// by fresh hosts when they establish their default config.
+// loadSiaMuxKeys loads the siamux keys from the keyfile
 func loadSiaMuxKeys(dir string) (sk mux.ED25519SecretKey, pk mux.ED25519PublicKey, err error) {
-	// read the host persistence file
+	// read the keyfile
 	var bytes []byte
-	bytes, err = ioutil.ReadFile(filepath.Join(dir, keyFile))
+	bytes, err = ioutil.ReadFile(filepath.Join(dir, keyfile))
 	if err != nil {
 		return
 	}
