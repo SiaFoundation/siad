@@ -373,7 +373,7 @@ func rentersharecmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 		die("Failed to export file:", err)
 	}
-	_, err = httpClient.RenterGetDir(siaPath)
+	_, err = httpClient.RenterDirGet(siaPath)
 	if err == nil {
 		die("Exporting folders is not supported yet.")
 		return
@@ -564,8 +564,8 @@ Price Protections:
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
 		allowance.Hosts, currencyUnits(allowance.ViewContractInitialPrice),
 		modules.FilesizeUnits(allowance.ExpectedStorage),
-		modules.FilesizeUnits(allowance.ExpectedUpload),
-		modules.FilesizeUnits(allowance.ExpectedDownload),
+		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
+		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
 		allowance.ExpectedRedundancy,
 		currencyUnits(allowance.MaxRPCPrice.Mul64(1e6)),
 		currencyUnits(allowance.MaxContractPrice),
