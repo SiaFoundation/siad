@@ -93,13 +93,15 @@ type NodeParams struct {
 	// Dependencies for storage monitor supporting dependency injection.
 	StorageManagerDeps modules.Dependencies
 
-	// Custom settings for modules
-	Allowance     modules.Allowance
-	Bootstrap     bool
-	HostAddress   string
-	HostStorage   uint64
-	RPCAddress    string
+	// Custom settings for siamux
 	SiaMuxAddress string
+
+	// Custom settings for modules
+	Allowance   modules.Allowance
+	Bootstrap   bool
+	HostAddress string
+	HostStorage uint64
+	RPCAddress  string
 
 	// Initialize node from existing seed.
 	PrimarySeed string
@@ -117,6 +119,9 @@ type NodeParams struct {
 
 // Node is a collection of Sia modules operating together as a Sia node.
 type Node struct {
+	// The siamux of the node.
+	SiaMux *siamux.SiaMux
+
 	// The modules of the node. Modules that are not initialized will be nil.
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
@@ -213,6 +218,10 @@ func (n *Node) Close() (err error) {
 		printlnRelease("Closing gateway...")
 		err = errors.Compose(n.Gateway.Close())
 	}
+	if n.SiaMux != nil {
+		printlnRelease("Closing siamux...")
+		err = errors.Compose(n.SiaMux.Close())
+	}
 	return err
 }
 
@@ -225,7 +234,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	dir := params.Dir
 	errChan := make(chan error, 1)
 
-	// SiaMux.
+	// Create the siamux.
 	sm, err := func() (*siamux.SiaMux, error) {
 		if params.SiaMuxAddress == "" {
 			params.SiaMuxAddress = "localhost:0"
@@ -502,6 +511,8 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}()
 
 	return &Node{
+		SiaMux: sm,
+
 		ConsensusSet:    cs,
 		Explorer:        e,
 		Gateway:         g,

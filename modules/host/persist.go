@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/bolt"
@@ -77,11 +78,14 @@ func (h *Host) establishDefaults() error {
 	}
 
 	// TODO: load this key pair from the specified location in siamux_keys.go
+	keys := modules.LoadSiaMuxKeys(path.Join(h.persistDir, ".."))
+	var sk crypto.SecretKey
+	var pk crypto.PublicKey
+	copy(sk[:], keys.SecretKey[:])
+	copy(pk[:], keys.PublicKey[:])
 
-	// Generate signing key, for revising contracts.
-	sk, pk := crypto.GenerateKeyPair()
-	h.secretKey = sk
 	h.publicKey = types.Ed25519PublicKey(pk)
+	h.secretKey = sk
 
 	return nil
 }
