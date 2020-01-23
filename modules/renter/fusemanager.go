@@ -1,4 +1,4 @@
-// +build !windows
+// +build linux darwin
 
 package renter
 
@@ -110,7 +110,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 	// Create the fuse filesystem object.
 	filesystem := &fuseFS{
-		readOnly: opts.ReadOnly,
+		options: opts,
 
 		renter: fm.renter,
 	}
@@ -134,6 +134,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	// Mount the filesystem.
 	server, err := fs.Mount(mountPoint, filesystem.root, &fs.Options{
 		MountOptions: fuse.MountOptions{
+			AllowOther: opts.AllowOther,
 			// Debug: true,
 		},
 	})
@@ -161,6 +162,8 @@ func (fm *fuseManager) MountInfo() []modules.MountInfo {
 		infos = append(infos, modules.MountInfo{
 			MountPoint: mountPoint,
 			SiaPath:    siaPath,
+
+			MountOptions: filesystem.options,
 		})
 	}
 	return infos

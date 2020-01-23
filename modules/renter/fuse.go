@@ -1,4 +1,4 @@
-// +build !windows
+// +build linux darwin
 
 package renter
 
@@ -96,8 +96,8 @@ var _ = (fs.NodeStatfser)((*fuseFilenode)(nil))
 
 // fuseRoot is the root directory for a mounted fuse filesystem.
 type fuseFS struct {
-	readOnly bool
-	root     *fuseDirnode
+	options modules.MountOptions
+	root    *fuseDirnode
 
 	renter *Renter
 	server *fuse.Server

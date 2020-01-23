@@ -23,11 +23,9 @@ import (
 // A hostTester is the helper object for host testing, including helper modules
 // and methods for controlling synchronization.
 type hostTester struct {
-	cs      modules.ConsensusSet
-	gateway modules.Gateway
-	miner   modules.TestMiner
-	// renter    modules.Renter
-	renting   bool
+	cs        modules.ConsensusSet
+	gateway   modules.Gateway
+	miner     modules.TestMiner
 	tpool     modules.TransactionPool
 	wallet    modules.Wallet
 	walletKey crypto.CipherKey
@@ -376,6 +374,15 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {
+		t.Error("settings retrieval did not return default value")
+	}
+	if settings.EphemeralAccountExpiry != (defaultEphemeralAccountExpiry) {
+		t.Error("settings retrieval did not return default value")
+	}
+	if !settings.MaxEphemeralAccountBalance.Equals(defaultMaxEphemeralAccountBalance) {
+		t.Error("settings retrieval did not return default value")
+	}
+	if !settings.MaxEphemeralAccountRisk.Equals(defaultMaxEphemeralAccountRisk) {
 		t.Error("settings retrieval did not return default value")
 	}
 

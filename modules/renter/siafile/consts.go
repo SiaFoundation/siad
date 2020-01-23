@@ -39,14 +39,6 @@ const (
 	// pubKeyTablePruneThreshold is the number of unused hosts a SiaFile can
 	// store in its host key table before it is pruned.
 	pubKeyTablePruneThreshold = 50
-
-	// threadDepth is how deep the ThreadType will track calling files and
-	// calling lines
-	threadDepth = 3
-
-	// fileListRoutines is the number of goroutines used in FileList to load
-	// siafile metadata from disk
-	fileListRoutines = 20
 )
 
 // Constants to indicate which part of the partial upload the combined chunk is
@@ -58,13 +50,13 @@ const (
 )
 
 var (
-	// ecReedSolomon is the marshaled type of the reed solomon coder.
-	ecReedSolomon = modules.ErasureCoderType{0, 0, 0, 1}
+	// ECReedSolomon is the marshaled type of the reed solomon coder.
+	ECReedSolomon = modules.ErasureCoderType{0, 0, 0, 1}
 
-	// ecReedSolomonSubShards64 is the marshaled type of the reed solomon coder
+	// ECReedSolomonSubShards64 is the marshaled type of the reed solomon coder
 	// for files where every 64 bytes of an encoded piece can be decoded
 	// separately.
-	ecReedSolomonSubShards64 = modules.ErasureCoderType{0, 0, 0, 2}
+	ECReedSolomonSubShards64 = modules.ErasureCoderType{0, 0, 0, 2}
 )
 
 // marshaledChunkSize is a helper method that returns the size of a chunk on

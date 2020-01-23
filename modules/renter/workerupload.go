@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -137,7 +138,8 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) {
 	w.staticWake()
 }
 
-// managedPerformUploadChunkJob will perform some upload work.
+// managedPerformUploadChunkJob will perform some upload work and return 'false'
+// if there is no work to be done.
 func (w *worker) managedPerformUploadChunkJob() bool {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
@@ -167,7 +169,6 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	if uc == nil {
 		return true
 	}
-
 	// Open an editing connection to the host.
 	e, err := w.renter.hostContractor.Editor(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
@@ -182,7 +183,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	allowance := w.renter.hostContractor.Allowance()
 	hostSettings := e.HostSettings()
 	err = checkUploadGouging(allowance, hostSettings)
-	if err != nil {
+	if err != nil && !w.renter.deps.Disrupt("DisableUploadGouging") {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
@@ -299,7 +300,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
-	if w.renter.g.Online() {
+	if w.renter.g.Online() && !errors.Contains(failureErr, siafile.ErrDeleted) {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr

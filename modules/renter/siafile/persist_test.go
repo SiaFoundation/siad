@@ -153,13 +153,6 @@ func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string
 	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 }
 
-// newBlankTestFileAndWALWithEC is like customTestFileAndWAL but let's the
-// caller specify custom erasure code settings.
-func newBlankTestFileAndWALWithEC(ec modules.ErasureCoder) (*SiaFile, *writeaheadlog.WAL, string) {
-	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, true)
-	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
-}
-
 // newBlankTestFile is a helper method to create a SiaFile for testing without
 // any hosts or uploaded pieces.
 func newBlankTestFile() *SiaFile {

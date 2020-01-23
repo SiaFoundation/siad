@@ -202,6 +202,8 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 
 // createDeletePartialUpdate is a helper method that creates a writeaheadlog for
 // deleting a .partial file.
+//
+//lint:ignore U1000 Ignore unused code, it's prep for partial uploads
 func createDeletePartialUpdate(path string) writeaheadlog.Update {
 	return writeaheadlog.Update{
 		Name:         updateDeletePartialName,
@@ -719,14 +721,6 @@ func (sf *SiaFile) saveChunkUpdate(chunk chunk) writeaheadlog.Update {
 	return sf.createInsertUpdate(offset, chunkBytes)
 }
 
-// saveChunksUpdates creates writeaheadlog updates which save the marshaled chunks of
-// the SiaFile to disk when applied.
-func (sf *SiaFile) saveChunksUpdates() ([]writeaheadlog.Update, error) {
-	return sf.iterateChunks(func(chunk *chunk) (bool, error) {
-		return true, nil
-	})
-}
-
 // saveHeaderUpdates creates writeaheadlog updates to saves the metadata and
 // pubKeyTable of the SiaFile to disk using the writeaheadlog. If the metadata
 // and overlap due to growing too large and would therefore corrupt if they
@@ -778,7 +772,7 @@ func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
 }
 
 // saveMetadataUpdates saves the metadata of the SiaFile but not the
-// publicKeyTable.  Most of the time updates are only made to the metadata and
+// publicKeyTable. Most of the time updates are only made to the metadata and
 // not to the publicKeyTable and the metadata fits within a single disk sector
 // on the harddrive. This means that using saveMetadataUpdate instead of
 // saveHeader is potentially faster for SiaFiles with a header that can not be

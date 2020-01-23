@@ -14,9 +14,6 @@ import (
 
 var errInvalidEditor = errors.New("editor has been invalidated because its contract is being renewed")
 
-// the contractor will cap host's MaxCollateral setting to this value
-var maxUploadCollateral = types.SiacoinPrecision.Mul64(1e3).Div(modules.BlockBytesPerMonthTerabyte) // 1k SC / TB / Month
-
 // An Editor modifies a Contract by communicating with a host. It uses the
 // contract revision protocol to send modification requests to the host.
 // Editors are the means by which the renter uploads data to hosts.
@@ -162,7 +159,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	}
 	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
 	if err != nil {
-		return nil, errors.AddContext(err, "error geting host from hostdb:")
+		return nil, errors.AddContext(err, "error getting host from hostdb:")
 	} else if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {

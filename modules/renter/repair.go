@@ -374,7 +374,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 			break
 		}
 	}
-	if siapath.Equals(modules.SiaPath{}) {
+	if siapath.IsEmpty() {
 		// If no files were selected from the directory than there is a mismatch
 		// between the file metadata and the directory metadata. Call bubble to
 		// update the directory metadata

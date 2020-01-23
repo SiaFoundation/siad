@@ -1006,6 +1006,10 @@ fetches status information about the host.
     "minsectoraccessprice":      "123",                        //hastings
     "minstorageprice":           "231481481481",               // hastings / byte / block
     "minuploadbandwidthprice":   "100000000000000"             // hastings / byte
+
+    "ephemeralaccountexpiry":     "604800",                          // seconds
+    "maxephemeralaccountbalance": "2000000000000000000000000000000", // hastings
+    "maxephemeralaccountrisk":    "2000000000000000000000000000000", // hastings
   },
 
   "networkmetrics": {
@@ -1145,7 +1149,7 @@ to failed file contracts and missed storage proofs.
 
 **potentialstoragerevenue** | hastings  
 The amount of revenue that the host stands to earn if all storage proofs are
-submitted corectly and in time.  
+submitted correctly and in time.
 
 **riskedstoragecollateral** | hastings  
 The amount of money that the host has risked on file contracts. If the host
@@ -1265,6 +1269,39 @@ higher than the minimum.
 The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
+
+**ephemeralaccountexpiry** | seconds  
+The  maximum amount of time an ephemeral account can be inactive before it is
+considered to be expired and gets deleted. After an account has expired, the
+account owner has no way of retrieving the funds. Setting this value to 0 means
+ephemeral accounts never expire, regardless of how long they have been inactive.
+
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
+
+**maxephemeralaccountrisk** | hastings  
+To increase performance, the host will allow a user to withdraw from an
+ephemeral account without requiring the user to wait until the host has
+persisted the updated ephemeral account balance to complete a transaction. This
+means that the user can perform actions such as downloads with significantly
+less latency. This also means that if the host loses power at that exact moment,
+the host will forget that the user has spent money and the user will be able to
+spend that money again.
+
+maxephemeralaccountrisk is the maximum amount of money that the host is willing
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
+widthdrawal, to prevent the host from having too much money at risk.
+
+Note that money is only at risk if the host experiences an unclean shutdown
+while in the middle of a transaction with a user, and generally the amount at
+risk will be minuscule unless the host experiences an unclean shutdown while in
+the middle of many transactions with many users at once. This value should be
+larger than maxephemeralaccountbalance but does not need to be significantly
+larger.
 
 **networkmetrics**    
 Information about the network, specifically various ways in which renters have
@@ -1404,6 +1441,33 @@ The minimum price that the host will demand from a renter when the renter is
 uploading data. If the host is saturated, the host may increase the price from
 the minimum.  
 
+**maxephemeralaccountbalance** | hastings  
+The maximum amount of money that the host will allow a user to deposit into a
+single ephemeral account.
+
+**maxephemeralaccountrisk** | hastings  
+To increase performance, the host will allow a user to withdraw from an
+ephemeral account without requiring the user to wait until the host has
+persisted the updated ephemeral account balance to complete a transaction. This
+means that the user can perform actions such as downloads with significantly
+less latency. This also means that if the host loses power at that exact moment,
+the host will forget that the user has spent money and the user will be able to
+spend that money again.
+
+maxephemeralaccountrisk is the maximum amount of money that the host is willing
+to risk to a system failure. The account manager will keep track of the total
+amount of money that has been withdrawn, but has not yet been persisted to disk.
+If a user's withdrawal would put the host over the maxephemeralaccountrisk, the
+host will wait to complete the user's transaction until it has persisted the
+widthdrawal, to prevent the host from having too much money at risk.
+
+Note that money is only at risk if the host experiences an
+unclean shutdown while in the middle of a transaction with a user, and generally
+the amount at risk will be minuscule unless the host experiences an unclean
+shutdown while in the middle of many transactions with many users at once. This
+value should be larger than 'maxephemeralaccountbalance but does not need to be
+significantly larger.
+
 ### Response
 
 standard success or error response. See [standard
@@ -1495,15 +1559,15 @@ Id of the storageobligation, which is defined by the file contract id of the
 file contract that governs the storage obligation.
 
 **potentialdownloadrevenue** | hastings  
-Potential revenue for downloaded data that the host will reveive upon successful
+Potential revenue for downloaded data that the host will receive upon successful
 completion of the obligation.
 
 **potentialstoragerevenue** | hastings  
-Potential revenue for storage of data that the host will reveive upon successful
+Potential revenue for storage of data that the host will receive upon successful
 completion of the obligation.
 
 **potentialuploadrevenue** | hastings  
-Potential revenue for uploaded data that the host will reveive upon successful
+Potential revenue for uploaded data that the host will receive upon successful
 completion of the obligation.
 
 **riskedcollateral** | hastings  
@@ -1520,7 +1584,7 @@ Amount for transaction fees that the host added to the storage obligation.
 Expiration height is the height at which the storage obligation expires.
 
 **negotiationheight** | blockheight  
-Negotion height is the height at which the storage obligation was negotiated.
+Negotiation height is the height at which the storage obligation was negotiated.
 
 **proofdeadline** | blockheight  
 The proof deadline is the height by which the storage proof must be submitted.
@@ -1639,7 +1703,7 @@ responses](#standard-responses).
 curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&force=false" "localhost:9980/host/storage/folders/remove"
 ```
 
-Remove a storage folder from the manager. All sotrage on the folder will be
+Remove a storage folder from the manager. All storage on the folder will be
 moved to other stoarge folders, meaning that no data will be lost. If the
 manager is unable to save data, an error will be returned and the operation will
 be stopped.
@@ -1671,7 +1735,7 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "path=foo/bar&newsize=10000000000
 Grows or shrinks a storage file in the manager. The manager may not check that
 there is enough space on-disk to support growing the storasge folder, but should
 gracefully handle running out of space unexpectedly. When shrinking a storage
-folder, any data in the folder that neeeds to be moved will be placed into other
+folder, any data in the folder that needs to be moved will be placed into other
 storage folders, meaning that no data will be lost. If the manager is unable to
 migrate the data, an error will be returned and the operation will be stopped.
 
@@ -1740,7 +1804,10 @@ See [host internal settings](#internalsettings)
  - mincontractprice          
  - mindownloadbandwidthprice  
  - minstorageprice            
- - minuploadbandwidthprice    
+ - minuploadbandwidthprice
+ - ephemeralaccountexpiry    
+ - maxephemeralaccountbalance
+ - maxephemeralaccountrisk
 
 ### JSON Response
 > JSON Response Example
@@ -2721,23 +2788,24 @@ continue to be available to be downloaded from. Refreshed contracts are
 contracts that ran out of funds and needed to be renewed so more money could be
 added to the contract with the host. The data reported in these contracts is
 duplicate data and should not be included in any accounting. Disabled contracts
-are contracts that are in the current period that are not being used for
-uploading as they were replaced instead of renewed. Expired contracts are
-contracts not in the current period, where no more data is being stored and
-excess funds have been released to the renter. Expired Refreshed contracts are
-contracts that were refreshed at some point in a previous period. The data
-reported in these contracts is duplicate data and should not be included in any
-accounting. Recoverable contracts are contracts which the contractor is
-currently trying to recover and which haven't expired yet.
+are contracts that are in the current period and have not yet expired that are
+not being used for uploading as they were replaced instead of renewed. Expired
+contracts are contracts with an `EndHeight` in the past, where no more data is
+being stored and excess funds have been released to the renter. Expired
+Refreshed contracts are contracts that were refreshed at some point in a
+previous period. The data reported in these contracts is duplicate data and
+should not be included in any accounting. Recoverable contracts are contracts
+which the contractor is currently trying to recover and which haven't expired
+yet.
 
-| Type              | GoodForUpload | GoodForRenew | In Current Period | Data Counted Elsewhere Already|
-| ----------------- | :-----------: | :----------: | :---------------: | :---------------------------: |
-| Active            | Yes           | Yes          | Yes               | No                            |
-| Passive           | No            | Yes          | Yes               | No                            |
-| Refreshed         | No            | No           | Yes               | Yes                           |
-| Disabled          | No            | No           | Yes               | No                            |
-| Expired           | No            | No           | No                | No                            |
-| Expired Refreshed | No            | No           | No                | Yes                           |
+| Type              | GoodForUpload | GoodForRenew | Endheight in the Future | Data Counted Elsewhere Already|
+| ----------------- | :-----------: | :----------: | :---------------------: | :---------------------------: |
+| Active            | Yes           | Yes          | Yes                     | No                            |
+| Passive           | No            | Yes          | Yes                     | No                            |
+| Refreshed         | No            | No           | Yes                     | Yes                           |
+| Disabled          | No            | No           | Yes                     | No                            |
+| Expired           | No            | No           | No                      | No                            |
+| Expired Refreshed | No            | No           | No                      | Yes                           |
 
 **NOTE:** No spending is double counted anywhere in the contracts, only the data
 is double counted in the refreshed contracts. For spending totals in the current
@@ -3065,7 +3133,8 @@ may not begin with a forward-slash character.
 **action** | string  
 Action can be either `create`, `delete` or `rename`.
  - `create` will create an empty directory on the sia network
- - `delete` will remove a directory and its contents from the sia network
+ - `delete` will remove a directory and its contents from the sia network. Will
+   return an error if the target is a file.
  - `rename` will rename a directory on the sia network
 
  **newsiapath** | string  
@@ -3113,7 +3182,7 @@ header's 'ID' field.
   "error":               "",                      // string
   "received":            8192,                    // bytes
   "starttime":           "2009-11-10T23:00:00Z",  // RFC 3339 time
-  "totaldatatransfered": 10031                    // bytes
+  "totaldatatransferred": 10031                    // bytes
 }
 ```
 **destination** | string  
@@ -3158,8 +3227,8 @@ file complete fully. This typically has a resolution of tens of megabytes.
 **starttime** | date, RFC 3339 time  
 Time at which the download was initiated.
 
-**totaldatatransfered** | bytes  
-The total amount of data transfered when downloading the file. This will
+**totaldatatransferred** | bytes
+The total amount of data transferred when downloading the file. This will
 eventually include data transferred during contract + payment negotiation, as
 well as data from failed piece downloads.  
 
@@ -3507,7 +3576,7 @@ curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/delete/my
 ```
 
 deletes a renter file entry. Does not delete any downloads or original files,
-only the entry in the renter.
+only the entry in the renter. Will return an error if the target is a folder.
 
 ### Path Parameters
 ### REQUIRED
@@ -3634,6 +3703,109 @@ If set to `true` the exported file/folder will be written to the http response b
 
 The exported file if `httpresp=true` was specified or a standard success or
 error response otherwise. See [standard responses](#standard-responses).
+
+## /renter/fuse [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/renter/fuse"
+```
+
+Lists the set of folders that have been mounted to the user's filesystem and
+which mountpoints have been used for each mount.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "mountpoints": [ // []modules.MountInfo
+    {
+      "mountpoint": "/home/user/siavideos", // string
+      "siapath": "/videos",                 // modules.SiaPath
+
+      "mountoptions": { // []modules.MountOptions
+          "allowother": false, // bool
+          "readonly": true,    // bool
+        },
+    },
+  ]
+}
+```
+**mountpoint** | string  
+The system path that is being used to mount the fuse folder.
+
+**siapath** | string  
+The siapath that has been mounted to the mountpoint.
+
+## /renter/fuse/mount [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/fuse/mount?readonly=true"
+```
+
+Mounts a Sia directory to the local filesystem using FUSE.
+
+### Query String Parameters
+### REQUIRED
+**mount** | string  
+Location on disk to use as the mountpoint.
+
+**readonly** | bool  
+Whether the directory should be mounted as ReadOnly. Currently, readonly is a
+required parameter and must be set to true.
+
+### OPTIONAL
+**siapath** | string  
+Which path should be mounted to the filesystem. If left blank, the user's home
+directory will be used.
+
+**allowother** | boolean  
+By default, only the system user that mounted the fuse directory will be allowed
+to interact with the directory. Often, applications like Plex run as their own
+user, and therefore by default are banned from viewing or otherwise interacting
+with the mounted folder. Setting 'allowother' to true will allow other users to
+see and interact with the mounted folder.
+
+On Linux, if 'allowother' is set to true, /etc/fuse.conf needs to be modified so
+that 'user_allow_other' is set. Typically this involves uncommenting a single
+line of code, see the example below of an /etc/fuse.conf file that has
+'use_allow_other' enabled.
+
+```bash
+# /etc/fuse.conf - Configuration file for Filesystem in Userspace (FUSE)
+
+# Set the maximum number of FUSE mounts allowed to non-root users.
+# The default is 1000.
+#mount_max = 1000
+
+# Allow non-root users to specify the allow_other or allow_root mount options.
+user_allow_other
+```
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+
+## /renter/fuse/unmount [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> -X POST "localhost:9980/renter/fuse/unmount?mount=/home/user/videos"
+```
+
+### Query String Parameters
+### REQUIRED
+**mount** | string  
+Mountpoint that was used when mounting the fuse directory.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
 
 ## /renter/recoveryscan [POST]
 > curl example  
@@ -3774,6 +3946,94 @@ The SiaFile or SiaDir which was previously exported using the
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /renter/sialink/*sialink* [GET]
+> curl example  
+
+> Stream the whole file.  
+
+```bash
+// TODO: Replace this with a rick roll
+curl -A "Sia-Agent" "localhost:9980/renter/sialink/Ab4zT-TlIWiunNSax0tPrOWYnQrIriI0j4yCWcpxcWrXsABjAAAAAAAAAAEK"
+```  
+
+downloads a sialink using http streaming. This call blocks until the data is
+received.
+
+### Path Parameters // TODO: support for offset+len when ready as optional parameters
+
+### OPTIONAL
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /renter/linkfile/*siapath* [POST]
+> curl example  
+
+```bash
+# This command uploads the file 'myImage.png' to the Sia folder
+# 'linkfiles/myImage.png'. Users who download the file will see the name
+# 'image.png'.
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/linkfile/linkfiles/myImage.png?name=image.png" --data-binary @myImage.png
+```
+
+uploads a file to the network using a stream. If the upload stream POST call
+fails or quits before the file is fully uploaded, the file can be repaired by a
+subsequent call to the upload stream endpoint using the `repair` flag.
+
+### Path Parameters
+### REQUIRED
+**siapath** | string  
+Location where the file will reside in the renter on the network. The path must
+be non-empty, may not include any path traversal strings ("./", "../"), and may
+not begin with a forward-slash character.  
+
+### Query String Parameters
+### REQUIRED
+**name** | string  
+Location where the linkfile will reside in the renter's filesystem. The path
+must be non-empty, may not include any path traversal strings ("./", "../"), and
+may not begin with a forward-slash character.  
+
+### OPTIONAL
+**createtime** int64  
+The timestamp which should be put in the file metadata as the creation timestamp
+of the file. This is a Unix timestamp.
+
+**convertpath** string  
+The siapath of an existing siafile that should be converted to a sialink. A new
+linkfile will be created. Both the new linkfile and the existing siafile are
+required to be maintained on the network in order for the sialink to remain
+active.
+
+**force** | bool  
+If there is already a file that exists at the provided siapath, setting this
+flag will cause the new file to overwrite/delete the existing file. If this flag
+is not set, an error will be returned preventing the user from destroying
+existing data.
+
+**mode** | uint32  
+The file mode / permissions of the file. Users who download this file will be
+presented a file with this mode. If no mode is set, the Sia default of 0644 will
+be used.
+
+**redundancy** | uint8  
+The redundancy to use when uploading the linkfile. Linkfiles are always uploaded
+using a 1-of-N erasure coding scheme, so the redundancy needs to be set quite a
+bit higher than for typical files to achieve the same level of reliability.
+
+### JSON Response
+> JSON Response Example
+```go
+{
+"sialink":"AdW6wAkbZrRz1Tesm8VD_FDQ32Ex15i9HZpYlyE6BJNqsABkAAAAAAAAAAEK" // string
+}
+```
+**sialink** | string  
+This is the sialink that can be used with the `/renter/sialink` GET endpoint to
+retrieve the file that has been uploaded.
+
 ## /renter/upload/*siapath* [POST]
 > curl example  
 
@@ -3864,7 +4124,7 @@ Returns the whether or not the renter is ready for upload.
 ### Path Parameters
 ### OPTIONAL
 datapieces and paritypieces are both optional, however if one is supplied then
-the other needs to be supplied. If neither are supplied then the deafult values
+the other needs to be supplied. If neither are supplied then the default values
 for the erasure coding will be used 
 
 **datapieces** | int  
@@ -4717,7 +4977,7 @@ Key that is used to encrypt the siag key when it is imported to the wallet.
 **keyfiles**  
 List of filepaths that point to the keyfiles that make up the siag key. There
 should be at least one keyfile per required signature. The filenames need to be
-commna separated (no spaces), which means filepaths that contain a comma are not
+comma separated (no spaces), which means filepaths that contain a comma are not
 allowed.  
 
 ### Response
@@ -5218,8 +5478,7 @@ valid indicates if the address supplied to :addr is a valid UnlockHash.
 curl -A "Sia-Agent" "localhost:9980/wallet/verifypassword?password=<password>"
 ```
 
-Takes a password and verifies if it is the valid password used to encrypt the
-wallet.
+Takes a password and verifies if it is the password used to encrypt the wallet.
 
 ### Path Parameters
 #### REQUIRED
@@ -5235,7 +5494,7 @@ Password being checked.
 }
 ```
 **valid** | boolean  
-valid indicates if the password supplied is the password used to encrypte the
+valid indicates if the password supplied is the password used to encrypt the
 wallet.  
 
 ## /wallet/watch [GET]

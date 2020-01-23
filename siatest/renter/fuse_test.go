@@ -1,4 +1,4 @@
-// +build !windows
+// +build linux darwin
 
 package renter
 
@@ -69,15 +69,41 @@ func TestFuse(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
+	// Set the default opts for mounting a fuse directory.
+	//
+	// NOTE: Can't test 'AllowOther' in this test, if 'AllowOther' is set to
+	// true, Linux will complain unless the user has changed the default
+	// configuration for fuse established in /etc/fuse.conf.
+	defaultOpts := modules.MountOptions{
+		ReadOnly:   true,
+		AllowOther: false,
+	}
+
 	// Try mounting an empty fuse filesystem.
 	mountpoint1 := filepath.Join(testDir, "mount1")
 	err = os.MkdirAll(mountpoint1, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), true)
+	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Get the list of filesystem mounts and see that the mountpoint is
+	// represented correctly.
+	fi, err := r.RenterFuse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fi.MountPoints) != 1 {
+		t.Fatal("there should be a mountpoint listed")
+	}
+	if !fi.MountPoints[0].MountOptions.ReadOnly {
+		t.Error("ReadOnly should be set to true")
+	}
+	if fi.MountPoints[0].MountOptions.AllowOther {
+		t.Error("AllowOther should be set to false")
 	}
 
 	// Try reading the empty fuse directory.
@@ -133,10 +159,10 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mount fuse to the emtpy filesystem again, this time upload a file while
+	// Mount fuse to the empty filesystem again, this time upload a file while
 	// the system is mounted, then try to read the filesystem from the
 	// directory.
-	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), true)
+	err = r.RenterFuseMount(mountpoint1, modules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +220,9 @@ func TestFuse(t *testing.T) {
 		t.Error(err)
 	}
 	if bytes.Compare(data, localFileData) != 0 {
-		t.Error("data from the local file and data from the fuse file do not match")
+		t.Log(len(data))
+		t.Log(len(localFileData))
+		t.Fatal("data from the local file and data from the fuse file do not match")
 	}
 	err = fuseFile.Close()
 	if err != nil {
@@ -361,7 +389,9 @@ func TestFuse(t *testing.T) {
 		t.Error(err)
 	}
 	if bytes.Compare(data, localFileData) != 0 {
-		t.Error("data from the local file and data from the fuse file do not match", len(data), len(localFileData))
+		t.Log(len(data))
+		t.Log(len(localFileData))
+		t.Fatal("data from the local file and data from the fuse file do not match", len(data), len(localFileData))
 	}
 	err = fuseFile.Close()
 	if err != nil {
@@ -641,7 +671,9 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(fuseData, sourceData) {
-		t.Error("custom mode data and source data do not match")
+		t.Log(len(fuseData))
+		t.Log(len(sourceData))
+		t.Fatal("custom mode data and source data do not match")
 	}
 	// Open the custom file in fuse. Note that for this test to provide proper
 	// regression coverage, the streamer shouldn't be opened until after the
@@ -665,7 +697,9 @@ func TestFuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(renamedFuseData, sourceData) {
-		t.Error("data mismatch after file was renamed")
+		t.Log(renamedFuseData)
+		t.Log(sourceData)
+		t.Fatal("data mismatch after file was renamed")
 	}
 	// Close the fuseFile.
 	err = fuseFile.Close()
@@ -716,7 +750,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterFuseMount(inodeMount, modules.RootSiaPath(), true)
+	err = r.RenterFuseMount(inodeMount, modules.RootSiaPath(), defaultOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -767,7 +801,7 @@ func TestFuse(t *testing.T) {
 	// testing the concurrency of the fusemanager.
 	//
 	// After all threads have completed phase two, the threads will enter a
-	// thrid phase where they all mount root to their mountpoint and then they
+	// third phase where they all mount root to their mountpoint and then they
 	// all open, read, and close the files located in root, causing heavy
 	// concurrent access to a small number of files.
 	threads := 25
@@ -890,7 +924,7 @@ func TestFuse(t *testing.T) {
 					wg3.Done()
 					return
 				}
-				err = r.RenterFuseMount(threadMount, siaPathToMount, true)
+				err = r.RenterFuseMount(threadMount, siaPathToMount, defaultOpts)
 				if err != nil {
 					err = errors.AddContext(err, "unable to mount thread mount")
 					errMu.Lock()
@@ -920,7 +954,7 @@ func TestFuse(t *testing.T) {
 			// Phase three. Mount the root, and then repeatedly perform actions
 			// on the files and folders in root to verify the concurrency safety
 			// of the ro filesystem.
-			err = r.RenterFuseMount(threadMount, modules.RootSiaPath(), true)
+			err = r.RenterFuseMount(threadMount, modules.RootSiaPath(), defaultOpts)
 			if err != nil {
 				err = errors.AddContext(err, "unable to mount thread mount")
 				errMu.Lock()
@@ -1031,7 +1065,7 @@ func TestFuse(t *testing.T) {
 			} else {
 				siaPathToMount = modules.RootSiaPath()
 			}
-			err = r.RenterFuseMount(threadMount, siaPathToMount, true)
+			err = r.RenterFuseMount(threadMount, siaPathToMount, defaultOpts)
 			if err != nil {
 				err = errors.AddContext(err, "unable to mount thread mount")
 				errMu.Lock()

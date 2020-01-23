@@ -83,7 +83,6 @@ func TestRenterOne(t *testing.T) {
 		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
 		{"TestLocalRepair", testLocalRepair},
 		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestSetFileTrackingPath", testSetFileTrackingPath},
 		{"TestDownloadAfterRenew", testDownloadAfterRenew},
 		{"TestDirectories", testDirectories},
 	}
@@ -559,7 +558,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check directory
-	rgd, err := r.RenterGetDir(rd.SiaPath())
+	rgd, err := r.RenterDirGet(rd.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -601,7 +600,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rgd, err = r.RenterGetDir(siaPath)
+	rgd, err = r.RenterDirGet(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -618,7 +617,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rgd, err = r.RenterGetDir(siaPath)
+	rgd, err = r.RenterDirGet(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -640,7 +639,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Renamed directory should have 0 files and 1 sub directory.
-	rgd, err = r.RenterGetDir(newSiaPath)
+	rgd, err = r.RenterDirGet(newSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -652,7 +651,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Subdir of renamed dir should have 0 files and 1 sub directory.
-	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	rgd, err = r.RenterDirGet(rgd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,7 +663,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// SubSubdir of renamed dir should have 1 file and 0 sub directories.
-	rgd, err = r.RenterGetDir(rgd.Directories[1].SiaPath)
+	rgd, err = r.RenterDirGet(rgd.Directories[1].SiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -880,6 +879,136 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	// We should be able to download
 	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
 		t.Fatal("Failed to download file", err)
+	}
+}
+
+// TestLocalRepairCorrupted tests if a renter repairs a file from disk after the
+// file on disk got corrupted.
+//
+// The test has certain timing contraints, in particular we wait 20 seconds at
+// the end to ensure that a file cannot be repaired. Because of these timing
+// constraints, the test is run standalone and without t.Parallel().
+func TestLocalRepairCorrupted(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a group for the subtests
+	gp := siatest.GroupParams{
+		Hosts:   3,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab the first of the group's renters
+	renterNode := tg.Renters()[0]
+
+	// Set fileSize and redundancy for upload
+	fileSize := int(modules.SectorSize) + siatest.Fuzz()
+	dataPieces := uint64(2)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+
+	// Upload file
+	localFile, remoteFile, err := renterNode.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take down hosts until the file is unable to be repaired from remote. This
+	// will check that the local repair process is working.
+	var hostsRemoved uint64
+	hostsToRemove := parityPieces + 1
+	for hostsRemoved = 0; hostsRemoved < hostsToRemove; hostsRemoved++ {
+		hostToRemove := tg.Hosts()[0]
+		err := tg.RemoveNode(hostToRemove)
+		if err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	expectedRedundancy := float64(dataPieces-1) / float64(dataPieces)
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// Download should fail, there are not enough hosts online.
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err == nil {
+		t.Fatal("download is succeeding even though there are not enough hosts to carry the file.")
+		t.Log(err)
+	}
+	// Bring a host back up and see that the file completes a local repair.
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostsRemoved--
+	err = renterNode.WaitForFileAvailable(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Corrupt the local file, so that repairs will cause problems.
+	b, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ioutil.WriteFile(localFile.Path(), fastrand.Bytes(len(b)), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bring more hosts online, check that repair will failover to remote
+	// repair.
+	for hostsRemoved > 0 {
+		hostsRemoved--
+		_, err = tg.AddNodes(node.HostTemplate)
+		if err != nil {
+			t.Fatal("Failed to create a new host", err)
+		}
+	}
+	// File should get back to full health.
+	err = renterNode.WaitForUploadHealth(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify that a download works.
+	if _, _, err := renterNode.DownloadByStream(remoteFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bring hosts offline again. Now that the local file is corrupted,
+	// repairing should be impossible.
+	for hostsRemoved = 0; hostsRemoved < hostsToRemove; hostsRemoved++ {
+		if err := tg.RemoveNode(tg.Hosts()[0]); err != nil {
+			t.Fatal("Failed to shutdown host", err)
+		}
+	}
+	// Wait for the redundancy to drop.
+	if err := renterNode.WaitForDecreasingRedundancy(remoteFile, expectedRedundancy); err != nil {
+		t.Fatal("Redundancy isn't decreasing", err)
+	}
+	// Bring a host back online so that the file can be repaired to be
+	// available. Because the local file is corrupt, the repair should be
+	// blocked.
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostsRemoved--
+
+	// Give the renter some time to complete the repair. I'm not really sure if
+	// there's a better way than waiting to ensure that the repair loop has had
+	// a couple of iterations to attempt the repair.
+	time.Sleep(time.Second * 20)
+	file, err := renterNode.File(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.Available {
+		t.Fatal("file should not be available when its only source of repair data is corrupt")
 	}
 }
 
@@ -1202,7 +1331,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 
-	// Upload file, creating a piece for each host in the group
+	// Upload a file, then try to overwrite the file with the force flag set.
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
@@ -1215,7 +1344,7 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 
-	// Upload file, creating a piece for each host in the group
+	// Upload file, then try to overwrite the file without the force flag set.
 	dataPieces = uint64(1)
 	parityPieces = uint64(len(tg.Hosts())) - dataPieces
 	fileSize = 100 + siatest.Fuzz()
@@ -1226,6 +1355,32 @@ func testUploadWithAndWithoutForceParameter(t *testing.T, tg *siatest.TestGroup)
 	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
 	if err == nil {
 		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, false)
+	if err == nil {
+		t.Fatal("File overwritten without specifying 'force=true'")
+	}
+
+	// Try to upload a file with the force flag set.
+	dataPieces = uint64(1)
+	parityPieces = uint64(len(tg.Hosts())) - dataPieces
+	fileSize = 100 + siatest.Fuzz()
+	localFile, _, err = renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	_, err = renter.UploadBlocking(localFile, dataPieces, parityPieces, true)
+	if err != nil {
+		t.Fatal("Failed to force overwrite a file when specifying 'force=true': ", err)
 	}
 }
 
@@ -1975,26 +2130,9 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
-	// All contracts should be disabled.
+	// All contracts should be expired.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have num of hosts expired contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.PassiveContracts) != 0 {
-			return fmt.Errorf("expected 0 passive contracts, got %v", len(rc.PassiveContracts))
-		}
-		if len(rc.RefreshedContracts) != 0 {
-			return fmt.Errorf("expected 0 refreshed contracts, got %v", len(rc.RefreshedContracts))
-		}
-		if len(rc.DisabledContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v disabled contracts, got %v", len(tg.Hosts()), len(rc.DisabledContracts))
-		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
@@ -2893,8 +3031,28 @@ func TestRenterFileChangeDuringDownload(t *testing.T) {
 	wg.Wait()
 }
 
-// testSetFileTrackingPath tests if changing the repairPath of a file works.
-func testSetFileTrackingPath(t *testing.T, tg *siatest.TestGroup) {
+// TestSetFileTrackingPath tests if changing the repairPath of a file works.
+func TestSetFileTrackingPath(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a group for the subtests
+	gp := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Grab the first of the group's renters
 	renter := tg.Renters()[0]
 	// Check that we have enough hosts for this test.
@@ -3150,13 +3308,36 @@ func TestUploadAfterDelete(t *testing.T) {
 	// closing the entry. That shouldn't cause issues.
 	for i := 0; i < 5; i++ {
 		// Delete the file.
-		if err := renter.RenterDeletePost(remoteFile.SiaPath()); err != nil {
+		if err := renter.RenterFileDeletePost(remoteFile.SiaPath()); err != nil {
 			t.Fatal(err)
 		}
 		// Upload the file again right after deleting it.
 		if _, err := renter.UploadBlocking(localFile, dataPieces, parityPieces, false); err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// Create an empty directory on the renter called 'dir.sia'. This triggers
+	// an edge case where calling /renter/delete on that directory in an old
+	// version of the code would cause the directory to be deleted.
+	sp, err := modules.NewSiaPath("dir.sia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = renter.RenterDirCreatePost(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call delete file on that new dir.
+	err = renter.RenterFileDeletePost(sp)
+	if err == nil {
+		t.Fatal("calling 'delete file' on empty dir should return an error")
+	}
+	// Check that the dir still exists.
+	_, err = renter.RenterDirGet(sp)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -4296,7 +4477,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// The fileupload should have created a dir. That dir should have the same
 	// permissions as the file.
-	rd, err := renter.RenterGetDir(dirSP)
+	rd, err := renter.RenterDirGet(dirSP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4313,7 +4494,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.RenterDirCreatePost(dir2SP); err != nil {
 		t.Fatal(err)
 	}
-	rd, err = renter.RenterGetDir(dir2SP)
+	rd, err = renter.RenterDirGet(dir2SP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4327,7 +4508,7 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	if err := renter.RenterDirCreateWithModePost(dir3SP, mode); err != nil {
 		t.Fatal(err)
 	}
-	rd, err = renter.RenterGetDir(dir3SP)
+	rd, err = renter.RenterDirGet(dir3SP)
 	if err != nil {
 		t.Fatal(err)
 	}

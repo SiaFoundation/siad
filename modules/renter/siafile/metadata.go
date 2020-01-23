@@ -124,8 +124,8 @@ type (
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
-		UserID  int         `json:"userid"`  // id of the user who owns the file
-		GroupID int         `json:"groupid"` // id of the group that owns the file
+		UserID  int32       `json:"userid"`  // id of the user who owns the file
+		GroupID int32       `json:"groupid"` // id of the group that owns the file
 
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
@@ -155,6 +155,11 @@ type (
 		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
 		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
 		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
+
+		// Sialink tracking. If this siafile is known to have sectors of any
+		// linkfiles, those linkfiles will be listed here. It should be noted
+		// that a single siafile can be responsible for tracking many linkfiles.
+		Sialinks []string `json:"sialinks"`
 	}
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
@@ -183,6 +188,20 @@ func (sf *SiaFile) AccessTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.AccessTime
+}
+
+// AddSialink will add a sialink to the SiaFile.
+func (sf *SiaFile) AddSialink(s modules.Sialink) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.Sialinks = append(sf.staticMetadata.Sialinks, s.String())
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // ChangeTime returns the ChangeTime timestamp of the file.

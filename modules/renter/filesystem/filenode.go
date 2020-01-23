@@ -19,18 +19,6 @@ type (
 	}
 )
 
-// closeFileNode calls the common closeNode method.
-func (n *FileNode) closeFileNode() {
-	n.node.closeNode()
-}
-
-// managedClose calls close while holding the node's lock.
-func (n *FileNode) managedClose() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.closeFileNode()
-}
-
 // Close calls close on the FileNode and also removes the FileNode from its
 // parent if it's no longer being used and if it doesn't have any children which
 // are currently in use. This happens iteratively for all parent as long as
@@ -123,6 +111,7 @@ func (n *FileNode) managedFileInfo(siaPath modules.SiaPath, offline map[string]b
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
+		Sialinks:         n.Metadata().Sialinks,
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
@@ -205,6 +194,7 @@ func (n *FileNode) staticCachedInfo(siaPath modules.SiaPath) (modules.FileInfo, 
 		Recoverable:      onDisk || md.CachedUserRedundancy >= 1,
 		Redundancy:       md.CachedUserRedundancy,
 		Renewing:         true,
+		Sialinks:         md.Sialinks,
 		SiaPath:          siaPath,
 		Stuck:            md.NumStuckChunks > 0,
 		StuckHealth:      md.CachedStuckHealth,

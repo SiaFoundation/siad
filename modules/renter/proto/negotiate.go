@@ -247,23 +247,6 @@ func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Has
 	return rev
 }
 
-// newDeleteRevision revises the current revision to cover the cost of
-// deleting a sector.
-func newDeleteRevision(current types.FileContractRevision, merkleRoot crypto.Hash) types.FileContractRevision {
-	rev := newRevision(current, types.ZeroCurrency)
-	rev.NewFileSize -= modules.SectorSize
-	rev.NewFileMerkleRoot = merkleRoot
-	return rev
-}
-
-// newModifyRevision revises the current revision to cover the cost of
-// modifying a sector.
-func newModifyRevision(current types.FileContractRevision, merkleRoot crypto.Hash, uploadCost types.Currency) types.FileContractRevision {
-	rev := newRevision(current, uploadCost)
-	rev.NewFileMerkleRoot = merkleRoot
-	return rev
-}
-
 // performSessionHandshake conducts the initial handshake exchange of the
 // renter-host protocol. During the handshake, a shared secret is established,
 // which is used to initialize an AEAD cipher. This cipher must be used to

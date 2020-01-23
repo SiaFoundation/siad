@@ -26,6 +26,9 @@ var (
 	// ErrUnknownThread is an error when a SiaFile is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siafile")
+	// ErrDeleted is returned when an operation failed due to the siafile being
+	// deleted already.
+	ErrDeleted = errors.New("files was deleted")
 )
 
 type (
@@ -95,8 +98,6 @@ type (
 
 	// piece represents a single piece of a chunk on disk
 	piece struct {
-		offset          uint32      // offset of the piece within the sector
-		length          uint32      // length of the piece within the sector
 		HostTableOffset uint32      // offset of the host's key within the pubKeyTable
 		MerkleRoot      crypto.Hash // merkle root of the piece
 	}
@@ -264,7 +265,7 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.deleted {
-		return errors.New("can't set filesize of deleted file")
+		return errors.AddContext(ErrDeleted, "can't set filesize of deleted file")
 	}
 	if sf.staticMetadata.HasPartialChunk {
 		return errors.New("can't call SetFileSize on file with partial chunk")
@@ -309,7 +310,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	// If the file was deleted we can't add a new piece since it would write
 	// the file to disk again.
 	if sf.deleted {
-		return errors.New("can't add piece to deleted file")
+		return errors.AddContext(ErrDeleted, "can't add piece to deleted file")
 	}
 	// Don't allow adding pieces to incomplete chunk which is not yet part of a
 	// combined chunk.
@@ -448,7 +449,7 @@ func (sf *SiaFile) Delete() error {
 	defer sf.mu.Unlock()
 	// We can't delete a file multiple times.
 	if sf.deleted {
-		return errors.New("requested file has already been deleted")
+		return errors.AddContext(ErrDeleted, "requested file has already been deleted")
 	}
 	update := sf.createDeleteUpdate()
 	err := sf.createAndApplyTransaction(update)
@@ -499,7 +500,7 @@ func (sf *SiaFile) SaveMetadata() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.deleted {
-		return errors.New("can't SaveMetadata of deleted file")
+		return errors.AddContext(ErrDeleted, "can't SaveMetadata of deleted file")
 	}
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
@@ -815,7 +816,7 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
+		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
 	// Update all the Stuck field for each chunk.
 	updates, errIter := sf.iterateChunks(func(chunk *chunk) (bool, error) {
@@ -898,7 +899,7 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	defer sf.mu.Unlock()
 	// Can't update used hosts on deleted file.
 	if sf.deleted {
-		return errors.New("can't call UpdateUsedHosts on deleted file")
+		return errors.AddContext(ErrDeleted, "can't call UpdateUsedHosts on deleted file")
 	}
 	// Create a map of the used keys for faster lookups.
 	usedMap := make(map[string]struct{})
@@ -919,29 +920,27 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 	// want to remove them from the table but only if we have enough used hosts.
 	// Otherwise we might be pruning hosts that could become used again since
 	// the file might be in flux while it uploads or repairs
-	pruned := false
 	tooManyUnusedHosts := unusedHosts > pubKeyTablePruneThreshold
 	enoughUsedHosts := len(usedMap) > sf.staticMetadata.staticErasureCode.NumPieces()
+	var updates []writeaheadlog.Update
 	if tooManyUnusedHosts && enoughUsedHosts {
-		sf.pruneHosts()
-		pruned = true
-	}
-	// Save the header to disk.
-	updates, err := sf.saveHeaderUpdates()
-	if err != nil {
-		return err
-	}
-	// If we pruned the hosts we also need to save the body.
-	if pruned {
-		chunkUpdates, err := sf.iterateChunks(func(chunk *chunk) (bool, error) {
-			return true, nil
-		})
+		// If we prune the hosts the pruneUpdates already include the updates to
+		// save the header.
+		pruneUpdates, err := sf.pruneHosts()
+		if err != nil {
+			return errors.AddContext(err, "pruneHosts failed")
+		}
+		updates = append(updates, pruneUpdates...)
+	} else {
+		// If we don't prune the hosts we explicitly save the header.
+		headerUpdates, err := sf.saveHeaderUpdates()
 		if err != nil {
 			return err
 		}
-		updates = append(updates, chunkUpdates...)
+		updates = append(updates, headerUpdates...)
 	}
-	err = sf.createAndApplyTransaction(updates...)
+	// Apply all updates.
+	err := sf.createAndApplyTransaction(updates...)
 	if err != nil {
 		return err
 	}
@@ -1034,7 +1033,7 @@ func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
 	sf.pubKeyTable = prunedTable
 	// With this map we loop over all the chunks and pieces and update the ones
 	// who got a new offset and remove the ones that no longer have one.
-	return sf.iterateChunks(func(chunk *chunk) (bool, error) {
+	chunkUpdates, err := sf.iterateChunks(func(chunk *chunk) (bool, error) {
 		for pieceIndex, pieceSet := range chunk.Pieces {
 			var newPieceSet []piece
 			for i, piece := range pieceSet {
@@ -1048,6 +1047,15 @@ func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
 		}
 		return true, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	// The header needs to be saved too due to the changed pubKeyTable.
+	headerUpdates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return nil, err
+	}
+	return append(headerUpdates, chunkUpdates...), nil
 }
 
 // GoodPieces loops over the pieces of a chunk and tracks the number of unique
@@ -1133,7 +1141,7 @@ func (sf *SiaFile) Chunk(chunkIndex uint64) (chunk, error) {
 // the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
 func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Update, err error) {
 	if sf.deleted {
-		return nil, errors.New("can't grow number of chunks of deleted file")
+		return nil, errors.AddContext(ErrDeleted, "can't grow number of chunks of deleted file")
 	}
 	// Don't allow a SiaFile with a partial chunk to grow.
 	if sf.staticMetadata.HasPartialChunk {
@@ -1176,7 +1184,7 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Upda
 // change itself. Handle this accordingly.
 func (sf *SiaFile) removeLastChunk() error {
 	if sf.deleted {
-		return errors.New("can't remove last chunk of deleted file")
+		return errors.AddContext(ErrDeleted, "can't remove last chunk of deleted file")
 	}
 	if sf.staticMetadata.HasPartialChunk {
 		return errors.New("can't remove last chunk if it is a partial chunk")
@@ -1213,7 +1221,7 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
-		return errors.New("can't call SetStuck on deleted file")
+		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
 	//  Get chunk.
 	chunk, err := sf.chunk(int(index))

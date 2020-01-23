@@ -192,6 +192,53 @@ local path where the Sia folder is mounted.`,
 		Run:   wrap(renterfilesuploadcmd),
 	}
 
+	renterLinkfilesCmd = &cobra.Command{
+		Use:   "linkfiles",
+		Short: "Perform actions related to linkfiles",
+		Long: `Linkfiles are files that can be shared throughout the Sia network. The
+linkfiles command allows the user to upload linkfiles to the network and to view
+a list of linkfiles that the user has uploaded to the network. After uploading a
+linkfile, the user is presented with a sialink. The sialink can be presented to
+any viewnode, and the viewnode will be able to retrieve the file.`,
+		Run: renterlinkfilescmd,
+	}
+
+	renterLinkfilesLsCmd = &cobra.Command{
+		Use:   "ls",
+		Short: "List all linkfiles that the user has uploaded.",
+		Long: `List all linkfiles that the user has uploaded. Only files in /var/linkfiles
+will be considered. The corresponding sialinks will also be displayed.`,
+		Run: wrap(renterlinkfileslscmd),
+	}
+
+	renterLinkfilesUploadCmd = &cobra.Command{
+		Use:   "upload [source path] [destination siapath]",
+		Short: "Upload a linkfile to the Sia network",
+		Long: `Upload a linkfile to the Sia network. The act of uploading a linkfile will
+produce a sialink, which can be presented to any viewnode, which can then fetch
+the corresponding file. The act of uploading "pins" the linkfile to the Sia
+network, where it will remain available for anyone to download until the
+uploader deletes the file. The uploader does not need to stay online in order
+for the file to remain available on the Sia network, they merely need to
+maintain the set of contracts that the file has been uploaded to.
+
+At any time, someone else can "repin" the file just by uploading it to their set
+of contracts. This will allow the same file to continue being available from the
+same sialink even if the original uploader disappears or deletes the file. A
+file will remain available on the Sia network until there is nobody pinning it
+anymore.`,
+		Run: wrap(renterlinkfilesuploadcmd),
+	}
+
+	renterLinkfilesConvertCmd = &cobra.Command{
+		Use:   "convert [source siaPath] [destination siaPath]",
+		Short: "Convert a siafile to a sharable sialink",
+		Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
+will be created in the user's linkfile directory. The linkfile and the original
+siafile are both necessary to pin the file and keep the sialink active.`,
+		Run: wrap(renterlinkfilesconvertcmd),
+	}
+
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
@@ -339,13 +386,13 @@ func rentersharecmd(path, destination string) {
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterGetDir(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return errors.AddContext(err, "unable to get root dir with RenterGetDir")
+		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
 	}
 
 	rc, err := httpClient.RenterContractsGet()
@@ -491,10 +538,6 @@ func renterallowancecmd() {
 		die("Could not get allowance:", err)
 	}
 	allowance := rg.Settings.Allowance
-
-	// Normalize the expectations over the period.
-	allowance.ExpectedUpload *= uint64(allowance.Period)
-	allowance.ExpectedDownload *= uint64(allowance.Period)
 
 	// Show allowance info
 	fmt.Printf(`Allowance:
@@ -1050,24 +1093,24 @@ and bandwidth needs while spending significantly less than the overall allowance
 
 	// expectedUpload
 	fmt.Println(`6/8: Expected Upload
-Expected upload tells siad how much uploading the user expects to do each month.
-If this value is high, siad will more strongly prefer hosts that have a low
-upload bandwidth price. If this value is low, siad will focus on other metrics
-than upload bandwidth pricing, because even if the host charges a lot for upload
-bandwidth, it will not impact the total cost to the user very much.
+Expected upload tells siad how much uploading the user expects to do each
+period. If this value is high, siad will more strongly prefer hosts that have a
+low upload bandwidth price. If this value is low, siad will focus on other
+metrics than upload bandwidth pricing, because even if the host charges a lot
+for upload bandwidth, it will not impact the total cost to the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)))
+	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(allowance.Period)))
 
 	var expectedUpload uint64
 	if allowance.ExpectedUpload == 0 {
 		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedUpload = allowance.ExpectedUpload * uint64(types.BlocksPerMonth)
+		expectedUpload = allowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Upload: ")
@@ -1081,13 +1124,15 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected upload")
 		}
+		// User set field in terms of period, need to normalize to per-block.
+		expectedUpload /= uint64(period)
 	}
-	req = req.WithExpectedUpload(expectedUpload / uint64(types.BlocksPerMonth))
+	req = req.WithExpectedUpload(expectedUpload)
 
 	// expectedDownload
 	fmt.Println(`7/8: Expected Download
 Expected download tells siad how much downloading the user expects to do each
-month. If this value is high, siad will more strongly prefer hosts that have a
+period. If this value is high, siad will more strongly prefer hosts that have a
 low download bandwidth price. If this value is low, siad will focus on other
 metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
@@ -1095,15 +1140,15 @@ for downloads, it will not impact the total cost to the user very much.
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(types.BlocksPerMonth)))
+	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)))
+	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(allowance.Period)))
 
 	var expectedDownload uint64
 	if allowance.ExpectedDownload == 0 {
 		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedDownload = allowance.ExpectedDownload * uint64(types.BlocksPerMonth)
+		expectedDownload = allowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Download: ")
@@ -1117,8 +1162,10 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected download")
 		}
+		// User set field in terms of period, need to normalize to per-block.
+		expectedDownload /= uint64(period)
 	}
-	req = req.WithExpectedDownload(expectedDownload / uint64(types.BlocksPerMonth))
+	req = req.WithExpectedDownload(expectedDownload)
 
 	// expectedRedundancy
 	fmt.Println(`8/8: Expected Redundancy
@@ -1214,6 +1261,62 @@ func renterbackuplistcmd() {
 	w.Flush()
 }
 
+// contractStats is a helper function to pull information out of the renter
+// contracts to be displayed
+func contractStats(contracts []api.RenterContract) (size uint64, spent, remaining, fees types.Currency) {
+	for _, c := range contracts {
+		size += c.Size
+		remaining = remaining.Add(c.RenterFunds)
+		fees = fees.Add(c.Fees)
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		spent = spent.Add(contractTotalSpent)
+	}
+	return
+}
+
+// writeContracts is a helper function to display contracts
+func writeContracts(contracts []api.RenterContract) {
+	fmt.Println("  Number of Contracts:", len(contracts))
+	sort.Sort(byValue(contracts))
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
+	for _, c := range contracts {
+		address := c.NetAddress
+		hostVersion := c.HostVersion
+		if address == "" {
+			address = "Host Removed"
+			hostVersion = ""
+		}
+		// Negative Currency Check
+		var contractTotalSpent types.Currency
+		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
+			contractTotalSpent = c.RenterFunds.Add(c.Fees)
+		} else {
+			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
+		}
+		fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
+			address,
+			c.HostPublicKey.String(),
+			hostVersion,
+			currencyUnits(c.RenterFunds),
+			currencyUnits(contractTotalSpent),
+			currencyUnits(c.Fees),
+			modules.FilesizeUnits(c.Size),
+			c.EndHeight,
+			c.ID,
+			c.GoodForUpload,
+			c.GoodForRenew,
+			c.BadContract)
+	}
+	w.Flush()
+}
+
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
@@ -1224,63 +1327,21 @@ func rentercontractscmd() {
 
 	// Build Current Period summary
 	fmt.Println("Current Period Summary")
-	var totalStored, totalWasted uint64
-	var totalRemaining, totalSpent, totalFees types.Currency
 	// Active Contracts are all good data
-	for _, c := range rc.ActiveContracts {
-		totalStored += c.Size
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	activeSize, activeSpent, activeRemaining, activeFees := contractStats(rc.ActiveContracts)
 	// Passive Contracts are all good data
-	for _, c := range rc.PassiveContracts {
-		totalStored += c.Size
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	passiveSize, passiveSpent, passiveRemaining, passiveFees := contractStats(rc.PassiveContracts)
 	// Refreshed Contracts are duplicate data
-	for _, c := range rc.RefreshedContracts {
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	_, refreshedSpent, refreshedRemaining, refreshedFees := contractStats(rc.RefreshedContracts)
 	// Disabled Contracts are wasted data
-	for _, c := range rc.DisabledContracts {
-		totalWasted += c.Size
-		totalRemaining = totalRemaining.Add(c.RenterFunds)
-		totalFees = totalFees.Add(c.Fees)
-		// Negative Currency Check
-		var contractTotalSpent types.Currency
-		if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-			contractTotalSpent = c.RenterFunds.Add(c.Fees)
-		} else {
-			contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-		}
-		totalSpent = totalSpent.Add(contractTotalSpent)
-	}
+	disabledSize, disabledSpent, disabledRemaining, disabledFees := contractStats(rc.DisabledContracts)
+	// Sum up the appropriate totals
+	totalStored := activeSize + passiveSize
+	totalWasted := disabledSize
+	totalSpent := activeSpent.Add(passiveSpent).Add(refreshedSpent).Add(disabledSpent)
+	totalRemaining := activeRemaining.Add(passiveRemaining).Add(refreshedRemaining).Add(disabledRemaining)
+	totalFees := activeFees.Add(passiveFees).Add(refreshedFees).Add(disabledFees)
+
 	fmt.Printf(`  Total Good Data:    %s
   Total Wasted Data:  %s
   Total Remaining:    %v
@@ -1295,39 +1356,7 @@ func rentercontractscmd() {
 		fmt.Println("  No active contracts.")
 	} else {
 		// Display Active Contracts
-		fmt.Println("  Number of Contracts:", len(rc.ActiveContracts))
-		sort.Sort(byValue(rc.ActiveContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
-		for _, c := range rc.ActiveContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew,
-				c.BadContract)
-		}
-		w.Flush()
+		writeContracts(rc.ActiveContracts)
 	}
 
 	fmt.Println("\nPassive Contracts:")
@@ -1335,39 +1364,7 @@ func rentercontractscmd() {
 		fmt.Println("  No passive contracts.")
 	} else {
 		// Display Passive Contracts
-		sort.Sort(byValue(rc.PassiveContracts))
-		fmt.Println("  Number of Contracts:", len(rc.PassiveContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
-		for _, c := range rc.PassiveContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew,
-				c.BadContract)
-		}
-		w.Flush()
+		writeContracts(rc.PassiveContracts)
 	}
 
 	fmt.Println("\nRefreshed Contracts:")
@@ -1375,39 +1372,7 @@ func rentercontractscmd() {
 		fmt.Println("  No refreshed contracts.")
 	} else {
 		// Display Refreshed Contracts
-		sort.Sort(byValue(rc.RefreshedContracts))
-		fmt.Println("  Number of Contracts:", len(rc.RefreshedContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
-		for _, c := range rc.RefreshedContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew,
-				c.BadContract)
-		}
-		w.Flush()
+		writeContracts(rc.RefreshedContracts)
 	}
 
 	fmt.Println("\nDisabled Contracts:")
@@ -1415,39 +1380,7 @@ func rentercontractscmd() {
 		fmt.Println("  No disabled contracts.")
 	} else {
 		// Display Disabled Contracts
-		sort.Sort(byValue(rc.DisabledContracts))
-		fmt.Println("  Number of Contracts:", len(rc.DisabledContracts))
-		w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
-		for _, c := range rc.DisabledContracts {
-			address := c.NetAddress
-			hostVersion := c.HostVersion
-			if address == "" {
-				address = "Host Removed"
-				hostVersion = ""
-			}
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
-				address,
-				c.HostPublicKey.String(),
-				hostVersion,
-				currencyUnits(c.RenterFunds),
-				currencyUnits(contractTotalSpent),
-				currencyUnits(c.Fees),
-				modules.FilesizeUnits(c.Size),
-				c.EndHeight,
-				c.ID,
-				c.GoodForUpload,
-				c.GoodForRenew,
-				c.BadContract)
-		}
-		w.Flush()
+		writeContracts(rc.DisabledContracts)
 	}
 
 	if renterAllContracts {
@@ -1457,35 +1390,16 @@ func rentercontractscmd() {
 		}
 		// Build Historical summary
 		fmt.Println("\nHistorical Summary")
-		var totalStored uint64
-		var totalRemaining, totalSpent, totalFees types.Currency
 		// Expired Contracts are all good data
-		for _, c := range rce.ExpiredContracts {
-			totalStored += c.Size
-			totalRemaining = totalRemaining.Add(c.RenterFunds)
-			totalFees = totalFees.Add(c.Fees)
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			totalSpent = totalSpent.Add(contractTotalSpent)
-		}
+		expiredSize, expiredSpent, expiredRemaining, expiredFees := contractStats(rce.ExpiredContracts)
 		// Expired Refreshed Contracts are duplicate data
-		for _, c := range rce.ExpiredRefreshedContracts {
-			totalRemaining = totalRemaining.Add(c.RenterFunds)
-			totalFees = totalFees.Add(c.Fees)
-			// Negative Currency Check
-			var contractTotalSpent types.Currency
-			if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-				contractTotalSpent = c.RenterFunds.Add(c.Fees)
-			} else {
-				contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-			}
-			totalSpent = totalSpent.Add(contractTotalSpent)
-		}
+		_, expiredRefreshedSpent, expiredRefreshedRemaining, expiredRefreshedFees := contractStats(rce.ExpiredRefreshedContracts)
+		// Sum up the appropriate totals
+		totalStored := expiredSize
+		totalSpent := expiredSpent.Add(expiredRefreshedSpent)
+		totalRemaining := expiredRemaining.Add(expiredRefreshedRemaining)
+		totalFees := expiredFees.Add(expiredRefreshedFees)
+
 		fmt.Printf(`  Total Expired Data:  %s
   Total Remaining:     %v
   Total Spent:         %v
@@ -1496,78 +1410,14 @@ func rentercontractscmd() {
 		if len(rce.ExpiredContracts) == 0 {
 			fmt.Println("  No expired contracts.")
 		} else {
-			sort.Sort(byValue(rce.ExpiredContracts))
-			fmt.Println("	 Number of Contracts:", len(rce.ExpiredContracts))
-			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
-			for _, c := range rce.ExpiredContracts {
-				address := c.NetAddress
-				hostVersion := c.HostVersion
-				if address == "" {
-					address = "Host Removed"
-					hostVersion = ""
-				}
-				// Negative Currency Check
-				var contractTotalSpent types.Currency
-				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-					contractTotalSpent = c.RenterFunds.Add(c.Fees)
-				} else {
-					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-				}
-				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
-					address,
-					c.HostPublicKey.String(),
-					hostVersion,
-					currencyUnits(c.RenterFunds),
-					currencyUnits(contractTotalSpent),
-					currencyUnits(c.Fees),
-					modules.FilesizeUnits(c.Size),
-					c.EndHeight,
-					c.ID,
-					c.GoodForUpload,
-					c.GoodForRenew,
-					c.BadContract)
-			}
-			w.Flush()
+			writeContracts(rce.ExpiredContracts)
 		}
 
 		fmt.Println("\nExpired Refresh Contracts:")
 		if len(rce.ExpiredRefreshedContracts) == 0 {
 			fmt.Println("  No expired refreshed contracts.")
 		} else {
-			sort.Sort(byValue(rce.ExpiredRefreshedContracts))
-			fmt.Println("	 Number of Contracts:", len(rce.ExpiredRefreshedContracts))
-			w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "  \nHost\tHost PubKey\tHost Version\tRemaining Funds\tSpent Funds\tSpent Fees\tData\tEnd Height\tContract ID\tGoodForUpload\tGoodForRenew\tBadContract")
-			for _, c := range rce.ExpiredRefreshedContracts {
-				address := c.NetAddress
-				hostVersion := c.HostVersion
-				if address == "" {
-					address = "Host Removed"
-					hostVersion = ""
-				}
-				// Negative Currency Check
-				var contractTotalSpent types.Currency
-				if c.TotalCost.Cmp(c.RenterFunds.Add(c.Fees)) < 0 {
-					contractTotalSpent = c.RenterFunds.Add(c.Fees)
-				} else {
-					contractTotalSpent = c.TotalCost.Sub(c.RenterFunds).Sub(c.Fees)
-				}
-				fmt.Fprintf(w, "  %v\t%v\t%v\t%8s\t%8s\t%8s\t%v\t%v\t%v\t%v\t%v\t%v\n",
-					address,
-					c.HostPublicKey.String(),
-					hostVersion,
-					currencyUnits(c.RenterFunds),
-					currencyUnits(contractTotalSpent),
-					currencyUnits(c.Fees),
-					modules.FilesizeUnits(c.Size),
-					c.EndHeight,
-					c.ID,
-					c.GoodForUpload,
-					c.GoodForRenew,
-					c.BadContract)
-			}
-			w.Flush()
+			writeContracts(rce.ExpiredRefreshedContracts)
 		}
 	}
 }
@@ -1633,7 +1483,7 @@ Contract %v
 // into a single error.
 func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
-	rd, err := httpClient.RenterGetDir(siaPath)
+	rd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
 		err = errors.AddContext(err, "failed to get dir info")
 		return
@@ -1742,11 +1592,11 @@ func renterfilesdeletecmd(path string) {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// Try to delete file.
-	errFile := httpClient.RenterDeletePost(siaPath)
+	errFile := httpClient.RenterFileDeletePost(siaPath)
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
-	} else if !strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) {
+	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
 		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Try to delete folder.
@@ -1776,7 +1626,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = httpClient.RenterGetDir(siaPath)
+	_, err = httpClient.RenterDirGet(siaPath)
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
@@ -2051,10 +1901,39 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 	return s[i].dir.SiaPath.String() < s[j].dir.SiaPath.String()
 }
 
+// getDirRoot returns the directory info for the directory at siaPath and its
+// subdirs, querying the root directory.
+func getDirRoot(siaPath modules.SiaPath) (dirs []directoryInfo) {
+	rgd, err := httpClient.RenterDirRootGet(siaPath)
+	if err != nil {
+		die("failed to get dir info:", err)
+	}
+	dir := rgd.Directories[0]
+	subDirs := rgd.Directories[1:]
+
+	// Append directory to dirs.
+	dirs = append(dirs, directoryInfo{
+		dir:     dir,
+		files:   rgd.Files,
+		subDirs: subDirs,
+	})
+
+	// If -R isn't set we are done.
+	if !renterListRecursive {
+		return
+	}
+	// Call getDir on subdirs.
+	for _, subDir := range subDirs {
+		rdirs := getDirRoot(subDir.SiaPath)
+		dirs = append(dirs, rdirs...)
+	}
+	return
+}
+
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs.
 func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
-	rgd, err := httpClient.RenterGetDir(siaPath)
+	rgd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
 		die("failed to get dir info:", err)
 	}
@@ -2268,7 +2147,11 @@ func renterfusemountcmd(path, siaPathStr string) {
 			die("Unable to parse the siapath that should be mounted:", err)
 		}
 	}
-	err = httpClient.RenterFuseMount(path, siaPath, true)
+	opts := modules.MountOptions{
+		ReadOnly:   true,
+		AllowOther: renterFuseMountAllowOther,
+	}
+	err = httpClient.RenterFuseMount(path, siaPath, opts)
 	if err != nil {
 		die("Unable to mount the directory:", err)
 	}
@@ -2404,6 +2287,113 @@ func renterfilesuploadcmd(source, path string) {
 		}
 		fmt.Printf("Uploaded '%s' as '%s'.\n", abs(source), path)
 	}
+}
+
+// renterlinkfilescmd displays the usage info for the command.
+func renterlinkfilescmd(cmd *cobra.Command, args []string) {
+	cmd.UsageFunc()(cmd)
+	os.Exit(exitCodeUsage)
+}
+
+// renterlinkfileslscmd lists all of the linkfiles that a user has uploaded.
+func renterlinkfileslscmd() {
+	// Get dirs with their corresponding files. The linkfiles list command is
+	// always recursive (at least for now - may add a flag later.).
+	dirs := getDirRoot(modules.LinkfileSiaFolder)
+	numFiles := 0
+	for _, dir := range dirs {
+		numFiles += len(dir.files)
+	}
+	if numFiles+len(dirs) < 1 {
+		fmt.Println("No files/dirs have been uploaded.")
+		return
+	}
+	fmt.Printf("Listing %v files/dirs:\n", numFiles+len(dirs)-1)
+
+	// Print out all of the dirs.
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	sort.Sort(byDirectoryInfo(dirs))
+	for _, dir := range dirs {
+		fmt.Fprintf(w, "\t\t\t\n")
+		fmt.Fprintf(w, "\t%v/\t\t\n", dir.dir.SiaPath)
+		sort.Sort(bySiaPathDir(dir.subDirs))
+		for _, subDir := range dir.subDirs {
+			fmt.Fprintf(w, "\t\t%v/\t\n", subDir.SiaPath.Name())
+		}
+		for _, file := range dir.files {
+			if len(file.Sialinks) == 0 {
+				fmt.Fprintf(w, "\t\t%v\t\n", file.SiaPath.Name())
+			} else {
+				fmt.Fprintf(w, "\t\t%v\t%v\n", file.SiaPath.Name(), file.Sialinks[0])
+				for _, sialink := range file.Sialinks[1:] {
+					fmt.Fprintf(w, "\t\t\t%v\n", sialink)
+				}
+			}
+		}
+	}
+	w.Flush()
+}
+
+// renterlinkfilesuploadcmd will upload a linkfile to the Sia network.
+func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+
+	// Open the source file.
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		die("Unable to open source file:", err)
+	}
+	defer file.Close()
+	fi, err := file.Stat()
+	if err != nil {
+		die("Unable to fetch source fileinfo:", err)
+	}
+	_, sourceName := filepath.Split(sourcePath)
+
+	// Perform the upload and print the result.
+	lup := modules.LinkfileUploadParameters{
+		SiaPath: siaPath,
+
+		FileMetadata: modules.LinkfileMetadata{
+			Filename:   sourceName,
+			Mode:       fi.Mode(),
+		},
+
+		Reader: file,
+	}
+	sialink, err := httpClient.RenterLinkfilePost(lup)
+	if err != nil {
+		die("could not upload linkfile:", err)
+	}
+	fmt.Println("File uploaded successfully, the sialink is", sialink)
+}
+
+// renterlinkfilesconvertcmd will convert an existing siafile to a linkfile and
+// sialink on the Sia network.
+func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
+	// Create the siapaths.
+	sourceSiaPath, err := modules.NewSiaPath(sourceSiaPathStr)
+	if err != nil {
+		die("Could not parse source siapath:", err)
+	}
+	destSiaPath, err := modules.NewSiaPath(destSiaPathStr)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+
+	// Perform the conversion and print the result.
+	lup := modules.LinkfileUploadParameters{
+		SiaPath: destSiaPath,
+	}
+	sialink, err := httpClient.RenterConvertSiafileToLinkfilePost(lup, sourceSiaPath)
+	if err != nil {
+		die("could not upload linkfile:", err)
+	}
+	fmt.Println("File converted successfully, the sialink is", sialink)
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
