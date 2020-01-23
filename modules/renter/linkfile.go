@@ -171,7 +171,7 @@ type streamerFromReader struct {
 	*bytes.Reader
 }
 
-// Close is a no-op because a bytes.Reaader doesn't need to be closed.
+// Close is a no-op because a bytes.Reader doesn't need to be closed.
 func (sfr *streamerFromReader) Close() error {
 	return nil
 }
