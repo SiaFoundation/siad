@@ -68,6 +68,7 @@ func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 	// Special case: if the data of the file is using 1-of-N erasure coding,
 	// each piece will be identical, so the fanout will only have encoded a
 	// single piece for each chunk.
+	ll := fs.staticLayout
 	var piecesPerChunk uint64
 	var chunkRootsSize uint64
 	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
