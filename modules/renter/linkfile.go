@@ -98,7 +98,7 @@ func (ll *linkfileLayout) decode(b []byte) {
 	// Sanity check. If this check fails, decode() does not match the
 	// LinkfileLayoutSize.
 	if offset != LinkfileLayoutSize {
-		panic("layout size does not match the amount of data decdoed")
+		panic("layout size does not match the amount of data decoded")
 	}
 }
 
