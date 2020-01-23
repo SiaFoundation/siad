@@ -11,9 +11,7 @@ import (
 )
 
 // fanoutStreamBufferDataSource implements streamBufferDataSource with the
-// linkfile so that it can open a stream from the streamBufferSet. The stream is
-// then added as a field of the fanoutStreamBufferDataSource so that it can be
-// returned separately.
+// linkfile so that it can be used to open a stream from the streamBufferSet.
 type fanoutStreamBufferDataSource struct {
 	// Each chunk is an array of sector hashes that correspond to pieces which
 	// can be fetched.
@@ -60,23 +58,17 @@ func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fano
 	var piecesPerChunk uint64
 	var chunkRootsSize uint64
 	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
-		// Quick sanity check - the fanout bytes should be an even number of
-		// chunks.
-		if len(fanoutBytes)%crypto.HashSize != 0 {
-			return nil, errors.New("the fanout bytes are not a multiple of crypto.HashSize")
-		}
 		piecesPerChunk = 1
 		chunkRootsSize = crypto.HashSize
 	} else {
 		// This is the case where the file data is not 1-of-N. Every piece is
 		// different, so every piece must get enumerated.
-		//
-		// Sanity check - the fanout bytes should be an even number of chunks.
 		piecesPerChunk = uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
 		chunkRootsSize = crypto.HashSize * piecesPerChunk
-		if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
-			return nil, errors.New("the fanout bytes do not contain an even number of chunks")
-		}
+	}
+	// Sanity check - the fanout bytes should be an even number of chunks.
+	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
+		return nil, errors.New("the fanout bytes do not contain an even number of chunks")
 	}
 	numChunks := uint64(len(fanoutBytes))/chunkRootsSize
 
