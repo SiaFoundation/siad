@@ -4,10 +4,8 @@ set -e
 # version and keys are supplied as arguments
 version="$1"
 rc=`echo $version | awk -F - '{print $2}'`
-keyfile="$2"
-pubkeyfile="$3" # optional
 if [[ -z $version ]]; then
-	echo "Usage: $0 VERSION "
+	echo "Usage: $0 VERSION"
 	exit 1
 fi
 
@@ -30,8 +28,12 @@ function build {
 			bin=${pkg}.exe
 		fi
 		GOOS=${os} GOARCH=${arch} go build -a -tags 'netgo' -trimpath -ldflags="$ldflags" -o $folder/$bin ./cmd/$pkg
-    sha256sum $folder/$bin >> release/Sia-$version-SHA256SUMS.txt
+    sum="$( sha256sum $folder/$bin )"
+    echo $sum >> release/Sia-$version-SHA256SUMS.txt
+    echo $sum
   done
+
+	cp -r doc LICENSE README.md $folder
 }
 
 # Build amd64 binaries.
@@ -41,27 +43,3 @@ done
 
 # Build Raspberry Pi binaries.
 build "linux" "arm64"
-
-function package {
-  os=$1
-  arch=$2
-
-	echo Packaging ${os}...
-	folder=release/Sia-$version-$os-$arch
-
-	# add other artifacts and file of hashes.
-	cp -r release/Sia-$version-SHA256SUMS.txt doc LICENSE README.md $folder
-	# zip
-	(
-		cd release
-		zip -rq Sia-$version-$os-$arch.zip Sia-$version-$os-$arch
-	)
-}
-
-# Package amd64 binaries.
-for os in darwin linux windows; do
-  package "$os" "amd64"
-done
-
-# Package Raspberry Pi binaries.
-package "linux" "arm64"
