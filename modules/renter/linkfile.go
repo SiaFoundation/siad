@@ -125,7 +125,7 @@ func (ll *linkfileLayout) decode(b []byte) {
 	// Sanity check. If this check fails, decode() does not match the
 	// LinkfileLayoutSize.
 	if offset != LinkfileLayoutSize {
-		build.Critical("layout size does not match the amount of data decdoed")
+		build.Critical("layout size does not match the amount of data decoded")
 	}
 }
 
@@ -165,7 +165,7 @@ func linkfileMetadataBytes(lm modules.LinkfileMetadata) ([]byte, error) {
 	return metadataBytes, nil
 }
 
-// fileUploadParamsFromLUP will dervie the FileUploadParams to use when
+// fileUploadParamsFromLUP will derive the FileUploadParams to use when
 // uploading the base chunk siafile of a linkfile using the linkfile's upload
 // parameters.
 func fileUploadParamsFromLUP(lup modules.LinkfileUploadParameters) (modules.FileUploadParams, error) {
@@ -194,7 +194,7 @@ type streamerFromReader struct {
 	*bytes.Reader
 }
 
-// Close is a no-op because a bytes.Reaader doesn't need to be closed.
+// Close is a no-op because a bytes.Reader doesn't need to be closed.
 func (sfr *streamerFromReader) Close() error {
 	return nil
 }
@@ -433,7 +433,7 @@ func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, header
 func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Sialink, error) {
 	// Create the erasure coder to use when uploading the file bulk. When going
 	// through the 'managedUploadLinkfile' command, a 1-of-N scheme is always used,
-	// where the redundancy of the data as a whole matches the propsed
+	// where the redundancy of the data as a whole matches the proposed
 	// redundancy for the base chunk.
 	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
