@@ -19,6 +19,21 @@ type instructionReadSector struct {
 	merkleRootOffset uint64
 }
 
+// NewReadSectorInstruction creates a modules.Instruction from arguments.
+func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint64, merkleProof bool) modules.Instruction {
+	rsi := modules.Instruction{
+		Specifier: modules.SpecifierReadSector,
+		Args:      make([]byte, modules.RPCIReadSectorLen),
+	}
+	binary.LittleEndian.PutUint64(rsi.Args[:8], merkleRootOffset)
+	binary.LittleEndian.PutUint64(rsi.Args[8:16], offsetOffset)
+	binary.LittleEndian.PutUint64(rsi.Args[16:24], lengthOffset)
+	if merkleProof {
+		rsi.Args[24] = 1
+	}
+	return rsi
+}
+
 // staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the
 // provided generic instruction.
 func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruction) (instruction, error) {
@@ -54,7 +69,7 @@ func (i *instructionReadSector) Cost() Cost {
 	return ReadSectorCost()
 }
 
-// Execute execute the 'Read' instruction.
+// Execute executes the 'Read' instruction.
 func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	// Subtract cost from budget beforehand.
 	var err error
@@ -78,7 +93,7 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	// Validate the request.
 	switch {
 	case offset+length > modules.SectorSize:
-		err = errors.New("request is out of bounds")
+		err = fmt.Errorf("request is out of bounds %v + %v = %v > %v", offset, length, offset+length, modules.SectorSize)
 	case length == 0:
 		err = errors.New("length cannot be zero")
 	case i.staticMerkleProof && (offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0):
