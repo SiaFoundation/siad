@@ -66,7 +66,12 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 
 	// Decrypt the piece.
 	key := fcs.staticMasterKey.Derive(fcs.staticChunkIndex, pieceIndex)
-	key.DecryptBytesInPlace(pieceData, 0)
+	_, err = key.DecryptBytesInPlace(pieceData, 0)
+	if err != nil {
+		// TODO: Definitely want to log here.
+		fcs.managedFailPiece()
+		return
+	}
 
 	// Update the fetchChunkState to reflect that the piece has been recovered.
 	fcs.mu.Lock()
