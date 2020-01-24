@@ -295,7 +295,7 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 	}
 
 	// Perform the full upload.
-	newFileNode, err := r.managedUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	newFileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "linkfile base chunk upload failed")
 	}
@@ -422,13 +422,14 @@ func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, header
 	// There is more data. Create a prepend reader using the data we've already
 	// read plus the reader that we read from, effectively creating a new reader
 	// that is identical to the one that was passed in if no data had been read.
+	prependData := append(fileBytes, peek...)
 	fullReader := io.MultiReader(bytes.NewReader(prependData), lup.Reader)
-	return nil, prependReader, true, nil
+	return nil, fullReader, true, nil
 }
 
-// managedUploadLinkfileLargeFile will accept a fileReader containing all of the data
-// to a large siafile and upload it to the Sia network using
-// 'managedUploadStreamFromReader'. The final sialink is created by calling
+// managedUploadLinkfileLargeFile will accept a fileReader containing all of the
+// data to a large siafile and upload it to the Sia network using
+// 'callUploadStreamFromReader'. The final sialink is created by calling
 // 'CreateSialinkFromSiafile' on the resulting siafile.
 func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Sialink, error) {
 	// Create the erasure coder to use when uploading the file bulk. When going
@@ -456,7 +457,7 @@ func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParame
 	}
 
 	// Upload the file using a streamer.
-	fileNode, err := r.managedUploadStreamFromReader(fup, fileReader, false)
+	fileNode, err := r.callUploadStreamFromReader(fup, fileReader, false)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "unable to upload large linkfile")
 	}
@@ -488,7 +489,7 @@ func (r *Renter) managedUploadLinkfileSmallFile(lup modules.LinkfileUploadParame
 		return modules.Sialink{}, errors.AddContext(err, "failed to create siafile upload parameters")
 	}
 	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.managedUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "failed to small linkfile")
 	}
