@@ -1,7 +1,33 @@
 package renter
 
 // linkfile.go provides the tools for creating and uploading linkfiles, and then
-// receiving the associated links to recover the files.
+// receiving the associated sialinks to recover the files. The linkfile is the
+// fundamental data structure underpinning Skynet.
+//
+// The primary trick of the linkfile is that the initial data is stored entirely
+// in a single sector which is put on the Sia network using 1-of-N redundancy.
+// Every replica has an identical Merkle root, meaning that someone attempting
+// to fetch the file only needs the Merkle root and then some way to ask hosts
+// on the network whether they have access to the Merkle root.
+//
+// That single sector then contains all of the other information that is
+// necessary to recover the rest of the file. If the file is small enough, the
+// entire file will be stored within the single sector. If the file is larger,
+// the Merkle roots that are needed to download the remaining data get encoded
+// into something called a 'fanout'. While the base chunk is required to use
+// 1-of-N redundancy, the fanout chunks can use more sophisticated redundancy.
+//
+// The 1-of-N redundancy requirement really stems from the fact that Sialinks
+// are only 34 bytes of raw data, meaning that there's only enough room in a
+// Sialink to encode a single root. The fanout however has much more data to
+// work with, meaning there is space to describe much fancier redundancy schemes
+// and data fetching patterns.
+//
+// Linkfiles also contain some metadata which gets encoded as json. The
+// intention is to allow uploaders to put any arbitrary metadata fields into
+// their file and know that users will be able to see that metadata after
+// downloading. A couple of fields such as the mode of the file are supported at
+// the base level by Sia.
 
 import (
 	"bytes"
@@ -10,6 +36,7 @@ import (
 	"fmt"
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -70,7 +97,7 @@ func (ll *linkfileLayout) encode() []byte {
 	// Sanity check. If this check fails, encode() does not match the
 	// LinkfileLayoutSize.
 	if offset != LinkfileLayoutSize {
-		panic("layout size does not match the amount of data encoded")
+		build.Critical("layout size does not match the amount of data encoded")
 	}
 	return b
 }
@@ -98,7 +125,7 @@ func (ll *linkfileLayout) decode(b []byte) {
 	// Sanity check. If this check fails, decode() does not match the
 	// LinkfileLayoutSize.
 	if offset != LinkfileLayoutSize {
-		panic("layout size does not match the amount of data decdoed")
+		build.Critical("layout size does not match the amount of data decoded")
 	}
 }
 
@@ -130,19 +157,15 @@ func linkfileEstablishDefaults(lup *modules.LinkfileUploadParameters) error {
 // linkfileMetadataBytes will return the marshalled/encoded bytes for the
 // linkfile metadata.
 func linkfileMetadataBytes(lm modules.LinkfileMetadata) ([]byte, error) {
-	// Compose the metadata into the leading sector.
+	// Compose the metadata into the leading chunk.
 	metadataBytes, err := json.Marshal(lm)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to marshal the link file metadata")
 	}
-	maxMetaSize := modules.SectorSize - LinkfileLayoutSize
-	if uint64(len(metadataBytes)) > maxMetaSize {
-		return nil, fmt.Errorf("encoded metadata size of %v exceeds the maximum of %v", len(metadataBytes), maxMetaSize)
-	}
 	return metadataBytes, nil
 }
 
-// fileUploadParamsFromLUP will dervie the FileUploadParams to use when
+// fileUploadParamsFromLUP will derive the FileUploadParams to use when
 // uploading the base chunk siafile of a linkfile using the linkfile's upload
 // parameters.
 func fileUploadParamsFromLUP(lup modules.LinkfileUploadParameters) (modules.FileUploadParams, error) {
@@ -171,7 +194,7 @@ type streamerFromReader struct {
 	*bytes.Reader
 }
 
-// Close is a no-op because a bytes.Reaader doesn't need to be closed.
+// Close is a no-op because a bytes.Reader doesn't need to be closed.
 func (sfr *streamerFromReader) Close() error {
 	return nil
 }
@@ -248,12 +271,12 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 	}
 	headerSize := uint64(LinkfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
 	if headerSize > modules.SectorSize {
-		return modules.Sialink{}, errors.New("siafile is too large to be turned into a sialink - large files will be supported in a later version")
+		return modules.Sialink{}, fmt.Errorf("linkfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", modules.SectorSize-LinkfileLayoutSize, len(metadataBytes), len(fanoutBytes))
 	}
 
 	// Assemble the first chunk of the linkfile.
 	ll = linkfileLayout{
-		version:            1,
+		version:            LinkfileVersion,
 		filesize:           fileNode.Size(),
 		metadataSize:       uint64(len(metadataBytes)),
 		fanoutSize:         uint64(len(fanoutBytes)),
@@ -272,7 +295,7 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 	}
 
 	// Perform the full upload.
-	newFileNode, err := r.managedUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	newFileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "linkfile base chunk upload failed")
 	}
@@ -301,7 +324,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to parse sialink")
 	}
 
-	// Fetch the leading sector.
+	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of sialink")
@@ -330,16 +353,7 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
 		return lfm, streamer, nil
 	}
-
-	// TODO: Support fanout extensions. This is only necessary for very large
-	// files, a 1-of-N file can get over 400 GB with no fanout extension, a
-	// 10-of-30 file can get over 100 GB with no fanout extension.
-	//
-	// The general strategy for this would be to parse the fanout extension
-	// using the same erasure coding scheme as the rest of the file, treating
-	// any fanout in this file as a pointer to the extended fanout. That
-	// extended fanout would then point to the true file.
-	if offset+ll.fanoutSize > modules.SectorSize {
+	if offset+metadataSize+ll.fanoutSize > modules.SectorSize {
 		return modules.LinkfileMetadata{}, nil, errors.New("fanout is more than one sector, that is unsupported in this version")
 	}
 
@@ -350,32 +364,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
 	return lfm, fs, nil
-}
-
-// prependReader is an io.Reader which
-type prependReader struct {
-	prependData []byte
-	io.Reader
-}
-
-// Read will read data from the prependReader.
-func (pr *prependReader) Read(b []byte) (int, error) {
-	n := copy(b, pr.prependData)
-	if n != 0 {
-		pr.prependData = pr.prependData[n:]
-		return n, nil
-	}
-	return pr.Reader.Read(b)
-}
-
-// newPrependReader accepts a slice and a reader, and returns a reader that will
-// read out the prepended data before transitioning to using the standard
-// reader.
-func newPrependReader(prepend []byte, reader io.Reader) io.Reader {
-	return &prependReader{
-		prependData: prepend,
-		Reader:      reader,
-	}
 }
 
 // uploadLinkfileReadLeadingChunk will read the leading chunk of a linkfile. If
@@ -426,18 +414,18 @@ func uploadLinkfileReadLeadingChunk(lup modules.LinkfileUploadParameters, header
 	// read plus the reader that we read from, effectively creating a new reader
 	// that is identical to the one that was passed in if no data had been read.
 	prependData := append(fileBytes, peek...)
-	prependReader := newPrependReader(prependData, lup.Reader)
-	return nil, prependReader, true, nil
+	fullReader := io.MultiReader(bytes.NewReader(prependData), lup.Reader)
+	return nil, fullReader, true, nil
 }
 
-// managedUploadLinkfileLargeFile will accept a fileReader containing all of the data
-// to a large siafile and upload it to the Sia network using
-// 'managedUploadStreamFromReader'. The final sialink is created by calling
+// managedUploadLinkfileLargeFile will accept a fileReader containing all of the
+// data to a large siafile and upload it to the Sia network using
+// 'callUploadStreamFromReader'. The final sialink is created by calling
 // 'CreateSialinkFromSiafile' on the resulting siafile.
 func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Sialink, error) {
 	// Create the erasure coder to use when uploading the file bulk. When going
 	// through the 'managedUploadLinkfile' command, a 1-of-N scheme is always used,
-	// where the redundancy of the data as a whole matches the propsed
+	// where the redundancy of the data as a whole matches the proposed
 	// redundancy for the base chunk.
 	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
@@ -460,7 +448,7 @@ func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParame
 	}
 
 	// Upload the file using a streamer.
-	fileNode, err := r.managedUploadStreamFromReader(fup, fileReader, false)
+	fileNode, err := r.callUploadStreamFromReader(fup, fileReader, false)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "unable to upload large linkfile")
 	}
@@ -492,7 +480,7 @@ func (r *Renter) managedUploadLinkfileSmallFile(lup modules.LinkfileUploadParame
 		return modules.Sialink{}, errors.AddContext(err, "failed to create siafile upload parameters")
 	}
 	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.managedUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
 	if err != nil {
 		return modules.Sialink{}, errors.AddContext(err, "failed to small linkfile")
 	}
