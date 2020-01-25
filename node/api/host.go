@@ -99,6 +99,21 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 	WriteJSON(w, hg)
 }
 
+// hostsBandwidthHandlerGET handles GET requests to the /host/bandwidth API endpoint,
+// returning bandwidth usage data from the host module
+func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	sent, receive, startTime, err := api.host.BandwidthCounters()
+	if err != nil {
+		WriteError(w, Error{"failed to get hosts's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, GatewayBandwidthGET{
+		Download:  receive,
+		Upload:    sent,
+		StartTime: startTime,
+	})
+}
+
 // parseHostSettings a request's query strings and returns a
 // modules.HostInternalSettings configured with the request's query string
 // parameters.

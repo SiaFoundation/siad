@@ -64,6 +64,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/host/announce", RequirePassword(api.hostAnnounceHandler, requiredPassword)) // Announce the host to the network.
 		router.GET("/host/contracts", api.hostContractInfoHandler)                                // Get info about contracts.
 		router.GET("/host/estimatescore", api.hostEstimateScoreGET)
+		router.GET("/host/bandwidth", api.hostBandwidthHandlerGET)
 
 		// Calls pertaining to the storage manager that the host uses.
 		router.GET("/host/storage", api.storageHandler)

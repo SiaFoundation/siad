@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 )
 
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
@@ -333,6 +334,8 @@ func (h *Host) threadedListen(closeChan chan struct{}) {
 		if err != nil {
 			return
 		}
+
+		conn = connmonitor.NewMonitoredConn(conn, h.m)
 
 		go h.threadedHandleConn(conn)
 

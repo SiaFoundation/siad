@@ -69,6 +69,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -77,6 +78,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 )
 
 const (
@@ -171,6 +173,7 @@ type Host struct {
 	listener   net.Listener
 	log        *persist.Logger
 	mu         sync.RWMutex
+	m          *connmonitor.Monitor
 	persistDir string
 	port       string
 	tg         siasync.ThreadGroup
@@ -318,6 +321,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 
+	// Create bandwidth monitor
+	h.m = connmonitor.NewMonitor()
+
 	// Initialize the networking. We need to hold the lock while doing so since
 	// the previous load subscribed the host to the consensus set.
 	h.mu.Lock()
@@ -364,6 +370,17 @@ func (h *Host) ExternalSettings() modules.HostExternalSettings {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.externalSettings()
+}
+
+// BandwidthCounters returns the Hosts's upload and download bandwidth
+func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
+	if err := h.tg.Add(); err != nil {
+		return 0, 0, time.Time{}, err
+	}
+	defer h.tg.Done()
+	writeBytes, readBytes := h.m.Counts()
+	startTime := h.m.StartTime()
+	return writeBytes, readBytes, startTime, nil
 }
 
 // WorkingStatus returns the working state of the host, where working is
