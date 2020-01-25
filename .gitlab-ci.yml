@@ -69,7 +69,7 @@ build:
     paths:
       - $CI_PROJECT_DIR/artifacts
   script:
-    - ./build.sh
+    - ./check-builds.sh
 
 legacy-tests:
   <<: *default_test_params
