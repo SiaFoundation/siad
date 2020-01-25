@@ -192,6 +192,10 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 			staticStreamID:        sourceID,
 		}
 		sbs.streams[sourceID] = streamBuf
+	} else {
+		// Another data source already exists for this content which will be
+		// used instead of the input data source. Close the input source.
+		dataSource.SilentClose()
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
@@ -348,7 +352,7 @@ func (s *stream) prepareOffset() {
 
 	// If there is a following data section, update that as well.
 	nextIndex := index + 1
-	if dataSize > nextIndex*dataSectionSize {
+	if nextIndex * dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
 	}
 }

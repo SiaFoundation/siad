@@ -245,6 +245,12 @@ type (
 		StartTimeUnix        int64     `json:"starttimeunix"`        // The time when the download was started in unix format.
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
 	}
+
+	// RenterLinkfileHandlerPOST is the response that the api returns after the
+	// /renter/linkfile/ POST endpoint has been used.
+	RenterLinkfileHandlerPOST struct {
+		Sialink string `json:"sialink"`
+	}
 )
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
@@ -277,7 +283,7 @@ func trimSiaDirFolderOnFiles(fis ...modules.FileInfo) (_ []modules.FileInfo, err
 	for i := range fis {
 		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
 		if err != nil {
-			return nil, err
+			return nil, errors.AddContext(err, "unable to trim the user sia path from a provided fileinfo")
 		}
 	}
 	return fis, nil
@@ -1333,27 +1339,53 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterFileHandler handles GET requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Determine the siapath that hte user wants to get the file from.
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+
+	// Determine whether the user is requesting a user siapath, or a root
+	// siapath.
+	var root bool
+	rootStr := req.FormValue("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
+			return
+		}
 	}
+
+	// Rebase the users input to the user folder if the user is requesting a
+	// user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Fetch the file.
 	file, err := api.renter.File(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	files, err := trimSiaDirFolderOnFiles(file)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+
+	// If the user requested the user siapath, trim the dir folder so that the
+	// output is all centered around the user's folder.
+	if !root {
+		files, err := trimSiaDirFolderOnFiles(file)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		file = files[0]
 	}
-	file = files[0]
+
 	WriteJSON(w, RenterFile{
 		File: file,
 	})
@@ -1680,6 +1712,122 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
+// renterSialinkHandlerGET accepts a sialink as input and will stream the data
+// from the sialink out of the response body as output.
+func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("sialink")
+	var sialink modules.Sialink
+	err := sialink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing sialink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+	metadata, streamer, err := api.renter.DownloadSialink(sialink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+}
+
+// renterLinkfileHandlerPOST accepts some data and some metadata and then turns
+// that into a sialink, which is returned to the caller.
+func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse out the intended siapath.
+	siaPathStr := ps.ByName("siapath")
+	siaPath, err := modules.LinkfileSiaFolder.Join(siaPathStr)
+	if err != nil {
+		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Check whether existing file should be overwritten
+	force := false
+	if f := queryForm.Get("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Check whether the redundancy has been set.
+	redundancy := uint8(0)
+	if rStr := queryForm.Get("redundancy"); rStr != "" {
+		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
+			WriteError(w, Error{"unable to parse redundancy: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Call the renter to upload the linkfile and create a sialink.
+	filename := queryForm.Get("filename")
+	modeStr := queryForm.Get("mode")
+	var mode os.FileMode
+	if modeStr != "" {
+		_, err := fmt.Sscanf(modeStr, "%o", &mode)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to parse file mode: %v", err)}, http.StatusBadRequest)
+			return
+		}
+	}
+	lfm := modules.LinkfileMetadata{
+		Filename:   filename,
+		Mode:       mode,
+	}
+	lup := modules.LinkfileUploadParameters{
+		SiaPath:             siaPath,
+		Force:               force,
+		BaseChunkRedundancy: redundancy,
+
+		FileMetadata: lfm,
+	}
+
+	// Check whether this is a streaming upload or a siafile conversion. If no
+	// convert path is provided, assume that the req.Body will be used as a
+	// streaming upload.
+	convertPathStr := queryForm.Get("convertpath")
+	if convertPathStr == "" {
+		lup.Reader = req.Body
+		sialink, err := api.renter.UploadLinkfile(lup)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		WriteJSON(w, RenterLinkfileHandlerPOST{
+			Sialink: sialink.String(),
+		})
+		return
+	}
+
+	// There is a convert path.
+	convertPath, err := modules.NewSiaPath(convertPathStr)
+	if err != nil {
+		WriteError(w, Error{"invalid convertpath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	convertPath, err = rebaseInputSiaPath(convertPath)
+	if err != nil {
+		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	sialink, err := api.renter.CreateSialinkFromSiafile(lup, convertPath)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to linkfile: %v", err)}, http.StatusBadRequest)
+		return
+	}
+	WriteJSON(w, RenterLinkfileHandlerPOST{
+		Sialink: sialink.String(),
+	})
+}
+
 // renterStreamHandler handles downloads from the /renter/stream endpoint
 func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
@@ -1912,6 +2060,18 @@ func (api *API) renterValidateSiaPathHandler(w http.ResponseWriter, _ *http.Requ
 func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	var siaPath modules.SiaPath
 	var err error
+
+	// Check whether the user is requesting the directory from the root path.
+	var root bool
+	rootStr := req.FormValue("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	str := ps.ByName("siapath")
 	if str == "" || str == "/" {
 		siaPath = modules.RootSiaPath()
@@ -1922,31 +2082,43 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
+
 	directories, err := api.renter.DirList(siaPath)
 	if err != nil {
 		WriteError(w, Error{"failed to get directory contents:" + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	directories, err = trimSiaDirFolder(directories...)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+
+	if !root {
+		directories, err = trimSiaDirFolder(directories...)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
+
 	files, err := api.renter.FileList(siaPath, false, true)
 	if err != nil {
 		WriteError(w, Error{"failed to get file infos:" + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	files, err = trimSiaDirFolderOnFiles(files...)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+
+	if !root {
+		files, err = trimSiaDirFolderOnFiles(files...)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
+
 	WriteJSON(w, RenterDirectory{
 		Directories: directories,
 		Files:       files,

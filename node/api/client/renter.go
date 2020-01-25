@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -405,6 +406,13 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 	return modules.DownloadID(h.Get("ID")), resp, nil
 }
 
+// RenterFileRootGet uses the /renter/file/:siapath endpoint to query a file.
+func (c *Client) RenterFileRootGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get("/renter/file/"+sp+"?root=true", &rf)
+	return
+}
+
 // RenterFileGet uses the /renter/file/:siapath endpoint to query a file.
 func (c *Client) RenterFileGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
 	sp := escapeSiaPath(siaPath)
@@ -616,6 +624,14 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 	return
 }
 
+// RenterDirRootGet uses the /renter/dir/ endpoint to query a directory,
+// starting from the root path.
+func (c *Client) RenterDirRootGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get(fmt.Sprintf("/renter/dir/%s?root=true", sp), &rd)
+	return
+}
+
 // RenterDirGet uses the /renter/dir/ endpoint to query a directory
 func (c *Client) RenterDirGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	sp := escapeSiaPath(siaPath)
@@ -701,4 +717,80 @@ func (c *Client) RenterUploadsResumePost() (err error) {
 func (c *Client) RenterPost(values url.Values) (err error) {
 	err = c.post("/renter", values.Encode(), nil)
 	return
+}
+
+// RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
+// file.
+func (c *Client) RenterSialinkGet(sialink string) (fileData []byte, err error) {
+	getQuery := fmt.Sprintf("/renter/sialink/%s", sialink)
+	_, fileData, err = c.getRawResponse(getQuery)
+	return fileData, errors.AddContext(err, "unable to fetch sialink data")
+}
+
+// RenterLinkfilePost uses the /renter/linkfile endpoint to upload a linkfile.
+// The resulting sialink is returned along with an error.
+func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (string, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("filename", lup.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("force", forceStr)
+	// TODO: Handle mode properly.
+	/*
+		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+		values.Set("mode", modeStr)
+	*/
+	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	values.Set("redundancy", redundancyStr)
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	resp, err := c.postRawResponse(query, lup.Reader)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to "+query+" failed")
+	}
+
+	// Parse the response to get the sialink.
+	var rshp api.RenterLinkfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+	}
+	return rshp.Sialink, err
+}
+
+// RenterConvertSiafileToLinkfilePost uses the /renter/sialink endpoint to
+// convert an existing siafile to a linkfile. The input SiaPath 'convert' is the
+// siapath of the siafile that should be converted. The siapath provided inside
+// of the upload params is the name that will be used for the base sector of the
+// linkfile.
+func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("name", lup.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("force", forceStr)
+	// TODO: Update mode
+	/*
+		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+		values.Set("mode", modeStr)
+	*/
+	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	values.Set("redundancy", redundancyStr)
+	values.Set("convertpath", convert.String())
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	resp, err := c.postRawResponse(query, lup.Reader)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to "+query+" failed")
+	}
+
+	// Parse the response to get the sialink.
+	var rshp api.RenterLinkfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+	}
+	return rshp.Sialink, err
 }
