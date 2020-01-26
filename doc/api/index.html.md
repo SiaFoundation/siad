@@ -3891,8 +3891,7 @@ responses](#standard-responses).
 > Stream the whole file.  
 
 ```bash
-// TODO: Replace this with a rick roll
-curl -A "Sia-Agent" "localhost:9980/renter/sialink/Ab4zT-TlIWiunNSax0tPrOWYnQrIriI0j4yCWcpxcWrXsABjAAAAAAAAAAEK"
+curl -A "Sia-Agent" "localhost:9980/renter/sialink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-ehGt8m4f9MsrqlrHA"
 ```  
 
 downloads a sialink using http streaming. This call blocks until the data is
