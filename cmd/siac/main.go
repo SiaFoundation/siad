@@ -289,7 +289,7 @@ func main() {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	renterLinkfilesCmd.AddCommand(renterLinkfilesLsCmd, renterLinkfilesUploadCmd, renterLinkfilesConvertCmd)
-	renterLinkfilesLsCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", true, "Recursively list files and folders")
+	renterLinkfilesLsCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
