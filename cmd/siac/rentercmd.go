@@ -186,17 +186,14 @@ local path where the Sia folder is mounted.`,
 	renterLinkfilesCmd = &cobra.Command{
 		Use:   "linkfiles",
 		Short: "Perform actions related to linkfiles",
-		Long: `Linkfiles are files that can be shared throughout the Sia network. The
-linkfiles command allows the user to upload linkfiles to the network and to view
-a list of linkfiles that the user has uploaded to the network. After uploading a
-linkfile, the user is presented with a sialink. The sialink can be presented to
-any viewnode, and the viewnode will be able to retrieve the file.`,
+		Long: `Linkfiles are files that can be viewed using sialinks, and are a cornerstone for
+publishing and sharing files.`,
 		Run: renterlinkfilescmd,
 	}
 
 	renterLinkfilesLsCmd = &cobra.Command{
 		Use:   "ls",
-		Short: "List all linkfiles that the user has uploaded.",
+		Short: "List all linkfiles that the user has pinned.",
 		Long: `List all linkfiles that the user has pinned along with the corresponding
 sialinks. By default, only files in var/linkfiles will be displayed, the --root
 flag can be used to view other folders.`,
@@ -206,19 +203,13 @@ flag can be used to view other folders.`,
 	renterLinkfilesUploadCmd = &cobra.Command{
 		Use:   "upload [source path] [destination siapath]",
 		Short: "Upload a linkfile to the Sia network",
-		Long: `Upload a linkfile to the Sia network. The act of uploading a linkfile will
-produce a sialink, which can be presented to any viewnode, which can then fetch
-the corresponding file. The act of uploading "pins" the linkfile to the Sia
-network, where it will remain available for anyone to download until the
-uploader deletes the file. The uploader does not need to stay online in order
-for the file to remain available on the Sia network, they merely need to
-maintain the set of contracts that the file has been uploaded to.
+		Long: `
 
-At any time, someone else can "repin" the file just by uploading it to their set
-of contracts. This will allow the same file to continue being available from the
-same sialink even if the original uploader disappears or deletes the file. A
-file will remain available on the Sia network until there is nobody pinning it
-anymore.`,
+Upload a linkfile to the Sia network. The act of uploading a linkfile will
+produce a sialink. That sialink can be presented to any Skynet portal to recover
+the original data in the linkfile. This command will pin the file to this Sia
+node, meaning that the uploader will pay for storage and repairs on an ongoing
+basis to ensure that the file remains available on the Sia network.`,
 		Run: wrap(renterlinkfilesuploadcmd),
 	}
 
