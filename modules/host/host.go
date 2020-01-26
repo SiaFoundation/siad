@@ -169,14 +169,14 @@ type Host struct {
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
 	// Misc state.
-	db         *persist.BoltDatabase
-	listener   net.Listener
-	log        *persist.Logger
-	mu         sync.RWMutex
-	m          *connmonitor.Monitor
-	persistDir string
-	port       string
-	tg         siasync.ThreadGroup
+	db            *persist.BoltDatabase
+	listener      net.Listener
+	log           *persist.Logger
+	mu            sync.RWMutex
+	staticMonitor *connmonitor.Monitor
+	persistDir    string
+	port          string
+	tg            siasync.ThreadGroup
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -322,7 +322,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	}
 
 	// Create bandwidth monitor
-	h.m = connmonitor.NewMonitor()
+	h.staticMonitor = connmonitor.NewMonitor()
 
 	// Initialize the networking. We need to hold the lock while doing so since
 	// the previous load subscribed the host to the consensus set.
@@ -378,8 +378,8 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 		return 0, 0, time.Time{}, err
 	}
 	defer h.tg.Done()
-	writeBytes, readBytes := h.m.Counts()
-	startTime := h.m.StartTime()
+	writeBytes, readBytes := h.staticMonitor.Counts()
+	startTime := h.staticMonitor.StartTime()
 	return writeBytes, readBytes, startTime, nil
 }
 

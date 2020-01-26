@@ -335,7 +335,7 @@ func (h *Host) threadedListen(closeChan chan struct{}) {
 			return
 		}
 
-		conn = connmonitor.NewMonitoredConn(conn, h.m)
+		conn = connmonitor.NewMonitoredConn(conn, h.staticMonitor)
 
 		go h.threadedHandleConn(conn)
 
