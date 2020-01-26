@@ -352,7 +352,7 @@ func (s *stream) prepareOffset() {
 
 	// If there is a following data section, update that as well.
 	nextIndex := index + 1
-	if nextIndex * dataSectionSize < dataSize {
+	if nextIndex*dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
 	}
 }

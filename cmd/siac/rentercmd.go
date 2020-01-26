@@ -197,8 +197,9 @@ any viewnode, and the viewnode will be able to retrieve the file.`,
 	renterLinkfilesLsCmd = &cobra.Command{
 		Use:   "ls",
 		Short: "List all linkfiles that the user has uploaded.",
-		Long: `List all linkfiles that the user has uploaded. Only files in /var/linkfiles
-will be considered. The corresponding sialinks will also be displayed.`,
+		Long: `List all linkfiles that the user has pinned along with the corresponding
+sialinks. By default, only files in var/linkfiles will be displayed, the --root
+flag can be used to view other folders.`,
 		Run: wrap(renterlinkfileslscmd),
 	}
 
@@ -221,14 +222,16 @@ anymore.`,
 		Run: wrap(renterlinkfilesuploadcmd),
 	}
 
-	renterLinkfilesConvertCmd = &cobra.Command{
-		Use:   "convert [source siaPath] [destination siaPath]",
-		Short: "Convert a siafile to a sharable sialink",
-		Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
-will be created in the user's linkfile directory. The linkfile and the original
-siafile are both necessary to pin the file and keep the sialink active.`,
-		Run: wrap(renterlinkfilesconvertcmd),
-	}
+	/*
+		renterLinkfilesConvertCmd = &cobra.Command{
+			Use:   "convert [source siaPath] [destination siaPath]",
+			Short: "Convert a siafile to a sharable sialink",
+			Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
+	will be created in the user's linkfile directory. The linkfile and the original
+	siafile are both necessary to pin the file and keep the sialink active.`,
+			Run: wrap(renterlinkfilesconvertcmd),
+		}
+	*/
 
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
@@ -2297,8 +2300,8 @@ func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
 		SiaPath: siaPath,
 
 		FileMetadata: modules.LinkfileMetadata{
-			Filename:   sourceName,
-			Mode:       fi.Mode(),
+			Filename: sourceName,
+			Mode:     fi.Mode(),
 		},
 
 		Reader: file,
@@ -2310,6 +2313,7 @@ func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
 	fmt.Println("File uploaded successfully, the sialink is", sialink)
 }
 
+/*
 // renterlinkfilesconvertcmd will convert an existing siafile to a linkfile and
 // sialink on the Sia network.
 func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
@@ -2333,6 +2337,7 @@ func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	}
 	fmt.Println("File converted successfully, the sialink is", sialink)
 }
+*/
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
 // displays the prices of various storage operations. The user can submit an
