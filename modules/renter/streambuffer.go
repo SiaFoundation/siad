@@ -8,7 +8,7 @@ package renter
 // the total amount of time it takes for a call to the data source to return
 // some data, and should buffer accordingly. If auto-adjusting the lookahead
 // size, care needs to be taken to ensure not to exceed the
-// bytedBufferedPerStream size, as exceeding that will cause issues with the
+// bytesBufferedPerStream size, as exceeding that will cause issues with the
 // lru, and cause data fetches to be evicted before they become useful.
 
 import (
@@ -21,16 +21,16 @@ import (
 )
 
 const (
-	// minimumCacheNodes is set to two because the streamer always tries to
+	// minimumDataSections is set to two because the streamer always tries to
 	// buffer at least the current data section and the next data section for
 	// the current offset of a stream.
 	//
 	// Three as a number was considered so that in addition to buffering one
 	// piece ahead, a previous piece could also be cached. This was considered
 	// to be less valuable than keeping memory requirements low -
-	// minimumCacheNodes is only at play if there is not enough room for
+	// minimumDataSections is only at play if there is not enough room for
 	// multiple cache nodes in the bytesBufferedPerStream.
-	minimumCacheNodes = 2
+	minimumDataSections = 2
 )
 
 var (
@@ -54,14 +54,12 @@ var (
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
-// data. Most importantly, the data source needs to be an io.ReaderAt for
-// fetching data, however other methods such as OptimalFetchSize need to be
-// implemented so that the stream buffer knows how to efficiently query data
-// from the data source.
+// data. This type is internal to the renter as there are plans to expand on the
+// type.
 type streamBufferDataSource interface {
-	// DataSize should return the size of the data. Calls to ReadAt will not go
-	// beyond the offset provided by DataSize. A call to ReadAt for the final
-	// data section will be correctly short.
+	// DataSize should return the size of the data. When the streamBuffer is
+	// reading from the data source, it will ensure that none of the read calls
+	// go beyond the boundary of the data source.
 	DataSize() uint64
 
 	// ID returns the ID of the data source. This should be unique to the data
@@ -115,7 +113,13 @@ type dataSection struct {
 	refCount uint64
 }
 
-// stream is a single stream that uses a stream buffer.
+// stream is a single stream that uses a stream buffer. The stream implements
+// io.ReadSeeker and io.Closer, and must be closed when it is done being used.
+// The stream will cache data, both data that has been accessed recently as well
+// as data that is in front of the current read head. The stream buffer is a
+// common cache that is used between all streams that are using the same data
+// source, allowing each stream to depend on the other streams if data has
+// already been loaded.
 type stream struct {
 	lru    *leastRecentlyUsedCache
 	offset uint64
@@ -129,8 +133,8 @@ type streamBuffer struct {
 	dataSections map[uint64]*dataSection
 
 	// externRefCount is in the same consistency domain as the streamBufferSet,
-	// it needs to be incremented and deceremented simulatenously with the
-	// creation and deleteion of the streamBuffer.
+	// it needs to be incremented and decremented simultaneously with the
+	// creation and deletion of the streamBuffer.
 	externRefCount uint64
 
 	mu                    sync.Mutex
@@ -141,9 +145,9 @@ type streamBuffer struct {
 	staticStreamID        streamDataSourceID
 }
 
-// streamBufferSet is the set of streams that are currently being processed. A
-// global list is needed so that multiple streams on the same file can be
-// combined.
+// streamBufferSet tracks all of the stream buffers that are currently active.
+// When a new stream is created, the stream buffer set is referenced to check
+// whether another stream using the same data source already exists.
 type streamBufferSet struct {
 	streams map[streamDataSourceID]*streamBuffer
 
@@ -188,25 +192,36 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 			staticStreamID:        sourceID,
 		}
 		sbs.streams[sourceID] = streamBuf
+	} else {
+		// Another data source already exists for this content which will be
+		// used instead of the input data source. Close the input source.
+		dataSource.SilentClose()
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
 
-	// Determine how many nodes the stream can cache.
-	nodesToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
-	if nodesToCache < minimumCacheNodes {
-		nodesToCache = minimumCacheNodes
+	// Determine how many data sections the stream should cache.
+	dataSectionsToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
+	if dataSectionsToCache < minimumDataSections {
+		dataSectionsToCache = minimumDataSections
 	}
 
 	// Create a stream that points to the stream buffer.
 	stream := &stream{
-		lru:    newLeastRecentlyUsedCache(nodesToCache, streamBuf),
+		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, streamBuf),
 		offset: initialOffset,
 
 		staticStreamBuffer: streamBuf,
 	}
 	stream.prepareOffset()
 	return stream
+}
+
+// managedData will block until the data for a data section is available, and
+// then return the data. The data is not safe to modify.
+func (ds *dataSection) managedData() ([]byte, error) {
+	<-ds.dataAvailable
+	return ds.externData, ds.externErr
 }
 
 // Close will release all of the resources held by a stream.
@@ -270,13 +285,12 @@ func (s *stream) Read(b []byte) (int, error) {
 	}
 
 	// Block until the data is available.
-	<-dataSection.dataAvailable
-	// Check the error on fetching the data.
-	if dataSection.externErr != nil {
-		return 0, errors.AddContext(dataSection.externErr, "read call failed because data section fetch failed")
+	data, err := dataSection.managedData()
+	if err != nil {
+		return 0, errors.AddContext(err, "read call failed because data section fetch failed")
 	}
 	// Copy the data into the read request.
-	n := copy(b, dataSection.externData[offsetInSection:offsetInSection+bytesToRead])
+	n := copy(b, data[offsetInSection:offsetInSection+bytesToRead])
 	s.offset += uint64(n)
 
 	// Send the call to prepare the next data section.
@@ -290,43 +304,42 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	if offset < 0 {
 		return int64(s.offset), errors.New("offset cannot be negative in call to seek")
 	}
-	if whence != io.SeekStart && whence != io.SeekCurrent && whence != io.SeekEnd {
-		return int64(s.offset), errors.New("invalid value for 'whence' in call to seek")
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Update the offset of the stream according to the inputs.
 	dataSize := s.staticStreamBuffer.staticDataSize
-	if whence == io.SeekStart {
+	switch whence {
+	case io.SeekStart:
 		s.offset = uint64(offset)
-	} else if whence == io.SeekCurrent {
+	case io.SeekCurrent:
 		newOffset := s.offset + uint64(offset)
 		if newOffset > dataSize {
 			return int64(s.offset), errors.New("offset cannot seek beyond the bounds of the file")
 		}
 		s.offset = newOffset
-	} else {
+	case io.SeekEnd:
 		if uint64(offset) > dataSize {
 			return int64(s.offset), errors.New("cannot seek before the front of the file")
 		}
 		s.offset = dataSize - uint64(offset)
+	default:
+		return int64(s.offset), errors.New("invalid value for 'whence' in call to seek")
 	}
 
-	// Prepare the fetch of the updated offest.
+	// Prepare the fetch of the updated offset.
 	s.prepareOffset()
 	return int64(s.offset), nil
 }
 
-// mangagedPrepareOffset will ensure that the dataSection containing the offest
-// is made available in the LRU, and that the following dataSection is also
-// available.
+// prepareOffset will ensure that the dataSection containing the offset is made
+// available in the LRU, and that the following dataSection is also available.
 func (s *stream) prepareOffset() {
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
 	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
 
-	// If the offset is already at the end of the file, there is nothing to do.
+	// If the offset is already at the end of the data, there is nothing to do.
 	if s.offset == dataSize {
 		return
 	}
@@ -339,14 +352,14 @@ func (s *stream) prepareOffset() {
 
 	// If there is a following data section, update that as well.
 	nextIndex := index + 1
-	if dataSize > nextIndex*dataSectionSize {
+	if nextIndex * dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
 	}
 }
 
-// callFetchNode will increment the refcount of a dataSection in the stream
-// buffer. If the dataSection is not currently available in the stream buffer,
-// the data section will be fetched from the dataSource.
+// callFetchDataSection will increment the refcount of a dataSection in the
+// stream buffer. If the dataSection is not currently available in the stream
+// buffer, the data section will be fetched from the dataSource.
 func (sb *streamBuffer) callFetchDataSection(index uint64) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
@@ -409,9 +422,6 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
-		// This call depends on the implementation requirement of ReadAt that an
-		// error will be returned if the amount of data read is less than the
-		// amount of data requested.
 		_, err := sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
 		if err != nil {
 			ds.externErr = errors.AddContext(err, "data section fetch failed")
@@ -421,9 +431,13 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	return ds
 }
 
-// RemoveStream will decrement the refcount of a stream buffer by 1. If the
-// refcount reaches zero, the stream buffer will be deleted from the stream
-// buffer set.
+// managedRemoveStream will remove a stream from a stream buffer. If the total
+// number of streams using that stream buffer reaches zero, the stream buffer
+// will be removed from the stream buffer set.
+//
+// The reference counter for a stream buffer needs to be in the domain of the
+// stream buffer set because the stream buffer needs to be deleted from the
+// stream buffer set simultaneously with the reference counter reaching zero.
 func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 	sbs.mu.Lock()
 	defer sbs.mu.Unlock()

@@ -249,7 +249,7 @@ type (
 	// RenterLinkfileHandlerPOST is the response that the api returns after the
 	// /renter/linkfile/ POST endpoint has been used.
 	RenterLinkfileHandlerPOST struct {
-		Sialink modules.Sialink `json:"sialink"`
+		Sialink string `json:"sialink"`
 	}
 )
 
@@ -1715,13 +1715,19 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // renterSialinkHandlerGET accepts a sialink as input and will stream the data
 // from the sialink out of the response body as output.
 func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	sialink := modules.Sialink(ps.ByName("sialink"))
+	strLink := ps.ByName("sialink")
+	var sialink modules.Sialink
+	err := sialink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing sialink: %v", err)}, http.StatusBadRequest)
+		return
+	}
 	metadata, streamer, err := api.renter.DownloadSialink(sialink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	http.ServeContent(w, req, metadata.Name, time.Time{}, streamer)
+	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
 // renterLinkfileHandlerPOST accepts some data and some metadata and then turns
@@ -1762,7 +1768,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Call the renter to upload the linkfile and create a sialink.
-	name := queryForm.Get("name")
+	filename := queryForm.Get("filename")
 	modeStr := queryForm.Get("mode")
 	var mode os.FileMode
 	if modeStr != "" {
@@ -1772,19 +1778,9 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 			return
 		}
 	}
-	createTimeStr := queryForm.Get("createtime")
-	var createTime int64
-	if createTimeStr != "" {
-		_, err := fmt.Sscan(createTimeStr, &createTime)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to parse file create time: %v", err)}, http.StatusBadRequest)
-			return
-		}
-	}
 	lfm := modules.LinkfileMetadata{
-		Name:       name,
+		Filename:   filename,
 		Mode:       mode,
-		CreateTime: createTime,
 	}
 	lup := modules.LinkfileUploadParameters{
 		SiaPath:             siaPath,
@@ -1806,7 +1802,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 			return
 		}
 		WriteJSON(w, RenterLinkfileHandlerPOST{
-			Sialink: sialink,
+			Sialink: sialink.String(),
 		})
 		return
 	}
@@ -1828,7 +1824,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		return
 	}
 	WriteJSON(w, RenterLinkfileHandlerPOST{
-		Sialink: sialink,
+		Sialink: sialink.String(),
 	})
 }
 

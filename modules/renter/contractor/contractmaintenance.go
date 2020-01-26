@@ -606,6 +606,10 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 // managedRenewContract will use the renew instructions to renew a contract,
 // returning the amount of money that was put into the contract for renewal.
 func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal, currentPeriod types.BlockHeight, allowance modules.Allowance, blockHeight, endHeight types.BlockHeight) (fundsSpent types.Currency, err error) {
+	if c.staticDeps.Disrupt("ContractRenewFail") {
+		err = errors.New("Renew failure due to dependency")
+		return
+	}
 	// Pull the variables out of the renewal.
 	id := renewInstructions.id
 	amount := renewInstructions.amount
@@ -1018,15 +1022,22 @@ func (c *Contractor) threadedContractMaintenance() {
 	if spending.TotalAllocated.Cmp(allowance.Funds) < 0 {
 		fundsRemaining = allowance.Funds.Sub(spending.TotalAllocated)
 	}
-	c.log.Debugln("Remaining funds in allowance:", fundsRemaining)
+	c.log.Debugln("Remaining funds in allowance:", fundsRemaining.HumanString())
 
-	// Register the AllowanceLowFunds alert if necessary.
+	// Register or unregister and alerts related to contract renewal or
+	// formation.
 	var registerLowFundsAlert bool
+	var renewErr error
 	defer func() {
 		if registerLowFundsAlert {
-			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, "", modules.SeverityWarning)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, AlertCauseInsufficientAllowanceFunds, modules.SeverityWarning)
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterAllowanceLowFunds)
+		}
+		if renewErr != nil {
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.SeverityError)
+		} else {
+			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
 		}
 	}()
 	// Go through the contracts we've assembled for renewal. Any contracts that
@@ -1035,6 +1046,17 @@ func (c *Contractor) threadedContractMaintenance() {
 	// (refreshSet). If there is not enough money available, the more expensive
 	// contracts will be skipped.
 	for _, renewal := range renewSet {
+		// Return here if an interrupt or kill signal has been sent.
+		select {
+		case <-c.tg.StopChan():
+			c.log.Println("returning because the renter was stopped")
+			return
+		case <-c.interruptMaintenance:
+			c.log.Println("returning because maintenance was interrupted")
+			return
+		default:
+		}
+
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1056,11 +1078,13 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
 		if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
+			renewErr = errors.Compose(renewErr, err)
 		} else {
 			c.log.Println("Renewal completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
-
+	}
+	for _, renewal := range refreshSet {
 		// Return here if an interrupt or kill signal has been sent.
 		select {
 		case <-c.tg.StopChan():
@@ -1071,8 +1095,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			return
 		default:
 		}
-	}
-	for _, renewal := range refreshSet {
+
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1083,7 +1106,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Skip this renewal if we don't have enough funds remaining.
 		c.log.Debugln("Attempting to perform a contract refresh:", renewal.id)
 		if renewal.amount.Cmp(fundsRemaining) > 0 || c.staticDeps.Disrupt("LowFundsRefresh") {
-			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount, fundsRemaining)
+			c.log.Println("skipping refresh because there are not enough funds remaining in the allowance", renewal.amount.HumanString(), fundsRemaining.HumanString())
 			registerLowFundsAlert = true
 			continue
 		}
@@ -1094,19 +1117,11 @@ func (c *Contractor) threadedContractMaintenance() {
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
+			renewErr = errors.Compose(renewErr, err)
+		} else {
+			c.log.Println("Refresh completed without error")
 		}
 		fundsRemaining = fundsRemaining.Sub(fundsSpent)
-
-		// Return here if an interrupt or kill signal has been sent.
-		select {
-		case <-c.tg.StopChan():
-			c.log.Println("returning because the renter was stopped")
-			return
-		case <-c.interruptMaintenance:
-			c.log.Println("returning because maintenance was interrupted")
-			return
-		default:
-		}
 	}
 
 	// Count the number of contracts which are good for uploading, and then make
@@ -1146,8 +1161,13 @@ func (c *Contractor) threadedContractMaintenance() {
 		blacklist = append(blacklist, contract.HostPublicKey)
 	}
 
-	initialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(3)
+	// Determine the max and min initial contract funding based on the allowance
+	// settings
+	maxInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Mul64(MaxInitialContractFundingMulFactor).Div64(MaxInitialContractFundingDivFactor)
+	minInitialContractFunds := c.allowance.Funds.Div64(c.allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
 	c.mu.RUnlock()
+
+	// Get Hosts
 	hosts, err := c.hdb.RandomHosts(neededContracts*4+randomHostsBufferForScore, blacklist, addressBlacklist)
 	if err != nil {
 		c.log.Println("WARN: not forming new contracts:", err)
@@ -1155,14 +1175,45 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("trying to form contracts with hosts, pulled this many hosts from hostdb:", len(hosts))
 
+	// Calculate the anticipated transaction fee.
+	_, maxFee := c.tpool.FeeEstimation()
+	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
+
 	// Form contracts with the hosts one at a time, until we have enough
 	// contracts.
 	for _, host := range hosts {
+		// Return here if an interrupt or kill signal has been sent.
+		select {
+		case <-c.tg.StopChan():
+			c.log.Println("returning because the renter was stopped")
+			return
+		case <-c.interruptMaintenance:
+			c.log.Println("returning because maintenance was interrupted")
+			return
+		default:
+		}
+
 		// If no more contracts are needed, break.
 		if neededContracts <= 0 {
 			break
 		}
 
+		// Calculate the contract funding with host
+		contractFunds := host.ContractPrice.Add(txnFee).Mul64(ContractFeeFundingMulFactor)
+
+		// Check that the contract funding is reasonable compared to the max and
+		// min initial funding. This is to protect against increases to
+		// allowances being used up to fast and not being able to spread the
+		// funds across new contracts properly, as well as protecting against
+		// contracts renewing too quickly
+		if contractFunds.Cmp(maxInitialContractFunds) > 0 {
+			contractFunds = maxInitialContractFunds
+		}
+		if contractFunds.Cmp(minInitialContractFunds) < 0 {
+			contractFunds = minInitialContractFunds
+		}
+
+		// Confirm the wallet is still unlocked
 		unlocked, err := c.wallet.Unlocked()
 		if !unlocked || err != nil {
 			registerWalletLockedDuringMaintenance = true
@@ -1171,7 +1222,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Determine if we have enough money to form a new contract.
-		if fundsRemaining.Cmp(initialContractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+		if fundsRemaining.Cmp(contractFunds) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
 			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
@@ -1186,7 +1237,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		// Attempt forming a contract with this host.
 		start := time.Now()
-		fundsSpent, newContract, err := c.managedNewContract(host, initialContractFunds, endHeight)
+		fundsSpent, newContract, err := c.managedNewContract(host, contractFunds, endHeight)
 		if err != nil {
 			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue
@@ -1223,15 +1274,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.mu.Unlock()
 		if err != nil {
 			c.log.Println("Unable to save the contractor:", err)
-		}
-
-		// Soft sleep before making the next contract.
-		select {
-		case <-c.tg.StopChan():
-			return
-		case <-c.interruptMaintenance:
-			return
-		default:
 		}
 	}
 }

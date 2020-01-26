@@ -975,7 +975,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		ct := crypto.NewCachedTree(log2SectorSize)
 		ct.SetIndex(segmentIndex)
 		for _, root := range so.SectorRoots {
-			ct.Push(root)
+			ct.PushSubTree(0, root)
 		}
 		hashSet := ct.Prove(base, cachedHashSet)
 		sp := types.StorageProof{

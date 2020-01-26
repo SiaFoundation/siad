@@ -13,16 +13,23 @@ Latest:
 
 ### v1.4.2.1
 **Key Updates**
- - Added the ability to upload linkfiles and create sialinks
-
-**Key Updates**
  - Wallet can generate an address before it finishes scanning the blockchain
  - FUSE folders can now be mounted with 'AllowOther' as an option
+ - Added alerts for when contracts can't be renewed or refreshed
+ - Smarter fund allocation when initially forming contracts
+ - Decrease memory usage and cpu usage when uploading and downloading
+ - When repairing files from disk, an integrity check is performed to ensure
+   that corrupted / altered data is not used to perform repairs
 
 **Bugs Fixed**
- - Unable to upload a new file if 'force' is set and no file exists to delete.
+ - Repair operations would sometimes perform useless and redundant repairs
+ - Siafiles were not pruning hosts correctly
+ - Unable to upload a new file if 'force' is set and no file exists to delete
  - Siac would not always delete a file or folder correctly
  - Divide by zero error when setting the allowance with an empty period
+ - Host would sometimes deadlock upon shutdown due to thread group misuse
+ - Crash preventing host from starting up correctly after an unclean shutdown
+   while resizing a storage folder
 
 Dec 2019:
 

@@ -721,26 +721,25 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 
 // RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
 // file.
-func (c *Client) RenterSialinkGet(sialink modules.Sialink) (fileData []byte, err error) {
-	str := string(sialink)
-	trimmed := strings.TrimPrefix(str, "sia://")
-	getQuery := fmt.Sprintf("/renter/sialink/%s", trimmed)
+func (c *Client) RenterSialinkGet(sialink string) (fileData []byte, err error) {
+	getQuery := fmt.Sprintf("/renter/sialink/%s", sialink)
 	_, fileData, err = c.getRawResponse(getQuery)
-	return
+	return fileData, errors.AddContext(err, "unable to fetch sialink data")
 }
 
 // RenterLinkfilePost uses the /renter/linkfile endpoint to upload a linkfile.
 // The resulting sialink is returned along with an error.
-func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modules.Sialink, error) {
+func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (string, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("name", lup.FileMetadata.Name)
-	createTimeStr := fmt.Sprintf("%v", lup.FileMetadata.CreateTime)
-	values.Set("createtime", createTimeStr)
+	values.Set("filename", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-	values.Set("mode", modeStr)
+	// TODO: Handle mode properly.
+	/*
+		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+		values.Set("mode", modeStr)
+	*/
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 
@@ -765,16 +764,17 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (modul
 // siapath of the siafile that should be converted. The siapath provided inside
 // of the upload params is the name that will be used for the base sector of the
 // linkfile.
-func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (modules.Sialink, error) {
+func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("name", lup.FileMetadata.Name)
-	createTimeStr := fmt.Sprintf("%v", lup.FileMetadata.CreateTime)
-	values.Set("createtime", createTimeStr)
+	values.Set("name", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-	values.Set("mode", modeStr)
+	// TODO: Update mode
+	/*
+		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+		values.Set("mode", modeStr)
+	*/
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())

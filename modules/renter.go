@@ -226,11 +226,6 @@ type (
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType
 	}
-
-	// Sialink is a specific type of string that refers to a sialink. A sialink
-	// is always prefixed by 'sia://', and can be used to fetch data from the
-	// Sia network knowing nothing more than the root of the data.
-	Sialink string
 )
 
 // An Allowance dictates how much the Renter is allowed to spend in a given
@@ -431,7 +426,7 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
-	Sialinks         []Sialink         `json:"sialinks"`
+	Sialinks         []string          `json:"sialinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
@@ -993,14 +988,8 @@ func HealthPercentage(health float64) float64 {
 // leading bytes of the linkfile, meaning that this struct can be extended
 // without breaking compatibility.
 type LinkfileMetadata struct {
-	// Filename.
-	Name string `json:"name"`
-
-	// Permissions.
-	Mode os.FileMode `json:"mode"`
-
-	// Timestamp information, in 64bit Unix.
-	CreateTime int64 `json:"createtime"`
+	Filename string      `json:"filename,omitempty"`
+	Mode     os.FileMode `json:"mode,omitempty"`
 }
 
 // LinkfileUploadParameters establishes the parameters such as the intra-root
@@ -1008,26 +997,23 @@ type LinkfileMetadata struct {
 type LinkfileUploadParameters struct {
 	// SiaPath defines the siapath that the linkfile is going to be uploaded to.
 	// Recommended that the linkfile is placed in /var/linkfiles
-	SiaPath SiaPath
+	SiaPath SiaPath `json:"siapath"`
 
 	// Force determines whether the upload should overwrite an existing siafile
 	// at 'SiaPath'. If set to false, an error will be returned if there is
-	// already a file at 'SiaPath'. If set to true, any existing siafile at
-	// SiaPath will be deleted and over-written.
-	Force bool
+	// already a file or folder at 'SiaPath'. If set to true, any existing file
+	// or folder at 'SiaPath' will be deleted and overwritten.
+	Force bool `json:"force"`
 
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.
-	BaseChunkRedundancy uint8
+	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
 
-	// The intra sector erasure coding settings establish how the gets erasure
-	// coded within the base chunk. This is an optimization to improve download
-	// speeds.
-	IntraSectorDataPieces   uint8
-	IntraSectorParityPieces uint8
-
-	FileMetadata LinkfileMetadata
+	// This metadata will be included in the base chunk, meaning that this
+	// metadata is visible to the downloader before any of the file data is
+	// visible.
+	FileMetadata LinkfileMetadata `json:"filemetadata"`
 
 	// Reader supplies the file data for the linkfile.
-	Reader io.Reader
+	Reader io.Reader `json:"reader"`
 }

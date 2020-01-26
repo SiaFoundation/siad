@@ -4,19 +4,10 @@ package renter
 // underlying sector root.
 
 import (
-	"fmt"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-)
-
-const (
-	// gougingFractionDenomDownloadByRoot sets the fraction to 1/4 to ensure the
-	// renter can do at least a fraction of the budgeted downloading.
-	gougingFractionDenomDownloadByRoot = 4
 )
 
 // jobDownloadByRoot contains all of the information necessary to execute a
@@ -77,62 +68,10 @@ type projectDownloadByRoot struct {
 	mu sync.Mutex
 }
 
-// checkGougingDownloadByRoot looks at the current renter allowance and the
-// active settings for a host and determines whether a download by root job
-// should be halted due to price gouging.
-//
-// NOTE: Currently this function treats all downloads being the stream download
-// size and assumes that data is actually being appended to the host. As the
-// worker gains more modification actions on the host, this check can be split
-// into different checks that vary based on the operation being performed.
-func checkGougingDownloadByRoot(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
-	// Check whether the base RPC price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
-		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
-		return errors.New(errStr)
-	}
-	// Check whether the download bandwidth price is too high.
-	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) < 0 {
-		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.DownloadBandwidthPrice, allowance.MaxDownloadBandwidthPrice)
-		return errors.New(errStr)
-	}
-	// Check whether the sector access price is too high.
-	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) < 0 {
-		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
-		return errors.New(errStr)
-	}
-
-	// If there is no allowance, general price gouging checks have to be
-	// disabled, because there is no baseline for understanding what might count
-	// as price gouging.
-	if allowance.Funds.IsZero() {
-		return nil
-	}
-
-	// Check that the combined prices make sense in the context of the overall
-	// allowance. The general idea is to compute the total cost of performing
-	// the same action repeatedly until a fraction of the desired total resource
-	// consumption established by the allowance has been reached. The fraction
-	// is determined on a case-by-case basis. If the host is too expensive to
-	// even satisfy a faction of the user's total desired resource consumption,
-	// the action will be blocked for price gouging.
-	//
-	// Because of the strategy used to perform the fetch, the base rpc price and
-	// the base sector access price are incurred twice.
-	singleDownloadCost := hostSettings.SectorAccessPrice.Mul64(2).Add(hostSettings.BaseRPCPrice.Mul64(2)).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
-	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
-	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
-	reducedCost := allowanceDownloadCost.Div64(gougingFractionDenomDownloadByRoot)
-	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined fetch backups pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
-		return errors.New(errStr)
-	}
-
-	return nil
-}
-
 // callPerformJobDownloadByRoot will perform a download by root job.
 func (jdbr *jobDownloadByRoot) callPerformJobDownloadByRoot(w *worker) {
+	// The job is broken into two phases, startup and resume. A bool in the
+	// worker indicates which phase needs to be run.
 	if jdbr.staticStartupCompleted {
 		jdbr.staticProject.managedResumeJobDownloadByRoot(w)
 	} else {
@@ -140,7 +79,8 @@ func (jdbr *jobDownloadByRoot) callPerformJobDownloadByRoot(w *worker) {
 	}
 }
 
-// managedRemoveWorker will remove a worker from the project.
+// managedRemoveWorker will remove a worker from the project. This is typically
+// called after a worker has finished its job, successfully or unsuccessfully.
 func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 	pdbr.mu.Lock()
 	defer pdbr.mu.Unlock()
@@ -151,11 +91,16 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 	// Delete every instance of the worker in the list of standby workers. The
 	// worker should only be in the list once, but we check the whole list
 	// anyway.
+	totalRemoved := 0
 	for i := 0; i < len(pdbr.workersStandby); i++ {
 		if pdbr.workersStandby[i] == w {
 			pdbr.workersStandby = append(pdbr.workersStandby[:i], pdbr.workersStandby[i+1:]...)
 			i-- // Since the array has been shifted, adjust the iterator to ensure every item is visited.
+			totalRemoved++
 		}
+	}
+	if totalRemoved > 1 {
+		w.renter.log.Critical("one worker appeared in the standby list multiple times")
 	}
 
 	// Check whether the pdbr is already completed. If so, nothing else needs to
@@ -176,79 +121,28 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 		// should never be a case where the list of registered workers is empty
 		// but the list of standby workers is not empty.
 		if len(pdbr.workersStandby) != 0 {
-			build.Critical("pdbr has standby workers but no registered workers:", len(pdbr.workersStandby))
+			w.renter.log.Critical("pdbr has standby workers but no registered workers:", len(pdbr.workersStandby))
 		}
 		pdbr.err = errors.New("workers were unable to recover the data by sector root - all workers failed")
 		close(pdbr.completeChan)
 	}
 }
 
-// managedResult is a convenience function to return the result of the project.
-func (pdbr *projectDownloadByRoot) managedResult() ([]byte, error) {
-	// Sanity check - should not be accessing the error of the pdbr until the
-	// completeChan has closed.
-	select {
-	case <-pdbr.completeChan:
-	default:
-		build.Critical("error field of pdbr is being accessed before the pdbr has finished")
-	}
-
-	pdbr.mu.Lock()
-	defer pdbr.mu.Unlock()
-	return pdbr.data, pdbr.err
-}
-
 // managedResumeJobDownloadByRoot is called after a worker has confirmed that a
 // root exists on a host, and after the worker has gained the imperative to
 // fetch the data from the host.
 func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
-	// Fetch a session to use in retrieving the sector.
-	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
+	data, err := w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
 	if err != nil {
-		// TODO: run error code here to indicate to the worker that attempts to
-		// grab the downloader are failing.
-		w.renter.log.Debugln("worker failed a projectDownloadByRoot because downloader could not be opened:", err)
-		pdbr.managedWakeStandbyWorker()
-		pdbr.managedRemoveWorker(w)
-		return
-	}
-	defer downloader.Close()
-
-	// Check for price gouging before completing the job.
-	allowance := w.renter.hostContractor.Allowance()
-	hostSettings := downloader.HostSettings()
-	err = checkGougingDownloadByRoot(allowance, hostSettings)
-	if err != nil {
-		//  TODO: run error code here to indicate to the worker that price
-		//  gouging warnings are being hit.
-		w.renter.log.Debugln("worker failed a projectDownloadByRoot because gouging protection kicked in:", err)
+		w.renter.log.Debugln("worker failed a projectDownloadByRoot job:", err)
 		pdbr.managedWakeStandbyWorker()
 		pdbr.managedRemoveWorker(w)
 		return
 	}
 
-	// Fetch the data. Need to ensure that the length is a factor of 64, need to
-	// add and remove padding.
-	padding := 64 - pdbr.staticLength%64
-	if padding == 64 {
-		padding = 0
-	}
-	sectorData, err := downloader.Download(pdbr.staticRoot, uint32(pdbr.staticOffset), uint32(pdbr.staticLength+padding))
-	// If the fetch was unsuccessful, a standby worker needs to be activated.
-	if err != nil {
-		// TODO: run error code here to indicate that worker download attempts
-		// are failing. It's already been established that the host has the
-		// sector.
-		w.renter.log.Debugln("worker failed a projectDownloadByRoot because the full root download failed:", err)
-		pdbr.managedWakeStandbyWorker()
-		pdbr.managedRemoveWorker(w)
-		return
-	}
-
-	// Fetch was successful, update the data in the pdbr and perform a
-	// successful close. Make sure to strip the padding when returning the data.
+	// Set the data and perform cleanup.
 	pdbr.mu.Lock()
-	pdbr.data = sectorData[:pdbr.staticLength]
+	pdbr.data = data
 	pdbr.mu.Unlock()
 	close(pdbr.completeChan)
 }
@@ -259,46 +153,15 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// Check if the project is already complete, do no more work if so.
 	if pdbr.staticComplete() {
+		pdbr.managedRemoveWorker(w)
 		return
 	}
 
-	// Determine whether the host has the root. This is accomplished by
-	// performing a download for only one byte.
-	//
-	// Fetch a session to use in retrieving the sector.
-	downloader, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
+	// Download a single byte to see if the root is available.
+	_, err := w.Download(pdbr.staticRoot, 0, 1)
 	if err != nil {
-		// TODO: run error code here to indicate to the worker that attempts to
-		// grab the downloader are failing.
-		w.renter.log.Debugln("worker failed a projectDownloadByRoot because downloader could not be opened:", err)
+		w.renter.log.Debugln("worker failed a download by root job:", err)
 		pdbr.managedRemoveWorker(w)
-		return
-	}
-	// Check if the project is already complete, do no more work if so.
-	if pdbr.staticComplete() {
-		return
-	}
-
-	defer downloader.Close()
-	// Check for price gouging before completing the job.
-	allowance := w.renter.hostContractor.Allowance()
-	hostSettings := downloader.HostSettings()
-	err = checkGougingDownloadByRoot(allowance, hostSettings)
-	if err != nil {
-		//  TODO: run error code here to indicate to the worker that price
-		//  gouging warnings are being hit.
-		w.renter.log.Debugln("worker failed a projectDownloadByRoot because gouging protection kicked in:", err)
-		pdbr.managedRemoveWorker(w)
-		return
-	}
-	// Try to fetch one byte.
-	_, err = downloader.Download(pdbr.staticRoot, 0, 64)
-	if err != nil {
-		pdbr.managedRemoveWorker(w)
-		return
-	}
-	// Check if the project is already complete, do no more work if so.
-	if pdbr.staticComplete() {
 		return
 	}
 
@@ -324,7 +187,7 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 // workers, one of the standby workers will assume its place.
 //
 // managedWakeStandbyWorker assumes that rootFound is currently set to true,
-// because it will be called by a worker that failed an had set rootFound to
+// because it will be called by a worker that failed and had set rootFound to
 // true.
 func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 	// If there are no workers on standby, set rootFound to false, indicating
@@ -367,12 +230,6 @@ func (pdbr *projectDownloadByRoot) staticComplete() bool {
 
 // DownloadByRoot will spin up a project to locate a root and then download that
 // root.
-//
-// TODO: Update the function, or perhaps create a separate project, to handle
-// intra-root erasure coding. For speed, going to need some updates anyway
-// that's better about worker selection and making sure we go for hosts that can
-// provide excellent ttfb, while making the selection process aware of the
-// workload of existing workers.
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{
@@ -393,8 +250,8 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 	wp.mu.RLock()
 	workers := make([]*worker, 0, len(wp.workers))
 	for _, w := range wp.workers {
-		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 		workers = append(workers, w)
+		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 	}
 	wp.mu.RUnlock()
 	// Queue the jobs in the workers.
