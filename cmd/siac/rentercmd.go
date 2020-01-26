@@ -195,49 +195,43 @@ local path where the Sia folder is mounted.`,
 	renterLinkfilesCmd = &cobra.Command{
 		Use:   "linkfiles",
 		Short: "Perform actions related to linkfiles",
-		Long: `Linkfiles are files that can be shared throughout the Sia network. The
-linkfiles command allows the user to upload linkfiles to the network and to view
-a list of linkfiles that the user has uploaded to the network. After uploading a
-linkfile, the user is presented with a sialink. The sialink can be presented to
-any viewnode, and the viewnode will be able to retrieve the file.`,
+		Long: `Linkfiles are files that can be viewed using sialinks, and are a cornerstone for
+publishing and sharing files.`,
 		Run: renterlinkfilescmd,
 	}
 
 	renterLinkfilesLsCmd = &cobra.Command{
 		Use:   "ls",
-		Short: "List all linkfiles that the user has uploaded.",
-		Long: `List all linkfiles that the user has uploaded. Only files in /var/linkfiles
-will be considered. The corresponding sialinks will also be displayed.`,
+		Short: "List all linkfiles that the user has pinned.",
+		Long: `List all linkfiles that the user has pinned along with the corresponding
+sialinks. By default, only files in var/linkfiles will be displayed, the --root
+flag can be used to view other folders.`,
 		Run: wrap(renterlinkfileslscmd),
 	}
 
 	renterLinkfilesUploadCmd = &cobra.Command{
 		Use:   "upload [source path] [destination siapath]",
 		Short: "Upload a linkfile to the Sia network",
-		Long: `Upload a linkfile to the Sia network. The act of uploading a linkfile will
-produce a sialink, which can be presented to any viewnode, which can then fetch
-the corresponding file. The act of uploading "pins" the linkfile to the Sia
-network, where it will remain available for anyone to download until the
-uploader deletes the file. The uploader does not need to stay online in order
-for the file to remain available on the Sia network, they merely need to
-maintain the set of contracts that the file has been uploaded to.
+		Long: `
 
-At any time, someone else can "repin" the file just by uploading it to their set
-of contracts. This will allow the same file to continue being available from the
-same sialink even if the original uploader disappears or deletes the file. A
-file will remain available on the Sia network until there is nobody pinning it
-anymore.`,
+Upload a linkfile to the Sia network. The act of uploading a linkfile will
+produce a sialink. That sialink can be presented to any Skynet portal to recover
+the original data in the linkfile. This command will pin the file to this Sia
+node, meaning that the uploader will pay for storage and repairs on an ongoing
+basis to ensure that the file remains available on the Sia network.`,
 		Run: wrap(renterlinkfilesuploadcmd),
 	}
 
-	renterLinkfilesConvertCmd = &cobra.Command{
-		Use:   "convert [source siaPath] [destination siaPath]",
-		Short: "Convert a siafile to a sharable sialink",
-		Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
-will be created in the user's linkfile directory. The linkfile and the original
-siafile are both necessary to pin the file and keep the sialink active.`,
-		Run: wrap(renterlinkfilesconvertcmd),
-	}
+	/*
+		renterLinkfilesConvertCmd = &cobra.Command{
+			Use:   "convert [source siaPath] [destination siaPath]",
+			Short: "Convert a siafile to a sharable sialink",
+			Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
+	will be created in the user's linkfile directory. The linkfile and the original
+	siafile are both necessary to pin the file and keep the sialink active.`,
+			Run: wrap(renterlinkfilesconvertcmd),
+		}
+	*/
 
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
@@ -2359,8 +2353,8 @@ func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
 		SiaPath: siaPath,
 
 		FileMetadata: modules.LinkfileMetadata{
-			Filename:   sourceName,
-			Mode:       fi.Mode(),
+			Filename: sourceName,
+			Mode:     fi.Mode(),
 		},
 
 		Reader: file,
@@ -2372,6 +2366,7 @@ func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
 	fmt.Println("File uploaded successfully, the sialink is", sialink)
 }
 
+/*
 // renterlinkfilesconvertcmd will convert an existing siafile to a linkfile and
 // sialink on the Sia network.
 func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
@@ -2395,6 +2390,7 @@ func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	}
 	fmt.Println("File converted successfully, the sialink is", sialink)
 }
+*/
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
 // displays the prices of various storage operations. The user can submit an

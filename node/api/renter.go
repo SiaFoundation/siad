@@ -1790,8 +1790,8 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		}
 	}
 	lfm := modules.LinkfileMetadata{
-		Filename:   filename,
-		Mode:       mode,
+		Filename: filename,
+		Mode:     mode,
 	}
 	lup := modules.LinkfileUploadParameters{
 		SiaPath:             siaPath,
