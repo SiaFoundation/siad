@@ -1,5 +1,14 @@
 package renter
 
+// linkfilefanout.go implements the encoding and decoding of linkfile fanouts. A
+// fanout is a description of all of the Merkle roots in a file, organized by
+// chunk. Each chunk has N pieces, and each piece has a Merkle root which is a
+// 32 byte hash.
+//
+// The fanout is encoded such that the first 32 bytes are chunk 0 index 0, the
+// second 32 bytes are chunk 0 index 1, etc... and then the second chunk is
+// appended immedately after, and so on.
+
 import (
 	"sync"
 

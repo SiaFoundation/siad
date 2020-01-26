@@ -59,14 +59,19 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 	// DownloadByRoot call.
 	pieceData, err := fcs.staticRenter.DownloadByRoot(pieceRoot, 0, modules.SectorSize)
 	if err != nil {
-		// TODO: May want to log here.
 		fcs.managedFailPiece()
+		fcs.staticRenter.log.Debugf("fanout piece download failed for chunk %v, piece %v, root %v of a fanout download file: %v", fcs.staticChunkIndex, pieceIndex, pieceRoot, err)
 		return
 	}
 
 	// Decrypt the piece.
 	key := fcs.staticMasterKey.Derive(fcs.staticChunkIndex, pieceIndex)
-	key.DecryptBytesInPlace(pieceData, 0)
+	_, err = key.DecryptBytesInPlace(pieceData, 0)
+	if err != nil {
+		fcs.managedFailPiece()
+		fcs.staticRenter.log.Printf("fanout piece decryption failed for chunk %v, piece %v, root %v of a fanout download file: %v", fcs.staticChunkIndex, pieceIndex, pieceRoot, err)
+		return
+	}
 
 	// Update the fetchChunkState to reflect that the piece has been recovered.
 	fcs.mu.Lock()
@@ -119,10 +124,9 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 	var blankHash crypto.Hash
 	for i := uint64(0); i < uint64(len(fcs.pieces)); i++ {
 		// Skip pieces where the Merkle root is not supplied.
-		//
-		// TODO: May want to log here.
 		if fs.staticChunks[chunkIndex][i] == blankHash {
 			fcs.managedFailPiece()
+			fcs.staticRenter.log.Debugf("skipping piece %v of chunk %v in fanout download because the merkle root is blank", i, chunkIndex)
 			continue
 		}
 

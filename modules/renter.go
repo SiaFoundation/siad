@@ -1018,7 +1018,7 @@ type LinkfileUploadParameters struct {
 	// Force determines whether the upload should overwrite an existing siafile
 	// at 'SiaPath'. If set to false, an error will be returned if there is
 	// already a file or folder at 'SiaPath'. If set to true, any existing file
-	// or folder at 'SiaPath' will be deleted and over-written.
+	// or folder at 'SiaPath' will be deleted and overwritten.
 	Force bool `json:"force"`
 
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
