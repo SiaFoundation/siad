@@ -759,12 +759,12 @@ func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters) (string
 	return rshp.Skylink, err
 }
 
-// RenterConvertSiafileToSkyfilePost uses the /renter/skylink endpoint to
+// SkynetConvertSiafileToSkyfilePost uses the /skynet/skyfile endpoint to
 // convert an existing siafile to a skyfile. The input SiaPath 'convert' is the
 // siapath of the siafile that should be converted. The siapath provided inside
 // of the upload params is the name that will be used for the base sector of the
 // skyfile.
-func (c *Client) RenterConvertSiafileToSkyfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
+func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("name", lup.FileMetadata.Filename)

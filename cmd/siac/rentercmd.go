@@ -266,7 +266,6 @@ manually deleted.`,
 		Run: wrap(skynetuploadcmd),
 	}
 
-	/*
 			skynetConvertCmd = &cobra.Command{
 				Use:   "convert [source siaPath] [destination siaPath]",
 				Short: "Convert a siafile to a skyfile with a skylink.",
@@ -276,7 +275,6 @@ manually deleted.`,
 	skyfile will consume an additional 40 MiB of storage.`,
 				Run: wrap(skynetconvertcmd),
 			}
-	*/
 )
 
 // abs returns the absolute representation of a path.
@@ -2303,7 +2301,6 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	fmt.Println("File uploaded successfully, the skylink is", skylink)
 }
 
-/*
 // skynetconvertcmd will convert an existing siafile to a skyfile and skylink on
 // the Sia network.
 func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
@@ -2327,7 +2324,6 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	}
 	fmt.Println("File converted successfully, the skylink is", skylink)
 }
-*/
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
 // displays the prices of various storage operations. The user can submit an
