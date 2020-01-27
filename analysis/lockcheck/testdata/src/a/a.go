@@ -9,26 +9,32 @@ type Foo struct {
 
 func (f *Foo) bar() {
 	f.mu.Lock() // want "unprivileged method bar locks mutex"
+	f.mu.Unlock()
 }
 
 func (f *Foo) Bar() {
 	f.mu.Lock() // OK
+	f.mu.Unlock()
 }
 
 func (f *Foo) managedBar() {
 	f.mu.Lock() // OK
+	f.mu.Unlock()
 }
 
 func (f *Foo) threadedBar() {
 	f.mu.Lock() // OK
+	f.mu.Unlock()
 }
 
 func (f *Foo) callBar() {
 	f.mu.Lock() // OK
+	f.mu.Unlock()
 }
 
 func (f *Foo) otherprefixBar() {
 	f.mu.Lock() // want "unprivileged method otherprefixBar locks mutex"
+	f.mu.Unlock()
 }
 
 func (f *Foo) nonlocking() {
@@ -65,24 +71,6 @@ func (f *Foo) ExportedUnlocking() {
 	f.i++ // want "privileged method ExportedUnlocking accesses i without holding mutex"
 }
 
-func (f *Foo) ExportedConditionalLocking() {
-	if 1 < 2 {
-		if 2 < 3 {
-			if 4 < 3 {
-				f.mu.Lock()
-			}
-		}
-		if 5 < 6 {
-			f.mu.Lock()
-		} else {
-			f.mu.Unlock()
-		}
-	}
-	if 2 < 1 {
-		f.i++ // want "privileged method ExportedConditionalLocking accesses i without holding mutex"
-	}
-}
-
 func (f *Foo) ExportedLoopLocking() {
 	f.mu.Lock()
 	for i := 0; i < 10; i++ {
@@ -106,6 +94,25 @@ func (f *Foo) AllPathsLock() {
 		f.mu.Lock()
 	}
 	f.i++ // OK
+	f.mu.Unlock()
+}
+
+func (f *Foo) OnePathDoesNotLock() {
+	if 1 < 2 {
+		if 2 < 3 {
+			if 4 < 3 {
+				f.mu.Lock()
+			}
+		}
+		if 5 < 6 {
+			f.mu.Lock()
+		} else {
+			f.mu.Unlock()
+		}
+	}
+	if 2 < 1 {
+		f.i++ // want "privileged method ExportedConditionalLocking accesses i without holding mutex"
+	}
 }
 
 func (f *Foo) CallsPrivilegedWithLock() {
@@ -137,6 +144,7 @@ func (f *Foo) CallAssignedLiteral() {
 		if true {
 			f.i++ // OK
 		}
+		f.mu.Unlock()
 	}
 	fn()
 }

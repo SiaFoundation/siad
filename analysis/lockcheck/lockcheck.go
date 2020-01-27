@@ -90,12 +90,6 @@ func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv, recvMu types.O
 			if found {
 				return false
 			}
-			// don't descend into DeferStmt or FuncLit
-			if _, ok := n.(*ast.DeferStmt); ok {
-				return false
-			} else if _, ok := n.(*ast.FuncLit); ok {
-				return false
-			}
 			if ce, ok := n.(*ast.CallExpr); ok {
 				if fnse, ok := ce.Fun.(*ast.SelectorExpr); ok {
 					if strings.HasSuffix(fnse.Sel.Name, "Lock") {
@@ -106,6 +100,12 @@ func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv, recvMu types.O
 						}
 					}
 				}
+			}
+			// don't descend into DeferStmt or FuncLit
+			if _, ok := n.(*ast.DeferStmt); ok {
+				return false
+			} else if _, ok := n.(*ast.FuncLit); ok {
+				return false
 			}
 			return true
 		})
