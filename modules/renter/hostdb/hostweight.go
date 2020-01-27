@@ -516,7 +516,11 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	return math.Pow(uptimeRatio, exp)
 }
 
-// managedCalculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
+// managedCalculateHostWeightFn creates a hosttree.WeightFunc given an
+// Allowance.
+//
+// NOTE: the hosttree.WeightFunc that is returned accesses fields of the hostdb.
+// The hostdb lock must be held while utilizing the WeightFunc
 func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
 	// Get the txnFees.
 	hdb.mu.RLock()

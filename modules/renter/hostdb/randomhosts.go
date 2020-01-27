@@ -42,6 +42,8 @@ func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist [
 	ht := hosttree.New(hdb.managedCalculateHostWeightFn(allowance), hdb.deps.Resolver())
 
 	// Insert all known hosts.
+	hdb.mu.RLock()
+	defer hdb.mu.RUnlock()
 	var insertErrs error
 	allHosts := hdb.hostTree.All()
 	isWhitelist := filterType == modules.HostDBActiveWhitelist

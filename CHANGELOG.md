@@ -10,6 +10,12 @@ Version History
 ---------------
 
 Latest:
+### v1.4.2.2
+**Key Updates**
+
+**Bugs Fixed**
+ - HostDB Data race fixed and documentation updated to explain the data race
+   concern
 
 ### v1.4.2.1
 **Key Updates**
