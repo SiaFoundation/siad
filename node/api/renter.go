@@ -1733,18 +1733,34 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 // skynetSkyfileHandlerPOST accepts some data and some metadata and then turns
 // that into a skylink, which is returned to the caller.
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Parse out the intended siapath.
-	siaPathStr := ps.ByName("siapath")
-	siaPath, err := modules.SkynetFolder.Join(siaPathStr)
-	if err != nil {
-		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
 		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse whether the siapath should be from root or from the skynet folder.
+	var root bool
+	rootStr := queryForm.Get("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse out the intended siapath.
+	var siaPath modules.SiaPath
+	siaPathStr := ps.ByName("siapath")
+	if root {
+		siaPath, err = modules.NewSiaPath(siaPathStr)
+	} else {
+		siaPath, err = modules.SkynetFolder.Join(siaPathStr)
+	}
+	if err != nil {
+		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
