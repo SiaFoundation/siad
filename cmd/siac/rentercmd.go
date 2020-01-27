@@ -1854,7 +1854,7 @@ func getDirRoot(siaPath modules.SiaPath) (dirs []directoryInfo) {
 	if !renterListRecursive {
 		return
 	}
-	// Call getDir on subdirs.
+	// Call getDirRoot on subdirs.
 	for _, subDir := range subDirs {
 		rdirs := getDirRoot(subDir.SiaPath)
 		dirs = append(dirs, rdirs...)
