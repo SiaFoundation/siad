@@ -101,12 +101,13 @@ func TestSkyfile(t *testing.T) {
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.LinkfileMetadata{
 			Filename: largeFilename,
-			// Remaining fields intentionally left to default
+			// Remaining fields intentionally left blank so the renter sets
+			// defaults.
 		},
 
 		Reader: largeReader,
 	}
-	largeSkylink, err := r.SkynetSkyfilePost(largeLup)
+	largeSkylink, err := r.SkynetSkyfilePost(largeLup, false)
 	if err != nil {
 		t.Fatal(err)
 	}

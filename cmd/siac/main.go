@@ -34,8 +34,8 @@ var (
 	renterShowHistory         bool   // Show download history in addition to download queue.
 	renterVerbose             bool   // Show additional info about the renter
 	siaDir                    string // Path to sia data dir
-	skynetFromRoot            bool   // Use root as the base instead of the Skynet folder.
-	skynetListRecursive       bool   // List files of folder recursively.
+	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
+	skynetLsRecursive         bool   // List files of folder recursively.
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
@@ -292,8 +292,8 @@ func main() {
 
 	root.AddCommand(skynetCmd)
 	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetConvertCmd)
-	skynetUploadCmd.Flags().BoolVarP(&skynetFromRoot, "root", "", false, "Use the root folder as the base instead of the Skynet folder")
-	skynetLsCmd.Flags().BoolVarP(&skynetListRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
+	skynetUploadCmd.Flags().BoolVarP(&skynetUploadRoot, "root", "", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)

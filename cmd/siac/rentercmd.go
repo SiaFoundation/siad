@@ -257,7 +257,7 @@ flag can be used to view skyfiles pinned in other folders.`,
 	}
 
 	skynetUploadCmd = &cobra.Command{
-		Use:   "upload [source path] [destination siapath]",
+		Use:   "upload [source filepath] [destination siapath]",
 		Short: "Upload a file to Skynet",
 		Long: `Upload a file to Skynet. A skylink will be produced which can be shared and used
 to retrieve the file. The file that gets uploaded will be pinned to this Sia
@@ -2294,7 +2294,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 		Reader: file,
 	}
-	skylink, err := httpClient.SkynetSkyfilePost(lup)
+	skylink, err := httpClient.SkynetSkyfilePost(lup, skynetUploadRoot)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}

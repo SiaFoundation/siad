@@ -729,19 +729,18 @@ func (c *Client) SkynetSkylinkGet(skylink string) (fileData []byte, err error) {
 
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
 // resulting skylink is returned along with an error.
-func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters) (string, error) {
+func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters, root bool) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	// TODO: Handle mode properly.
-	/*
-		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-		values.Set("mode", modeStr)
-	*/
+	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", root)
+	values.Set("root", rootStr)
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
