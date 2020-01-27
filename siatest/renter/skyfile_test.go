@@ -9,9 +9,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestLinkfile provides basic end-to-end testing for uploading linkfiles and
-// downloading the resulting sialinks.
-func TestLinkfile(t *testing.T) {
+// TestSkyfile provides basic end-to-end testing for uploading skyfiles and
+// downloading the resulting skylinks.
+func TestSkyfile(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -37,11 +37,11 @@ func TestLinkfile(t *testing.T) {
 	r := tg.Renters()[0]
 
 	/*
-		// Create some data to upload as a linkfile.
+		// Create some data to upload as a skyfile.
 		data := fastrand.Bytes(100 + siatest.Fuzz())
 		// Need it to be a reader.
 		reader := bytes.NewReader(data)
-		// Call the upload linkfile client call.
+		// Call the upload skyfile client call.
 		filename := "testSmall"
 		uploadSiaPath, err := modules.NewSiaPath("testSmallPath")
 		if err != nil {
@@ -64,14 +64,14 @@ func TestLinkfile(t *testing.T) {
 
 			Reader: reader,
 		}
-		sialink, err := r.RenterLinkfilePost(lup)
+		skylink, err := r.SkynetSkyfilePost(lup)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Log("Example sialink:", sialink)
+		t.Log("Example skylink:", skylink)
 
-		// Try to download the file behind the sialink.
-		fetchedData, err := r.RenterSialinkGet(sialink)
+		// Try to download the file behind the skylink.
+		fetchedData, err := r.RenterSkylinkGet(skylink)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,7 +82,7 @@ func TestLinkfile(t *testing.T) {
 		}
 	*/
 
-	// Upload another linkfile, this time ensure that the linkfile is more than
+	// Upload another skyfile, this time ensure that the skyfile is more than
 	// one sector.
 	largeData := fastrand.Bytes(int(modules.SectorSize*2) + siatest.Fuzz())
 	largeReader := bytes.NewReader(largeData)
@@ -106,11 +106,11 @@ func TestLinkfile(t *testing.T) {
 
 		Reader: largeReader,
 	}
-	largeSialink, err := r.RenterLinkfilePost(largeLup)
+	largeSkylink, err := r.SkynetSkyfilePost(largeLup)
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeFetchedData, err := r.RenterSialinkGet(largeSialink)
+	largeFetchedData, err := r.SkynetSkylinkGet(largeSkylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,26 +119,26 @@ func TestLinkfile(t *testing.T) {
 	}
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
-	// has the sialink referenced.
+	// has the skylink referenced.
 	largeUploadPath, err := modules.NewSiaPath("testLargePath")
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeLinkfilePath, err := modules.LinkfileSiaFolder.Join(largeUploadPath.String())
+	largeSkyfilePath, err := modules.SkynetFolder.Join(largeUploadPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeRenterFile, err := r.RenterFileRootGet(largeLinkfilePath)
+	largeRenterFile, err := r.RenterFileRootGet(largeSkyfilePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(largeRenterFile.File.Sialinks) != 1 {
-		t.Fatal("expecting one sialink:", len(largeRenterFile.File.Sialinks))
+		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Sialinks))
 	}
-	if largeRenterFile.File.Sialinks[0] != largeSialink {
-		t.Error("sialinks should match")
+	if largeRenterFile.File.Sialinks[0] != largeSkylink {
+		t.Error("skylinks should match")
 		t.Log(largeRenterFile.File.Sialinks[0])
-		t.Log(largeSialink)
+		t.Log(largeSkylink)
 	}
 
 	// TODO: Need to verify the mode, name, and create-time. At this time, I'm
@@ -150,7 +150,7 @@ func TestLinkfile(t *testing.T) {
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
 
-	// Upload a siafile that will then be converted to a linkfile. The siafile
+	// Upload a siafile that will then be converted to a skyfile. The siafile
 	// needs at least 2 sectors.
 	/*
 		localFile, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize*2)+siatest.Fuzz(), 2, 1, false)
@@ -177,12 +177,12 @@ func TestLinkfile(t *testing.T) {
 			},
 		}
 
-		sialink2, err := r.RenterConvertSiafileToLinkfilePost(lup, remoteFile.SiaPath())
+		skylink2, err := r.RenterConvertSiafileToSkyfilePost(lup, remoteFile.SiaPath())
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Try to download the sialink.
-		fetchedData, err = r.RenterSialinkGet(sialink2)
+		// Try to download the skylink.
+		fetchedData, err = r.RenterSkylinkGet(skylink2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,8 +191,8 @@ func TestLinkfile(t *testing.T) {
 		}
 	*/
 
-	// TODO: Fetch both the linkfile and the siafile that was uploaded, make
-	// sure that they both have the new sialink added to their metadata.
+	// TODO: Fetch both the skyfile and the siafile that was uploaded, make sure
+	// that they both have the new skylink added to their metadata.
 
 	// TODO: Need to verify the mode, name, and create-time. At this time, I'm
 	// not sure how we can feed those out of the API. They aren't going to be

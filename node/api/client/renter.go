@@ -719,17 +719,17 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 	return
 }
 
-// RenterSialinkGet uses the /renter/sialink endpoint to download a sialink
+// SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
 // file.
-func (c *Client) RenterSialinkGet(sialink string) (fileData []byte, err error) {
-	getQuery := fmt.Sprintf("/renter/sialink/%s", sialink)
+func (c *Client) SkynetSkylinkGet(skylink string) (fileData []byte, err error) {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
 	_, fileData, err = c.getRawResponse(getQuery)
-	return fileData, errors.AddContext(err, "unable to fetch sialink data")
+	return fileData, errors.AddContext(err, "unable to fetch skylink data")
 }
 
-// RenterLinkfilePost uses the /renter/linkfile endpoint to upload a linkfile.
-// The resulting sialink is returned along with an error.
-func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (string, error) {
+// SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
+// resulting skylink is returned along with an error.
+func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)
@@ -744,53 +744,51 @@ func (c *Client) RenterLinkfilePost(lup modules.LinkfileUploadParameters) (strin
 	values.Set("redundancy", redundancyStr)
 
 	// Make the call to upload the file.
-	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
 
-	// Parse the response to get the sialink.
-	var rshp api.RenterLinkfileHandlerPOST
+	// Parse the response to get the skylink.
+	var rshp api.SkynetSkyfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+		return "", errors.AddContext(err, "unable to parse the skylink upload response")
 	}
-	return rshp.Sialink, err
+	return rshp.Skylink, err
 }
 
-// RenterConvertSiafileToLinkfilePost uses the /renter/sialink endpoint to
-// convert an existing siafile to a linkfile. The input SiaPath 'convert' is the
+// RenterConvertSiafileToSkyfilePost uses the /renter/skylink endpoint to
+// convert an existing siafile to a skyfile. The input SiaPath 'convert' is the
 // siapath of the siafile that should be converted. The siapath provided inside
 // of the upload params is the name that will be used for the base sector of the
-// linkfile.
-func (c *Client) RenterConvertSiafileToLinkfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
+// skyfile.
+func (c *Client) RenterConvertSiafileToSkyfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("name", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
 	// TODO: Update mode
-	/*
-		modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-		values.Set("mode", modeStr)
-	*/
+	// modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	// values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
 
 	// Make the call to upload the file.
-	query := fmt.Sprintf("/renter/linkfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
 
-	// Parse the response to get the sialink.
-	var rshp api.RenterLinkfileHandlerPOST
+	// Parse the response to get the skylink.
+	var rshp api.SkynetSkyfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to parse the sialink upload response")
+		return "", errors.AddContext(err, "unable to parse the skylink upload response")
 	}
-	return rshp.Sialink, err
+	return rshp.Skylink, err
 }

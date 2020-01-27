@@ -256,7 +256,7 @@ func main() {
 		renterExportCmd, renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
 		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
 		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd,
-		renterFuseCmd, renterLinkfilesCmd)
+		renterFuseCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -288,8 +288,9 @@ func main() {
 	renterFuseCmd.AddCommand(renterFuseMountCmd, renterFuseUnmountCmd)
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
-	renterLinkfilesCmd.AddCommand(renterLinkfilesLsCmd, renterLinkfilesUploadCmd) // , renterLinkfilesConvertCmd)
-	renterLinkfilesLsCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
+	root.AddCommand(skynetCmd)
+	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd) // , skynetConvertCmd)
+	skynetCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)

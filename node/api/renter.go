@@ -246,10 +246,10 @@ type (
 		TotalDataTransferred uint64    `json:"totaldatatransferred"` // The total amount of data transferred, including negotiation, overdrive etc.
 	}
 
-	// RenterLinkfileHandlerPOST is the response that the api returns after the
-	// /renter/linkfile/ POST endpoint has been used.
-	RenterLinkfileHandlerPOST struct {
-		Sialink string `json:"sialink"`
+	// SkynetSkyfileHandlerPOST is the response that the api returns after the
+	// /skynet/ POST endpoint has been used.
+	SkynetSkyfileHandlerPOST struct {
+		Skylink string `json:"skylink"`
 	}
 )
 
@@ -1712,30 +1712,30 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
-// renterSialinkHandlerGET accepts a sialink as input and will stream the data
-// from the sialink out of the response body as output.
-func (api *API) renterSialinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	strLink := ps.ByName("sialink")
-	var sialink modules.Sialink
-	err := sialink.LoadString(strLink)
+// skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
+// from the skylink out of the response body as output.
+func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink modules.Sialink
+	err := skylink.LoadString(strLink)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("error parsing sialink: %v", err)}, http.StatusBadRequest)
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
 	}
-	metadata, streamer, err := api.renter.DownloadSialink(sialink)
+	metadata, streamer, err := api.renter.DownloadSialink(skylink)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch sialink: %v", err)}, http.StatusInternalServerError)
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
-// renterLinkfileHandlerPOST accepts some data and some metadata and then turns
-// that into a sialink, which is returned to the caller.
-func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+// skynetSkyfileHandlerPOST accepts some data and some metadata and then turns
+// that into a skylink, which is returned to the caller.
+func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse out the intended siapath.
 	siaPathStr := ps.ByName("siapath")
-	siaPath, err := modules.LinkfileSiaFolder.Join(siaPathStr)
+	siaPath, err := modules.SkynetFolder.Join(siaPathStr)
 	if err != nil {
 		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -1767,7 +1767,7 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		}
 	}
 
-	// Call the renter to upload the linkfile and create a sialink.
+	// Call the renter to upload the file and create a skylink.
 	filename := queryForm.Get("filename")
 	modeStr := queryForm.Get("mode")
 	var mode os.FileMode
@@ -1796,13 +1796,13 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
 		lup.Reader = req.Body
-		sialink, err := api.renter.UploadLinkfile(lup)
+		skylink, err := api.renter.UploadLinkfile(lup)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to upload linkfile: %v", err)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
 		}
-		WriteJSON(w, RenterLinkfileHandlerPOST{
-			Sialink: sialink.String(),
+		WriteJSON(w, SkynetSkyfileHandlerPOST{
+			Skylink: skylink.String(),
 		})
 		return
 	}
@@ -1818,13 +1818,13 @@ func (api *API) renterLinkfileHandlerPOST(w http.ResponseWriter, req *http.Reque
 		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	sialink, err := api.renter.CreateSialinkFromSiafile(lup, convertPath)
+	skylink, err := api.renter.CreateSialinkFromSiafile(lup, convertPath)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to linkfile: %v", err)}, http.StatusBadRequest)
+		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
 		return
 	}
-	WriteJSON(w, RenterLinkfileHandlerPOST{
-		Sialink: sialink.String(),
+	WriteJSON(w, SkynetSkyfileHandlerPOST{
+		Skylink: skylink.String(),
 	})
 }
 
