@@ -266,15 +266,15 @@ manually deleted.`,
 		Run: wrap(skynetuploadcmd),
 	}
 
-			skynetConvertCmd = &cobra.Command{
-				Use:   "convert [source siaPath] [destination siaPath]",
-				Short: "Convert a siafile to a skyfile with a skylink.",
-				Long: `Convert a siafile to a skyfile and then generate its skylink. A new skylink
+	skynetConvertCmd = &cobra.Command{
+		Use:   "convert [source siaPath] [destination siaPath]",
+		Short: "Convert a siafile to a skyfile with a skylink.",
+		Long: `Convert a siafile to a skyfile and then generate its skylink. A new skylink
 	will be created in the user's skyfile directory. The skyfile and the original
 	siafile are both necessary to pin the file and keep the skylink active. The
 	skyfile will consume an additional 40 MiB of storage.`,
-				Run: wrap(skynetconvertcmd),
-			}
+		Run: wrap(skynetconvertcmd),
+	}
 )
 
 // abs returns the absolute representation of a path.
