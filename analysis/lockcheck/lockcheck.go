@@ -78,7 +78,7 @@ func containsMutex(pass *analysis.Pass, recv types.Object) (types.Object, bool) 
 	return nil, false
 }
 
-func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv types.Object, recvMu types.Object) {
+func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv, recvMu types.Object) {
 	name := fd.Name.String()
 	recvIsPrivileged := managesOwnLocking(name)
 
