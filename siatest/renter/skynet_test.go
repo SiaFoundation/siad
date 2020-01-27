@@ -36,51 +36,103 @@ func TestSkynet(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	/*
-		// Create some data to upload as a skyfile.
-		data := fastrand.Bytes(100 + siatest.Fuzz())
-		// Need it to be a reader.
-		reader := bytes.NewReader(data)
-		// Call the upload skyfile client call.
-		filename := "testSmall"
-		uploadSiaPath, err := modules.NewSiaPath("testSmallPath")
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Quick fuzz on the force value so that sometimes it is set, sometimes it
-		// is not.
-		var force bool
-		if fastrand.Intn(2) == 0 {
-			force = true
-		}
-		lup := modules.LinkfileUploadParameters{
-			SiaPath:             uploadSiaPath,
-			Force:               force,
-			BaseChunkRedundancy: 2,
-			FileMetadata: modules.LinkfileMetadata{
-				Filename:   filename,
-				Executable: false,
-			},
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Call the upload skyfile client call.
+	filename := "testSmall"
+	uploadSiaPath, err := modules.NewSiaPath("testSmallPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Quick fuzz on the force value so that sometimes it is set, sometimes it
+	// is not.
+	var force bool
+	if fastrand.Intn(2) == 0 {
+		force = true
+	}
+	lup := modules.LinkfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               force,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.LinkfileMetadata{
+			Filename: filename,
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
 
-			Reader: reader,
-		}
-		skylink, err := r.SkynetSkyfilePost(lup)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Log("Example skylink:", skylink)
+		Reader: reader,
+	}
+	skylink, err := r.SkynetSkyfilePost(lup, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("Example skylink:", skylink)
 
-		// Try to download the file behind the skylink.
-		fetchedData, err := r.RenterSkylinkGet(skylink)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(fetchedData, data) {
-			t.Error("upload and download doesn't match")
-			t.Log(data)
-			t.Log(fetchedData)
-		}
-	*/
+	// Try to download the file behind the skylink.
+	fetchedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fetchedData, data) {
+		t.Error("upload and download doesn't match")
+		t.Log(data)
+		t.Log(fetchedData)
+	}
+
+	// Get the list of files in the skynet directory and see if the file is
+	// present.
+	rdg, err := r.RenterDirRootGet(modules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rdg.Files) != 1 {
+		t.Fatal("expecting a file to be in the SkynetFolder after uploading")
+	}
+
+	// Create some data to upload as a skyfile.
+	rootData := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	rootReader := bytes.NewReader(rootData)
+	// Call the upload skyfile client call.
+	rootFilename := "rootTestSmall"
+	rootUploadSiaPath, err := modules.NewSiaPath("rootTestSmallPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Quick fuzz on the force value so that sometimes it is set, sometimes it
+	// is not.
+	var rootForce bool
+	if fastrand.Intn(2) == 0 {
+		rootForce = true
+	}
+	rootLup := modules.LinkfileUploadParameters{
+		SiaPath:             rootUploadSiaPath,
+		Force:               rootForce,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.LinkfileMetadata{
+			Filename: rootFilename,
+			Mode:     0600, // Intentionally does not match any defaults.
+		},
+
+		Reader: rootReader,
+	}
+	_, err = r.SkynetSkyfilePost(rootLup, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the list of files in the skynet directory and see if the file is
+	// present.
+	rootRdg, err := r.RenterDirRootGet(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rootRdg.Files) != 1 {
+		t.Fatal("expecting a file to be in the root folder after uploading")
+	}
+
+	// TODO: Check that the mode was set correctly after fetching.
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
 	// one sector.
