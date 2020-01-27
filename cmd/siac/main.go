@@ -292,8 +292,8 @@ func main() {
 
 	root.AddCommand(skynetCmd)
 	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetConvertCmd)
-	skynetCmd.Flags().BoolVarP(&skynetListRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
-	skynetCmd.Flags().BoolVarP(&skynetFromRoot, "root", "", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetUploadCmd.Flags().BoolVarP(&skynetFromRoot, "root", "", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetLsCmd.Flags().BoolVarP(&skynetListRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
