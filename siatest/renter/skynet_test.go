@@ -9,9 +9,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSkyfile provides basic end-to-end testing for uploading skyfiles and
+// TestSkynet provides basic end-to-end testing for uploading skyfiles and
 // downloading the resulting skylinks.
-func TestSkyfile(t *testing.T) {
+func TestSkynet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
