@@ -1840,20 +1840,26 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 	return s[i].dir.SiaPath.String() < s[j].dir.SiaPath.String()
 }
 
-// getDirRoot returns the directory info for the directory at siaPath and its
+// getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
-func getDirRoot(siaPath modules.SiaPath, recursive bool) (dirs []directoryInfo) {
-	rgd, err := httpClient.RenterDirRootGet(siaPath)
+func getDir(siaPath modules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
+	var rd api.RenterDirectory
+	var err error
+	if root {
+		rd, err = httpClient.RenterDirRootGet(siaPath)
+	} else {
+		rd, err = httpClient.RenterDirGet(siaPath)
+	}
 	if err != nil {
 		die("failed to get dir info:", err)
 	}
-	dir := rgd.Directories[0]
-	subDirs := rgd.Directories[1:]
+	dir := rd.Directories[0]
+	subDirs := rd.Directories[1:]
 
 	// Append directory to dirs.
 	dirs = append(dirs, directoryInfo{
 		dir:     dir,
-		files:   rgd.Files,
+		files:   rd.Files,
 		subDirs: subDirs,
 	})
 
@@ -1861,38 +1867,9 @@ func getDirRoot(siaPath modules.SiaPath, recursive bool) (dirs []directoryInfo) 
 	if !recursive {
 		return
 	}
-	// Call getDirRoot on subdirs.
-	for _, subDir := range subDirs {
-		rdirs := getDirRoot(subDir.SiaPath, recursive)
-		dirs = append(dirs, rdirs...)
-	}
-	return
-}
-
-// getDir returns the directory info for the directory at siaPath and its
-// subdirs.
-func getDir(siaPath modules.SiaPath) (dirs []directoryInfo) {
-	rgd, err := httpClient.RenterDirGet(siaPath)
-	if err != nil {
-		die("failed to get dir info:", err)
-	}
-	dir := rgd.Directories[0]
-	subDirs := rgd.Directories[1:]
-
-	// Append directory to dirs.
-	dirs = append(dirs, directoryInfo{
-		dir:     dir,
-		files:   rgd.Files,
-		subDirs: subDirs,
-	})
-
-	// If -R isn't set we are done.
-	if !renterListRecursive {
-		return
-	}
 	// Call getDir on subdirs.
 	for _, subDir := range subDirs {
-		rdirs := getDir(subDir.SiaPath)
+		rdirs := getDir(subDir.SiaPath, root, recursive)
 		dirs = append(dirs, rdirs...)
 	}
 	return
@@ -1942,7 +1919,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Get dirs with their corresponding files.
-	dirs := getDir(sp)
+	dirs := getDir(sp, renterListRoot, renterListRecursive)
 	numFiles := 0
 	var totalStored uint64
 	for _, dir := range dirs {
@@ -2340,7 +2317,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Get the full set of files and directories.
-	dirs := getDirRoot(sp, skynetLsRecursive)
+	dirs := getDir(sp, true, skynetLsRecursive)
 	// Drop any files that are not tracking skylinks.
 	for j := 0; j < len(dirs); j++ {
 		for i := 0; i < len(dirs[j].files); i++ {
@@ -2366,12 +2343,12 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
 	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	sort.Sort(byDirectoryInfo(dirs))
 	// Print dirs.
 	for _, dir := range dirs {
-		fmt.Fprintf(w, "%v/\t\t\n", dir.dir.SiaPath)
+		fmt.Printf("%v/\n", dir.dir.SiaPath)
 		// Print subdirs.
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
 			subDirName := subDir.SiaPath.Name() + "/"
@@ -2390,9 +2367,9 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(w, "\t%v\t\n", skylink)
 			}
 		}
-		fmt.Fprintf(w, "\t\t\n")
+		w.Flush()
+		fmt.Println()
 	}
-	w.Flush()
 }
 
 // skynetuploadcmd will upload a file to Skynet.
