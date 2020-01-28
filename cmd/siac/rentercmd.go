@@ -2351,7 +2351,18 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}
-	fmt.Println("File uploaded successfully, the skylink is", skylink)
+
+	// Calculate the siapath that was used for the upload.
+	var skypath modules.SiaPath
+	if skynetUploadRoot {
+		skypath = siaPath
+	} else {
+		skypath, err = modules.SkynetFolder.Join(siaPath.String())
+		if err != nil {
+			die("could not fetch skypath:", err)
+		}
+	}
+	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
 }
 
 // skynetconvertcmd will convert an existing siafile to a skyfile and skylink on
@@ -2375,7 +2386,18 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	if err != nil {
 		die("could not convert siafile to skyfile:", err)
 	}
-	fmt.Println("File converted successfully, the skylink is", skylink)
+
+	// Calculate the siapath that was used for the upload.
+	var skypath modules.SiaPath
+	if skynetUploadRoot {
+		skypath = destSiaPath
+	} else {
+		skypath, err = modules.SkynetFolder.Join(destSiaPath.String())
+		if err != nil {
+			die("could not fetch skypath:", err)
+		}
+	}
+	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
