@@ -69,6 +69,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -84,11 +85,6 @@ const (
 	dbFilename   = modules.HostDir + ".db"
 	logFile      = modules.HostDir + ".log"
 	settingsFile = modules.HostDir + ".json"
-
-	// rpcPriceGuaranteePeriod defines for how many blocks the host guarantees a
-	// fixed set of RPC prices to the renter. Current block height + this period
-	// defines the expiry block height on the RPC price table.
-	rpcPriceGuaranteePeriod = 6 // ~1h
 )
 
 var (
@@ -105,12 +101,20 @@ var (
 	errNilWallet  = errors.New("host cannot use a nil wallet")
 	errNilGateway = errors.New("host cannot use nil gateway")
 
-	// persistMetadata is the header that gets written to the persist file, and is
-	// used to recognize other persist files.
+	// persistMetadata is the header that gets written to the persist file, and
+	// is used to recognize other persist files.
 	persistMetadata = persist.Metadata{
 		Header:  "Sia Host",
 		Version: "1.2.0",
 	}
+
+	// rpcPriceGuaranteePeriod defines the amount of time the host guarantees a
+	// fixed set of RPC costs to the renter.
+	rpcPriceGuaranteePeriod = build.Select(build.Var{
+		Standard: 10 * time.Minute,
+		Dev:      1 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // A Host contains all the fields necessary for storing files for clients and
@@ -222,26 +226,22 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
-// managedUpdatePriceTable will recalculate the price of every RPC and update
-// the host's RPC price table.
+// managedUpdatePriceTable will recalculate the RPC costs and update
+// the host's RPC price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
-	currentBlockHeight := h.BlockHeight()
-
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable()
-	priceTable.Expiry = currentBlockHeight + rpcPriceGuaranteePeriod
+	priceTable := modules.NewRPCPriceTable(time.Now().Add(rpcPriceGuaranteePeriod))
 
 	// recalculate the price for every RPC
 	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
 
-	// TODO: for now just hardcode the cost of the MDM operations, needs a
-	// better place
+	// TODO: hardcoded MDM costs, needs a better place
 	his := h.InternalSettings()
-	priceTable.Costs[modules.ComponentCompute] = types.ZeroCurrency
-	priceTable.Costs[modules.ComponentMemory] = types.ZeroCurrency
-	priceTable.Costs[modules.OperationDiskAccess] = types.ZeroCurrency
-	priceTable.Costs[modules.OperationDiskRead] = his.MinBaseRPCPrice
-	priceTable.Costs[modules.OperationDiskWrite] = his.MinBaseRPCPrice
+	priceTable.Costs[modules.MDMComponentCompute] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMComponentMemory] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMOperationDiskAccess] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMOperationDiskRead] = his.MinBaseRPCPrice
+	priceTable.Costs[modules.MDMOperationDiskWrite] = his.MinBaseRPCPrice
 
 	// update the pricetable
 	h.mu.Lock()

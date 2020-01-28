@@ -2,21 +2,15 @@ package modules
 
 import (
 	"gitlab.com/NebulousLabs/Sia/types"
+	"time"
 )
 
 type (
-	// RPCPriceTable contains the cost of every RPC the host offers. These
-	// prices are guaranteed to remain valid up until the specified expiry block
-	// height.
+	// RPCPriceTable contains a list of RPC costs to remain vaild up until the
+	// specified expiry timestamp.
 	RPCPriceTable struct {
 		Costs  map[types.Specifier]types.Currency
-		Expiry types.BlockHeight
-	}
-
-	// costEntry is a helper struct used when marshaling the RPC price table
-	costEntry struct {
-		ID   types.Specifier
-		Cost types.Currency
+		Expiry types.Timestamp
 	}
 )
 
@@ -33,8 +27,9 @@ type (
 )
 
 // NewRPCPriceTable returns an empty RPC price table
-func NewRPCPriceTable() RPCPriceTable {
+func NewRPCPriceTable(expiry time.Time) RPCPriceTable {
 	return RPCPriceTable{
-		Costs: make(map[types.Specifier]types.Currency),
+		Expiry: types.Timestamp(expiry.Unix()),
+		Costs:  make(map[types.Specifier]types.Currency),
 	}
 }

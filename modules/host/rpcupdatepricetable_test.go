@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -14,8 +15,7 @@ import (
 // TestMarshalUnmarshalRPCPriceTable tests the MarshalJSON and UnmarshalJSON
 // function of the RPC price table
 func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
-	pt := modules.NewRPCPriceTable()
-	pt.Expiry = types.BlockHeight(1)
+	pt := modules.NewRPCPriceTable(time.Now().Add(1))
 	pt.Costs[types.NewSpecifier("RPC1")] = types.NewCurrency64(1)
 	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
 
@@ -73,7 +73,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 	// call the update price table RPC directly
 	cc, sc := createTestingConns()
-	_, err = ht.host.managedRPCUpdatePriceTable(sc)
+	err = ht.host.managedRPCUpdatePriceTable(sc)
 	if err != nil {
 		t.Fatal("Failed to update the RPC price table", err)
 	}

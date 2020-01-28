@@ -245,32 +245,8 @@ func TestHostInitialization(t *testing.T) {
 	}
 
 	// verify its RPC price table was properly initialised
-	if ht.host.priceTable.Costs == nil || ht.host.priceTable.Expiry != rpcPriceGuaranteePeriod {
+	if ht.host.priceTable.Costs == nil || ht.host.priceTable.Expiry == 0 {
 		t.Fatal("RPC price table was not properly initialised")
-	}
-
-	// unlock the wallet
-	err = ht.wallet.Reset()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = ht.initWallet()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// mine a block and verify its blockheight increased
-	if _, err := ht.miner.AddBlock(); err != nil {
-		t.Fatal("Failed to mine block", err)
-	}
-	if ht.host.blockHeight != 1 {
-		t.Fatal("block height did not increase correctly after first block mined:", ht.host.blockHeight, 1)
-	}
-
-	// trigger an update and verify if it was updated
-	ht.host.managedUpdatePriceTable()
-	if ht.host.priceTable.Expiry != rpcPriceGuaranteePeriod+1 {
-		t.Fatal("RPC price table's expriy was not properly updated")
 	}
 }
 

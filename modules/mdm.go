@@ -17,11 +17,11 @@ type (
 
 // MDM instruction cost component specifiers
 var (
-	ComponentCompute    = types.NewSpecifier("Compute")
-	ComponentMemory     = types.NewSpecifier("Memory")
-	OperationDiskAccess = types.NewSpecifier("DiskAccess")
-	OperationDiskRead   = types.NewSpecifier("DiskRead")
-	OperationDiskWrite  = types.NewSpecifier("DiskWrite")
+	MDMComponentCompute    = types.NewSpecifier("Compute")
+	MDMComponentMemory     = types.NewSpecifier("Memory")
+	MDMOperationDiskAccess = types.NewSpecifier("DiskAccess")
+	MDMOperationDiskRead   = types.NewSpecifier("DiskRead")
+	MDMOperationDiskWrite  = types.NewSpecifier("DiskWrite")
 )
 
 const (
