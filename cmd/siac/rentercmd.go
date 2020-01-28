@@ -2306,7 +2306,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Check whether the command is based in root or based in the skynet folder.
-	if !skynetLsRoot {
+	if !skynetLsRoot && sp.String() != "" {
 		sp, err = modules.SkynetFolder.Join(sp.String())
 		if err != nil {
 			die("could not build siapth:", err)
