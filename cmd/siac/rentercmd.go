@@ -2001,7 +2001,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			renewStr := yesNo(file.Renewing)
 			onDiskStr := yesNo(file.OnDisk)
 			recoverStr := yesNo(file.Recoverable)
-			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckStr, renewStr, onDiskStr, recoverStr)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckStr, renewStr, onDiskStr, recoverStr)
 		}
 		w.Flush()
 		fmt.Println()
