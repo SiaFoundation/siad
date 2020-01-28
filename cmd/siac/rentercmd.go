@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -245,6 +246,15 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Long: `Perform actions related to Skynet, a file sharing and data publication platform
 on top of Sia.`,
 		Run: skynetcmd,
+	}
+
+	skynetDownloadCmd = &cobra.Command{
+		Use: "download [skylink] [destination]",
+		Short: "Download a skylink from skynet.",
+		Long: `Download a skylink from skynet. The download may fail unless this node is
+configured as a skynet portal. Use the --portal flag to fetch a skylink from a
+skynet portal.`,
+		Run: skynetdownloadcmd,
 	}
 
 	skynetLsCmd = &cobra.Command{
@@ -2223,6 +2233,42 @@ func renterfilesuploadcmd(source, path string) {
 func skynetcmd(cmd *cobra.Command, args []string) {
 	cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
+}
+
+// skynetdownloadcmd will perform the download of a skylink.
+func skynetdownloadcmd(cmd *cobra.Command, args []string) {
+	if len(args) != 2 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+
+	// Open the file.
+	skylink := args[0]
+	filename := args[1]
+	file, err := os.Create(filename)
+	if err != nil {
+		die("Unable to open destination file:", err)
+	}
+	defer file.Close()
+
+	// Check whether the portal flag is set, if so use the portal download
+	// method.
+	if skynetDownloadPortal != "" {
+		// TODO: Get a reader from a connection opened to the portal.
+		return
+	}
+
+	// Try to perform a download using the client package.
+	reader, err := httpClient.SkynetSkylinkReaderGet(skylink)
+	if err != nil {
+		die("Unable to fetch skylink:", err)
+	}
+	defer reader.Close()
+
+	_, err = io.Copy(file, reader)
+	if err != nil {
+		die("Unable to write full data:", err)
+	}
 }
 
 // skynetlscmd lists all of the skylinks in a directory.

@@ -2,10 +2,12 @@ package renter
 
 import (
 	"bytes"
+	"io/ioutil"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -78,6 +80,23 @@ func TestSkynet(t *testing.T) {
 		t.Error("upload and download doesn't match")
 		t.Log(data)
 		t.Log(fetchedData)
+	}
+	// Try to download the file using the ReaderGet method.
+	skylinkReader, err := r.SkynetSkylinkReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readerData, err := ioutil.ReadAll(skylinkReader)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
 	}
 
 	// Get the list of files in the skynet directory and see if the file is

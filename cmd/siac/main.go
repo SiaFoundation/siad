@@ -34,8 +34,9 @@ var (
 	renterShowHistory         bool   // Show download history in addition to download queue.
 	renterVerbose             bool   // Show additional info about the renter
 	siaDir                    string // Path to sia data dir
-	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
+	skynetDownloadPortal      string // Portal to use when trying to download a skylink.
 	skynetLsRecursive         bool   // List files of folder recursively.
+	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
@@ -291,8 +292,9 @@ func main() {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetConvertCmd)
-	skynetUploadCmd.Flags().BoolVarP(&skynetUploadRoot, "root", "", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd)
+	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 
 	root.AddCommand(gatewayCmd)

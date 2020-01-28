@@ -105,6 +105,38 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	return res.Header, d, err
 }
 
+// getReaderResponse requests the specified resource. The response, if provided,
+// will be returned as an io.Reader.
+func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser, error) {
+	req, err := c.NewRequest("GET", resource, nil)
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "failed to construct GET request")
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "GET request failed")
+	}
+
+	if res.StatusCode == http.StatusNotFound {
+		drainAndClose(res.Body)
+		return nil, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
+	}
+
+	// If the status code is not 2xx, decode and return the accompanying
+	// api.Error.
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		drainAndClose(res.Body)
+		return nil, nil, errors.AddContext(readAPIError(res.Body), "GET request error")
+	}
+
+	if res.StatusCode == http.StatusNoContent {
+		// no reason to read the response
+		drainAndClose(res.Body)
+		return res.Header, nil, nil
+	}
+	return res.Header, res.Body, nil
+}
+
 // getRawResponse requests part of the specified resource. The response, if
 // provided, will be returned in a byte slice
 func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte, error) {

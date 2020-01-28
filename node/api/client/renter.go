@@ -721,10 +721,18 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 
 // SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
 // file.
-func (c *Client) SkynetSkylinkGet(skylink string) (fileData []byte, err error) {
+func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, error) {
 	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
-	_, fileData, err = c.getRawResponse(getQuery)
+	_, fileData, err := c.getRawResponse(getQuery)
 	return fileData, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkReaderGet uses the /skynet/skylink endpoint to fetch a reader of
+// the file data.
+func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
