@@ -2438,7 +2438,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		for _, subDir := range dir.subDirs {
 			subDirName := subDir.SiaPath.Name() + "/"
 			size := modules.FilesizeUnits(subDir.AggregateSize)
-			fmt.Fprintf(w, "  %v\t\t%v\n", subDirName, size)
+			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, size)
 		}
 
 		// Print files.
@@ -2447,7 +2447,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 			name := file.SiaPath.Name()
 			firstSkylink := file.Sialinks[0]
 			size := modules.FilesizeUnits(file.Filesize)
-			fmt.Fprintf(w, "  %v\t%v\t%v\n", name, firstSkylink, size)
+			fmt.Fprintf(w, "  %v\t%v\t%9v\n", name, firstSkylink, size)
 			for _, skylink := range file.Sialinks[1:] {
 				fmt.Fprintf(w, "\t%v\t\n", skylink)
 			}
