@@ -1947,6 +1947,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	// Handle the non verbose output.
 	if !renterListVerbose {
 		for _, dir := range dirs {
+			fmt.Println(dir.dir.SiaPath)
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			for _, subDir := range dir.subDirs {
 				name := subDir.SiaPath.Name() + "/"
