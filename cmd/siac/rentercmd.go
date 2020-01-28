@@ -250,7 +250,7 @@ on top of Sia.`,
 	}
 
 	skynetDownloadCmd = &cobra.Command{
-		Use: "download [skylink] [destination]",
+		Use:   "download [skylink] [destination]",
 		Short: "Download a skylink from skynet.",
 		Long: `Download a skylink from skynet. The download may fail unless this node is
 configured as a skynet portal. Use the --portal flag to fetch a skylink from a
@@ -2245,6 +2245,7 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 
 	// Open the file.
 	skylink := args[0]
+	skylink := strings.TrimPrefix(skylink, "sia://")
 	filename := args[1]
 	file, err := os.Create(filename)
 	if err != nil {
