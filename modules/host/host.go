@@ -108,8 +108,8 @@ var (
 		Version: "1.2.0",
 	}
 
-	// rpcPriceGuaranteePeriod defines the amount of time the host guarantees a
-	// fixed set of RPC costs to the renter.
+	// rpcPriceGuaranteePeriod defines the amount of time a host will guarantee
+	// its prices to the renter.
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
 		Dev:      1 * time.Minute,
@@ -175,11 +175,11 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// The price table holds a list of prices, which is the cost of every RPC
-	// that is callable on the host. These prices are dynamic, and are subject
-	// to various conditions specific to the RPC in question. Examples of such
-	// conditions are congestion, load, liquidity, etc. Alongside the costs, the
-	// host sets an expiry block height up until which it guarantees pricing.
+	// The price table contains a set of RPC costs, along with an expiry that
+	// dictates up until what time the host guarantees the prices that are
+	// listed. These host's RPC prices are dynamic, and are subject to various
+	// conditions specific to the RPC in question. Examples of such conditions
+	// are congestion, load, liquidity, etc.
 	priceTable modules.RPCPriceTable
 
 	// Misc state.
@@ -226,11 +226,11 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
-// managedUpdatePriceTable will recalculate the RPC costs and update
-// the host's RPC price table accordingly.
+// managedUpdatePriceTable will recalculate the RPC costs and update the host's
+// price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable(time.Now().Add(rpcPriceGuaranteePeriod))
+	priceTable := modules.NewRPCPriceTable(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
 
 	// recalculate the price for every RPC
 	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()

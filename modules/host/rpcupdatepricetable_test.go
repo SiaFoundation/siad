@@ -15,7 +15,7 @@ import (
 // TestMarshalUnmarshalRPCPriceTable tests the MarshalJSON and UnmarshalJSON
 // function of the RPC price table
 func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
-	pt := modules.NewRPCPriceTable(time.Now().Add(1))
+	pt := modules.NewRPCPriceTable(time.Now().Add(1).Unix())
 	pt.Costs[types.NewSpecifier("RPC1")] = types.NewCurrency64(1)
 	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
 

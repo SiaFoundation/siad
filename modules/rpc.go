@@ -2,7 +2,6 @@ package modules
 
 import (
 	"gitlab.com/NebulousLabs/Sia/types"
-	"time"
 )
 
 type (
@@ -10,7 +9,7 @@ type (
 	// specified expiry timestamp.
 	RPCPriceTable struct {
 		Costs  map[types.Specifier]types.Currency
-		Expiry types.Timestamp
+		Expiry int64
 	}
 )
 
@@ -27,9 +26,9 @@ type (
 )
 
 // NewRPCPriceTable returns an empty RPC price table
-func NewRPCPriceTable(expiry time.Time) RPCPriceTable {
+func NewRPCPriceTable(expiry int64) RPCPriceTable {
 	return RPCPriceTable{
-		Expiry: types.Timestamp(expiry.Unix()),
+		Expiry: expiry,
 		Costs:  make(map[types.Specifier]types.Currency),
 	}
 }
