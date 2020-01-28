@@ -87,7 +87,7 @@ func (i *instructionHasSector) Execute(fcRoot crypto.Hash) Output {
 	}
 }
 
-// ReadOnly for the 'ReadSector' instruction is 'true'.
+// ReadOnly for the 'HasSector' instruction is 'true'.
 func (i *instructionHasSector) ReadOnly() bool {
 	return true
 }
