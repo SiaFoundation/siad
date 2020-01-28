@@ -2307,7 +2307,7 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 
 	// Open the file.
 	skylink := args[0]
-	skylink := strings.TrimPrefix(skylink, "sia://")
+	skylink = strings.TrimPrefix(skylink, "sia://")
 	filename := args[1]
 	file, err := os.Create(filename)
 	if err != nil {
