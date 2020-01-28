@@ -1941,13 +1941,14 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Print text that available for both verbose and not verbose output.
-	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
-	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
+	numFilesDirs := numFiles + len(dirs) - 1
+	totalStoredStr := modules.FilesizeUnits(totalStored)
+	fmt.Printf("\nListing %v files/dirs: %9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
 	if !renterListVerbose {
 		for _, dir := range dirs {
-			fmt.Println(dir.dir.SiaPath)
+			fmt.Println(dir.dir.SiaPath.String() + "/")
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			for _, subDir := range dir.subDirs {
 				name := subDir.SiaPath.Name() + "/"
@@ -1968,7 +1969,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Handle the verbose output.
 	for _, dir := range dirs {
-		fmt.Println(dir.dir.SiaPath)
+		fmt.Println(dir.dir.SiaPath.String() + "/")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
 		for _, subDir := range dir.subDirs {
