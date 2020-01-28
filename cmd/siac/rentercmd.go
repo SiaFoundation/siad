@@ -2404,10 +2404,10 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	// Get the full set of files and directories.
 	dirs := getDirRoot(sp, skynetLsRecursive)
 	// Drop any files that are not tracking skylinks.
-	for _, dir := range dirs {
-		for i := 0; i < len(dir.files); i++ {
-			if len(dir.files[i].Sialinks) == 0 {
-				dir.files = append(dir.files[:i], dir.files[i+1:]...)
+	for j := 0; j < len(dirs); j++ {
+		for i := 0; i < len(dirs[j].files); i++ {
+			if len(dirs[j].files[i].Sialinks) == 0 {
+				dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
 				i--
 			}
 		}
