@@ -31,6 +31,17 @@ func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(programLen).Mul64(programTime).Add(pt.InitBaseCost)
 }
 
+// HasSectorCost is the cost of executing a 'HasSector' instruction.
+func HasSectorCost() Cost {
+	return Cost{
+		Compute:      1,
+		DiskAccesses: 1,
+		DiskRead:     32, // 32 bytes
+		DiskWrite:    0,
+		Memory:       32, // 32 bytes
+	}
+}
+
 // ReadCost is the cost of executing a 'Read' instruction. It is defined as:
 // 'readBaseCost' + 'readLengthCost' * `readLength`
 func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {

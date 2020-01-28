@@ -47,6 +47,12 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 	return h.blockHeight
 }
 
+// BlockHeight returns an incremented blockheight every time it's called.
+func (h *TestHost) HasSector(sectorRoot crypto.Hash) (bool, error) {
+	_, exists := h.sectors[sectorRoot]
+	return exists, nil
+}
+
 // ReadSector implements the Host interface by returning a random sector for
 // each root. Calling ReadSector multiple times on the same root will result in
 // the same data.

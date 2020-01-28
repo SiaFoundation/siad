@@ -85,6 +85,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		switch i.Specifier {
 		case modules.SpecifierAppend:
 			instruction, err = p.staticDecodeAppendInstruction(i)
+		case modules.SpecifierHasSector:
+			instruction, err = p.staticDecodeHasSectorInstruction(i)
 		case modules.SpecifierReadSector:
 			instruction, err = p.staticDecodeReadSectorInstruction(i)
 		default:
