@@ -264,7 +264,7 @@ skynet portal.`,
 		Long: `List all skyfiles that the user has pinned along with the corresponding
 skylinks. By default, only files in var/skylinks will be displayed. The --root
 flag can be used to view skyfiles pinned in other folders.`,
-		Run: wrap(skynetlscmd),
+		Run: skynetlscmd,
 	}
 
 	skynetUploadCmd = &cobra.Command{
@@ -1842,7 +1842,7 @@ func (s byDirectoryInfo) Less(i, j int) bool {
 
 // getDirRoot returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
-func getDirRoot(siaPath modules.SiaPath) (dirs []directoryInfo) {
+func getDirRoot(siaPath modules.SiaPath, recursive bool) (dirs []directoryInfo) {
 	rgd, err := httpClient.RenterDirRootGet(siaPath)
 	if err != nil {
 		die("failed to get dir info:", err)
@@ -1858,12 +1858,12 @@ func getDirRoot(siaPath modules.SiaPath) (dirs []directoryInfo) {
 	})
 
 	// If -R isn't set we are done.
-	if !renterListRecursive {
+	if recursive {
 		return
 	}
 	// Call getDirRoot on subdirs.
 	for _, subDir := range subDirs {
-		rdirs := getDirRoot(subDir.SiaPath)
+		rdirs := getDirRoot(subDir.SiaPath, recursive)
 		dirs = append(dirs, rdirs...)
 	}
 	return
@@ -2279,40 +2279,143 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-// skynetlscmd lists all of the skylinks in a directory.
-func skynetlscmd() {
-	// Get dirs with their corresponding files.
-	dirs := getDirRoot(modules.SkynetFolder)
-	numFiles := 0
+// skynetlscmd is the handler for the command `siac skynet ls`. Works very
+// smilar to 'siac renter ls' but defaults to the SkynetFolder and only displays
+// files that are pinning skylinks.
+func skynetlscmd(cmd *cobra.Command, args []string) {
+	var path string
+	switch len(args) {
+	case 0:
+		path = "."
+	case 1:
+		path = args[0]
+	default:
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+	// Parse the input siapath.
+	var sp modules.SiaPath
+	var err error
+	if path == "." || path == "" || path == "/" {
+		sp = modules.RootSiaPath()
+	} else {
+		sp, err = modules.NewSiaPath(path)
+		if err != nil {
+			die("could not parse siapath:", err)
+		}
+	}
+
+	// Check whether the command is based in root or based in the skynet folder.
+	if !skynetLsRoot {
+		sp, err = modules.SkynetFolder.Join(sp.String())
+		if err != nil {
+			die("could not build siapth:", err)
+		}
+	}
+
+	// Check if the command is hitting a single file.
+	if !sp.IsRoot() {
+		rf, err := httpClient.RenterFileGet(sp)
+		if err == nil {
+			if len(rf.File.Sialinks) == 0 {
+				fmt.Println("File is not pinning any skylinks")
+				return
+			}
+			fmt.Println()
+			json, err := json.MarshalIndent(rf.File, "", "  ")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fmt.Println(string(json))
+			fmt.Println()
+			return
+		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			die(fmt.Sprintf("Error getting file %v: %v", path, err))
+		}
+	}
+
+	// Get the full set of files and directories.
+	dirs := getDirRoot(sp, skynetLsRecursive)
+	// Drop any files that are not tracking skylinks.
 	for _, dir := range dirs {
+		for i := 0; i < len(dir.files); i++ {
+			if len(dir.files[i].Sialinks) == 0 {
+				dir.files = append(dir.files[:i], dir.files[i+1:]...)
+				i--
+			}
+		}
+	}
+
+	// Produce the full information for these files.
+	numFiles := 0
+	var totalStored uint64
+	for _, dir := range dirs {
+		for _, file := range dir.files {
+			totalStored += file.Filesize
+		}
 		numFiles += len(dir.files)
 	}
 	if numFiles+len(dirs) < 1 {
-		fmt.Println("No skylinks have been uploaded in this directory.")
+		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
-	fmt.Printf("Listing %v files/dirs:\n", numFiles+len(dirs)-1)
-
-	// Print out all of the dirs.
+	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
+	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	if renterListVerbose {
+		fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
+	}
 	sort.Sort(byDirectoryInfo(dirs))
+	// Print dirs.
 	for _, dir := range dirs {
-		fmt.Fprintf(w, "\t\t\t\n")
-		fmt.Fprintf(w, "\t%v/\t\t\n", dir.dir.SiaPath)
+		fmt.Fprintf(w, "%v/\t\t\t\t\t\t\t\t\t\t\n", dir.dir.SiaPath)
+		// Print subdirs.
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
-			fmt.Fprintf(w, "\t\t%v/\t\n", subDir.SiaPath.Name())
-		}
-		for _, file := range dir.files {
-			if len(file.Sialinks) == 0 {
-				fmt.Fprintf(w, "\t\t%v\t\n", file.SiaPath.Name())
-			} else {
-				fmt.Fprintf(w, "\t\t%v\t%v\n", file.SiaPath.Name(), file.Sialinks[0])
-				for _, skylink := range file.Sialinks[1:] {
-					fmt.Fprintf(w, "\t\t\t%v\n", skylink)
+			fmt.Fprintf(w, "  %s", subDir.SiaPath.Name()+"/")
+			fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(subDir.AggregateSize))
+			if renterListVerbose {
+				redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
+				if subDir.AggregateMinRedundancy == -1 {
+					redundancyStr = "-"
 				}
+				healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
+				stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, stuckStr, "-", "-", "-")
 			}
+			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
+
+		// Print files.
+		sort.Sort(bySiaPathFile(dir.files))
+		for _, file := range dir.files {
+			name := file.SiaPath.Name()
+			fmt.Fprintf(w, "  %s", name)
+			fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(file.Filesize))
+			if renterListVerbose {
+				availableStr := yesNo(file.Available)
+				renewingStr := yesNo(file.Renewing)
+				redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
+				if file.Redundancy == -1 {
+					redundancyStr = "-"
+				}
+				healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
+				uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
+				if file.UploadProgress == -1 {
+					uploadProgressStr = "-"
+				}
+				onDiskStr := yesNo(file.OnDisk)
+				recoverableStr := yesNo(file.Recoverable)
+				stuckStr := yesNo(file.Stuck)
+				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", availableStr, modules.FilesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+			}
+			if !renterListVerbose && !file.Available {
+				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
+			}
+			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
+		}
+		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 	}
 	w.Flush()
 }
