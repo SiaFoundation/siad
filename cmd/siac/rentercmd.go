@@ -2370,13 +2370,13 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	sort.Sort(byDirectoryInfo(dirs))
 	// Print dirs.
 	for _, dir := range dirs {
-		fmt.Fprintf(w, "%v/\t\t\t\n", dir.dir.SiaPath)
+		fmt.Fprintf(w, "%v/\t\t\n", dir.dir.SiaPath)
 		// Print subdirs.
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
 			subDirName := subDir.SiaPath.Name() + "/"
 			size := modules.FilesizeUnits(subDir.AggregateSize)
-			fmt.Fprintf(w, "\t%v\t\t%v\n", subDirName, size)
+			fmt.Fprintf(w, "  %v\t\t%v\n", subDirName, size)
 		}
 
 		// Print files.
@@ -2385,12 +2385,12 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 			name := file.SiaPath.Name()
 			firstSkylink := file.Sialinks[0]
 			size := modules.FilesizeUnits(file.Filesize)
-			fmt.Fprintf(w, "\t%v\t%v\t%v\n", name, firstSkylink, size)
+			fmt.Fprintf(w, "  %v\t%v\t%v\n", name, firstSkylink, size)
 			for _, skylink := range file.Sialinks[1:] {
-				fmt.Fprintf(w, "\t\t%v\t\n", skylink)
+				fmt.Fprintf(w, "\t%v\t\n", skylink)
 			}
 		}
-		fmt.Fprintf(w, "\t\t\t\n")
+		fmt.Fprintf(w, "\t\t\n")
 	}
 	w.Flush()
 }
