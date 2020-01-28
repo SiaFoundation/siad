@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -2253,17 +2254,23 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 
 	// Check whether the portal flag is set, if so use the portal download
 	// method.
+	var reader io.ReadCloser
 	if skynetDownloadPortal != "" {
-		// TODO: Get a reader from a connection opened to the portal.
-		return
+		url := skynetDownloadPortal + "/" + skylink
+		resp, err := http.Get(url)
+		if err != nil {
+			die("Unable to download from portal:", err)
+		}
+		reader = resp.Body
+		defer reader.Close()
+	} else {
+		// Try to perform a download using the client package.
+		reader, err = httpClient.SkynetSkylinkReaderGet(skylink)
+		if err != nil {
+			die("Unable to fetch skylink:", err)
+		}
+		defer reader.Close()
 	}
-
-	// Try to perform a download using the client package.
-	reader, err := httpClient.SkynetSkylinkReaderGet(skylink)
-	if err != nil {
-		die("Unable to fetch skylink:", err)
-	}
-	defer reader.Close()
 
 	_, err = io.Copy(file, reader)
 	if err != nil {
