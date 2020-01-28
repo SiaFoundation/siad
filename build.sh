@@ -9,11 +9,11 @@ set -e
 
 # Build binaries and sign them.
 for arch in amd64 arm; do
-	for os in darwin linux windows; do
+	for os in darwin linux windows freebsd; do
 	        for pkg in siac siad; do
 			# Ignore unsupported arch/os combinations.
 			if [ "$arch" == "arm" ]; then
-				if [ "$os" == "windows" ] || [ "$os" == "darwin" ]; then
+				if [ "$os" == "windows" ] || [ "$os" == "darwin" ] || [ "$os" == "freebsd" ]; then
 					continue
 				fi
 			fi

@@ -62,6 +62,9 @@ responsibilities.
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
+ - [Download By Root Subsystem](#download-by-root-subsystem)
+ - [Linkfile Subsystem](#linkfile-subsystem)
+ - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
@@ -403,6 +406,45 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
+### Linkfile Subsystem
+
+**Key Files**
+ - [linkfile.go](./linkfile.go)
+ - [linkfilefanout.go](./linkfilefanout.go)
+ - [linkfilefanoutfetch.go](./linkfilefanoutfetch.go)
+
+The linkfile system contains methods for encoding, decoding, uploading, and
+downloading linkfiles using Sialinks, and is one of the foundations underpinning
+Skynet.
+
+The linkfile format is a custom format which prepends metadata to a file such
+that the entire file and all associated metadata can be recovered knowing
+nothing more than a single sector root. That single sector root can be encoded
+alongside some compressed fetch offset and length information to create a
+sialink.
+
+**Outbound Complexities**
+ - callUploadStreamFromReader is used to upload new data to the Sia network when
+   creating linkfiles. This call appears three times in
+   [linkfile.go](./linkfile.go)
+
+### Stream Buffer Subsystem
+
+**Key Files**
+ - [streambuffer.go](./streambuffer.go)
+ - [streambufferlru.go](./streambufferlru.go)
+
+The stream buffer subsystem coordinates buffering for a set of streams. Each
+stream has an LRU which includes both the recently visited data as well as data
+that is being buffered in front of the current read position. The LRU is
+implemented in [streambufferlru.go](./streambufferlru.go).
+
+If there are multiple streams open from the same data source at once, they will
+share their cache. Each stream will maintain its own LRU, but the data is stored
+in a common stream buffer. The stream buffers draw their data from a data source
+interface, which allows multiple different types of data sources to use the
+stream buffer.
+
 ### Upload Subsystem
 **Key Files**
  - [directoryheap.go](./directoryheap.go)
@@ -435,12 +477,33 @@ merkle root and the contract revision.
    `uploadHeap` and then signals the heap's `newUploads` channel so that the
    Repair Loop will work through the heap and upload the chunks
 
+### Download By Root Subsystem
+**Key Files**
+ - [projectdownloadbyroot.go](./projectdownloadbyroot.go)
+ - [workerdownloadbyroot.go](./workerdownloadbyroot.go)
+
+The download by root subsystem exports a single method that allows a caller to
+download or partially download a sector from the Sia network knowing only the
+Merkle root of that sector, and not necessarily knowing which host on the
+network has that sector. The single exported method is 'DownloadByRoot'.
+
+This subsystem was created primarily as a facilitator for the sialinks of
+Skynet. Sialinks provide a merkle root and some offset+length information, but
+do not provide any information about which hosts are storing the sectors. The
+exported method of this subsystem will primarily be called by sialink methods,
+as opposed to being used directly by external users.
+
 ### Upload Streaming Subsystem
 **Key Files**
  - [uploadstreamer.go](./uploadstreamer.go)
 
 *TODO* 
   - fill out subsystem explanation
+
+**Inbound Complexities**
+ - The linkfile subsystem makes three calls to `callUploadStreamFromReader()` in
+   [linkfile.go](./linkfile.go)
+ - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 
 ### Health and Repair Subsystem
 **Key Files**

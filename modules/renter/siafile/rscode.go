@@ -90,7 +90,7 @@ func (rs *RSCode) SupportsPartialEncoding() bool {
 
 // Type returns the erasure coders type identifier.
 func (rs *RSCode) Type() modules.ErasureCoderType {
-	return ecReedSolomon
+	return ECReedSolomon
 }
 
 // NewRSCode creates a new Reed-Solomon encoder/decoder using the supplied

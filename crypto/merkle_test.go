@@ -50,7 +50,7 @@ func TestStorageProof(t *testing.T) {
 	for i := uint64(0); i < numSegments; i++ {
 		baseSegment, hashSet := MerkleProof(data, i)
 		if !VerifySegment(baseSegment, hashSet, numSegments, i, rootHash) {
-			t.Error("Proof", i, "did not pass verification")
+			t.Fatal("Proof", i, "did not pass verification")
 		}
 	}
 

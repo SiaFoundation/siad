@@ -234,7 +234,20 @@ func vacancyStorageFolder(sfs []*storageFolder) (*storageFolder, int) {
 // clearUsage will unset the usage bit at the provided sector index for this
 // storage folder.
 func (sf *storageFolder) clearUsage(sectorIndex uint32) {
-	usageElement := sf.usage[sectorIndex/storageFolderGranularity]
+	usageElementIndex := sectorIndex / storageFolderGranularity
+	// TODO: Bandaid - because the wal is not perfectly consistent, an index out
+	// of bounds can happen here. Need to look at the consistency code and
+	// figure out what is wrong. It seems as though shrinking a storage folder
+	// and then crashing at the wrong time can cause the wal to call
+	// 'clearUsage' on an index that doesn't appear in the storage folder usage
+	// field anymore.
+	if usageElementIndex >= uint32(len(sf.usage)) {
+		// This would be out-of-bounds, do nothing and assume it's going to be
+		// okay.
+		println("clearUsage called on index that does not appear in the usage field: ", sectorIndex, " :: ", usageElementIndex, " :: ", len(sf.usage))
+		return
+	}
+	usageElement := sf.usage[usageElementIndex]
 	bitIndex := sectorIndex % storageFolderGranularity
 	usageElementUpdated := usageElement & (^(1 << bitIndex))
 	if usageElementUpdated != usageElement {
@@ -246,7 +259,17 @@ func (sf *storageFolder) clearUsage(sectorIndex uint32) {
 // setUsage will set the usage bit at the provided sector index for this
 // storage folder.
 func (sf *storageFolder) setUsage(sectorIndex uint32) {
-	usageElement := sf.usage[sectorIndex/storageFolderGranularity]
+	usageElementIndex := sectorIndex / storageFolderGranularity
+	// TODO: Bandaid - put here because of issues seen with clearUsage. The same
+	// issues may or may not be present for setUsage, so a check is put here
+	// defensively.
+	if usageElementIndex >= uint32(len(sf.usage)) {
+		// This would be out-of-bounds, do nothing and assume it's going to be
+		// okay.
+		println("setUsage called on index that does not appear in the usage field: ", sectorIndex, " :: ", usageElementIndex, " :: ", len(sf.usage))
+		return
+	}
+	usageElement := sf.usage[usageElementIndex]
 	bitIndex := sectorIndex % storageFolderGranularity
 	usageElementUpdated := usageElement | (1 << bitIndex)
 	if usageElementUpdated != usageElement {

@@ -70,6 +70,11 @@ const (
 	// permissions are supplied. Changing this value is a compatibility issue
 	// since users expect dirs to have these permissions.
 	DefaultDirPerm = 0755
+
+	// DefaultFilePerm defines the default permissions used for a new file if no
+	// permissions are supplied. Changing this value is a compatibility issue
+	// since users expect files to have these permissions.
+	DefaultFilePerm = 0644
 )
 
 // String returns the string value for the FilterMode
@@ -421,6 +426,7 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
+	Sialinks         []string          `json:"sialinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
@@ -918,6 +924,25 @@ type Renter interface {
 
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
+
+	// CreateSialinkFromSiafile will create a sialink from a siafile. This will
+	// result in some uploading - the base sector linkfile needs to be uploaded
+	// separately, and if there is a fanout expansion that needs to be uploaded
+	// separately as well.
+	CreateSialinkFromSiafile(LinkfileUploadParameters, SiaPath) (Sialink, error)
+
+	// DownloadSialink will fetch a file from the Sia network using the sialink.
+	DownloadSialink(Sialink) (LinkfileMetadata, Streamer, error)
+
+	// UploadLinkfile will upload data to the Sia network from a reader and
+	// create a linkfile, returning the sialink that can be used to access the
+	// file.
+	//
+	// NOTE: A linkfile is a file that is tracked and repaired by the renter.  A
+	// linkfile contains more than just the file data, it also contains metadata
+	// about the file and other information which is useful in fetching the
+	// file.
+	UploadLinkfile(LinkfileUploadParameters) (Sialink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -1032,4 +1057,40 @@ type HostDB interface {
 	// UpdateContracts rebuilds the knownContracts of the HostBD using the provided
 	// contracts.
 	UpdateContracts([]RenterContract) error
+}
+
+// LinkfileMetadata is all of the metadata that gets placed into the first 4096
+// bytes of the linkfile, and is used to set the metadata of the file when
+// writing back to disk. The data is json-encoded when it is placed into the
+// leading bytes of the linkfile, meaning that this struct can be extended
+// without breaking compatibility.
+type LinkfileMetadata struct {
+	Filename string      `json:"filename,omitempty"`
+	Mode     os.FileMode `json:"mode,omitempty"`
+}
+
+// LinkfileUploadParameters establishes the parameters such as the intra-root
+// erasure coding.
+type LinkfileUploadParameters struct {
+	// SiaPath defines the siapath that the linkfile is going to be uploaded to.
+	// Recommended that the linkfile is placed in /var/linkfiles
+	SiaPath SiaPath `json:"siapath"`
+
+	// Force determines whether the upload should overwrite an existing siafile
+	// at 'SiaPath'. If set to false, an error will be returned if there is
+	// already a file or folder at 'SiaPath'. If set to true, any existing file
+	// or folder at 'SiaPath' will be deleted and overwritten.
+	Force bool `json:"force"`
+
+	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
+	// meaning that only the redundancy needs to be configured by the user.
+	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
+
+	// This metadata will be included in the base chunk, meaning that this
+	// metadata is visible to the downloader before any of the file data is
+	// visible.
+	FileMetadata LinkfileMetadata `json:"filemetadata"`
+
+	// Reader supplies the file data for the linkfile.
+	Reader io.Reader `json:"reader"`
 }

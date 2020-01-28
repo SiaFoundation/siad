@@ -127,7 +127,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	defer r.tg.Done()
 
 	// Perform the upload, close the filenode, and return.
-	fileNode, err := r.managedUploadStreamFromReader(up, reader, false)
+	fileNode, err := r.callUploadStreamFromReader(up, reader, false)
 	if err != nil {
 		return errors.AddContext(err, "unable to stream an upload from a reader")
 	}
@@ -188,16 +188,16 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 	return r.staticFileSystem.OpenSiaFile(siaPath)
 }
 
-// managedUploadStreamFromReader reads from the provided reader until io.EOF is
+// callUploadStreamFromReader reads from the provided reader until io.EOF is
 // reached and upload the data to the Sia network. Depending on whether backup
 // is true or false, the siafile for the upload will be stored in the siafileset
 // or backupfileset.
 //
-// managedUploadStreamFromReader will return as soon as the data is available on
+// callUploadStreamFromReader will return as soon as the data is available on
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) managedUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (fileNode *filesystem.FileNode, err error) {
+func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
 	fileNode, err = r.managedInitUploadStream(up, backup)
 	if err != nil {
