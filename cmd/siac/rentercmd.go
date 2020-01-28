@@ -7,8 +7,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -192,47 +194,6 @@ local path where the Sia folder is mounted.`,
 		Run:   wrap(renterfilesuploadcmd),
 	}
 
-	renterLinkfilesCmd = &cobra.Command{
-		Use:   "linkfiles",
-		Short: "Perform actions related to linkfiles",
-		Long: `Linkfiles are files that can be viewed using sialinks, and are a cornerstone for
-publishing and sharing files.`,
-		Run: renterlinkfilescmd,
-	}
-
-	renterLinkfilesLsCmd = &cobra.Command{
-		Use:   "ls",
-		Short: "List all linkfiles that the user has pinned.",
-		Long: `List all linkfiles that the user has pinned along with the corresponding
-sialinks. By default, only files in var/linkfiles will be displayed, the --root
-flag can be used to view other folders.`,
-		Run: wrap(renterlinkfileslscmd),
-	}
-
-	renterLinkfilesUploadCmd = &cobra.Command{
-		Use:   "upload [source path] [destination siapath]",
-		Short: "Upload a linkfile to the Sia network",
-		Long: `
-
-Upload a linkfile to the Sia network. The act of uploading a linkfile will
-produce a sialink. That sialink can be presented to any Skynet portal to recover
-the original data in the linkfile. This command will pin the file to this Sia
-node, meaning that the uploader will pay for storage and repairs on an ongoing
-basis to ensure that the file remains available on the Sia network.`,
-		Run: wrap(renterlinkfilesuploadcmd),
-	}
-
-	/*
-		renterLinkfilesConvertCmd = &cobra.Command{
-			Use:   "convert [source siaPath] [destination siaPath]",
-			Short: "Convert a siafile to a sharable sialink",
-			Long: `Convert a siafile to a linkfile and then generate a sialink. A new linkfile
-	will be created in the user's linkfile directory. The linkfile and the original
-	siafile are both necessary to pin the file and keep the sialink active.`,
-			Run: wrap(renterlinkfilesconvertcmd),
-		}
-	*/
-
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
@@ -287,6 +248,52 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Short: "View the upload queue",
 		Long:  "View the list of files currently uploading.",
 		Run:   wrap(renteruploadscmd),
+	}
+
+	skynetCmd = &cobra.Command{
+		Use:   "skynet",
+		Short: "Perform actions related to Skynet",
+		Long: `Perform actions related to Skynet, a file sharing and data publication platform
+on top of Sia.`,
+		Run: skynetcmd,
+	}
+
+	skynetDownloadCmd = &cobra.Command{
+		Use: "download [skylink] [destination]",
+		Short: "Download a skylink from skynet.",
+		Long: `Download a skylink from skynet. The download may fail unless this node is
+configured as a skynet portal. Use the --portal flag to fetch a skylink from a
+skynet portal.`,
+		Run: skynetdownloadcmd,
+	}
+
+	skynetLsCmd = &cobra.Command{
+		Use:   "ls",
+		Short: "List all skyfiles that the user has pinned.",
+		Long: `List all skyfiles that the user has pinned along with the corresponding
+skylinks. By default, only files in var/skylinks will be displayed. The --root
+flag can be used to view skyfiles pinned in other folders.`,
+		Run: wrap(skynetlscmd),
+	}
+
+	skynetUploadCmd = &cobra.Command{
+		Use:   "upload [source filepath] [destination siapath]",
+		Short: "Upload a file to Skynet",
+		Long: `Upload a file to Skynet. A skylink will be produced which can be shared and used
+to retrieve the file. The file that gets uploaded will be pinned to this Sia
+node, meaning that this node will pay for storage and repairs until the file is
+manually deleted.`,
+		Run: wrap(skynetuploadcmd),
+	}
+
+	skynetConvertCmd = &cobra.Command{
+		Use:   "convert [source siaPath] [destination siaPath]",
+		Short: "Convert a siafile to a skyfile with a skylink.",
+		Long: `Convert a siafile to a skyfile and then generate its skylink. A new skylink
+	will be created in the user's skyfile directory. The skyfile and the original
+	siafile are both necessary to pin the file and keep the skylink active. The
+	skyfile will consume an additional 40 MiB of storage.`,
+		Run: wrap(skynetconvertcmd),
 	}
 )
 
@@ -1916,7 +1923,7 @@ func getDirRoot(siaPath modules.SiaPath) (dirs []directoryInfo) {
 	if !renterListRecursive {
 		return
 	}
-	// Call getDir on subdirs.
+	// Call getDirRoot on subdirs.
 	for _, subDir := range subDirs {
 		rdirs := getDirRoot(subDir.SiaPath)
 		dirs = append(dirs, rdirs...)
@@ -2283,23 +2290,66 @@ func renterfilesuploadcmd(source, path string) {
 	}
 }
 
-// renterlinkfilescmd displays the usage info for the command.
-func renterlinkfilescmd(cmd *cobra.Command, args []string) {
+// skynetcmd displays the usage info for the command.
+//
+// TODO: Could put some stats or summaries or something here.
+func skynetcmd(cmd *cobra.Command, args []string) {
 	cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 
-// renterlinkfileslscmd lists all of the linkfiles that a user has uploaded.
-func renterlinkfileslscmd() {
-	// Get dirs with their corresponding files. The linkfiles list command is
-	// always recursive (at least for now - may add a flag later.).
-	dirs := getDirRoot(modules.LinkfileSiaFolder)
+// skynetdownloadcmd will perform the download of a skylink.
+func skynetdownloadcmd(cmd *cobra.Command, args []string) {
+	if len(args) != 2 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+
+	// Open the file.
+	skylink := args[0]
+	filename := args[1]
+	file, err := os.Create(filename)
+	if err != nil {
+		die("Unable to open destination file:", err)
+	}
+	defer file.Close()
+
+	// Check whether the portal flag is set, if so use the portal download
+	// method.
+	var reader io.ReadCloser
+	if skynetDownloadPortal != "" {
+		url := skynetDownloadPortal + "/" + skylink
+		resp, err := http.Get(url)
+		if err != nil {
+			die("Unable to download from portal:", err)
+		}
+		reader = resp.Body
+		defer reader.Close()
+	} else {
+		// Try to perform a download using the client package.
+		reader, err = httpClient.SkynetSkylinkReaderGet(skylink)
+		if err != nil {
+			die("Unable to fetch skylink:", err)
+		}
+		defer reader.Close()
+	}
+
+	_, err = io.Copy(file, reader)
+	if err != nil {
+		die("Unable to write full data:", err)
+	}
+}
+
+// skynetlscmd lists all of the skylinks in a directory.
+func skynetlscmd() {
+	// Get dirs with their corresponding files.
+	dirs := getDirRoot(modules.SkynetFolder)
 	numFiles := 0
 	for _, dir := range dirs {
 		numFiles += len(dir.files)
 	}
 	if numFiles+len(dirs) < 1 {
-		fmt.Println("No files/dirs have been uploaded.")
+		fmt.Println("No skylinks have been uploaded in this directory.")
 		return
 	}
 	fmt.Printf("Listing %v files/dirs:\n", numFiles+len(dirs)-1)
@@ -2319,8 +2369,8 @@ func renterlinkfileslscmd() {
 				fmt.Fprintf(w, "\t\t%v\t\n", file.SiaPath.Name())
 			} else {
 				fmt.Fprintf(w, "\t\t%v\t%v\n", file.SiaPath.Name(), file.Sialinks[0])
-				for _, sialink := range file.Sialinks[1:] {
-					fmt.Fprintf(w, "\t\t\t%v\n", sialink)
+				for _, skylink := range file.Sialinks[1:] {
+					fmt.Fprintf(w, "\t\t\t%v\n", skylink)
 				}
 			}
 		}
@@ -2328,8 +2378,8 @@ func renterlinkfileslscmd() {
 	w.Flush()
 }
 
-// renterlinkfilesuploadcmd will upload a linkfile to the Sia network.
-func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
+// skynetuploadcmd will upload a file to Skynet.
+func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
 	if err != nil {
@@ -2359,17 +2409,16 @@ func renterlinkfilesuploadcmd(sourcePath, destSiaPath string) {
 
 		Reader: file,
 	}
-	sialink, err := httpClient.RenterLinkfilePost(lup)
+	skylink, err := httpClient.SkynetSkyfilePost(lup, skynetUploadRoot)
 	if err != nil {
-		die("could not upload linkfile:", err)
+		die("could not upload file to Skynet:", err)
 	}
-	fmt.Println("File uploaded successfully, the sialink is", sialink)
+	fmt.Println("File uploaded successfully, the skylink is", skylink)
 }
 
-/*
-// renterlinkfilesconvertcmd will convert an existing siafile to a linkfile and
-// sialink on the Sia network.
-func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
+// skynetconvertcmd will convert an existing siafile to a skyfile and skylink on
+// the Sia network.
+func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	// Create the siapaths.
 	sourceSiaPath, err := modules.NewSiaPath(sourceSiaPathStr)
 	if err != nil {
@@ -2384,13 +2433,12 @@ func renterlinkfilesconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	lup := modules.LinkfileUploadParameters{
 		SiaPath: destSiaPath,
 	}
-	sialink, err := httpClient.RenterConvertSiafileToLinkfilePost(lup, sourceSiaPath)
+	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(lup, sourceSiaPath)
 	if err != nil {
-		die("could not upload linkfile:", err)
+		die("could not convert siafile to skyfile:", err)
 	}
-	fmt.Println("File converted successfully, the sialink is", sialink)
+	fmt.Println("File converted successfully, the skylink is", skylink)
 }
-*/
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
 // displays the prices of various storage operations. The user can submit an

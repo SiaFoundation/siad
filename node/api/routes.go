@@ -124,8 +124,8 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 
 		// Linkfile endpoints
-		router.GET("/renter/sialink/:sialink", api.renterSialinkHandlerGET)
-		router.POST("/renter/linkfile/*siapath", RequirePassword(api.renterLinkfileHandlerPOST, requiredPassword))
+		router.GET("/skynet/skylink/:skylink", api.skynetSkylinkHandlerGET)
+		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))

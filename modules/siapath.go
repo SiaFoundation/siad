@@ -41,8 +41,9 @@ var (
 )
 
 var (
-	// LinkfileSiaFolder is the folder where all of the linkfiles are stored.
-	LinkfileSiaFolder = NewGlobalSiaPath("/var/linkfiles")
+	// SkynetFolder is the Sia folder where all of the skyfiles are stored by
+	// default.
+	SkynetFolder = NewGlobalSiaPath("/var/skynet")
 )
 
 type (
