@@ -2367,59 +2367,30 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
 	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	if renterListVerbose {
-		fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
-	}
 	sort.Sort(byDirectoryInfo(dirs))
 	// Print dirs.
 	for _, dir := range dirs {
-		fmt.Fprintf(w, "%v/\t\t\t\t\t\t\t\t\t\t\n", dir.dir.SiaPath)
+		fmt.Fprintf(w, "%v/\t\t\t\n", dir.dir.SiaPath)
 		// Print subdirs.
 		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
-			fmt.Fprintf(w, "  %s", subDir.SiaPath.Name()+"/")
-			fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(subDir.AggregateSize))
-			if renterListVerbose {
-				redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
-				if subDir.AggregateMinRedundancy == -1 {
-					redundancyStr = "-"
-				}
-				healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
-				stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
-				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, stuckStr, "-", "-", "-")
-			}
-			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
+			subDirName := subDir.SiaPath.Name() + "/"
+			size := modules.FilesizeUnits(subDir.AggregateSize)
+			fmt.Fprintf(w, "\t%v\t\t%v\n", subDirName, size)
 		}
 
 		// Print files.
 		sort.Sort(bySiaPathFile(dir.files))
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
-			fmt.Fprintf(w, "  %s", name)
-			fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(file.Filesize))
-			if renterListVerbose {
-				availableStr := yesNo(file.Available)
-				renewingStr := yesNo(file.Renewing)
-				redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
-				if file.Redundancy == -1 {
-					redundancyStr = "-"
-				}
-				healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
-				uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
-				if file.UploadProgress == -1 {
-					uploadProgressStr = "-"
-				}
-				onDiskStr := yesNo(file.OnDisk)
-				recoverableStr := yesNo(file.Recoverable)
-				stuckStr := yesNo(file.Stuck)
-				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", availableStr, modules.FilesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+			firstSkylink := file.Sialinks[0]
+			size := modules.FilesizeUnits(file.Filesize)
+			fmt.Fprintf(w, "\t%v\t%v\t%v\n", name, firstSkylink, size)
+			for _, skylink := range file.Sialinks[1:] {
+				fmt.Fprintf(w, "\t\t%v\t\n", skylink)
 			}
-			if !renterListVerbose && !file.Available {
-				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
-			}
-			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
 		}
-		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
+		fmt.Fprintf(w, "\t\t\t\n")
 	}
 	w.Flush()
 }
