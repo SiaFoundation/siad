@@ -1932,64 +1932,79 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
 	}
+
+	// Sort the directories and the files.
+	sort.Sort(byDirectoryInfo(dirs))
+	for i := 0; i < len(dirs); i++ {
+		sort.Sort(bySiaPathDir(dirs[i].subDirs))
+		sort.Sort(bySiaPathFile(dirs[i].files))
+	}
+
+	// Print text that available for both verbose and not verbose output.
 	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
 	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	if renterListVerbose {
-		fmt.Fprintln(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable")
-	}
-	sort.Sort(byDirectoryInfo(dirs))
-	// Print dirs.
-	for _, dir := range dirs {
-		fmt.Fprintf(w, "%v/\t\t\t\t\t\t\t\t\t\t\n", dir.dir.SiaPath)
-		// Print subdirs.
-		sort.Sort(bySiaPathDir(dir.subDirs))
-		for _, subDir := range dir.subDirs {
-			fmt.Fprintf(w, "  %s", subDir.SiaPath.Name()+"/")
-			fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(subDir.AggregateSize))
-			if renterListVerbose {
-				redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
-				if subDir.AggregateMinRedundancy == -1 {
-					redundancyStr = "-"
-				}
-				healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
-				stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
-				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", "-", "-", "-", redundancyStr, healthStr, stuckStr, "-", "-", "-")
+
+	// Handle the non verbose output.
+	if !renterListVerbose {
+		for _, dir := range dirs {
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			for _, subDir := range dir.subDirs {
+				name := subDir.SiaPath.Name() + "/"
+				size := modules.FilesizeUnits(subDir.AggregateSize)
+				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 			}
-			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
+
+			for _, file := range dir.files {
+				name := file.SiaPath.Name()
+				size := modules.FilesizeUnits(file.Filesize)
+				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
+			}
+			w.Flush()
+			fmt.Println()
+		}
+		return
+	}
+
+	// Handle the verbose output.
+	for _, dir := range dirs {
+		fmt.Println(dir.dir.SiaPath)
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintf(w, "  Name\tFile size\tAvailable\t Uploaded\tProgress\tRedundancy\t Health\tStuck\tRenewing\tOn Disk\tRecoverable\n")
+		for _, subDir := range dir.subDirs {
+			name := subDir.SiaPath.Name() + "/"
+			size := modules.FilesizeUnits(subDir.AggregateSize)
+			redundancyStr := fmt.Sprintf("%.2f", subDir.AggregateMinRedundancy)
+			if subDir.AggregateMinRedundancy == -1 {
+				redundancyStr = "-"
+			}
+			healthStr := fmt.Sprintf("%.2f%%", subDir.AggregateMaxHealthPercentage)
+			stuckStr := yesNo(subDir.AggregateNumStuckChunks > 0)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, "-", "-", "-", redundancyStr, healthStr, stuckStr, "-", "-", "-")
 		}
 
-		// Print files.
-		sort.Sort(bySiaPathFile(dir.files))
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
-			fmt.Fprintf(w, "  %s", name)
-			fmt.Fprintf(w, "\t%9s", modules.FilesizeUnits(file.Filesize))
-			if renterListVerbose {
-				availableStr := yesNo(file.Available)
-				renewingStr := yesNo(file.Renewing)
-				redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
-				if file.Redundancy == -1 {
-					redundancyStr = "-"
-				}
-				healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
-				uploadProgressStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
-				if file.UploadProgress == -1 {
-					uploadProgressStr = "-"
-				}
-				onDiskStr := yesNo(file.OnDisk)
-				recoverableStr := yesNo(file.Recoverable)
-				stuckStr := yesNo(file.Stuck)
-				fmt.Fprintf(w, "\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", availableStr, modules.FilesizeUnits(file.UploadedBytes), uploadProgressStr, redundancyStr, healthStr, stuckStr, renewingStr, onDiskStr, recoverableStr)
+			size := modules.FilesizeUnits(file.Filesize)
+			availStr := yesNo(file.Available)
+			bytesUploaded := modules.FilesizeUnits(file.UploadedBytes)
+			uploadStr := fmt.Sprintf("%.2f%%", file.UploadProgress)
+			if file.UploadProgress == -1 {
+				uploadStr = "-"
 			}
-			if !renterListVerbose && !file.Available {
-				fmt.Fprintf(w, " (uploading, %0.2f%%)", file.UploadProgress)
+			redundancyStr := fmt.Sprintf("%.2f", file.Redundancy)
+			if file.Redundancy == -1 {
+				redundancyStr = "-"
 			}
-			fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
+			healthStr := fmt.Sprintf("%.2f%%", file.MaxHealthPercent)
+			stuckStr := yesNo(file.Stuck)
+			renewStr := yesNo(file.Renewing)
+			onDiskStr := yesNo(file.OnDisk)
+			recoverStr := yesNo(file.Recoverable)
+			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckStr, renewStr, onDiskStr, recoverStr)
 		}
-		fmt.Fprintln(w, "\t\t\t\t\t\t\t\t\t\t")
+		w.Flush()
+		fmt.Println()
 	}
-	w.Flush()
 }
 
 // renterfilesrenamecmd is the handler for the command `siac renter rename [path] [newpath]`.
