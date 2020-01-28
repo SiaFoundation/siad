@@ -378,7 +378,7 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 		return 0, 0, time.Time{}, err
 	}
 	defer h.tg.Done()
-	writeBytes, readBytes := h.staticMonitor.Counts()
+	readBytes, writeBytes := h.staticMonitor.Counts()
 	startTime := h.staticMonitor.StartTime()
 	return writeBytes, readBytes, startTime, nil
 }
