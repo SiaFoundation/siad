@@ -47,7 +47,8 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 	return h.blockHeight
 }
 
-// BlockHeight returns an incremented blockheight every time it's called.
+// HasSector indicates whether the host stores a sector with a given root or
+// not.
 func (h *TestHost) HasSector(sectorRoot crypto.Hash) (bool, error) {
 	_, exists := h.sectors[sectorRoot]
 	return exists, nil

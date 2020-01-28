@@ -47,7 +47,7 @@ func TestInstructionHasSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// There should be one output since there was one instruction.
+	// Check outputs.
 	numOutputs := 0
 	for output := range outputs {
 		if err := output.Error; err != nil {
@@ -68,6 +68,7 @@ func TestInstructionHasSector(t *testing.T) {
 		}
 		numOutputs++
 	}
+	// There should be one output since there was one instruction.
 	if numOutputs != 1 {
 		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
 	}

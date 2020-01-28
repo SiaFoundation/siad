@@ -36,9 +36,9 @@ func HasSectorCost() Cost {
 	return Cost{
 		Compute:      1,
 		DiskAccesses: 1,
-		DiskRead:     32, // 32 bytes
+		DiskRead:     1 << 5, // 32 bytes
 		DiskWrite:    0,
-		Memory:       32, // 32 bytes
+		Memory:       1 << 5, // 32 bytes
 	}
 }
 
