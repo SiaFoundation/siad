@@ -1858,7 +1858,7 @@ func getDirRoot(siaPath modules.SiaPath, recursive bool) (dirs []directoryInfo) 
 	})
 
 	// If -R isn't set we are done.
-	if recursive {
+	if !recursive {
 		return
 	}
 	// Call getDirRoot on subdirs.
@@ -2306,10 +2306,14 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Check whether the command is based in root or based in the skynet folder.
-	if !skynetLsRoot && sp.String() != "" {
-		sp, err = modules.SkynetFolder.Join(sp.String())
-		if err != nil {
-			die("could not build siapth:", err)
+	if !skynetLsRoot {
+		if sp.String() == "" {
+			sp = modules.SkynetFolder
+		} else {
+			sp, err = modules.SkynetFolder.Join(sp.String())
+			if err != nil {
+				die("could not build siapth:", err)
+			}
 		}
 	}
 
