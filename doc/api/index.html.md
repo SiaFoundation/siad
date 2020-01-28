@@ -3885,93 +3885,6 @@ file is available locally.
 standard success or error response. See [standard
 responses](#standard-responses).
 
-## /renter/sialink/*sialink* [GET]
-> curl example  
-
-> Stream the whole file.  
-
-```bash
-curl -A "Sia-Agent" "localhost:9980/renter/sialink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-ehGt8m4f9MsrqlrHA"
-```  
-
-downloads a sialink using http streaming. This call blocks until the data is
-received.
-
-### Path Parameters // TODO: support for offset+len when ready as optional parameters
-
-### OPTIONAL
-
-### Response
-
-standard success or error response. See [standard
-responses](#standard-responses).
-
-## /renter/linkfile/*siapath* [POST]
-> curl example  
-
-```bash
-# This command uploads the file 'myImage.png' to the Sia folder
-# 'linkfiles/myImage.png'. Users who download the file will see the name
-# 'image.png'.
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/linkfile/linkfiles/myImage.png?name=image.png" --data-binary @myImage.png
-```
-
-uploads a file to the network using a stream. If the upload stream POST call
-fails or quits before the file is fully uploaded, the file can be repaired by a
-subsequent call to the upload stream endpoint using the `repair` flag.
-
-### Path Parameters
-### REQUIRED
-**siapath** | string  
-Location where the file will reside in the renter on the network. The path must
-be non-empty, may not include any path traversal strings ("./", "../"), and may
-not begin with a forward-slash character.  
-
-### Query String Parameters
-### REQUIRED
-**name** | string  
-Location where the linkfile will reside in the renter's filesystem. The path
-must be non-empty, may not include any path traversal strings ("./", "../"), and
-may not begin with a forward-slash character.  
-
-### OPTIONAL
-**createtime** int64  
-The timestamp which should be put in the file metadata as the creation timestamp
-of the file. This is a Unix timestamp.
-
-**convertpath** string  
-The siapath of an existing siafile that should be converted to a sialink. A new
-linkfile will be created. Both the new linkfile and the existing siafile are
-required to be maintained on the network in order for the sialink to remain
-active.
-
-**force** | bool  
-If there is already a file that exists at the provided siapath, setting this
-flag will cause the new file to overwrite/delete the existing file. If this flag
-is not set, an error will be returned preventing the user from destroying
-existing data.
-
-**mode** | uint32  
-The file mode / permissions of the file. Users who download this file will be
-presented a file with this mode. If no mode is set, the Sia default of 0644 will
-be used.
-
-**redundancy** | uint8  
-The redundancy to use when uploading the linkfile. Linkfiles are always uploaded
-using a 1-of-N erasure coding scheme, so the redundancy needs to be set quite a
-bit higher than for typical files to achieve the same level of reliability.
-
-### JSON Response
-> JSON Response Example
-```go
-{
-"sialink":"AdW6wAkbZrRz1Tesm8VD_FDQ32Ex15i9HZpYlyE6BJNqsABkAAAAAAAAAAEK" // string
-}
-```
-**sialink** | string  
-This is the sialink that can be used with the `/renter/sialink` GET endpoint to
-retrieve the file that has been uploaded.
-
 ## /renter/upload/*siapath* [POST]
 > curl example  
 
@@ -4157,6 +4070,97 @@ siapath to test.
 ### Response
 standard success or error response, a successful response means a valid siapath.
 See [standard responses](#standard-responses).
+
+# Skynet
+
+## /skynet/skylink/*skylink* [GET]
+> curl example  
+
+> Stream the whole file.  
+
+```bash
+# TODO: Update the link after the format is finalized
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-ehGt8m4f9MsrqlrHA"
+```  
+
+downloads a skylink using http streaming. This call blocks until the data is
+received.
+
+### Path Parameters // TODO: support for offset+len when ready as optional parameters
+
+### OPTIONAL
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /skynet/skyfile/*siapath* [POST]
+> curl example  
+
+```bash
+# This command uploads the file 'myImage.png' to the Sia folder
+# 'var/skynet/images/myImage.png'. Users who download the file will see the name
+# name 'image.png'.
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?name=image.png" --data-binary @myImage.png
+```
+
+uploads a file to the network using a stream. If the upload stream POST call
+fails or quits before the file is fully uploaded, the file can be repaired by a
+subsequent call to the upload stream endpoint using the `repair` flag.
+
+### Path Parameters
+### REQUIRED
+**siapath** | string  
+Location where the file will reside in the renter on the network. The path must
+be non-empty, may not include any path traversal strings ("./", "../"), and may
+not begin with a forward-slash character. If the 'root' flag is not set, the
+path will be prefixed with 'var/skynet/', placing the skyfile into the Sia
+system's default skynet folder.
+
+### Query String Parameters
+### OPTIONAL
+**basechunkredundancy** | uint8  
+The amount of redundancy to use when uploading the base chunk. The base chunk is
+the first chunk of the file, and is always uploaded using 1-of-N redundancy.
+
+**convertpath** string  
+The siapath of an existing siafile that should be converted to a skylink. A new
+skyfile will be created. Both the new skyfile and the existing siafile are
+required to be maintained on the network in order for the skylink to remain
+active. This field is mutually exclusive with uploading streaming.
+
+**filename** | string  
+The name of the file. This name will be encoded into the skyfile metadata, and
+will be a part of the skylink. If the name changes, the skylink will change as
+well.
+
+**force** | bool  
+If there is already a file that exists at the provided siapath, setting this
+flag will cause the new file to overwrite/delete the existing file. If this flag
+is not set, an error will be returned preventing the user from destroying
+existing data.
+
+**mode** | uint32  
+The file mode / permissions of the file. Users who download this file will be
+presented a file with this mode. If no mode is set, the default of 0644 will be
+used.
+
+**root** | bool  
+Whether or not to tread the siapath as being relative to the root directory. If
+this field is not set, the siapath will be interpreted as relative to
+'var/skynet'.
+
+### JSON Response
+> JSON Response Example
+```go
+{
+"skylink":"AdW6wAkbZrRz1Tesm8VD_FDQ32Ex15i9HZpYlyE6BJNqsABkAAAAAAAAAAEK" // string
+}
+```
+**skylink** | string  
+This is the skylink that can be used with the `/skynet/skylink` GET endpoint to
+retrieve the file that has been uploaded.
 
 # Transaction Pool
 

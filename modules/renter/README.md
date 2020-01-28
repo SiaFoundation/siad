@@ -57,7 +57,6 @@ responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
  - [Fuse Subsystem](#fuse-subsystem)
  - [Fuse Manager Subsystem](#fuse-manager-subsystem)
- - [Linkfile Subsystem](#linkfile-subsystem)
  - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
@@ -155,50 +154,6 @@ current knowledge, there is no way to force an unmount.
 
 *TODO* 
   - fill out subsystem explanation
-
-### Linkfile Subsystem
-**Key Files**
- - [linkfile.go](./linkfile.go)
- - [linkformat.go](./linkformat.go)
-
-The linkfile subsystem is the subsystem that builds and uploads linkfiles. A
-linkfile is a file on Sia that has been built so that it can be fully
-reconstructed using nothing more than a single sector root. This is useful
-because hosts will return a sector's data if the sector is queried using the
-root, allowing nodes to recover these linkfiles simply by asking hosts until
-they find a host which has the desired data.
-
-A linkfile is broken into two major sections. The first section is called the
-'leading chunk', and it is a chunk which is uploaded with a 1-of-N redundancy in
-a separate file. This chunk has all of the metadata about the file, as well as
-the first few bytes of the file. The leading chunk is constructed specifically so
-that an entire file and all of its relevant metadata can be recovered using
-nothing more than a single sector root.
-
-The second major section of a linkfile is the fanout section. The fanout section
-of the file contains the rest of the data of the file in a set of fanout chunks.
-Unlike the leading chunk, the fanout chunks are erasure coded, and each piece of
-the chunk will have a different Merkle root. The leading chunk will have enough
-information to learn the fanout of the file, enabling the downloader to download
-the entire file using nothing more than the sector root of the leading chunk.
-
-The linkfiles health and integrity is maintained by the repair subsystem.
-Linkfiles are designed to look and act as typical siafiles, including being
-visible to the repair subsystem, which means the overall overhead for managing
-and protecting these files is minimal. The leading chunk is a 1-of-N siafile,
-and the fanout chunks are all stored together in a single siafile that has
-standard erasure coding.
-
-One important restriction on both the leading chunk and the fanout chunks is
-that the sector roots of the data are not allowed to change. For the leading
-chunk, every single sector on every host in the 1-of-N configuration must have
-the exact same sector root. The fanout siafile has a similar restriction - when
-doing repairs, any piece which gets repaired/replaced needs to have the same
-merkle root as the previous piece. This means a single chunk may have up to 30
-different sector roots, but as the chunk gets repaired over and over the
-encryption on each chunk needs to stay the same (if there is any encryption at
-all), so that the 30 sector roots of the chunk are always the same 30 roots as
-the initially uploaded chunk.
 
 ### Memory Subsystem
 **Key Files**
@@ -451,22 +406,6 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
-### Download By Root Subsystem
-**Key Files**
- - [projectdownloadbyroot.go](./projectdownloadbyroot.go)
- - [workerdownloadbyroot.go](./workerdownloadbyroot.go)
-
-The download by root subsystem exports a single method that allows a caller to
-download or partially download a sector from the Sia network knowing only the
-Merkle root of that sector, and not necessarily knowing which host on the
-network has that sector. The single exported method is 'DownloadByRoot'.
-
-This subsystem was created primarily as a facilitator for the sialinks of
-Skynet. Sialinks provide a merkle root and some offset+length information, but
-do not provide any information about which hosts are storing the sectors. The
-exported method of this subsystem will primarily be called by sialink methods,
-as opposed to being used directly by external users.
-
 ### Linkfile Subsystem
 **Key Files**
  - [linkfile.go](./linkfile.go)
@@ -535,6 +474,22 @@ merkle root and the contract revision.
  - `Upload` calls `callBuildAndPushChunks` to add upload chunks to the
    `uploadHeap` and then signals the heap's `newUploads` channel so that the
    Repair Loop will work through the heap and upload the chunks
+
+### Download By Root Subsystem
+**Key Files**
+ - [projectdownloadbyroot.go](./projectdownloadbyroot.go)
+ - [workerdownloadbyroot.go](./workerdownloadbyroot.go)
+
+The download by root subsystem exports a single method that allows a caller to
+download or partially download a sector from the Sia network knowing only the
+Merkle root of that sector, and not necessarily knowing which host on the
+network has that sector. The single exported method is 'DownloadByRoot'.
+
+This subsystem was created primarily as a facilitator for the sialinks of
+Skynet. Sialinks provide a merkle root and some offset+length information, but
+do not provide any information about which hosts are storing the sectors. The
+exported method of this subsystem will primarily be called by sialink methods,
+as opposed to being used directly by external users.
 
 ### Upload Streaming Subsystem
 **Key Files**

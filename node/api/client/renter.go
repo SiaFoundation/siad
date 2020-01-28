@@ -746,7 +746,7 @@ func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters, root bo
 	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
-	values.Set("redundancy", redundancyStr)
+	values.Set("basechunkredundancy", redundancyStr)
 	rootStr := fmt.Sprintf("%t", root)
 	values.Set("root", rootStr)
 
