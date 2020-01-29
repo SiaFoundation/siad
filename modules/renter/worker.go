@@ -82,7 +82,7 @@ type worker struct {
 
 	// The staticAccount represent the renter's ephemeral account on the host.
 	// It keeps track of the available balance in the account, the worker has a
-	// refill mechanism that keeps the account balanced up until the
+	// refill mechanism that keeps the account balance filled up until the
 	// staticBalanceTarget.
 	staticAccount       *account
 	staticBalanceTarget types.Currency
