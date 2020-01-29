@@ -7,6 +7,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// TODO: try to load account from persistence
+//
+// TODO: for now the account is a separate object that sits as first class
+// object on the worker, most probably though this will move as to not have two
+// separate mutex domains.
+
 // account represents a renter's ephemeral account on a host.
 type account struct {
 	staticID        string
@@ -19,22 +25,12 @@ type account struct {
 
 	mu sync.Mutex
 	c  hostContractor
-	r  *Renter
 }
 
-// managedOpenAccount returns an account for the given host. In the case it does
+// openAccount returns an account for the given host. In the case it does
 // not exist yet, it gets created. Every time a new account is created, a new
 // keypair is used.
-func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
-
-	hpk := hostKey.String()
-	acc, exists := r.accounts[hpk]
-	if exists {
-		return acc
-	}
-
+func openAccount(hostKey types.SiaPublicKey, contractor hostContractor) *account {
 	// generate a new key pair
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
@@ -42,16 +38,13 @@ func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
 		Key:       pk[:],
 	}
 
-	// create the account and set it on the renter
-	acc = &account{
+	// create the account
+	return &account{
 		staticID:        spk.String(),
 		staticHostKey:   hostKey,
 		staticSecretKey: sk,
-		c:               r.hostContractor,
-		r:               r,
+		c:               contractor,
 	}
-	r.accounts[hpk] = acc
-	return acc
 }
 
 // AvailableBalance returns the amount of money that is available to spend. It

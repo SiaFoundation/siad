@@ -99,7 +99,7 @@ func (w *worker) threadedPerformFundAcountJob() {
 		return
 	}
 
-	err = client.FundEphemeralAccount(w.account.staticID, job.amount)
+	err = client.FundEphemeralAccount(w.staticAccount.staticID, job.amount)
 	if err != nil {
 		job.sendResult(types.ZeroCurrency, err)
 		return

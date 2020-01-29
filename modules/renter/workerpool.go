@@ -53,14 +53,6 @@ func (wp *workerPool) callUpdate() {
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
-	// Open an account for every host we have a contract with. We have to
-	// prepare this map to avoid calling a privileged function when we are
-	// holding the workerpool mutex lock.
-	accountsMap := make(map[string]*account)
-	for _, contract := range contractMap {
-		accountsMap[contract.HostPublicKey.String()] = wp.renter.managedOpenAccount(contract.HostPublicKey)
-	}
-
 	// Lock the worker pool for the duration of updating its fields.
 	wp.mu.Lock()
 	defer wp.mu.Unlock()
@@ -73,7 +65,7 @@ func (wp *workerPool) callUpdate() {
 		}
 
 		// Create a new worker and add it to the map
-		w, err := wp.renter.newWorker(contract.HostPublicKey, accountsMap[contract.HostPublicKey.String()])
+		w, err := wp.renter.newWorker(contract.HostPublicKey)
 		if err != nil {
 			wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
 			continue

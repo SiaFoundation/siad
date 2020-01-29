@@ -82,10 +82,12 @@ type worker struct {
 	// The staticFundAccountJobQueue holds the fund account jobs
 	staticFundAccountJobQueue fundAccountJobQueue
 
-	// Account represents the account on the host. The worker will maintain a
-	// certain account balance defined by the max and target balance.
+	// The staticAccount represent the renter's ephemeral account on the host.
+	// It keeps track of the available balance in the account, the worker has a
+	// refill mechanism that keeps the account balanced up until the
+	// staticBalanceTarget.
+	staticAccount       *account
 	staticBalanceTarget types.Currency
-	account             *account
 
 	// Utilities.
 	//
@@ -249,7 +251,7 @@ func (w *worker) threadedScheduleRefillAccount() {
 
 	// Fetch the account's available balance and skip if it's above the
 	// threshold
-	balance := w.account.AvailableBalance()
+	balance := w.staticAccount.AvailableBalance()
 	if balance.Cmp(threshold) >= 0 {
 		return
 	}
@@ -264,7 +266,7 @@ func (w *worker) threadedScheduleRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -272,6 +274,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 	if !ok {
 		return nil, errors.New("host does not exist")
 	}
+
 	// TODO: use the host's external settings settings to calc. an appropriate
 	// balance target
 
@@ -292,8 +295,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, a *account) (*worker, 
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
+		staticAccount:       openAccount(hostPubKey, r.hostContractor),
 		staticBalanceTarget: balanceTarget,
-		account:             a,
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
