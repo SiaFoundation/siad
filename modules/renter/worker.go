@@ -71,6 +71,7 @@ type worker struct {
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
 	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+	staticFundAccountJobQueue    fundAccountJobQueue
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -78,9 +79,6 @@ type worker struct {
 	uploadRecentFailure       time.Time                // How recent was the last failure?
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
-
-	// The staticFundAccountJobQueue holds the fund account jobs
-	staticFundAccountJobQueue fundAccountJobQueue
 
 	// The staticAccount represent the renter's ephemeral account on the host.
 	// It keeps track of the available balance in the account, the worker has a
@@ -191,15 +189,17 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Check if the account needs to be refilled. This is done in a separate
-		// goroutine to ensure other jobs are not blocked by it.
-		go func() {
-			w.threadedScheduleRefillAccount()
-			w.threadedPerformFundAcountJob()
-		}()
+		// Check if the account needs to be refilled.
+		w.scheduleRefillAccount()
+
+		// Perform any job to fund the account
+		workAttempted := w.managedPerformFundAcountJob()
+		if workAttempted {
+			continue
+		}
 
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted := w.managedPerformFetchBackupsJob()
+		workAttempted = w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
@@ -234,15 +234,10 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
-// threadedScheduleRefillAccount will check if the account needs to be refilled,
+// scheduleRefillAccount will check if the account needs to be refilled,
 // and will schedule a fund account job if so. This is called every time the
 // worker spends from the account.
-func (w *worker) threadedScheduleRefillAccount() {
-	if err := w.renter.tg.Add(); err != nil {
-		return
-	}
-	defer w.renter.tg.Done()
-
+func (w *worker) scheduleRefillAccount() {
 	// Calculate the threshold, if the account's available balance is below this
 	// threshold, we want to trigger a refill.We only refill if we drop below a
 	// threshold because we want to avoid refilling every time we drop 1 hasting
