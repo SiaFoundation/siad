@@ -261,9 +261,9 @@ on top of Sia.`,
 	skynetDownloadCmd = &cobra.Command{
 		Use:   "download [skylink] [destination]",
 		Short: "Download a skylink from skynet.",
-		Long: `Download a skylink from skynet. The download may fail unless this node is
-configured as a skynet portal. Use the --portal flag to fetch a skylink from a
-skynet portal.`,
+		Long: `Download a file from skynet uisng a skylink. The download may fail unless this
+node is configured as a skynet portal. Use the --portal flag to fetch a skylink
+file from a chosen skynet portal.`,
 		Run: skynetdownloadcmd,
 	}
 

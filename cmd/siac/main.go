@@ -274,7 +274,7 @@ func main() {
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
 	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
 	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
-	renterFilesListCmd.Flags().BoolVar(&renterListRoot, "root", false, "Recursively list files and folders")
+	renterFilesListCmd.Flags().BoolVar(&renterListRoot, "root", false, "List files and folders from root instead of from the user home directory")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
 
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceFunds, "amount", "", "amount of money in allowance, specified in currency units")
