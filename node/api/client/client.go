@@ -81,6 +81,10 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to get reader response")
 	}
+	// Possible to get a nil reader if there is no response.
+	if reader == nil {
+		return header, nil, nil
+	}
 	defer drainAndClose(reader)
 	d, err := ioutil.ReadAll(reader)
 	return header, d, err
