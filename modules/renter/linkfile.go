@@ -131,15 +131,15 @@ func (ll *linkfileLayout) decode(b []byte) {
 
 // linkfileBuildBaseSector will take all of the elements of the base sector and
 // copy them into a freshly created base sector.
-func linkfileBuildBaseSector(layoutBytes, metadataBytes, fanoutBytes, fileBytes []byte) ([]byte, uint64) {
+func linkfileBuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
 	baseSector := make([]byte, modules.SectorSize)
 	offset := 0
 	copy(baseSector[offset:], layoutBytes)
 	offset += len(layoutBytes)
-	copy(baseSector[offset:], metadataBytes)
-	offset += len(metadataBytes)
 	copy(baseSector[offset:], fanoutBytes)
 	offset += len(fanoutBytes)
+	copy(baseSector[offset:], metadataBytes)
+	offset += len(metadataBytes)
 	copy(baseSector[offset:], fileBytes)
 	offset += len(fileBytes)
 	return baseSector, uint64(offset)
@@ -287,7 +287,7 @@ func (r *Renter) managedCreateSialinkFromFileNode(lup modules.LinkfileUploadPara
 	copy(ll.cipherKey[:], masterKey.Key())
 
 	// Create the base sector.
-	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, fanoutBytes, nil)
+	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), fanoutBytes, metadataBytes, nil)
 	baseSectorReader := bytes.NewReader(baseSector)
 	fileUploadParams, err := fileUploadParamsFromLUP(lup)
 	if err != nil {
@@ -338,6 +338,10 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	ll.decode(baseSector)
 	offset += LinkfileLayoutSize
 
+	// Parse out the fanout.
+	fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
+	offset += ll.fanoutSize
+
 	// Parse out the linkfile metadata.
 	var lfm modules.LinkfileMetadata
 	metadataSize := uint64(ll.metadataSize)
@@ -358,7 +362,6 @@ func (r *Renter) DownloadSialink(link modules.Sialink) (modules.LinkfileMetadata
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fanoutBytes := baseSector[offset : offset+uint64(ll.fanoutSize)]
 	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
 	if err != nil {
 		return modules.LinkfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
@@ -471,7 +474,7 @@ func (r *Renter) managedUploadLinkfileSmallFile(lup modules.LinkfileUploadParame
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), metadataBytes, nil, fileBytes) // 'nil' because there is no fanout
+	baseSector, fetchSize := linkfileBuildBaseSector(ll.encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Perform the actual upload. This will require turning the base sector into
 	// a reader.
