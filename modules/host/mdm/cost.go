@@ -35,10 +35,10 @@ func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
 func HasSectorCost() Cost {
 	return Cost{
 		Compute:      1,
-		DiskAccesses: 1,
-		DiskRead:     1 << 5, // 32 bytes
+		DiskAccesses: 0,
+		DiskRead:     0,
 		DiskWrite:    0,
-		Memory:       1 << 5, // 32 bytes
+		Memory:       1 << 15, // 32 kib
 	}
 }
 
