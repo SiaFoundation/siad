@@ -50,7 +50,7 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 		panic("bad call to mocked ReadAt")
 	}
 	if uint64(offset+int64(len(b))) > mds.DataSize() {
-		panic("call to ReadAd is asking for data that exceeds the data size")
+		panic("call to ReadAt is asking for data that exceeds the data size")
 	}
 	if uint64(offset)%mds.RequestSize() != 0 {
 		panic("bad call to mocked ReadAt")

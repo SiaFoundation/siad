@@ -1339,7 +1339,7 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 
 // renterFileHandler handles GET requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Determine the siapath that hte user wants to get the file from.
+	// Determine the siapath that the user wants to get the file from.
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -1730,8 +1730,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
-// skynetSkyfileHandlerPOST accepts some data and some metadata and then turns
-// that into a skylink, which is returned to the caller.
+// skynetSkyfileHandlerPOST is a dual purpose endpoint. If the 'convertpath'
+// field is set, this endpoint will create a skyfile using an existing siafile.
+// The original siafile and the skyfile will boeth need to be kept in order for
+// the file to remain available on Skynet. If the 'convertpath' field is not
+// set, this is essentially an upload streaming endpoint for Skynet which
+// returns a skylink.
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
@@ -1778,7 +1782,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("paritypieces"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse redundancy: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}

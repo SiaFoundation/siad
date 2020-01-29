@@ -777,9 +777,8 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.LinkfileUploadPar
 	values.Set("name", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	// TODO: Update mode
-	// modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-	// values.Set("mode", modeStr)
+	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
