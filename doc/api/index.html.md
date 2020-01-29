@@ -3025,7 +3025,7 @@ New maximum churn per period.
 standard success or error response. See [standard responses](#standard-responses).
 
 
-## /renter/dir/*siapath [GET]
+## /renter/dir/*siapath* [GET]
 > curl example  
 
 > The root siadir path is "" so submitting the API call without an empty siapath
@@ -3112,7 +3112,7 @@ The path to the directory on the sia network
 
 **files** Same response as [files](#files)
 
-## /renter/dir/*siapath [POST]
+## /renter/dir/*siapath* [POST]
 > curl example  
 
 ```go
@@ -3151,7 +3151,7 @@ Action can be either `create`, `delete` or `rename`.
 standard success or error response. See [standard
 responses](#standard-responses).
 
-## /renter/downloadinfo/*uid [GET]
+## /renter/downloadinfo/*uid* [GET]
 > curl example  
 
 ```go
@@ -3848,15 +3848,13 @@ responses](#standard-responses).
 ## /renter/stream/*siapath* [GET]
 > curl example  
 
-> Stream the whole file.  
-
-```go
+```sh
 curl -A "Sia-Agent" "localhost:9980/renter/stream/myfile"
 ```  
 > The file can be streamed partially by using standard partial http requests
 > which means setting the "Range" field in the http header.  
 
-```go
+```sh
 curl -A "Sia-Agent" -H "Range: bytes=0-1023" "localhost:9980/renter/stream/myfile"
 ```
 
