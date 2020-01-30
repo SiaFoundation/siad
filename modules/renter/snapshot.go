@@ -142,9 +142,13 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.
-	_, err = r.callUploadStreamFromReader(up, backup, true)
+	fileNode, err := r.callUploadStreamFromReader(up, backup, true)
 	if err != nil {
 		return errors.AddContext(err, "failed to upload backup")
+	}
+	err = fileNode.Close()
+	if err != nil {
+		return errors.AddContext(err, "unable to close fileNode while uploading a backup")
 	}
 	// Save initial snapshot entry.
 	meta := modules.UploadedBackup{

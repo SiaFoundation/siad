@@ -50,7 +50,7 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 		panic("bad call to mocked ReadAt")
 	}
 	if uint64(offset+int64(len(b))) > mds.DataSize() {
-		panic("bad call to mocked ReadAt")
+		panic("call to ReadAt is asking for data that exceeds the data size")
 	}
 	if uint64(offset)%mds.RequestSize() != 0 {
 		panic("bad call to mocked ReadAt")
@@ -162,7 +162,13 @@ func TestStreamSmoke(t *testing.T) {
 	// Open up a second stream and read the front of the data. This should cause
 	// the stream buffer to have a full cache for each stream and stream2, since
 	// there is no overlap between their lrus.
-	stream2 := sbs.callNewStream(dataSource, 0)
+	//
+	// NOTE: Need to use a second data source, because it'll be closed when it's
+	// not used. The stream buffer expects that when multiple data sources have
+	// the same ID, they are actually separate objects which need to be closed
+	// individually.
+	dataSource2 := newMockDataSource(data, dataSectionSize)
+	stream2 := sbs.callNewStream(dataSource2, 0)
 	bytesRead, err = io.ReadFull(stream2, buf)
 	if err != nil {
 		t.Fatal(err)

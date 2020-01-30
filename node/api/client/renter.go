@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -405,6 +406,13 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 	return modules.DownloadID(h.Get("ID")), resp, nil
 }
 
+// RenterFileRootGet uses the /renter/file/:siapath endpoint to query a file.
+func (c *Client) RenterFileRootGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get("/renter/file/"+sp+"?root=true", &rf)
+	return
+}
+
 // RenterFileGet uses the /renter/file/:siapath endpoint to query a file.
 func (c *Client) RenterFileGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
 	sp := escapeSiaPath(siaPath)
@@ -616,6 +624,14 @@ func (c *Client) RenterDirRenamePost(siaPath, newSiaPath modules.SiaPath) (err e
 	return
 }
 
+// RenterDirRootGet uses the /renter/dir/ endpoint to query a directory,
+// starting from the root path.
+func (c *Client) RenterDirRootGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.get(fmt.Sprintf("/renter/dir/%s?root=true", sp), &rd)
+	return
+}
+
 // RenterDirGet uses the /renter/dir/ endpoint to query a directory
 func (c *Client) RenterDirGet(siaPath modules.SiaPath) (rd api.RenterDirectory, err error) {
 	sp := escapeSiaPath(siaPath)
@@ -701,4 +717,84 @@ func (c *Client) RenterUploadsResumePost() (err error) {
 func (c *Client) RenterPost(values url.Values) (err error) {
 	err = c.post("/renter", values.Encode(), nil)
 	return
+}
+
+// SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
+// file.
+func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, error) {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	_, fileData, err := c.getRawResponse(getQuery)
+	return fileData, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkReaderGet uses the /skynet/skylink endpoint to fetch a reader of
+// the file data.
+func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
+// resulting skylink is returned along with an error.
+func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters, root bool) (string, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("filename", lup.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	values.Set("basechunkredundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", root)
+	values.Set("root", rootStr)
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	resp, err := c.postRawResponse(query, lup.Reader)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to "+query+" failed")
+	}
+
+	// Parse the response to get the skylink.
+	var rshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse the skylink upload response")
+	}
+	return rshp.Skylink, err
+}
+
+// SkynetConvertSiafileToSkyfilePost uses the /skynet/skyfile endpoint to
+// convert an existing siafile to a skyfile. The input SiaPath 'convert' is the
+// siapath of the siafile that should be converted. The siapath provided inside
+// of the upload params is the name that will be used for the base sector of the
+// skyfile.
+func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("name", lup.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	values.Set("redundancy", redundancyStr)
+	values.Set("convertpath", convert.String())
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
+	resp, err := c.postRawResponse(query, lup.Reader)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to "+query+" failed")
+	}
+
+	// Parse the response to get the skylink.
+	var rshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse the skylink upload response")
+	}
+	return rshp.Skylink, err
 }

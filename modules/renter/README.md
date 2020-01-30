@@ -56,7 +56,7 @@ The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
  - [Fuse Subsystem](#fuse-subsystem)
- - [Fuse Manager Subsystem](#fuse-manager)
+ - [Fuse Manager Subsystem](#fuse-manager-subsystem)
  - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
@@ -407,7 +407,6 @@ price and total throughput.
   - fill out subsystem explanation
 
 ### Linkfile Subsystem
-
 **Key Files**
  - [linkfile.go](./linkfile.go)
  - [linkfilefanout.go](./linkfilefanout.go)
@@ -429,7 +428,6 @@ sialink.
    [linkfile.go](./linkfile.go)
 
 ### Stream Buffer Subsystem
-
 **Key Files**
  - [streambuffer.go](./streambuffer.go)
  - [streambufferlru.go](./streambufferlru.go)
