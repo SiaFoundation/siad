@@ -2,6 +2,7 @@ package mdm
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -44,4 +45,17 @@ func New(h Host) *MDM {
 // executing while also preventing new programs from being started.
 func (mdm *MDM) Stop() error {
 	return mdm.tg.Stop()
+}
+
+// cachedMerkleRoot calculates the root of a set of sector roots.
+func cachedMerkleRoot(roots []crypto.Hash) crypto.Hash {
+	log2SectorSize := uint64(0)
+	for 1<<log2SectorSize < (modules.SectorSize / crypto.SegmentSize) {
+		log2SectorSize++
+	}
+	ct := crypto.NewCachedTree(log2SectorSize)
+	for _, root := range roots {
+		ct.PushSubTree(0, root)
+	}
+	return ct.Root()
 }

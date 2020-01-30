@@ -32,6 +32,12 @@ type programState struct {
 	sectorsRemoved   []crypto.Hash
 	sectorsGained    []crypto.Hash
 	gainedSectorData [][]byte
+	merkleRoots      []crypto.Hash
+
+	// statistic related fields
+	potentialStorageRevenue types.Currency
+	riskedCollateral        types.Currency
+	potentialUploadRevenue  types.Currency
 
 	// budget related fields
 	priceTable      modules.RPCPriceTable
