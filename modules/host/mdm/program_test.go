@@ -50,3 +50,40 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 		t.Fatal("ExecuteProgram should return an error")
 	}
 }
+
+// TestNewProgramLowBudget runs a program with instructions with insufficient
+// funds.
+func TestNewProgramLowBudget(t *testing.T) {
+	// Create MDM
+	mdm := New(newTestHost())
+	var r io.Reader
+	// Create instruction.
+	instructions, r, dataLen := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{})
+	// Execute the program with enough money to init the mdm but not enough
+	// money to execute the first instruction.
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen), newTestStorageObligation(true), 0, crypto.Hash{}, dataLen, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first output should contain an error.
+	numOutputs := 0
+	numInsufficientBudgetErrs := 0
+	for output := range outputs {
+		if err := output.Error; errors.Contains(err, ErrInsufficientBudget) {
+			numInsufficientBudgetErrs++
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		numOutputs++
+	}
+	if numOutputs != 1 {
+		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
+	}
+	if numInsufficientBudgetErrs != 1 {
+		t.Fatalf("numInsufficientBudgetErrs was %v but should be %v", numInsufficientBudgetErrs, 1)
+	}
+	// Finalize should be nil for readonly programs.
+	if finalize != nil {
+		t.Fatal("finalize should be 'nil' for readonly programs")
+	}
+}
