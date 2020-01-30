@@ -64,6 +64,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/host/announce", RequirePassword(api.hostAnnounceHandler, requiredPassword)) // Announce the host to the network.
 		router.GET("/host/contracts", api.hostContractInfoHandler)                                // Get info about contracts.
 		router.GET("/host/estimatescore", api.hostEstimateScoreGET)
+		router.GET("/host/bandwidth", api.hostBandwidthHandlerGET)
 
 		// Calls pertaining to the storage manager that the host uses.
 		router.GET("/host/storage", api.storageHandler)
@@ -123,7 +124,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 
-		// Linkfile endpoints
+		// Skynet endpoints
 		router.GET("/skynet/skylink/:skylink", api.skynetSkylinkHandlerGET)
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 

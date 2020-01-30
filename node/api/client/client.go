@@ -77,32 +77,17 @@ func readAPIError(r io.Reader) error {
 // getRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
 func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
-	req, err := c.NewRequest("GET", resource, nil)
+	header, reader, err := c.getReaderResponse(resource)
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "failed to construct GET request")
+		return nil, nil, errors.AddContext(err, "failed to get reader response")
 	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, nil, errors.AddContext(err, "GET request failed")
+	// Possible to get a nil reader if there is no response.
+	if reader == nil {
+		return header, nil, nil
 	}
-	defer drainAndClose(res.Body)
-
-	if res.StatusCode == http.StatusNotFound {
-		return nil, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
-	}
-
-	// If the status code is not 2xx, decode and return the accompanying
-	// api.Error.
-	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, nil, errors.AddContext(readAPIError(res.Body), "GET request error")
-	}
-
-	if res.StatusCode == http.StatusNoContent {
-		// no reason to read the response
-		return res.Header, []byte{}, nil
-	}
-	d, err := ioutil.ReadAll(res.Body)
-	return res.Header, d, err
+	defer drainAndClose(reader)
+	d, err := ioutil.ReadAll(reader)
+	return header, d, err
 }
 
 // getReaderResponse requests the specified resource. The response, if provided,

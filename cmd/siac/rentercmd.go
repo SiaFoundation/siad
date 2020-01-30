@@ -1966,12 +1966,12 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	if !sp.IsRoot() {
 		rf, err := httpClient.RenterFileGet(sp)
 		if err == nil {
-			fmt.Println()
 			json, err := json.MarshalIndent(rf.File, "", "  ")
 			if err != nil {
 				log.Fatal(err)
 			}
 
+			fmt.Println()
 			fmt.Println(string(json))
 			fmt.Println()
 			return
@@ -2305,7 +2305,7 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	filename := args[1]
 	file, err := os.Create(filename)
 	if err != nil {
-		die("Unable to open destination file:", err)
+		die("Unable to create destination file:", err)
 	}
 	defer file.Close()
 
@@ -2336,8 +2336,8 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 }
 
 // skynetlscmd is the handler for the command `siac skynet ls`. Works very
-// smilar to 'siac renter ls' but defaults to the SkynetFolder and only displays
-// files that are pinning skylinks.
+// similar to 'siac renter ls' but defaults to the SkynetFolder and only
+// displays files that are pinning skylinks.
 func skynetlscmd(cmd *cobra.Command, args []string) {
 	var path string
 	switch len(args) {
@@ -2363,12 +2363,12 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Check whether the command is based in root or based in the skynet folder.
 	if !skynetLsRoot {
-		if sp.String() == "" {
+		if sp.IsRoot() {
 			sp = modules.SkynetFolder
 		} else {
 			sp, err = modules.SkynetFolder.Join(sp.String())
 			if err != nil {
-				die("could not build siapth:", err)
+				die("could not build siapath:", err)
 			}
 		}
 	}
@@ -2381,12 +2381,12 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 				fmt.Println("File is not pinning any skylinks")
 				return
 			}
-			fmt.Println()
 			json, err := json.MarshalIndent(rf.File, "", "  ")
 			if err != nil {
 				log.Fatal(err)
 			}
 
+			fmt.Println()
 			fmt.Println(string(json))
 			fmt.Println()
 			return
