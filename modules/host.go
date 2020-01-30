@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"time"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -211,6 +213,9 @@ type (
 		// ExternalSettings returns the settings of the host as seen by an
 		// untrusted node querying the host for settings.
 		ExternalSettings() HostExternalSettings
+
+		// BandwidthCounters returns the Hosts's upload and download bandwidth
+		BandwidthCounters() (uint64, uint64, time.Time, error)
 
 		// FinancialMetrics returns the financial statistics of the host.
 		FinancialMetrics() HostFinancialMetrics

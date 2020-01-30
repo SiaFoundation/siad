@@ -103,6 +103,12 @@ func (c *Client) HostModifySettingPost(param HostParam, value interface{}) (err 
 	return
 }
 
+// HostBandwidthGet requests the /host/bandwidth api resource
+func (c *Client) HostBandwidthGet() (gbg api.GatewayBandwidthGET, err error) {
+	err = c.get("/host/bandwidth", &gbg)
+	return
+}
+
 // HostStorageFoldersAddPost uses the /host/storage/folders/add api endpoint to
 // add a storage folder to a host
 func (c *Client) HostStorageFoldersAddPost(path string, size uint64) (err error) {
