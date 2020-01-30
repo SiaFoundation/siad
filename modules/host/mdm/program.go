@@ -14,18 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// The following errors are returned by `cost.Sub` in case of an underflow.
-// ErrInsufficientBudget is always returned in combination with the error of the
-// corresponding resource.
-var (
-	ErrInsufficientBudget             = errors.New("program has insufficient budget to execute")
-	ErrInsufficientComputeBudget      = errors.New("insufficient 'compute' budget")
-	ErrInsufficientDiskAccessesBudget = errors.New("insufficient 'diskaccess' budget")
-	ErrInsufficientDiskReadBudget     = errors.New("insufficient 'diskread' budget")
-	ErrInsufficientDiskWriteBudget    = errors.New("insufficient 'diskwrite' budget")
-	ErrInsufficientMemoryBudget       = errors.New("insufficient 'memory' budget")
-)
-
 var (
 	// ErrInterrupted indicates that the program was interrupted during
 	// execution and couldn't finish.
@@ -36,9 +24,6 @@ var (
 // The program's state is captured when the program is created and remains the
 // same during the execution of the program.
 type programState struct {
-	// mdm related fields.
-	remainingBudget Cost
-
 	// host related fields
 	blockHeight types.BlockHeight
 	host        Host
@@ -60,7 +45,7 @@ type Program struct {
 	staticProgramState *programState
 
 	finalContractSize uint64 // contract size after executing all instructions
-	budget            Cost
+	remainingBudget   types.Currency
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -70,15 +55,14 @@ type Program struct {
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget Cost, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
-		budget:            budget,
+		remainingBudget:   budget,
 		finalContractSize: initialContractSize,
 		outputChan:        make(chan Output, len(instructions)),
 		staticProgramState: &programState{
-			blockHeight:     mdm.host.BlockHeight(),
-			host:            mdm.host,
-			remainingBudget: budget,
+			blockHeight: mdm.host.BlockHeight(),
+			host:        mdm.host,
 		},
 		staticData: openProgramData(data, programDataLen),
 		so:         so,
@@ -107,8 +91,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	// Make sure the budget covers the initial cost.
-	ps := p.staticProgramState
-	ps.remainingBudget, err = ps.remainingBudget.Sub(InitCost(p.staticData.Len()))
+	p.remainingBudget, err = subtractFromBudget(p.remainingBudget, InitCost(p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
@@ -140,6 +123,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
 			break
 		default:
 		}
+		// Subtract the cost of the instruction from the budget.
 		// Execute next instruction.
 		output := i.Execute(fcRoot)
 		fcRoot = output.NewMerkleRoot

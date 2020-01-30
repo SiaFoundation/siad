@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -65,18 +66,12 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionReadSector) Cost() Cost {
+func (i *instructionReadSector) Cost() types.Currency {
 	return ReadSectorCost()
 }
 
 // Execute executes the 'Read' instruction.
 func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
-	// Subtract cost from budget beforehand.
-	var err error
-	i.staticState.remainingBudget, err = i.staticState.remainingBudget.Sub(ReadSectorCost())
-	if err != nil {
-		return outputFromError(err)
-	}
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
