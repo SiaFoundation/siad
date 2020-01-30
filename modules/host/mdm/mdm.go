@@ -11,7 +11,7 @@ import (
 // implement to be used by the mdm.
 type StorageObligation interface {
 	Locked() bool
-	Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error
+	Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error
 }
 
 // Host defines the minimal interface a Host needs to

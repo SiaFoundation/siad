@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -21,7 +22,9 @@ type (
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
 	TestStorageObligation struct {
-		locked bool
+		sectorMap   map[crypto.Hash][]byte
+		sectorRoots []crypto.Hash
+		locked      bool
 	}
 )
 
@@ -63,7 +66,20 @@ func (so *TestStorageObligation) Locked() bool {
 }
 
 // Update implements the StorageObligation interface
-func (so *TestStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+	for _, removedSector := range sectorsRemoved {
+		if _, exists := so.sectorMap[removedSector]; !exists {
+			return errors.New("sector doesn't exist")
+		}
+		delete(so.sectorMap, removedSector)
+	}
+	for i, gainedSector := range sectorsGained {
+		if _, exists := so.sectorMap[gainedSector]; exists {
+			return errors.New("sector already exists")
+		}
+		so.sectorMap[gainedSector] = gainedSectorData[i]
+	}
+	so.sectorRoots = sectorRoots
 	return nil
 }
 

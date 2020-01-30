@@ -149,7 +149,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 func (p *Program) managedFinalize() error {
 	// Commit the changes to the storage obligation.
 	ps := p.staticProgramState
-	err := p.so.Update(ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	err := p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
 	if err != nil {
 		return err
 	}
