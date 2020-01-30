@@ -124,6 +124,12 @@ func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
 		default:
 		}
 		// Subtract the cost of the instruction from the budget.
+		var err error
+		p.remainingBudget, err = subtractFromBudget(p.remainingBudget, i.Cost())
+		if err != nil {
+			p.outputChan <- outputFromError(err)
+			break
+		}
 		// Execute next instruction.
 		output := i.Execute(fcRoot)
 		fcRoot = output.NewMerkleRoot
