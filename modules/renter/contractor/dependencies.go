@@ -1,10 +1,7 @@
 package contractor
 
 import (
-	"path/filepath"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -24,13 +21,6 @@ type (
 		PrimarySeed() (modules.Seed, uint64, error)
 		StartTransaction() (modules.TransactionBuilder, error)
 		RegisterTransaction(types.Transaction, []types.Transaction) (modules.TransactionBuilder, error)
-		Unlocked() (bool, error)
-	}
-	wallet interface {
-		NextAddress() (types.UnlockConditions, error)
-		PrimarySeed() (modules.Seed, uint64, error)
-		StartTransaction() (transactionBuilder, error)
-		RegisterTransaction(types.Transaction, []types.Transaction) (transactionBuilder, error)
 		Unlocked() (bool, error)
 	}
 	transactionBuilder interface {
@@ -102,29 +92,3 @@ func (ws *WalletBridge) RegisterTransaction(t types.Transaction, parents []types
 
 // Unlocked reports whether the wallet bridge is unlocked.
 func (ws *WalletBridge) Unlocked() (bool, error) { return ws.W.Unlocked() }
-
-// stdPersist implements the persister interface. The filename required by
-// these functions is internal to stdPersist.
-type stdPersist struct {
-	filename string
-}
-
-var persistMeta = persist.Metadata{
-	Header:  "Contractor Persistence",
-	Version: "1.3.1",
-}
-
-func (p *stdPersist) save(data contractorPersist) error {
-	return persist.SaveJSON(persistMeta, data, p.filename)
-}
-
-func (p *stdPersist) load(data *contractorPersist) error {
-	return persist.LoadJSON(persistMeta, &data, p.filename)
-}
-
-// NewPersist create a new stdPersist.
-func NewPersist(dir string) *stdPersist {
-	return &stdPersist{
-		filename: filepath.Join(dir, "contractor.json"),
-	}
-}

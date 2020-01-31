@@ -35,7 +35,7 @@ func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist [
 	filteredHosts := hdb.filteredHosts
 	filterType := hdb.filterMode
 	hdb.mu.RUnlock()
-	if !initialScanComplete {
+	if !initialScanComplete && !hdb.deps.Disrupt("InitialScanComplete") {
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
 	// Create a temporary hosttree from the given allowance.
