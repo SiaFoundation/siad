@@ -34,9 +34,10 @@ func newTestHost() Host {
 	}
 }
 
-func newTestStorageObligation(locked bool) StorageObligation {
+func newTestStorageObligation(locked bool) *TestStorageObligation {
 	return &TestStorageObligation{
-		locked: locked,
+		locked:    locked,
+		sectorMap: make(map[crypto.Hash][]byte),
 	}
 }
 

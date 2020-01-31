@@ -81,6 +81,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 	var instruction instruction
 	for _, i := range instructions {
 		switch i.Specifier {
+		case modules.SpecifierAppend:
+			instruction, err = p.staticDecodeAppendInstruction(i)
 		case modules.SpecifierReadSector:
 			instruction, err = p.staticDecodeReadSectorInstruction(i)
 		default:

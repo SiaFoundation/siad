@@ -24,7 +24,7 @@ func NewAppendInstruction(dataOffset uint64, merkleProof bool) modules.Instructi
 	}
 	binary.LittleEndian.PutUint64(ai.Args[:8], dataOffset)
 	if merkleProof {
-		ai.Args[9] = 1
+		ai.Args[8] = 1
 	}
 	return ai
 }
