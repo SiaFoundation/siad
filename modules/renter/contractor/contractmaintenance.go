@@ -490,7 +490,7 @@ func staticCheckFormPaymentContractGouging(allowance modules.Allowance, hostSett
 	}
 	// Check whether the sector access price is too high.
 	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) <= 0 {
-		return errors.New("sector accesss price of host is too high - extortion protection enabled")
+		return errors.New("sector access price of host is too high - extortion protection enabled")
 	}
 
 	// Check whether the form contract price does not leave enough room for
