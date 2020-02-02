@@ -1724,13 +1724,13 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")
-	var skylink modules.Sialink
+	var skylink modules.Skylink
 	err := skylink.LoadString(strLink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
 	}
-	metadata, streamer, err := api.renter.DownloadSialink(skylink)
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
@@ -1846,7 +1846,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	skylink, err := api.renter.CreateSialinkFromSiafile(lup, convertPath)
+	skylink, err := api.renter.CreateSkylinkFromSiafile(lup, convertPath)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
 		return
