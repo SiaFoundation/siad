@@ -246,7 +246,7 @@ func (g *Gateway) BandwidthCounters() (uint64, uint64, time.Time, error) {
 		return 0, 0, time.Time{}, err
 	}
 	defer g.threads.Done()
-	writeBytes, readBytes := g.m.Counts()
+	readBytes, writeBytes := g.m.Counts()
 	startTime := g.m.StartTime()
 	return writeBytes, readBytes, startTime, nil
 }
