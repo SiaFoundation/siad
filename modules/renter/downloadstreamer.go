@@ -491,16 +491,6 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 	return siaPath.String(), s, nil
 }
 
-// StreamerFromSnapshot creates a streamer from an existing snapshot. Since this
-// is used for downloading external siafiles we disable local fetch by default.
-func (r *Renter) StreamerFromSnapshot(reader io.Reader) (modules.Streamer, modules.SiaPath, error) {
-	snapshot, err := siafile.SnapshotFromReader(modules.RootSiaPath(), reader)
-	if err != nil {
-		return nil, modules.SiaPath{}, err
-	}
-	return r.managedStreamer(snapshot, true), snapshot.SiaPath(), nil
-}
-
 // StreamerByNode will open a streamer for the renter, taking a FileNode as
 // input instead of a siapath. This is important for fuse, which has filenodes
 // that could be getting renamed before the streams are opened.

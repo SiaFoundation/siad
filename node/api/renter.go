@@ -1,9 +1,6 @@
 package api
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -1889,97 +1886,6 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 	defer streamer.Close()
 	http.ServeContent(w, req, fileName, time.Time{}, streamer)
-}
-
-// renterStreamFromSiaFileHandler handles streaming a file using a zipped
-// siafile.
-func (api *API) renterStreamFromSiaFileHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// TODO: Need to put safties in place to ensure that someone can't provide a
-	// file which is too large. On the other hand, maybe that's something that
-	// should be handled by the frontend?
-	//
-	// TODO: Should we be setting the content length header somewhere?
-
-	// Read the whole request body into memory so that we can try twice - once
-	// as a gzipped archive, and once as a normal siafile. NewBuffer takes
-	// control of the underlying []byte, so two clean copies need to be made.
-	//
-	// TODO: I'm sure there's a cleaner way to do this. The only reason we need
-	// to read the thing into memory before creating to buffers is because we
-	// don't know if it's a gzipped archive or a siafile.
-	fullBody, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-	gzipBuf := bytes.NewReader(fullBody)
-	siafileBuf := bytes.NewReader(fullBody)
-
-	// Try gzip in a func.
-	gzipErr := func() error {
-		// Try to read as a gzipped file.
-		gzr, err := gzip.NewReader(gzipBuf)
-		if err != nil {
-			return err
-		}
-		defer gzr.Close()
-		tr := tar.NewReader(gzr)
-		// Get first file in archive.
-		header, err := tr.Next()
-		if err != nil {
-			return err
-		}
-		// Read the file.
-		streamer, _, err := api.renter.StreamerFromSnapshot(tr)
-		if err != nil {
-			return err
-		}
-		defer streamer.Close()
-		w.Header().Set("Content-Name", strings.TrimSuffix(header.Name, modules.SiaFileExtension))
-		http.ServeContent(w, req, header.Name, time.Time{}, streamer)
-		return nil
-	}()
-	if gzipErr != nil {
-		streamer, siapath, siafileErr := api.renter.StreamerFromSnapshot(siafileBuf)
-		if siafileErr != nil {
-			err := errors.Compose(gzipErr, siafileErr)
-			WriteError(w, Error{"Failed to parse request body: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		defer streamer.Close()
-		w.Header().Set("Content-Name", strings.TrimSuffix(siapath.Name(), modules.SiaFileExtension))
-		http.ServeContent(w, req, siapath.Name(), time.Time{}, streamer)
-	}
-}
-
-// renterExportHandler handles the API to export a siafile or siadir as an
-// archive to either the http response body or a file.
-// TODO: support exporting to disk.
-func (api *API) renterExportHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Parse the httpresp parameter.
-	httpresp, err := scanBool(req.FormValue("httpresp"))
-	if err != nil {
-		WriteError(w, Error{"httpresp parameter could not be parsed:" + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	if !httpresp {
-		WriteError(w, Error{"httpresp=false is not supported yet"}, http.StatusBadRequest)
-		return
-	}
-	if err := api.renter.Export(w, siaPath); err != nil {
-		WriteError(w, Error{"Exporting the file/folder failed:" + err.Error()}, http.StatusBadRequest)
-		return
-	}
 }
 
 // renterUploadHandler handles the API call to upload a file.

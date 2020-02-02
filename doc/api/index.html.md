@@ -3708,31 +3708,6 @@ Location on disk that the file will be downloaded to.
 standard success or error response. See [standard
 responses](#standard-responses).
 
-## /renter/export/*siapath* [GET]
-> curl example
-
-```go
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/export/myfile?httpresp=true" > ./myfile.shared
-```
-
-exports the file or folder with the given siapath. Currently only exporting a
-single file is supported and `httpresp` has to be set to `true`.
-
-### Path Parameters
-### REQUIRED
-**siapath** | string  
-Path to the file in the renter on the network.
-
-### Query String Parameters
-### OPTIONAL
-**httpresp** | boolean  
-If set to `true` the exported file/folder will be written to the http response body.
-
-### Response
-
-The exported file if `httpresp=true` was specified or a standard success or
-error response otherwise. See [standard responses](#standard-responses).
-
 ## /renter/fuse [GET]
 > curl example  
 
@@ -3931,43 +3906,7 @@ Path to the file in the renter on the network.
 ### OPTIONAL
 **disablelocalfetch** | boolean  
 If disablelocalfetch is true, downloads won't be served from disk even if the
-file is available locally. Is always `false` for downloads with `localpath`
-set.
-
-### Response
-
-standard success or error response. See [standard
-responses](#standard-responses).
-
-## /renter/stream [POST]
-> curl example  
-
-> Stream the exported file from the Sia network.  
-```go
-curl -A "Sia-Agent" "localhost:9980/renter/stream" --data <previously-exported-siafile>
-```  
-
-> The file can be streamed partially by using standard partial http requests
-> which means setting the "Range" field in the http header.  
-
-```go
-curl -A "Sia-Agent" -H "Range: bytes=0-1023" "localhost:9980/renter/stream" --data-binary @myfile.shared
-```
-
-downloads an exported file using http streaming. This call blocks until the
-data is received. The streaming endpoint also uses caching internally to
-prevent siad from re-downloading the same chunk multiple times when only
-parts of a file are requested at once. This might lead to a substantial
-increase in ram usage and therefore it is not recommended to stream multiple
-files in parallel at the moment. This restriction will be removed together
-with the caching once partial downloads are supported in the future. If you
-want to stream multiple files you should increase the size of the Renter's
-`streamcachesize` to at least 2x the number of files you are steaming.
-
-### Binary Parameters
-### REQUIRED
-The SiaFile or SiaDir which was previously exported using the
-`/renter/export` endpoint should be located in the request's body.
+file is available locally.
 
 ### Response
 

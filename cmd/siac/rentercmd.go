@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -26,7 +25,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -101,13 +99,6 @@ var (
 		Short: "View the download queue",
 		Long:  "View the list of files currently downloading.",
 		Run:   wrap(renterdownloadscmd),
-	}
-
-	renterShareCmd = &cobra.Command{
-		Use:   "share [siapath] [dst]",
-		Short: "Export the file or folder at the specified siapath to a location on disk.",
-		Long:  "Export the file or folder at the specified siapath to a location on disk be shared with other people/nodes",
-		Run:   wrap(rentersharecmd),
 	}
 
 	renterDownloadCancelCmd = &cobra.Command{
@@ -358,30 +349,6 @@ func rentercmd() {
 	// Print out ratelimit info about the renter
 	fmt.Println()
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
-}
-
-// rentersharecmd exports a SiaFile or SiaDir and saves it to destination.
-func rentersharecmd(path, destination string) {
-	// Parse SiaPath.
-	siaPath, err := modules.NewSiaPath(path)
-	if err != nil {
-		die("Couldn't parse SiaPath:", err)
-	}
-	_, err = httpClient.RenterFileGet(siaPath)
-	if err == nil {
-		renterfilesshare(siaPath, destination)
-		return
-	} else if !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
-		die("Failed to export file:", err)
-	}
-	_, err = httpClient.RenterDirGet(siaPath)
-	if err == nil {
-		die("Exporting folders is not supported yet.")
-		return
-	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-		die("Failed to export folder:", err)
-	}
-	die(fmt.Sprintf("Unknown file/folder '%v'", path))
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -1635,18 +1602,6 @@ func renterfilesdownloadcmd(path, destination string) {
 		die("Failed to download folder:", err)
 	}
 	die(fmt.Sprintf("Unknown file '%v'", path))
-}
-
-// renterfilesshare exports a single SiaFile and saves it to disk.
-func renterfilesshare(siaPath modules.SiaPath, destination string) {
-	destination = abs(destination)
-	exportedFile, err := httpClient.RenterExportSiafile(siaPath)
-	if err != nil {
-		die("Failed to export SiaFile:", err)
-	}
-	if err := ioutil.WriteFile(destination, exportedFile, 0750); err != nil {
-		die("Failed to write exported SiaFile to destination:", err)
-	}
 }
 
 // renterfilesdownload downloads the file at the specified path from the Sia
