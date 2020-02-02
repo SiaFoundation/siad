@@ -514,7 +514,7 @@ func renterallowancecmd() {
   Renew Window:         %v blocks
   Hosts:                %v
 
-Viewnode Per-Contract Budget: %v
+Skynet Portal Per-Contract Budget: %v
 
 Expectations for period:
   Expected Storage:     %v
@@ -530,7 +530,7 @@ Price Protections:
   MaxStoragePrice:           %v per TB per Month
   MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
-		allowance.Hosts, currencyUnits(allowance.ViewContractInitialPrice),
+		allowance.Hosts, currencyUnits(allowance.PaymentContractInitialPrice),
 		modules.FilesizeUnits(allowance.ExpectedStorage),
 		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
 		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
@@ -647,18 +647,18 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		req = req.WithRenewWindow(renewWindow)
 		changedFields++
 	}
-	// parse viewcontractinitialprice
-	if allowanceViewContractInitialPrice != "" {
-		priceStr, err := parseCurrency(allowanceViewContractInitialPrice)
+	// parse the payment contract initial price
+	if allowancePaymentContractInitialPrice != "" {
+		priceStr, err := parseCurrency(allowancePaymentContractInitialPrice)
 		if err != nil {
-			die("Could not parse view contract initial price:", err)
+			die("Could not parse payment contract initial price:", err)
 		}
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read view contract initial price:", err)
+			die("could not read payment contract initial price:", err)
 		}
-		req = req.WithViewContractInitialPrice(price)
+		req = req.WithPaymentContractInitialPrice(price)
 		changedFields++
 	}
 	// parse expectedStorage

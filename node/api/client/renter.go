@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,10 +19,6 @@ import (
 )
 
 type (
-	// ExportedSiafile is a helper type for a raw exported SiaFile to ensure
-	// additional type safety when using exported Siafiles.
-	ExportedSiafile []byte
-
 	// AllowanceRequestPost is a helper type to be able to build an allowance
 	// request.
 	AllowanceRequestPost struct {
@@ -63,8 +58,9 @@ func (a *AllowanceRequestPost) WithRenewWindow(renewWindow types.BlockHeight) *A
 	return a
 }
 
-// WithViewContractInitialPrice adds the viewcontractinitialprice field to the request.
-func (a *AllowanceRequestPost) WithViewContractInitialPrice(price types.Currency) *AllowanceRequestPost {
+// WithPaymentContractInitialPrice adds the viewcontractinitialprice field to
+// the request.
+func (a *AllowanceRequestPost) WithPaymentContractInitialPrice(price types.Currency) *AllowanceRequestPost {
 	a.values.Set("viewcontractinitialprice", price.String())
 	return a
 }
@@ -518,23 +514,6 @@ func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool
 	sp := escapeSiaPath(siaPath)
 	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s?%s", sp, values.Encode()))
 	return
-}
-
-// RenterStreamFromSiaFile uses the /renter/stream endpoint to download data as a
-// stream using an existing SiaFile on disk.
-func (c *Client) RenterStreamFromSiaFile(sf ExportedSiafile) (filename string, resp []byte, err error) {
-	header, resp, err := c.postRawResponse("/renter/stream", bytes.NewReader(sf))
-	if err != nil {
-		return "", nil, err
-	}
-	return header.Get("Content-Name"), resp, nil
-}
-
-// RenterExportSiafile exports the SiaFile at the given path.
-func (c *Client) RenterExportSiafile(siaPath modules.SiaPath) (ExportedSiafile, error) {
-	sp := escapeSiaPath(siaPath)
-	_, resp, err := c.getRawResponse(fmt.Sprintf("/renter/export/%v?httpresp=true", sp))
-	return ExportedSiafile(resp), err
 }
 
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part

@@ -241,12 +241,12 @@ type Allowance struct {
 	Period      types.BlockHeight `json:"period"`
 	RenewWindow types.BlockHeight `json:"renewwindow"`
 
-	// ViewContractInitialPrice establishes the amount of money that the
-	// viewnode will put in to a brand new view contract.
-	//
-	// When set to zero, the contractor will not consider itself to be a
-	// viewnode.
-	ViewContractInitialPrice types.Currency `json:"viewcontractinitialprice"`
+	// PaymentContractInitialPrice establishes the amount of money that the a
+	// Skynet portal will put in to a brand new payment contract. If this value
+	// is set to zero, this node will not act as a Skynet portal. When this
+	// value is non-zero, this node will act as a Skynet portal, and form
+	// contracts with every reasonably priced host.
+	PaymentContractInitialPrice types.Currency `json:"paymentcontractinitialprice"`
 
 	// ExpectedStorage is the amount of data that we expect to have in a contract.
 	ExpectedStorage uint64 `json:"expectedstorage"`
