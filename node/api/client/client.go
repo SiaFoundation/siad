@@ -110,8 +110,9 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
+		err := readAPIError(res.Body)
 		drainAndClose(res.Body)
-		return nil, nil, errors.AddContext(readAPIError(res.Body), "GET request error")
+		return nil, nil, errors.AddContext(err, "GET request error")
 	}
 
 	if res.StatusCode == http.StatusNoContent {
