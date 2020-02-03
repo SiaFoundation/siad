@@ -1323,6 +1323,15 @@ func (c *Contractor) threadedContractMaintenance() {
 		currentContracts[contract.HostPublicKey.String()] = contract
 	}
 	for _, host := range allHosts {
+		// Check if maintenance should be stopped.
+		select {
+		case <-c.tg.StopChan():
+			return
+		case <-c.interruptMaintenance:
+			return
+		default:
+		}
+
 		// Check that the price settings of the host are acceptable.
 		hostSettings := host.HostExternalSettings
 		err := staticCheckFormPaymentContractGouging(allowance, hostSettings)
@@ -1397,15 +1406,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.mu.Unlock()
 		if err != nil {
 			c.log.Println("Unable to save the contractor:", err)
-		}
-
-		// Soft sleep before making the next contract.
-		select {
-		case <-c.tg.StopChan():
-			return
-		case <-c.interruptMaintenance:
-			return
-		default:
 		}
 	}
 }
