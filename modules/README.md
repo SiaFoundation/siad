@@ -152,8 +152,13 @@ For more information, checkout the documentation in the [sialink.go](./sialink.g
 **Key Files**
 - [siapath.go](./siapath.go)
 
-*TODO* 
-  - fill out subsystem explanation
+Siapaths are the format of filesystem paths on the Sia network. Internally they
+are handled as linux paths and use the `/` separator. Siapaths are used to
+identify directories on the Sia network as well as files.  When manipulating
+Siapaths in memory the `strings` package should be used so that the `/`
+separator can be enforced. When Siapaths are being translated to System paths,
+the `filepath` package is used to ensure the correct path separator is used for
+the OS that is running.
 
 ### Storage Manager
 **Key Files**
