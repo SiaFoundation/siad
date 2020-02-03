@@ -43,7 +43,7 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 
 	// Contract has no utility if the score is poor. Cannot be marked as bad if
 	// the contract is a payment contract.
-	deadScore := sb.Score.Cmp(types.NewCurrency64(1) <= 0
+	deadScore := sb.Score.Cmp(types.NewCurrency64(1)) <= 0
 	badScore := !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0
 	if deadScore || (badScore && !paymentContract) {
 		// Log if the utility has changed.
