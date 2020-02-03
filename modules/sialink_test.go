@@ -8,15 +8,15 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSialinkManualExamples checks a pile of manual examples using table driven
+// TestSkylinkManualExamples checks a pile of manual examples using table driven
 // tests.
-func TestSialinkManualExamples(t *testing.T) {
+func TestSkylinkManualExamples(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 
 	// Good Examples.
-	var sialinkExamples = []struct {
+	var skylinkExamples = []struct {
 		offset         uint64
 		length         uint64
 		expectedLength uint64
@@ -73,8 +73,8 @@ func TestSialinkManualExamples(t *testing.T) {
 		{512 * 1024, 2050 * 1024, (2048 + 256) * 1024},
 	}
 	// Try each example.
-	for _, example := range sialinkExamples {
-		sl, err := NewSialinkV1(crypto.Hash{}, example.offset, example.length)
+	for _, example := range skylinkExamples {
+		sl, err := NewSkylinkV1(crypto.Hash{}, example.offset, example.length)
 		if err != nil {
 			t.Error(err)
 		}
@@ -94,7 +94,7 @@ func TestSialinkManualExamples(t *testing.T) {
 	}
 
 	// Invalid Examples.
-	var badSialinkExamples = []struct {
+	var badSkylinkExamples = []struct {
 		offset uint64
 		length uint64
 	}{
@@ -111,26 +111,26 @@ func TestSialinkManualExamples(t *testing.T) {
 		{1024 * 1024 * 3, 1024 * 1024 * 2},
 	}
 	// Try each example.
-	for _, example := range badSialinkExamples {
-		_, err := NewSialinkV1(crypto.Hash{}, example.offset, example.length)
+	for _, example := range badSkylinkExamples {
+		_, err := NewSkylinkV1(crypto.Hash{}, example.offset, example.length)
 		if err == nil {
 			t.Error("expecting a failure:", example.offset, example.length)
 		}
 	}
 }
 
-// TestSialink checks that the linkformat is correctly encoding to and decoding
+// TestSkylink checks that the linkformat is correctly encoding to and decoding
 // from a string.
-func TestSialink(t *testing.T) {
+func TestSkylink(t *testing.T) {
 	// Create a linkdata struct that is all 0's, check that the resulting
-	// sialink is the right size, and check that the struct encodes and decodes
+	// skylink is the right size, and check that the struct encodes and decodes
 	// without problems.
-	var slMin Sialink
+	var slMin Skylink
 	str := slMin.String()
-	if len(str) != encodedSialinkSize {
-		t.Error("sialink is not the right size")
+	if len(str) != encodedSkylinkSize {
+		t.Error("skylink is not the right size")
 	}
-	var slMinDecoded Sialink
+	var slMinDecoded Skylink
 	err := slMinDecoded.LoadString(str)
 	if err != nil {
 		t.Fatal(err)
@@ -140,20 +140,20 @@ func TestSialink(t *testing.T) {
 	}
 
 	// Create a linkdata struct that is all 1's, check that the resulting
-	// sialink is the right size, and check that the struct encodes and decodes
+	// skylink is the right size, and check that the struct encodes and decodes
 	// without problems.
-	slMax := Sialink{
+	slMax := Skylink{
 		bitfield: 65535,
 	}
-	slMax.bitfield -= 7175 // set the final three bits to 0, and also bits 10, 11, 12 to zer oto make this a valid sialink.
+	slMax.bitfield -= 7175 // set the final three bits to 0, and also bits 10, 11, 12 to zer oto make this a valid skylink.
 	for i := 0; i < len(slMax.merkleRoot); i++ {
 		slMax.merkleRoot[i] = 255
 	}
 	str = slMax.String()
-	if len(str) != encodedSialinkSize {
+	if len(str) != encodedSkylinkSize {
 		t.Error("str is not the right size")
 	}
-	var slMaxDecoded Sialink
+	var slMaxDecoded Skylink
 	err = slMaxDecoded.LoadString(str)
 	if err != nil {
 		t.Fatal(err)
@@ -163,9 +163,9 @@ func TestSialink(t *testing.T) {
 	}
 
 	// Try loading an arbitrary string that is too small.
-	var sl Sialink
+	var sl Skylink
 	var arb string
-	for i := 0; i < encodedSialinkSize-1; i++ {
+	for i := 0; i < encodedSkylinkSize-1; i++ {
 		arb = arb + "a"
 	}
 	err = sl.LoadString(arb)
@@ -188,21 +188,21 @@ func TestSialink(t *testing.T) {
 	blank := ""
 	err = sl.LoadString(blank)
 	if err == nil {
-		t.Error("expecting an error when loading a blank sialink")
+		t.Error("expecting an error when loading a blank skylink")
 	}
 
-	// Try giving a sialink extra params and loading that.
+	// Try giving a skylink extra params and loading that.
 	slStr := sl.String()
 	params := slStr + "&fdsafdsafdsa"
 	err = sl.LoadString(params)
 	if err != nil {
-		t.Error("should be no issues loading a sialink with params")
+		t.Error("should be no issues loading a skylink with params")
 	}
 	// Add more ampersands
 	params = params + "&fffffdsafdsafdsa"
 	err = sl.LoadString(params)
 	if err != nil {
-		t.Error("should be no issues loading a sialink with params")
+		t.Error("should be no issues loading a skylink with params")
 	}
 
 	// Try loading a non base64 string.
@@ -213,23 +213,23 @@ func TestSialink(t *testing.T) {
 	}
 
 	// Try parsing a linkfile that's got a bad version.
-	var slBad Sialink
+	var slBad Skylink
 	slBad.bitfield = 1
 	str = slBad.String()
 	_, _, err = slBad.OffsetAndFetchSize()
 	if err == nil {
-		t.Error("should not be able to get offset and fetch size of bad sialink")
+		t.Error("should not be able to get offset and fetch size of bad skylink")
 	}
 	// Try setting invalid mode bits.
 	slBad.bitfield = ^uint16(0) - 3
 	_, _, err = slBad.OffsetAndFetchSize()
 	if err == nil {
-		t.Error("should not be able to get offset and fetch size of bad sialink")
+		t.Error("should not be able to get offset and fetch size of bad skylink")
 	}
 
 	// Check the MerkleRoot() function.
 	mr := crypto.HashObject("fdsa")
-	sl, err = NewSialinkV1(mr, 4096, 4096)
+	sl, err = NewSkylinkV1(mr, 4096, 4096)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,16 +238,16 @@ func TestSialink(t *testing.T) {
 	}
 }
 
-// TestSialinkAutoExamples performs a brute force test over lots of values for
-// the sialink bitfield to ensure correctness.
-func TestSialinkAutoExamples(t *testing.T) {
+// TestSkylinkAutoExamples performs a brute force test over lots of values for
+// the skylink bitfield to ensure correctness.
+func TestSkylinkAutoExamples(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 
 	// Helper function to try some values.
 	tryValues := func(offset, length, expectedLength uint64) {
-		sl, err := NewSialinkV1(crypto.Hash{}, offset, length)
+		sl, err := NewSkylinkV1(crypto.Hash{}, offset, length)
 		if err != nil {
 			t.Error(err)
 		}
@@ -262,10 +262,10 @@ func TestSialinkAutoExamples(t *testing.T) {
 			t.Error("bad length:", offset, length, expectedLength, lengthOut)
 		}
 
-		// Encode the sialink and then decode the sialink. There should be no
+		// Encode the skylink and then decode the skylink. There should be no
 		// errors in doing so, and the result should equal the initial.
 		str := sl.String()
-		var slDecode Sialink
+		var slDecode Skylink
 		err = slDecode.LoadString(str)
 		if err != nil {
 			t.Error(err)

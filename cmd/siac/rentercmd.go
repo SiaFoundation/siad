@@ -514,6 +514,8 @@ func renterallowancecmd() {
   Renew Window:         %v blocks
   Hosts:                %v
 
+Skynet Portal Per-Contract Budget: %v
+
 Expectations for period:
   Expected Storage:     %v
   Expected Upload:      %v
@@ -528,7 +530,8 @@ Price Protections:
   MaxStoragePrice:           %v per TB per Month
   MaxUploadBandwidthPrice:   %v per TB
 `, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
-		allowance.Hosts, modules.FilesizeUnits(allowance.ExpectedStorage),
+		allowance.Hosts, currencyUnits(allowance.PaymentContractInitialFunding),
+		modules.FilesizeUnits(allowance.ExpectedStorage),
 		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
 		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
 		allowance.ExpectedRedundancy,
@@ -642,6 +645,20 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 			die("Could not parse renew window:", err)
 		}
 		req = req.WithRenewWindow(renewWindow)
+		changedFields++
+	}
+	// parse the payment contract initial price
+	if allowancePaymentContractInitialFunding != "" {
+		priceStr, err := parseCurrency(allowancePaymentContractInitialFunding)
+		if err != nil {
+			die("Could not parse payment contract initial price:", err)
+		}
+		var price types.Currency
+		_, err = fmt.Sscan(priceStr, &price)
+		if err != nil {
+			die("could not read payment contract initial price:", err)
+		}
+		req = req.WithPaymentContractInitialFunding(price)
 		changedFields++
 	}
 	// parse expectedStorage
@@ -2315,7 +2332,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	if !sp.IsRoot() {
 		rf, err := httpClient.RenterFileGet(sp)
 		if err == nil {
-			if len(rf.File.Sialinks) == 0 {
+			if len(rf.File.Skylinks) == 0 {
 				fmt.Println("File is not pinning any skylinks")
 				return
 			}
@@ -2338,7 +2355,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	// Drop any files that are not tracking skylinks.
 	for j := 0; j < len(dirs); j++ {
 		for i := 0; i < len(dirs[j].files); i++ {
-			if len(dirs[j].files[i].Sialinks) == 0 {
+			if len(dirs[j].files[i].Skylinks) == 0 {
 				dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
 				i--
 			}
@@ -2377,10 +2394,10 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		sort.Sort(bySiaPathFile(dir.files))
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
-			firstSkylink := file.Sialinks[0]
+			firstSkylink := file.Skylinks[0]
 			size := modules.FilesizeUnits(file.Filesize)
 			fmt.Fprintf(w, "  %v\t%v\t%9v\n", name, firstSkylink, size)
-			for _, skylink := range file.Sialinks[1:] {
+			for _, skylink := range file.Skylinks[1:] {
 				fmt.Fprintf(w, "\t%v\t\n", skylink)
 			}
 		}

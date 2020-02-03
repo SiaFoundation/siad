@@ -58,6 +58,13 @@ func (a *AllowanceRequestPost) WithRenewWindow(renewWindow types.BlockHeight) *A
 	return a
 }
 
+// WithPaymentContractInitialFunding adds the paymentcontractinitialfunding
+// field to the request.
+func (a *AllowanceRequestPost) WithPaymentContractInitialFunding(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("paymentcontractinitialfunding", price.String())
+	return a
+}
+
 // WithExpectedStorage adds the expected storage field to the request.
 func (a *AllowanceRequestPost) WithExpectedStorage(expectedStorage uint64) *AllowanceRequestPost {
 	a.values.Set("expectedstorage", fmt.Sprint(expectedStorage))
@@ -575,7 +582,7 @@ func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, da
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
 	values.Set("stream", strconv.FormatBool(true))
-	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err
 }
 
@@ -587,7 +594,7 @@ func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPa
 	values := url.Values{}
 	values.Set("repair", strconv.FormatBool(true))
 	values.Set("stream", strconv.FormatBool(true))
-	_, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err
 }
 
@@ -752,7 +759,7 @@ func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters, root bo
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	resp, err := c.postRawResponse(query, lup.Reader)
+	_, resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
@@ -785,7 +792,7 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.LinkfileUploadPar
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	resp, err := c.postRawResponse(query, lup.Reader)
+	_, resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}

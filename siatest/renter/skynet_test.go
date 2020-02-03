@@ -204,12 +204,12 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(largeRenterFile.File.Sialinks) != 1 {
-		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Sialinks))
+	if len(largeRenterFile.File.Skylinks) != 1 {
+		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Skylinks))
 	}
-	if largeRenterFile.File.Sialinks[0] != largeSkylink {
+	if largeRenterFile.File.Skylinks[0] != largeSkylink {
 		t.Error("skylinks should match")
-		t.Log(largeRenterFile.File.Sialinks[0])
+		t.Log(largeRenterFile.File.Skylinks[0])
 		t.Log(largeSkylink)
 	}
 
