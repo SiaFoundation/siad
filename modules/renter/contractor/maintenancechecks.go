@@ -28,9 +28,12 @@ func (c *Contractor) badContractCheck(u modules.ContractUtility) (modules.Contra
 	return u, false
 }
 
-// checkHostScore checks host scorebreakdown against minimum accepted scores.
-// forceUpdate is true if the utility change must be taken.
-func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (modules.ContractUtility, utilityUpdateStatus) {
+// managedCheckHostScore checks host scorebreakdown against minimum accepted
+// scores.  forceUpdate is true if the utility change must be taken.
+func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb modules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (modules.ContractUtility, utilityUpdateStatus) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	u := contract.Utility
 
 	// Check whether the contract is a payment contract. Payment contracts
@@ -102,8 +105,8 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 	return u, noUpdate
 }
 
-// criticalUtilityChecks performs critical checks on a contract that would
-// require, with no exceptions, marking the contract as !GFR and/or !GFU.
+// managedCriticalUtilityChecks performs critical checks on a contract that
+// would require, with no exceptions, marking the contract as !GFR and/or !GFU.
 // Returns true if and only if and of the checks passed and require the utility
 // to be updated.
 //
@@ -111,7 +114,7 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 // !GFR and !GFU, even if the contract is already marked as such. If
 // 'needsUpdate' is set to true, other checks which may change those values will
 // be ignored and the contract will remain marked as having no utility.
-func (c *Contractor) criticalUtilityChecks(contract modules.RenterContract, host modules.HostDBEntry) (modules.ContractUtility, bool) {
+func (c *Contractor) managedCriticalUtilityChecks(contract modules.RenterContract, host modules.HostDBEntry) (modules.ContractUtility, bool) {
 	c.mu.RLock()
 	blockHeight := c.blockHeight
 	renewWindow := c.allowance.RenewWindow
@@ -146,10 +149,10 @@ func (c *Contractor) criticalUtilityChecks(contract modules.RenterContract, host
 	return contract.Utility, false
 }
 
-// hostInHostDBCheck checks if the host is in the hostdb and not filtered.
-// Returns true if a check fails and the utility returned must be used to update
-// the contract state.
-func (c *Contractor) hostInHostDBCheck(contract modules.RenterContract) (modules.HostDBEntry, modules.ContractUtility, bool) {
+// managedHostInHostDBCheck checks if the host is in the hostdb and not
+// filtered.  Returns true if a check fails and the utility returned must be
+// used to update the contract state.
+func (c *Contractor) managedHostInHostDBCheck(contract modules.RenterContract) (modules.HostDBEntry, modules.ContractUtility, bool) {
 	u := contract.Utility
 	host, exists, err := c.hdb.Host(contract.HostPublicKey)
 	// Contract has no utility if the host is not in the database. Or is
