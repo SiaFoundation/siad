@@ -641,13 +641,13 @@ func (api *API) renterHandlerPOST(w http.ResponseWriter, req *http.Request, _ ht
 		settings.Allowance.RenewWindow = types.BlockHeight(renewWindow)
 		renewWindowSet = true
 	}
-	if pcipStr := req.FormValue("paymentcontractinitialprice"); pcipStr != "" {
+	if pcipStr := req.FormValue("paymentcontractinitialfunding"); pcipStr != "" {
 		vcip, ok := scanAmount(pcipStr)
 		if !ok {
-			WriteError(w, Error{"unable to parse paymentcontractinitialprice"}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse paymentcontractinitialfunding"}, http.StatusBadRequest)
 			return
 		}
-		settings.Allowance.PaymentContractInitialPrice = vcip
+		settings.Allowance.PaymentContractInitialFunding = vcip
 	}
 	if es := req.FormValue("expectedstorage"); es != "" {
 		var expectedStorage uint64

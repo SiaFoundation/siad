@@ -496,7 +496,7 @@ func staticCheckFormPaymentContractGouging(allowance modules.Allowance, hostSett
 	// Check whether the form contract price does not leave enough room for
 	// uploads and downloads. At least half of the payment contract's funds need
 	// to remain for download bandwidth.
-	if allowance.PaymentContractInitialPrice.Div64(2).Cmp(hostSettings.ContractPrice) <= 0 {
+	if allowance.PaymentContractInitialFunding.Div64(2).Cmp(hostSettings.ContractPrice) <= 0 {
 		return errors.New("contract price of host is too high - extortion protection enabled")
 	}
 	return nil
@@ -1161,7 +1161,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.mu.RLock()
 	neededContracts := int(c.allowance.Hosts) - uploadContracts
 	c.mu.RUnlock()
-	if neededContracts <= 0 && allowance.PaymentContractInitialPrice.IsZero() {
+	if neededContracts <= 0 && allowance.PaymentContractInitialFunding.IsZero() {
 		c.log.Debugln("do not seem to need more contracts")
 		return
 	}
@@ -1305,9 +1305,9 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 	}
 
-	// Viewnodes will need to form additional contracts with any hosts that they
+	// Portals will need to form additional contracts with any hosts that they
 	// do not currently have contracts with. All other nodes can exit here.
-	if allowance.PaymentContractInitialPrice.IsZero() {
+	if allowance.PaymentContractInitialFunding.IsZero() {
 		return
 	}
 
@@ -1360,7 +1360,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		// Determine if there is enough money to form a new contract.
-		if fundsRemaining.Cmp(allowance.PaymentContractInitialPrice) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
+		if fundsRemaining.Cmp(allowance.PaymentContractInitialFunding) < 0 || c.staticDeps.Disrupt("LowFundsFormation") {
 			registerLowFundsAlert = true
 			c.log.Println("WARN: need to form new contracts, but unable to because of a low allowance")
 			break
@@ -1375,7 +1375,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 		// Attempt forming a contract with this host.
 		start := time.Now()
-		fundsSpent, newContract, err := c.managedNewContract(host, allowance.PaymentContractInitialPrice, endHeight)
+		fundsSpent, newContract, err := c.managedNewContract(host, allowance.PaymentContractInitialFunding, endHeight)
 		if err != nil {
 			c.log.Printf("Attempted to form a contract with %v, time spent %v, but negotiation failed: %v\n", host.NetAddress, time.Since(start).Round(time.Millisecond), err)
 			continue

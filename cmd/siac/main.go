@@ -42,21 +42,21 @@ var (
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
-	allowanceFunds                       string // amount of money to be used within a period
-	allowancePeriod                      string // length of period
-	allowanceHosts                       string // number of hosts to form contracts with
-	allowanceRenewWindow                 string // renew window of allowance
-	allowancePaymentContractInitialPrice string // initial price to pay to create a payment contract
-	allowanceExpectedStorage             string // expected storage stored on hosts before redundancy
-	allowanceExpectedUpload              string // expected data uploaded within period
-	allowanceExpectedDownload            string // expected data downloaded within period
-	allowanceExpectedRedundancy          string // expected redundancy of most uploaded files
-	allowanceMaxRPCPrice                 string // maximum allowed base price for RPCs
-	allowanceMaxContractPrice            string // maximum allowed price to form a contract
-	allowanceMaxDownloadBandwidthPrice   string // max allowed price to download data from a host
-	allowanceMaxSectorAccessPrice        string // max allowed price to access a sector on a host
-	allowanceMaxStoragePrice             string // max allowed price to store data on a host
-	allowanceMaxUploadBandwidthPrice     string // max allowed price to upload data to a host
+	allowanceFunds                         string // amount of money to be used within a period
+	allowancePeriod                        string // length of period
+	allowanceHosts                         string // number of hosts to form contracts with
+	allowanceRenewWindow                   string // renew window of allowance
+	allowancePaymentContractInitialFunding string // initial price to pay to create a payment contract
+	allowanceExpectedStorage               string // expected storage stored on hosts before redundancy
+	allowanceExpectedUpload                string // expected data uploaded within period
+	allowanceExpectedDownload              string // expected data downloaded within period
+	allowanceExpectedRedundancy            string // expected redundancy of most uploaded files
+	allowanceMaxRPCPrice                   string // maximum allowed base price for RPCs
+	allowanceMaxContractPrice              string // maximum allowed price to form a contract
+	allowanceMaxDownloadBandwidthPrice     string // max allowed price to download data from a host
+	allowanceMaxSectorAccessPrice          string // max allowed price to access a sector on a host
+	allowanceMaxStoragePrice               string // max allowed price to store data on a host
+	allowanceMaxUploadBandwidthPrice       string // max allowed price to upload data to a host
 )
 
 var (
@@ -281,7 +281,7 @@ func main() {
 	renterSetAllowanceCmd.Flags().StringVar(&allowancePeriod, "period", "", "period of allowance in blocks (b), hours (h), days (d) or weeks (w)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceHosts, "hosts", "", "number of hosts the renter will spread the uploaded data across")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceRenewWindow, "renew-window", "", "renew window in blocks (b), hours (h), days (d) or weeks (w)")
-	renterSetAllowanceCmd.Flags().StringVar(&allowancePaymentContractInitialPrice, "payment-contract-initial-price", "", "Setting this will cause the renter to form payment contracts, making it a Skynet portal.")
+	renterSetAllowanceCmd.Flags().StringVar(&allowancePaymentContractInitialFunding, "payment-contract-initial-funding", "", "Setting this will cause the renter to form payment contracts, making it a Skynet portal.")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedStorage, "expected-storage", "", "expected storage in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedUpload, "expected-upload", "", "expected upload in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceExpectedDownload, "expected-download", "", "expected download in period in bytes (B), kilobytes (KB), megabytes (MB) etc. up to yottabytes (YB)")

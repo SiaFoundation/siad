@@ -260,7 +260,9 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		}
 
 		// Check the host scorebreakdown against the minimum accepted scores.
+		c.mu.Lock()
 		u, utilityUpdateStatus := c.checkHostScore(contract, sb, minScoreGFR, minScoreGFU)
+		c.mu.Unlock()
 		switch utilityUpdateStatus {
 		case noUpdate:
 

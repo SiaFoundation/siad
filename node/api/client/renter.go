@@ -58,10 +58,10 @@ func (a *AllowanceRequestPost) WithRenewWindow(renewWindow types.BlockHeight) *A
 	return a
 }
 
-// WithPaymentContractInitialPrice adds the viewcontractinitialprice field to
-// the request.
-func (a *AllowanceRequestPost) WithPaymentContractInitialPrice(price types.Currency) *AllowanceRequestPost {
-	a.values.Set("viewcontractinitialprice", price.String())
+// WithPaymentContractInitialFunding adds the paymentcontractinitialfunding
+// field to the request.
+func (a *AllowanceRequestPost) WithPaymentContractInitialFunding(price types.Currency) *AllowanceRequestPost {
+	a.values.Set("paymentcontractinitialfunding", price.String())
 	return a
 }
 

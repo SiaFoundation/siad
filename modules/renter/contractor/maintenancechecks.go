@@ -39,7 +39,7 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 	if len(contract.Transaction.FileContractRevisions) > 0 {
 		size = contract.Transaction.FileContractRevisions[0].NewFileSize
 	}
-	paymentContract := !c.allowance.PaymentContractInitialPrice.IsZero() && size == 0
+	paymentContract := !c.allowance.PaymentContractInitialFunding.IsZero() && size == 0
 
 	// Contract has no utility if the score is poor. Cannot be marked as bad if
 	// the contract is a payment contract.
