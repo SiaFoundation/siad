@@ -43,7 +43,9 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 
 	// Contract has no utility if the score is poor. Cannot be marked as bad if
 	// the contract is a payment contract.
-	if !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0 && !paymentContract {
+	deadScore := sb.Score.Cmp(types.NewCurrency64(1) <= 0
+	badScore := !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0
+	if deadScore || (badScore && !paymentContract) {
 		// Log if the utility has changed.
 		if u.GoodForUpload || u.GoodForRenew {
 			c.log.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
@@ -65,7 +67,7 @@ func (c *Contractor) checkHostScore(contract modules.RenterContract, sb modules.
 		// Only force utility updates if the score is the min possible score.
 		// Otherwise defer update decision for low-score contracts to the
 		// churnLimiter.
-		if sb.Score.Cmp(types.NewCurrency64(1)) <= 0 {
+		if deadScore {
 			return u, necessaryUtilityUpdate
 		}
 		c.log.Println("Adding contract utility update to churnLimiter queue")
