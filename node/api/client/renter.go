@@ -781,7 +781,7 @@ func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters, root bo
 func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("name", lup.FileMetadata.Filename)
+	values.Set("filename", lup.FileMetadata.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
 	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
