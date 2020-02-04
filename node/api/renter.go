@@ -1730,11 +1730,41 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
 	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the querystring.
+	var attachment bool
+	attachmentStr := queryForm.Get("attachment")
+	if attachmentStr != "" {
+		attachment, err = strconv.ParseBool(attachmentStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'attachment' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+
+	// Set Content-Disposition header, if 'attachment' is true, set the
+	// disposition-type to attachment, otherwise we inline it.
+	var cdh string
+	if attachment {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(metadata.Filename))
+	} else {
+		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(metadata.Filename))
+	}
+	w.Header().Set("Content-Disposition", cdh)
+
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
