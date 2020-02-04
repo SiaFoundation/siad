@@ -226,7 +226,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.LinkfileUploadParameters, 
 		return modules.Skylink{}, errors.AddContext(err, "unable to open siafile")
 	}
 	defer fileNode.Close()
-	return r.managedCreateSkylinkFromFileNode(lup, fileNode, siaPath.Name())
+	return r.managedCreateSkylinkFromFileNode(lup, nil, fileNode, siaPath.Name())
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
@@ -234,7 +234,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.LinkfileUploadParameters, 
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.LinkfileUploadParameters, fileNode *filesystem.FileNode, filename string) (modules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.LinkfileUploadParameters, metadataBytes []byte, fileNode *filesystem.FileNode, filename string) (modules.Skylink, error) {
 	// Check that the encryption key and erasure code is compatible with the
 	// linkfile format. This is intentionally done before any heavy computation
 	// to catch early errors.
@@ -255,13 +255,16 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.LinkfileUploadPara
 	}
 
 	// Create the metadata for this siafile.
-	fm := modules.LinkfileMetadata{
-		Filename: filename,
-		Mode:     fileNode.Mode(),
-	}
-	metadataBytes, err := linkfileMetadataBytes(fm)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "error retrieving linkfile metadata bytes")
+	if metadataBytes == nil {
+		fm := modules.LinkfileMetadata{
+			Filename: filename,
+			Mode:     fileNode.Mode(),
+		}
+		var err error
+		metadataBytes, err = linkfileMetadataBytes(fm)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "error retrieving linkfile metadata bytes")
+		}
 	}
 
 	// Create the fanout for the siafile.
@@ -458,7 +461,7 @@ func (r *Renter) managedUploadLinkfileLargeFile(lup modules.LinkfileUploadParame
 
 	// Convert the new siafile we just uploaded into a linkfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(lup, fileNode, siaPath.Name())
+	return r.managedCreateSkylinkFromFileNode(lup, metadataBytes, fileNode, siaPath.Name())
 }
 
 // managedUploadLinkfileSmallFile uploads a file that fits entirely in the
