@@ -656,7 +656,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
 		if err != nil {
-			die("could not read payment contract initial price:", err)
+			die("could not read payment contract initial funding:", err)
 		}
 		req = req.WithPaymentContractInitialFunding(price)
 		changedFields++
