@@ -651,7 +651,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	if allowancePaymentContractInitialFunding != "" {
 		priceStr, err := parseCurrency(allowancePaymentContractInitialFunding)
 		if err != nil {
-			die("Could not parse payment contract initial price:", err)
+			die("Could not parse payment contract initial funding:", err)
 		}
 		var price types.Currency
 		_, err = fmt.Sscan(priceStr, &price)
