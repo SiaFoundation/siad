@@ -647,7 +647,7 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 		req = req.WithRenewWindow(renewWindow)
 		changedFields++
 	}
-	// parse the payment contract initial price
+	// parse the payment contract initial funding
 	if allowancePaymentContractInitialFunding != "" {
 		priceStr, err := parseCurrency(allowancePaymentContractInitialFunding)
 		if err != nil {
