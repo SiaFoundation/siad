@@ -1749,7 +1749,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	metadata, streamer, err := api.renter.DownloadSialink(skylink)
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
