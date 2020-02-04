@@ -1727,6 +1727,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", metadata.Filename))
+
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
