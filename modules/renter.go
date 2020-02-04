@@ -241,6 +241,13 @@ type Allowance struct {
 	Period      types.BlockHeight `json:"period"`
 	RenewWindow types.BlockHeight `json:"renewwindow"`
 
+	// PaymentContractInitialFunding establishes the amount of money that the a
+	// Skynet portal will put into a brand new payment contract. If this value
+	// is set to zero, this node will not act as a Skynet portal. When this
+	// value is non-zero, this node will act as a Skynet portal, and form
+	// contracts with every reasonably priced host.
+	PaymentContractInitialFunding types.Currency `json:"paymentcontractinitialfunding"`
+
 	// ExpectedStorage is the amount of data that we expect to have in a contract.
 	ExpectedStorage uint64 `json:"expectedstorage"`
 
@@ -426,7 +433,7 @@ type FileInfo struct {
 	Recoverable      bool              `json:"recoverable"`
 	Redundancy       float64           `json:"redundancy"`
 	Renewing         bool              `json:"renewing"`
-	Sialinks         []string          `json:"sialinks"`
+	Skylinks         []string          `json:"skylinks"`
 	SiaPath          SiaPath           `json:"siapath"`
 	Stuck            bool              `json:"stuck"`
 	StuckHealth      float64           `json:"stuckhealth"`
@@ -925,24 +932,24 @@ type Renter interface {
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
-	// CreateSialinkFromSiafile will create a sialink from a siafile. This will
+	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector linkfile needs to be uploaded
 	// separately, and if there is a fanout expansion that needs to be uploaded
 	// separately as well.
-	CreateSialinkFromSiafile(LinkfileUploadParameters, SiaPath) (Sialink, error)
+	CreateSkylinkFromSiafile(LinkfileUploadParameters, SiaPath) (Skylink, error)
 
-	// DownloadSialink will fetch a file from the Sia network using the sialink.
-	DownloadSialink(Sialink) (LinkfileMetadata, Streamer, error)
+	// DownloadSkylink will fetch a file from the Sia network using the skylink.
+	DownloadSkylink(Skylink) (LinkfileMetadata, Streamer, error)
 
 	// UploadLinkfile will upload data to the Sia network from a reader and
-	// create a linkfile, returning the sialink that can be used to access the
+	// create a linkfile, returning the skylink that can be used to access the
 	// file.
 	//
 	// NOTE: A linkfile is a file that is tracked and repaired by the renter.  A
 	// linkfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(LinkfileUploadParameters) (Sialink, error)
+	UploadLinkfile(LinkfileUploadParameters) (Skylink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

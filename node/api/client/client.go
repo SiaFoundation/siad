@@ -110,8 +110,9 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
+		err := readAPIError(res.Body)
 		drainAndClose(res.Body)
-		return nil, nil, errors.AddContext(readAPIError(res.Body), "GET request error")
+		return nil, nil, errors.AddContext(err, "GET request error")
 	}
 
 	if res.StatusCode == http.StatusNoContent {
@@ -178,42 +179,42 @@ func (c *Client) get(resource string, obj interface{}) error {
 
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
-func (c *Client) postRawResponse(resource string, body io.Reader) ([]byte, error) {
+func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, []byte, error) {
 	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to construct POST request")
+		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
 	}
 	// TODO: is this necessary?
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, errors.AddContext(err, "POST request failed")
+		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
 	}
 	defer drainAndClose(res.Body)
 
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform POST on "+resource)
+		return http.Header{}, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform POST on "+resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, errors.AddContext(readAPIError(res.Body), "POST request error")
+		return http.Header{}, nil, errors.AddContext(readAPIError(res.Body), "POST request error")
 	}
 
 	if res.StatusCode == http.StatusNoContent {
 		// no reason to read the response
-		return []byte{}, nil
+		return res.Header, []byte{}, nil
 	}
 	d, err := ioutil.ReadAll(res.Body)
-	return d, err
+	return res.Header, d, err
 }
 
 // post makes a POST request to the resource at `resource`, using `data` as the
 // request body. The response, if provided, will be decoded into `obj`.
 func (c *Client) post(resource string, data string, obj interface{}) error {
 	// Request resource
-	body, err := c.postRawResponse(resource, strings.NewReader(data))
+	_, body, err := c.postRawResponse(resource, strings.NewReader(data))
 	if err != nil {
 		return err
 	}

@@ -3880,6 +3880,7 @@ responses](#standard-responses).
 ```sh
 curl -A "Sia-Agent" "localhost:9980/renter/stream/myfile"
 ```  
+
 > The file can be streamed partially by using standard partial http requests
 > which means setting the "Range" field in the http header.  
 

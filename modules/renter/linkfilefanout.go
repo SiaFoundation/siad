@@ -39,7 +39,7 @@ type fanoutStreamBufferDataSource struct {
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // linkfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the linkfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Sialink, ll linkfileLayout, fanoutBytes []byte) (modules.Streamer, error) {
+func (r *Renter) newFanoutStreamer(link modules.Skylink, ll linkfileLayout, fanoutBytes []byte) (modules.Streamer, error) {
 	// Create the erasure coder and the master key.
 	masterKey, err := crypto.NewSiaKey(ll.cipherType, ll.cipherKey[:])
 	if err != nil {
@@ -180,8 +180,8 @@ func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
 	return fs.staticLayout.filesize
 }
 
-// ID returns the id of the sialink being fetched, this is just the hash of the
-// sialink.
+// ID returns the id of the skylink being fetched, this is just the hash of the
+// skylink.
 func (fs *fanoutStreamBufferDataSource) ID() streamDataSourceID {
 	return fs.staticStreamID
 }

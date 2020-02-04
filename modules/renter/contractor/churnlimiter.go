@@ -236,7 +236,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		}
 
 		// Get host from hostdb and check that it's not filtered.
-		host, u, needsUpdate := c.hostInHostDBCheck(contract)
+		host, u, needsUpdate := c.managedHostInHostDBCheck(contract)
 		if needsUpdate {
 			if err = c.managedAcquireAndUpdateContractUtility(contract.ID, u); err != nil {
 				return errors.AddContext(err, "unable to update utility after hostdb check")
@@ -245,7 +245,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		}
 
 		// Do critical contract checks and update the utility if any checks fail.
-		u, needsUpdate = c.criticalUtilityChecks(contract, host)
+		u, needsUpdate = c.managedCriticalUtilityChecks(contract, host)
 		if needsUpdate {
 			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 			if err != nil {
@@ -260,7 +260,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		}
 
 		// Check the host scorebreakdown against the minimum accepted scores.
-		u, utilityUpdateStatus := c.checkHostScore(contract, sb, minScoreGFR, minScoreGFU)
+		u, utilityUpdateStatus := c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
 		switch utilityUpdateStatus {
 		case noUpdate:
 
