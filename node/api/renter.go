@@ -1759,7 +1759,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// disposition-type to attachment, otherwise we inline it.
 	var cdh string
 	if attachment {
-		cdh = fmt.Sprintf("attachment; filename=%s", metadata.Filename)
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(metadata.Filename))
 	} else {
 		cdh = fmt.Sprintf("inline; filename=%s", metadata.Filename)
 	}
