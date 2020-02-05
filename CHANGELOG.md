@@ -10,7 +10,7 @@ Version History
 ---------------
 
 Latest:
-### v1.4.3.0
+### v1.4.3
 **Key Updates**
 
 **Bugs Fixed**
@@ -18,6 +18,8 @@ Latest:
    concern
  - `Name` and `Dir` methods of the Siapath used the `filepath` package when they
    should have used the `strings` package to avoid OS path separator bugs
+ - Fixed panic where the Host's contractmanager `AddSectorBatch` allowed for
+   writing to a file after the contractmanager had shutdown
 
 ### v1.4.2.1
 **Key Updates**
