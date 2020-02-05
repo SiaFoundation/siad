@@ -3,8 +3,8 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,14 +13,18 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/inconshreveable/go-update"
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/clearsign"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -150,28 +154,57 @@ func fetchLatestRelease() (gitlabRelease, error) {
 // updateToRelease updates siad and siac to the release specified. siac is
 // assumed to be in the same folder as siad.
 func updateToRelease(version string) error {
-	updateOpts := update.Options{
-		Verifier: update.NewRSAVerifier(),
-	}
-	err := updateOpts.SetPublicKeyPEM([]byte(developerKey))
-	if err != nil {
-		// should never happen
-		return err
-	}
-
 	binaryFolder, err := osext.ExecutableFolder()
 	if err != nil {
 		return err
 	}
 
+	// Download file of signed hashes.
+	resp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/Sia-%s-SHA256SUMS.txt.asc", version))
+	if err != nil {
+		return err
+	}
+	// The file should be small enough to store in memory (<1 MiB); use
+	// LimitReader to ensure we don't download more than 8 MiB
+	signatureBytes, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<23))
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	sigBlock, _ := clearsign.Decode(signatureBytes)
+
+	// Open the developer key for verifying signatures.
+	keyring, err := openpgp.ReadArmoredKeyRing(strings.NewReader(developerKey))
+	if err != nil {
+		return errors.AddContext(err, "Error reading keyring")
+	}
+	// Verify the signature.
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(sigBlock.Bytes), sigBlock.ArmoredSignature.Body)
+	if err != nil {
+		return errors.AddContext(err, "signature verification error")
+	}
+
+	// Build a map of signed binary checksums.
+	checksumsPlaintext := strings.TrimSpace(string(sigBlock.Plaintext))
+	checksums := make(map[string]string) // maps GOOS-GOARCH to SHA-256 checksum.
+	for _, line := range strings.Split(checksumsPlaintext, "\n") {
+		splitBySpace := strings.Split(line, "  ")
+		if len(splitBySpace) != 2 {
+			continue
+		}
+		checksum := splitBySpace[0]
+		fileName := splitBySpace[1]
+		checksums[fileName] = checksum
+	}
+
 	// download release archive
-	resp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/Sia-%s-%s-%s.zip", version, runtime.GOOS, runtime.GOARCH))
+	zipResp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/Sia-%s-%s-%s.zip", version, runtime.GOOS, runtime.GOARCH))
 	if err != nil {
 		return err
 	}
 	// release should be small enough to store in memory (<10 MiB); use
 	// LimitReader to ensure we don't download more than 32 MiB
-	content, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<25))
+	content, err := ioutil.ReadAll(io.LimitReader(zipResp.Body, 1<<25))
 	resp.Body.Close()
 	if err != nil {
 		return err
@@ -182,42 +215,50 @@ func updateToRelease(version string) error {
 		return err
 	}
 
-	// process zip, finding siad/siac binaries and signatures
+	// Process zip, finding siad/siac binaries and validate the checksum against
+	// the signed checksums file.
+	checksumFileNamePrefix := fmt.Sprintf("Sia-%s-%s-%s/", version, runtime.GOOS, runtime.GOARCH)
 	for _, binary := range []string{"siad", "siac"} {
 		var binData io.ReadCloser
-		var signature []byte
 		var binaryName string // needed for TargetPath below
 		for _, zf := range z.File {
-			switch base := path.Base(zf.Name); base {
-			case binary, binary + ".exe":
-				binaryName = base
-				binData, err = zf.Open()
-				if err != nil {
-					return err
-				}
-				defer binData.Close()
-			case binary + ".sig", binary + ".exe.sig":
-				sigFile, err := zf.Open()
-				if err != nil {
-					return err
-				}
-				defer sigFile.Close()
-				signature, err = ioutil.ReadAll(sigFile)
-				if err != nil {
-					return err
-				}
+			fileName := path.Base(zf.Name)
+			if (fileName != binary) && (fileName != binary+".exe") {
+				continue
 			}
+			binaryName = fileName
+			binData, err = zf.Open()
+			if err != nil {
+				return err
+			}
+			defer binData.Close()
 		}
 		if binData == nil {
 			return errors.New("could not find " + binary + " binary")
-		} else if signature == nil {
-			return errors.New("could not find " + binary + " signature")
+		}
+
+		// Verify the checksum matches the signed checksum.
+		binaryBytes, err := ioutil.ReadAll(binData)
+		if err != nil {
+			return err
+		}
+		// binData (an io.ReadCloser) is still needed to update the binary.
+		binData = ioutil.NopCloser(bytes.NewBuffer(binaryBytes))
+
+		// Check that the checksums match.
+		binChecksum := fmt.Sprintf("%x", sha256.Sum256(binaryBytes))
+		expectedChecksum := checksums[checksumFileNamePrefix+binary]
+		if strings.TrimSpace(binChecksum) != strings.TrimSpace(expectedChecksum) {
+			return errors.New("Expected checksums to match")
+		}
+
+		updateOpts := update.Options{
+			Signature:  nil,  // Signature verification is skipped because we already verified the signature of the checksum.
+			TargetMode: 0775, // executable
+			TargetPath: filepath.Join(binaryFolder, binaryName),
 		}
 
 		// apply update
-		updateOpts.Signature = signature
-		updateOpts.TargetMode = 0775 // executable
-		updateOpts.TargetPath = filepath.Join(binaryFolder, binaryName)
 		err = update.Apply(binData, updateOpts)
 		if err != nil {
 			return err
