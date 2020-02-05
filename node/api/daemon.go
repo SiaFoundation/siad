@@ -148,7 +148,14 @@ func fetchLatestRelease() (gitlabRelease, error) {
 	} else if len(releases) == 0 {
 		return gitlabRelease{}, errors.New("no releases found")
 	}
-	return releases[0], nil
+
+	// Find the most recent release that is not a nightly or release candidate.
+	for _, release := range releases {
+		if build.IsVersion(release.Name[1:]) && release.Name[0] == 'v' {
+			return release, nil
+		}
+	}
+	return gitlabRelease{}, errors.New("No non-nightly or non-RC releases found")
 }
 
 // updateToRelease updates siad and siac to the release specified. siac is
