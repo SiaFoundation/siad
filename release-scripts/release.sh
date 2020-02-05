@@ -28,9 +28,10 @@ function build {
 			bin=${pkg}.exe
 		fi
 		GOOS=${os} GOARCH=${arch} go build -a -tags 'netgo' -trimpath -ldflags="$ldflags" -o $folder/$bin ./cmd/$pkg
-    sum="$( sha256sum $folder/$bin )"
-    echo $sum >> release/Sia-$version-SHA256SUMS.txt
-    echo $sum
+		(
+			cd release/
+			sha256sum Sia-$version-$os-$arch/$bin >> Sia-$version-SHA256SUMS.txt
+		)
   done
 
 	cp -r doc LICENSE README.md $folder
