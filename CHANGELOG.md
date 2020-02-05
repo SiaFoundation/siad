@@ -10,12 +10,14 @@ Version History
 ---------------
 
 Latest:
-### v1.4.2.2
+### v1.4.3.0
 **Key Updates**
 
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
    concern
+ - `Name` and `Dir` methods of the Siapath used the `filepath` package when they
+   should have used the `strings` package to avoid OS path separator bugs
 
 ### v1.4.2.1
 **Key Updates**
