@@ -20,6 +20,10 @@ import (
 var (
 	errEmptySet     = errors.New("transaction set is empty")
 	errLowMinerFees = errors.New("transaction set needs more miner fees to be accepted")
+
+	// ErrTxnSetNotAccepted is the error returned when the dependency
+	// DoNotAcceptTxnSet is used
+	ErrTxnSetNotAccepted = errors.New("transaction set was not accepted")
 )
 
 // relatedObjectIDs determines all of the object ids related to a transaction.
@@ -381,6 +385,11 @@ func (tp *TransactionPool) AcceptTransactionSet(ts []types.Transaction) error {
 		return err
 	}
 	defer tp.tg.Done()
+
+	// Drop the transaction set and return ErrTxnSetNotAccepted
+	if tp.deps.Disrupt("DoNotAcceptTxnSet") {
+		return ErrTxnSetNotAccepted
+	}
 
 	tp.log.Debugln("Received a transaction (internal or external), attempting to broadcast")
 	minSuperSet, err := tp.submitTransactionSet(ts)
