@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"unicode/utf8"
 )
@@ -26,11 +27,8 @@ var specifierMap = newSpecifierMap()
 // NewSpecifier returns a specifier for given name, a specifier can only be 16
 // bytes so we panic if the given name is too long.
 func NewSpecifier(name string) Specifier {
-	if !isASCII(name) {
-		panic("ERROR: specifier has to be ASCII")
-	}
-	if len(name) > SpecifierLen {
-		panic("ERROR: specifier max length exceeded")
+	if err := validateSpecifier(name); err != nil {
+		panic(err.Error())
 	}
 	if _, ok := specifierMap[name]; ok {
 		err := fmt.Sprint("ERROR: specifier name already in use", name)
@@ -42,6 +40,37 @@ func NewSpecifier(name string) Specifier {
 	return s
 }
 
+// newSpecifierMap makes a new map for tracking specifiers
+func newSpecifierMap() map[string]struct{} {
+	return make(map[string]struct{})
+}
+
+// MarshalText implements the TextMarshaler interface
+func (t Specifier) MarshalText() (text []byte, err error) {
+	return t[:], nil
+}
+
+// UnmarshalText implements the TextUnmarshaler interface
+func (t Specifier) UnmarshalText(text []byte) error {
+	if err := validateSpecifier(string(text)); err != nil {
+		return err
+	}
+	copy(t[:], text)
+	return nil
+}
+
+// validateSpecifier performs validation checks on the specifier name, it panics
+// when the input is invalid seeing we want to catch this on runtime.
+func validateSpecifier(name string) error {
+	if !isASCII(name) {
+		return errors.New("ERROR: specifier has to be ASCII")
+	}
+	if len(name) > SpecifierLen {
+		return errors.New("ERROR: specifier max length exceeded")
+	}
+	return nil
+}
+
 // isASCII returns whether or not the given string contains only ASCII
 // characters
 func isASCII(s string) bool {
@@ -51,9 +80,4 @@ func isASCII(s string) bool {
 		}
 	}
 	return true
-}
-
-// newSpecifierMap makes a new map for tracking specifiers
-func newSpecifierMap() map[string]struct{} {
-	return make(map[string]struct{})
 }
