@@ -122,9 +122,9 @@ func (cm *ContractManager) managedSectorID(sectorRoot crypto.Hash) (id sectorID)
 	return id
 }
 
-// ReadSector will read a sector from the storage manager, returning the bytes
-// that match the input sector root.
-func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
+// ReadPartialSector will read a sector from the storage manager, returning the
+// bytes that match the input sector root.
+func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	err := cm.tg.Add()
 	if err != nil {
 		return nil, err
@@ -152,13 +152,19 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	}
 
 	// Read the sector.
-	sectorData, err := readSector(sf.sectorFile, sl.index)
+	sectorData, err := readPartialSector(sf.sectorFile, sl.index, offset, length)
 	if err != nil {
 		atomic.AddUint64(&sf.atomicFailedReads, 1)
 		return nil, build.ExtendErr("unable to fetch sector", err)
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulReads, 1)
 	return sectorData, nil
+}
+
+// ReadSector will read a sector from the storage manager, returning the bytes
+// that match the input sector root.
+func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
+	return cm.ReadPartialSector(root, 0, modules.SectorSize)
 }
 
 // managedLockSector grabs a sector lock.
