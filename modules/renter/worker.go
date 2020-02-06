@@ -239,10 +239,10 @@ func (w *worker) threadedWorkLoop() {
 // worker spends from the account.
 func (w *worker) scheduleRefillAccount() {
 	// Calculate the threshold, if the account's available balance is below this
-	// threshold, we want to trigger a refill.We only refill if we drop below a
+	// threshold, we want to trigger a refill. We only refill if we drop below a
 	// threshold because we want to avoid refilling every time we drop 1 hasting
 	// below the target.
-	threshold := w.staticBalanceTarget.Mul64(8).Div64(10)
+	threshold := w.staticBalanceTarget.Div64(2)
 
 	// Fetch the account's available balance and skip if it's above the
 	// threshold
