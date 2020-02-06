@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -181,8 +182,9 @@ local path where the Sia folder is mounted.`,
 	renterFilesUploadCmd = &cobra.Command{
 		Use:   "upload [source] [path]",
 		Short: "Upload a file or folder",
-		Long:  "Upload a file or folder to [path] on the Sia network.",
-		Run:   wrap(renterfilesuploadcmd),
+		Long: `Upload a file or folder to [path] on the Sia network. The --data-pieces and --parity-pieces
+flags can be used to set a custom redundancy for the file.`,
+		Run: wrap(renterfilesuploadcmd),
 	}
 
 	renterPricesCmd = &cobra.Command{
@@ -2188,6 +2190,25 @@ func renterfilesuploadcmd(source, path string) {
 		die("Could not stat file or folder:", err)
 	}
 
+	// Check for and parse any redundancy settings
+	var numDataPieces, numParityPieces uint64
+	if dataPieces != "" {
+		numDataPieces, err = strconv.ParseUint(dataPieces, 10, 64)
+		if err != nil {
+			die("Could not parse data-pieces:", err)
+		}
+	}
+	if parityPieces != "" {
+		numParityPieces, err = strconv.ParseUint(parityPieces, 10, 64)
+		if err != nil {
+			die("Could not parse parity-pieces:", err)
+		}
+	}
+	if numDataPieces == 0 && numParityPieces == 0 {
+		numDataPieces = uint64(renter.DefaultDataPieces)
+		numParityPieces = uint64(renter.DefaultParityPieces)
+	}
+
 	if stat.IsDir() {
 		// folder
 		var files []string
@@ -2217,7 +2238,7 @@ func renterfilesuploadcmd(source, path string) {
 			if err != nil {
 				die("Couldn't parse SiaPath:", err)
 			}
-			err = httpClient.RenterUploadDefaultPost(abs(file), fSiaPath)
+			err = httpClient.RenterUploadPost(abs(file), fSiaPath, numDataPieces, numParityPieces)
 			if err != nil {
 				failed++
 				fmt.Printf("Could not upload file %s :%v\n", file, err)
@@ -2231,7 +2252,7 @@ func renterfilesuploadcmd(source, path string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
-		err = httpClient.RenterUploadDefaultPost(abs(source), siaPath)
+		err = httpClient.RenterUploadPost(abs(source), siaPath, numDataPieces, numParityPieces)
 		if err != nil {
 			die("Could not upload file:", err)
 		}

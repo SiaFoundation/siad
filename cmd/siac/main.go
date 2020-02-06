@@ -42,6 +42,9 @@ var (
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 
+	dataPieces   string // the number of data pieces a files should be uploaded with
+	parityPieces string // the number of parity pieces a files should be uploaded with
+
 	allowanceFunds                         string // amount of money to be used within a period
 	allowancePeriod                        string // length of period
 	allowanceHosts                         string // number of hosts to form contracts with
@@ -275,6 +278,8 @@ func main() {
 	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
 	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
 	renterFilesListCmd.Flags().BoolVar(&renterListRoot, "root", false, "List files and folders from root instead of from the user home directory")
+	renterFilesUploadCmd.Flags().StringVar(&dataPieces, "data-pieces", "", "the number of data pieces a files should be uploaded with")
+	renterFilesUploadCmd.Flags().StringVar(&parityPieces, "parity-pieces", "", "the number of parity pieces a files should be uploaded with")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
 
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceFunds, "amount", "", "amount of money in allowance, specified in currency units")

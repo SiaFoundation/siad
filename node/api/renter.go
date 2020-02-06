@@ -40,7 +40,7 @@ var (
 	// must be used when uploading a file. This minimum exists to prevent users
 	// from shooting themselves in the foot.
 	requiredParityPieces = build.Select(build.Var{
-		Standard: int(12),
+		Standard: int(9),
 		Dev:      int(0),
 		Testing:  int(0),
 	}).(int)
@@ -518,12 +518,12 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 	// Verify that sane values for parityPieces and redundancy are being
 	// supplied.
 	if parityPieces < requiredParityPieces {
-		err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", parityPieces, requiredParityPieces)
+		err := fmt.Errorf("a minimum of %v parity pieces is required, but %v parity pieces requested", requiredParityPieces, parityPieces)
 		return nil, err
 	}
 	redundancy := float64(dataPieces+parityPieces) / float64(dataPieces)
 	if float64(dataPieces+parityPieces)/float64(dataPieces) < requiredRedundancy {
-		err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", redundancy, requiredRedundancy)
+		err := fmt.Errorf("a redundancy of %.2f is required, but redundancy of %.2f supplied", requiredRedundancy, redundancy)
 		return nil, err
 	}
 

@@ -12,7 +12,8 @@ Version History
 Latest:
 ### v1.4.3.0
 **Key Updates**
-
+ - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
+ 
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
    concern
