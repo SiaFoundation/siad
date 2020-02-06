@@ -104,6 +104,9 @@ type HostDB struct {
 	lastChange  modules.ConsensusChangeID
 }
 
+// Enforce that HostDB satisfies the modules.HostDB interface.
+var _ modules.HostDB = (*HostDB)(nil)
+
 // insert inserts the HostDBEntry into both hosttrees
 func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 	err := hdb.hostTree.Insert(host)

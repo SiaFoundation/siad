@@ -3,7 +3,7 @@ package mdm
 import "gitlab.com/NebulousLabs/errors"
 
 // Cost describes the cost of executing an instruction on the MDM split up into
-// its individual counterparts.
+// its individual components.
 type Cost struct {
 	Compute      uint64 // NOTE: 1 compute cost corresponds to an estimated 2^17 hashes performed on data.
 	DiskAccesses uint64 // # of writes and reads

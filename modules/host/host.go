@@ -69,6 +69,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -77,6 +78,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 )
 
 const (
@@ -100,12 +102,20 @@ var (
 	errNilWallet  = errors.New("host cannot use a nil wallet")
 	errNilGateway = errors.New("host cannot use nil gateway")
 
-	// persistMetadata is the header that gets written to the persist file, and is
-	// used to recognize other persist files.
+	// persistMetadata is the header that gets written to the persist file, and
+	// is used to recognize other persist files.
 	persistMetadata = persist.Metadata{
 		Header:  "Sia Host",
 		Version: "1.2.0",
 	}
+
+	// rpcPriceGuaranteePeriod defines the amount of time a host will guarantee
+	// its prices to the renter.
+	rpcPriceGuaranteePeriod = build.Select(build.Var{
+		Standard: 10 * time.Minute,
+		Dev:      1 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // A Host contains all the fields necessary for storing files for clients and
@@ -166,14 +176,22 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
+	// The price table contains a set of RPC costs, along with an expiry that
+	// dictates up until what time the host guarantees the prices that are
+	// listed. These host's RPC prices are dynamic, and are subject to various
+	// conditions specific to the RPC in question. Examples of such conditions
+	// are congestion, load, liquidity, etc.
+	priceTable modules.RPCPriceTable
+
 	// Misc state.
-	db         *persist.BoltDatabase
-	listener   net.Listener
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persistDir string
-	port       string
-	tg         siasync.ThreadGroup
+	db            *persist.BoltDatabase
+	listener      net.Listener
+	log           *persist.Logger
+	mu            sync.RWMutex
+	staticMonitor *connmonitor.Monitor
+	persistDir    string
+	port          string
+	tg            siasync.ThreadGroup
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -208,6 +226,29 @@ func (h *Host) checkUnlockHash() error {
 		}
 	}
 	return nil
+}
+
+// managedUpdatePriceTable will recalculate the RPC costs and update the host's
+// price table accordingly.
+func (h *Host) managedUpdatePriceTable() {
+	// create a new RPC price table and set the expiry
+	priceTable := modules.NewRPCPriceTable(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
+
+	// recalculate the price for every RPC
+	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
+
+	// TODO: hardcoded MDM costs, needs a better place
+	his := h.InternalSettings()
+	priceTable.Costs[modules.MDMComponentCompute] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMComponentMemory] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMOperationDiskAccess] = types.ZeroCurrency
+	priceTable.Costs[modules.MDMOperationDiskRead] = his.MinBaseRPCPrice
+	priceTable.Costs[modules.MDMOperationDiskWrite] = his.MinBaseRPCPrice
+
+	// update the pricetable
+	h.mu.Lock()
+	h.priceTable = priceTable
+	h.mu.Unlock()
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.
@@ -318,6 +359,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 
+	// Create bandwidth monitor
+	h.staticMonitor = connmonitor.NewMonitor()
+
 	// Initialize the networking. We need to hold the lock while doing so since
 	// the previous load subscribed the host to the consensus set.
 	h.mu.Lock()
@@ -327,6 +371,10 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		h.log.Println("Could not initialize host networking:", err)
 		return nil, err
 	}
+
+	// Initialize the RPC price table.
+	h.managedUpdatePriceTable()
+
 	return h, nil
 }
 
@@ -364,6 +412,17 @@ func (h *Host) ExternalSettings() modules.HostExternalSettings {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.externalSettings()
+}
+
+// BandwidthCounters returns the Hosts's upload and download bandwidth
+func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
+	if err := h.tg.Add(); err != nil {
+		return 0, 0, time.Time{}, err
+	}
+	defer h.tg.Done()
+	readBytes, writeBytes := h.staticMonitor.Counts()
+	startTime := h.staticMonitor.StartTime()
+	return writeBytes, readBytes, startTime, nil
 }
 
 // WorkingStatus returns the working state of the host, where working is

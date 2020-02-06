@@ -56,13 +56,14 @@ The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
  - [Fuse Subsystem](#fuse-subsystem)
- - [Fuse Manager Subsystem](#fuse-manager)
+ - [Fuse Manager Subsystem](#fuse-manager-subsystem)
  - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
  - [Download By Root Subsystem](#download-by-root-subsystem)
+ - [Linkfile Subsystem](#linkfile-subsystem)
  - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
@@ -405,8 +406,28 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
-### Stream Buffer Subsystem
+### Linkfile Subsystem
+**Key Files**
+ - [linkfile.go](./linkfile.go)
+ - [linkfilefanout.go](./linkfilefanout.go)
+ - [linkfilefanoutfetch.go](./linkfilefanoutfetch.go)
 
+The linkfile system contains methods for encoding, decoding, uploading, and
+downloading linkfiles using Sialinks, and is one of the foundations underpinning
+Skynet.
+
+The linkfile format is a custom format which prepends metadata to a file such
+that the entire file and all associated metadata can be recovered knowing
+nothing more than a single sector root. That single sector root can be encoded
+alongside some compressed fetch offset and length information to create a
+sialink.
+
+**Outbound Complexities**
+ - callUploadStreamFromReader is used to upload new data to the Sia network when
+   creating linkfiles. This call appears three times in
+   [linkfile.go](./linkfile.go)
+
+### Stream Buffer Subsystem
 **Key Files**
  - [streambuffer.go](./streambuffer.go)
  - [streambufferlru.go](./streambufferlru.go)
@@ -476,6 +497,11 @@ as opposed to being used directly by external users.
 
 *TODO* 
   - fill out subsystem explanation
+
+**Inbound Complexities**
+ - The linkfile subsystem makes three calls to `callUploadStreamFromReader()` in
+   [linkfile.go](./linkfile.go)
+ - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 
 ### Health and Repair Subsystem
 **Key Files**

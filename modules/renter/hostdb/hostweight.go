@@ -360,8 +360,18 @@ func (hdb *HostDB) storageRemainingAdjustments(entry modules.HostDBEntry, allowa
 // version reported by the host.
 func versionAdjustments(entry modules.HostDBEntry) float64 {
 	base := float64(1)
-	if build.VersionCmp(entry.Version, "1.4.2.2") < 0 {
+
+	// This needs to give a very tiny penalty to the current version. The reason
+	// we give the current version a very tiny penalty is so that the test suite
+	// complains if we forget to update this file when we bump the version next
+	// time. The value compared against must be higher than the current version.
+	if build.VersionCmp(entry.Version, "1.4.3.1") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
+	}
+
+	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
+	if build.VersionCmp(entry.Version, "1.4.3.0") < 0 {
+		base = base * 0.95 // Slight penalty against slightly out of date hosts.
 	}
 	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
 		base = base * 0.9 // Slight penalty against slightly out of date hosts.
@@ -516,7 +526,11 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	return math.Pow(uptimeRatio, exp)
 }
 
-// managedCalculateHostWeightFn creates a hosttree.WeightFunc given an Allowance.
+// managedCalculateHostWeightFn creates a hosttree.WeightFunc given an
+// Allowance.
+//
+// NOTE: the hosttree.WeightFunc that is returned accesses fields of the hostdb.
+// The hostdb lock must be held while utilizing the WeightFunc
 func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hosttree.WeightFunc {
 	// Get the txnFees.
 	hdb.mu.RLock()

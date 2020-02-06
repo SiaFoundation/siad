@@ -215,3 +215,58 @@ func TestSiapathRebase(t *testing.T) {
 		}
 	}
 }
+
+// TestSiapathDir probes the Dir function for SiaPaths.
+func TestSiapathDir(t *testing.T) {
+	var pathtests = []struct {
+		path string
+		dir  string
+	}{
+		{"one/dir", "one"},
+		{"many/more/dirs", "many/more"},
+		{"nodir", ""},
+		{"/leadingslash", ""},
+		{"./leadingdotslash", ""},
+		{"", ""},
+		{".", ""},
+	}
+	for _, pathtest := range pathtests {
+		siaPath := SiaPath{
+			Path: pathtest.path,
+		}
+		dir, err := siaPath.Dir()
+		if err != nil {
+			t.Errorf("Dir should not return an error %v, path %v", err, pathtest.path)
+			continue
+		}
+		if dir.Path != pathtest.dir {
+			t.Errorf("Dir %v not the same as expected dir %v ", dir.Path, pathtest.dir)
+			continue
+		}
+	}
+}
+
+// TestSiapathName probes the Name function for SiaPaths.
+func TestSiapathName(t *testing.T) {
+	var pathtests = []struct {
+		path string
+		name string
+	}{
+		{"one/dir", "dir"},
+		{"many/more/dirs", "dirs"},
+		{"nodir", "nodir"},
+		{"/leadingslash", "leadingslash"},
+		{"./leadingdotslash", "leadingdotslash"},
+		{"", ""},
+		{".", ""},
+	}
+	for _, pathtest := range pathtests {
+		siaPath := SiaPath{
+			Path: pathtest.path,
+		}
+		name := siaPath.Name()
+		if name != pathtest.name {
+			t.Errorf("name %v not the same as expected name %v ", name, pathtest.name)
+		}
+	}
+}

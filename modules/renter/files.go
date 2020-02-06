@@ -67,7 +67,7 @@ func (r *Renter) File(siaPath modules.SiaPath) (modules.FileInfo, error) {
 	offline, goodForRenew, contracts := r.managedContractUtilityMaps()
 	fi, err := r.staticFileSystem.FileInfo(siaPath, offline, goodForRenew, contracts)
 	if err != nil {
-		return modules.FileInfo{}, err
+		return modules.FileInfo{}, errors.AddContext(err, "unable to get the fileinfo from the filesystem")
 	}
 	return fi, nil
 }

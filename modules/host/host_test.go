@@ -231,28 +231,22 @@ func TestHostInitialization(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	// Create a blank host tester and check that the height is zero.
-	bht, err := blankHostTester("TestHostInitialization")
+
+	// create a blank host tester
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer bht.Close()
-	if bht.host.blockHeight != 0 {
-		t.Error("host initialized to the wrong block height")
+	defer ht.Close()
+
+	// verify its initial block height is zero
+	if ht.host.blockHeight != 0 {
+		t.Fatal("host initialized to the wrong block height")
 	}
 
-	// Initialize the wallet so that a block can be mined, then mine a block
-	// and check that it sets the host height to 1.
-	err = bht.initWallet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = bht.miner.AddBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bht.host.blockHeight != 1 {
-		t.Fatal("block height did not increase correctly after first block mined:", bht.host.blockHeight, 1)
+	// verify its RPC price table was properly initialised
+	if ht.host.priceTable.Costs == nil || ht.host.priceTable.Expiry == 0 {
+		t.Fatal("RPC price table was not properly initialised")
 	}
 }
 
