@@ -505,7 +505,7 @@ func (api *API) renterLoadBackupHandlerPOST(w http.ResponseWriter, req *http.Req
 // defaults.
 func parseErasureCodingParameters(strDataPieces, strParityPieces string) (modules.ErasureCoder, error) {
 	// Parse data and parity pieces
-	dataPieces, parityPieces, err := parseDataAndParityPieces(strDataPieces, strParityPieces)
+	dataPieces, parityPieces, err := ParseDataAndParityPieces(strDataPieces, strParityPieces)
 	if err != nil {
 		return nil, err
 	}
@@ -531,9 +531,9 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 	return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
 }
 
-// parseDataAndParityPieces parse the numeric values for dataPieces and
+// ParseDataAndParityPieces parse the numeric values for dataPieces and
 // parityPieces from the input strings
-func parseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces, parityPieces int, err error) {
+func ParseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces, parityPieces int, err error) {
 	// Check that both values have been supplied.
 	if (strDataPieces == "") != (strParityPieces == "") {
 		return 0, 0, errNeedBothDataAndParityPieces
@@ -1980,7 +1980,7 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 	parityPiecesStr := req.FormValue("paritypieces")
 
 	// Check params
-	dataPieces, parityPieces, err := parseDataAndParityPieces(dataPiecesStr, parityPiecesStr)
+	dataPieces, parityPieces, err := ParseDataAndParityPieces(dataPiecesStr, parityPiecesStr)
 	if err != nil {
 		WriteError(w, Error{"failed to parse query params" + err.Error()}, http.StatusBadRequest)
 		return

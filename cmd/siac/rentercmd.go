@@ -24,7 +24,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -2191,22 +2190,9 @@ func renterfilesuploadcmd(source, path string) {
 	}
 
 	// Check for and parse any redundancy settings
-	var numDataPieces, numParityPieces uint64
-	if dataPieces != "" {
-		numDataPieces, err = strconv.ParseUint(dataPieces, 10, 64)
-		if err != nil {
-			die("Could not parse data-pieces:", err)
-		}
-	}
-	if parityPieces != "" {
-		numParityPieces, err = strconv.ParseUint(parityPieces, 10, 64)
-		if err != nil {
-			die("Could not parse parity-pieces:", err)
-		}
-	}
-	if numDataPieces == 0 && numParityPieces == 0 {
-		numDataPieces = uint64(renter.DefaultDataPieces)
-		numParityPieces = uint64(renter.DefaultParityPieces)
+	numDataPieces, numParityPieces, err := api.ParseDataAndParityPieces(dataPieces, parityPieces)
+	if err != nil {
+		die("Could not parse data and parity pieces:", err)
 	}
 
 	if stat.IsDir() {
@@ -2238,7 +2224,7 @@ func renterfilesuploadcmd(source, path string) {
 			if err != nil {
 				die("Couldn't parse SiaPath:", err)
 			}
-			err = httpClient.RenterUploadPost(abs(file), fSiaPath, numDataPieces, numParityPieces)
+			err = httpClient.RenterUploadPost(abs(file), fSiaPath, uint64(numDataPieces), uint64(numParityPieces))
 			if err != nil {
 				failed++
 				fmt.Printf("Could not upload file %s :%v\n", file, err)
@@ -2252,7 +2238,7 @@ func renterfilesuploadcmd(source, path string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
-		err = httpClient.RenterUploadPost(abs(source), siaPath, numDataPieces, numParityPieces)
+		err = httpClient.RenterUploadPost(abs(source), siaPath, uint64(numDataPieces), uint64(numParityPieces))
 		if err != nil {
 			die("Could not upload file:", err)
 		}
