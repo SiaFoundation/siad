@@ -18,8 +18,8 @@ echo ""
 # Sleep for a bit to give user chance to quit.
 sleep 2
 
-# Build the image uncached to always get the correct
-docker build -t sia-builder . --build-arg branch=${branchName} --build-arg version=${versionName}
+# Build the image uncached to always get the most up-to-date branch.
+docker build --no-cache -t sia-builder . --build-arg branch=${branchName} --build-arg version=${versionName}
 
 # Create a container with the artifacts.
 docker create --name build-container sia-builder
