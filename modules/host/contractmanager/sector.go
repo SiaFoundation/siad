@@ -53,15 +53,24 @@ type (
 	}
 )
 
-// readSector will read the sector in the file, starting from the provided
+// readPartialSector will read the sector in the file, starting from the provided
 // location.
-func readSector(f modules.File, sectorIndex uint32) ([]byte, error) {
-	b := make([]byte, modules.SectorSize)
-	_, err := f.ReadAt(b, int64(uint64(sectorIndex)*modules.SectorSize))
+func readPartialSector(f modules.File, sectorIndex uint32, offset, length uint64) ([]byte, error) {
+	if offset+length > modules.SectorSize {
+		return nil, errors.New("readPartialSector: read is out of bounds")
+	}
+	b := make([]byte, length)
+	_, err := f.ReadAt(b, int64(uint64(sectorIndex)*modules.SectorSize+offset))
 	if err != nil {
 		return nil, build.ExtendErr("unable to read within storage folder", err)
 	}
 	return b, nil
+}
+
+// readSector will read the sector in the file, starting from the provided
+// location.
+func readSector(f modules.File, sectorIndex uint32) ([]byte, error) {
+	return readPartialSector(f, sectorIndex, 0, modules.SectorSize)
 }
 
 // readFullMetadata will read a full sector metadata file into memory.
