@@ -245,7 +245,8 @@ func updateToRelease(version string) error {
 		}
 
 		// Verify the checksum matches the signed checksum.
-		binaryBytes, err := ioutil.ReadAll(binData)
+		// Use io.LimitReader to ensure we don't download more than 32 MiB
+		binaryBytes, err := ioutil.ReadAll(io.LimitReader(binData, 1<<25))
 		if err != nil {
 			return err
 		}
