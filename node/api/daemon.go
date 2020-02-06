@@ -172,8 +172,8 @@ func updateToRelease(version string) error {
 		return err
 	}
 	// The file should be small enough to store in memory (<1 MiB); use
-	// LimitReader to ensure we don't download more than 8 MiB
-	signatureBytes, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<23))
+	// MaxBytesReader to ensure we don't download more than 8 MiB
+	signatureBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, resp.Body, 1<<23))
 	resp.Body.Close()
 	if err != nil {
 		return err
@@ -211,7 +211,7 @@ func updateToRelease(version string) error {
 	}
 	// release should be small enough to store in memory (<10 MiB); use
 	// LimitReader to ensure we don't download more than 32 MiB
-	content, err := ioutil.ReadAll(io.LimitReader(zipResp.Body, 1<<25))
+	content, err := ioutil.ReadAll(http.MaxBytesReader(nil, zipResp.Body, 1<<25))
 	resp.Body.Close()
 	if err != nil {
 		return err
