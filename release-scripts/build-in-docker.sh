@@ -30,6 +30,9 @@ docker cp build-container:/home/builder/Sia/release/ ../
 # Remove the build container.
 docker rm build-container
 
+# Package the binaries produced.
+./package.sh ${versionName} ../release/
+
 # Print out the SHA256SUM file.
 echo "SHA256SUM of binaries built: "
 cat ../release/Sia-${versionName}-SHA256SUMS.txt
