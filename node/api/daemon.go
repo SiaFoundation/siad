@@ -171,6 +171,7 @@ func updateToRelease(version string) error {
 	if err != nil {
 		return err
 	}
+
 	// The file should be small enough to store in memory (<1 MiB); use
 	// MaxBytesReader to ensure we don't download more than 8 MiB
 	signatureBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, resp.Body, 1<<23))
@@ -179,6 +180,9 @@ func updateToRelease(version string) error {
 		return err
 	}
 	sigBlock, _ := clearsign.Decode(signatureBytes)
+	if sigBlock == nil {
+		return errors.New("No signature found in checksums file")
+	}
 
 	// Open the developer key for verifying signatures.
 	keyring, err := openpgp.ReadArmoredKeyRing(strings.NewReader(developerKey))
@@ -205,7 +209,8 @@ func updateToRelease(version string) error {
 	}
 
 	// download release archive
-	zipResp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/Sia-%s-%s-%s.zip", version, runtime.GOOS, runtime.GOARCH))
+	releaseFilePrefix := fmt.Sprintf("Sia-%s-%s-%s", version, runtime.GOOS, runtime.GOARCH)
+	zipResp, err := http.Get(fmt.Sprintf("https://sia.tech/releases/%s.zip", releaseFilePrefix))
 	if err != nil {
 		return err
 	}
@@ -221,10 +226,17 @@ func updateToRelease(version string) error {
 	if err != nil {
 		return err
 	}
+	zipChecksum := fmt.Sprintf("%x", sha256.Sum256(content))
+	expectedZipChecksum, ok := checksums[releaseFilePrefix+".zip"]
+	if !ok {
+		return errors.New("No checksum for zip file found")
+	}
+	if strings.TrimSpace(zipChecksum) != strings.TrimSpace(expectedZipChecksum) {
+		return errors.New("Expected zip file checksums to match")
+	}
 
 	// Process zip, finding siad/siac binaries and validate the checksum against
 	// the signed checksums file.
-	checksumFileNamePrefix := fmt.Sprintf("Sia-%s-%s-%s/", version, runtime.GOOS, runtime.GOARCH)
 	for _, binary := range []string{"siad", "siac"} {
 		var binData io.ReadCloser
 		var binaryName string // needed for TargetPath below
@@ -255,9 +267,12 @@ func updateToRelease(version string) error {
 
 		// Check that the checksums match.
 		binChecksum := fmt.Sprintf("%x", sha256.Sum256(binaryBytes))
-		expectedChecksum := checksums[checksumFileNamePrefix+binary]
+		expectedChecksum, ok := checksums[releaseFilePrefix+"/"+binary]
+		if !ok {
+			errors.New("No checksum found for binary")
+		}
 		if strings.TrimSpace(binChecksum) != strings.TrimSpace(expectedChecksum) {
-			return errors.New("Expected checksums to match")
+			return errors.New("Expected binary checksums to match")
 		}
 
 		updateOpts := update.Options{
