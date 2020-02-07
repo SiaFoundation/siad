@@ -637,8 +637,8 @@ func (r *Renter) managedBlockUntilSynced() bool {
 // this by popping directories off the directory heap and adding the chunks from
 // that directory to the upload heap. If the worst health directory found is
 // sufficiently healthy then we return.
-func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.SiaPath]struct{}, error) {
-	siaPaths := make(map[modules.SiaPath]struct{})
+func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefreshPaths, error) {
+	siaPaths := r.newUniqueRefreshPaths()
 	prevHeapLen := r.uploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
@@ -695,7 +695,10 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (map[modules.
 		// a map. We Don't check if the siaPath is already in the map because
 		// another thread could have added the directory back to the heap after
 		// we just popped it off. This is the case for new uploads.
-		siaPaths[dirSiaPath] = struct{}{}
+		err = siaPaths.callAdd(dirSiaPath)
+		if err != nil {
+			r.repairLog.Println("WARN: error adding siapath to tracked paths to bubble:", err)
+		}
 		r.repairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dirSiaPath)
 	}
 
@@ -1311,8 +1314,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Add chunks to heap.
-		dirSiaPaths := make(map[modules.SiaPath]struct{})
-		dirSiaPaths, err = r.managedAddChunksToHeap(hosts)
+		dirSiaPaths, err := r.managedAddChunksToHeap(hosts)
 		if err != nil {
 			// Log the error but don't sleep as there are potentially chunks in
 			// the heap from new uploads. If the heap is empty the next check
@@ -1346,13 +1348,6 @@ func (r *Renter) threadedUploadAndRepair() {
 		}
 
 		// Call callThreadedBubbleMetadata to update the filesystem.
-		for dirSiaPath := range dirSiaPaths {
-			// We call bubble in a go routine so that it is not a bottle neck
-			// for the repair loop iterations. This however can lead to some
-			// additional unneeded cycles of the repair loop as a result of when
-			// these bubbles reach root. This cycles however will be handled and
-			// can be seen in the logs.
-			go r.callThreadedBubbleMetadata(dirSiaPath)
-		}
+		dirSiaPaths.callRefreshAll()
 	}
 }
