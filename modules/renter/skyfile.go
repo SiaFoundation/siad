@@ -1,6 +1,6 @@
 package renter
 
-// linkfile.go provides the tools for creating and uploading skyfiles, and then
+// skyfile.go provides the tools for creating and uploading skyfiles, and then
 // receiving the associated skylinks to recover the files. The skyfile is the
 // fundamental data structure underpinning Skynet.
 //
