@@ -8,12 +8,12 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestLinkfileLayoutEncoding checks that encoding and decoding a linkfile
+// TestSkyfileLayoutEncoding checks that encoding and decoding a skyfile
 // layout always results in the same struct.
-func TestLinkfileLayoutEncoding(t *testing.T) {
+func TestSkyfileLayoutEncoding(t *testing.T) {
 	// Try encoding an decoding a simple example.
-	llOriginal := linkfileLayout{
-		version:            LinkfileVersion,
+	llOriginal := skyfileLayout{
+		version:            SkyfileVersion,
 		filesize:           1e6,
 		metadataSize:       14e3,
 		fanoutSize:         75e3,
@@ -24,9 +24,9 @@ func TestLinkfileLayoutEncoding(t *testing.T) {
 	rand := fastrand.Bytes(64)
 	copy(llOriginal.cipherKey[:], rand)
 	encoded := llOriginal.encode()
-	var llRecovered linkfileLayout
+	var llRecovered skyfileLayout
 	llRecovered.decode(encoded)
 	if llOriginal != llRecovered {
-		t.Fatal("encoding and decoding of linkfileLayout does not match")
+		t.Fatal("encoding and decoding of skyfileLayout does not match")
 	}
 }

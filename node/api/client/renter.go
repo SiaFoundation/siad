@@ -744,7 +744,7 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
 // resulting skylink is returned along with an error.
-func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters, root bool) (string, error) {
+func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters, root bool) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)
@@ -778,7 +778,7 @@ func (c *Client) SkynetSkyfilePost(lup modules.LinkfileUploadParameters, root bo
 // siapath of the siafile that should be converted. The siapath provided inside
 // of the upload params is the name that will be used for the base sector of the
 // skyfile.
-func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.LinkfileUploadParameters, convert modules.SiaPath) (string, error) {
+func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (string, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)

@@ -54,11 +54,11 @@ func TestSkynet(t *testing.T) {
 	if fastrand.Intn(2) == 0 {
 		force = true
 	}
-	lup := modules.LinkfileUploadParameters{
+	lup := modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               force,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.LinkfileMetadata{
+		FileMetadata: modules.SkyfileMetadata{
 			Filename: filename,
 			Mode:     0640, // Intentionally does not match any defaults.
 		},
@@ -125,11 +125,11 @@ func TestSkynet(t *testing.T) {
 	if fastrand.Intn(2) == 0 {
 		rootForce = true
 	}
-	rootLup := modules.LinkfileUploadParameters{
+	rootLup := modules.SkyfileUploadParameters{
 		SiaPath:             rootUploadSiaPath,
 		Force:               rootForce,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.LinkfileMetadata{
+		FileMetadata: modules.SkyfileMetadata{
 			Filename: rootFilename,
 			Mode:     0600, // Intentionally does not match any defaults.
 		},
@@ -166,11 +166,11 @@ func TestSkynet(t *testing.T) {
 	if fastrand.Intn(2) == 0 {
 		force2 = true
 	}
-	largeLup := modules.LinkfileUploadParameters{
+	largeLup := modules.SkyfileUploadParameters{
 		SiaPath:             largeSiaPath,
 		Force:               force2,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.LinkfileMetadata{
+		FileMetadata: modules.SkyfileMetadata{
 			Filename: largeFilename,
 			// Remaining fields intentionally left blank so the renter sets
 			// defaults.
@@ -239,11 +239,11 @@ func TestSkynet(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		lup = modules.LinkfileUploadParameters{
+		lup = modules.SkyfileUploadParameters{
 			SiaPath:             uploadSiaPath2,
 			Force:               !force,
 			BaseChunkRedundancy: 2,
-			FileMetadata: modules.LinkfileMetadata{
+			FileMetadata: modules.SkyfileMetadata{
 				Executable: true,
 				Filename:   filename2,
 			},

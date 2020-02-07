@@ -1836,11 +1836,11 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 	}
-	lfm := modules.LinkfileMetadata{
+	lfm := modules.SkyfileMetadata{
 		Filename: filename,
 		Mode:     mode,
 	}
-	lup := modules.LinkfileUploadParameters{
+	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		Force:               force,
 		BaseChunkRedundancy: redundancy,
@@ -1854,7 +1854,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
 		lup.Reader = req.Body
-		skylink, err := api.renter.UploadLinkfile(lup)
+		skylink, err := api.renter.UploadSkyfile(lup)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
