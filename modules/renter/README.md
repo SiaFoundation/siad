@@ -413,14 +413,14 @@ price and total throughput.
  - [skyfilefanoutfetch.go](./skyfilefanoutfetch.go)
 
 The skyfile system contains methods for encoding, decoding, uploading, and
-downloading skyfiles using Sialinks, and is one of the foundations underpinning
+downloading skyfiles using Skylinks, and is one of the foundations underpinning
 Skynet.
 
 The skyfile format is a custom format which prepends metadata to a file such
 that the entire file and all associated metadata can be recovered knowing
 nothing more than a single sector root. That single sector root can be encoded
 alongside some compressed fetch offset and length information to create a
-sialink.
+skylink.
 
 **Outbound Complexities**
  - callUploadStreamFromReader is used to upload new data to the Sia network when
@@ -485,10 +485,10 @@ download or partially download a sector from the Sia network knowing only the
 Merkle root of that sector, and not necessarily knowing which host on the
 network has that sector. The single exported method is 'DownloadByRoot'.
 
-This subsystem was created primarily as a facilitator for the sialinks of
-Skynet. Sialinks provide a merkle root and some offset+length information, but
+This subsystem was created primarily as a facilitator for the skylinks of
+Skynet. Skylinks provide a merkle root and some offset+length information, but
 do not provide any information about which hosts are storing the sectors. The
-exported method of this subsystem will primarily be called by sialink methods,
+exported method of this subsystem will primarily be called by skylink methods,
 as opposed to being used directly by external users.
 
 ### Upload Streaming Subsystem

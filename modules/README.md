@@ -18,7 +18,7 @@ The modules package is the top-level package for all modules. It contains the in
 - [Negotiate](#negotiate)
 - [Network Addresses](#network-addresses)
 - [Siad Configuration](#siad-configuration)
-- [Sialink](#sialink)
+- [Skylink](#skylink)
 - [SiaPath](#siapath)
 - [Storage Manager](#storage-manager)
 
@@ -132,21 +132,21 @@ The following levels of severity are currently available:
 *TODO* 
   - fill out subsystem explanation
 
-### Sialink
+### Skylink
 
 **Key Files**
--[sialink.go](./sialink.go)
+-[skylink.go](./skylink.go)
 
-The sialink is a format for linking to data sectors stored on the Sia network.
-In addition to pointing to a data sector, the sialink contains a lossy offset an
+The skylink is a format for linking to data sectors stored on the Sia network.
+In addition to pointing to a data sector, the skylink contains a lossy offset an
 length that point to a data segment within the sector, allowing multiple small
 files to be packed into a single sector.
 
-All told, there are 32 bytes in a sialink for encoding the Merkle root of the
+All told, there are 32 bytes in a skylink for encoding the Merkle root of the
 sector being linked, and 2 bytes encoding a link version, the offset, and the
 length of the sector being fetched.
 
-For more information, checkout the documentation in the [sialink.go](./sialink.go) file.
+For more information, checkout the documentation in the [skylink.go](./skylink.go) file.
 
 ### SiaPath
 **Key Files**
