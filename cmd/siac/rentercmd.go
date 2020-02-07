@@ -181,8 +181,9 @@ local path where the Sia folder is mounted.`,
 	renterFilesUploadCmd = &cobra.Command{
 		Use:   "upload [source] [path]",
 		Short: "Upload a file or folder",
-		Long:  "Upload a file or folder to [path] on the Sia network.",
-		Run:   wrap(renterfilesuploadcmd),
+		Long: `Upload a file or folder to [path] on the Sia network. The --data-pieces and --parity-pieces
+flags can be used to set a custom redundancy for the file.`,
+		Run: wrap(renterfilesuploadcmd),
 	}
 
 	renterPricesCmd = &cobra.Command{
@@ -2188,6 +2189,12 @@ func renterfilesuploadcmd(source, path string) {
 		die("Could not stat file or folder:", err)
 	}
 
+	// Check for and parse any redundancy settings
+	numDataPieces, numParityPieces, err := api.ParseDataAndParityPieces(dataPieces, parityPieces)
+	if err != nil {
+		die("Could not parse data and parity pieces:", err)
+	}
+
 	if stat.IsDir() {
 		// folder
 		var files []string
@@ -2217,7 +2224,7 @@ func renterfilesuploadcmd(source, path string) {
 			if err != nil {
 				die("Couldn't parse SiaPath:", err)
 			}
-			err = httpClient.RenterUploadDefaultPost(abs(file), fSiaPath)
+			err = httpClient.RenterUploadPost(abs(file), fSiaPath, uint64(numDataPieces), uint64(numParityPieces))
 			if err != nil {
 				failed++
 				fmt.Printf("Could not upload file %s :%v\n", file, err)
@@ -2231,7 +2238,7 @@ func renterfilesuploadcmd(source, path string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
-		err = httpClient.RenterUploadDefaultPost(abs(source), siaPath)
+		err = httpClient.RenterUploadPost(abs(source), siaPath, uint64(numDataPieces), uint64(numParityPieces))
 		if err != nil {
 			die("Could not upload file:", err)
 		}
