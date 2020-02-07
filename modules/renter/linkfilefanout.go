@@ -1,6 +1,6 @@
 package renter
 
-// linkfilefanout.go implements the encoding and decoding of linkfile fanouts. A
+// skyfilefanout.go implements the encoding and decoding of skyfile fanouts. A
 // fanout is a description of all of the Merkle roots in a file, organized by
 // chunk. Each chunk has N pieces, and each piece has a Merkle root which is a
 // 32 byte hash.
@@ -20,14 +20,14 @@ import (
 )
 
 // fanoutStreamBufferDataSource implements streamBufferDataSource with the
-// linkfile so that it can be used to open a stream from the streamBufferSet.
+// skyfile so that it can be used to open a stream from the streamBufferSet.
 type fanoutStreamBufferDataSource struct {
 	// Each chunk is an array of sector hashes that correspond to pieces which
 	// can be fetched.
 	staticChunks       [][]crypto.Hash
 	staticChunkSize    uint64
 	staticErasureCoder modules.ErasureCoder
-	staticLayout       linkfileLayout
+	staticLayout       skyfileLayout
 	staticMasterKey    crypto.CipherKey
 	staticStreamID     streamDataSourceID
 
@@ -37,9 +37,9 @@ type fanoutStreamBufferDataSource struct {
 }
 
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
-// linkfile. The streamer is created by implementing the streamBufferDataSource
-// interface on the linkfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, ll linkfileLayout, fanoutBytes []byte) (modules.Streamer, error) {
+// skyfile. The streamer is created by implementing the streamBufferDataSource
+// interface on the skyfile, and then passing that to the stream buffer set.
+func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanoutBytes []byte) (modules.Streamer, error) {
 	// Create the erasure coder and the master key.
 	masterKey, err := crypto.NewSiaKey(ll.cipherType, ll.cipherKey[:])
 	if err != nil {
@@ -62,7 +62,7 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll linkfileLayout, fano
 	}
 	err = fs.decodeFanout(fanoutBytes)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to decode fanout of linkfile")
+		return nil, errors.AddContext(err, "unable to decode fanout of skyfile")
 	}
 
 	// Grab and return the stream.
@@ -70,7 +70,7 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll linkfileLayout, fano
 	return stream, nil
 }
 
-// decodeFanout will take the fanout bytes from a linkfile and decode them in to
+// decodeFanout will take the fanout bytes from a skyfile and decode them in to
 // the staticChunks filed of the fanoutStreamBufferDataSource.
 func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 	// Special case: if the data of the file is using 1-of-N erasure coding,
@@ -108,7 +108,7 @@ func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 	return nil
 }
 
-// linkfileEncodeFanout will create the serialized fanout for a fileNode. The
+// skyfileEncodeFanout will create the serialized fanout for a fileNode. The
 // encoded fanout is just the list of hashes that can be used to retrieve a file
 // concatenated together, where piece 0 of chunk 0 is first, piece 1 of chunk 0
 // is second, etc. The full set of erasure coded pieces are included.
@@ -116,7 +116,7 @@ func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 // There is a special case for unencrypted 1-of-N files. Because every piece is
 // identical for an unencrypted 1-of-N file, only the first piece of each chunk
 // is included.
-func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
+func skyfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 	// Grab the erasure coding scheme and encryption scheme from the file.
 	cipherType := fileNode.MasterKey().Type()
 	dataPieces := fileNode.ErasureCode().MinPieces()
@@ -175,7 +175,7 @@ func linkfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 	return fanout, nil
 }
 
-// DataSize returns the amount of file data in the underlying linkfile.
+// DataSize returns the amount of file data in the underlying skyfile.
 func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
 	return fs.staticLayout.filesize
 }

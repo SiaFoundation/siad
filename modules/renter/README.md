@@ -63,7 +63,7 @@ responsibilities.
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
  - [Download By Root Subsystem](#download-by-root-subsystem)
- - [Linkfile Subsystem](#linkfile-subsystem)
+ - [Skyfile Subsystem](#skyfile-subsystem)
  - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
@@ -406,17 +406,17 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
-### Linkfile Subsystem
+### Skyfile Subsystem
 **Key Files**
  - [linkfile.go](./linkfile.go)
- - [linkfilefanout.go](./linkfilefanout.go)
- - [linkfilefanoutfetch.go](./linkfilefanoutfetch.go)
+ - [skyfilefanout.go](./skyfilefanout.go)
+ - [skyfilefanoutfetch.go](./skyfilefanoutfetch.go)
 
-The linkfile system contains methods for encoding, decoding, uploading, and
-downloading linkfiles using Sialinks, and is one of the foundations underpinning
+The skyfile system contains methods for encoding, decoding, uploading, and
+downloading skyfiles using Sialinks, and is one of the foundations underpinning
 Skynet.
 
-The linkfile format is a custom format which prepends metadata to a file such
+The skyfile format is a custom format which prepends metadata to a file such
 that the entire file and all associated metadata can be recovered knowing
 nothing more than a single sector root. That single sector root can be encoded
 alongside some compressed fetch offset and length information to create a
@@ -424,7 +424,7 @@ sialink.
 
 **Outbound Complexities**
  - callUploadStreamFromReader is used to upload new data to the Sia network when
-   creating linkfiles. This call appears three times in
+   creating skyfiles. This call appears three times in
    [linkfile.go](./linkfile.go)
 
 ### Stream Buffer Subsystem
@@ -499,7 +499,7 @@ as opposed to being used directly by external users.
   - fill out subsystem explanation
 
 **Inbound Complexities**
- - The linkfile subsystem makes three calls to `callUploadStreamFromReader()` in
+ - The skyfile subsystem makes three calls to `callUploadStreamFromReader()` in
    [linkfile.go](./linkfile.go)
  - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 

@@ -933,23 +933,23 @@ type Renter interface {
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
-	// result in some uploading - the base sector linkfile needs to be uploaded
+	// result in some uploading - the base sector skyfile needs to be uploaded
 	// separately, and if there is a fanout expansion that needs to be uploaded
 	// separately as well.
-	CreateSkylinkFromSiafile(LinkfileUploadParameters, SiaPath) (Skylink, error)
+	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink) (LinkfileMetadata, Streamer, error)
+	DownloadSkylink(Skylink) (SkyfileMetadata, Streamer, error)
 
-	// UploadLinkfile will upload data to the Sia network from a reader and
-	// create a linkfile, returning the skylink that can be used to access the
+	// UploadSkyfile will upload data to the Sia network from a reader and
+	// create a skyfile, returning the skylink that can be used to access the
 	// file.
 	//
-	// NOTE: A linkfile is a file that is tracked and repaired by the renter.  A
-	// linkfile contains more than just the file data, it also contains metadata
+	// NOTE: A skyfile is a file that is tracked and repaired by the renter.  A
+	// skyfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadLinkfile(LinkfileUploadParameters) (Skylink, error)
+	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -1066,21 +1066,21 @@ type HostDB interface {
 	UpdateContracts([]RenterContract) error
 }
 
-// LinkfileMetadata is all of the metadata that gets placed into the first 4096
-// bytes of the linkfile, and is used to set the metadata of the file when
+// SkyfileMetadata is all of the metadata that gets placed into the first 4096
+// bytes of the skyfile, and is used to set the metadata of the file when
 // writing back to disk. The data is json-encoded when it is placed into the
-// leading bytes of the linkfile, meaning that this struct can be extended
+// leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
-type LinkfileMetadata struct {
+type SkyfileMetadata struct {
 	Filename string      `json:"filename,omitempty"`
 	Mode     os.FileMode `json:"mode,omitempty"`
 }
 
-// LinkfileUploadParameters establishes the parameters such as the intra-root
+// SkyfileUploadParameters establishes the parameters such as the intra-root
 // erasure coding.
-type LinkfileUploadParameters struct {
-	// SiaPath defines the siapath that the linkfile is going to be uploaded to.
-	// Recommended that the linkfile is placed in /var/linkfiles
+type SkyfileUploadParameters struct {
+	// SiaPath defines the siapath that the skyfile is going to be uploaded to.
+	// Recommended that the skyfile is placed in /var/skynet
 	SiaPath SiaPath `json:"siapath"`
 
 	// Force determines whether the upload should overwrite an existing siafile
@@ -1096,8 +1096,8 @@ type LinkfileUploadParameters struct {
 	// This metadata will be included in the base chunk, meaning that this
 	// metadata is visible to the downloader before any of the file data is
 	// visible.
-	FileMetadata LinkfileMetadata `json:"filemetadata"`
+	FileMetadata SkyfileMetadata `json:"filemetadata"`
 
-	// Reader supplies the file data for the linkfile.
+	// Reader supplies the file data for the skyfile.
 	Reader io.Reader `json:"reader"`
 }

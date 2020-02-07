@@ -2434,10 +2434,10 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	_, sourceName := filepath.Split(sourcePath)
 
 	// Perform the upload and print the result.
-	lup := modules.LinkfileUploadParameters{
+	lup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 
-		FileMetadata: modules.LinkfileMetadata{
+		FileMetadata: modules.SkyfileMetadata{
 			Filename: sourceName,
 			Mode:     fi.Mode(),
 		},
@@ -2476,7 +2476,7 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	}
 
 	// Perform the conversion and print the result.
-	lup := modules.LinkfileUploadParameters{
+	lup := modules.SkyfileUploadParameters{
 		SiaPath: destSiaPath,
 	}
 	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(lup, sourceSiaPath)

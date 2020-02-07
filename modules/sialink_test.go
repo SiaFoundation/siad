@@ -212,7 +212,7 @@ func TestSkylink(t *testing.T) {
 		t.Error("should not be able to load non base64 string")
 	}
 
-	// Try parsing a linkfile that's got a bad version.
+	// Try parsing a skyfile that's got a bad version.
 	var slBad Skylink
 	slBad.bitfield = 1
 	str = slBad.String()
