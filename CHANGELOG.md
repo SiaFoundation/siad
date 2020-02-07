@@ -81,7 +81,7 @@ Latest:
  - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
    used.
  -
- -
+ - Add benchmark for bubble metadata
  - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
    to safely acquire the host pubkey.
  -
