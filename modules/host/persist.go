@@ -79,8 +79,8 @@ func (h *Host) establishDefaults() error {
 	// Load the host's key pair, use the same keys as the SiaMux.
 	var sk crypto.SecretKey
 	var pk crypto.PublicKey
-	copy(sk[:], h.staticMux.Keys.SecretKey[:])
-	copy(pk[:], h.staticMux.Keys.PublicKey[:])
+	copy(sk[:], h.staticMux.staticPrivKey[:])
+	copy(pk[:], h.staticMux.staticPubKey[:])
 
 	h.publicKey = types.Ed25519PublicKey(pk)
 	h.secretKey = sk
@@ -170,6 +170,11 @@ func (h *Host) load() error {
 	} else if err == persist.ErrBadVersion {
 		// Attempt an upgrade from V112 to V120.
 		err = h.upgradeFromV112ToV120()
+		if err != nil {
+			return err
+		}
+		// Then upgrade from V120 to V130.
+		err = h.upgradeFromV120ToV130()
 		if err != nil {
 			return err
 		}

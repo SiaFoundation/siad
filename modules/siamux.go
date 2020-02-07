@@ -1,11 +1,8 @@
 package modules
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -14,83 +11,58 @@ import (
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
-// TODO: add test to verify host keys are recycled as siamux keys properly
-// TODO: add persistence to SiaMux so we can get rid of the SiaMux wrap
-// TODO: get rid of SafeClose - added due to failing TestWatchdogSweep test
-
 const (
-	// keyfile is the filename of the siamux keys file
-	keyfile = "siamuxkeys.json"
 	// logfile is the filename of the siamux log file
 	logfile = "siamux.log"
 )
 
-// siamuxKeysMetadata contains the header and version strings that identify
-// the siamux keys
-var siamuxKeysMetadata = persist.Metadata{
-	Header:  "SiaMux Keys",
-	Version: "1.4.2.2",
-}
-
 type (
-	// SiaMux wraps the siamux to allow decorating it with the siamux keys
-	SiaMux struct {
-		*siamux.SiaMux
-		Keys SiaMuxKeys
-
-		closed bool
-		mu     sync.Mutex
+	// hostKeys represents the host's key pair, it is used to extract only the
+	// keys from a host's persistence object
+	hostKeys struct {
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		SecretKey crypto.SecretKey   `json:"secretkey"`
 	}
 
-	// SiaMuxKeys contains the siamux's public and secret key
-	SiaMuxKeys struct {
-		SecretKey mux.ED25519SecretKey `json:"secretkey"`
-		PublicKey mux.ED25519PublicKey `json:"publickey"`
+	// siaMuxKeys represents a SiaMux key pair
+	siaMuxKeys struct {
+		pubKey  mux.ED25519PublicKey
+		privKey mux.ED25519SecretKey
+	}
+)
+
+var (
+	// v120PersistMetadata is the header of the v120 host persist file
+	v120PersistMetadata = persist.Metadata{
+		Header:  "Sia Host",
+		Version: "1.2.0",
 	}
 )
 
 // NewSiaMux returns a new SiaMux object
-func NewSiaMux(dir, address string) (*SiaMux, error) {
-	// create the logger
-	logger, err := newLogger(dir)
+func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
+	logger, err := newLogger(persistDir)
 	if err != nil {
-		return &SiaMux{}, err
+		return nil, err
 	}
 
-	// create the siamux
-	keys := loadKeys(dir)
-	smux, _, err := siamux.New(address, keys.PublicKey, keys.SecretKey, logger)
-	if err != nil {
-		return &SiaMux{}, err
+	useCompat, keys := useCompatV1421(persistDir)
+	if useCompat {
+		return siamux.CompatV1421NewWithKeyPair(address, logger, persistDir, keys.privKey, keys.pubKey)
 	}
-
-	// wrap it
-	mux := &SiaMux{Keys: keys}
-	mux.SiaMux = smux
-	return mux, nil
-}
-
-// SafeClose ensures Close is never called twice on the SiaMux
-func (mux *SiaMux) SafeClose() error {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-	if mux.closed {
-		return nil
-	}
-	mux.closed = true
-	return mux.Close()
+	return siamux.New(address, logger, persistDir)
 }
 
 // newLogger creates a new logger
-func newLogger(dir string) (*persist.Logger, error) {
+func newLogger(persistDir string) (*persist.Logger, error) {
 	// create the directory if it doesn't exist.
-	err := os.MkdirAll(dir, 0700)
+	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
 		return nil, err
 	}
 
 	// create the logger
-	logfilePath := filepath.Join(dir, logfile)
+	logfilePath := filepath.Join(persistDir, logfile)
 	logger, err := persist.NewFileLogger(logfilePath)
 	if err != nil {
 		return nil, err
@@ -98,53 +70,28 @@ func newLogger(dir string) (*persist.Logger, error) {
 	return logger, nil
 }
 
-// loadKeys loads the siamux keys, it has several fallbacks. Most importantly it
-// will reuse the host's keys as the siamux keys.
-func loadKeys(dir string) (keys SiaMuxKeys) {
-	keyfilePath := filepath.Join(dir, keyfile)
+// useCompatV1421 returns true if we need to initialize the SiaMux using it's
+// compatability constructor. This will be the case when the host's persistence
+// version is 1.2.0. If so we want to recycle the host's key pair to use in the
+// SiaMux
+func useCompatV1421(persistDir string) (bool, *siaMuxKeys) {
+	persistPath := filepath.Join(persistDir, HostDir, HostDir, ".json")
 
-	// load the siamux keys from the keyfile
-	err := persist.LoadJSON(siamuxKeysMetadata, keys, keyfilePath)
+	// check if we can load the host's persistence object with metadata header
+	// v120, if so we are upgrading from 1.2.0 -> 1.3.0 which means we want to
+	// recycle the host's key pair to use in the SiaMux
+	var hk hostKeys
+	err := persist.LoadJSON(v120PersistMetadata, &hk, persistPath)
 	if err == nil {
-		return
+		return true, hk.toSiaMuxKeys()
 	}
 
-	// if that failed, recycle the host's keys and use those as siamux keys
-	if keys, err = loadHostKeys(dir); err != nil {
-		sk, pk := mux.GenerateED25519KeyPair()
-		keys = SiaMuxKeys{sk, pk}
-	}
-
-	// save the siamux keys to the keyfile
-	err = persist.SaveJSON(siamuxKeysMetadata, keys, keyfilePath)
-	if err != nil {
-		println("Could not persist siamux keys", err)
-	}
-	return
+	return false, nil
 }
 
-// loadHostKeys looks for the host's key pair in the persistence object
-func loadHostKeys(dir string) (keys SiaMuxKeys, err error) {
-	settingsPath := filepath.Join(dir, HostDir, HostDir, ".json")
-
-	// read the host persistence file
-	var bytes []byte
-	bytes, err = ioutil.ReadFile(settingsPath)
-	if err != nil {
-		return
-	}
-
-	// parse the key pair out of the host's persist file
-	hostkeys := struct {
-		PublicKey types.SiaPublicKey `json:"publickey"`
-		SecretKey crypto.SecretKey   `json:"secretkey"`
-	}{}
-	err = json.Unmarshal(bytes, &hostkeys)
-	if err != nil {
-		return
-	}
-
-	copy(keys.SecretKey[:], hostkeys.SecretKey[:])
-	copy(keys.PublicKey[:], hostkeys.PublicKey.Key[:])
+// toSiaMuxKeys converts a set of host keys to siamux keys
+func (hk *hostKeys) toSiaMuxKeys() (smk *siaMuxKeys) {
+	copy(smk.privKey[:], hk.SecretKey[:])
+	copy(smk.pubKey[:], hk.PublicKey.Key[:])
 	return
 }

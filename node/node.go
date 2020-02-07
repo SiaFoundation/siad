@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -119,7 +120,7 @@ type NodeParams struct {
 // Node is a collection of Sia modules operating together as a Sia node.
 type Node struct {
 	// The mux of the node.
-	Mux *modules.SiaMux
+	Mux *siamux.SiaMux
 
 	// The modules of the node. Modules that are not initialized will be nil.
 	ConsensusSet    modules.ConsensusSet
@@ -234,7 +235,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Create the siamux.
-	mux, err := func() (*modules.SiaMux, error) {
+	mux, err := func() (*siamux.SiaMux, error) {
 		if params.SiaMuxAddress == "" {
 			params.SiaMuxAddress = "localhost:0"
 		}

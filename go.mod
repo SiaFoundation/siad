@@ -12,7 +12,7 @@ require (
 	github.com/klauspost/reedsolomon v1.9.3
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/cobra v0.0.5
-	github.com/xtaci/smux v0.0.0-00010101000000-000000000000
+	github.com/xtaci/smux v1.3.3
 	gitlab.com/NebulousLabs/bolt v1.4.0
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
@@ -22,13 +22,12 @@ require (
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
-	gitlab.com/NebulousLabs/siamux v0.0.0-20200122150812-906a1cea1c8c
+	gitlab.com/NebulousLabs/siamux v0.0.0-20200206084403-1f5457f4833e
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
-	golang.org/x/crypto v0.0.0-20200117160349-530e935923ad
-	golang.org/x/lint v0.0.0-20191125180803-fdd1cda4f05f // indirect
-	golang.org/x/sys v0.0.0-20200122134326-e047566fdf82 // indirect
-	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f
+	golang.org/x/crypto v0.0.0-20200206161412-a0c6ece9d31a
+	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
+	golang.org/x/tools v0.0.0-20200130002326-2f3ba24bd6e7
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux

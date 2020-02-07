@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -62,7 +63,7 @@ func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.Transa
 }
 
 // newTestingHost is a helper function that creates a ready-to-use host.
-func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *modules.SiaMux) (modules.Host, error) {
+func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
@@ -125,7 +126,7 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 }
 
 // newTestingTrioCustom creates a trio with custom testdir and siamux
-func newTestingTrioCustom(name, testdir string, mux *modules.SiaMux) (modules.Host, *Contractor, modules.TestMiner, error) {
+func newTestingTrioCustom(name, testdir string, mux *siamux.SiaMux) (modules.Host, *Contractor, modules.TestMiner, error) {
 	// create miner
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
