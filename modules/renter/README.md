@@ -408,7 +408,7 @@ price and total throughput.
 
 ### Skyfile Subsystem
 **Key Files**
- - [linkfile.go](./linkfile.go)
+ - [skyfile.go](./skyfile.go)
  - [skyfilefanout.go](./skyfilefanout.go)
  - [skyfilefanoutfetch.go](./skyfilefanoutfetch.go)
 
@@ -425,7 +425,7 @@ sialink.
 **Outbound Complexities**
  - callUploadStreamFromReader is used to upload new data to the Sia network when
    creating skyfiles. This call appears three times in
-   [linkfile.go](./linkfile.go)
+   [skyfile.go](./skyfile.go)
 
 ### Stream Buffer Subsystem
 **Key Files**
@@ -500,7 +500,7 @@ as opposed to being used directly by external users.
 
 **Inbound Complexities**
  - The skyfile subsystem makes three calls to `callUploadStreamFromReader()` in
-   [linkfile.go](./linkfile.go)
+   [skyfile.go](./skyfile.go)
  - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 
 ### Health and Repair Subsystem
