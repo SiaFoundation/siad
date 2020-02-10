@@ -14,6 +14,9 @@ import (
 const (
 	// logfile is the filename of the siamux log file
 	logfile = "siamux.log"
+
+	// settingsfile is the filename of the host's persistence file
+	settingsFile = "host.json"
 )
 
 type (
@@ -71,11 +74,11 @@ func newLogger(persistDir string) (*persist.Logger, error) {
 }
 
 // useCompatV1421 returns true if we need to initialize the SiaMux using it's
-// compatability constructor. This will be the case when the host's persistence
+// compatibility constructor. This will be the case when the host's persistence
 // version is 1.2.0. If so we want to recycle the host's key pair to use in the
 // SiaMux
 func useCompatV1421(persistDir string) (bool, *siaMuxKeys) {
-	persistPath := filepath.Join(persistDir, HostDir, HostDir, ".json")
+	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
 
 	// check if we can load the host's persistence object with metadata header
 	// v120, if so we are upgrading from 1.2.0 -> 1.3.0 which means we want to
@@ -90,8 +93,10 @@ func useCompatV1421(persistDir string) (bool, *siaMuxKeys) {
 }
 
 // toSiaMuxKeys converts a set of host keys to siamux keys
-func (hk *hostKeys) toSiaMuxKeys() (smk *siaMuxKeys) {
-	copy(smk.privKey[:], hk.SecretKey[:])
-	copy(smk.pubKey[:], hk.PublicKey.Key[:])
-	return
+func (hk *hostKeys) toSiaMuxKeys() *siaMuxKeys {
+	pubKey := mux.ED25519PublicKey{}
+	copy(pubKey[:], hk.PublicKey.Key[:])
+	privKey := mux.ED25519SecretKey{}
+	copy(privKey[:], hk.SecretKey[:])
+	return &siaMuxKeys{pubKey, privKey}
 }

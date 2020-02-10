@@ -18,7 +18,10 @@ func TestSiaMuxCompat(t *testing.T) {
 		t.SkipNow()
 	}
 
+	// ensure the host's persistence file does not exist
 	persistDir := filepath.Join(os.TempDir(), t.Name())
+	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
+	os.Remove(persistPath)
 
 	// create a new siamux, seeing as there won't be a host persistence file, it
 	// will act as if this is a fresh new node and create a new key pair
@@ -26,8 +29,8 @@ func TestSiaMuxCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pubKey := mux.staticPubKey
-	privKey := mux.staticPrivKey
+	expectedPK := mux.PublicKey()
+	expectedSK := mux.PrivateKey()
 	mux.Close()
 
 	// re-open the mux and verify it uses the same keys
@@ -35,21 +38,30 @@ func TestSiaMuxCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(mux.staticPubKey, pubKey) {
-		t.Log(mux.staticPubKey)
-		t.Log(pubKey)
+
+	actualPK := mux.PublicKey()
+	actualSK := mux.PrivateKey()
+	if !bytes.Equal(actualPK[:], expectedPK[:]) {
+		t.Log(actualPK)
+		t.Log(expectedPK)
 		t.Fatal("SiaMux's public key was different after reloading the mux")
 	}
-	if !bytes.Equal(mux.staticPrivKey, privKey) {
-		t.Log(mux.staticPrivKey)
-		t.Log(privKey)
+	if !bytes.Equal(actualSK[:], expectedSK[:]) {
+		t.Log(actualSK)
+		t.Log(expectedSK)
 		t.Fatal("SiaMux's private key was different after reloading the mux")
 	}
 	mux.Close()
 
 	// prepare a host's persistence file with v1.4.2 and verify the mux is now
 	// initialised using the host's key pair
-	persistPath := filepath.Join(persistDir, HostDir, HostDir, ".json")
+
+	// create the host directory if it doesn't exist.
+	err = os.MkdirAll(filepath.Join(persistDir, HostDir), 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
@@ -59,7 +71,10 @@ func TestSiaMuxCompat(t *testing.T) {
 		PublicKey: spk,
 		SecretKey: sk,
 	}
-	persist.SaveJSON(v120PersistMetadata, persistence, persistPath)
+	err = persist.SaveJSON(v120PersistMetadata, persistence, persistPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// create a new siamux
 	mux, err = NewSiaMux(persistDir, "localhost:0")
@@ -67,13 +82,15 @@ func TestSiaMuxCompat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(mux.staticPubKey, spk.Key) {
-		t.Log(mux.staticPubKey)
+	actualPK = mux.PublicKey()
+	actualSK = mux.PrivateKey()
+	if !bytes.Equal(actualPK[:], spk.Key) {
+		t.Log(actualPK)
 		t.Log(spk.Key)
 		t.Fatal("SiaMux's public key was not equal to the host's pubkey")
 	}
-	if !bytes.Equal(mux.staticPrivKey, sk[:]) {
-		t.Log(mux.staticPrivKey)
+	if !bytes.Equal(actualSK[:], sk[:]) {
+		t.Log(mux.PrivateKey())
 		t.Log(spk.Key)
 		t.Fatal("SiaMux's public key was not equal to the host's pubkey")
 	}

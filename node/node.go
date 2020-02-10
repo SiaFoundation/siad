@@ -220,7 +220,7 @@ func (n *Node) Close() (err error) {
 	}
 	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
-		err = errors.Compose(n.Mux.SafeClose())
+		err = errors.Compose(n.Mux.Close())
 	}
 	return err
 }

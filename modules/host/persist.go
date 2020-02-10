@@ -79,8 +79,10 @@ func (h *Host) establishDefaults() error {
 	// Load the host's key pair, use the same keys as the SiaMux.
 	var sk crypto.SecretKey
 	var pk crypto.PublicKey
-	copy(sk[:], h.staticMux.staticPrivKey[:])
-	copy(pk[:], h.staticMux.staticPubKey[:])
+	msk := h.staticMux.PrivateKey()
+	mpk := h.staticMux.PublicKey()
+	copy(sk[:], msk[:])
+	copy(pk[:], mpk[:])
 
 	h.publicKey = types.Ed25519PublicKey(pk)
 	h.secretKey = sk
