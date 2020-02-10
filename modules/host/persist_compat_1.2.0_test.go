@@ -20,8 +20,8 @@ const (
 	v112Host = "v112Host.tar.gz"
 )
 
-// loadExistingHostWithNewDeps will create all of the dependencies for a host, then load
-// the host on top of the given directory.
+// loadExistingHostWithNewDeps will create all of the dependencies for a host,
+// then load the host on top of the given directory.
 func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, error) {
 	testdir := build.TempDir(modules.HostDir, modulesDir)
 

@@ -222,6 +222,7 @@ func (n *Node) Close() (err error) {
 	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
 		err = errors.Compose(n.Mux.Close())
+		n.Mux = nil // unset the mux to prevent closing twice
 	}
 	return err
 }
