@@ -325,7 +325,7 @@ func main() {
 	// initialize client
 	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
 	root.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
-	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", build.DefaultSiaDir(), "location of the sia directory")
+	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
 	// Check if the api password environment variable is set.
@@ -333,6 +333,16 @@ func main() {
 	if apiPassword != "" {
 		httpClient.Password = apiPassword
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
+	}
+
+	// If siaDir is not set, use the environment variable provided.
+	if siaDir == "" {
+		siaDir = os.Getenv("SIA_DATA_DIR")
+		fmt.Println("Using SIA_DATA_DIR environment variable")
+	}
+	// If neither a flag or env variable was provided, use the defaul.
+	if siaDir == "" {
+		siaDir = build.DefaultSiaDir()
 	}
 
 	// If the API password wasn't set we try to read it from the file. This must
