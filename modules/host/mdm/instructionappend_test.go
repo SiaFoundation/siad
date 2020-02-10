@@ -12,7 +12,7 @@ import (
 
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
-// ReadSectorInstruction.
+// AppendInstruction.
 func newAppendProgram(sectorData []byte, merkleProof bool) ([]modules.Instruction, []byte) {
 	instructions := []modules.Instruction{
 		NewAppendInstruction(0, merkleProof),
