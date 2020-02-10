@@ -23,14 +23,10 @@ func InitCost(programLen uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
-// ReadCost is the cost of executing a 'Read' instruction.
-func ReadCost(contractSize uint64) types.Currency {
-	return types.SiacoinPrecision // TODO: figure out good cost
-}
-
-// ReadSectorCost is the cost of executing a 'ReadSector' instruction.
-func ReadSectorCost() types.Currency {
-	return types.SiacoinPrecision // TODO: figure out good cost
+// ReadCost is the cost of executing a 'Read' instruction. It is defined as:
+// 'readBaseCost' + 'readLengthCost' * `readLength`
+func ReadCost(readBaseCost, readLengthCost types.Currency, readLength uint64) types.Currency {
+	return readLengthCost.Mul64(readLength).Add(readBaseCost)
 }
 
 // WriteSectorCost is the cost of executing a 'WriteSector' instruction.

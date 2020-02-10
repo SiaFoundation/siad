@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -33,14 +34,19 @@ func TestInstructionReadSector(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
+	// Define the prices.
 
 	// Create a program to read a full sector from the host.
-	instructions, r, dataLen := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{})
+	readBaseCost := types.SiacoinPrecision
+	readLengthCost := types.SiacoinPrecision
+	readLen := modules.SectorSize
+	instructions, r, dataLen := newReadSectorProgram(readLen, 0, crypto.Hash{})
 	// Execute it.
 	ics := 10 * modules.SectorSize // initial contract size is 10 sectors.
 	imr := crypto.Hash{}
-	fastrand.Read(imr[:]) // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen).Add(ReadSectorCost()), newTestStorageObligation(true), ics, imr, dataLen, r)
+	fastrand.Read(imr[:])                                                                 // random initial merkle root
+	programCost := InitCost(dataLen).Add(ReadCost(readBaseCost, readLengthCost, readLen)) // use the cost of the program as the budget
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, programCost, newTestStorageObligation(true), ics, imr, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +84,8 @@ func TestInstructionReadSector(t *testing.T) {
 	length := offset
 	instructions, r, dataLen = newReadSectorProgram(length, offset, crypto.Hash{})
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen).Add(ReadSectorCost()), newTestStorageObligation(true), ics, imr, dataLen, r)
+	programCost = InitCost(dataLen).Add(ReadCost(readBaseCost, readLengthCost, length)) // use the cost of the program as the budget
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), instructions, programCost, newTestStorageObligation(true), ics, imr, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
