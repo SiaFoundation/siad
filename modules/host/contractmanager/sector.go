@@ -53,8 +53,8 @@ type (
 	}
 )
 
-// readPartialSector will read the sector in the file, starting from the provided
-// location.
+// readPartialSector will read a sector from the storage manager, returning the
+// 'length' bytes at offset 'offset' that match the input sector root.
 func readPartialSector(f modules.File, sectorIndex uint32, offset, length uint64) ([]byte, error) {
 	if offset+length > modules.SectorSize {
 		return nil, errors.New("readPartialSector: read is out of bounds")
@@ -123,7 +123,7 @@ func (cm *ContractManager) managedSectorID(sectorRoot crypto.Hash) (id sectorID)
 }
 
 // ReadPartialSector will read a sector from the storage manager, returning the
-// bytes that match the input sector root.
+// 'length' bytes at offset 'offset' that match the input sector root.
 func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	err := cm.tg.Add()
 	if err != nil {
