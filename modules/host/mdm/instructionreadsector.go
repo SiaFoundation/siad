@@ -81,7 +81,7 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 		return outputFromError(err)
 	}
 	// Subtract the cost of the instruction from the budget.
-	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, ReadCost(types.ZeroCurrency, types.ZeroCurrency, length)) // TODO: update once we have price table
+	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, ReadCost(types.SiacoinPrecision, types.SiacoinPrecision, length)) // TODO: update once we have price table
 	if err != nil {
 		return outputFromError(err)
 	}
