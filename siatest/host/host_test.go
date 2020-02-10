@@ -196,3 +196,84 @@ func TestHostAlertInsufficientCollateral(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestHostBandwidth confirms that the host module is monitoring bandwidth
+func TestHostBandwidth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	gp := siatest.GroupParams{
+		Hosts:   2,
+		Renters: 0,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(hostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	hostNode := tg.Hosts()[0]
+
+	hbw, err := hostNode.HostBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hbw.Upload != 0 || hbw.Download != 0 {
+		t.Fatal("Expected host to have no upload or download bandwidth")
+	}
+
+	if _, err := tg.AddNodes(node.RenterTemplate); err != nil {
+		t.Fatal(err)
+	}
+
+	hbw, err = hostNode.HostBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hbw.Upload == 0 || hbw.Download == 0 {
+		t.Fatal("Expected host to use bandwidth from rpc with new renter node")
+	}
+
+	lastUpload := hbw.Upload
+	lastDownload := hbw.Download
+	renterNode := tg.Renters()[0]
+
+	_, rf, err := renterNode.UploadNewFileBlocking(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hbw, err = hostNode.HostBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hbw.Upload <= lastUpload || hbw.Download <= lastDownload {
+		t.Fatal("Expected host to use more bandwidth from uploaded file")
+	}
+
+	lastUpload = hbw.Upload
+	lastDownload = hbw.Download
+
+	if _, _, err := renterNode.DownloadToDisk(rf, false); err != nil {
+		t.Fatal(err)
+	}
+
+	hbw, err = hostNode.HostBandwidthGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hbw.Upload <= lastUpload || hbw.Download <= lastDownload {
+		t.Fatal("Expected host to use more bandwidth from downloaded file")
+	}
+}

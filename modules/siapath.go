@@ -40,6 +40,12 @@ var (
 	ChunkMetadataExtension = ".ccmd"
 )
 
+var (
+	// SkynetFolder is the Sia folder where all of the skyfiles are stored by
+	// default.
+	SkynetFolder = NewGlobalSiaPath("/var/skynet")
+)
+
 type (
 	// SiaPath is the struct used to uniquely identify siafiles and siadirs across
 	// Sia
@@ -137,11 +143,18 @@ func (sp SiaPath) AddSuffix(suffix uint) SiaPath {
 
 // Dir returns the directory of the SiaPath
 func (sp SiaPath) Dir() (SiaPath, error) {
-	str := filepath.Dir(sp.Path)
-	if str == "." {
+	pathElements := strings.Split(sp.Path, "/")
+	// If there is only one path element, then the Siapath was just a filename
+	// and did not have a directory, return the root Siapath
+	if len(pathElements) <= 1 {
 		return RootSiaPath(), nil
 	}
-	return newSiaPath(str)
+	dir := strings.Join(pathElements[:len(pathElements)-1], "/")
+	// If dir is empty or a dot, return the root Siapath
+	if dir == "" || dir == "." {
+		return RootSiaPath(), nil
+	}
+	return newSiaPath(dir)
 }
 
 // Equals compares two SiaPath types for equality
@@ -192,7 +205,12 @@ func (sp SiaPath) MarshalJSON() ([]byte, error) {
 
 // Name returns the name of the file.
 func (sp SiaPath) Name() string {
-	_, name := filepath.Split(sp.Path)
+	pathElements := strings.Split(sp.Path, "/")
+	name := pathElements[len(pathElements)-1]
+	// If name is a dot, return the root Siapath name
+	if name == "." {
+		name = ""
+	}
 	return name
 }
 

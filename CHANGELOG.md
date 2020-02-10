@@ -10,6 +10,19 @@ Version History
 ---------------
 
 Latest:
+### v1.4.3
+**Key Updates**
+ - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
+ 
+**Bugs Fixed**
+ - HostDB Data race fixed and documentation updated to explain the data race
+   concern
+ - `Name` and `Dir` methods of the Siapath used the `filepath` package when they
+   should have used the `strings` package to avoid OS path separator bugs
+ - Fixed panic where the Host's contractmanager `AddSectorBatch` allowed for
+   writing to a file after the contractmanager had shutdown
+ - Fixed panic where the watchdog would try to write to the contractor's log
+   after the contractor had shutdown
 
 ### v1.4.2.1
 **Key Updates**

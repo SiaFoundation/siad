@@ -88,6 +88,7 @@ type NodeParams struct {
 	HostDeps         modules.Dependencies
 	HostDBDeps       modules.Dependencies
 	RenterDeps       modules.Dependencies
+	TPoolDeps        modules.Dependencies
 	WalletDeps       modules.Dependencies
 
 	// Dependencies for storage monitor supporting dependency injection.
@@ -339,9 +340,13 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		if !params.CreateTransactionPool {
 			return nil, nil
 		}
+		tpoolDeps := params.TPoolDeps
+		if tpoolDeps == nil {
+			tpoolDeps = modules.ProdDependencies
+		}
 		i++
 		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules)
-		return transactionpool.New(cs, g, filepath.Join(dir, modules.TransactionPoolDir))
+		return transactionpool.NewCustomTPool(cs, g, filepath.Join(dir, modules.TransactionPoolDir), tpoolDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create transaction pool"))
@@ -486,7 +491,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			close(c)
 			return nil, c
 		}
-		hc, errChanContractor := contractor.NewCustomContractor(cs, &contractor.WalletBridge{W: w}, tp, hdb, contractSet, contractor.NewPersist(persistDir), logger, contractorDeps)
+		hc, errChanContractor := contractor.NewCustomContractor(cs, w, tp, hdb, persistDir, contractSet, logger, contractorDeps)
 		if err := modules.PeekErr(errChanContractor); err != nil {
 			c <- err
 			close(c)

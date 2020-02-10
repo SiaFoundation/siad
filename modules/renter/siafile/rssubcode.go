@@ -234,7 +234,7 @@ func NewRSSubCode(nData, nParity int, segmentSize uint64) (modules.ErasureCoder,
 	var t modules.ErasureCoderType
 	switch segmentSize {
 	case 64:
-		t = ecReedSolomonSubShards64
+		t = ECReedSolomonSubShards64
 	default:
 		return nil, errors.New("unsupported segmentSize")
 	}

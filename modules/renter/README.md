@@ -56,13 +56,14 @@ The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
  - [Fuse Subsystem](#fuse-subsystem)
- - [Fuse Manager Subsystem](#fuse-manager)
+ - [Fuse Manager Subsystem](#fuse-manager-subsystem)
  - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
  - [Download By Root Subsystem](#download-by-root-subsystem)
+ - [Skyfile Subsystem](#skyfile-subsystem)
  - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
@@ -405,8 +406,28 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
-### Stream Buffer Subsystem
+### Skyfile Subsystem
+**Key Files**
+ - [skyfile.go](./skyfile.go)
+ - [skyfilefanout.go](./skyfilefanout.go)
+ - [skyfilefanoutfetch.go](./skyfilefanoutfetch.go)
 
+The skyfile system contains methods for encoding, decoding, uploading, and
+downloading skyfiles using Skylinks, and is one of the foundations underpinning
+Skynet.
+
+The skyfile format is a custom format which prepends metadata to a file such
+that the entire file and all associated metadata can be recovered knowing
+nothing more than a single sector root. That single sector root can be encoded
+alongside some compressed fetch offset and length information to create a
+skylink.
+
+**Outbound Complexities**
+ - callUploadStreamFromReader is used to upload new data to the Sia network when
+   creating skyfiles. This call appears three times in
+   [skyfile.go](./skyfile.go)
+
+### Stream Buffer Subsystem
 **Key Files**
  - [streambuffer.go](./streambuffer.go)
  - [streambufferlru.go](./streambufferlru.go)
@@ -464,10 +485,10 @@ download or partially download a sector from the Sia network knowing only the
 Merkle root of that sector, and not necessarily knowing which host on the
 network has that sector. The single exported method is 'DownloadByRoot'.
 
-This subsystem was created primarily as a facilitator for the sialinks of
-Skynet. Sialinks provide a merkle root and some offset+length information, but
+This subsystem was created primarily as a facilitator for the skylinks of
+Skynet. Skylinks provide a merkle root and some offset+length information, but
 do not provide any information about which hosts are storing the sectors. The
-exported method of this subsystem will primarily be called by sialink methods,
+exported method of this subsystem will primarily be called by skylink methods,
 as opposed to being used directly by external users.
 
 ### Upload Streaming Subsystem
@@ -476,6 +497,11 @@ as opposed to being used directly by external users.
 
 *TODO* 
   - fill out subsystem explanation
+
+**Inbound Complexities**
+ - The skyfile subsystem makes three calls to `callUploadStreamFromReader()` in
+   [skyfile.go](./skyfile.go)
+ - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 
 ### Health and Repair Subsystem
 **Key Files**

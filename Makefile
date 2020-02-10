@@ -101,15 +101,15 @@ markdown-spellcheck:
 lint:
 	go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
-	go run ./analysis/cmd/analyze.go -- $(pkgs)
+	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
 
 lint-analysis:
-	go run ./analysis/cmd/analyze.go -- $(pkgs)
+	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
 
 # lint-all runs golangci-lint (which includes golint and other linters), the
 # custom analyzers, and also a markdown spellchecker.
 lint-all: markdown-spellcheck
-	go run ./analysis/cmd/analyze.go -- $(pkgs)
+	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
 	golangci-lint run -c .golangci.yml
 
 # spellcheck checks for misspelled words in comments or strings.

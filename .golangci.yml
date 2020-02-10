@@ -118,3 +118,7 @@ issues:
       text: "G101: Potential hardcoded credentials"
       linters:
         - gosec
+    - path: cmd/siac/
+      text: "G107: Potential HTTP request made with variable url"
+      linters:
+        - gosec
