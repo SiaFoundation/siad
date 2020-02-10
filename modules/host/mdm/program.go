@@ -32,6 +32,9 @@ type programState struct {
 	sectorsRemoved   []crypto.Hash
 	sectorsGained    []crypto.Hash
 	gainedSectorData [][]byte
+
+	// budget related fields
+	remainingBudget types.Currency
 }
 
 // Program is a collection of instructions. Within a program, each instruction
@@ -45,7 +48,6 @@ type Program struct {
 	staticProgramState *programState
 
 	finalContractSize uint64 // contract size after executing all instructions
-	remainingBudget   types.Currency
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -57,12 +59,12 @@ type Program struct {
 // which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
-		remainingBudget:   budget,
 		finalContractSize: initialContractSize,
 		outputChan:        make(chan Output, len(instructions)),
 		staticProgramState: &programState{
-			blockHeight: mdm.host.BlockHeight(),
-			host:        mdm.host,
+			blockHeight:     mdm.host.BlockHeight(),
+			host:            mdm.host,
+			remainingBudget: budget,
 		},
 		staticData: openProgramData(data, programDataLen),
 		so:         so,
@@ -91,7 +93,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	// Make sure the budget covers the initial cost.
-	p.remainingBudget, err = subtractFromBudget(p.remainingBudget, InitCost(p.staticData.Len()))
+	p.staticProgramState.remainingBudget, err = subtractFromBudget(p.staticProgramState.remainingBudget, InitCost(p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
@@ -122,13 +124,6 @@ func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
 			p.outputChan <- outputFromError(ErrInterrupted)
 			break
 		default:
-		}
-		// Subtract the cost of the instruction from the budget.
-		var err error
-		p.remainingBudget, err = subtractFromBudget(p.remainingBudget, i.Cost())
-		if err != nil {
-			p.outputChan <- outputFromError(err)
-			break
 		}
 		// Execute next instruction.
 		output := i.Execute(fcRoot)

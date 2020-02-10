@@ -65,11 +65,6 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	}, nil
 }
 
-// Cost returns the cost of executing this instruction.
-func (i *instructionReadSector) Cost() types.Currency {
-	return ReadSectorCost()
-}
-
 // Execute executes the 'Read' instruction.
 func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 	// Fetch the operands.
@@ -82,6 +77,11 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 		return outputFromError(err)
 	}
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
+	if err != nil {
+		return outputFromError(err)
+	}
+	// Subtract the cost of the instruction from the budget.
+	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, ReadCost(types.ZeroCurrency, types.ZeroCurrency, length)) // TODO: update once we have price table
 	if err != nil {
 		return outputFromError(err)
 	}
