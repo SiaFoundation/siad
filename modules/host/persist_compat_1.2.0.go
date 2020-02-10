@@ -401,7 +401,7 @@ func (h *Host) upgradeFromV112ToV120() error {
 		return build.ExtendErr("upgrade appears complete, but having trouble reloading:", err)
 	}
 	// Save the updated persist so that the upgrade is not triggered again.
-	err = h.saveSync()
+	err = persist.SaveJSON(v120PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
 	if err != nil {
 		return build.ExtendErr("upgrade appears complete, but final save has failed (upgrade likely successful", err)
 	}
