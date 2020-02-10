@@ -91,22 +91,27 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	}
 	defer r.tg.Done()
 
-	// Rename file
+	// Rename file.
 	err := r.staticFileSystem.RenameFile(currentName, newName)
 	if err != nil {
 		return err
 	}
+
 	// Call callThreadedBubbleMetadata on the old directory to make sure the
-	// system metadata is updated to reflect the move
-	dirSiaPath, err := currentName.Dir()
+	// system metadata is updated to reflect the move.
+	oldDirSiaPath, err := currentName.Dir()
 	if err != nil {
 		return err
 	}
-	go r.callThreadedBubbleMetadata(dirSiaPath)
-
+	go r.callThreadedBubbleMetadata(oldDirSiaPath)
 	// Call callThreadedBubbleMetadata on the new directory to make sure the
-	// system metadata is updated to reflect the move
-	go r.callThreadedBubbleMetadata(dirSiaPath)
+	// system metadata is updated to reflect the move.
+	newDirSiaPath, err := currentName.Dir()
+	if err != nil {
+		return err
+	}
+	go r.callThreadedBubbleMetadata(newDirSiaPath)
+
 	return nil
 }
 
