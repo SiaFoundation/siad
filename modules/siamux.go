@@ -73,10 +73,10 @@ func newLogger(persistDir string) (*persist.Logger, error) {
 	return logger, nil
 }
 
-// useCompatV1421 returns true if we need to initialize the SiaMux using it's
+// useCompatV1421 returns true if we need to initialize the SiaMux using its
 // compatibility constructor. This will be the case when the host's persistence
-// version is 1.2.0. If so we want to recycle the host's key pair to use in the
-// SiaMux
+// version is 1.2.0. If so, we want to recycle the host's key pair to use in the
+// SiaMux.
 func useCompatV1421(persistDir string) (bool, *siaMuxKeys) {
 	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
 
