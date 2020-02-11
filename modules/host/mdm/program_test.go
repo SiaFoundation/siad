@@ -80,7 +80,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 		numOutputs++
 	}
 	if numOutputs != 1 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 2)
+		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
 	}
 	if numInsufficientBudgetErrs != 1 {
 		t.Fatalf("numInsufficientBudgetErrs was %v but should be %v", numInsufficientBudgetErrs, 1)
