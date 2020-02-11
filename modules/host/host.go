@@ -230,22 +230,28 @@ func (h *Host) checkUnlockHash() error {
 	return nil
 }
 
+// managedInternalSettings returns the settings of a host.
+func (h *Host) managedInternalSettings() modules.HostInternalSettings {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.settings
+}
+
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	priceTable := modules.NewRPCPriceTable(time.Now().Add(rpcPriceGuaranteePeriod).Unix())
+	his := h.managedInternalSettings()
+	priceTable := modules.RPCPriceTable{
+		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		UpdatePriceTableCost: h.managedCalculateUpdatePriceTableRPCPrice(),
 
-	// recalculate the price for every RPC
-	priceTable.Costs[modules.RPCUpdatePriceTable] = h.managedCalculateUpdatePriceTableRPCPrice()
-
-	// TODO: hardcoded MDM costs, needs a better place
-	his := h.InternalSettings()
-	priceTable.Costs[modules.MDMComponentCompute] = types.ZeroCurrency
-	priceTable.Costs[modules.MDMComponentMemory] = types.ZeroCurrency
-	priceTable.Costs[modules.MDMOperationDiskAccess] = types.ZeroCurrency
-	priceTable.Costs[modules.MDMOperationDiskRead] = his.MinBaseRPCPrice
-	priceTable.Costs[modules.MDMOperationDiskWrite] = his.MinBaseRPCPrice
+		// TODO: hardcoded MDM costs should be updated to use better values.
+		InitBaseCost:   his.MinBaseRPCPrice,
+		MemoryTimeCost: his.MinBaseRPCPrice,
+		ReadBaseCost:   his.MinBaseRPCPrice,
+		ReadLengthCost: his.MinBaseRPCPrice,
+	}
 
 	// update the pricetable
 	h.mu.Lock()
@@ -520,9 +526,7 @@ func (h *Host) InternalSettings() modules.HostInternalSettings {
 		return modules.HostInternalSettings{}
 	}
 	defer h.tg.Done()
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.settings
+	return h.managedInternalSettings()
 }
 
 // BlockHeight returns the host's current blockheight.

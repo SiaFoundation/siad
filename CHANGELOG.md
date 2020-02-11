@@ -15,6 +15,8 @@ Latest:
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
  - Integrate SiaMux
  - Initialize defaults for the host's ephemeral account settings
+ - Add SIA_DATA_DIR environment variable for setting the data directory for
+   siad/siac
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race

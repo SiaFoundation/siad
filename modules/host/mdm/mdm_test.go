@@ -3,6 +3,7 @@ package mdm
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -64,6 +65,19 @@ func (so *TestStorageObligation) Locked() bool {
 // Update implements the StorageObligation interface
 func (so *TestStorageObligation) Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
 	return nil
+}
+
+// newTestPriceTable returns a price table for testing that charges 1 Hasting
+// for every operation/rpc.
+func newTestPriceTable() modules.RPCPriceTable {
+	return modules.RPCPriceTable{
+		Expiry:               time.Now().Add(time.Minute).Unix(),
+		UpdatePriceTableCost: types.SiacoinPrecision,
+		InitBaseCost:         types.SiacoinPrecision,
+		MemoryTimeCost:       types.SiacoinPrecision,
+		ReadBaseCost:         types.SiacoinPrecision,
+		ReadLengthCost:       types.SiacoinPrecision,
+	}
 }
 
 // TestNew tests the New method to create a new MDM.

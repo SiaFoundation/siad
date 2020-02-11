@@ -150,7 +150,7 @@ func apiPassword(siaDir string) (string, error) {
 
 // loadAPIPassword determines whether to use an API password from disk or a
 // temporary one entered by the user according to the provided config.
-func loadAPIPassword(config Config, siaDir string) (_ Config, err error) {
+func loadAPIPassword(config Config) (_ Config, err error) {
 	if config.Siad.AuthenticateAPI {
 		if config.Siad.TempPassword {
 			config.APIPassword, err = passwordPrompt("Enter API password: ")
@@ -161,7 +161,7 @@ func loadAPIPassword(config Config, siaDir string) (_ Config, err error) {
 			}
 		} else {
 			// load API password from environment variable or file.
-			config.APIPassword, err = apiPassword(siaDir)
+			config.APIPassword, err = apiPassword(config.Siad.SiaDir)
 			if err != nil {
 				return Config{}, err
 			}
@@ -230,7 +230,7 @@ func startDaemon(config Config) (err error) {
 	}
 
 	// Load API password.
-	config, err = loadAPIPassword(config, build.DefaultSiaDir())
+	config, err = loadAPIPassword(config)
 	if err != nil {
 		return errors.AddContext(err, "failed to get API password")
 	}
