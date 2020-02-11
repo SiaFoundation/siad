@@ -13,6 +13,8 @@ Latest:
 ### v1.4.3
 **Key Updates**
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
+ - Add SIA_DATA_DIR environment variable for setting the data directory for
+   siad/siac
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
