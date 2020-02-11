@@ -340,7 +340,7 @@ func main() {
 		siaDir = os.Getenv("SIA_DATA_DIR")
 		fmt.Println("Using SIA_DATA_DIR environment variable")
 	}
-	// If neither a flag or env variable was provided, use the defaul.
+	// If neither a flag nor env variable was provided, use the default.
 	if siaDir == "" {
 		siaDir = build.DefaultSiaDir()
 	}
