@@ -13,6 +13,8 @@ Latest:
 ### v1.4.3
 **Key Updates**
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
+ - Integrate SiaMux
+ - Initialize defaults for the host's ephemeral account settings
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
