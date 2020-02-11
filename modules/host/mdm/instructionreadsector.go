@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -53,10 +54,9 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	lengthOffset := binary.LittleEndian.Uint64(instruction.Args[16:24])
 	return &instructionReadSector{
 		commonInstruction: commonInstruction{
-			staticContractSize: p.finalContractSize,
-			staticData:         p.staticData,
-			staticMerkleProof:  instruction.Args[24] == 1,
-			staticState:        p.staticProgramState,
+			staticData:        p.staticData,
+			staticMerkleProof: instruction.Args[24] == 1,
+			staticState:       p.staticProgramState,
 		},
 		lengthOffset:     lengthOffset,
 		merkleRootOffset: rootOffset,
@@ -65,7 +65,7 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 }
 
 // Execute executes the 'Read' instruction.
-func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
+func (i *instructionReadSector) Execute(previousOutput Output) Output {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
@@ -76,11 +76,6 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 		return outputFromError(err)
 	}
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
-	if err != nil {
-		return outputFromError(err)
-	}
-	// Subtract the cost of the instruction from the budget.
-	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, ReadCost(i.staticState.priceTable, length))
 	if err != nil {
 		return outputFromError(err)
 	}
@@ -114,11 +109,20 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 
 	// Return the output.
 	return Output{
-		NewSize:       i.staticContractSize, // size stays the same
-		NewMerkleRoot: fcRoot,               // root stays the same
+		NewSize:       previousOutput.NewSize,       // size stays the same
+		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
 		Output:        data,
 		Proof:         proof,
 	}
+}
+
+// Cost returns the cost of a ReadSector instruction.
+func (i *instructionReadSector) Cost() (types.Currency, error) {
+	length, err := i.staticData.Uint64(i.lengthOffset)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+	return ReadCost(i.staticState.priceTable, length), nil
 }
 
 // ReadOnly for the 'ReadSector' instruction is 'true'.

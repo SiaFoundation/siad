@@ -33,7 +33,6 @@ func TestInstructionReadSector(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
-	// Define the prices.
 
 	// Create a program to read a full sector from the host.
 	pt := newTestPriceTable()
