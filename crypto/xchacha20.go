@@ -31,7 +31,7 @@ func (cipher xChaCha20CipherKey) Key() []byte {
 	return cipher.key[:]
 }
 
-// Nonce returns the XChaCha20 nonce..
+// Nonce returns the XChaCha20 nonce.
 func (cipher xChaCha20CipherKey) Nonce() []byte {
 	return cipher.nonce[:]
 }
