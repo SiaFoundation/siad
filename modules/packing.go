@@ -32,6 +32,7 @@ type (
 	// FilePlacement contains the sector of a file and its offset in the sector.
 	FilePlacement struct {
 		fileID       string
+		size         uint64
 		sectorIndex  uint64
 		sectorOffset uint64
 	}
@@ -109,8 +110,6 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, error) {
 	for _, file := range filesSorted {
 		// Make sure the file fits in a sector.
 		if file.size > SectorSize {
-			print(file.size, "\n")
-			print(SectorSize, "\n")
 			return nil, ErrSizeTooLarge
 		}
 		// Zero-sized files are a pathological case and shouldn't be allowed.
@@ -122,7 +121,7 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, error) {
 		if err == errBucketNotFound {
 			// Create a new sector and bucket. We have already ensured above
 			// that the file will fit into this new sector-bucket.
-			buckets, numSectors = extendBuckets(buckets, numSectors)
+			buckets, numSectors = extendSectors(buckets, numSectors)
 			bucketIndex = len(buckets) - 1
 		} else if err != nil {
 			return nil, err
@@ -179,9 +178,9 @@ func findBucket(fileSize uint64, buckets bucketList) (int, error) {
 	return 0, errBucketNotFound
 }
 
-// extendBuckets creates a new sector and adds a new bucket to the list of
+// extendSectors creates a new sector and adds a new bucket to the list of
 // buckets that fills the sector.
-func extendBuckets(buckets bucketList, numSectors uint64) (bucketList, uint64) {
+func extendSectors(buckets bucketList, numSectors uint64) (bucketList, uint64) {
 	return append(buckets, &bucket{
 		sectorIndex:  numSectors,
 		sectorOffset: 0,
@@ -223,13 +222,15 @@ func alignFileInBucket(fileSize uint64, sectorOffset uint64) (uint64, error) {
 // it with up to 2 new buckets.
 func packBucket(file packingFile, bucketIndex int, buckets bucketList) (FilePlacement, bucketList, error) {
 	oldBucket := buckets[bucketIndex]
+	sectorIndex := oldBucket.sectorIndex
+	sectorOffset := oldBucket.sectorOffset
 
 	// Delete the bucket.
 	buckets = append(buckets[:bucketIndex], buckets[bucketIndex+1:]...)
 
 	// bucketAlignment is the alignment of the file from the start of the old
 	// bucket.
-	bucketAlignment, err := alignFileInBucket(file.size, oldBucket.sectorOffset)
+	bucketAlignment, err := alignFileInBucket(file.size, sectorOffset)
 	if err != nil {
 		return FilePlacement{}, buckets, err
 	}
@@ -238,9 +239,9 @@ func packBucket(file packingFile, bucketIndex int, buckets bucketList) (FilePlac
 		// bucketBeforeFile is the new bucket created using the space from the
 		// start of the old bucket to the start of the file.
 		bucketBeforeFile := bucket{
-			sectorIndex:  oldBucket.sectorIndex,
-			sectorOffset: oldBucket.sectorOffset,
-			length:       oldBucket.sectorOffset + bucketAlignment,
+			sectorIndex:  sectorIndex,
+			sectorOffset: sectorOffset,
+			length:       bucketAlignment,
 		}
 		buckets = insertBucket(buckets, bucketBeforeFile, bucketIndex)
 		// Increment the bucket index in case we have to insert another bucket
@@ -255,8 +256,8 @@ func packBucket(file packingFile, bucketIndex int, buckets bucketList) (FilePlac
 		// bucketAfterFile is the new bucket created using the space from the
 		// end of the file to the end of the old bucket.
 		bucketAfterFile := bucket{
-			sectorIndex:  oldBucket.sectorIndex,
-			sectorOffset: oldBucket.sectorOffset + bucketAlignment + file.size,
+			sectorIndex:  sectorIndex,
+			sectorOffset: sectorOffset + bucketAlignment + file.size,
 			length:       leftoverLength,
 		}
 		buckets = insertBucket(buckets, bucketAfterFile, bucketIndex)
@@ -264,8 +265,9 @@ func packBucket(file packingFile, bucketIndex int, buckets bucketList) (FilePlac
 
 	filePlacement := FilePlacement{
 		fileID:       file.id,
-		sectorIndex:  oldBucket.sectorIndex,
-		sectorOffset: oldBucket.sectorOffset + bucketAlignment,
+		size:         file.size,
+		sectorIndex:  sectorIndex,
+		sectorOffset: sectorOffset + bucketAlignment,
 	}
 	return filePlacement, buckets, nil
 }

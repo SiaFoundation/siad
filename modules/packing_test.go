@@ -35,16 +35,19 @@ func TestPackFiles(t *testing.T) {
 			out: []FilePlacement{
 				{
 					fileID:       "test2",
+					size:         20 * kib,
 					sectorIndex:  0,
 					sectorOffset: 0,
 				},
 				{
 					fileID:       "test3",
+					size:         15 * kib,
 					sectorIndex:  0,
 					sectorOffset: 20 * kib,
 				},
 				{
 					fileID:       "test1",
+					size:         10 * kib,
 					sectorIndex:  0,
 					sectorOffset: 36 * kib,
 				},
@@ -73,36 +76,43 @@ func TestPackFiles(t *testing.T) {
 			out: []FilePlacement{
 				{
 					fileID:       "test2",
+					size:         4 * mib,
 					sectorIndex:  0,
 					sectorOffset: 0,
 				},
 				{
 					fileID:       "test1",
+					size:         3 * mib,
 					sectorIndex:  1,
 					sectorOffset: 0,
 				},
 				{
 					fileID:       "test4",
+					size:         2 * mib,
 					sectorIndex:  2,
 					sectorOffset: 0,
 				},
 				{
 					fileID:       "test5",
+					size:         2000 * kib,
 					sectorIndex:  2,
 					sectorOffset: 2 * mib,
 				},
 				{
 					fileID:       "test3",
+					size:         1 * mib,
 					sectorIndex:  1,
 					sectorOffset: 3 * mib,
 				},
 				{
 					fileID:       "test7",
+					size:         2,
 					sectorIndex:  2,
 					sectorOffset: 2*mib + 2000*kib,
 				},
 				{
 					fileID:       "test6",
+					size:         1,
 					sectorIndex:  2,
 					sectorOffset: 2*mib + 2004*kib,
 				},
@@ -145,17 +155,41 @@ func TestPackFilesRandom(t *testing.T) {
 	}
 
 	// Check that all alignments are correct.
-	for _, placement := range placements {
-		size := files[placement.fileID]
+	for _, p := range placements {
+		size := p.size
 		requiredAlignment, err := requiredAlignment(size)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if placement.sectorOffset%requiredAlignment != 0 {
+		i, j := p.sectorOffset, p.sectorOffset+size-1
+		if i%requiredAlignment != 0 {
 			t.Errorf("invalid alignment for file size %v", size)
 		}
+		if j > SectorSize {
+			t.Errorf("placement outside sector: (%v, %v)", i, j)
+		}
 	}
+
+	// Check that there are no overlapping files.
+	for i, p1 := range placements {
+		for _, p2 := range placements[i+1:] {
+			s1, s2 := p1.sectorIndex, p2.sectorIndex
+			if s1 != s2 {
+				continue
+			}
+
+			i1, i2 := p1.sectorOffset, p1.sectorOffset+p1.size-1
+			j1, j2 := p2.sectorOffset, p2.sectorOffset+p2.size-1
+			if overlaps(i1, i2, j1, j2) {
+				t.Errorf("overlapping files at sector%v:(%v, %v) and sector%v:(%v, %v)", s1, i1, i2, s2, j1, j2)
+			}
+		}
+	}
+}
+
+func overlaps(i1, i2, j1, j2 uint64) bool {
+	return i1 <= j2 && j1 <= i2
 }
 
 // TestSortByFileSizeDescending tests that sorting a map by descending values
