@@ -26,6 +26,9 @@ Latest:
  - Fixed panic where the watchdog would try to write to the contractor's log
    after the contractor had shutdown
 
+**Other**
+ - Upgrade host metadata to v1.4.3
+
 ### v1.4.2.1
 **Key Updates**
  - Wallet can generate an address before it finishes scanning the blockchain

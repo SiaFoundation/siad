@@ -73,16 +73,15 @@ func newLogger(persistDir string) (*persist.Logger, error) {
 	return logger, nil
 }
 
-// compatLoadKeysFromHostV120 returns a set of keys which we use to initialize
-// the SiaMux with, using its compatibility constructor. This will be the case
-// when the host's persistence version is 1.2.0. If so, we want to recycle the
-// host's key pair to use in the SiaMux.
+// compatLoadKeysFromHostV120 returns the host's persisted keypair. It only
+// does this in case the host's persistence version is 1.2.0, otherwise it
+// returns nil.
 func compatLoadKeysFromHostV120(persistDir string) *siaMuxKeys {
 	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
 
-	// check if we can load the host's persistence object with metadata header
-	// v120, if so we are upgrading from 1.2.0 -> 1.3.0 which means we want to
-	// recycle the host's key pair to use in the SiaMux
+	// Check if we can load the host's persistence object with metadata header
+	// v120, if so we are upgrading from 1.2.0 -> 1.4.3 which means we want to
+	// recycle the host's key pair to use in the SiaMux.
 	var hk hostKeys
 	err := persist.LoadJSON(v120PersistMetadata, &hk, persistPath)
 	if err == nil {
