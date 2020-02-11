@@ -47,7 +47,7 @@ func (p *Program) staticDecodeAppendInstruction(instruction modules.Instruction)
 	return &instructionAppend{
 		commonInstruction: commonInstruction{
 			staticData:        p.staticData,
-			staticMerkleProof: instruction.Args[9] == 1,
+			staticMerkleProof: instruction.Args[8] == 1,
 			staticState:       p.staticProgramState,
 		},
 		dataOffset: dataOffset,
