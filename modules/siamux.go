@@ -49,8 +49,8 @@ func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
 		return nil, err
 	}
 
-	useCompat, keys := useCompatV1421(persistDir)
-	if useCompat {
+	keys := compatLoadKeysFromHostV120(persistDir)
+	if keys != nil {
 		return siamux.CompatV1421NewWithKeyPair(address, logger, persistDir, keys.privKey, keys.pubKey)
 	}
 	return siamux.New(address, logger, persistDir)
@@ -73,11 +73,11 @@ func newLogger(persistDir string) (*persist.Logger, error) {
 	return logger, nil
 }
 
-// useCompatV1421 returns true if we need to initialize the SiaMux using its
-// compatibility constructor. This will be the case when the host's persistence
-// version is 1.2.0. If so, we want to recycle the host's key pair to use in the
-// SiaMux.
-func useCompatV1421(persistDir string) (bool, *siaMuxKeys) {
+// compatLoadKeysFromHostV120 returns a set of keys which we use to initialize
+// the SiaMux with, using its compatibility constructor. This will be the case
+// when the host's persistence version is 1.2.0. If so, we want to recycle the
+// host's key pair to use in the SiaMux.
+func compatLoadKeysFromHostV120(persistDir string) *siaMuxKeys {
 	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
 
 	// check if we can load the host's persistence object with metadata header
@@ -86,17 +86,11 @@ func useCompatV1421(persistDir string) (bool, *siaMuxKeys) {
 	var hk hostKeys
 	err := persist.LoadJSON(v120PersistMetadata, &hk, persistPath)
 	if err == nil {
-		return true, hk.toSiaMuxKeys()
+		pubKey := mux.ED25519PublicKey{}
+		privKey := mux.ED25519SecretKey{}
+		copy(pubKey[:], hk.PublicKey.Key[:])
+		copy(privKey[:], hk.SecretKey[:])
+		return &siaMuxKeys{pubKey, privKey}
 	}
-
-	return false, nil
-}
-
-// toSiaMuxKeys converts a set of host keys to siamux keys
-func (hk *hostKeys) toSiaMuxKeys() *siaMuxKeys {
-	pubKey := mux.ED25519PublicKey{}
-	copy(pubKey[:], hk.PublicKey.Key[:])
-	privKey := mux.ED25519SecretKey{}
-	copy(privKey[:], hk.SecretKey[:])
-	return &siaMuxKeys{pubKey, privKey}
+	return nil
 }

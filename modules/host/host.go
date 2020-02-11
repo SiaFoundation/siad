@@ -107,7 +107,7 @@ var (
 	// is used to recognize other persist files.
 	persistMetadata = persist.Metadata{
 		Header:  "Sia Host",
-		Version: "1.3.0",
+		Version: "1.4.3",
 	}
 
 	// rpcPriceGuaranteePeriod defines the amount of time a host will guarantee
