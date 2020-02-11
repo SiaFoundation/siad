@@ -27,17 +27,15 @@ func TestInstructionAppend(t *testing.T) {
 	mdm := New(host)
 	defer mdm.Stop()
 
-	// Create a program to read a full sector from the host.
-	appendData := fastrand.Bytes(int(modules.SectorSize))
-	appendDataRoot := crypto.MerkleRoot(appendData)
-	instructions, programData := newAppendProgram(appendData, true)
+	// Create a program to append a full sector to a storage obligation.
+	appendData1 := fastrand.Bytes(int(modules.SectorSize))
+	appendDataRoot1 := crypto.MerkleRoot(appendData1)
+	instructions, programData := newAppendProgram(appendData1, true)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	ics := uint64(0)     // initial contract size is 0 sectors.
-	imr := crypto.Hash{} // initial merkle root is empty.
 	so := newTestStorageObligation(true)
 	pt := newTestPriceTable()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(WriteCost(pt, modules.SectorSize)), so, ics, imr, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(WriteCost(pt, modules.SectorSize)), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,11 +45,11 @@ func TestInstructionAppend(t *testing.T) {
 		if err := output.Error; err != nil {
 			t.Fatal(err)
 		}
-		if output.NewSize != ics+modules.SectorSize {
-			t.Fatalf("expected contract size should increase by a sector size: %v != %v", ics+modules.SectorSize, output.NewSize)
+		if output.NewSize != modules.SectorSize {
+			t.Fatalf("expected contract size should increase by a sector size: %v != %v", modules.SectorSize, output.NewSize)
 		}
-		if output.NewMerkleRoot != crypto.MerkleRoot(appendData) {
-			t.Fatalf("expected merkle root to be root of appended sector: %v != %v", imr, output.NewMerkleRoot)
+		if output.NewMerkleRoot != crypto.MerkleRoot(appendData1) {
+			t.Fatalf("expected merkle root to be root of appended sector: %v != %v", crypto.Hash{}, output.NewMerkleRoot)
 		}
 		if len(output.Proof) != 0 {
 			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
@@ -77,17 +75,77 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.
-	// The storage obligation should be unchanged before finalizing the program.
 	if len(so.sectorMap) != 1 {
 		t.Fatalf("wrong sectorMap len %v != %v", len(so.sectorMap), 1)
 	}
 	if len(so.sectorRoots) != 1 {
 		t.Fatalf("wrong sectorRoots len %v != %v", len(so.sectorRoots), 1)
 	}
-	if _, exists := so.sectorMap[appendDataRoot]; !exists {
+	if _, exists := so.sectorMap[appendDataRoot1]; !exists {
 		t.Fatal("sectorMap contains wrong root")
 	}
-	if so.sectorRoots[0] != appendDataRoot {
+	if so.sectorRoots[0] != appendDataRoot1 {
+		t.Fatal("sectorRoots contains wrong root")
+	}
+	// Execute same program again to append another sector.
+	appendData2 := fastrand.Bytes(int(modules.SectorSize)) // new random data
+	appendDataRoot2 := crypto.MerkleRoot(appendData2)
+	instructions, programData = newAppendProgram(appendData2, true)
+	dataLen = uint64(len(programData))
+	ics := so.ContractSize()
+	imr := so.MerkleRoot()
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(WriteCost(pt, modules.SectorSize)), so, dataLen, bytes.NewReader(programData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	numOutputs = 0
+	for output := range outputs {
+		if err := output.Error; err != nil {
+			t.Fatal(err)
+		}
+		if output.NewSize != ics+modules.SectorSize {
+			t.Fatalf("expected contract size should increase by a sector size: %v != %v", ics+modules.SectorSize, output.NewSize)
+		}
+		if output.NewMerkleRoot != cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}) {
+			t.Fatalf("expected merkle root to be root of appended sector: %v != %v", imr, output.NewMerkleRoot)
+		}
+		if len(output.Proof) != 0 {
+			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
+		}
+		if uint64(len(output.Output)) != 0 {
+			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
+		}
+		numOutputs++
+	}
+	// There should be one output since there was one instruction.
+	if numOutputs != 1 {
+		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
+	}
+	// The storage obligation should be unchanged before finalizing the program.
+	if len(so.sectorMap) != 1 {
+		t.Fatalf("wrong sectorMap len %v > %v", len(so.sectorMap), 1)
+	}
+	if len(so.sectorRoots) != 1 {
+		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 1)
+	}
+	// Finalize the program.
+	if err := finalize(); err != nil {
+		t.Fatal(err)
+	}
+	// Check the storage obligation again.
+	if len(so.sectorMap) != 2 {
+		t.Fatalf("wrong sectorMap len %v != %v", len(so.sectorMap), 2)
+	}
+	if len(so.sectorRoots) != 2 {
+		t.Fatalf("wrong sectorRoots len %v != %v", len(so.sectorRoots), 2)
+	}
+	if _, exists := so.sectorMap[appendDataRoot2]; !exists {
+		t.Fatal("sectorMap contains wrong root")
+	}
+	if so.sectorRoots[0] != appendDataRoot1 {
+		t.Fatal("sectorRoots contains wrong root")
+	}
+	if so.sectorRoots[1] != appendDataRoot2 {
 		t.Fatal("sectorRoots contains wrong root")
 	}
 }

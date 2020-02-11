@@ -62,13 +62,14 @@ type Program struct {
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			blockHeight:     mdm.host.BlockHeight(),
 			host:            mdm.host,
 			priceTable:      pt,
+			merkleRoots:     so.SectorRoots(),
 			remainingBudget: budget,
 		},
 		staticData: openProgramData(data, programDataLen),
@@ -113,7 +114,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		defer p.staticData.Close()
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		p.executeInstructions(ctx, initialContractSize, initialMerkleRoot)
+		p.executeInstructions(ctx, so.ContractSize(), so.MerkleRoot())
 	}()
 	// If the program is readonly there is no need to finalize it.
 	if p.readOnly() {

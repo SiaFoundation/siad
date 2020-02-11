@@ -61,9 +61,27 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 	return data, nil
 }
 
+// ContractSize implements the StorageObligation interface.
+func (so *TestStorageObligation) ContractSize() uint64 {
+	return uint64(len(so.sectorRoots)) * modules.SectorSize
+}
+
 // Locked implements the StorageObligation interface.
 func (so *TestStorageObligation) Locked() bool {
 	return so.locked
+}
+
+// MerkleRoot implements the StorageObligation interface.
+func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
+	if len(so.sectorRoots) == 0 {
+		return crypto.Hash{}
+	}
+	return cachedMerkleRoot(so.sectorRoots)
+}
+
+// SectorRoots implements the StorageObligation interface.
+func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
+	return so.sectorRoots
 }
 
 // Update implements the StorageObligation interface
