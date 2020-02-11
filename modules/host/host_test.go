@@ -4,6 +4,7 @@ import (
 	// "errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -245,7 +246,10 @@ func TestHostInitialization(t *testing.T) {
 	}
 
 	// verify its RPC price table was properly initialised
-	if ht.host.priceTable.Costs == nil || ht.host.priceTable.Expiry == 0 {
+	if reflect.DeepEqual(ht.host.priceTable, modules.RPCPriceTable{}) {
+		t.Fatal("RPC price table wasn't initialized")
+	}
+	if ht.host.priceTable.Expiry == 0 {
 		t.Fatal("RPC price table was not properly initialised")
 	}
 }

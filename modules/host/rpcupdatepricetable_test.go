@@ -3,6 +3,7 @@ package host
 import (
 	"encoding/json"
 	"net"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -15,9 +16,14 @@ import (
 // TestMarshalUnmarshalRPCPriceTable tests the MarshalJSON and UnmarshalJSON
 // function of the RPC price table
 func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
-	pt := modules.NewRPCPriceTable(time.Now().Add(1).Unix())
-	pt.Costs[types.NewSpecifier("RPC1")] = types.NewCurrency64(1)
-	pt.Costs[types.NewSpecifier("RPC2")] = types.NewCurrency64(2)
+	pt := modules.RPCPriceTable{
+		Expiry:               time.Now().Add(1).Unix(),
+		UpdatePriceTableCost: types.SiacoinPrecision,
+		InitBaseCost:         types.SiacoinPrecision,
+		MemoryTimeCost:       types.SiacoinPrecision,
+		ReadBaseCost:         types.SiacoinPrecision,
+		ReadLengthCost:       types.SiacoinPrecision,
+	}
 
 	bytes, err := json.Marshal(pt)
 	if err != nil {
@@ -30,29 +36,10 @@ func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
 		t.Fatal("Failed to unmarshal RPC price table", err)
 	}
 
-	if pt.Expiry != ptUmar.Expiry {
-		t.Log("expected:", pt.Expiry)
-		t.Log("actual:", ptUmar.Expiry)
-		t.Fatal("Unexpected Expiry after marshal unmarshal")
-	}
-
-	if len(pt.Costs) != len(ptUmar.Costs) {
-		t.Log("expected:", len(pt.Costs))
-		t.Log("actual:", len(ptUmar.Costs))
-		t.Fatal("Unexpected # of Costs after marshal unmarshal")
-	}
-
-	for r, c := range pt.Costs {
-		actual, exists := ptUmar.Costs[r]
-		if !exists {
-			t.Log(r)
-			t.Fatal("Failed to find cost of RPC after marshal unmarshal")
-		}
-		if !c.Equals(actual) {
-			t.Log("expected:", c)
-			t.Log("actual:", actual)
-			t.Fatal("Unexpected cost of RPC after marshal unmarshal")
-		}
+	if !reflect.DeepEqual(pt, ptUmar) {
+		t.Log("expected:", pt)
+		t.Log("actual:", ptUmar)
+		t.Fatal("Unmarshaled table doesn't match expected one")
 	}
 }
 
@@ -90,10 +77,10 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		t.Fatal("Failed to unmarshal the JSON encoded RPC price table")
 	}
 
-	_, exists := pt.Costs[modules.RPCUpdatePriceTable]
-	if !exists {
-		t.Log(pt)
-		t.Fatal("Expected the cost of the updatePriceTableRPC to be defined")
+	ptc := pt.UpdatePriceTableCost
+	if ptc.Equals(types.ZeroCurrency) {
+		t.Log(ptc)
+		t.Fatal("Expected the cost of the updatePriceTableRPC to be set")
 	}
 }
 
