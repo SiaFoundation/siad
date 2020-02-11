@@ -14,6 +14,8 @@ import (
 )
 
 var (
+	// SkykeySpecifier is used as a prefix when hashing Skykeys to compute their
+	// Id.
 	SkykeySpecifier = types.NewSpecifier("SkykeyPrefix")
 
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
@@ -28,7 +30,7 @@ var (
 	skykeyManagerPersistFilename = "skykeys.json"
 )
 
-// Skykeys are keys used to encrypt/decrypt skyfiles.
+// Skykey is a key used to encrypt/decrypt skyfiles.
 type Skykey struct {
 	CipherType crypto.CipherType `json:"ciphertype"`
 	Entropy    []byte            `json:"entropy"`
