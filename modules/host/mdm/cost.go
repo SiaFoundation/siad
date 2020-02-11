@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -18,33 +19,36 @@ func subtractFromBudget(budget, toSub types.Currency) (types.Currency, error) {
 	return budget.Sub(toSub), nil
 }
 
-// InitCost is the cost of instantiating the MDM
-func InitCost(programLen uint64) types.Currency {
-	return types.SiacoinPrecision // TODO: figure out good cost
+// InitCost is the cost of instantiatine the MDM. It is defined as:
+// 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time
+// TODO: The time is hardcoded to 10 for now until we add time management in the
+// future.
+func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
+	return pt.MemoryTimeCost.Mul64(programLen).Mul64(10).Add(pt.InitBaseCost)
 }
 
 // ReadCost is the cost of executing a 'Read' instruction. It is defined as:
 // 'readBaseCost' + 'readLengthCost' * `readLength`
-func ReadCost(readBaseCost, readLengthCost types.Currency, readLength uint64) types.Currency {
-	return readLengthCost.Mul64(readLength).Add(readBaseCost)
+func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {
+	return pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
 }
 
 // WriteSectorCost is the cost of executing a 'WriteSector' instruction.
-func WriteSectorCost(contractSize uint64) types.Currency {
+func WriteSectorCost(pt modules.RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
 // CopyCost is the cost of executing a 'Copy' instruction.
-func CopyCost(contractSize uint64) types.Currency {
+func CopyCost(pt modules.RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
 // SwapCost is the cost of executing a 'Swap' instruction.
-func SwapCost(contractSize uint64) types.Currency {
+func SwapCost(pt modules.RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
 // TruncateCost is the cost of executing a 'Truncate' instruction.
-func TruncateCost(contractSize uint64) types.Currency {
+func TruncateCost(pt modules.RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }

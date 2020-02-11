@@ -6,7 +6,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -81,7 +80,7 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 		return outputFromError(err)
 	}
 	// Subtract the cost of the instruction from the budget.
-	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, ReadCost(types.SiacoinPrecision, types.SiacoinPrecision, length)) // TODO: update once we have price table
+	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, ReadCost(i.staticState.priceTable, length))
 	if err != nil {
 		return outputFromError(err)
 	}

@@ -10,7 +10,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -37,16 +36,15 @@ func TestInstructionReadSector(t *testing.T) {
 	// Define the prices.
 
 	// Create a program to read a full sector from the host.
-	readBaseCost := types.SiacoinPrecision
-	readLengthCost := types.SiacoinPrecision
+	pt := newTestPriceTable()
 	readLen := modules.SectorSize
 	instructions, r, dataLen := newReadSectorProgram(readLen, 0, crypto.Hash{})
 	// Execute it.
 	ics := 10 * modules.SectorSize // initial contract size is 10 sectors.
 	imr := crypto.Hash{}
-	fastrand.Read(imr[:])                                                                 // random initial merkle root
-	programCost := InitCost(dataLen).Add(ReadCost(readBaseCost, readLengthCost, readLen)) // use the cost of the program as the budget
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, programCost, newTestStorageObligation(true), ics, imr, dataLen, r)
+	fastrand.Read(imr[:])                                           // random initial merkle root
+	programCost := InitCost(pt, dataLen).Add(ReadCost(pt, readLen)) // use the cost of the program as the budget
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, newTestStorageObligation(true), ics, imr, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,8 +82,8 @@ func TestInstructionReadSector(t *testing.T) {
 	length := offset
 	instructions, r, dataLen = newReadSectorProgram(length, offset, crypto.Hash{})
 	// Execute it.
-	programCost = InitCost(dataLen).Add(ReadCost(readBaseCost, readLengthCost, length)) // use the cost of the program as the budget
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), instructions, programCost, newTestStorageObligation(true), ics, imr, dataLen, r)
+	programCost = InitCost(pt, dataLen).Add(ReadCost(pt, length)) // use the cost of the program as the budget
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, newTestStorageObligation(true), ics, imr, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}

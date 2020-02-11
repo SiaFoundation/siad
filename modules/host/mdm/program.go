@@ -34,6 +34,7 @@ type programState struct {
 	gainedSectorData [][]byte
 
 	// budget related fields
+	priceTable      modules.RPCPriceTable
 	remainingBudget types.Currency
 }
 
@@ -57,13 +58,14 @@ type Program struct {
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
 		finalContractSize: initialContractSize,
 		outputChan:        make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			blockHeight:     mdm.host.BlockHeight(),
 			host:            mdm.host,
+			priceTable:      pt,
 			remainingBudget: budget,
 		},
 		staticData: openProgramData(data, programDataLen),
@@ -93,7 +95,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, instructions []modules.Instr
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	// Make sure the budget covers the initial cost.
-	p.staticProgramState.remainingBudget, err = subtractFromBudget(p.staticProgramState.remainingBudget, InitCost(p.staticData.Len()))
+	p.staticProgramState.remainingBudget, err = subtractFromBudget(p.staticProgramState.remainingBudget, InitCost(pt, p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
