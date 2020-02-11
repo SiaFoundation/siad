@@ -217,7 +217,7 @@ type Renter struct {
 	mu                    *siasync.RWMutex
 	repairLog             *persist.Logger
 	staticFuseManager     renterFuseManager
-	staticSkyKeyManager   *skyKeyManager
+	staticSkykeyManager   *skykeyManager
 	staticStreamBufferSet *streamBufferSet
 	tg                    threadgroup.ThreadGroup
 	tpool                 modules.TransactionPool
@@ -881,11 +881,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.
-	skyKeyManDir := build.DefaultSkynetDir()
+	skykeyManDir := build.DefaultSkynetDir()
 	if build.Release == "testing" {
-		skyKeyManDir = persistDir
+		skykeyManDir = persistDir
 	}
-	r.staticSkyKeyManager, err = newSkyKeyManager(skyKeyManDir)
+	r.staticSkykeyManager, err = newSkykeyManager(skykeyManDir)
 	if err != nil {
 		return nil, err
 	}

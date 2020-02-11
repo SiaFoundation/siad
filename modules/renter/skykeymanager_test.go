@@ -11,21 +11,21 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
-// TestSkyKeyManager tests the basic functionality of the skyKeyManager.
-func TestSkyKeyManager(t *testing.T) {
+// TestSkykeyManager tests the basic functionality of the skykeyManager.
+func TestSkykeyManager(t *testing.T) {
 	cipherType := crypto.TypeThreefish.String()
-	keyMan, err := newSkyKeyManager(build.TempDir(t.Name()))
+	keyMan, err := newSkykeyManager(build.TempDir(t.Name()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	skyKey, err := keyMan.CreateKeyGroup("test_group1", cipherType)
+	skykey, err := keyMan.CreateKeyGroup("test_group1", cipherType)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	_, err = keyMan.CreateKeyGroup("test_group1", cipherType)
-	if !errors.Contains(err, errSkyKeyGroupAlreadyExists) {
+	if !errors.Contains(err, errSkykeyGroupAlreadyExists) {
 		t.Fatal("Expected skykey group name to already exist", err)
 	}
 
@@ -37,7 +37,7 @@ func TestSkyKeyManager(t *testing.T) {
 	if len(ids) != 1 {
 		t.Fatal("Expected exactly 1 group key")
 	}
-	if ids[0] != skyKey.Id() {
+	if ids[0] != skykey.Id() {
 		t.Fatal("Expected matching keyId")
 	}
 
@@ -45,7 +45,7 @@ func TestSkyKeyManager(t *testing.T) {
 	randomNameBytes := fastrand.Bytes(24)
 	randomName := string(randomNameBytes)
 	ids, err = keyMan.GetIdsByName(randomName)
-	if err != errNoSkyKeysWithThatName {
+	if err != errNoSkykeysWithThatName {
 		t.Fatal(err)
 	}
 
@@ -53,17 +53,17 @@ func TestSkyKeyManager(t *testing.T) {
 	randomIdBytes := fastrand.Bytes(24)
 	randomId := string(randomIdBytes)
 	_, err = keyMan.GetKeyById(randomId)
-	if err != errNoSkyKeysWithThatId {
+	if err != errNoSkykeysWithThatId {
 		t.Fatal(err)
 	}
 
 	// Check that calling AddKey on a non-existent group creates a new group.
 	entropyBytes := fastrand.Bytes(64)
-	skyKey2, err := keyMan.AddKey("test_group2", base64.URLEncoding.EncodeToString(entropyBytes), cipherType)
+	skykey2, err := keyMan.AddKey("test_group2", base64.URLEncoding.EncodeToString(entropyBytes), cipherType)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if skyKey2.Id() == skyKey.Id() {
+	if skykey2.Id() == skykey.Id() {
 		t.Fatal("Expected different skykey to be created")
 	}
 
