@@ -15,13 +15,13 @@ echo Branch name: ${branchName}
 echo Version: ${versionName}
 echo ""
 
-read -p "Continue (y/n)?" CONT
-if [ "$CONT" = "y" ]; then
-  echo "building Docker image...";
-else
-	exit 1
+if [ "$SIA_SILENT_RELEASE" != "true" ]; then
+	read -p "Continue (y/n)?" CONT
+	if [ "$CONT" != "y" ]; then
+		exit 1
+	fi
 fi
-
+echo "Building Docker image...";
 
 # Build the image uncached to always get the most up-to-date branch.
 docker build --no-cache -t sia-builder . --build-arg branch=${branchName} --build-arg version=${versionName}

@@ -18,13 +18,13 @@ echo Binaries Directory: "${binDir}"
 echo UI Directory: "${uiDir}"
 echo ""
 
-read -p "Continue (y/n)?" CONT
-if [ "$CONT" = "y" ]; then
-  echo "building Sia-UI...";
-else
-	exit 1
+if [ "$SIA_SILENT_RELEASE" != "true" ]; then
+	read -p "Continue (y/n)?" CONT
+	if [ "$CONT" != "y" ]; then
+		exit 1
+	fi
 fi
-
+echo "Building Sia-UI...";
 
 # Get the absolute paths to avoid funny business with relative paths.
 uiDir=$(realpath "${uiDir}")
