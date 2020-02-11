@@ -1,19 +1,23 @@
 package renter
 
 import (
-	"fmt"
+	"encoding/base64"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 // TestSkyKeyManager tests the basic functionality of the skyKeyManager.
 func TestSkyKeyManager(t *testing.T) {
 	cipherType := crypto.TypeThreefish.String()
-	keyMan := newSkyKeyManager()
+	keyMan, err := newSkyKeyManager(build.TempDir(t.Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	skyKey, err := keyMan.CreateKeyGroup("test_group1", cipherType)
 	if err != nil {
@@ -55,7 +59,7 @@ func TestSkyKeyManager(t *testing.T) {
 
 	// Check that calling AddKey on a non-existent group creates a new group.
 	entropyBytes := fastrand.Bytes(64)
-	skyKey2, err := keyMan.AddKey("test_group2", fmt.Sprintf("%x", entropyBytes), cipherType)
+	skyKey2, err := keyMan.AddKey("test_group2", base64.URLEncoding.EncodeToString(entropyBytes), cipherType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +71,7 @@ func TestSkyKeyManager(t *testing.T) {
 	numKeysInGroup2 := 25
 	for i := 1; i < numKeysInGroup2; i++ {
 		newEntropyBytes := fastrand.Bytes(64)
-		_, err := keyMan.AddKey("test_group2", fmt.Sprintf("%x", newEntropyBytes), cipherType)
+		_, err := keyMan.AddKey("test_group2", base64.URLEncoding.EncodeToString(newEntropyBytes), cipherType)
 		if err != nil {
 			t.Fatal(err)
 		}

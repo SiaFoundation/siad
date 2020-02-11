@@ -1,27 +1,17 @@
 package renter
 
 import (
-	"encoding/hex"
+	"encoding/base64"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
-
-/*
-
-siac skynet createkey [name]
-
-siac skynet addkey [key] [name]
-
-*siac skynet upload --key=[key]
-
-siac skynet download (should infer key)
-
-
-*/
 
 var (
 	SkyKeySpecifier = types.NewSpecifier("SkyKeyPrefix")
@@ -30,35 +20,65 @@ var (
 	errNoSkyKeysWithThatName       = errors.New("No key with that name")
 	errNoSkyKeysWithThatId         = errors.New("No key is assocated with that Id")
 	errSkyKeyGroupAlreadyExists    = errors.New("Group name already exists. Add more keys using AddKey or choose a different name")
+
+	skyKeyManagerPersistMeta = persist.Metadata{
+		Header:  "SkyKey Manager Persist",
+		Version: "1.4.3",
+	}
+	skyKeyManagerPersistFilename = "skykeys.json"
 )
 
-type SkyKey struct { // TODO add a version
-	CipherType crypto.CipherType
-	Entropy    []byte
+// SkyKeys are keys used to encrypt/decrypt skyfiles.
+type SkyKey struct {
+	CipherType crypto.CipherType `json:"ciphertype"`
+	Entropy    []byte            `json:"entropy"`
 }
 
+// skyKeyManager manages the creation and handling of new skykeys. It supports
+// creating groups with human readable names and the addition of multiple keys
+// to a single group. Keys can also be referenced by  unique identifiers which
+// are stored in skyfiles.
 type skyKeyManager struct {
-	idsByName map[string][]string
-	keysById  map[string]SkyKey
+	IdsByName  map[string][]string `json:"idsbyname"`
+	KeysById   map[string]SkyKey   `json:"keysbyid"`
+	persistDir string
 
 	mu sync.Mutex
 }
 
-func newSkyKeyManager() skyKeyManager {
-	return skyKeyManager{
-		idsByName: make(map[string][]string),
-		keysById:  make(map[string]SkyKey),
+// newSkyKeyManager returns a new skyKeyManager, with data loaded from the given
+// persistDir if it exists.
+func newSkyKeyManager(persistDir string) (*skyKeyManager, error) {
+	var sm skyKeyManager
+	err := persist.LoadJSON(skyKeyManagerPersistMeta, &sm, filepath.Join(sm.persistDir, skyKeyManagerPersistFilename))
+	if err != nil && !os.IsNotExist(err) {
+		return &skyKeyManager{}, err
 	}
+
+	if os.IsNotExist(err) {
+		return &skyKeyManager{
+			IdsByName:  make(map[string][]string),
+			KeysById:   make(map[string]SkyKey),
+			persistDir: persistDir,
+		}, nil
+	}
+	return &sm, nil
 }
 
-func (sm *skyKeyManager) persistData() {
-	// TODO persist.
+// persist saves the state of the skyKeyManager to disk.
+func (sm *skyKeyManager) persist() error {
+	err := os.MkdirAll(sm.persistDir, 0750)
+	if err != nil {
+		return errors.AddContext(err, "Error creating Skynet data dir")
+	}
+
+	return persist.SaveJSON(skyKeyManagerPersistMeta, &sm, filepath.Join(sm.persistDir, skyKeyManagerPersistFilename))
 }
 
 // Id returns the Id for the SkyKey.
 func (sk SkyKey) Id() string {
 	h := crypto.HashAll(SkyKeySpecifier, sk.CipherType, sk.Entropy)
-	return string(h[:])
+	return base64.URLEncoding.EncodeToString(h[:])
 }
 
 // SupportsCipherType returns true if and only if the SkyKeyManager supports
@@ -81,7 +101,7 @@ func (sm *skyKeyManager) CreateKeyGroup(name string, cipherTypeString string) (S
 
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	_, ok := sm.idsByName[name]
+	_, ok := sm.IdsByName[name]
 	if ok {
 		return SkyKey{}, errSkyKeyGroupAlreadyExists
 	}
@@ -92,10 +112,13 @@ func (sm *skyKeyManager) CreateKeyGroup(name string, cipherTypeString string) (S
 	keyId := skyKey.Id()
 
 	// Store the new key.
-	sm.idsByName[name] = []string{keyId}
-	sm.keysById[keyId] = skyKey
+	sm.IdsByName[name] = []string{keyId}
+	sm.KeysById[keyId] = skyKey
 
-	sm.persistData()
+	err = sm.persist()
+	if err != nil {
+		return SkyKey{}, err
+	}
 	return skyKey, nil
 }
 
@@ -103,7 +126,7 @@ func (sm *skyKeyManager) CreateKeyGroup(name string, cipherTypeString string) (S
 // name. If no group exists under that name a new group created.
 func (sm *skyKeyManager) AddKey(name string, entropyString string, cipherTypeString string) (SkyKey, error) {
 	// Decode string inputs.
-	entropy, err := hex.DecodeString(entropyString)
+	entropy, err := base64.URLEncoding.DecodeString(entropyString)
 	if err != nil {
 		return SkyKey{}, errors.AddContext(err, "AddKey error decoding key entropy")
 	}
@@ -128,7 +151,7 @@ func (sm *skyKeyManager) AddKey(name string, entropyString string, cipherTypeStr
 
 	// Check if this SkyKey is already stored under the same name.
 	keyId := skyKey.Id()
-	ids, ok := sm.idsByName[name]
+	ids, ok := sm.IdsByName[name]
 	for _, id := range ids {
 		if id == keyId {
 			return SkyKey{}, errors.New("Already have key with same identifier and name")
@@ -140,10 +163,13 @@ func (sm *skyKeyManager) AddKey(name string, entropyString string, cipherTypeStr
 		ids = make([]string, 0)
 	}
 	ids = append(ids, keyId)
-	sm.idsByName[name] = ids
-	sm.keysById[keyId] = skyKey
+	sm.IdsByName[name] = ids
+	sm.KeysById[keyId] = skyKey
 
-	sm.persistData()
+	err = sm.persist()
+	if err != nil {
+		return SkyKey{}, err
+	}
 	return skyKey, nil
 }
 
@@ -152,7 +178,7 @@ func (sm *skyKeyManager) GetIdsByName(name string) ([]string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	ids, ok := sm.idsByName[name]
+	ids, ok := sm.IdsByName[name]
 	if !ok {
 		return nil, errNoSkyKeysWithThatName
 	}
@@ -164,14 +190,14 @@ func (sm *skyKeyManager) GetKeysByName(name string) ([]SkyKey, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	ids, ok := sm.idsByName[name]
+	ids, ok := sm.IdsByName[name]
 	if !ok {
 		return nil, errNoSkyKeysWithThatName
 	}
 
 	keys := make([]SkyKey, 0)
 	for _, id := range ids {
-		key, ok := sm.keysById[id]
+		key, ok := sm.KeysById[id]
 		if !ok {
 			return nil, errNoSkyKeysWithThatId
 		}
@@ -186,7 +212,7 @@ func (sm *skyKeyManager) GetKeyById(id string) (SkyKey, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	key, ok := sm.keysById[id]
+	key, ok := sm.KeysById[id]
 	if !ok {
 		return SkyKey{}, errNoSkyKeysWithThatId
 	}
