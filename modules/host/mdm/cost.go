@@ -10,6 +10,12 @@ import (
 // program is not sufficient to execute the next instruction.
 var ErrInsufficientBudget = errors.New("remaining budget is insufficient")
 
+// programTime is the time it takes to execute a program. This is a
+// hardcoded value which is meant to be replaced in the future.
+// TODO: The time is hardcoded to 10 for now until we add time management in the
+// future.
+const programTime = 10
+
 // subtractFromBudget will subtract an amount of money from a budget. In case of
 // an underflow ErrInsufficientBudget and the unchanged budget are returned.
 func subtractFromBudget(budget, toSub types.Currency) (types.Currency, error) {
@@ -21,10 +27,8 @@ func subtractFromBudget(budget, toSub types.Currency) (types.Currency, error) {
 
 // InitCost is the cost of instantiatine the MDM. It is defined as:
 // 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time
-// TODO: The time is hardcoded to 10 for now until we add time management in the
-// future.
 func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
-	return pt.MemoryTimeCost.Mul64(programLen).Mul64(10).Add(pt.InitBaseCost)
+	return pt.MemoryTimeCost.Mul64(programLen).Mul64(programTime).Add(pt.InitBaseCost)
 }
 
 // ReadCost is the cost of executing a 'Read' instruction. It is defined as:
