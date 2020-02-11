@@ -122,7 +122,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	}
 
 	// create testing trio
-	h, c, m, err := newTestingTrioCustom(t.Name(), testdir, mux)
+	h, c, m, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
