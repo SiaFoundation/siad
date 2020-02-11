@@ -17,8 +17,14 @@ echo Version: "${version}"
 echo Binaries Directory: "${binDir}"
 echo UI Directory: "${uiDir}"
 echo ""
-echo "Is this okay? (sleeping..)"
-sleep 3
+
+read -p "Continue (y/n)?" CONT
+if [ "$CONT" = "y" ]; then
+  echo "building Sia-UI...";
+else
+	exit 1
+fi
+
 
 # Get the absolute paths to avoid funny business with relative paths.
 uiDir=$(realpath "${uiDir}")
