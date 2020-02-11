@@ -48,8 +48,6 @@ type Program struct {
 	staticData         *programData
 	staticProgramState *programState
 
-	finalContractSize uint64 // contract size after executing all instructions
-
 	renterSig  types.TransactionSignature
 	outputChan chan Output
 
@@ -60,8 +58,7 @@ type Program struct {
 // which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
-		finalContractSize: initialContractSize,
-		outputChan:        make(chan Output, len(instructions)),
+		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			blockHeight:     mdm.host.BlockHeight(),
 			host:            mdm.host,
@@ -108,7 +105,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		defer p.staticData.Close()
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		p.executeInstructions(ctx, initialMerkleRoot)
+		p.executeInstructions(ctx, initialContractSize, initialMerkleRoot)
 	}()
 	// If the program is readonly there is no need to finalize it.
 	if p.readOnly() {
@@ -119,7 +116,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
-func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
+func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) {
+	output := Output{
+		NewSize:       fcSize,
+		NewMerkleRoot: fcRoot,
+	}
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
@@ -128,8 +129,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcRoot crypto.Hash) {
 		default:
 		}
 		// Execute next instruction.
-		output := i.Execute(fcRoot)
-		fcRoot = output.NewMerkleRoot
+		output = i.Execute(output)
 		p.outputChan <- output
 		// Abort if the last output contained an error.
 		if output.Error != nil {

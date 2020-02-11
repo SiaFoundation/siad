@@ -7,7 +7,7 @@ import (
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
-	Execute(fcRoot crypto.Hash) Output
+	Execute(Output) Output
 	ReadOnly() bool
 }
 
@@ -43,10 +43,9 @@ type Output struct {
 
 // commonInstruction contains all the fields shared by every instruction.
 type commonInstruction struct {
-	staticMerkleProof  bool
-	staticContractSize uint64 // contract size before executing instruction
-	staticData         *programData
-	staticState        *programState
+	staticMerkleProof bool
+	staticData        *programData
+	staticState       *programState
 }
 
 // outputFromError is a convenience function to wrap an error in an Output.

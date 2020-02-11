@@ -53,10 +53,9 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	lengthOffset := binary.LittleEndian.Uint64(instruction.Args[16:24])
 	return &instructionReadSector{
 		commonInstruction: commonInstruction{
-			staticContractSize: p.finalContractSize,
-			staticData:         p.staticData,
-			staticMerkleProof:  instruction.Args[24] == 1,
-			staticState:        p.staticProgramState,
+			staticData:        p.staticData,
+			staticMerkleProof: instruction.Args[24] == 1,
+			staticState:       p.staticProgramState,
 		},
 		lengthOffset:     lengthOffset,
 		merkleRootOffset: rootOffset,
@@ -65,7 +64,7 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 }
 
 // Execute executes the 'Read' instruction.
-func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
+func (i *instructionReadSector) Execute(previousOutput Output) Output {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
@@ -114,8 +113,8 @@ func (i *instructionReadSector) Execute(fcRoot crypto.Hash) Output {
 
 	// Return the output.
 	return Output{
-		NewSize:       i.staticContractSize, // size stays the same
-		NewMerkleRoot: fcRoot,               // root stays the same
+		NewSize:       previousOutput.NewSize,       // size stays the same
+		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
 		Output:        data,
 		Proof:         proof,
 	}
