@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // instructionAppend is an instruction that appends a full sector to a
@@ -64,12 +65,6 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 	newFileSize := prevOutput.NewSize + modules.SectorSize
 	newRoot := crypto.MerkleRoot(sectorData)
 
-	// Subtract the cost of the instruction from the budget.
-	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, WriteCost(i.staticState.priceTable, modules.SectorSize))
-	if err != nil {
-		return outputFromError(err)
-	}
-
 	// TODO: How to update finances with EA?
 	// i.staticState.potentialStorageRevenue = i.staticState.potentialStorageRevenue.Add(types.ZeroCurrency)
 	// i.staticState.riskedCollateral = i.staticState.riskedCollateral.Add(types.ZeroCurrency)
@@ -96,6 +91,11 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 		NewMerkleRoot: newMerkleRoot,
 		Proof:         proof,
 	}
+}
+
+// Cost returns the Cost of this append instruction.
+func (i *instructionAppend) Cost() (types.Currency, error) {
+	return WriteCost(i.staticState.priceTable, modules.SectorSize), nil
 }
 
 // ReadOnly for the 'Append' instruction is 'false'.

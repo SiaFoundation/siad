@@ -40,8 +40,7 @@ type programState struct {
 	potentialUploadRevenue  types.Currency
 
 	// budget related fields
-	priceTable      modules.RPCPriceTable
-	remainingBudget types.Currency
+	priceTable modules.RPCPriceTable
 }
 
 // Program is a collection of instructions. Within a program, each instruction
@@ -53,6 +52,8 @@ type Program struct {
 	instructions       []instruction
 	staticData         *programData
 	staticProgramState *programState
+
+	remainingBudget types.Currency
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -66,15 +67,15 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
-			blockHeight:     mdm.host.BlockHeight(),
-			host:            mdm.host,
-			priceTable:      pt,
-			merkleRoots:     so.SectorRoots(),
-			remainingBudget: budget,
+			blockHeight: mdm.host.BlockHeight(),
+			host:        mdm.host,
+			priceTable:  pt,
+			merkleRoots: so.SectorRoots(),
 		},
-		staticData: openProgramData(data, programDataLen),
-		so:         so,
-		tg:         &mdm.tg,
+		remainingBudget: budget,
+		staticData:      openProgramData(data, programDataLen),
+		so:              so,
+		tg:              &mdm.tg,
 	}
 
 	// Convert the instructions.
@@ -101,7 +102,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	// Make sure the budget covers the initial cost.
-	p.staticProgramState.remainingBudget, err = subtractFromBudget(p.staticProgramState.remainingBudget, InitCost(pt, p.staticData.Len()))
+	p.remainingBudget, err = subtractFromBudget(p.remainingBudget, InitCost(pt, p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
@@ -136,6 +137,17 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 			p.outputChan <- outputFromError(ErrInterrupted)
 			break
 		default:
+		}
+		// Subtract the cost of the instruction before running it.
+		cost, err := i.Cost()
+		if err != nil {
+			p.outputChan <- outputFromError(err)
+			return
+		}
+		p.remainingBudget, err = subtractFromBudget(p.remainingBudget, cost)
+		if err != nil {
+			p.outputChan <- outputFromError(err)
+			return
 		}
 		// Execute next instruction.
 		output = i.Execute(output)

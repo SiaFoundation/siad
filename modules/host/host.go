@@ -244,8 +244,7 @@ func (h *Host) managedUpdatePriceTable() {
 		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 		UpdatePriceTableCost: h.managedCalculateUpdatePriceTableRPCPrice(),
 
-		// TODO: hardcoded MDM costs, needs a better place and also should be
-		// updated to use better values.
+		// TODO: hardcoded MDM costs should be updated to use better values.
 		InitBaseCost:   his.MinBaseRPCPrice,
 		MemoryTimeCost: his.MinBaseRPCPrice,
 		ReadBaseCost:   his.MinBaseRPCPrice,

@@ -11,7 +11,7 @@ type RPCPriceTable struct {
 	// MDMCostTable is valid.
 	Expiry int64 `json:"expiry"`
 
-	// UpdatePriceTableCost refers to the cost of fetchign a new price table
+	// UpdatePriceTableCost refers to the cost of fetching a new price table
 	// from the host.
 	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`
 

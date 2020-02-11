@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -78,11 +79,6 @@ func (i *instructionReadSector) Execute(previousOutput Output) Output {
 	if err != nil {
 		return outputFromError(err)
 	}
-	// Subtract the cost of the instruction from the budget.
-	i.staticState.remainingBudget, err = subtractFromBudget(i.staticState.remainingBudget, ReadCost(i.staticState.priceTable, length))
-	if err != nil {
-		return outputFromError(err)
-	}
 	// Validate the request.
 	switch {
 	case offset+length > modules.SectorSize:
@@ -118,6 +114,15 @@ func (i *instructionReadSector) Execute(previousOutput Output) Output {
 		Output:        data,
 		Proof:         proof,
 	}
+}
+
+// Cost returns the cost of a ReadSector instruction.
+func (i *instructionReadSector) Cost() (types.Currency, error) {
+	length, err := i.staticData.Uint64(i.lengthOffset)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+	return ReadCost(i.staticState.priceTable, length), nil
 }
 
 // ReadOnly for the 'ReadSector' instruction is 'true'.
