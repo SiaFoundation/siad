@@ -40,10 +40,11 @@ func TestInstructionHasSector(t *testing.T) {
 	instructions, programData := newHasSectorProgram(sectorRoot)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	ics := modules.SectorSize // initial contract size is 1 sector.
-	imr := crypto.Hash{}
-	fastrand.Read(imr[:]) // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), instructions, InitCost(dataLen).Add(HasSectorCost()), newTestStorageObligation(true), ics, imr, dataLen, bytes.NewReader(programData))
+	pt := newTestPriceTable()
+	so := newTestStorageObligation(true)
+	so.sectorRoots = make([]crypto.Hash, 1) // initial contract has 1 sector
+	fastrand.Read(so.sectorRoots[0][:])     // random initial merkle root
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(HasSectorCost(pt)), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,11 +54,11 @@ func TestInstructionHasSector(t *testing.T) {
 		if err := output.Error; err != nil {
 			t.Fatal(err)
 		}
-		if output.NewSize != ics {
-			t.Fatalf("expected contract size to stay the same: %v != %v", ics, output.NewSize)
+		if output.NewSize != so.ContractSize() {
+			t.Fatalf("expected contract size to stay the same: %v != %v", so.ContractSize(), output.NewSize)
 		}
-		if output.NewMerkleRoot != imr {
-			t.Fatalf("expected merkle root to stay the same: %v != %v", imr, output.NewMerkleRoot)
+		if output.NewMerkleRoot != so.MerkleRoot() {
+			t.Fatalf("expected merkle root to stay the same: %v != %v", so.MerkleRoot(), output.NewMerkleRoot)
 		}
 		// Verify proof was created correctly.
 		if len(output.Proof) != 0 {

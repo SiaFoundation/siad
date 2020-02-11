@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // instructionHasSector is an instruction which returns whether the host stores
@@ -43,28 +43,21 @@ func (p *Program) staticDecodeHasSectorInstruction(instruction modules.Instructi
 	rootOffset := binary.LittleEndian.Uint64(instruction.Args[:8])
 	return &instructionHasSector{
 		commonInstruction: commonInstruction{
-			staticContractSize: p.finalContractSize,
-			staticData:         p.staticData,
-			staticMerkleProof:  false,
-			staticState:        p.staticProgramState,
+			staticData:        p.staticData,
+			staticMerkleProof: false,
+			staticState:       p.staticProgramState,
 		},
 		merkleRootOffset: rootOffset,
 	}, nil
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionHasSector) Cost() Cost {
-	return HasSectorCost()
+func (i *instructionHasSector) Cost() (types.Currency, error) {
+	return HasSectorCost(i.staticState.priceTable), nil
 }
 
 // Execute executes the 'HasSector' instruction.
-func (i *instructionHasSector) Execute(fcRoot crypto.Hash) Output {
-	// Subtract cost from budget beforehand.
-	var err error
-	i.staticState.remainingBudget, err = i.staticState.remainingBudget.Sub(HasSectorCost())
-	if err != nil {
-		return outputFromError(err)
-	}
+func (i *instructionHasSector) Execute(prevOutput Output) Output {
 	// Fetch the operands.
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
 	if err != nil {
@@ -81,8 +74,8 @@ func (i *instructionHasSector) Execute(fcRoot crypto.Hash) Output {
 		output[0] = 1
 	}
 	return Output{
-		NewSize:       i.staticContractSize, // size stays the same
-		NewMerkleRoot: fcRoot,               // root stays the same
+		NewSize:       prevOutput.NewSize,       // size stays the same
+		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
 		Output:        output,
 	}
 }
