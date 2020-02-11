@@ -63,7 +63,7 @@ func newXChaCha20CipherKey(entropy []byte) (xChaCha20CipherKey, error) {
 	var key [chacha.KeySize]byte
 	var nonce [chacha.XNonceSize]byte
 	copy(key[:], entropy[:chacha.KeySize])
-	copy(nonce[:], entropy[chacha.XNonceSize:])
+	copy(nonce[:], entropy[chacha.KeySize:])
 
 	cipher, err := chacha.NewCipher(nonce[:], key[:], numRounds)
 	if err != nil {
