@@ -57,17 +57,38 @@ func TestXChaCha20Encryption(t *testing.T) {
 	key.Derive(fastrand.Uint64n(1<<63), fastrand.Uint64n(1<<63))
 }
 
-// TestChaCha20DecryptInPlace checks that decrypt in place works as expected.
-func TestChaCha20DecryptInPlace(t *testing.T) {
+// TestXChaCha20DecryptInPlace checks that decrypt in place works as expected.
+func TestXChaCha20DecryptInPlace(t *testing.T) {
 	key := generateXChaCha20CipherKey()
 
 	plaintext := fastrand.Bytes(4096)
 	ciphertext := key.EncryptBytes(plaintext)
-	decryptedPlaintext, err := key.DecryptBytesInPlace(ciphertext, 0)
+	ciphertextCopy := make([]byte, 4096)
+	copy(ciphertextCopy, ciphertext)
+
+	decryptedCiphertext, err := key.DecryptBytes(ciphertextCopy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(plaintext, decryptedPlaintext) {
-		t.Fatal("Encrypted and decrypted zero plaintext do not match")
+	if !bytes.Equal(decryptedCiphertext, plaintext) {
+		t.Fatal("decryptedCiphertext should equal plaintext")
+	}
+
+	// Partially decrypt the ciphertext in place.
+	// Choose a random block index in the first half of the plaintext.
+	blockIndex := fastrand.Uint64n(2048 / 64)
+	partiallyDecryptedCiphertext, err := key.DecryptBytesInPlace(ciphertext, blockIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that what should be partially decrypted is actually only partially
+	// decrypted.
+	sliceIndex := blockIndex * 64
+	if bytes.Equal(decryptedCiphertext[:sliceIndex], partiallyDecryptedCiphertext[:sliceIndex]) {
+		t.Fatal("Partially decrypted plaintext prefix should not match")
+	}
+	if bytes.Equal(decryptedCiphertext[sliceIndex:], partiallyDecryptedCiphertext[sliceIndex:]) {
+		t.Fatal("Partially decrypted plaintext suffix should match")
 	}
 }
