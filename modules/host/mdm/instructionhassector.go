@@ -18,12 +18,12 @@ type instructionHasSector struct {
 
 // NewHasSectorInstruction creates a modules.Instruction from arguments.
 func NewHasSectorInstruction(merkleRootOffset uint64) modules.Instruction {
-	rsi := modules.Instruction{
+	i := modules.Instruction{
 		Specifier: modules.SpecifierHasSector,
 		Args:      make([]byte, modules.RPCIHasSectorLen),
 	}
-	binary.LittleEndian.PutUint64(rsi.Args[:8], merkleRootOffset)
-	return rsi
+	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
+	return i
 }
 
 // staticDecodeHasSectorInstruction creates a new 'HasSector' instruction from
