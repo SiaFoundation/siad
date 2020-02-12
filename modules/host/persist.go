@@ -188,7 +188,7 @@ func (h *Host) load() error {
 			return err
 		}
 
-		h.log.Println("SUCCESS: successfully upgraded host to v130")
+		h.log.Println("SUCCESS: successfully upgraded host to v143")
 	} else {
 		return err
 	}
