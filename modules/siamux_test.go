@@ -14,13 +14,9 @@ import (
 // TestSiaMuxCompat verifies the SiaMux is initialized in compatibility mode
 // when the host's persitence metadata version is v1.4.2
 func TestSiaMuxCompat(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	// ensure the host's persistence file does not exist
 	persistDir := filepath.Join(os.TempDir(), t.Name())
-	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
+	persistPath := filepath.Join(persistDir, HostDir, HostSettingsFile)
 	os.Remove(persistPath)
 
 	// create a new siamux, seeing as there won't be a host persistence file, it
@@ -67,7 +63,10 @@ func TestSiaMuxCompat(t *testing.T) {
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	persistence := hostKeys{
+	persistence := struct {
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		SecretKey crypto.SecretKey   `json:"secretkey"`
+	}{
 		PublicKey: spk,
 		SecretKey: sk,
 	}
