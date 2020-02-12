@@ -103,13 +103,6 @@ var (
 	errNilWallet  = errors.New("host cannot use a nil wallet")
 	errNilGateway = errors.New("host cannot use nil gateway")
 
-	// persistMetadata is the header that gets written to the persist file, and
-	// is used to recognize other persist files.
-	persistMetadata = persist.Metadata{
-		Header:  "Sia Host",
-		Version: "1.4.3",
-	}
-
 	// rpcPriceGuaranteePeriod defines the amount of time a host will guarantee
 	// its prices to the renter.
 	rpcPriceGuaranteePeriod = build.Select(build.Var{

@@ -5,16 +5,8 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-)
-
-var (
-	// v120PersistMetadata is the header of the v120 host persist file.
-	v120PersistMetadata = persist.Metadata{
-		Header:  "Sia Host",
-		Version: "1.2.0",
-	}
 )
 
 // upgradeFromV120ToV143 is an upgrade layer that aids the integration of the
@@ -27,7 +19,7 @@ func (h *Host) upgradeFromV120ToV143() error {
 
 	// Load the persistence object
 	p := new(persistence)
-	err := h.dependencies.LoadFile(v120PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
+	err := h.dependencies.LoadFile(modules.Hostv120PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err != nil {
 		return build.ExtendErr("could not load persistence object", err)
 	}

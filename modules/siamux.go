@@ -34,14 +34,6 @@ type (
 	}
 )
 
-var (
-	// v120PersistMetadata is the header of the v120 host persist file
-	v120PersistMetadata = persist.Metadata{
-		Header:  "Sia Host",
-		Version: "1.2.0",
-	}
-)
-
 // NewSiaMux returns a new SiaMux object
 func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
 	// ensure the persist directory exists
@@ -76,7 +68,7 @@ func compatLoadKeysFromHostV120(persistDir string) (pubKey mux.ED25519PublicKey,
 	// v120, if so we are upgrading from 1.2.0 -> 1.4.3 which means we want to
 	// recycle the host's key pair to use in the SiaMux.
 	var hk hostKeys
-	err := persist.LoadJSON(v120PersistMetadata, &hk, persistPath)
+	err := persist.LoadJSON(Hostv120PersistMetadata, &hk, persistPath)
 	if err == nil {
 		copy(pubKey[:], hk.PublicKey.Key[:])
 		copy(privKey[:], hk.SecretKey[:])

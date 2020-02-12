@@ -168,7 +168,7 @@ func (h *Host) load() error {
 	// the most recent version, but older versions need to be updated to the
 	// more recent structures.
 	p := new(persistence)
-	err = h.dependencies.LoadFile(persistMetadata, p, filepath.Join(h.persistDir, settingsFile))
+	err = h.dependencies.LoadFile(modules.Hostv143PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err == nil {
 		// Copy in the persistence.
 		h.loadPersistObject(p)
@@ -223,5 +223,5 @@ func (h *Host) load() error {
 
 // saveSync stores all of the persist data to disk and then syncs to disk.
 func (h *Host) saveSync() error {
-	return persist.SaveJSON(persistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
+	return persist.SaveJSON(modules.Hostv143PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
 }

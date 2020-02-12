@@ -71,7 +71,7 @@ func TestSiaMuxCompat(t *testing.T) {
 		PublicKey: spk,
 		SecretKey: sk,
 	}
-	err = persist.SaveJSON(v120PersistMetadata, persistence, persistPath)
+	err = persist.SaveJSON(Hostv120PersistMetadata, persistence, persistPath)
 	if err != nil {
 		t.Fatal(err)
 	}

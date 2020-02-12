@@ -40,12 +40,6 @@ var (
 	// synchronization would be lost.
 	minimumStorageFolderSize = contractManagerStorageFolderGranularity * modules.SectorSize
 
-	// v112PersistMetadata is the header of the v112 host persist file.
-	v112PersistMetadata = persist.Metadata{
-		Header:  "Sia Host",
-		Version: "0.5",
-	}
-
 	// v112StorageManagerBucketSectorUsage is the name of the bucket that
 	// contains all of the sector usage information in the v1.0.0 storage
 	// manager.
@@ -124,7 +118,7 @@ func (h *Host) loadCompatV100(p *persistence) error {
 			MinUploadBandwidthPrice   types.Currency `json:"minimumuploadbandwidthprice,siamismatch"`
 		}
 	}
-	err := h.dependencies.LoadFile(v112PersistMetadata, &compatPersistence, filepath.Join(h.persistDir, settingsFile))
+	err := h.dependencies.LoadFile(modules.Hostv112PersistMetadata, &compatPersistence, filepath.Join(h.persistDir, settingsFile))
 	if err != nil {
 		return err
 	}
@@ -389,7 +383,7 @@ func (h *Host) upgradeFromV112ToV120() error {
 	}
 	// Try loading the persist again.
 	p := new(persistence)
-	err = h.dependencies.LoadFile(v112PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
+	err = h.dependencies.LoadFile(modules.Hostv112PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err != nil {
 		return build.ExtendErr("upgrade appears complete, but having difficulties reloading host after upgrade", err)
 	}
@@ -401,7 +395,7 @@ func (h *Host) upgradeFromV112ToV120() error {
 		return build.ExtendErr("upgrade appears complete, but having trouble reloading:", err)
 	}
 	// Save the updated persist so that the upgrade is not triggered again.
-	err = persist.SaveJSON(v120PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
+	err = persist.SaveJSON(modules.Hostv120PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
 	if err != nil {
 		return build.ExtendErr("upgrade appears complete, but final save has failed (upgrade likely successful", err)
 	}
