@@ -1,10 +1,12 @@
 package host
 
 import (
+	"bytes"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -37,6 +39,16 @@ func (h *Host) upgradeFromV120ToV143() error {
 
 	// Load it on the host
 	h.loadPersistObject(p)
+
+	// Verify the host and siamux share the same keypair
+	smsk := h.staticMux.PrivateKey()
+	smpk := h.staticMux.PublicKey()
+	if !bytes.Equal(h.secretKey[:], smsk[:]) {
+		return errors.New("expected host private key to equal the siamux's private key")
+	}
+	if !bytes.Equal(h.publicKey.Key[:], smpk[:]) {
+		return errors.New("expected host public key to equal the siamux's public key")
+	}
 
 	// Save the updated persist so that the upgrade is not triggered again.
 	err = h.saveSync()

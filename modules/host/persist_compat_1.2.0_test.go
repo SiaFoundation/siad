@@ -26,7 +26,7 @@ func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, erro
 	testdir := build.TempDir(modules.HostDir, modulesDir)
 
 	// Create the siamux
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(modulesDir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}

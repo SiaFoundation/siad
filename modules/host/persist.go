@@ -81,6 +81,12 @@ func (h *Host) establishDefaults() error {
 	var pk crypto.PublicKey
 	msk := h.staticMux.PrivateKey()
 	mpk := h.staticMux.PublicKey()
+
+	// Sanity check that the mux's key are the same length as the host keys
+	// before copying them
+	if len(sk) != len(msk) || len(pk) != len(mpk) {
+		panic("Expected the siamux keys to be of equal length as the host keys")
+	}
 	copy(sk[:], msk[:])
 	copy(pk[:], mpk[:])
 

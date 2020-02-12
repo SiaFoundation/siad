@@ -44,39 +44,32 @@ var (
 
 // NewSiaMux returns a new SiaMux object
 func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
-	logger, err := newLogger(persistDir)
-	if err != nil {
-		return nil, err
-	}
-
-	keys := compatLoadKeysFromHostV120(persistDir)
-	if keys != nil {
-		return siamux.CompatV1421NewWithKeyPair(address, logger, persistDir, keys.privKey, keys.pubKey)
-	}
-	return siamux.New(address, logger, persistDir)
-}
-
-// newLogger creates a new logger
-func newLogger(persistDir string) (*persist.Logger, error) {
-	// create the directory if it doesn't exist.
+	// ensure the persist directory exists
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
 		return nil, err
 	}
 
-	// create the logger
-	logfilePath := filepath.Join(persistDir, logfile)
-	logger, err := persist.NewFileLogger(logfilePath)
+	// create a logger
+	file, err := os.OpenFile(filepath.Join(persistDir, logfile), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, err
 	}
-	return logger, nil
+	logger := persist.NewLogger(file)
+
+	// create a siamux, if the host's persistence file is at v120 we want to
+	// recycle the host's key pair to use in the siamux
+	pubKey, privKey, compat := compatLoadKeysFromHostV120(persistDir)
+	if compat {
+		return siamux.CompatV1421NewWithKeyPair(address, logger, persistDir, privKey, pubKey)
+	}
+	return siamux.New(address, logger, persistDir)
 }
 
 // compatLoadKeysFromHostV120 returns the host's persisted keypair. It only
 // does this in case the host's persistence version is 1.2.0, otherwise it
 // returns nil.
-func compatLoadKeysFromHostV120(persistDir string) *siaMuxKeys {
+func compatLoadKeysFromHostV120(persistDir string) (pubKey mux.ED25519PublicKey, privKey mux.ED25519SecretKey, compat bool) {
 	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
 
 	// Check if we can load the host's persistence object with metadata header
@@ -85,11 +78,12 @@ func compatLoadKeysFromHostV120(persistDir string) *siaMuxKeys {
 	var hk hostKeys
 	err := persist.LoadJSON(v120PersistMetadata, &hk, persistPath)
 	if err == nil {
-		pubKey := mux.ED25519PublicKey{}
-		privKey := mux.ED25519SecretKey{}
 		copy(pubKey[:], hk.PublicKey.Key[:])
 		copy(privKey[:], hk.SecretKey[:])
-		return &siaMuxKeys{pubKey, privKey}
+		compat = true
+		return
 	}
-	return nil
+
+	compat = false
+	return
 }

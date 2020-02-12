@@ -239,7 +239,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	// Create the siamux.
 	mux, err := func() (*siamux.SiaMux, error) {
 		if params.SiaMuxAddress == "" {
-			params.SiaMuxAddress = "localhost:0"
+			params.SiaMuxAddress = "localhost:9999"
 		}
 		return modules.NewSiaMux(dir, params.SiaMuxAddress)
 	}()
