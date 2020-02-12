@@ -14,24 +14,6 @@ import (
 const (
 	// logfile is the filename of the siamux log file
 	logfile = "siamux.log"
-
-	// settingsfile is the filename of the host's persistence file
-	settingsFile = "host.json"
-)
-
-type (
-	// hostKeys represents the host's key pair, it is used to extract only the
-	// keys from a host's persistence object
-	hostKeys struct {
-		PublicKey types.SiaPublicKey `json:"publickey"`
-		SecretKey crypto.SecretKey   `json:"secretkey"`
-	}
-
-	// siaMuxKeys represents a SiaMux key pair
-	siaMuxKeys struct {
-		pubKey  mux.ED25519PublicKey
-		privKey mux.ED25519SecretKey
-	}
 )
 
 // NewSiaMux returns a new SiaMux object
@@ -51,29 +33,41 @@ func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
 
 	// create a siamux, if the host's persistence file is at v120 we want to
 	// recycle the host's key pair to use in the siamux
-	pubKey, privKey, compat := compatLoadKeysFromHostV120(persistDir)
+	pubKey, privKey, compat := compatLoadKeysFromHost(persistDir)
 	if compat {
 		return siamux.CompatV1421NewWithKeyPair(address, logger, persistDir, privKey, pubKey)
 	}
+
 	return siamux.New(address, logger, persistDir)
 }
 
-// compatLoadKeysFromHostV120 returns the host's persisted keypair. It only
-// does this in case the host's persistence version is 1.2.0, otherwise it
-// returns nil.
-func compatLoadKeysFromHostV120(persistDir string) (pubKey mux.ED25519PublicKey, privKey mux.ED25519SecretKey, compat bool) {
-	persistPath := filepath.Join(persistDir, HostDir, settingsFile)
+// compatLoadKeysFromHost will try and load the host's keypair from its
+// persistence file. It tries all host metadata versions before v143. From that
+// point on, the siamux was introduced and will already have a correct set of
+// keys persisted in its persistence file. Only for hosts upgrading to v143 we
+// want to recycle the host keys in the siamux.
+func compatLoadKeysFromHost(persistDir string) (pubKey mux.ED25519PublicKey, privKey mux.ED25519SecretKey, compat bool) {
+	persistPath := filepath.Join(persistDir, HostDir, HostSettingsFile)
 
-	// Check if we can load the host's persistence object with metadata header
-	// v120, if so we are upgrading from 1.2.0 -> 1.4.3 which means we want to
-	// recycle the host's key pair to use in the SiaMux.
-	var hk hostKeys
-	err := persist.LoadJSON(Hostv120PersistMetadata, &hk, persistPath)
-	if err == nil {
-		copy(pubKey[:], hk.PublicKey.Key[:])
-		copy(privKey[:], hk.SecretKey[:])
-		compat = true
-		return
+	historicMetadata := []persist.Metadata{
+		Hostv120PersistMetadata,
+		Hostv112PersistMetadata,
+	}
+
+	// Try to load the host's key pair from its persistence file, we try all
+	// metadata version up until v143
+	hk := struct {
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		SecretKey crypto.SecretKey   `json:"secretkey"`
+	}{}
+	for _, metadata := range historicMetadata {
+		err := persist.LoadJSON(metadata, &hk, persistPath)
+		if err == nil {
+			copy(pubKey[:], hk.PublicKey.Key[:])
+			copy(privKey[:], hk.SecretKey[:])
+			compat = true
+			return
+		}
 	}
 
 	compat = false

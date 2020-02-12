@@ -11,6 +11,9 @@ import (
 const (
 	// HostDir names the directory that contains the host persistence.
 	HostDir = "host"
+
+	// HostSettingsFile is the name of the host's persistence file.
+	HostSettingsFile = "host.json"
 )
 
 var (
