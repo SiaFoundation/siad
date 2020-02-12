@@ -178,10 +178,9 @@ func main() {
 	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
 	if globalConfig.Siad.SiaDir == "" {
 		globalConfig.Siad.SiaDir = os.Getenv("SIA_DATA_DIR")
-	}
-	// If neither a flag nor env variable was provided, use the default.
-	if globalConfig.Siad.SiaDir == "" {
-		globalConfig.Siad.SiaDir = build.DefaultSiaDir()
+		if globalConfig.Siad.SiaDir != "" {
+			fmt.Println("Using SIA_DATA_DIR environment variable")
+		}
 	}
 
 	// Parse cmdline flags, overwriting both the default values and the config
