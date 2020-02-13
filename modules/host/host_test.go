@@ -153,6 +153,8 @@ func blankMockHostTester(d modules.Dependencies, name string) (*hostTester, erro
 
 	// Assemble all objects into a hostTester
 	ht := &hostTester{
+		mux: mux,
+
 		cs:      cs,
 		gateway: g,
 		miner:   m,

@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 const (
@@ -58,4 +59,9 @@ func TestV120HostUpgrade(t *testing.T) {
 		t.Fatal("MaxEphemeralAccountRisk not properly decorated on the persistence object after upgrade")
 	}
 
+	// sanity check the metadata version
+	err = persist.LoadJSON(modules.Hostv143PersistMetadata, struct{}{}, filepath.Join(hostPersistDir, modules.HostSettingsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
 }
