@@ -2,6 +2,7 @@ package mdm
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -9,8 +10,16 @@ import (
 // StorageObligation defines the minimal interface a StorageObligation needs to
 // implement to be used by the mdm.
 type StorageObligation interface {
+	// ContractSize returns the current contract size of the storage obligation.
+	ContractSize() uint64
+	// Locked returns whether or not the storage obligation is locked.
 	Locked() bool
-	Update(sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error
+	// MerkleRoot returns the filecontract's current root.
+	MerkleRoot() crypto.Hash
+	// SectorRoots returns the roots of the storage obligation.
+	SectorRoots() []crypto.Hash
+	// Update updates the storage obligation.
+	Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error
 }
 
 // Host defines the minimal interface a Host needs to
@@ -44,4 +53,17 @@ func New(h Host) *MDM {
 // executing while also preventing new programs from being started.
 func (mdm *MDM) Stop() error {
 	return mdm.tg.Stop()
+}
+
+// cachedMerkleRoot calculates the root of a set of sector roots.
+func cachedMerkleRoot(roots []crypto.Hash) crypto.Hash {
+	log2SectorSize := uint64(0)
+	for 1<<log2SectorSize < (modules.SectorSize / crypto.SegmentSize) {
+		log2SectorSize++
+	}
+	ct := crypto.NewCachedTree(log2SectorSize)
+	for _, root := range roots {
+		ct.PushSubTree(0, root)
+	}
+	return ct.Root()
 }

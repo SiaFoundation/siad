@@ -37,9 +37,11 @@ func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {
 	return pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
 }
 
-// WriteSectorCost is the cost of executing a 'WriteSector' instruction.
-func WriteSectorCost(pt modules.RPCPriceTable, contractSize uint64) types.Currency {
-	return types.SiacoinPrecision // TODO: figure out good cost
+// WriteCost is the cost of executing a 'Write' instruction of a certain length.
+// It's also used to compute the cost of a `WriteSector` and `Append`
+// instruction.
+func WriteCost(pt modules.RPCPriceTable, writeLength uint64) types.Currency {
+	return pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
 }
 
 // CopyCost is the cost of executing a 'Copy' instruction.

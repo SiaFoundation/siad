@@ -32,6 +32,12 @@ type programState struct {
 	sectorsRemoved   []crypto.Hash
 	sectorsGained    []crypto.Hash
 	gainedSectorData [][]byte
+	merkleRoots      []crypto.Hash
+
+	// statistic related fields
+	potentialStorageRevenue types.Currency
+	riskedCollateral        types.Currency
+	potentialUploadRevenue  types.Currency
 
 	// budget related fields
 	priceTable modules.RPCPriceTable
@@ -57,13 +63,14 @@ type Program struct {
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, initialContractSize uint64, initialMerkleRoot crypto.Hash, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
 			priceTable:  pt,
+			merkleRoots: so.SectorRoots(),
 		},
 		remainingBudget: budget,
 		staticData:      openProgramData(data, programDataLen),
@@ -76,6 +83,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 	var instruction instruction
 	for _, i := range instructions {
 		switch i.Specifier {
+		case modules.SpecifierAppend:
+			instruction, err = p.staticDecodeAppendInstruction(i)
 		case modules.SpecifierReadSector:
 			instruction, err = p.staticDecodeReadSectorInstruction(i)
 		default:
@@ -106,7 +115,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		defer p.staticData.Close()
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		p.executeInstructions(ctx, initialContractSize, initialMerkleRoot)
+		p.executeInstructions(ctx, so.ContractSize(), so.MerkleRoot())
 	}()
 	// If the program is readonly there is no need to finalize it.
 	if p.readOnly() {
@@ -155,7 +164,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 func (p *Program) managedFinalize() error {
 	// Commit the changes to the storage obligation.
 	ps := p.staticProgramState
-	err := p.so.Update(ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	err := p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
 	if err != nil {
 		return err
 	}

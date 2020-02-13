@@ -1,8 +1,10 @@
 package modules
 
-import "gitlab.com/NebulousLabs/Sia/types"
+import (
+	"encoding/binary"
 
-import "encoding/binary"
+	"gitlab.com/NebulousLabs/Sia/types"
+)
 
 type (
 	// Instruction specifies a generic instruction used as an input to
@@ -25,11 +27,17 @@ var (
 )
 
 const (
-	// RPCIReadSectorLen is the expected length of the 'Args' of an Instruction.
+	// RPCIReadSectorLen is the expected length of the 'Args' of a ReadSector
+	// Instruction.
 	RPCIReadSectorLen = 25
+	// RPCIAppendLen is the expected length of the 'Args' of an Append
+	// instructon.
+	RPCIAppendLen = 9
 )
 
 var (
+	// SpecifierAppend is the specifier for the Append RPC.
+	SpecifierAppend = InstructionSpecifier{'A', 'p', 'p', 'e', 'n', 'd'}
 	// SpecifierReadSector is the specifier for the ReadSector RPC.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
 )

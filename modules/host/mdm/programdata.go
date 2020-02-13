@@ -183,6 +183,11 @@ func (pd *programData) Hash(offset uint64) (crypto.Hash, error) {
 	return h, nil
 }
 
+// Bytes returns 'length' bytes from offset 'offset' from the programData.
+func (pd *programData) Bytes(offset, length uint64) ([]byte, error) {
+	return pd.managedBytes(offset, length)
+}
+
 // Len returns the length of the program data.
 func (pd *programData) Len() uint64 {
 	return pd.staticLength
