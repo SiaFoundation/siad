@@ -56,6 +56,7 @@ type Program struct {
 	staticBudget    types.Currency
 	executionCost   types.Currency
 	potentialRefund types.Currency // refund if the program isn't committed
+	usedMemory      uint64
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -150,12 +151,18 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 			break
 		default:
 		}
-		// Increment the cost before running the instruction.
-		cost, refund, err := i.Cost()
+		// Add the memory the next instruction is going to allocate to the
+		// total.
+		p.usedMemory += i.Memory()
+		memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * i.Time())
+		// Get the instruction cost and refund.
+		instructionCost, refund, err := i.Cost()
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
 			return
 		}
+		cost := memoryCost.Add(instructionCost)
+		// Increment the cost.
 		err = p.addCost(cost)
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
@@ -180,9 +187,15 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
 func (p *Program) managedFinalize() error {
+	// Compute the memory cost of finalizing the program.
+	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * TimeCommit)
+	err := p.addCost(memoryCost)
+	if err != nil {
+		return err
+	}
 	// Commit the changes to the storage obligation.
 	ps := p.staticProgramState
-	err := p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	err = p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
 	if err != nil {
 		return err
 	}

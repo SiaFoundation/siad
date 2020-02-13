@@ -125,7 +125,18 @@ func (i *instructionReadSector) Cost() (types.Currency, types.Currency, error) {
 	return ReadCost(i.staticState.priceTable, length), types.ZeroCurrency, nil
 }
 
+// Memory returns the memory allocated by the 'ReadSector' instruction beyond
+// the lifetime of the instruction.
+func (i *instructionReadSector) Memory() uint64 {
+	return ReadMemory()
+}
+
 // ReadOnly for the 'ReadSector' instruction is 'true'.
 func (i *instructionReadSector) ReadOnly() bool {
 	return true
+}
+
+// Time returns the exectuion time of a 'ReadSector' instruction.
+func (i *instructionReadSector) Time() uint64 {
+	return TimeReadSector
 }

@@ -10,7 +10,9 @@ import (
 type instruction interface {
 	Cost() (cost types.Currency, refund types.Currency, _ error)
 	Execute(output) output
+	Memory() uint64
 	ReadOnly() bool
+	Time() uint64
 }
 
 // Output is the type of the outputs returned by a program run on the MDM.
