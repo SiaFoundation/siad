@@ -56,11 +56,11 @@ func (p *Program) staticDecodeAppendInstruction(instruction modules.Instruction)
 }
 
 // Execute executes the 'Append' instruction.
-func (i *instructionAppend) Execute(prevOutput Output) Output {
+func (i *instructionAppend) Execute(prevOutput output) output {
 	// Fetch the data.
 	sectorData, err := i.staticData.Bytes(i.dataOffset, modules.SectorSize)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	newFileSize := prevOutput.NewSize + modules.SectorSize
 	newRoot := crypto.MerkleRoot(sectorData)
@@ -86,7 +86,7 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 		proof = crypto.MerkleSectorRangeProof(i.staticState.merkleRoots, start, end)
 	}
 
-	return Output{
+	return output{
 		NewSize:       newFileSize,
 		NewMerkleRoot: newMerkleRoot,
 		Proof:         proof,
@@ -94,8 +94,9 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 }
 
 // Cost returns the Cost of this append instruction.
-func (i *instructionAppend) Cost() (types.Currency, error) {
-	return WriteCost(i.staticState.priceTable, modules.SectorSize), nil
+func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
+	cost, refund := WriteCost(i.staticState.priceTable, modules.SectorSize)
+	return cost, refund, nil
 }
 
 // ReadOnly for the 'Append' instruction is 'false'.

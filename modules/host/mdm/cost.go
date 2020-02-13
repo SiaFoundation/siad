@@ -16,13 +16,15 @@ var ErrInsufficientBudget = errors.New("remaining budget is insufficient")
 // future.
 const programTime = 10
 
-// subtractFromBudget will subtract an amount of money from a budget. In case of
-// an underflow ErrInsufficientBudget and the unchanged budget are returned.
-func subtractFromBudget(budget, toSub types.Currency) (types.Currency, error) {
-	if toSub.Cmp(budget) > 0 {
-		return budget, ErrInsufficientBudget
+// addCost increases the cost of the program by 'cost'. If as a result the cost
+// becomes larger than the budget of the program, ErrInsufficientBudget is
+// returned.
+func (p *Program) addCost(cost types.Currency) error {
+	p.executionCost = p.executionCost.Add(cost)
+	if p.staticBudget.Cmp(p.executionCost) < 0 {
+		return ErrInsufficientBudget
 	}
-	return budget.Sub(toSub), nil
+	return nil
 }
 
 // InitCost is the cost of instantiatine the MDM. It is defined as:
@@ -40,8 +42,10 @@ func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {
 // WriteCost is the cost of executing a 'Write' instruction of a certain length.
 // It's also used to compute the cost of a `WriteSector` and `Append`
 // instruction.
-func WriteCost(pt modules.RPCPriceTable, writeLength uint64) types.Currency {
-	return pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
+func WriteCost(pt modules.RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
+	cost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
+	refund := types.ZeroCurrency // TODO: figure out a good refund
+	return cost, refund
 }
 
 // CopyCost is the cost of executing a 'Copy' instruction.
