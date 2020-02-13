@@ -36,6 +36,8 @@ func TestInstructionAppend(t *testing.T) {
 	so := newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	cost, refund := WriteCost(pt, modules.SectorSize)
+	usedMemory := AppendMemory()
+	cost = cost.Add(MemoryCost(pt, usedMemory, TimeAppend+TimeCommit))
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)

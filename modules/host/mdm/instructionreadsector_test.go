@@ -47,6 +47,8 @@ func TestInstructionReadSector(t *testing.T) {
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 	programCost := InitCost(pt, dataLen).Add(ReadCost(pt, readLen)) // use the cost of the program as the budget
+	usedMemory := ReadMemory()
+	programCost = programCost.Add(MemoryCost(pt, usedMemory, TimeReadSector+TimeCommit))
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)

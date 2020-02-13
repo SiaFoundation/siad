@@ -154,7 +154,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		// Add the memory the next instruction is going to allocate to the
 		// total.
 		p.usedMemory += i.Memory()
-		memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * i.Time())
+		memoryCost := MemoryCost(p.staticProgramState.priceTable, p.usedMemory, i.Time())
 		// Get the instruction cost and refund.
 		instructionCost, refund, err := i.Cost()
 		if err != nil {

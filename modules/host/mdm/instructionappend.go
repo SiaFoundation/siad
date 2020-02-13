@@ -110,7 +110,7 @@ func (i *instructionAppend) ReadOnly() bool {
 	return false
 }
 
-// Time returns the exectuion time of an 'Append' instruction.
+// Time returns the execution time of an 'Append' instruction.
 func (i *instructionAppend) Time() uint64 {
 	return TimeAppend
 }
