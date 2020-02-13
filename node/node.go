@@ -222,7 +222,6 @@ func (n *Node) Close() (err error) {
 	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
 		err = errors.Compose(n.Mux.Close())
-		n.Mux = nil // unset the mux to prevent closing twice
 	}
 	return err
 }
@@ -237,12 +236,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Create the siamux.
-	mux, err := func() (*siamux.SiaMux, error) {
-		if params.SiaMuxAddress == "" {
-			params.SiaMuxAddress = "localhost:9999"
-		}
-		return modules.NewSiaMux(dir, params.SiaMuxAddress)
-	}()
+	mux, err := modules.NewSiaMux(dir, params.SiaMuxAddress)
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
 		return nil, errChan
