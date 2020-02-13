@@ -29,7 +29,7 @@ var (
 		Version: "1.2.0",
 	}
 
-	// Hostv143PersistMetadata is the header of the v120 host persist file.
+	// Hostv143PersistMetadata is the header of the v143 host persist file.
 	Hostv143PersistMetadata = persist.Metadata{
 		Header:  "Sia Host",
 		Version: "1.4.3",
