@@ -31,10 +31,10 @@ var (
 type (
 	// FilePlacement contains the sector of a file and its offset in the sector.
 	FilePlacement struct {
-		fileID       string
-		size         uint64
-		sectorIndex  uint64
-		sectorOffset uint64
+		FileID       string
+		Size         uint64
+		SectorIndex  uint64
+		SectorOffset uint64
 	}
 
 	// bucket defines a temporary bucket used when packing files.
@@ -95,7 +95,7 @@ type (
 //     goes from the end of the file to the end of the old bucket.
 //
 // 4. Return the array of file IDs in the order that they are packed.
-func PackFiles(files map[string]uint64) ([]FilePlacement, error) {
+func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 	filesSorted := sortByFileSizeDescending(files)
 
 	// NOTE: based on performance of this we may move to a more suitable data
@@ -110,11 +110,11 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, error) {
 	for _, file := range filesSorted {
 		// Make sure the file fits in a sector.
 		if file.size > SectorSize {
-			return nil, ErrSizeTooLarge
+			return nil, 0, ErrSizeTooLarge
 		}
 		// Zero-sized files are a pathological case and shouldn't be allowed.
 		if file.size == 0 {
-			return nil, ErrZeroSize
+			return nil, 0, ErrZeroSize
 		}
 
 		bucketIndex, err := findBucket(file.size, buckets)
@@ -124,18 +124,18 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, error) {
 			buckets, numSectors = extendSectors(buckets, numSectors)
 			bucketIndex = len(buckets) - 1
 		} else if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		var filePlacement FilePlacement
 		filePlacement, buckets, err = packBucket(file, bucketIndex, buckets)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		filePlacements = append(filePlacements, filePlacement)
 	}
 
-	return filePlacements, nil
+	return filePlacements, numSectors, nil
 }
 
 // findBucket selects the most appropriate bucket for the file and returns the
@@ -235,41 +235,53 @@ func packBucket(file packingFile, bucketIndex int, buckets bucketList) (FilePlac
 		return FilePlacement{}, buckets, err
 	}
 
-	if bucketAlignment != 0 {
-		// bucketBeforeFile is the new bucket created using the space from the
-		// start of the old bucket to the start of the file.
-		bucketBeforeFile := bucket{
-			sectorIndex:  sectorIndex,
-			sectorOffset: sectorOffset,
-			length:       bucketAlignment,
-		}
-		buckets = insertBucket(buckets, bucketBeforeFile, bucketIndex)
-		// Increment the bucket index in case we have to insert another bucket
-		// after this one.
-		bucketIndex++
-	}
+	// bucketBeforeLength is the space from the start of the old bucket to the
+	// start of the file.
+	bucketBeforeLength := bucketAlignment
+	bucketIndex, buckets = createNewBucket(sectorIndex, sectorOffset, bucketBeforeLength, bucketIndex, buckets)
 
-	// leftoverLength is the space still available in the old bucket once the
+	// bucketAfterLength is the space still available in the old bucket once the
 	// file and its alignment are subtracted away.
-	leftoverLength := oldBucket.length - file.size - bucketAlignment
-	if leftoverLength > 0 {
-		// bucketAfterFile is the new bucket created using the space from the
-		// end of the file to the end of the old bucket.
-		bucketAfterFile := bucket{
-			sectorIndex:  sectorIndex,
-			sectorOffset: sectorOffset + bucketAlignment + file.size,
-			length:       leftoverLength,
-		}
-		buckets = insertBucket(buckets, bucketAfterFile, bucketIndex)
-	}
+	bucketAfterLength := oldBucket.length - file.size - bucketAlignment
+	bucketAfterSectorOffset := sectorOffset + bucketAlignment + file.size
+	_, buckets = createNewBucket(sectorIndex, bucketAfterSectorOffset, bucketAfterLength, bucketIndex, buckets)
 
 	filePlacement := FilePlacement{
-		fileID:       file.id,
-		size:         file.size,
-		sectorIndex:  sectorIndex,
-		sectorOffset: sectorOffset + bucketAlignment,
+		FileID:       file.id,
+		Size:         file.size,
+		SectorIndex:  sectorIndex,
+		SectorOffset: sectorOffset + bucketAlignment,
 	}
 	return filePlacement, buckets, nil
+}
+
+// createNewBucket will actually create a new bucket and add it to the bucket
+// list.
+func createNewBucket(sectorIndex, sectorOffset, length uint64, bucketIndex int, buckets bucketList) (int, bucketList) {
+	if length == 0 {
+		return bucketIndex, buckets
+	}
+
+	// If it's impossible for *any* file to fit into this bucket, due to the
+	// minimum alignment from the start of the bucket landing outside the
+	// bucket, do not bother adding the bucket. This will result in less buckets
+	// to search through later.
+	minimumAlignment, _ := alignFileInBucket(1, sectorOffset)
+	if minimumAlignment >= length {
+		return bucketIndex, buckets
+	}
+
+	newBucket := bucket{
+		sectorIndex:  sectorIndex,
+		sectorOffset: sectorOffset + minimumAlignment,
+		length:       length - minimumAlignment,
+	}
+	buckets = insertBucket(buckets, newBucket, bucketIndex)
+	// Increment the bucket index in case we have to insert another bucket after
+	// this one.
+	bucketIndex++
+
+	return bucketIndex, buckets
 }
 
 // insertBucket inserts a bucket into a slice of buckets.

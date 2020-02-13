@@ -24,6 +24,7 @@ func TestPackFiles(t *testing.T) {
 	tests := []struct {
 		in  map[string]uint64
 		out []FilePlacement
+		num uint64
 		err error
 	}{
 		{
@@ -34,25 +35,25 @@ func TestPackFiles(t *testing.T) {
 			},
 			out: []FilePlacement{
 				{
-					fileID:       "test2",
-					size:         20 * kib,
-					sectorIndex:  0,
-					sectorOffset: 0,
+					FileID:       "test2",
+					Size:         20 * kib,
+					SectorIndex:  0,
+					SectorOffset: 0,
 				},
 				{
-					fileID:       "test3",
-					size:         15 * kib,
-					sectorIndex:  0,
-					sectorOffset: 20 * kib,
+					FileID:       "test3",
+					Size:         15 * kib,
+					SectorIndex:  0,
+					SectorOffset: 20 * kib,
 				},
 				{
-					fileID:       "test1",
-					size:         10 * kib,
-					sectorIndex:  0,
-					sectorOffset: 36 * kib,
+					FileID:       "test1",
+					Size:         10 * kib,
+					SectorIndex:  0,
+					SectorOffset: 36 * kib,
 				},
 			},
-			err: nil,
+			num: 1,
 		},
 		{
 			in: map[string]uint64{
@@ -60,7 +61,7 @@ func TestPackFiles(t *testing.T) {
 				"test2": 0,
 				"test3": 1,
 			},
-			out: nil,
+			num: 0,
 			err: ErrZeroSize,
 		},
 		{
@@ -75,55 +76,56 @@ func TestPackFiles(t *testing.T) {
 			},
 			out: []FilePlacement{
 				{
-					fileID:       "test2",
-					size:         4 * mib,
-					sectorIndex:  0,
-					sectorOffset: 0,
+					FileID:       "test2",
+					Size:         4 * mib,
+					SectorIndex:  0,
+					SectorOffset: 0,
 				},
 				{
-					fileID:       "test1",
-					size:         3 * mib,
-					sectorIndex:  1,
-					sectorOffset: 0,
+					FileID:       "test1",
+					Size:         3 * mib,
+					SectorIndex:  1,
+					SectorOffset: 0,
 				},
 				{
-					fileID:       "test4",
-					size:         2 * mib,
-					sectorIndex:  2,
-					sectorOffset: 0,
+					FileID:       "test4",
+					Size:         2 * mib,
+					SectorIndex:  2,
+					SectorOffset: 0,
 				},
 				{
-					fileID:       "test5",
-					size:         2000 * kib,
-					sectorIndex:  2,
-					sectorOffset: 2 * mib,
+					FileID:       "test5",
+					Size:         2000 * kib,
+					SectorIndex:  2,
+					SectorOffset: 2 * mib,
 				},
 				{
-					fileID:       "test3",
-					size:         1 * mib,
-					sectorIndex:  1,
-					sectorOffset: 3 * mib,
+					FileID:       "test3",
+					Size:         1 * mib,
+					SectorIndex:  1,
+					SectorOffset: 3 * mib,
 				},
 				{
-					fileID:       "test7",
-					size:         2,
-					sectorIndex:  2,
-					sectorOffset: 2*mib + 2000*kib,
+					FileID:       "test7",
+					Size:         2,
+					SectorIndex:  2,
+					SectorOffset: 2*mib + 2000*kib,
 				},
 				{
-					fileID:       "test6",
-					size:         1,
-					sectorIndex:  2,
-					sectorOffset: 2*mib + 2004*kib,
+					FileID:       "test6",
+					Size:         1,
+					SectorIndex:  2,
+					SectorOffset: 2*mib + 2004*kib,
 				},
 			},
+			num: 3,
 		},
 	}
 
 	for _, test := range tests {
-		res, err := PackFiles(test.in)
-		if !reflect.DeepEqual(res, test.out) || err != test.err {
-			t.Errorf("PackFiles(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
+		res, num, err := PackFiles(test.in)
+		if !reflect.DeepEqual(res, test.out) || num != test.num || err != test.err {
+			t.Errorf("PackFiles(%v): expected %v %v %v, got %v %v %v", test.in, test.out, test.num, test.err, res, num, err)
 		}
 	}
 }
@@ -137,16 +139,10 @@ func TestPackFilesRandom(t *testing.T) {
 	alignmentScaling = uint64(1 << alignmentScalingStandard)
 
 	numFiles := 5_000
-	files := make(map[string]uint64, numFiles)
 
-	// Construct a map of random files and sizes.
-	for i := 0; i < numFiles; i++ {
-		name := string(fastrand.Bytes(16))
-		size := fastrand.Uint64n(SectorSize) + 1 // Prevent values of 0.
-		files[name] = size
-	}
+	files := randomFileMap(numFiles)
 
-	placements, err := PackFiles(files)
+	placements, _, err := PackFiles(files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,13 +152,13 @@ func TestPackFilesRandom(t *testing.T) {
 
 	// Check that all alignments are correct.
 	for _, p := range placements {
-		size := p.size
+		size := p.Size
 		requiredAlignment, err := requiredAlignment(size)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		i, j := p.sectorOffset, p.sectorOffset+size-1
+		i, j := p.SectorOffset, p.SectorOffset+size-1
 		if i%requiredAlignment != 0 {
 			t.Errorf("invalid alignment for file size %v", size)
 		}
@@ -174,13 +170,13 @@ func TestPackFilesRandom(t *testing.T) {
 	// Check that there are no overlapping files.
 	for i, p1 := range placements {
 		for _, p2 := range placements[i+1:] {
-			s1, s2 := p1.sectorIndex, p2.sectorIndex
+			s1, s2 := p1.SectorIndex, p2.SectorIndex
 			if s1 != s2 {
 				continue
 			}
 
-			i1, i2 := p1.sectorOffset, p1.sectorOffset+p1.size-1
-			j1, j2 := p2.sectorOffset, p2.sectorOffset+p2.size-1
+			i1, i2 := p1.SectorOffset, p1.SectorOffset+p1.Size-1
+			j1, j2 := p2.SectorOffset, p2.SectorOffset+p2.Size-1
 			if overlaps(i1, i2, j1, j2) {
 				t.Errorf("overlapping files at sector%v:(%v, %v) and sector%v:(%v, %v)", s1, i1, i2, s2, j1, j2)
 			}
@@ -190,6 +186,39 @@ func TestPackFilesRandom(t *testing.T) {
 
 func overlaps(i1, i2, j1, j2 uint64) bool {
 	return i1 <= j2 && j1 <= i2
+}
+
+func benchmarkPackFiles(i int, b *testing.B) {
+	for n := 0; n <= b.N; n++ {
+		files := randomFileMap(i)
+		_, _, err := PackFiles(files)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchPackFilesRandom benchmarks packing 1k random files.
+func BenchmarkPackFiles1000(b *testing.B) { benchmarkPackFiles(1_000, b) }
+
+// BenchPackFilesRandom benchmarks packing 10k random files.
+func BenchmarkPackFiles10000(b *testing.B) { benchmarkPackFiles(10_000, b) }
+
+// BenchPackFilesRandom benchmarks packing 100k random files.
+func BenchmarkPackFiles100000(b *testing.B) { benchmarkPackFiles(100_000, b) }
+
+// randomFileMap generates a map of random files for testing purposes.
+func randomFileMap(numFiles int) map[string]uint64 {
+	files := make(map[string]uint64, numFiles)
+
+	// Construct a map of random files and sizes.
+	for i := 0; i < numFiles; i++ {
+		name := string(fastrand.Bytes(16))
+		size := fastrand.Uint64n(SectorSize) + 1 // Prevent values of 0.
+		files[name] = size
+	}
+
+	return files
 }
 
 // TestSortByFileSizeDescending tests that sorting a map by descending values
@@ -242,7 +271,6 @@ func TestFindBucket(t *testing.T) {
 			buckets:    bucketList{&bucket{0, 0, SectorSize}},
 			numSectors: 0,
 			out:        0,
-			err:        nil,
 		},
 		{
 			// Huge file, should error.
@@ -298,11 +326,11 @@ func TestAlignFileInBucket(t *testing.T) {
 		fileSize, sectorOffset, out uint64
 		err                         error
 	}{
-		{fileSize: 16 * kib, sectorOffset: 5 * kib, out: 3 * kib, err: nil},
-		{fileSize: 16 * kib, sectorOffset: 8 * kib, out: 0 * kib, err: nil},
-		{fileSize: 32*kib + 1, sectorOffset: 0, out: 0, err: nil},
-		{fileSize: 32*kib + 1, sectorOffset: 8*kib + 1, out: 8*kib - 1, err: nil},
-		{fileSize: 16 * mib, sectorOffset: 5 * mib, out: 0, err: ErrSizeTooLarge},
+		{fileSize: 16 * kib, sectorOffset: 5 * kib, out: 3 * kib},
+		{fileSize: 16 * kib, sectorOffset: 8 * kib, out: 0 * kib},
+		{fileSize: 32*kib + 1, sectorOffset: 0, out: 0},
+		{fileSize: 32*kib + 1, sectorOffset: 8*kib + 1, out: 8*kib - 1},
+		{fileSize: 16 * mib, sectorOffset: 5 * mib, err: ErrSizeTooLarge},
 	}
 
 	for _, test := range tests {
