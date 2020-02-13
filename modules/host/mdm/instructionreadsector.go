@@ -136,7 +136,7 @@ func (i *instructionReadSector) ReadOnly() bool {
 	return true
 }
 
-// Time returns the exectuion time of a 'ReadSector' instruction.
+// Time returns the execution time of a 'ReadSector' instruction.
 func (i *instructionReadSector) Time() uint64 {
 	return TimeReadSector
 }
