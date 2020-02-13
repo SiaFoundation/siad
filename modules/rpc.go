@@ -31,7 +31,7 @@ type RPCPriceTable struct {
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
-	// Cost values specific to the Read instruction.
+	// Cost values specific to the Write instruction.
 	WriteBaseCost   types.Currency `json:"writebasecost"`
 	WriteLengthCost types.Currency `json:"writelengthcost"`
 }
