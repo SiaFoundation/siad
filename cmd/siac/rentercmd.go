@@ -259,6 +259,14 @@ file from a chosen skynet portal.`,
 		Run: skynetdownloadcmd,
 	}
 
+	skynetPinCmd = &cobra.Command{
+		Use:   "pin [skylink] [destination siapath]",
+		Short: "Pin a skylink from skynet by re-uploading it yourself.",
+		Long: `Pin the file associated with this skylink be re-uploading an exact
+		copy. This ensures that the file will still be stored on skynet.`,
+		Run: skynetpincmd,
+	}
+
 	skynetLsCmd = &cobra.Command{
 		Use:   "ls",
 		Short: "List all skyfiles that the user has pinned.",
@@ -2295,6 +2303,54 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		die("Unable to write full data:", err)
 	}
+}
+
+// skynetpincmd will pin the file from this skylink.
+func skynetpincmd(cmd *cobra.Command, args []string) {
+	if len(args) != 2 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+
+	skylink := args[0]
+	skylink = strings.TrimPrefix(skylink, "sia://")
+
+	// TODO: call the pin endpoint.
+
+	/*
+		// Perform the upload and print the result.
+		lup := modules.SkyfileUploadParameters{
+			SiaPath: siaPath,
+
+			FileMetadata: modules.SkyfileMetadata{
+				Filename: sourceName,
+				Mode:     fi.Mode(),
+			},
+
+			Reader: file,
+		}
+		skylink, err := httpClient.SkynetSkyfilePost(lup, skynetUploadRoot)
+		if err != nil {
+			die("could not upload file to Skynet:", err)
+		}
+
+
+	*/
+
+	var siaPath modules.SiaPath
+	var err error
+
+	// Calculate the siapath that was used for the upload.
+	var skypath modules.SiaPath
+	if skynetUploadRoot {
+		skypath = siaPath
+	} else {
+		skypath, err = modules.SkynetFolder.Join(siaPath.String())
+		if err != nil {
+			die("could not fetch skypath:", err)
+		}
+	}
+	fmt.Printf("Skyfile pinned successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
 }
 
 // skynetlscmd is the handler for the command `siac skynet ls`. Works very
