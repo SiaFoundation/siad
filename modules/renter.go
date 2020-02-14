@@ -950,6 +950,9 @@ type Renter interface {
 	// about the file and other information which is useful in fetching the
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
+
+	// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
+	UpdateSkynetBlacklist(additions, removals []Skylink) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

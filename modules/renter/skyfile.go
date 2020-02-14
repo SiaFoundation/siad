@@ -321,6 +321,11 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
+	// Check if link is blacklisted
+	if r.staticSkynetBlacklist.Blacklisted(link) {
+		return modules.SkyfileMetadata{}, nil, errors.New("skylink is blacklisted")
+	}
+
 	// Pull the offset and fetchSize out of the skyfile.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
@@ -370,6 +375,17 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
 	return lfm, fs, nil
+}
+
+// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
+func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
+	err := r.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer r.tg.Done()
+
+	return r.staticSkynetBlacklist.UpdateSkynetBlacklist(additions, removals)
 }
 
 // uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If

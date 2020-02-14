@@ -275,3 +275,88 @@ func TestSkynet(t *testing.T) {
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
 }
+
+// TestSkynetBlacklist tests the skynet blacklist module
+func TestSkynetBlacklist(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	renter := tg.Renters()[0]
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Call the upload skyfile client call.
+	filename := "skyfile"
+	uploadSiaPath, err := modules.NewSiaPath("testskyfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: filename,
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
+
+		Reader: reader,
+	}
+	skylink, err := renter.SkynetSkyfilePost(lup, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Blacklist the skylink
+	add := []string{skylink}
+	remove := []string{}
+	err = renter.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file behind the skylink.
+	_, err = renter.SkynetSkylinkGet(skylink)
+	if err == nil {
+		t.Fatal("Download should have failed")
+	}
+
+	// Remove skylink from blacklist
+	add = []string{}
+	remove = []string{skylink}
+	err = renter.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file behind the skylink.
+	fetchedData, err := renter.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fetchedData, data) {
+		t.Error("upload and download doesn't match")
+		t.Log(data)
+		t.Log(fetchedData)
+	}
+}

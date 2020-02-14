@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -250,6 +251,12 @@ type (
 	// /skynet/ POST endpoint has been used.
 	SkynetSkyfileHandlerPOST struct {
 		Skylink string `json:"skylink"`
+	}
+
+	// SkynetBlacklistPOST contains the information
+	SkynetBlacklistPOST struct {
+		Add    []string `json:"add"`
+		Remove []string `json:"remove"`
 	}
 )
 
@@ -1718,6 +1725,47 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return dp, nil
+}
+
+// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
+func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters
+	var params SkynetBlacklistPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Convert to Skylinks
+	addSkylinks := make([]modules.Skylink, len(params.Add))
+	for i, addStr := range params.Add {
+		var skylink modules.Skylink
+		err := skylink.LoadString(addStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		addSkylinks[i] = skylink
+	}
+	removeSkylinks := make([]modules.Skylink, len(params.Remove))
+	for i, removeStr := range params.Remove {
+		var skylink modules.Skylink
+		err := skylink.LoadString(removeStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		removeSkylinks[i] = skylink
+	}
+
+	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
+	if err != nil {
+		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteSuccess(w)
 }
 
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
