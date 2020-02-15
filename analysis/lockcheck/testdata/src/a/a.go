@@ -111,7 +111,7 @@ func (f *Foo) OnePathDoesNotLock() {
 		}
 	}
 	if 2 < 1 {
-		f.i++ // want "privileged method ExportedConditionalLocking accesses i without holding mutex"
+		f.i++ // want "privileged method OnePathDoesNotLock accesses i without holding mutex"
 	}
 }
 
