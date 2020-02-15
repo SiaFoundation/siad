@@ -230,7 +230,7 @@ func checkLockSafety(pass *analysis.Pass, fd *ast.FuncDecl, recv, recvMu types.O
 				lockHeld = true
 			} else if isUnlock(n) {
 				lockHeld = false
-			} else if method, ok := isRecvMethodCall(n); ok {
+			} else if method, ok := isRecvMethodCall(n); ok && !firstWordIs(method, "static") {
 				if recvIsPrivileged {
 					if managesOwnLocking(method) && !firstWordIs(method, "threaded") && lockHeld {
 						pass.Reportf(n.Pos(), "privileged method %s calls privileged method %s while holding mutex", name, method)
