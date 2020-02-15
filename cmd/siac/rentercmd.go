@@ -2315,42 +2315,12 @@ func skynetpincmd(cmd *cobra.Command, args []string) {
 	skylink := args[0]
 	skylink = strings.TrimPrefix(skylink, "sia://")
 
-	// TODO: call the pin endpoint.
-
-	/*
-		// Perform the upload and print the result.
-		lup := modules.SkyfileUploadParameters{
-			SiaPath: siaPath,
-
-			FileMetadata: modules.SkyfileMetadata{
-				Filename: sourceName,
-				Mode:     fi.Mode(),
-			},
-
-			Reader: file,
-		}
-		skylink, err := httpClient.SkynetSkyfilePost(lup, skynetUploadRoot)
-		if err != nil {
-			die("could not upload file to Skynet:", err)
-		}
-
-
-	*/
-
-	var siaPath modules.SiaPath
-	var err error
-
-	// Calculate the siapath that was used for the upload.
-	var skypath modules.SiaPath
-	if skynetUploadRoot {
-		skypath = siaPath
-	} else {
-		skypath, err = modules.SkynetFolder.Join(siaPath.String())
-		if err != nil {
-			die("could not fetch skypath:", err)
-		}
+	err := httpClient.SkynetSkylinkPinPost(skylink)
+	if err != nil {
+		die("could not pin file to Skynet:", err)
 	}
-	fmt.Printf("Skyfile pinned successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
+
+	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
 }
 
 // skynetlscmd is the handler for the command `siac skynet ls`. Works very

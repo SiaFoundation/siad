@@ -545,3 +545,42 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	}
 	return r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
 }
+
+func (r *Renter) PinSkylink(link modules.Skylink) error {
+	return nil
+	/*
+		// Pull the offset and fetchSize out of the skyfile.
+		offset, fetchSize, err := link.OffsetAndFetchSize()
+		if err != nil {
+			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
+		}
+
+		// Fetch the leading chunk.
+		baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
+		if err != nil {
+			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
+		}
+		if len(baseSector) < SkyfileLayoutSize {
+			return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+		}
+
+		// Parse out the skyfileLayout.
+		var ll skyfileLayout
+		ll.decode(baseSector)
+		offset += SkyfileLayoutSize
+
+		// Parse out the fanout.
+		fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
+		offset += ll.fanoutSize
+
+		// Parse out the skyfile metadata.
+		var lfm modules.SkyfileMetadata
+		metadataSize := uint64(ll.metadataSize)
+		err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
+		if err != nil {
+			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
+		}
+		offset += metadataSize
+
+	*/
+}

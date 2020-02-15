@@ -742,6 +742,16 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 	return reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
+// SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
+// given skylink.
+func (c *Client) SkynetSkylinkPinPost(skylink string) error {
+	query := fmt.Sprintf("/skynet/pin/%s", skylink)
+	_, _, err := c.postRawResponse(query, nil)
+	if err != nil {
+		return errors.AddContext(err, "post call to "+query+" failed")
+	}
+}
+
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
 // resulting skylink is returned along with an error.
 func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters, root bool) (string, error) {

@@ -950,6 +950,10 @@ type Renter interface {
 	// about the file and other information which is useful in fetching the
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
+
+	// PinSkylink re-uploads the data stored at the file under that skylink with
+	// the given parameters.
+	PinSkylink(Skylink, SkyfileUploadParameters) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

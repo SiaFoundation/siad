@@ -1768,6 +1768,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
+func (api *API) skynetSkylinkPinPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	err := api.renter.PinSkylink(skylink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
 // skynetSkyfileHandlerPOST is a dual purpose endpoint. If the 'convertpath'
 // field is set, this endpoint will create a skyfile using an existing siafile.
 // The original siafile and the skyfile will boeth need to be kept in order for
