@@ -54,6 +54,7 @@ func isSyncObject(t types.Type) bool {
 	switch t.String() {
 	case "sync.Mutex",
 		"sync.RWMutex",
+		"sync.WaitGroup",
 		"gitlab.com/NebulousLabs/Sia/sync.TryMutex",
 		"gitlab.com/NebulousLabs/threadgroup.ThreadGroup":
 		return true
