@@ -21,9 +21,9 @@ func (hdb *HostDB) RandomHosts(n int, blacklist, addressBlacklist []types.SiaPub
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
 	if ipCheckDisabled {
-		return hdb.filteredTree.SelectRandom(n, blacklist, nil), nil
+		return hdb.staticFilteredTree.SelectRandom(n, blacklist, nil), nil
 	}
-	return hdb.filteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
+	return hdb.staticFilteredTree.SelectRandom(n, blacklist, addressBlacklist), nil
 }
 
 // RandomHostsWithAllowance works as RandomHosts but uses a temporary hosttree
@@ -35,17 +35,17 @@ func (hdb *HostDB) RandomHostsWithAllowance(n int, blacklist, addressBlacklist [
 	filteredHosts := hdb.filteredHosts
 	filterType := hdb.filterMode
 	hdb.mu.RUnlock()
-	if !initialScanComplete && !hdb.deps.Disrupt("InitialScanComplete") {
+	if !initialScanComplete && !hdb.staticDeps.Disrupt("InitialScanComplete") {
 		return []modules.HostDBEntry{}, ErrInitialScanIncomplete
 	}
 	// Create a temporary hosttree from the given allowance.
-	ht := hosttree.New(hdb.managedCalculateHostWeightFn(allowance), hdb.deps.Resolver())
+	ht := hosttree.New(hdb.managedCalculateHostWeightFn(allowance), hdb.staticDeps.Resolver())
 
 	// Insert all known hosts.
 	hdb.mu.RLock()
 	defer hdb.mu.RUnlock()
 	var insertErrs error
-	allHosts := hdb.hostTree.All()
+	allHosts := hdb.staticHostTree.All()
 	isWhitelist := filterType == modules.HostDBActiveWhitelist
 	for _, host := range allHosts {
 		// Filter out listed hosts
