@@ -1769,16 +1769,77 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
+// skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
+// uptime even if the original uploader stops paying for the file.
 func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
 	strLink := ps.ByName("skylink")
 	var skylink modules.Skylink
-	err := skylink.LoadString(strLink)
+	err = skylink.LoadString(strLink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
 	}
 
-	err = api.renter.PinSkylink(skylink)
+	// Parse whether the siapath should be from root or from the skynet folder.
+	var root bool
+	rootStr := queryForm.Get("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse out the intended siapath.
+	var siaPath modules.SiaPath
+	siaPathStr := ps.ByName("siapath")
+	if root {
+		siaPath, err = modules.NewSiaPath(siaPathStr)
+	} else {
+		siaPath, err = modules.SkynetFolder.Join(siaPathStr)
+	}
+	if err != nil {
+		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check whether existing file should be overwritten
+	force := false
+	if f := queryForm.Get("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Check whether the redundancy has been set.
+	redundancy := uint8(0)
+	if rStr := queryForm.Get("baseredundancy"); rStr != "" {
+		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
+			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Create the upload parameters. Notably, the fanout redundancy, the file
+	// metadata, and the file name are not included. Changing those would change
+	// the skylink, which is not the goal.
+	lup := modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		Force:               force,
+		BaseChunkRedundancy: redundancy,
+	}
+
+	err = api.renter.PinSkylink(skylink, lup)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusBadRequest)
 		return
@@ -1837,7 +1898,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
-	if rStr := queryForm.Get("paritypieces"); rStr != "" {
+	if rStr := queryForm.Get("baseredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
 			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
 			return

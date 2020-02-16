@@ -318,60 +318,6 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
-// DownloadSkylink will take a link and turn it into the metadata and data of a
-// download.
-func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
-	// Pull the offset and fetchSize out of the skyfile.
-	offset, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
-	}
-
-	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
-	}
-	if len(baseSector) < SkyfileLayoutSize {
-		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
-	}
-
-	// Parse out the skyfileLayout.
-	var ll skyfileLayout
-	ll.decode(baseSector)
-	offset += SkyfileLayoutSize
-
-	// Parse out the fanout.
-	fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
-	offset += ll.fanoutSize
-
-	// Parse out the skyfile metadata.
-	var lfm modules.SkyfileMetadata
-	metadataSize := uint64(ll.metadataSize)
-	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
-	}
-	offset += metadataSize
-
-	// If there is no fanout, all of the data will be contained in the base
-	// sector, return a streamer using the data from the base sector.
-	if ll.fanoutSize == 0 {
-		streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
-		return lfm, streamer, nil
-	}
-	if offset+metadataSize+ll.fanoutSize > modules.SectorSize {
-		return modules.SkyfileMetadata{}, nil, errors.New("fanout is more than one sector, that is unsupported in this version")
-	}
-
-	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
-	}
-	return lfm, fs, nil
-}
-
 // uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If
 // entire file is small enough to fit inside of the leading chunk, the return
 // value will be:
@@ -458,10 +404,36 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
 	}
+	defer fileNode.Close()
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
 	return r.managedCreateSkylinkFromFileNode(lup, metadataBytes, fileNode, siaPath.Name())
+}
+
+// managedUploadBaseSector will take the raw baseSector bytes and upload them,
+// returning the resulting merkle root, and the fileNode of the siafile that is
+// tracking the base sector.
+func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) error {
+	fileUploadParams, err := fileUploadParamsFromLUP(lup)
+	if err != nil {
+		return errors.AddContext(err, "failed to create siafile upload parameters")
+	}
+
+	// Perform the actual upload. This will require turning the base sector into
+	// a reader.
+	baseSectorReader := bytes.NewReader(baseSector)
+	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	if err != nil {
+		return errors.AddContext(err, "failed to small skyfile")
+	}
+	defer fileNode.Close()
+
+	// Add the skylink to the Siafile. The skylink is returned even if there is
+	// an error, because the skylink itself is available on the Sia network now,
+	// even if the file metadata couldn't be properly updated.
+	err = fileNode.AddSkylink(skylink)
+	return errors.AddContext(err, "unable to add skylink to siafile")
 }
 
 // managedUploadSkyfileSmallFile uploads a file that fits entirely in the
@@ -479,31 +451,150 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 	// errors are caught before a large block of memory is allocated.
 	baseSector, fetchSize := skyfileBuildBaseSector(ll.encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
-	// Perform the actual upload. This will require turning the base sector into
-	// a reader.
-	fileUploadParams, err := fileUploadParamsFromLUP(lup)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "failed to create siafile upload parameters")
-	}
-	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "failed to small skyfile")
-	}
-	defer fileNode.Close()
-
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
 	skylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "failed to build skylink")
+		return modules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
 	}
 
-	// Add the skylink to the Siafile. The skylink is returned even if there is
-	// an error, because the skylink itself is available on the Sia network now,
-	// even if the file metadata couldn't be properly updated.
+	// Upload the base sector.
+	err = r.managedUploadBaseSector(lup, baseSector, skylink)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
+	}
+	return skylink, nil
+}
+
+// DownloadSkylink will take a link and turn it into the metadata and data of a
+// download.
+func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
+	// Pull the offset and fetchSize out of the skyfile.
+	offset, fetchSize, err := link.OffsetAndFetchSize()
+	if err != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
+	}
+
+	// Fetch the leading chunk.
+	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
+	if err != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
+	}
+	if len(baseSector) < SkyfileLayoutSize {
+		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+	}
+
+	// Parse out the skyfileLayout.
+	var ll skyfileLayout
+	ll.decode(baseSector)
+	offset += SkyfileLayoutSize
+
+	// Parse out the fanout.
+	fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
+	offset += ll.fanoutSize
+
+	// Parse out the skyfile metadata.
+	var lfm modules.SkyfileMetadata
+	metadataSize := uint64(ll.metadataSize)
+	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
+	if err != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
+	}
+	offset += metadataSize
+
+	// If there is no fanout, all of the data will be contained in the base
+	// sector, return a streamer using the data from the base sector.
+	if ll.fanoutSize == 0 {
+		streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
+		return lfm, streamer, nil
+	}
+	if offset+metadataSize+ll.fanoutSize > modules.SectorSize {
+		return modules.SkyfileMetadata{}, nil, errors.New("fanout is more than one sector, that is unsupported in this version")
+	}
+
+	// There is a fanout, create a fanout streamer and return that.
+	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
+	if err != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
+	}
+	return lfm, fs, nil
+}
+
+// PinSkylink wil fetch the file associated with the Skylink, and then pin all
+// necessary content to maintain that Skylink.
+func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters) error {
+	// Fetch the leading chunk.
+	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize)
+	if err != nil {
+		return errors.AddContext(err, "unable to fetch base sector of skylink")
+	}
+	if uint64(len(baseSector)) != modules.SectorSize {
+		return errors.New("download did not fetch enough data, file cannot be re-pinned")
+	}
+	var offset uint64
+
+	// Parse out the skyfileLayout.
+	var ll skyfileLayout
+	ll.decode(baseSector)
+	offset += SkyfileLayoutSize
+
+	// Sanity check on the version.
+	if ll.version != 1 {
+		return errors.New("unsupported skyfile version")
+	}
+
+	// Parse out the fanout.
+	fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
+	offset += ll.fanoutSize
+
+	// Re-upload the baseSector.
+	err = r.managedUploadBaseSector(lup, baseSector, skylink)
+	if err != nil {
+		return errors.AddContext(err, "unable to upload base sector")
+	}
+
+	// If there is no fanout, nothing more to do, the pin is complete.
+	if ll.fanoutSize == 0 {
+		return nil
+	}
+
+	// Create the erasure coder to use when uploading the file bulk. When going
+	// through the 'managedUploadSkyfile' command, a 1-of-N scheme is always used,
+	// where the redundancy of the data as a whole matches the proposed
+	// redundancy for the base chunk.
+	ec, err := siafile.NewRSSubCode(int(ll.fanoutDataPieces), int(ll.fanoutParityPieces), crypto.SegmentSize)
+	if err != nil {
+		return errors.AddContext(err, "unable to create erasure coder for large file")
+	}
+	// Create the siapath for the skyfile extra data. This is going to be the
+	// same as the skyfile upload siapath, except with a suffix.
+	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + "-extended")
+	if err != nil {
+		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
+	}
+	fup := modules.FileUploadParams{
+		SiaPath:             siaPath,
+		ErasureCode:         ec,
+		Force:               lup.Force,
+		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
+		Repair:              false, // indicates whether this is a repair operation
+
+		CipherType: crypto.TypePlain,
+	}
+
+	streamer, err := r.newFanoutStreamer(skylink, ll, fanoutBytes)
+	if err != nil {
+		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
+	}
+	fileNode, err := r.callUploadStreamFromReader(fup, streamer, false)
+	if err != nil {
+		return errors.AddContext(err, "unable to upload large skyfile")
+	}
 	err = fileNode.AddSkylink(skylink)
-	return skylink, errors.AddContext(err, "unable to add skylink to siafile")
+	if err != nil {
+		return errors.AddContext(err, "unable to upload skyfile fanout")
+	}
+	return nil
 }
 
 // UploadSkyfile will upload the provided data with the provided metadata,
@@ -544,126 +635,4 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		return r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
 	}
 	return r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
-}
-
-func (r *Renter) PinSkylink(link modules.Skylink) error {
-	// Pull the offset and fetchSize out of the skyfile.
-	offset, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return errors.AddContext(err, "unable to parse skylink")
-	}
-
-	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
-	if err != nil {
-		return errors.AddContext(err, "unable to fetch base sector of skylink")
-	}
-	if len(baseSector) < SkyfileLayoutSize {
-		return errors.New("download did not fetch enough data, layout cannot be decoded")
-	}
-
-	// Parse out the skyfileLayout.
-	var ll skyfileLayout
-	ll.decode(baseSector)
-	offset += SkyfileLayoutSize
-
-	// Parse out the fanout.
-	fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
-	offset += ll.fanoutSize
-
-	// Parse out the skyfile metadata.
-	var lfm modules.SkyfileMetadata
-	metadataSize := uint64(ll.metadataSize)
-	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
-	if err != nil {
-		return errors.AddContext(err, "unable to parse link file metadata")
-	}
-	offset += metadataSize
-
-	// NOTE: above code is from download skylink
-
-	// Re-upload the baseSector.
-	// TODO: allow to be set
-	siaPath, err := modules.SkynetFolder.Join(fmt.Sprintf("/pinned/%s", lfm.Filename))
-	if err != nil {
-		return errors.AddContext(err, "unable to create siapath")
-	}
-	lup := modules.SkyfileUploadParameters{
-		SiaPath:             siaPath,
-		Force:               true,
-		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy, // TODO allow to be set
-		FileMetadata:        lfm,
-	}
-	fup, err := fileUploadParamsFromLUP(lup)
-	if err != nil {
-		return errors.AddContext(err, "unable to create fup from lup")
-	}
-
-	// If there is no fanout, all of the data will be contained in the base
-	// sector, return a streamer using the data from the base sector.
-	// TODO Dedupe code inside this block, it's from managedUploadSkyfileSmallFile
-	if ll.fanoutSize == 0 {
-		baseSectorReader := bytes.NewReader(baseSector)
-		fileNode, err := r.callUploadStreamFromReader(fup, baseSectorReader, false)
-		if err != nil {
-			return errors.AddContext(err, "unable to pin large skyfile")
-		}
-		// Create the skylink.
-		baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
-		pinnedRawSkylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
-		if err != nil {
-			return errors.AddContext(err, "failed to build skylink")
-		}
-
-		// Add the skylink to the Siafile. The skylink is returned even if there is
-		// an error, because the skylink itself is available on the Sia network now,
-		// even if the file metadata couldn't be properly updated.
-		err = fileNode.AddSkylink(pinnedRawSkylink)
-		if err != nil {
-			return errors.AddContext(err, "unable to add skylink to siafile")
-		}
-
-		// Check that the new pinned skylink matches the input skylink.
-		pinnedSkylink := pinnedRawSkylink.String()
-		skylink := link.String()
-		if pinnedSkylink != skylink {
-			r.log.Println("Pinned skylink", pinnedSkylink)
-			r.log.Println("Input skylink", skylink)
-			return errors.New("Expected skylink from pinned file to match input file")
-		}
-	}
-
-	streamer, err := r.newFanoutStreamer(link, ll, fanoutBytes)
-	if err != nil {
-		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
-	}
-	fileNode, err := r.callUploadStreamFromReader(fup, streamer, false)
-	if err != nil {
-		return errors.AddContext(err, "unable to upload large skyfile")
-	}
-
-	// Upload the file using a streamer.
-	// Grab the metadata bytes.
-	metadataBytes, err := skyfileMetadataBytes(lup.FileMetadata)
-	if err != nil {
-		return errors.AddContext(err, "unable to retrieve skyfile metadata bytes")
-	}
-
-	// Convert the new siafile we just uploaded into a skyfile using the
-	// convert function.
-	pinnedRawSkylink, err := r.managedCreateSkylinkFromFileNode(lup, metadataBytes, fileNode, siaPath.Name())
-	if err != nil {
-		return errors.AddContext(err, "Error creating skylink")
-	}
-
-	// Check that the new pinned skylink matches the input skylink.
-	pinnedSkylink := pinnedRawSkylink.String()
-	skylink := link.String()
-	if pinnedSkylink != skylink {
-		r.log.Println("Pinned skylink", pinnedSkylink)
-		r.log.Println("Input skylink", skylink)
-		return errors.New("Expected skylink from pinned file to match input file")
-	}
-
-	return nil
 }
