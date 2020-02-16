@@ -76,6 +76,14 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Pinning test.
+	// Try to download the file behind the skylink.
+	err = r.SkynetSkylinkPinPost(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if !bytes.Equal(fetchedData, data) {
 		t.Error("upload and download doesn't match")
 		t.Log(data)

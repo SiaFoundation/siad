@@ -594,19 +594,55 @@ func (r *Renter) PinSkylink(link modules.Skylink) error {
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy, // TODO allow to be set
 		FileMetadata:        lfm,
 	}
-	fup := modules.FileUploadParams{}
+	fup, err := fileUploadParamsFromLUP(lup)
+	if err != nil {
+		return errors.AddContext(err, "unable to create fup from lup")
+	}
 
-	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
+	// If there is no fanout, all of the data will be contained in the base
+	// sector, return a streamer using the data from the base sector.
+	// TODO Dedupe code inside this block, it's from managedUploadSkyfileSmallFile
+	if ll.fanoutSize == 0 {
+		baseSectorReader := bytes.NewReader(baseSector)
+		fileNode, err := r.callUploadStreamFromReader(fup, baseSectorReader, false)
+		if err != nil {
+			return errors.AddContext(err, "unable to pin large skyfile")
+		}
+		// Create the skylink.
+		baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
+		pinnedRawSkylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
+		if err != nil {
+			return errors.AddContext(err, "failed to build skylink")
+		}
+
+		// Add the skylink to the Siafile. The skylink is returned even if there is
+		// an error, because the skylink itself is available on the Sia network now,
+		// even if the file metadata couldn't be properly updated.
+		err = fileNode.AddSkylink(pinnedRawSkylink)
+		if err != nil {
+			return errors.AddContext(err, "unable to add skylink to siafile")
+		}
+
+		// Check that the new pinned skylink matches the input skylink.
+		pinnedSkylink := pinnedRawSkylink.String()
+		skylink := link.String()
+		if pinnedSkylink != skylink {
+			r.log.Println("Pinned skylink", pinnedSkylink)
+			r.log.Println("Input skylink", skylink)
+			return errors.New("Expected skylink from pinned file to match input file")
+		}
+	}
+
+	streamer, err := r.newFanoutStreamer(link, ll, fanoutBytes)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}
-
-	// Upload the file using a streamer.
-	fileNode, err := r.callUploadStreamFromReader(fup, fs, false)
+	fileNode, err := r.callUploadStreamFromReader(fup, streamer, false)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload large skyfile")
 	}
 
+	// Upload the file using a streamer.
 	// Grab the metadata bytes.
 	metadataBytes, err := skyfileMetadataBytes(lup.FileMetadata)
 	if err != nil {

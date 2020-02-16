@@ -1725,6 +1725,7 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")
 	var skylink modules.Skylink
+
 	err := skylink.LoadString(strLink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
