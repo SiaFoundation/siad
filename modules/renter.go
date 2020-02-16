@@ -1093,6 +1093,10 @@ type SkyfileUploadParameters struct {
 	// or folder at 'SiaPath' will be deleted and overwritten.
 	Force bool `json:"force"`
 
+	// Root determines whether the upload should treat the filepath as a path
+	// from system root, or if the path should be from /var/skynet.
+	Root bool `json:"root"`
+
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.
 	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`

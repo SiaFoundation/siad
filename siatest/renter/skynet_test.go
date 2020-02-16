@@ -65,7 +65,7 @@ func TestSkynet(t *testing.T) {
 
 		Reader: reader,
 	}
-	skylink, err := r.SkynetSkyfilePost(lup, false)
+	skylink, err := r.SkynetSkyfilePost(lup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,19 +76,12 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Pinning test.
-	// Try to download the file behind the skylink.
-	err = r.SkynetSkylinkPinPost(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	if !bytes.Equal(fetchedData, data) {
 		t.Error("upload and download doesn't match")
 		t.Log(data)
 		t.Log(fetchedData)
 	}
+
 	// Try to download the file using the ReaderGet method.
 	skylinkReader, err := r.SkynetSkylinkReaderGet(skylink)
 	if err != nil {
@@ -136,6 +129,7 @@ func TestSkynet(t *testing.T) {
 	rootLup := modules.SkyfileUploadParameters{
 		SiaPath:             rootUploadSiaPath,
 		Force:               rootForce,
+		Root:                true,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: rootFilename,
@@ -144,7 +138,7 @@ func TestSkynet(t *testing.T) {
 
 		Reader: rootReader,
 	}
-	_, err = r.SkynetSkyfilePost(rootLup, true)
+	_, err = r.SkynetSkyfilePost(rootLup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +171,7 @@ func TestSkynet(t *testing.T) {
 	largeLup := modules.SkyfileUploadParameters{
 		SiaPath:             largeSiaPath,
 		Force:               force2,
+		Root:                false,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: largeFilename,
@@ -186,7 +181,7 @@ func TestSkynet(t *testing.T) {
 
 		Reader: largeReader,
 	}
-	largeSkylink, err := r.SkynetSkyfilePost(largeLup, false)
+	largeSkylink, err := r.SkynetSkyfilePost(largeLup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,6 +224,77 @@ func TestSkynet(t *testing.T) {
 	// Maybe this can be accomplished by tagging a flag to the API which has the
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
+
+	// Pinning test.
+	//
+	// Try to download the file behind the skylink.
+	pinSiaPath, err := modules.NewSiaPath("testSmallPinPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinLUP := modules.SkyfileUploadParameters{
+		SiaPath:             pinSiaPath,
+		Force:               force,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+	}
+	err = r.SkynetSkylinkPinPost(skylink, pinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get the list of files in the skynet directory and see if the file is
+	// present.
+	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// See in the file is present.
+	pinnedFile, err := r.RenterFileRootGet(fullPinSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinnedFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if pinnedFile.File.Skylinks[0] != skylink {
+		t.Fatal("skylink mismatch")
+	}
+
+	// Try another pin test, this time with the large skylink.
+	largePinSiaPath, err := modules.NewSiaPath("testLargePinPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	largePinLUP := modules.SkyfileUploadParameters{
+		SiaPath:             largePinSiaPath,
+		Force:               force,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+	}
+	err = r.SkynetSkylinkPinPost(largeSkylink, largePinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// See in the file is present.
+	fullLargePinSiaPath, err := modules.SkynetFolder.Join(largePinSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedFile, err = r.RenterFileRootGet(fullLargePinSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinnedFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if pinnedFile.File.Skylinks[0] != largeSkylink {
+		t.Fatal("skylink mismatch")
+	}
+
+	// TODO: We don't actually check at all whether the presence of the new
+	// skylinks is going to keep the file online. We could do that by deleting
+	// the old files and then churning the hosts over, and checking that the
+	// renter does a repair operation to keep everyone alive.
 
 	// Upload a siafile that will then be converted to a skyfile. The siafile
 	// needs at least 2 sectors.

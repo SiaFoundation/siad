@@ -264,7 +264,7 @@ file from a chosen skynet portal.`,
 		Short: "Pin a skylink from skynet by re-uploading it yourself.",
 		Long: `Pin the file associated with this skylink be re-uploading an exact
 		copy. This ensures that the file will still be stored on skynet.`,
-		Run: skynetpincmd,
+		Run: wrap(skynetpincmd),
 	}
 
 	skynetLsCmd = &cobra.Command{
@@ -2305,24 +2305,6 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-// skynetpincmd will pin the file from this skylink.
-func skynetpincmd(cmd *cobra.Command, args []string) {
-	if len(args) != 2 {
-		cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-
-	skylink := args[0]
-	skylink = strings.TrimPrefix(skylink, "sia://")
-
-	err := httpClient.SkynetSkylinkPinPost(skylink)
-	if err != nil {
-		die("could not pin file to Skynet:", err)
-	}
-
-	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
-}
-
 // skynetlscmd is the handler for the command `siac skynet ls`. Works very
 // similar to 'siac renter ls' but defaults to the SkynetFolder and only
 // displays files that are pinning skylinks.
@@ -2439,6 +2421,28 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 }
 
+// skynetpincmd will pin the file from this skylink.
+func skynetpincmd(sourceSkylink, destSiaPath string) {
+	skylink := strings.TrimPrefix(sourceSkylink, "sia://")
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+
+	lup := modules.SkyfileUploadParameters{
+		SiaPath: siaPath,
+		Root:    skynetUploadRoot,
+	}
+
+	err = httpClient.SkynetSkylinkPinPost(skylink, lup)
+	if err != nil {
+		die("could not pin file to Skynet:", err)
+	}
+
+	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
+}
+
 // skynetuploadcmd will upload a file to Skynet.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Create the siapath.
@@ -2462,6 +2466,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Perform the upload and print the result.
 	lup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
+		Root:    skynetUploadRoot,
 
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: sourceName,
@@ -2470,7 +2475,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 		Reader: file,
 	}
-	skylink, err := httpClient.SkynetSkyfilePost(lup, skynetUploadRoot)
+	skylink, err := httpClient.SkynetSkyfilePost(lup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}

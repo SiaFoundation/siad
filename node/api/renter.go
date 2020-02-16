@@ -1800,7 +1800,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 
 	// Parse out the intended siapath.
 	var siaPath modules.SiaPath
-	siaPathStr := ps.ByName("siapath")
+	siaPathStr := queryForm.Get("siapath")
 	if root {
 		siaPath, err = modules.NewSiaPath(siaPathStr)
 	} else {
@@ -1823,7 +1823,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
-	if rStr := queryForm.Get("baseredundancy"); rStr != "" {
+	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
 			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
 			return
@@ -1898,7 +1898,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
-	if rStr := queryForm.Get("baseredundancy"); rStr != "" {
+	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
 			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
 			return
