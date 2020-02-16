@@ -750,6 +750,7 @@ func (c *Client) SkynetSkylinkPinPost(skylink string) error {
 	if err != nil {
 		return errors.AddContext(err, "post call to "+query+" failed")
 	}
+	return nil
 }
 
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
