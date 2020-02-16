@@ -547,40 +547,87 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 }
 
 func (r *Renter) PinSkylink(link modules.Skylink) error {
+	// Pull the offset and fetchSize out of the skyfile.
+	offset, fetchSize, err := link.OffsetAndFetchSize()
+	if err != nil {
+		return errors.AddContext(err, "unable to parse skylink")
+	}
+
+	// Fetch the leading chunk.
+	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
+	if err != nil {
+		return errors.AddContext(err, "unable to fetch base sector of skylink")
+	}
+	if len(baseSector) < SkyfileLayoutSize {
+		return errors.New("download did not fetch enough data, layout cannot be decoded")
+	}
+
+	// Parse out the skyfileLayout.
+	var ll skyfileLayout
+	ll.decode(baseSector)
+	offset += SkyfileLayoutSize
+
+	// Parse out the fanout.
+	fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
+	offset += ll.fanoutSize
+
+	// Parse out the skyfile metadata.
+	var lfm modules.SkyfileMetadata
+	metadataSize := uint64(ll.metadataSize)
+	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
+	if err != nil {
+		return errors.AddContext(err, "unable to parse link file metadata")
+	}
+	offset += metadataSize
+
+	// NOTE: above code is from download skylink
+
+	// Re-upload the baseSector.
+	// TODO: allow to be set
+	siaPath, err := modules.SkynetFolder.Join(fmt.Sprintf("/pinned/%s", lfm.Filename))
+	if err != nil {
+		return errors.AddContext(err, "unable to create siapath")
+	}
+	lup := modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		Force:               true,
+		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy, // TODO allow to be set
+		FileMetadata:        lfm,
+	}
+	fup := modules.FileUploadParams{}
+
+	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
+	if err != nil {
+		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
+	}
+
+	// Upload the file using a streamer.
+	fileNode, err := r.callUploadStreamFromReader(fup, fs, false)
+	if err != nil {
+		return errors.AddContext(err, "unable to upload large skyfile")
+	}
+
+	// Grab the metadata bytes.
+	metadataBytes, err := skyfileMetadataBytes(lup.FileMetadata)
+	if err != nil {
+		return errors.AddContext(err, "unable to retrieve skyfile metadata bytes")
+	}
+
+	// Convert the new siafile we just uploaded into a skyfile using the
+	// convert function.
+	pinnedRawSkylink, err := r.managedCreateSkylinkFromFileNode(lup, metadataBytes, fileNode, siaPath.Name())
+	if err != nil {
+		return errors.AddContext(err, "Error creating skylink")
+	}
+
+	// Check that the new pinned skylink matches the input skylink.
+	pinnedSkylink := pinnedRawSkylink.String()
+	skylink := link.String()
+	if pinnedSkylink != skylink {
+		r.log.Println("Pinned skylink", pinnedSkylink)
+		r.log.Println("Input skylink", skylink)
+		return errors.New("Expected skylink from pinned file to match input file")
+	}
+
 	return nil
-	/*
-		// Pull the offset and fetchSize out of the skyfile.
-		offset, fetchSize, err := link.OffsetAndFetchSize()
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
-		}
-
-		// Fetch the leading chunk.
-		baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
-		}
-		if len(baseSector) < SkyfileLayoutSize {
-			return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
-		}
-
-		// Parse out the skyfileLayout.
-		var ll skyfileLayout
-		ll.decode(baseSector)
-		offset += SkyfileLayoutSize
-
-		// Parse out the fanout.
-		fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
-		offset += ll.fanoutSize
-
-		// Parse out the skyfile metadata.
-		var lfm modules.SkyfileMetadata
-		metadataSize := uint64(ll.metadataSize)
-		err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
-		}
-		offset += metadataSize
-
-	*/
 }
