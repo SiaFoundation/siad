@@ -860,7 +860,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// Add SkynetBlacklist
 	sb, err := skynetblacklist.New(r.persistDir)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create new skynet blacklist")
 	}
 	r.staticSkynetBlacklist = sb
 

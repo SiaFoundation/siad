@@ -3,9 +3,11 @@ package renter
 import (
 	"bytes"
 	"io/ioutil"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -300,7 +302,7 @@ func TestSkynetBlacklist(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	renter := tg.Renters()[0]
+	r := tg.Renters()[0]
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(100 + siatest.Fuzz())
@@ -322,7 +324,7 @@ func TestSkynetBlacklist(t *testing.T) {
 
 		Reader: reader,
 	}
-	skylink, err := renter.SkynetSkyfilePost(lup, false)
+	skylink, err := r.SkynetSkyfilePost(lup, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,27 +332,30 @@ func TestSkynetBlacklist(t *testing.T) {
 	// Blacklist the skylink
 	add := []string{skylink}
 	remove := []string{}
-	err = renter.SkynetBlacklistPost(add, remove)
+	err = r.SkynetBlacklistPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Try to download the file behind the skylink.
-	_, err = renter.SkynetSkylinkGet(skylink)
+	_, err = r.SkynetSkylinkGet(skylink)
 	if err == nil {
 		t.Fatal("Download should have failed")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
 	}
 
 	// Remove skylink from blacklist
 	add = []string{}
 	remove = []string{skylink}
-	err = renter.SkynetBlacklistPost(add, remove)
+	err = r.SkynetBlacklistPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Try to download the file behind the skylink.
-	fetchedData, err := renter.SkynetSkylinkGet(skylink)
+	fetchedData, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}

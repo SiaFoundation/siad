@@ -58,6 +58,12 @@ const (
 	SkyfileVersion = 1
 )
 
+var (
+	// ErrSkylinkBlacklisted is the error returned when a blacklisted skylink is
+	// attempted to be downloaded
+	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
+)
+
 // skyfileLayout explains the layout information that is used for storing data
 // inside of the skyfile. The skyfileLayout always appears as the first bytes
 // of the leading chunk.
@@ -323,7 +329,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
 	// Check if link is blacklisted
 	if r.staticSkynetBlacklist.Blacklisted(link) {
-		return modules.SkyfileMetadata{}, nil, errors.New("skylink is blacklisted")
+		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
 	}
 
 	// Pull the offset and fetchSize out of the skyfile.

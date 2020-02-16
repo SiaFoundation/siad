@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // SkynetBlacklist manages a set of blacklisted skylinks and persists the list to disk
@@ -24,7 +25,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	// Initialize the persistence of the blacklist
 	err := sb.initPersist()
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to initialize the skynet blacklist persistence")
 	}
 
 	return sb, nil

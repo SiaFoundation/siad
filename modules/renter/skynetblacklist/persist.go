@@ -22,7 +22,7 @@ const (
 	falseLength = int64(77)
 
 	// filename is the name of the persist file
-	filename = "blacklist.json"
+	filename = "skynetblacklist.json"
 
 	// metadataHeader is the header of the metadata for the persist file
 	metadataHeader = "SkyNet Blacklist Persistence"
@@ -83,14 +83,14 @@ func decodeMetadata(f *os.File, dec *json.Decoder) (header, version string, leng
 func writeAtAndSync(f *os.File, bytes []byte, offset int64) error {
 	n, err := f.WriteAt(bytes, offset)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write bytes at offset")
 	}
 	if n != len(bytes) {
 		return errors.New("number of bytes written doesn't equal length of bytes")
 	}
 	err = f.Sync()
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to fsync file")
 	}
 	return nil
 }
@@ -100,7 +100,7 @@ func (sb *SkynetBlacklist) initPersist() error {
 	// Initialize the persistence directory
 	err := os.MkdirAll(sb.staticPersistDir, 0700)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to make persistence directory")
 	}
 
 	// Try and Load persistence
@@ -108,20 +108,20 @@ func (sb *SkynetBlacklist) initPersist() error {
 	if err == nil {
 		return nil
 	} else if !os.IsNotExist(err) {
-		return err
+		return errors.AddContext(err, "unable to load persistence")
 	}
 
 	// Persist File doesn't exist, create it
 	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
 	// Encode the initial metadata
 	buf, err := encodeMetadata(metadataHeader, metadataVersion, initialLength)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to encode metadata")
 	}
 
 	// Marshal into bytes
@@ -130,7 +130,7 @@ func (sb *SkynetBlacklist) initPersist() error {
 	// Write to file
 	err = writeAtAndSync(f, bytes, 0)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write and sync metadata")
 	}
 
 	return nil
@@ -141,6 +141,7 @@ func (sb *SkynetBlacklist) load() error {
 	// Open File
 	f, err := os.Open(filepath.Join(sb.staticPersistDir, filename))
 	if err != nil {
+		// Intentionally don't add context to allow for IsNotExist error check
 		return err
 	}
 	defer f.Close()
@@ -149,7 +150,7 @@ func (sb *SkynetBlacklist) load() error {
 	dec := json.NewDecoder(f)
 	_, _, length, err := decodeMetadata(f, dec)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to decode metadata")
 	}
 
 	// Decode persist links until the end of the file is reached or bytesRead
@@ -184,7 +185,7 @@ func (sb *SkynetBlacklist) load() error {
 
 	// Ignore end of file errors
 	if err.Error() != io.EOF.Error() {
-		return err
+		return errors.AddContext(err, "unable to decode persistLinks")
 	}
 	return nil
 }
@@ -210,7 +211,7 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 		// Encode link
 		err := enc.Encode(link)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to encode persistLink")
 		}
 	}
 	for _, skylink := range removals {
@@ -226,14 +227,14 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 		// Encode link
 		err := enc.Encode(link)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to encode persistLink")
 		}
 	}
 
 	// Open file
 	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
@@ -241,21 +242,21 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	dec := json.NewDecoder(f)
 	header, version, length, err := decodeMetadata(f, dec)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to decode metadata")
 	}
 
 	// Append data and sync
 	offset := length + 1
 	err = writeAtAndSync(f, buf.Bytes(), offset)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write and sync persisted bytes")
 	}
 
 	// Update length and sync
 	length += int64(buf.Len())
 	metadataBuf, err := encodeMetadata(header, version, length)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to encode metadata")
 	}
 
 	// Marshal into bytes
@@ -264,7 +265,7 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	// Write to file
 	err = writeAtAndSync(f, bytes, 0)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write and sync metadata")
 	}
 
 	return nil
