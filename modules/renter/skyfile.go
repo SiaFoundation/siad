@@ -375,9 +375,9 @@ func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSi
 // 'callUploadStreamFromReader'. The final skylink is created by calling
 // 'CreateSkylinkFromSiafile' on the resulting siafile.
 func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Skylink, error) {
-	// Create the erasure coder to use when uploading the file bulk. When going
-	// through the 'managedUploadSkyfile' command, a 1-of-N scheme is always used,
-	// where the redundancy of the data as a whole matches the proposed
+	// Create the erasure coder to use when uploading the file. When going
+	// through the 'managedUploadSkyfile' command, a 1-of-N scheme is always
+	// used, where the redundancy of the data as a whole matches the proposed
 	// redundancy for the base chunk.
 	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
@@ -425,13 +425,11 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 	baseSectorReader := bytes.NewReader(baseSector)
 	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
 	if err != nil {
-		return errors.AddContext(err, "failed to small skyfile")
+		return errors.AddContext(err, "failed to stream upload small skyfile")
 	}
 	defer fileNode.Close()
 
-	// Add the skylink to the Siafile. The skylink is returned even if there is
-	// an error, because the skylink itself is available on the Sia network now,
-	// even if the file metadata couldn't be properly updated.
+	// Add the skylink to the Siafile.
 	err = fileNode.AddSkylink(skylink)
 	return errors.AddContext(err, "unable to add skylink to siafile")
 }
@@ -469,7 +467,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
-	// Pull the offset and fetchSize out of the skyfile.
+	// Pull the offset and fetchSize out of the skylink.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")

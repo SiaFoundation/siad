@@ -1838,13 +1838,13 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse basechunkrerdundancy: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
 
 	// Create the upload parameters. Notably, the fanout redundancy, the file
-	// metadata, and the file name are not included. Changing those would change
+	// metadata and the filename are not included. Changing those would change
 	// the skylink, which is not the goal.
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
@@ -1913,7 +1913,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse basechunkredundancy: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}

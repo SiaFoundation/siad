@@ -262,8 +262,9 @@ file from a chosen skynet portal.`,
 	skynetPinCmd = &cobra.Command{
 		Use:   "pin [skylink] [destination siapath]",
 		Short: "Pin a skylink from skynet by re-uploading it yourself.",
-		Long: `Pin the file associated with this skylink be re-uploading an exact
-		copy. This ensures that the file will still be stored on skynet.`,
+		Long: `Pin the file associated with this skylink by re-uploading an exact copy. This
+ensures that the file will still be available on skynet as long as you continue
+maintaining the file in your renter.`,
 		Run: wrap(skynetpincmd),
 	}
 
@@ -2430,12 +2431,12 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		die("Could not parse destination siapath:", err)
 	}
 
-	lup := modules.SkyfileUploadParameters{
+	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
 	}
 
-	err = httpClient.SkynetSkylinkPinPost(skylink, lup)
+	err = httpClient.SkynetSkylinkPinPost(skylink, sup)
 	if err != nil {
 		die("could not pin file to Skynet:", err)
 	}
@@ -2464,7 +2465,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	_, sourceName := filepath.Split(sourcePath)
 
 	// Perform the upload and print the result.
-	lup := modules.SkyfileUploadParameters{
+	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
 
@@ -2475,7 +2476,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 		Reader: file,
 	}
-	skylink, err := httpClient.SkynetSkyfilePost(lup)
+	skylink, err := httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}
@@ -2507,10 +2508,10 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	}
 
 	// Perform the conversion and print the result.
-	lup := modules.SkyfileUploadParameters{
+	sup := modules.SkyfileUploadParameters{
 		SiaPath: destSiaPath,
 	}
-	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(lup, sourceSiaPath)
+	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
 	if err != nil {
 		die("could not convert siafile to skyfile:", err)
 	}

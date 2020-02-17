@@ -57,7 +57,7 @@ func TestSkynet(t *testing.T) {
 	if fastrand.Intn(2) == 0 {
 		force = true
 	}
-	lup := modules.SkyfileUploadParameters{
+	sup := modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               force,
 		Root:                false,
@@ -69,7 +69,7 @@ func TestSkynet(t *testing.T) {
 
 		Reader: reader,
 	}
-	skylink, rshp, err := r.SkynetSkyfilePost(lup)
+	skylink, rshp, err := r.SkynetSkyfilePost(sup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// See in the file is present.
+	// See if the file is present.
 	pinnedFile, err := r.RenterFileRootGet(fullPinSiaPath)
 	if err != nil {
 		t.Fatal(err)
@@ -325,7 +325,7 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// See in the file is present.
+	// See if the file is present.
 	fullLargePinSiaPath, err := modules.SkynetFolder.Join(largePinSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
@@ -363,7 +363,7 @@ func TestSkynet(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		lup = modules.SkyfileUploadParameters{
+		sup = modules.SkyfileUploadParameters{
 			SiaPath:             uploadSiaPath2,
 			Force:               !force,
 			BaseChunkRedundancy: 2,
@@ -373,7 +373,7 @@ func TestSkynet(t *testing.T) {
 			},
 		}
 
-		skylink2, err := r.RenterConvertSiafileToSkyfilePost(lup, remoteFile.SiaPath())
+		skylink2, err := r.RenterConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 		if err != nil {
 			t.Fatal(err)
 		}
