@@ -199,6 +199,23 @@ func TestAddSector(t *testing.T) {
 	if !bytes.Equal(partialSectorData, data[len(data)-1:]) {
 		t.Fatal("wrong sector provided")
 	}
+	// Test some edge cases.
+	_, err = cmt.cm.ReadPartialSector(root, uint64(len(data)), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cmt.cm.ReadPartialSector(root, uint64(len(data)), 1)
+	if err == nil {
+		t.Fatal("ReadPartialSector should fail")
+	}
+	_, err = cmt.cm.ReadPartialSector(root, uint64(len(data)-1), 2)
+	if err == nil {
+		t.Fatal("ReadPartialSector should fail")
+	}
+	_, err = cmt.cm.ReadPartialSector(root, 0, modules.SectorSize+1)
+	if err == nil {
+		t.Fatal("ReadPartialSector should fail")
+	}
 }
 
 // TestAddSectorFillFolder adds sectors to a 64 sector storage folder until it
