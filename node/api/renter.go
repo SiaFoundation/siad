@@ -1930,23 +1930,27 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Depending on the content type, figure out the filename and where the file
-	// data is located
+	// Parse content type and disposition headers
+	ct := req.Header.Get("Content-Type")
+	cd := req.Header.Get("Content-Disposition")
+	isMultipartContent := strings.HasPrefix(ct, "multipart/form-data;")
+
+	// Depending on the content type, parse the filename and file reader
 	var reader io.Reader
 	var filename string
-
-	if strings.HasPrefix(req.Header.Get("Content-Type"), "multipart/form-data;") {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-
+	if isMultipartContent {
 		file, header, err := req.FormFile("file")
 		if err != nil {
 			WriteError(w, Error{"failed to find a form file"}, http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
-
 		reader = file
 		filename = header.Filename
+
+		// Make sure the cors headers is set to allow all requests from all
+		// origins.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 	} else {
 		reader = req.Body
 		filename = queryForm.Get("filename")
@@ -1955,7 +1959,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// If there is no filename provided as a query param, check the content
 	// disposition field.
 	if filename == "" {
-		_, params, err := mime.ParseMediaType(req.Header.Get("Content-Disposition"))
+		_, params, err := mime.ParseMediaType(cd)
 		// Ignore any errors.
 		if err == nil {
 			filename = params[filename]
