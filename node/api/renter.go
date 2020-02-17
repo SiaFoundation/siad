@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -249,7 +251,9 @@ type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
 	SkynetSkyfileHandlerPOST struct {
-		Skylink string `json:"skylink"`
+		Skylink    string      `json:"skylink"`
+		MerkleRoot crypto.Hash `json:"merkleroot"`
+		Bitfield   uint16      `json:"bitfield"`
 	}
 )
 
@@ -1725,6 +1729,7 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")
 	var skylink modules.Skylink
+
 	err := skylink.LoadString(strLink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
@@ -1749,9 +1754,17 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Fetch the stream.
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	// Convert the metadata to a string.
+	encMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
@@ -1764,8 +1777,88 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(metadata.Filename))
 	}
 	w.Header().Set("Content-Disposition", cdh)
+	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+}
+
+// skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
+// uptime even if the original uploader stops paying for the file.
+func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	strLink := ps.ByName("skylink")
+	var skylink modules.Skylink
+	err = skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse whether the siapath should be from root or from the skynet folder.
+	var root bool
+	rootStr := queryForm.Get("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Parse out the intended siapath.
+	var siaPath modules.SiaPath
+	siaPathStr := queryForm.Get("siapath")
+	if root {
+		siaPath, err = modules.NewSiaPath(siaPathStr)
+	} else {
+		siaPath, err = modules.SkynetFolder.Join(siaPathStr)
+	}
+	if err != nil {
+		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check whether existing file should be overwritten
+	force := false
+	if f := queryForm.Get("force"); f != "" {
+		force, err = strconv.ParseBool(f)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Check whether the redundancy has been set.
+	redundancy := uint8(0)
+	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
+		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
+			WriteError(w, Error{"unable to parse basechunkrerdundancy: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Create the upload parameters. Notably, the fanout redundancy, the file
+	// metadata and the filename are not included. Changing those would change
+	// the skylink, which is not the goal.
+	lup := modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		Force:               force,
+		BaseChunkRedundancy: redundancy,
+	}
+
+	err = api.renter.PinSkylink(skylink, lup)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	WriteSuccess(w)
 }
 
 // skynetSkyfileHandlerPOST is a dual purpose endpoint. If the 'convertpath'
@@ -1818,9 +1911,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
-	if rStr := queryForm.Get("paritypieces"); rStr != "" {
+	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse paritypieces: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse basechunkredundancy: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -1836,6 +1929,22 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 	}
+
+	// If there is no filename provided as a query param, check the content
+	// disposition field.
+	if filename == "" {
+		header := w.Header()
+		_, params, err := mime.ParseMediaType(header.Get("Content-Disposition"))
+		// Ignore any errors.
+		if err == nil {
+			filename = params[filename]
+		}
+	}
+	if filename == "" {
+		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		return
+	}
+
 	lfm := modules.SkyfileMetadata{
 		Filename: filename,
 		Mode:     mode,
@@ -1860,7 +1969,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
-			Skylink: skylink.String(),
+			Skylink:    skylink.String(),
+			MerkleRoot: skylink.MerkleRoot(),
+			Bitfield:   skylink.Bitfield(),
 		})
 		return
 	}
@@ -1882,7 +1993,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
-		Skylink: skylink.String(),
+		Skylink:    skylink.String(),
+		MerkleRoot: skylink.MerkleRoot(),
+		Bitfield:   skylink.Bitfield(),
 	})
 }
 
