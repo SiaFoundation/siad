@@ -2475,7 +2475,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 		Reader: file,
 	}
-	skylink, err := httpClient.SkynetSkyfilePost(lup)
+	skylink, _, err := httpClient.SkynetSkyfilePost(lup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}
