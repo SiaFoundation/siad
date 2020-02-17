@@ -17,7 +17,9 @@ const numRounds = 20
 // cipher. It embeds the *chacha.Cipher type.  All Encryption/Decryption methods
 // reset the cipher keystream when they are done. To skip ahead in the keystream
 // you can manuallly set the counter, or use DecryptBytesInPlace with a
-// blockIndex which will set the counter automatically.
+// blockIndex which will set the counter automatically. Note that this cipher is
+// not safe for updating/editing chunks: encrypting different data using the
+// same keystream will reveal the XOR of the data encrypted.
 type xChaCha20CipherKey struct {
 	*chacha.Cipher
 	nonce [chacha.XNonceSize]byte
@@ -53,6 +55,10 @@ func generateXChaCha20CipherKey() xChaCha20CipherKey {
 
 // newXChaCha20Key creates a new xChaCha20CipherKey from a given entropy.
 func newXChaCha20CipherKey(entropy []byte) (xChaCha20CipherKey, error) {
+	if len(entropy) != chacha.KeySize+chacha.XNonceSize {
+		return errors.New("Incorrect entropy length for XChaCha20 cipher")
+	}
+
 	// Copy entropy into key and nonce values.
 	var key [chacha.KeySize]byte
 	var nonce [chacha.XNonceSize]byte
