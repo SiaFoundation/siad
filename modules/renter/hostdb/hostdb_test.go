@@ -41,12 +41,12 @@ type hdbTester struct {
 func bareHostDB() *HostDB {
 	hdb := &HostDB{
 		allowance:      modules.DefaultAllowance,
-		log:            persist.NewLogger(ioutil.Discard),
+		staticLog:      persist.NewLogger(ioutil.Discard),
 		knownContracts: make(map[string]contractInfo),
 	}
 	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
-	hdb.hostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
-	hdb.filteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
+	hdb.staticHostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
+	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
 }
 
@@ -212,7 +212,7 @@ func TestRandomHosts(t *testing.T) {
 	for i := 0; i < nEntries; i++ {
 		entry := makeHostDBEntry()
 		entries[entry.PublicKey.String()] = entry
-		err := hdbt.hdb.filteredTree.Insert(entry)
+		err := hdbt.hdb.staticFilteredTree.Insert(entry)
 		if err != nil {
 			t.Error(err)
 		}
@@ -418,7 +418,7 @@ func TestRemoveNonexistingHostFromHostTree(t *testing.T) {
 	}
 
 	// Remove a host that doesn't exist from the tree.
-	err = hdbt.hdb.hostTree.Remove(types.SiaPublicKey{})
+	err = hdbt.hdb.staticHostTree.Remove(types.SiaPublicKey{})
 	if err == nil {
 		t.Fatal("There should be an error, but not a panic:", err)
 	}
@@ -440,7 +440,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 
 	// create a HostDBEntry and add it to the tree
 	host := makeHostDBEntry()
-	err = hdbt.hdb.hostTree.Insert(host)
+	err = hdbt.hdb.staticHostTree.Insert(host)
 	if err != nil {
 		t.Error(err)
 	}
