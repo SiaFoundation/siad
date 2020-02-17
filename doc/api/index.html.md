@@ -4114,14 +4114,29 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-
 downloads a skylink using http streaming. This call blocks until the data is
 received.
 
-### Path Parameters // TODO: support for offset+len when ready as optional parameters
+### Path Parameters 
+### Required
+**skylink** | string  
+The skylink that should be downloaded.
 
+### Query String Parameters
 ### OPTIONAL
 
-### Response
+**attachment** | bool  
+If 'attachment' is set to true, the Content-Disposition http header will be set
+to 'attachment' instead of 'inline'. This will cause web browsers to download
+the file as though it is an attachment instead of rendering it.
 
-standard success or error response. See [standard
-responses](#standard-responses).
+### Response Header
+
+**Skynet-File-Metadata** | SkyfileMetadata
+
+The header field "Skynet-FileMetadata" will be set such that it has an encoded
+json object which matches the modules.SkyfileMetadata struct.
+
+### Response Body
+
+The response body is the raw data for the file.
 
 ## /skynet/skyfile/*siapath* [POST]
 > curl example  
