@@ -4114,14 +4114,29 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-
 downloads a skylink using http streaming. This call blocks until the data is
 received.
 
-### Path Parameters // TODO: support for offset+len when ready as optional parameters
+### Path Parameters 
+### Required
+**skylink** | string  
+The skylink that should be downloaded.
 
+### Query String Parameters
 ### OPTIONAL
 
-### Response
+**attachment** | bool  
+If 'attachment' is set to true, the Content-Disposition http header will be set
+to 'attachment' instead of 'inline'. This will cause web browsers to download
+the file as though it is an attachment instead of rendering it.
 
-standard success or error response. See [standard
-responses](#standard-responses).
+### Response Header
+
+**Skynet-File-Metadata** | SkyfileMetadata
+
+The header field "Skynet-FileMetadata" will be set such that it has an encoded
+json object which matches the modules.SkyfileMetadata struct.
+
+### Response Body
+
+The response body is the raw data for the file.
 
 ## /skynet/skyfile/*siapath* [POST]
 > curl example  
@@ -4179,16 +4194,36 @@ Whether or not to tread the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
+### Http Headers
+### OPTIONAL
+**Content-Disposition** | string  
+If the filename is set in the Content-Disposition field, that filename will be
+used as the filename of the object being uploaded. If both the content
+disposition are set, and the query string parameter are set for the filename,
+the query string parameter will get priority.
+
+For more details on setting Content-Disposition:
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+
 ### JSON Response
 > JSON Response Example
 ```go
 {
-"skylink":"AdW6wAkbZrRz1Tesm8VD_FDQ32Ex15i9HZpYlyE6BJNqsABkAAAAAAAAAAEK" // string
+"skylink":    "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg" // string
+"merkleroot": "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+"bitfield":   2048 // int
 }
 ```
 **skylink** | string  
 This is the skylink that can be used with the `/skynet/skylink` GET endpoint to
 retrieve the file that has been uploaded.
+
+**merkleroot** | hash  
+This is the hash that is encoded into the skylink.
+
+**bitfield** | int  
+This is the bitfield that gets encoded into the skylink. The bitfield contains a
+version, an offset and a length in a heavily compressed and optimized format.
 
 # Transaction Pool
 
