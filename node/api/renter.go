@@ -1843,8 +1843,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	var reader io.Reader
 	var filename string
 
-	header := w.Header()
-	if strings.HasPrefix(header.Get("Content-Type"), "multipart/form-data;") {
+	if strings.HasPrefix(req.Header.Get("Content-Type"), "multipart/form-data;") {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 
 		file, header, err := req.FormFile("file")
@@ -1864,7 +1863,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// If there is no filename provided as a query param, check the content
 	// disposition field.
 	if filename == "" {
-		_, params, err := mime.ParseMediaType(header.Get("Content-Disposition"))
+		_, params, err := mime.ParseMediaType(req.Header.Get("Content-Disposition"))
 		// Ignore any errors.
 		if err == nil {
 			filename = params[filename]
