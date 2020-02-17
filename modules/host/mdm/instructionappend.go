@@ -95,7 +95,7 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 
 // Cost returns the Cost of this append instruction.
 func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
-	cost, refund := WriteCost(i.staticState.priceTable, modules.SectorSize)
+	cost, refund := AppendCost(i.staticState.priceTable)
 	return cost, refund, nil
 }
 
