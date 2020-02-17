@@ -57,6 +57,7 @@ func TestSkynet(t *testing.T) {
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               force,
+		Root:                false,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: filename,

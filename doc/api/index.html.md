@@ -4183,12 +4183,21 @@ this field is not set, the siapath will be interpreted as relative to
 > JSON Response Example
 ```go
 {
-"skylink":"AdW6wAkbZrRz1Tesm8VD_FDQ32Ex15i9HZpYlyE6BJNqsABkAAAAAAAAAAEK" // string
+"skylink":    "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg" // string
+"merkleroot": "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+"bitfield":   2048 // int
 }
 ```
 **skylink** | string  
 This is the skylink that can be used with the `/skynet/skylink` GET endpoint to
 retrieve the file that has been uploaded.
+
+**merkleroot** | hash  
+This is the hash that is encoded into the skylink.
+
+**bitfield** | int  
+This is the bitfield that gets encoded into the skylink. The bitfield contains a
+version, an offset and a length in a heavily compressed and optimized format.
 
 # Transaction Pool
 

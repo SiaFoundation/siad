@@ -249,9 +249,9 @@ type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
 	SkynetSkyfileHandlerPOST struct {
-		Skylink string `json:"skylink"`
+		Skylink    string      `json:"skylink"`
 		MerkleRoot crypto.Hash `json:"merkleroot"`
-		Bitfield uint16 `json:"bitfield"`
+		Bitfield   uint16      `json:"bitfield"`
 	}
 )
 
@@ -1943,9 +1943,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
-			Skylink: skylink.String(),
+			Skylink:    skylink.String(),
 			MerkleRoot: skylink.MerkleRoot(),
-			Bitfield: skylink.Bitfield(),
+			Bitfield:   skylink.Bitfield(),
 		})
 		return
 	}
@@ -1967,9 +1967,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
-		Skylink: skylink.String(),
+		Skylink:    skylink.String(),
 		MerkleRoot: skylink.MerkleRoot(),
-		Bitfield: skylink.Bitfield(),
+		Bitfield:   skylink.Bitfield(),
 	})
 }
 
