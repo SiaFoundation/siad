@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -1842,15 +1843,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	var reader io.Reader
 	var filename string
 
-	hct := req.Header.Get("Content-Type")
-	if strings.HasPrefix(hct, "multipart/form-data;") {
+	header := w.Header()
+	if strings.HasPrefix(header.Get("Content-Type"), "multipart/form-data;") {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-
-		err := req.ParseMultipartForm(1 << 27) // 128MiB
-		if err != nil {
-			WriteError(w, Error{"failed to parse multipart form"}, http.StatusBadRequest)
-			return
-		}
 
 		file, header, err := req.FormFile("file")
 		if err != nil {
@@ -1861,10 +1856,23 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		reader = file
 		filename = header.Filename
-
 	} else {
 		reader = req.Body
 		filename = queryForm.Get("filename")
+	}
+
+	// If there is no filename provided as a query param, check the content
+	// disposition field.
+	if filename == "" {
+		_, params, err := mime.ParseMediaType(header.Get("Content-Disposition"))
+		// Ignore any errors.
+		if err == nil {
+			filename = params[filename]
+		}
+	}
+	if filename == "" {
+		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		return
 	}
 
 	// Call the renter to upload the file and create a skylink.
