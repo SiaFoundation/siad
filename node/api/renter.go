@@ -1,8 +1,8 @@
 package api
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -1944,7 +1944,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
 		return
 	}
-
 
 	lfm := modules.SkyfileMetadata{
 		Filename: filename,
