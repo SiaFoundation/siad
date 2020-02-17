@@ -2,9 +2,12 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
@@ -82,6 +85,24 @@ func TestSkynet(t *testing.T) {
 		t.Fatal("mismatch")
 	}
 	t.Log("Example skylink:", skylink)
+	// Check the redundancy on the file.
+	skynetUploadPath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(25, 250*time.Millisecond, func() error {
+		uploadedFile, err := r.RenterFileRootGet(skynetUploadPath)
+		if err != nil {
+			return err
+		}
+		if uploadedFile.File.Redundancy != 2 {
+			return fmt.Errorf("bad redundancy: %v", uploadedFile.File.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Try to download the file behind the skylink.
 	fetchedData, err := r.SkynetSkylinkGet(skylink)
@@ -142,7 +163,7 @@ func TestSkynet(t *testing.T) {
 		SiaPath:             rootUploadSiaPath,
 		Force:               rootForce,
 		Root:                true,
-		BaseChunkRedundancy: 2,
+		BaseChunkRedundancy: 3,
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: rootFilename,
 			Mode:     0600, // Intentionally does not match any defaults.
@@ -163,6 +184,19 @@ func TestSkynet(t *testing.T) {
 	}
 	if len(rootRdg.Files) != 1 {
 		t.Fatal("expecting a file to be in the root folder after uploading")
+	}
+	err = build.Retry(25, 250*time.Millisecond, func() error {
+		uploadedFile, err := r.RenterFileRootGet(rootUploadSiaPath)
+		if err != nil {
+			return err
+		}
+		if uploadedFile.File.Redundancy != 3 {
+			return fmt.Errorf("bad redundancy: %v", uploadedFile.File.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// TODO: Check that the mode was set correctly after fetching.
