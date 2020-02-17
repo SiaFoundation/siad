@@ -67,7 +67,6 @@ type (
 // bucket in a sector.
 //
 //   a. The first largest bucket should be chosen.
-//   NOTE: The selection strategy may change if this proves inefficient.
 //
 //   b. The first byte of the file must be aligned to a certain multiple of KiB,
 //   based on its size.
@@ -98,9 +97,6 @@ type (
 func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 	filesSorted := sortByFileSizeDescending(files)
 
-	// NOTE: based on performance of this we may move to a more suitable data
-	// structure e.g. skip lists.
-	//
 	// We can end up with a maximum of 2 buckets created for every file packed,
 	// so set the capacity accordingly.
 	buckets := bucketList(make([]*bucket, 0, 2*len(files)))

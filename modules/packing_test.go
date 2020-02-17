@@ -1,9 +1,13 @@
 package modules
 
 import (
+	"fmt"
+	"os"
 	"reflect"
 	"testing"
+	"text/tabwriter"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -70,7 +74,7 @@ func TestPackFiles(t *testing.T) {
 				"test2": 4 * mib,
 				"test3": 1 * mib,
 				"test4": 2 * mib,
-				"test5": 2000 * kib,
+				"test5": 2e3 * kib,
 				"test6": 1,
 				"test7": 2,
 			},
@@ -95,7 +99,7 @@ func TestPackFiles(t *testing.T) {
 				},
 				{
 					FileID:       "test5",
-					Size:         2000 * kib,
+					Size:         2e3 * kib,
 					SectorIndex:  2,
 					SectorOffset: 2 * mib,
 				},
@@ -109,13 +113,13 @@ func TestPackFiles(t *testing.T) {
 					FileID:       "test7",
 					Size:         2,
 					SectorIndex:  2,
-					SectorOffset: 2*mib + 2000*kib,
+					SectorOffset: 2*mib + 2e3*kib,
 				},
 				{
 					FileID:       "test6",
 					Size:         1,
 					SectorIndex:  2,
-					SectorOffset: 2*mib + 2004*kib,
+					SectorOffset: 2*mib + 2_004*kib,
 				},
 			},
 			num: 3,
@@ -138,7 +142,7 @@ func TestPackFilesRandom(t *testing.T) {
 	// Change the scaling as well.
 	alignmentScaling = uint64(1 << alignmentScalingStandard)
 
-	numFiles := 5_000
+	numFiles := int(5e3)
 
 	files := randomFileMap(numFiles)
 
@@ -199,13 +203,58 @@ func benchmarkPackFiles(i int, b *testing.B) {
 }
 
 // BenchPackFilesRandom benchmarks packing 1k random files.
-func BenchmarkPackFiles1000(b *testing.B) { benchmarkPackFiles(1_000, b) }
+func BenchmarkPackFiles1000(b *testing.B) { benchmarkPackFiles(1e3, b) }
 
 // BenchPackFilesRandom benchmarks packing 10k random files.
-func BenchmarkPackFiles10000(b *testing.B) { benchmarkPackFiles(10_000, b) }
+func BenchmarkPackFiles10000(b *testing.B) { benchmarkPackFiles(10e3, b) }
 
 // BenchPackFilesRandom benchmarks packing 100k random files.
-func BenchmarkPackFiles100000(b *testing.B) { benchmarkPackFiles(100_000, b) }
+func BenchmarkPackFiles100000(b *testing.B) { benchmarkPackFiles(100e3, b) }
+
+// TestPackingUtilization generates a report of average % utilization (space
+// used / total space * 100) for large numbers of input files, randomly and
+// uniformly-distributed in size.
+func TestPackingUtilization(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	iterations := 5
+	fileAmounts := []int{10, 100, 1e3, 2e3, 5e3, 10e3, 20e3}
+
+	fmt.Fprintln(w, "TestPackingUtilization Report:")
+	fmt.Fprintln(w, "------- \t -------------- \t ------------------")
+	fmt.Fprintln(w, "# Files \t Avg. # Sectors \t Avg. % Utilization")
+	fmt.Fprintln(w, "------- \t -------------- \t ------------------")
+
+	for _, amount := range fileAmounts {
+		sumSectors := float64(0)
+		sumUtil := float64(0)
+
+		for i := 0; i < iterations; i++ {
+			files := randomFileMap(amount)
+			placements, numSectors, err := PackFiles(files)
+			if err != nil {
+				t.Errorf("Error: %v", err)
+			}
+
+			totalSpace := uint64(0)
+			for _, p := range placements {
+				totalSpace += p.Size
+			}
+			utilization := float64(totalSpace) / float64(numSectors*SectorSize)
+			sumUtil += utilization
+			sumSectors += float64(numSectors)
+		}
+
+		avgSectors := sumSectors / float64(iterations)
+		avgUtil := sumUtil / float64(iterations)
+		fmt.Fprintln(w, amount, "\t", avgSectors, "\t", avgUtil*100)
+	}
+
+	w.Flush()
+}
 
 // randomFileMap generates a map of random files for testing purposes.
 func randomFileMap(numFiles int) map[string]uint64 {
