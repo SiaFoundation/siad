@@ -4179,6 +4179,17 @@ Whether or not to tread the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
+### Http Headers
+### OPTIONAL
+**Content-Disposition** | string  
+If the filename is set in the Content-Disposition field, that filename will be
+used as the filename of the object being uploaded. If both the content
+disposition are set, and the query string parameter are set for the filename,
+the query string parameter will get priority.
+
+For more details on setting Content-Disposition:
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+
 ### JSON Response
 > JSON Response Example
 ```go

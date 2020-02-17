@@ -105,7 +105,7 @@ func TestSkynet(t *testing.T) {
 	}
 
 	// Try to download the file behind the skylink.
-	fetchedData, err := r.SkynetSkylinkGet(skylink)
+	fetchedData, metadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +113,12 @@ func TestSkynet(t *testing.T) {
 		t.Error("upload and download doesn't match")
 		t.Log(data)
 		t.Log(fetchedData)
+	}
+	if metadata.Mode != 0640 {
+		t.Error("bad mode")
+	}
+	if metadata.Filename != filename {
+		t.Error("bad filename")
 	}
 
 	// Try to download the file using the ReaderGet method.
@@ -199,8 +205,6 @@ func TestSkynet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// TODO: Check that the mode was set correctly after fetching.
-
 	// Upload another skyfile, this time ensure that the skyfile is more than
 	// one sector.
 	largeData := fastrand.Bytes(int(modules.SectorSize*2) + siatest.Fuzz())
@@ -231,7 +235,7 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeFetchedData, err := r.SkynetSkylinkGet(largeSkylink)
+	largeFetchedData, _, err := r.SkynetSkylinkGet(largeSkylink)
 	if err != nil {
 		t.Fatal(err)
 	}

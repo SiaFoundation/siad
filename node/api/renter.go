@@ -2,7 +2,9 @@ package api
 
 import (
 	"fmt"
+	"encoding/json"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -1759,6 +1761,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// Convert the metadata to a string.
+	encMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
 	// Set Content-Disposition header, if 'attachment' is true, set the
 	// disposition-type to attachment, otherwise we inline it.
 	var cdh string
@@ -1768,6 +1777,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(metadata.Filename))
 	}
 	w.Header().Set("Content-Disposition", cdh)
+	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
@@ -1919,6 +1929,23 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 	}
+
+	// If there is no filename provided as a query param, check the content
+	// disposition field.
+	if filename == "" {
+		header := w.Header()
+		_, params, err := mime.ParseMediaType(header.Get("Content-Disposition"))
+		// Ignore any errors.
+		if err == nil {
+			filename = params[filename]
+		}
+	}
+	if filename == "" {
+		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		return
+	}
+
+
 	lfm := modules.SkyfileMetadata{
 		Filename: filename,
 		Mode:     mode,
