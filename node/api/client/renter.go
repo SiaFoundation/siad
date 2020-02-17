@@ -774,7 +774,7 @@ func (c *Client) SkynetSkylinkPinPost(skylink string, lup modules.SkyfileUploadP
 
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
 // resulting skylink is returned along with an error.
-func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters) (string, error) {
+func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)
@@ -791,16 +791,16 @@ func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters) (string,
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	_, resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to "+query+" failed")
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the skylink.
 	var rshp api.SkynetSkyfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to parse the skylink upload response")
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to parse the skylink upload response")
 	}
-	return rshp.Skylink, err
+	return rshp.Skylink, rshp, err
 }
 
 // SkynetConvertSiafileToSkyfilePost uses the /skynet/skyfile endpoint to

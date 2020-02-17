@@ -121,6 +121,11 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 	return offset, fetchSize, nil
 }
 
+// Bitfield returns the bitfield of a skylink.
+func (sl *Skylink) Bitfield() uint16 {
+	return sl.bitfield
+}
+
 // LoadString converts from a string and loads the result into sl.
 func (sl *Skylink) LoadString(s string) error {
 	// Trim any parameters that may exist after an ampersand. Eventually, it

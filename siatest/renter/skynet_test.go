@@ -65,9 +65,20 @@ func TestSkynet(t *testing.T) {
 
 		Reader: reader,
 	}
-	skylink, err := r.SkynetSkyfilePost(lup)
+	skylink, rshp, err := r.SkynetSkyfilePost(lup)
 	if err != nil {
 		t.Fatal(err)
+	}
+	var realSkylink modules.Skylink
+	err = realSkylink.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rshp.MerkleRoot != realSkylink.MerkleRoot() {
+		t.Fatal("mismatch")
+	}
+	if rshp.Bitfield != realSkylink.Bitfield() {
+		t.Fatal("mismatch")
 	}
 	t.Log("Example skylink:", skylink)
 
@@ -138,7 +149,7 @@ func TestSkynet(t *testing.T) {
 
 		Reader: rootReader,
 	}
-	_, err = r.SkynetSkyfilePost(rootLup)
+	_, _, err = r.SkynetSkyfilePost(rootLup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +192,7 @@ func TestSkynet(t *testing.T) {
 
 		Reader: largeReader,
 	}
-	largeSkylink, err := r.SkynetSkyfilePost(largeLup)
+	largeSkylink, _, err := r.SkynetSkyfilePost(largeLup)
 	if err != nil {
 		t.Fatal(err)
 	}

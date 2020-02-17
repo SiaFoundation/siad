@@ -250,6 +250,8 @@ type (
 	// /skynet/ POST endpoint has been used.
 	SkynetSkyfileHandlerPOST struct {
 		Skylink string `json:"skylink"`
+		MerkleRoot crypto.Hash `json:"merkleroot"`
+		Bitfield uint16 `json:"bitfield"`
 	}
 )
 
@@ -1750,6 +1752,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Fetch the stream.
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
@@ -1941,6 +1944,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink: skylink.String(),
+			MerkleRoot: skylink.MerkleRoot(),
+			Bitfield: skylink.Bitfield(),
 		})
 		return
 	}
@@ -1963,6 +1968,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink: skylink.String(),
+		MerkleRoot: skylink.MerkleRoot(),
+		Bitfield: skylink.Bitfield(),
 	})
 }
 
