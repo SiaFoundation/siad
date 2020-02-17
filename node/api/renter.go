@@ -1954,17 +1954,18 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	} else {
 		reader = req.Body
 		filename = queryForm.Get("filename")
-	}
 
-	// If there is no filename provided as a query param, check the content
-	// disposition field.
-	if filename == "" {
-		_, params, err := mime.ParseMediaType(cd)
-		// Ignore any errors.
-		if err == nil {
-			filename = params[filename]
+		// If there is no filename provided as a query param, check the content
+		// disposition field.
+		if filename == "" {
+			_, params, err := mime.ParseMediaType(cd)
+			// Ignore any errors.
+			if err == nil {
+				filename = params[filename]
+			}
 		}
 	}
+
 	if filename == "" {
 		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
 		return
