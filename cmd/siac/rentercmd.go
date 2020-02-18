@@ -255,7 +255,7 @@ on top of Sia.`,
 		Short: "Blacklist a skylink from skynet.",
 		Long: `Blacklist a skylink from skynet. Use the --remove flag to
 remove a skylink from the blacklist.`,
-		Run: skynetremovecmd,
+		Run: skynetblacklistcmd,
 	}
 
 	skynetDownloadCmd = &cobra.Command{
