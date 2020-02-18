@@ -72,6 +72,9 @@ pkgs = ./build \
 # when running a 'make release' command.
 release-pkgs = ./cmd/siac ./cmd/siad
 
+# lockcheckpkgs are the packages that are checked for locking violations.
+lockcheckpkgs = ./modules/renter/hostdb
+
 # run determines which tests run when running any variation of 'make test'.
 run = .
 
@@ -103,14 +106,18 @@ lint:
 	go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
 	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
+	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
 
 lint-analysis:
 	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
+	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
+
 
 # lint-all runs golangci-lint (which includes golint and other linters), the
 # custom analyzers, and also a markdown spellchecker.
 lint-all: markdown-spellcheck
 	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
+	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
 	golangci-lint run -c .golangci.yml
 
 # spellcheck checks for misspelled words in comments or strings.

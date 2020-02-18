@@ -37,7 +37,7 @@ func TestUpdateEntry(t *testing.T) {
 	// Try inserting the first entry. Result in the host tree should be a host
 	// with a scan history length of two.
 	hdbt.hdb.updateEntry(entry1, nil)
-	updatedEntry, exists := hdbt.hdb.hostTree.Select(entry1.PublicKey)
+	updatedEntry, exists := hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
@@ -54,7 +54,7 @@ func TestUpdateEntry(t *testing.T) {
 	// Try inserting the second entry, but with an error. Results should largely
 	// be the same.
 	hdbt.hdb.updateEntry(entry2, someErr)
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry2.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry2.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
@@ -72,7 +72,7 @@ func TestUpdateEntry(t *testing.T) {
 	// entries, and the timestamps should be strictly increasing.
 	hdbt.hdb.updateEntry(entry1, nil)
 	hdbt.hdb.updateEntry(entry1, nil)
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry1.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
@@ -91,7 +91,7 @@ func TestUpdateEntry(t *testing.T) {
 
 	// Add a non-successful scan and verify that it is registered properly.
 	hdbt.hdb.updateEntry(entry1, someErr)
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry1.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
@@ -105,17 +105,17 @@ func TestUpdateEntry(t *testing.T) {
 	// Prefix an invalid entry to have a scan from more than maxHostDowntime
 	// days ago. At less than minScans total, the host should not be deleted
 	// upon update.
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry2.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry2.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
 	updatedEntry.ScanHistory = append([]modules.HostDBScan{{}}, updatedEntry.ScanHistory...)
-	err = hdbt.hdb.hostTree.Modify(updatedEntry)
+	err = hdbt.hdb.staticHostTree.Modify(updatedEntry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Entry should still exist.
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry2.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry2.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
@@ -125,19 +125,19 @@ func TestUpdateEntry(t *testing.T) {
 		hdbt.hdb.updateEntry(entry2, someErr)
 	}
 	// The entry should no longer exist in the hostdb, wiped for being offline.
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry2.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry2.PublicKey)
 	if exists {
 		t.Fatal("entry should have been purged for being offline for too long")
 	}
 
 	// Trigger compression on entry1 by adding a past scan and then adding
 	// unsuccessful scans until compression happens.
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry1.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
 	updatedEntry.ScanHistory = append([]modules.HostDBScan{{Timestamp: time.Now().Add(maxHostDowntime * -1).Add(time.Hour * -1)}}, updatedEntry.ScanHistory...)
-	err = hdbt.hdb.hostTree.Modify(updatedEntry)
+	err = hdbt.hdb.staticHostTree.Modify(updatedEntry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestUpdateEntry(t *testing.T) {
 		hdbt.hdb.updateEntry(entry1, someErr)
 	}
 	// The result should be compression, and not the entry getting deleted.
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry1.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("entry should not have been purged for being offline for too long")
 	}
@@ -160,18 +160,18 @@ func TestUpdateEntry(t *testing.T) {
 	}
 
 	// Repeat triggering compression, but with uptime this time.
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry1.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
 	updatedEntry.ScanHistory = append([]modules.HostDBScan{{Success: true, Timestamp: time.Now().Add(time.Hour * 24 * 11 * -1)}}, updatedEntry.ScanHistory...)
-	err = hdbt.hdb.hostTree.Modify(updatedEntry)
+	err = hdbt.hdb.staticHostTree.Modify(updatedEntry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	hdbt.hdb.updateEntry(entry1, someErr)
 	// The result should be compression, and not the entry getting deleted.
-	updatedEntry, exists = hdbt.hdb.hostTree.Select(entry1.PublicKey)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("entry should not have been purged for being offline for too long")
 	}

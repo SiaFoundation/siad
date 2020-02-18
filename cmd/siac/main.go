@@ -303,7 +303,7 @@ func main() {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd, skynetBlacklistCmd)
+	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd, skynetBlacklistCmd, skynetPinCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
