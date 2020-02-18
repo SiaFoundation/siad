@@ -253,7 +253,8 @@ type (
 		Skylink string `json:"skylink"`
 	}
 
-	// SkynetBlacklistPOST contains the information
+	// SkynetBlacklistPOST contains the information needed for the
+	// /skynet/blacklist POST endpoint to be called
 	SkynetBlacklistPOST struct {
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
@@ -1930,6 +1931,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// TODO - how to handle blacklisted skylink? Should we then submit the
+	// siafile deletion from here?
 	skylink, err := api.renter.CreateSkylinkFromSiafile(lup, convertPath)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)

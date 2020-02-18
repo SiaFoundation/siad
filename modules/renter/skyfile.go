@@ -317,6 +317,11 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 		return modules.Skylink{}, errors.AddContext(err, "unable to build skylink")
 	}
 
+	// Check if skylink is blacklisted
+	if r.staticSkynetBlacklist.Blacklisted(skylink) {
+		return modules.Skylink{}, ErrSkylinkBlacklisted
+	}
+
 	// Add the skylink to the siafiles.
 	err1 := fileNode.AddSkylink(skylink)
 	err2 := newFileNode.AddSkylink(skylink)
@@ -562,8 +567,21 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
+	var skylink modules.Skylink
 	if largeFile {
-		return r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
+		skylink, err = r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
+	} else {
+		skylink, err = r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
 	}
-	return r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
+
+	// Check if skylink is blacklist
+	if !r.staticSkynetBlacklist.Blacklisted(skylink) {
+		return skylink, nil
+	}
+
+	// Skylink must have been blacklisted by another node, delete the file and
+	// return an error
+	//
+	// TODO - how do you delete a skyfile?
+	return modules.Skylink{}, ErrSkylinkBlacklisted
 }

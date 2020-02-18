@@ -15,20 +15,20 @@ const (
 	// initialLength is how big the persistence file is on initialization
 	initialLength = int64(43)
 
-	// trueLength is the length of a persisLink when blacklist is set to true
+	// trueLength is the length of a persistLink when blacklist is set to true
 	trueLength = int64(76)
 
-	// trueLength is the length of a persisLink when blacklist is set to false
+	// falseLength is the length of a persistLink when blacklist is set to false
 	falseLength = int64(77)
 
 	// filename is the name of the persist file
 	filename = "skynetblacklist.json"
 
 	// metadataHeader is the header of the metadata for the persist file
-	metadataHeader = "SkyNet Blacklist Persistence"
+	metadataHeader = "Skynet Blacklist"
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = "v1.3.0"
+	metadataVersion = "v1.4.3"
 )
 
 // persistLink is the information about the link that is persisted on disk
@@ -55,7 +55,7 @@ func encodeMetadata(header, version string, length int64) (*bytes.Buffer, error)
 }
 
 // decodeMetada decodes the metadata of the persistence file
-func decodeMetadata(f *os.File, dec *json.Decoder) (header, version string, length int64, err error) {
+func decodeMetadata(dec *json.Decoder) (header, version string, length int64, err error) {
 	if decodeErr := dec.Decode(&header); err != nil {
 		err = errors.AddContext(decodeErr, "unable to read header from persisted json object file")
 		return
@@ -81,12 +81,9 @@ func decodeMetadata(f *os.File, dec *json.Decoder) (header, version string, leng
 
 // writeAtAndSync writes at an offset and fsyncs the file
 func writeAtAndSync(f *os.File, bytes []byte, offset int64) error {
-	n, err := f.WriteAt(bytes, offset)
+	_, err := f.WriteAt(bytes, offset)
 	if err != nil {
 		return errors.AddContext(err, "unable to write bytes at offset")
-	}
-	if n != len(bytes) {
-		return errors.New("number of bytes written doesn't equal length of bytes")
 	}
 	err = f.Sync()
 	if err != nil {
@@ -98,7 +95,7 @@ func writeAtAndSync(f *os.File, bytes []byte, offset int64) error {
 // initPersist initializes the persistence of the SkynetBlacklist
 func (sb *SkynetBlacklist) initPersist() error {
 	// Initialize the persistence directory
-	err := os.MkdirAll(sb.staticPersistDir, 0700)
+	err := os.MkdirAll(sb.staticPersistDir, modules.DefaultDirPerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to make persistence directory")
 	}
@@ -112,7 +109,7 @@ func (sb *SkynetBlacklist) initPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, 0600)
+	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -148,7 +145,7 @@ func (sb *SkynetBlacklist) load() error {
 
 	// Decode the metadata to find the length of the file
 	dec := json.NewDecoder(f)
-	_, _, length, err := decodeMetadata(f, dec)
+	_, _, length, err := decodeMetadata(dec)
 	if err != nil {
 		return errors.AddContext(err, "unable to decode metadata")
 	}
@@ -232,7 +229,7 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	}
 
 	// Open file
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, 0755)
+	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -240,7 +237,7 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 
 	// Decode the length
 	dec := json.NewDecoder(f)
-	header, version, length, err := decodeMetadata(f, dec)
+	header, version, length, err := decodeMetadata(dec)
 	if err != nil {
 		return errors.AddContext(err, "unable to decode metadata")
 	}
