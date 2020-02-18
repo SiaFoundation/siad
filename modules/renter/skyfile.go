@@ -319,7 +319,8 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 
 	// Check if skylink is blacklisted
 	if r.staticSkynetBlacklist.Blacklisted(skylink) {
-		return modules.Skylink{}, ErrSkylinkBlacklisted
+		// Skylink is blacklisted, return error and try and delete file
+		return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, r.DeleteFile(lup.SiaPath))
 	}
 
 	// Add the skylink to the siafiles.
@@ -581,7 +582,6 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 
 	// Skylink must have been blacklisted by another node, delete the file and
 	// return an error
-	//
-	// TODO - how do you delete a skyfile?
-	return modules.Skylink{}, ErrSkylinkBlacklisted
+	err = r.DeleteFile(lup.SiaPath)
+	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, err)
 }

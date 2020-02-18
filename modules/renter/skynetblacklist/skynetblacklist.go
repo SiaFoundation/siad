@@ -25,7 +25,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	}
 
 	// Initialize the persistence of the blacklist
-	err := sb.initPersist()
+	err := sb.callInitPersist()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to initialize the skynet blacklist persistence")
 	}
@@ -39,12 +39,4 @@ func (sb *SkynetBlacklist) Blacklisted(skylink modules.Skylink) bool {
 	defer sb.mu.Unlock()
 	_, ok := sb.merkleroots[skylink.MerkleRoot()]
 	return ok
-}
-
-// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
-func (sb *SkynetBlacklist) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-
-	return sb.update(additions, removals)
 }

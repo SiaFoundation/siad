@@ -346,6 +346,16 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
 	}
 
+	// Set the upload bool to true and try and upload. Should also fail
+	// lup.Force = true
+	_, err = r.SkynetSkyfilePost(lup, false)
+	if err == nil {
+		t.Fatal("Expected upload to fail")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	}
+
 	// Remove skylink from blacklist
 	add = []string{}
 	remove = []string{skylink}

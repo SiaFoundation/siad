@@ -13,30 +13,30 @@ import (
 )
 
 const (
-	// metadataPageSize is the number of bytes set aside for the metadata page
-	// on disk
-	metadataPageSize int64 = 4096
-
 	// headerSize is the number of bytes set aside for the header on disk
 	headerSize int64 = 16
-
-	// versionSize is the number of bytes set aside for the version on disk
-	versionSize int64 = 16
 
 	// lengthSize is the number of bytes set aside for the length on disk
 	lengthSize int64 = 8
 
-	// persistLinkSize is the size of a persistLink in the blacklist
-	persistLinkSize int64 = 33
+	// metadataHeader is the header of the metadata for the persist file
+	metadataHeader string = "Skynet Blacklist"
+
+	// metadataPageSize is the number of bytes set aside for the metadata page
+	// on disk
+	metadataPageSize int64 = 4096
+
+	// metadataVersion is the version of the persistence file
+	metadataVersion string = "v1.4.3"
 
 	// persistFile is the name of the persist file
 	persistFile string = "skynetblacklist"
 
-	// metadataHeader is the header of the metadata for the persist file
-	metadataHeader string = "Skynet Blacklist"
+	// persistLinkSize is the size of a persistLink in the blacklist
+	persistLinkSize int64 = 33
 
-	// metadataVersion is the version of the persistence file
-	metadataVersion string = "v1.4.3"
+	// versionSize is the number of bytes set aside for the version on disk
+	versionSize int64 = 16
 )
 
 // persistLink is the information about the link that is persisted on disk
@@ -95,8 +95,15 @@ func (pl *persistLink) unmarshalSia(r io.Reader) error {
 	return d.Err()
 }
 
+// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
+func (sb *SkynetBlacklist) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.update(additions, removals)
+}
+
 // initPersist initializes the persistence of the SkynetBlacklist
-func (sb *SkynetBlacklist) initPersist() error {
+func (sb *SkynetBlacklist) callInitPersist() error {
 	// Initialize the persistence directory
 	err := os.MkdirAll(sb.staticPersistDir, modules.DefaultDirPerm)
 	if err != nil {
@@ -171,6 +178,7 @@ func (sb *SkynetBlacklist) load() error {
 		return errors.AddContext(err, "unable to unmarshal persistLinks")
 	}
 
+	// Add to Skynet Blacklist
 	for _, link := range persistLinks {
 		if !link.Blacklisted {
 			delete(sb.merkleroots, link.MerkleRoot)
@@ -235,13 +243,9 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal length")
 	}
-	if err != nil {
-		return errors.AddContext(err, "unable to decode length")
-	}
 
 	// Append data and sync
-	offset := length
-	_, err = f.WriteAt(buf.Bytes(), offset)
+	_, err = f.WriteAt(buf.Bytes(), length)
 	if err != nil {
 		return errors.AddContext(err, "unable to write bytes at offset")
 	}
