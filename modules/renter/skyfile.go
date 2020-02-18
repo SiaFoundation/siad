@@ -575,6 +575,10 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		skylink, err = r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
 	}
 
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
+	}
+
 	// Check if skylink is blacklist
 	if !r.staticSkynetBlacklist.Blacklisted(skylink) {
 		return skylink, nil

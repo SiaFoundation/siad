@@ -206,6 +206,8 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatalf("incorrect decoded length, got %v expected %v", length, 2*metadataPageSize)
 	}
 
+	// TODO - re-enable verification of the rest of the metadata
+	//
 	// // Try unmarshalling all the metadata
 	// _, err = f.Seek(0, io.SeekStart)
 	// if err != nil {

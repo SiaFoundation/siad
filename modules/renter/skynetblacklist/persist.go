@@ -2,10 +2,12 @@ package skynetblacklist
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -129,7 +131,17 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	// element we can then quickly encode and decode the length without having
 	// to worry about the header or the version
 	metadataBytes := encoding.MarshalAll(metadataPageSize, metadataHeader, metadataVersion)
-	_, err = f.Write(metadataBytes)
+
+	// Sanity check that the metadataBytes are less than the metadatPageSize
+	if int64(len(metadataBytes)) > metadataPageSize {
+		err = fmt.Errorf("metadata is londer than the defined page size %v", len(metadataBytes))
+		build.Critical(err)
+		return err
+	}
+
+	// Write metadata to beginning of file. This is a small amount of data and
+	// so operation is ACID as a single write and sync.
+	_, err = f.WriteAt(metadataBytes, 0)
 	if err != nil {
 		return errors.AddContext(err, "unable to write metadata to file on initialization")
 	}
