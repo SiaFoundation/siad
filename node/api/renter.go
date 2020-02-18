@@ -1933,12 +1933,17 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Parse content type and disposition headers
 	ct := req.Header.Get("Content-Type")
 	cd := req.Header.Get("Content-Disposition")
-	isMultipartContent := strings.HasPrefix(ct, "multipart/form-data;")
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to parse media type: %v", err)}, http.StatusBadRequest)
+		return
+	}
+	isMultipartFormData := strings.HasPrefix(mediaType, "multipart/form-data")
 
 	// Depending on the content type, parse the filename and file reader
 	var reader io.Reader
 	var filename string
-	if isMultipartContent {
+	if isMultipartFormData {
 		file, header, err := req.FormFile("file")
 		if err != nil {
 			WriteError(w, Error{"failed to find a form file"}, http.StatusBadRequest)
@@ -1948,9 +1953,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		reader = file
 		filename = header.Filename
 
-		// Make sure the cors headers is set to allow all requests from all
-		// origins.
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 	} else {
 		reader = req.Body
 		filename = queryForm.Get("filename")
@@ -1970,6 +1972,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
 		return
 	}
+
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Call the renter to upload the file and create a skylink.
 	lfm := modules.SkyfileMetadata{
