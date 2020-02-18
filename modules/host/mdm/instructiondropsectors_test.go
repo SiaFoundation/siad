@@ -12,12 +12,12 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, cost types.Currency, pt modules.RPCPriceTable) (modules.Instruction, types.Currency) {
+func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency) {
 	i := NewDropSectorsInstruction(dataOffset, true)
-	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], dataOffset)
-	cost = cost.Add(MDMDropSectorsCost(pt, 2*modules.SectorSize))
+	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
+	cost, refund := MDMDropSectorsCost(pt, 2*modules.SectorSize)
 
-	return i, cost
+	return i, cost, refund
 }
 
 // TestProgramWithDropSectors tests executing a program with multiple append and swap
@@ -27,53 +27,71 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	mdm := New(host)
 	defer mdm.Stop()
 
-	ss := modules.SectorSize
-
 	// Construct the program.
 
-	dataLen := 2*ss + 8*2
+	dataLen := 2*modules.SectorSize + 8*2
 	programData := make([]byte, dataLen)
 	pt := newTestPriceTable()
-	cost := InitCost(pt, dataLen)
 
-	instruction1 := NewAppendInstruction(0, true)
-	sectorData1 := fastrand.Bytes(int(ss))
-	copy(programData[:ss], sectorData1)
+	instruction1 := NewAppendInstruction(0, false)
+	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
+	copy(programData[:modules.SectorSize], sectorData1)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
-	// TODO: Use AppendCost
-	cost = cost.Add(WriteCost(pt, 0))
+	cost1, refund1 := AppendCost(pt)
 
-	instruction2 := NewAppendInstruction(ss, true)
-	sectorData2 := fastrand.Bytes(int(ss))
-	copy(programData[ss:2*ss], sectorData2)
+	instruction2 := NewAppendInstruction(modules.SectorSize, false)
+	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
+	copy(programData[modules.SectorSize:2*modules.SectorSize], sectorData2)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
-	// TODO: Use AppendCost
-	cost = cost.Add(WriteCost(pt, ss))
+	cost2, refund2 := AppendCost(pt)
 
 	// Don't drop any sectors.
-	instruction3, cost := newDropSectorsInstruction(programData, 2*ss, 0, cost, pt)
+	instruction3, cost3, refund3 := newDropSectorsInstruction(programData, 2*modules.SectorSize, 0, pt)
 
 	// Drop both sectors at once.
-	instruction4, cost := newDropSectorsInstruction(programData, 2*ss, 2, cost, pt)
+	instruction4, cost4, refund4 := newDropSectorsInstruction(programData, 2*modules.SectorSize+8, 2, pt)
+
+	cost := InitCost(pt, dataLen).Add(cost1).Add(cost2).Add(cost3).Add(cost4)
 
 	// Construct the inputs and expected outputs.
-	instructions := []modules.Instruction{instruction1, instruction2, instruction3, instruction4}
+	instructions := []modules.Instruction{
+		instruction1, instruction2,
+		instruction3, instruction4,
+	}
 	testOutputs := []Output{
 		{
-			NewSize:       ss,
-			NewMerkleRoot: cachedMerkleRoot(merkleRoots1),
+			output{
+				NewSize:       modules.SectorSize,
+				NewMerkleRoot: cachedMerkleRoot(merkleRoots1),
+				Proof:         []crypto.Hash{},
+			},
+			cost1, refund1,
 		},
 		{
-			NewSize:       2 * ss,
-			NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+			output{
+				NewSize:       2 * modules.SectorSize,
+				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+				Proof:         []crypto.Hash{},
+			},
+			cost2, refund2,
 		},
+		// 0 sectors dropped.
 		{
-			NewSize:       2 * ss,
-			NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+			output{
+				NewSize:       2 * modules.SectorSize,
+				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+				Proof:         []crypto.Hash{},
+			},
+			cost3, refund3,
 		},
+		// 2 sectors dropped.
 		{
-			NewSize:       0,
-			NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{}),
+			output{
+				NewSize:       0,
+				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{}),
+				Proof:         crypto.MerkleSectorRangeProof(merkleRoots2, 0, 1),
+			},
+			cost4, refund4,
 		},
 	}
 
@@ -88,8 +106,6 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	numOutputs := 0
 	var lastOutput Output
 	for output := range outputs {
-		// print("Checking output ", numOutputs, "\n")
-
 		testOutput := testOutputs[numOutputs]
 
 		if output.Error != testOutput.Error {
@@ -101,9 +117,21 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 		if output.NewMerkleRoot != testOutput.NewMerkleRoot {
 			t.Fatalf("expected merkle root %v, got %v", testOutput.NewMerkleRoot, output.NewMerkleRoot)
 		}
-		// TODO: check Proof
+		// Check proof.
+		for i, proof := range output.Proof {
+			if proof != testOutput.Proof[i] {
+				t.Fatalf("expected proof %v, got %v", proof, output.Proof[i])
+			}
+		}
+		// Check data.
 		if len(output.Output) != len(testOutput.Output) {
 			t.Fatalf("expected returned data to have length %v but was %v", len(testOutput.Output), len(output.Output))
+		}
+		if !output.ExecutionCost.Equals(testOutput.ExecutionCost) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), testOutput.ExecutionCost.HumanString())
+		}
+		if !output.PotentialRefund.Equals(testOutput.PotentialRefund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), testOutput.PotentialRefund.HumanString())
 		}
 
 		numOutputs++
@@ -128,7 +156,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Update variables.
-	numSectors = int(lastOutput.NewSize / ss)
+	numSectors = int(lastOutput.NewSize / modules.SectorSize)
 
 	// Check the storage obligation again.
 	if len(so.sectorMap) != numSectors {

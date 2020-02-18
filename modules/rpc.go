@@ -30,6 +30,10 @@ type RPCPriceTable struct {
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
 
+	// Cost values specific to the DropSectors instruction.
+	DropSectorsBaseCost   types.Currency `json:"dropsectorsbasecost"`
+	DropSectorsLengthCost types.Currency `json:"dropsectorcost"`
+
 	// Cost values specific to the Read instruction.
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`

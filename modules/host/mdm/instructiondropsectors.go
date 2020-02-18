@@ -73,11 +73,11 @@ func (p *Program) staticDecodeDropSectorsInstruction(instruction modules.Instruc
 // 4. Compute the new merkle root of the contract.
 //
 // TODO: finances + proof
-func (i *instructionDropSectors) Execute(prevOutput Output) Output {
+func (i *instructionDropSectors) Execute(prevOutput output) output {
 	// Fetch the data.
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return outputFromError(errors.New("bad input: numSectorsOffset"))
+		return errOutput(errors.New("bad input: numSectorsOffset"))
 	}
 
 	oldSize := prevOutput.NewSize
@@ -85,7 +85,7 @@ func (i *instructionDropSectors) Execute(prevOutput Output) Output {
 
 	// Verify input.
 	if numSectorsDropped > oldNumSectors {
-		return outputFromError(fmt.Errorf("bad input: numSectors %v is greater than the number of sectors in the contract %v", numSectorsDropped, oldNumSectors))
+		return errOutput(fmt.Errorf("bad input: numSectors (%v) is greater than the number of sectors in the contract (%v)", numSectorsDropped, oldNumSectors))
 	}
 
 	newNumSectors := oldNumSectors - numSectorsDropped
@@ -93,27 +93,20 @@ func (i *instructionDropSectors) Execute(prevOutput Output) Output {
 
 	ps := i.staticState
 
-	// Update the roots.
-	droppedRoots := ps.merkleRoots[newNumSectors:]
-	ps.merkleRoots = ps.merkleRoots[:newNumSectors]
+	// Construct the proof, if necessary, before updating the roots.
+	var proof []crypto.Hash
+	if i.staticMerkleProof && numSectorsDropped > 0 {
+		// First dropped sector.
+		start := int(newNumSectors)
+		end := start + 1
+		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, start, end)
+	}
 
-	// Update the storage obligation.
-	ps.sectorsRemoved = append(ps.sectorsRemoved, droppedRoots...)
-
-	// Compute the new merkle root of the contract.
-	newMerkleRoot := cachedMerkleRoot(ps.merkleRoots)
+	newMerkleRoot := ps.sectors.dropSectors(numSectorsDropped)
 
 	// TODO: Update finances.
 
-	// TODO: Construct proof if necessary.
-	var proof []crypto.Hash
-	if i.staticMerkleProof {
-		start := len(ps.merkleRoots)
-		end := start + 1
-		proof = crypto.MerkleSectorRangeProof(ps.merkleRoots, start, end)
-	}
-
-	return Output{
+	return output{
 		NewSize:       newSize,
 		NewMerkleRoot: newMerkleRoot,
 		Proof:         proof,
@@ -121,12 +114,13 @@ func (i *instructionDropSectors) Execute(prevOutput Output) Output {
 }
 
 // Cost returns the Cost of the DropSectors instruction.
-func (i *instructionDropSectors) Cost() (types.Currency, error) {
+func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return types.Currency{}, errors.New("bad input: numSectorsOffset")
+		return types.Currency{}, types.Currency{}, errors.New("bad input: numSectorsOffset")
 	}
-	return MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped), nil
+	cost, refund := MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
+	return cost, refund, nil
 }
 
 // ReadOnly for the 'DropSectors' instruction is 'false'.

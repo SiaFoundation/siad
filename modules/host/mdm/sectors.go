@@ -23,7 +23,8 @@ func newSectors(roots []crypto.Hash) sectors {
 	}
 }
 
-// appendSector adds the data to the program cache.
+// appendSector adds the data to the program cache and returns the new merkle
+// root.
 func (s *sectors) appendSector(sectorData []byte) crypto.Hash {
 	newRoot := crypto.MerkleRoot(sectorData)
 
@@ -33,6 +34,31 @@ func (s *sectors) appendSector(sectorData []byte) crypto.Hash {
 	s.merkleRoots = append(s.merkleRoots, newRoot)
 
 	// Return the new merkle root of the contract.
+	return cachedMerkleRoot(s.merkleRoots)
+}
+
+// dropSectors drops the specified number of sectors and returns the new merkle
+// root.
+func (s *sectors) dropSectors(numSectorsDropped uint64) crypto.Hash {
+	newNumSectors := uint64(len(s.merkleRoots)) - numSectorsDropped
+
+	// Update the roots.
+	droppedRoots := s.merkleRoots[newNumSectors:]
+	s.merkleRoots = s.merkleRoots[:newNumSectors]
+
+	// Update the storage obligation.
+	for _, dropped := range droppedRoots {
+		_, prs := s.sectorsGained[dropped]
+		if prs {
+			// Remove the sectors from the cache.
+			delete(s.sectorsGained, dropped)
+		} else {
+			// Mark the sectors as removed in the cache.
+			s.sectorsRemoved = append(s.sectorsRemoved, dropped)
+		}
+	}
+
+	// Compute the new merkle root of the contract.
 	return cachedMerkleRoot(s.merkleRoots)
 }
 
