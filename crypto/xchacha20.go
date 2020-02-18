@@ -3,6 +3,7 @@ package crypto
 import (
 	"fmt"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"github.com/aead/chacha20/chacha"
@@ -56,7 +57,7 @@ func generateXChaCha20CipherKey() xChaCha20CipherKey {
 // newXChaCha20Key creates a new xChaCha20CipherKey from a given entropy.
 func newXChaCha20CipherKey(entropy []byte) (xChaCha20CipherKey, error) {
 	if len(entropy) != chacha.KeySize+chacha.XNonceSize {
-		return errors.New("Incorrect entropy length for XChaCha20 cipher")
+		return xChaCha20CipherKey{}, errors.New("Incorrect entropy length for XChaCha20 cipher")
 	}
 
 	// Copy entropy into key and nonce values.
