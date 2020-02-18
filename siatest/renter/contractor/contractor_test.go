@@ -2200,8 +2200,8 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 				return err
 			}
 		}
-		// Since this alert casuse can be multiple composed errors it can not
-		// use the IsAlertRegistered helper method
+		// Since this alert cause can be multiple composed errors it can not use
+		// the IsAlertRegistered helper method
 		dag, err := r.DaemonAlertsGet()
 		if err != nil {
 			return err
@@ -2230,8 +2230,8 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 			}
 		}
 		numTries++
-		// Since this alert casuse can be multiple composed errors it can not
-		// use the IsAlertUnregistered helper method
+		// Since this alert cause can be multiple composed errors it can not use
+		// the IsAlertUnregistered helper method
 		dag, err := r.DaemonAlertsGet()
 		if err != nil {
 			return err

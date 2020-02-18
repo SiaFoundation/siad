@@ -358,9 +358,12 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 
 	// Check that the time to finalize and submit the file contract revision
 	// has not already passed.
-	if so.expiration()-revisionSubmissionBuffer <= blockHeight {
-		return errLateRevision
-	}
+	// TODO: safe to ignore? We don't seem to check for this in the regular
+	// renewal code.
+	//	if so.expiration()-revisionSubmissionBuffer <= blockHeight {
+	//		fmt.Println("trololo", so.expiration(), revisionSubmissionBuffer, blockHeight)
+	//		return errLateRevision
+	//	}
 
 	oldFCR := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
