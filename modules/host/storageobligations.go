@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
 
@@ -51,6 +52,16 @@ const (
 	obligationRejected                                  // Indicates that the obligation never got started, no revenue gained or lost.
 	obligationSucceeded                                 // Indicates that the obligation was completed, revenues were gained.
 	obligationFailed                                    // Indicates that the obligation failed, revenues and collateral were lost.
+)
+
+const (
+	// largeContractSize is the threshold at which the largeContractUpdateDelay
+	// kicks in whenever modifyStorageObligation is called.
+	largeContractSize = 2 * 1 << 40 // 2 TiB
+	// largeContractUpdateDelay is the delay applied when calling
+	// modifyStorageObligation on an obligation for a contract with a size
+	// greater than or equal to largeContractSize.
+	largeContractUpdateDelay = 2 * time.Second
 )
 
 var (
@@ -485,6 +496,12 @@ func (h *Host) managedAddStorageObligation(so storageObligation) error {
 // multiple instances of the same virtual sector, the virtural sector will need
 // to appear in 'sectorsRemoved' multiple times. Same with 'sectorsGained'.
 func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []crypto.Hash, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+	// TODO: remove this once the host was optimized for disk i/o
+	// If the contract is too large we delay for a bit to prevent rapid updates
+	// from clogging up disk i/o.
+	if so.fileSize() >= largeContractSize {
+		time.Sleep(largeContractUpdateDelay)
+	}
 	// Sanity check - obligation should be under lock while being modified.
 	soid := so.id()
 	_, exists := h.lockedStorageObligations[soid]
