@@ -18,6 +18,12 @@ const (
 
 // NewSiaMux returns a new SiaMux object
 func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
+	// if the persistDir is empty, point it to the current directory,
+	// os.MkdirAll can not handle empty strings
+	if persistDir == "" {
+		persistDir = "./"
+	}
+
 	// ensure the persist directory exists
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
