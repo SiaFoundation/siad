@@ -18,8 +18,15 @@ const (
 
 // NewSiaMux returns a new SiaMux object
 func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
+	// ensure persistDir is an absolute path, in particular this will transform
+	// an empty path, which os.MkdirAll can not handle, in "/"
+	persistDir, err := filepath.Abs(persistDir)
+	if err != nil {
+		return nil, err
+	}
+
 	// ensure the persist directory exists
-	err := os.MkdirAll(persistDir, 0700)
+	err = os.MkdirAll(persistDir, 0700)
 	if err != nil {
 		return nil, err
 	}
