@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -204,10 +204,6 @@ func dbForEach(b *bolt.Bucket, fn interface{}) error {
 func dbPutSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID, output types.SiacoinOutput) error {
 	return dbPut(tx.Bucket(bucketSiacoinOutputs), id, output)
 }
-func dbGetSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) (output types.SiacoinOutput, err error) {
-	err = dbGet(tx.Bucket(bucketSiacoinOutputs), id, &output)
-	return
-}
 func dbDeleteSiacoinOutput(tx *bolt.Tx, id types.SiacoinOutputID) error {
 	return dbDelete(tx.Bucket(bucketSiacoinOutputs), id)
 }
@@ -217,10 +213,6 @@ func dbForEachSiacoinOutput(tx *bolt.Tx, fn func(types.SiacoinOutputID, types.Si
 
 func dbPutSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID, output types.SiafundOutput) error {
 	return dbPut(tx.Bucket(bucketSiafundOutputs), id, output)
-}
-func dbGetSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID) (output types.SiafundOutput, err error) {
-	err = dbGet(tx.Bucket(bucketSiafundOutputs), id, &output)
-	return
 }
 func dbDeleteSiafundOutput(tx *bolt.Tx, id types.SiafundOutputID) error {
 	return dbDelete(tx.Bucket(bucketSiafundOutputs), id)

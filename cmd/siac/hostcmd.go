@@ -63,11 +63,19 @@ Available settings:
      minstorageprice:           currency / TB / Month
      minuploadbandwidthprice:   currency / TB
 
+     ephemeralaccountexpiry:     seconds
+     maxephemeralaccountbalance: currency
+     maxephemeralaccountrisk:    currency
+
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 
 Durations (maxduration and windowsize) must be specified in either blocks (b),
 hours (h), days (d), or weeks (w). A block is approximately 10 minutes, so one
 hour is six blocks, a day is 144 blocks, and a week is 1008 blocks.
+
+Timeouts (ephemeralaccountexpiry) must be specified in either seconds (s),
+hours (h), days (d), or weeks (w). One hour is 3600 seconds, a day is 86400
+seconds, and a week is 604800 seconds.
 
 For a description of each parameter, see doc/API.md.
 
@@ -106,7 +114,7 @@ Available output types:
 		Use:   "remove [path]",
 		Short: "Remove a storage folder from the host",
 		Long: `Remove a storage folder from the host. Note that this does not delete any
-data; it will instead be distributed across the remaining storage folders.`,
+data; it will instead be distributed across the remaining storage folders unless the force flag is used.`,
 
 		Run: wrap(hostfolderremovecmd),
 	}
@@ -218,6 +226,10 @@ Host Internal Settings:
 	minstorageprice:           %v / TB / Month
 	minuploadbandwidthprice:   %v / TB
 
+	ephemeralaccountexpiry:     %v
+	maxephemeralaccountbalance: %v
+	maxephemeralaccountrisk:    %v
+
 Host Financials:
 	Contract Count:               %v
 	Transaction Fee Compensation: %v
@@ -249,8 +261,8 @@ RPC Stats:
 			es.Version,
 
 			yesNo(is.AcceptingContracts), periodUnits(is.MaxDuration),
-			filesizeUnits(is.MaxDownloadBatchSize),
-			filesizeUnits(is.MaxReviseBatchSize), netaddr,
+			modules.FilesizeUnits(is.MaxDownloadBatchSize),
+			modules.FilesizeUnits(is.MaxReviseBatchSize), netaddr,
 			is.WindowSize/6,
 
 			currencyUnits(is.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)),
@@ -261,6 +273,10 @@ RPC Stats:
 			currencyUnits(is.MinDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 			currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.MinUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
+
+			is.EphemeralAccountExpiry,
+			currencyUnits(is.MaxEphemeralAccountBalance),
+			currencyUnits(is.MaxEphemeralAccountRisk),
 
 			fm.ContractCount, currencyUnits(fm.ContractCompensation),
 			currencyUnits(fm.PotentialContractCompensation),
@@ -296,8 +312,8 @@ RPC Stats:
 `,
 			connectabilityString,
 
-			filesizeUnits(totalstorage),
-			filesizeUnits(totalstorage-storageremaining), price,
+			modules.FilesizeUnits(totalstorage),
+			modules.FilesizeUnits(totalstorage-storageremaining), price,
 			periodUnits(is.MaxDuration),
 
 			yesNo(is.AcceptingContracts), currencyUnits(totalPotentialRevenue),
@@ -329,7 +345,7 @@ RPC Stats:
 	for _, folder := range sg.Folders {
 		curSize := int64(folder.Capacity - folder.CapacityRemaining)
 		pctUsed := 100 * (float64(curSize) / float64(folder.Capacity))
-		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", filesizeUnits(uint64(curSize)), filesizeUnits(folder.Capacity), pctUsed, folder.Path)
+		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", modules.FilesizeUnits(uint64(curSize)), modules.FilesizeUnits(folder.Capacity), pctUsed, folder.Path)
 	}
 	w.Flush()
 }
@@ -340,7 +356,7 @@ func hostconfigcmd(param, value string) {
 	var err error
 	switch param {
 	// currency (convert to hastings)
-	case "collateralbudget", "maxcollateral", "minbaserpcprice", "mincontractprice", "minsectoraccessprice":
+	case "collateralbudget", "maxcollateral", "minbaserpcprice", "mincontractprice", "minsectoraccessprice", "maxephemeralaccountbalance", "maxephemeralaccountrisk":
 		value, err = parseCurrency(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)
@@ -378,6 +394,13 @@ func hostconfigcmd(param, value string) {
 	// duration (convert to blocks)
 	case "maxduration", "windowsize":
 		value, err = parsePeriod(value)
+		if err != nil {
+			die("Could not parse "+param+":", err)
+		}
+
+	// timeout (convert to seconds)
+	case "ephemeralaccountexpiry":
+		value, err = parseTimeout(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)
 		}
@@ -485,7 +508,27 @@ func hostfolderaddcmd(path, size string) {
 
 // hostfolderremovecmd removes a folder from the host.
 func hostfolderremovecmd(path string) {
-	err := httpClient.HostStorageFoldersRemovePost(abs(path))
+
+	// Ask for confirm for dangerous --force flag
+	if hostFolderRemoveForce {
+		fmt.Println(`Forced removing will completely destroy your renter's data,
+	and you will lose your locked collateral.`)
+	again:
+		fmt.Print("Do you want to continue? [y/n] ")
+		var resp string
+		fmt.Scanln(&resp)
+		switch strings.ToLower(resp) {
+		case "y", "yes":
+			// continue below
+		case "n", "no":
+			return
+		default:
+			goto again
+		}
+	}
+
+	err := httpClient.HostStorageFoldersRemovePost(abs(path), hostFolderRemoveForce)
+
 	if err != nil {
 		die("Could not remove folder:", err)
 	}

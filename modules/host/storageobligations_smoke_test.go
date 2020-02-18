@@ -9,44 +9,43 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/consensus"
+	"gitlab.com/NebulousLabs/Sia/modules/gateway"
+	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-var (
-	errTxFail = errors.New("transaction set was not accepted")
-)
-
-// stubTPool is a minimal implementation of a transaction pool that will not accept new transaction sets.
-type stubTPool struct{}
-
-func (stubTPool) AcceptTransactionSet(ts []types.Transaction) error {
-	return errTxFail
+// newTestTPool returns a tpool with custom dependencies for testing
+func newTestTPool(name string, deps modules.Dependencies) (*transactionpool.TransactionPool, error) {
+	testdir := build.TempDir(modules.HostDir, name)
+	// Create the modules needed.
+	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	if err != nil {
+		return nil, err
+	}
+	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	if err := <-errChan; err != nil {
+		return nil, err
+	}
+	// Create the tpool.
+	tp, err := transactionpool.NewCustomTPool(cs, g, filepath.Join(testdir, modules.TransactionPoolDir), deps)
+	if err != nil {
+		return nil, err
+	}
+	return tp, nil
 }
-func (stubTPool) Alerts() []modules.Alert                            { return []modules.Alert{} }
-func (stubTPool) FeeEstimation() (min, max types.Currency)           { return types.Currency{}, types.Currency{} }
-func (stubTPool) Transactions() []types.Transaction                  { return nil }
-func (stubTPool) TransactionSet(oid crypto.Hash) []types.Transaction { return nil }
-func (stubTPool) Broadcast(ts []types.Transaction)                   {}
-func (stubTPool) Close() error                                       { return nil }
-func (stubTPool) TransactionList() []types.Transaction               { return nil }
-func (stubTPool) Transaction(id types.TransactionID) (types.Transaction, []types.Transaction, bool) {
-	return types.Transaction{}, nil, false
-}
-func (stubTPool) ProcessConsensusChange(cc modules.ConsensusChange)                     {}
-func (stubTPool) PurgeTransactionPool()                                                 {}
-func (stubTPool) TransactionPoolSubscribe(subscriber modules.TransactionPoolSubscriber) {}
-func (stubTPool) Unsubscribe(subscriber modules.TransactionPoolSubscriber)              {}
-func (stubTPool) TransactionConfirmed(id types.TransactionID) (bool, error)             { return true, nil }
 
 // randSector creates a random sector, returning the sector along with the
 // Merkle root of the sector.
@@ -220,20 +219,20 @@ func TestBlankStorageObligation(t *testing.T) {
 }
 
 // TestPruneStaleStorageObligations checks that the host is able to remove stale
-// storage obligations from the database and correct the financial metrics. Stale
-// obligations are obligations that are in the host database whos file contract
-// never made it on the blockchain. To check if a obligation is stale, we check
-// if the obligation is accepted by the transactionpool. If the obligation is not
-// in the transactionpool, we check if NegotiationHeight is at least maxTxnAge
-// blocks behind the current block. If this is the case, we can be certain that
-// the file contract will never make it to the blockchain and that it is safe
-// to remove the obligation from the database.
+// storage obligations from the database and correct the financial metrics.
+// Stale obligations are obligations that are in the host database whose file
+// contract never made it on the blockchain. To check if a obligation is stale,
+// we check if the obligation is accepted by the transactionpool. If the
+// obligation is not in the transactionpool, we check if NegotiationHeight is at
+// least maxTxnAge blocks behind the current block. If this is the case, we can
+// be certain that the file contract will never make it to the blockchain and
+// that it is safe to remove the obligation from the database.
 func TestPruneStaleStorageObligations(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
-	ht, err := newHostTester("TestPruneStaleStorageObligations")
+	ht, err := newHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,9 +298,13 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		t.Error("PotentialContractCompensation should be 3SC:", fm.PotentialContractCompensation.HumanString())
 	}
 
-	// Replace transaction pool with a (failing) stub.
+	// Replace transaction pool with one that has custom dependency.
 	tp := ht.host.tpool
-	ht.host.tpool = stubTPool{}
+	newTPool, err := newTestTPool(filepath.Join(t.Name(), "newtpool"), &dependencies.DependencyDoNotAcceptTxnSet{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.tpool = newTPool
 
 	// Try to add 2 more storage obligations to host. This operation should fail, the file contracts
 	// of these storage obligations will not make it on the blockchain.
@@ -314,7 +317,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		so.LockedCollateral = lockedCollateral
 		ht.host.managedLockStorageObligation(so.id())
 		err = ht.host.managedAddStorageObligation(so, false)
-		if err != errTxFail {
+		if err != transactionpool.ErrTxnSetNotAccepted {
 			t.Error("Wrong error:", err)
 		}
 		ht.host.managedUnlockStorageObligation(so.id())

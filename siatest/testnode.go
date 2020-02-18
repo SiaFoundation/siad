@@ -1,10 +1,14 @@
 package siatest
 
 import (
+	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -13,19 +17,72 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// TestNode is a helper struct for testing that contains a server and a client
-// as embedded fields.
-type TestNode struct {
-	*server.Server
-	client.Client
-	params      node.NodeParams
-	primarySeed string
+var (
+	// testNodeAddressCounter is a global variable that tracks the counter for
+	// the test node addresses for all tests. It starts at 127.1.0.0 and
+	// iterates through the entire range of 127.X.X.X above 127.1.0.0
+	testNodeAddressCounter = newNodeAddressCounter()
+)
 
-	downloadDir *LocalDir
-	filesDir    *LocalDir
+type (
+	// TestNode is a helper struct for testing that contains a server and a
+	// client as embedded fields.
+	TestNode struct {
+		*server.Server
+		client.Client
+		params      node.NodeParams
+		primarySeed string
+
+		downloadDir *LocalDir
+		filesDir    *LocalDir
+	}
+
+	// addressCounter is a help struct for assigning new addresses to test nodes
+	addressCounter struct {
+		address net.IP
+		mu      sync.Mutex
+	}
+)
+
+// newNodeAddressCounter creates a new address counter and returns it. The
+// counter will cover the entire range 127.X.X.X above 127.1.0.0
+//
+// The counter is initialized with an IP address of 127.1.0.0 so that testers
+// can manually add nodes in the address range of 127.0.X.X without causing a
+// conflict
+func newNodeAddressCounter() *addressCounter {
+	counter := &addressCounter{
+		address: net.IPv4(127, 1, 0, 0),
+	}
+	return counter
+}
+
+// managedNextNodeAddress returns the next node address from the addressCounter
+func (ac *addressCounter) managedNextNodeAddress() (string, error) {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
+	// IPs are byte slices with a length of 16, the IPv4 address range is stored
+	// in the last 4 indexes, 12-15
+	for i := len(ac.address) - 1; i >= 12; i-- {
+		if i == 12 {
+			return "", errors.New("ran out of IP addresses")
+		}
+		ac.address[i]++
+		if ac.address[i] > 0 {
+			break
+		}
+	}
+
+	// If mac return 127.0.0.1
+	if runtime.GOOS == "darwin" {
+		return "127.0.0.1", nil
+	}
+
+	return ac.address.String(), nil
 }
 
 // PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
@@ -155,7 +212,7 @@ func (tn *TestNode) RestartNode() error {
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
 	// Create server
-	s, err := server.New(":0", tn.UserAgent, tn.Password, tn.params)
+	s, err := server.New(":0", tn.UserAgent, tn.Password, tn.params, time.Now())
 	if err != nil {
 		return err
 	}
@@ -217,15 +274,23 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	userAgent := "Sia-Agent"
 	password := "password"
 
+	// Check if an RPC address is set
+	if nodeParams.RPCAddress == "" {
+		addr, err := testNodeAddressCounter.managedNextNodeAddress()
+		if err != nil {
+			return nil, errors.AddContext(err, "error getting next node address")
+		}
+		nodeParams.RPCAddress = addr + ":0"
+	}
 	// Create server
 	var s *server.Server
 	var err error
 	if asyncSync {
 		var errChan <-chan error
-		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams)
+		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams, time.Now())
 		err = modules.PeekErr(errChan)
 	} else {
-		s, err = server.New(":0", userAgent, password, nodeParams)
+		s, err = server.New(":0", userAgent, password, nodeParams, time.Now())
 	}
 	if err != nil {
 		return nil, err
@@ -286,13 +351,13 @@ func (tn *TestNode) initRootDirs() error {
 	tn.downloadDir = &LocalDir{
 		path: filepath.Join(tn.RenterDir(), "downloads"),
 	}
-	if err := os.MkdirAll(tn.downloadDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.downloadDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	tn.filesDir = &LocalDir{
-		path: filepath.Join(tn.RenterDir(), modules.SiapathRoot),
+		path: filepath.Join(tn.RenterDir(), "uploads"),
 	}
-	if err := os.MkdirAll(tn.filesDir.path, 0777); err != nil {
+	if err := os.MkdirAll(tn.filesDir.path, persist.DefaultDiskPermissionsTest); err != nil {
 		return err
 	}
 	return nil
@@ -307,4 +372,37 @@ func (tn *TestNode) SiaPath(path string) modules.SiaPath {
 		build.Critical("This shouldn't happen", err)
 	}
 	return sp
+}
+
+// IsAlertRegistered returns an error if the given alert is not found
+func (tn *TestNode) IsAlertRegistered(a modules.Alert) error {
+	return build.Retry(10, 100*time.Millisecond, func() error {
+		dag, err := tn.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.Equals(a) {
+				return nil
+			}
+		}
+		return errors.New("alert is not registered")
+	})
+}
+
+// IsAlertUnregistered returns an error if the given alert is still found
+func (tn *TestNode) IsAlertUnregistered(a modules.Alert) error {
+	return build.Retry(10, 100*time.Millisecond, func() error {
+		dag, err := tn.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+
+		for _, alert := range dag.Alerts {
+			if alert.Equals(a) {
+				return errors.New("alert is registered")
+			}
+		}
+		return nil
+	})
 }

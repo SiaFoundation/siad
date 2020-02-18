@@ -2,6 +2,7 @@ package modules
 
 import (
 	"net"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 )
@@ -132,6 +133,9 @@ type (
 	Gateway interface {
 		Alerter
 
+		// BandwidthCounters returns the Gateway's upload and download bandwidth
+		BandwidthCounters() (uint64, uint64, time.Time, error)
+
 		// Connect establishes a persistent connection to a peer.
 		Connect(NetAddress) error
 
@@ -151,13 +155,28 @@ type (
 		// the mapping is established or until it is interrupted by a shutdown.
 		ForwardPort(port string) error
 
-		// DisconnectManual is a Disconnect wrapper for a user-initiated disconnect
+		// DisconnectManual is a Disconnect wrapper for a user-initiated
+		// disconnect
 		DisconnectManual(NetAddress) error
+
+		// AddToBlacklist adds addresses to the blacklist of the gateway
+		AddToBlacklist(addresses []string) error
+
+		// Blacklist returns the current blacklist of the Gateway
+		Blacklist() ([]string, error)
+
+		// RemoveFromBlacklist removes addresses from the blacklist of the
+		// gateway
+		RemoveFromBlacklist(addresses []string) error
+
+		// SetBlacklist sets the blacklist of the gateway
+		SetBlacklist(addresses []string) error
 
 		// Address returns the Gateway's address.
 		Address() NetAddress
 
-		// Peers returns the addresses that the Gateway is currently connected to.
+		// Peers returns the addresses that the Gateway is currently connected
+		// to.
 		Peers() []Peer
 
 		// RegisterRPC registers a function to handle incoming connections that
@@ -171,10 +190,11 @@ type (
 		// gateway.
 		SetRateLimits(downloadSpeed, uploadSpeed int64) error
 
-		// UnregisterRPC unregisters an RPC and removes all references to the RPCFunc
-		// supplied in the corresponding RegisterRPC call. References to RPCFuncs
-		// registered with RegisterConnectCall are not removed and should be removed
-		// with UnregisterConnectCall. If the RPC does not exist no action is taken.
+		// UnregisterRPC unregisters an RPC and removes all references to the
+		// RPCFunc supplied in the corresponding RegisterRPC call. References to
+		// RPCFuncs registered with RegisterConnectCall are not removed and
+		// should be removed with UnregisterConnectCall. If the RPC does not
+		// exist no action is taken.
 		UnregisterRPC(string)
 
 		// RegisterConnectCall registers an RPC name and function to be called

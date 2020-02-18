@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -28,13 +29,28 @@ const (
 // should be unique and listed here.
 const (
 	// alertIDUnknown is the id of an unknown alert.
+	//lint:ignore U1000 keeping for safety
 	alertIDUnknown = "unknown"
 	// AlertIDWalletLockedDuringMaintenance is the id of the alert that is
 	// registered if the wallet is locked during a contract renewal or formation.
 	AlertIDWalletLockedDuringMaintenance = "wallet-locked"
-	// AlertIDAllowanceLowFunds is the id of the alert that is registered if at least one
+	// AlertIDRenterAllowanceLowFunds is the id of the alert that is registered if at least one
 	// contract failed to renew/form due to low allowance.
-	AlertIDAllowanceLowFunds = "low-funds"
+	AlertIDRenterAllowanceLowFunds = "low-funds"
+	// AlertIDRenterContractRenewalError is the id of the alert that is
+	// registered if at least once contract renewal or refresh failed
+	AlertIDRenterContractRenewalError = "contract-renewal-error"
+	// AlertIDGatewayOffline is the id of the alert that is registered upon a
+	// call to 'gateway.Offline' if the value returned is 'false' and
+	// unregistered when it returns 'true'.
+	AlertIDGatewayOffline = "gateway-offline"
+	// AlertIDHostDiskTrouble is the id of the alert that is registered when the
+	// host is encountering problems interacting with one or more of his disks
+	AlertIDHostDiskTrouble = "host-disk-trouble"
+	// AlertIDHostInsufficientCollateral is the id of the alert that is
+	// registered if the host has insufficient collateral budget left to form or
+	// renew a contract
+	AlertIDHostInsufficientCollateral = "host-insufficient-collateral"
 )
 
 // AlertIDSiafileLowRedundancy uses a Siafile's UID to create a unique AlertID
@@ -71,12 +87,29 @@ type (
 	AlertSeverity uint64
 )
 
+// Equals returns true if x and y are identical alerts
+func (x Alert) Equals(y Alert) bool {
+	return x.Module == y.Module && x.Cause == y.Cause && x.Msg == y.Msg && x.Severity == y.Severity
+}
+
+// EqualsWithErrorCause returns true if x and y have the same module, message,
+// and severity and if the provided error is in both of the alert's causes
+func (x Alert) EqualsWithErrorCause(y Alert, causeErr string) bool {
+	firstCheck := x.Module == y.Module && x.Msg == y.Msg && x.Severity == y.Severity
+	causeCheck := strings.Contains(x.Cause, causeErr) && strings.Contains(y.Cause, causeErr)
+	return firstCheck && causeCheck
+}
+
 // MarshalJSON defines a JSON encoding for the AlertSeverity.
 func (a AlertSeverity) MarshalJSON() ([]byte, error) {
-	if a == SeverityWarning || a == SeverityError || a == SeverityCritical {
-		return json.Marshal(a.String())
+	switch a {
+	case SeverityWarning:
+	case SeverityError:
+	case SeverityCritical:
+	default:
+		return nil, errors.New("unknown AlertSeverity")
 	}
-	return nil, errors.New("unknown AlertSeverity")
+	return json.Marshal(a.String())
 }
 
 // UnmarshalJSON attempts to decode an AlertSeverity.

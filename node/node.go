@@ -12,6 +12,7 @@ package node
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -82,9 +83,15 @@ type NodeParams struct {
 	ConsensusSetDeps modules.Dependencies
 	ContractorDeps   modules.Dependencies
 	ContractSetDeps  modules.Dependencies
+	GatewayDeps      modules.Dependencies
+	HostDeps         modules.Dependencies
 	HostDBDeps       modules.Dependencies
 	RenterDeps       modules.Dependencies
+	TPoolDeps        modules.Dependencies
 	WalletDeps       modules.Dependencies
+
+	// Dependencies for storage monitor supporting dependency injection.
+	StorageManagerDeps modules.Dependencies
 
 	// Custom settings for modules
 	Allowance   modules.Allowance
@@ -213,7 +220,7 @@ func (n *Node) Close() (err error) {
 // of initialization because the siatest package cannot import any of the
 // modules directly (so that the modules may use the siatest package to test
 // themselves).
-func New(params NodeParams) (*Node, <-chan error) {
+func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	dir := params.Dir
 	errChan := make(chan error, 1)
 
@@ -234,9 +241,13 @@ func New(params NodeParams) (*Node, <-chan error) {
 		if params.RPCAddress == "" {
 			params.RPCAddress = "localhost:0"
 		}
+		gatewayDeps := params.GatewayDeps
+		if gatewayDeps == nil {
+			gatewayDeps = modules.ProdDependencies
+		}
 		i++
 		printfRelease("(%d/%d) Loading gateway...\n", i, numModules)
-		return gateway.New(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir))
+		return gateway.NewCustomGateway(params.RPCAddress, params.Bootstrap, filepath.Join(dir, modules.GatewayDir), gatewayDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create gateway"))
@@ -249,15 +260,12 @@ func New(params NodeParams) (*Node, <-chan error) {
 		defer close(c)
 		if params.CreateConsensusSet && params.ConsensusSet != nil {
 			c <- errors.New("cannot both create consensus and use passed in consensus")
-			close(c)
 			return nil, c
 		}
 		if params.ConsensusSet != nil {
-			close(c)
 			return params.ConsensusSet, c
 		}
 		if !params.CreateConsensusSet {
-			close(c)
 			return nil, c
 		}
 		i++
@@ -308,9 +316,13 @@ func New(params NodeParams) (*Node, <-chan error) {
 		if !params.CreateTransactionPool {
 			return nil, nil
 		}
+		tpoolDeps := params.TPoolDeps
+		if tpoolDeps == nil {
+			tpoolDeps = modules.ProdDependencies
+		}
 		i++
 		printfRelease("(%d/%d) Loading transaction pool...\n", i, numModules)
-		return transactionpool.New(cs, g, filepath.Join(dir, modules.TransactionPoolDir))
+		return transactionpool.NewCustomTPool(cs, g, filepath.Join(dir, modules.TransactionPoolDir), tpoolDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create transaction pool"))
@@ -379,9 +391,18 @@ func New(params NodeParams) (*Node, <-chan error) {
 		if params.HostAddress == "" {
 			params.HostAddress = "localhost:0"
 		}
+		hostDeps := params.HostDeps
+		if hostDeps == nil {
+			hostDeps = modules.ProdDependencies
+		}
+		smDeps := params.StorageManagerDeps
+		if smDeps == nil {
+			smDeps = new(modules.ProductionDependencies)
+		}
 		i++
 		printfRelease("(%d/%d) Loading host...\n", i, numModules)
-		return host.New(cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		return host, err
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create host"))
@@ -446,7 +467,7 @@ func New(params NodeParams) (*Node, <-chan error) {
 			close(c)
 			return nil, c
 		}
-		hc, errChanContractor := contractor.NewCustomContractor(cs, &contractor.WalletBridge{W: w}, tp, hdb, contractSet, contractor.NewPersist(persistDir), logger, contractorDeps)
+		hc, errChanContractor := contractor.NewCustomContractor(cs, w, tp, hdb, persistDir, contractSet, logger, contractorDeps)
 		if err := modules.PeekErr(errChanContractor); err != nil {
 			c <- err
 			close(c)
@@ -463,6 +484,7 @@ func New(params NodeParams) (*Node, <-chan error) {
 		errChan <- errors.Extend(err, errors.New("unable to create renter"))
 		return nil, errChan
 	}
+	printfRelease("API is now available, synchronous startup completed in %.3f seconds\n", time.Since(loadStartTime).Seconds())
 	go func() {
 		errChan <- errors.Compose(<-errChanCS, <-errChanRenter)
 		close(errChan)

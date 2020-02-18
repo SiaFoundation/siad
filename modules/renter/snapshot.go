@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -34,11 +33,11 @@ type snapshotEntry struct {
 var (
 	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
-	snapshotKeySpecifier = types.Specifier{'s', 'n', 'a', 'p', 's', 'h', 'o', 't'}
+	snapshotKeySpecifier = types.NewSpecifier("snapshot")
 
 	// snapshotTableSpecifier is the specifier used to identify a snapshot entry
 	// table stored in a sector.
-	snapshotTableSpecifier = types.Specifier{'S', 'n', 'a', 'p', 's', 'h', 'o', 't', 'T', 'a', 'b', 'l', 'e'}
+	snapshotTableSpecifier = types.NewSpecifier("SnapshotTable")
 )
 
 // calcSnapshotUploadProgress calculates the upload progress of a snapshot.
@@ -119,7 +118,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	defer backup.Close()
 
 	// Prepare the siapath.
-	sp, err := modules.NewSiaPath(name)
+	sp, err := modules.SnapshotsSiaPath().Join(name)
 	if err != nil {
 		return err
 	}
@@ -138,11 +137,18 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		SiaPath:     sp,
 		ErasureCode: ec,
 		Force:       false,
+
+		CipherType: crypto.TypeDefaultRenter,
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.
-	if err := r.managedUploadStreamFromReader(up, backup, true); err != nil {
+	fileNode, err := r.callUploadStreamFromReader(up, backup, true)
+	if err != nil {
 		return errors.AddContext(err, "failed to upload backup")
+	}
+	err = fileNode.Close()
+	if err != nil {
+		return errors.AddContext(err, "unable to close fileNode while uploading a backup")
 	}
 	// Save initial snapshot entry.
 	meta := modules.UploadedBackup{
@@ -195,25 +201,29 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 		return err
 	}
 	// Store it in the backup file set.
-	if err := ioutil.WriteFile(filepath.Join(r.staticBackupsDir, name+modules.SiaFileExtension), dotSia, 0666); err != nil {
-		return err
-	}
-	// Load the .sia file.
-	siaPath, err := modules.NewSiaPath(name)
+	backupSiaPath, err := modules.SnapshotsSiaPath().Join(name)
 	if err != nil {
 		return err
 	}
-	entry, err := r.staticBackupFileSet.Open(siaPath)
+	if err := r.staticFileSystem.WriteFile(backupSiaPath, dotSia, 0666); err != nil {
+		return err
+	}
+	// Load the .sia file.
+	siaPath, err := modules.SnapshotsSiaPath().Join(name)
+	if err != nil {
+		return err
+	}
+	entry, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return err
 	}
 	defer entry.Close()
 	// Use .sia file to download snapshot.
-	snap, err := entry.Snapshot()
+	snap, err := entry.Snapshot(siaPath)
 	if err != nil {
 		return err
 	}
-	s := r.managedStreamer(snap)
+	s := r.managedStreamer(snap, false)
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err
@@ -516,8 +526,8 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 		// First, process any snapshot siafiles that may have finished uploading.
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-		root, _ := modules.NewSiaPath(".")
-		finfos, err := r.staticBackupFileSet.FileList(root, true, true, offlineMap, goodForRenewMap, contractsMap)
+		root := modules.SnapshotsSiaPath()
+		finfos, _, err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap)
 		if err != nil {
 			r.log.Println("Could not get un-uploaded snapshots:", err)
 		}
@@ -525,13 +535,16 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			// locate corresponding entry
 			id = r.mu.RLock()
 			var meta modules.UploadedBackup
+			found := false
 			for _, meta = range r.persist.UploadedBackups {
-				if meta.Name == info.SiaPath.String() {
+				sp, _ := info.SiaPath.Rebase(modules.SnapshotsSiaPath(), modules.RootSiaPath())
+				if meta.Name == sp.String() {
+					found = true
 					break
 				}
 			}
 			r.mu.RUnlock(id)
-			if meta.Name == "" {
+			if !found {
 				r.log.Println("Could not locate entry for file in backup set")
 				continue
 			}
@@ -550,14 +563,15 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			r.log.Println("Uploading snapshot", info.SiaPath)
 			err := func() error {
 				// Grab the entry for the uploaded backup's siafile.
-				entry, err := r.staticBackupFileSet.Open(info.SiaPath)
+				entry, err := r.staticFileSystem.OpenSiaFile(info.SiaPath)
 				if err != nil {
 					return errors.AddContext(err, "failed to get entry for snapshot")
 				}
 				// Read the siafile from disk.
 				sr, err := entry.SnapshotReader()
 				if err != nil {
-					return errors.Compose(err, entry.Close())
+					entry.Close()
+					return err
 				}
 				// NOTE: The snapshot reader needs to be closed before
 				// entry.Close is called, and unfortunately also before
@@ -577,26 +591,23 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Need to work around the snapshot reader lock issue as well.
 				dotSia, err := ioutil.ReadAll(sr)
 				if err := sr.Close(); err != nil {
-					return errors.Compose(err, entry.Close())
-				}
-				if err != nil {
-					return errors.Compose(err, entry.Close())
+					entry.Close()
+					return err
 				}
 
 				// Upload the snapshot to the network.
 				meta.UploadProgress = calcSnapshotUploadProgress(100, 0)
 				meta.Size = uint64(len(dotSia))
 				if err := r.managedUploadSnapshot(meta, dotSia); err != nil {
-					return errors.Compose(err, entry.Close())
-				}
-
-				// Close out the entry.
-				if err := entry.Close(); err != nil {
+					entry.Close()
 					return err
 				}
 
+				// Close out the entry.
+				entry.Close()
+
 				// Delete the local siafile.
-				if err := r.staticBackupFileSet.Delete(info.SiaPath); err != nil {
+				if err := r.staticFileSystem.DeleteFile(info.SiaPath); err != nil {
 					return err
 				}
 				return nil

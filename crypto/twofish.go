@@ -6,6 +6,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+
+	//lint:ignore SA1019 keeping for compatibility
 	"golang.org/x/crypto/twofish"
 )
 

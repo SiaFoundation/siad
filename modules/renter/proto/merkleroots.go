@@ -236,21 +236,6 @@ func (mr *merkleRoots) insert(index int, root crypto.Hash) error {
 	return nil
 }
 
-// set replaces the full set of roots.
-func (mr *merkleRoots) set(roots []crypto.Hash) error {
-	for i, root := range roots {
-		_, err := mr.rootsFile.WriteAt(root[:], fileOffsetFromRootIndex(i))
-		if err != nil {
-			return errors.AddContext(err, "failed to insert root on disk")
-		}
-	}
-	truncateSize := int64(len(roots)) * crypto.HashSize
-	if err := mr.rootsFile.Truncate(truncateSize); err != nil {
-		return errors.AddContext(err, "failed to truncate file")
-	}
-	return nil
-}
-
 // isIndexCached determines if the root at index i is already cached in
 // mr.cachedSubTree or if it is still in mr.uncachedRoots. It will return true
 // or false and the index of the root in the corresponding data structure.
@@ -321,7 +306,7 @@ func (mr *merkleRoots) push(root crypto.Hash) error {
 func (mr *merkleRoots) root() crypto.Hash {
 	tree := crypto.NewTree()
 	for _, st := range mr.cachedSubTrees {
-		if err := tree.PushSubTree(st.height, st.sum[:]); err != nil {
+		if err := tree.PushSubTree(st.height, st.sum); err != nil {
 			// This should never fail.
 			build.Critical(err)
 		}

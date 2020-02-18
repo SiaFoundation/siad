@@ -31,6 +31,10 @@ var (
 	errNilCS                 = errors.New("cannot create hostdb with nil consensus set")
 	errNilGateway            = errors.New("cannot create hostdb with nil gateway")
 	errNilTPool              = errors.New("cannot create hostdb with nil transaction pool")
+
+	// errHostNotFoundInTree is returned when the host is not found in the
+	// hosttree
+	errHostNotFoundInTree = errors.New("host not found in hosttree")
 )
 
 // contractInfo contains information about a contract relevant to the HostDB.
@@ -44,12 +48,12 @@ type contractInfo struct {
 // for uploading files.
 type HostDB struct {
 	// dependencies
-	cs      modules.ConsensusSet
-	deps    modules.Dependencies
-	gateway modules.Gateway
-	tpool   modules.TransactionPool
+	cs          modules.ConsensusSet
+	staticDeps  modules.Dependencies
+	gateway     modules.Gateway
+	staticTpool modules.TransactionPool
 
-	log           *persist.Logger
+	staticLog     *persist.Logger
 	mu            sync.RWMutex
 	staticAlerter *modules.GenericAlerter
 	persistDir    string
@@ -71,10 +75,9 @@ type HostDB struct {
 	// rebuilding the hosttree with an updated weight function.
 	txnFees types.Currency
 
-	// The hostTree is the root node of the tree that organizes hosts by
-	// weight. The tree is necessary for selecting weighted hosts at
-	// random.
-	hostTree *hosttree.HostTree
+	// The staticHostTree is the root node of the tree that organizes hosts by
+	// weight. The tree is necessary for selecting weighted hosts at random.
+	staticHostTree *hosttree.HostTree
 
 	// the scanPool is a set of hosts that need to be scanned. There are a
 	// handful of goroutines constantly waiting on the channel for hosts to
@@ -89,24 +92,28 @@ type HostDB struct {
 	scanningThreads         int
 	synced                  bool
 
-	// filteredTree is a hosttree that only contains the hosts that align with
-	// the filterMode. The filteredHosts are the hosts that are submitted with
-	// the filterMode to determine which host should be in the filteredTree
-	filteredTree  *hosttree.HostTree
-	filteredHosts map[string]types.SiaPublicKey
-	filterMode    modules.FilterMode
+	// staticFilteredTree is a hosttree that only contains the hosts that align
+	// with the filterMode. The filteredHosts are the hosts that are submitted
+	// with the filterMode to determine which host should be in the
+	// staticFilteredTree
+	staticFilteredTree *hosttree.HostTree
+	filteredHosts      map[string]types.SiaPublicKey
+	filterMode         modules.FilterMode
 
 	blockHeight types.BlockHeight
 	lastChange  modules.ConsensusChangeID
 }
 
+// Enforce that HostDB satisfies the modules.HostDB interface.
+var _ modules.HostDB = (*HostDB)(nil)
+
 // insert inserts the HostDBEntry into both hosttrees
 func (hdb *HostDB) insert(host modules.HostDBEntry) error {
-	err := hdb.hostTree.Insert(host)
+	err := hdb.staticHostTree.Insert(host)
 	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
-		errF := hdb.filteredTree.Insert(host)
+		errF := hdb.staticFilteredTree.Insert(host)
 		if errF != nil && errF != hosttree.ErrHostExists {
 			err = errors.Compose(err, errF)
 		}
@@ -116,22 +123,22 @@ func (hdb *HostDB) insert(host modules.HostDBEntry) error {
 
 // modify modifies the HostDBEntry in both hosttrees
 func (hdb *HostDB) modify(host modules.HostDBEntry) error {
-	err := hdb.hostTree.Modify(host)
+	err := hdb.staticHostTree.Modify(host)
 	_, ok := hdb.filteredHosts[host.PublicKey.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
-		err = errors.Compose(err, hdb.filteredTree.Modify(host))
+		err = errors.Compose(err, hdb.staticFilteredTree.Modify(host))
 	}
 	return err
 }
 
 // remove removes the HostDBEntry from both hosttrees
 func (hdb *HostDB) remove(pk types.SiaPublicKey) error {
-	err := hdb.hostTree.Remove(pk)
+	err := hdb.staticHostTree.Remove(pk)
 	_, ok := hdb.filteredHosts[pk.String()]
 	isWhitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	if isWhitelist == ok {
-		errF := hdb.filteredTree.Remove(pk)
+		errF := hdb.staticFilteredTree.Remove(pk)
 		if err == nil && errF == hosttree.ErrNoSuchHost {
 			return nil
 		}
@@ -150,9 +157,9 @@ func (hdb *HostDB) managedSetWeightFunction(wf hosttree.WeightFunc) error {
 	defer hdb.mu.Unlock()
 	hdb.weightFunc = wf
 	// Update the hosttree and also the filteredTree if they are not the same.
-	err := hdb.hostTree.SetWeightFunction(wf)
-	if hdb.filteredTree != hdb.hostTree {
-		err = errors.Compose(err, hdb.filteredTree.SetWeightFunction(wf))
+	err := hdb.staticHostTree.SetWeightFunction(wf)
+	if hdb.staticFilteredTree != hdb.staticHostTree {
+		err = errors.Compose(err, hdb.staticFilteredTree.SetWeightFunction(wf))
 	}
 	return err
 }
@@ -196,11 +203,11 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Create the HostDB object.
 	hdb := &HostDB{
-		cs:         cs,
-		deps:       deps,
-		gateway:    g,
-		persistDir: persistDir,
-		tpool:      tpool,
+		cs:          cs,
+		staticDeps:  deps,
+		gateway:     g,
+		persistDir:  persistDir,
+		staticTpool: tpool,
 
 		filteredHosts:  make(map[string]types.SiaPublicKey),
 		knownContracts: make(map[string]contractInfo),
@@ -210,7 +217,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Set the allowance, txnFees and hostweight function.
 	hdb.allowance = modules.DefaultAllowance
-	_, hdb.txnFees = hdb.tpool.FeeEstimation()
+	_, hdb.txnFees = hdb.staticTpool.FeeEstimation()
 	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
 
 	// Create the persist directory if it does not yet exist.
@@ -220,13 +227,13 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	// Create the logger.
-	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.log"))
+	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.staticLog"))
 	if err != nil {
 		return nil, err
 	}
-	hdb.log = logger
+	hdb.staticLog = logger
 	err = hdb.tg.AfterStop(func() error {
-		if err := hdb.log.Close(); err != nil {
+		if err := hdb.staticLog.Close(); err != nil {
 			// Resort to println as the logger is in an uncertain state.
 			fmt.Println("Failed to close the hostdb logger:", err)
 			return err
@@ -239,8 +246,8 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// The host tree is used to manage hosts and query them at random. The
 	// filteredTree is used when whitelist or blacklist is enabled
-	hdb.hostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
-	hdb.filteredTree = hdb.hostTree
+	hdb.staticHostTree = hosttree.New(hdb.weightFunc, deps.Resolver())
+	hdb.staticFilteredTree = hdb.staticHostTree
 
 	// Load the prior persistence structures.
 	hdb.mu.Lock()
@@ -254,7 +261,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		err := hdb.saveSync()
 		hdb.mu.Unlock()
 		if err != nil {
-			hdb.log.Println("Unable to save the hostdb:", err)
+			hdb.staticLog.Println("Unable to save the hostdb:", err)
 			return err
 		}
 		return nil
@@ -268,7 +275,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Don't perform the remaining startup in the presence of a quitAfterLoad
 	// disruption.
-	if hdb.deps.Disrupt("quitAfterLoad") {
+	if hdb.staticDeps.Disrupt("quitAfterLoad") {
 		return hdb, nil
 	}
 
@@ -286,7 +293,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// Spawn the scan loop during production, but allow it to be disrupted
 	// during testing. Primary reason is so that we can fill the hostdb with
 	// fake hosts and not have them marked as offline as the scanloop operates.
-	if !hdb.deps.Disrupt("disableScanLoop") {
+	if !hdb.staticDeps.Disrupt("disableScanLoop") {
 		go hdb.threadedScan()
 	} else {
 		hdb.initialScanComplete = true
@@ -303,7 +310,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 // hostdbAsyncStartup handles the async portion of NewCustomHostDB.
 func hostdbAsyncStartup(hdb *HostDB, cs modules.ConsensusSet) error {
-	if hdb.deps.Disrupt("BlockAsyncStartup") {
+	if hdb.staticDeps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
 	err := cs.ConsensusSetSubscribe(hdb, hdb.lastChange, hdb.tg.StopChan())
@@ -348,7 +355,7 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 	}
 	// Parts of the blocking startup and the whole async startup should be
 	// skipped.
-	if hdb.deps.Disrupt("quitAfterLoad") {
+	if hdb.staticDeps.Disrupt("quitAfterLoad") {
 		close(errChan)
 		return hdb, errChan
 	}
@@ -372,9 +379,14 @@ func NewCustomHostDB(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 // ActiveHosts returns a list of hosts that are currently online, sorted by
 // weight. If hostdb is in black or white list mode, then only active hosts from
 // the filteredTree will be returned
-func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
+func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry, err error) {
+	if err = hdb.tg.Add(); err != nil {
+		return activeHosts, err
+	}
+	defer hdb.tg.Done()
+
 	hdb.mu.RLock()
-	allHosts := hdb.filteredTree.All()
+	allHosts := hdb.staticFilteredTree.All()
 	hdb.mu.RUnlock()
 	for _, entry := range allHosts {
 		if len(entry.ScanHistory) == 0 {
@@ -388,26 +400,34 @@ func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry) {
 		}
 		activeHosts = append(activeHosts, entry)
 	}
-	return activeHosts
+	return activeHosts, err
 }
 
 // AllHosts returns all of the hosts known to the hostdb, including the inactive
 // ones. AllHosts is not filtered by blacklist or whitelist mode.
-func (hdb *HostDB) AllHosts() (allHosts []modules.HostDBEntry) {
+func (hdb *HostDB) AllHosts() (allHosts []modules.HostDBEntry, err error) {
+	if err := hdb.tg.Add(); err != nil {
+		return allHosts, err
+	}
+	defer hdb.tg.Done()
 	hdb.mu.RLock()
 	defer hdb.mu.RUnlock()
-	return hdb.hostTree.All()
+	return hdb.staticHostTree.All(), nil
 }
 
 // CheckForIPViolations accepts a number of host public keys and returns the
 // ones that violate the rules of the addressFilter.
-func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaPublicKey {
+func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) ([]types.SiaPublicKey, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer hdb.tg.Done()
 	// If the check was disabled we don't return any bad hosts.
 	hdb.mu.RLock()
 	defer hdb.mu.RUnlock()
 	disabled := hdb.disableIPViolationCheck
 	if disabled {
-		return nil
+		return nil, nil
 	}
 
 	var entries []modules.HostDBEntry
@@ -415,7 +435,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 
 	// Get the entries which correspond to the keys.
 	for _, host := range hosts {
-		entry, exists := hdb.hostTree.Select(host)
+		entry, exists := hdb.staticHostTree.Select(host)
 		if !exists {
 			// A host that's not in the hostdb is bad.
 			badHosts = append(badHosts, host)
@@ -433,7 +453,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 	})
 
 	// Create a filter and apply it.
-	filter := hosttree.NewFilter(hdb.deps.Resolver())
+	filter := hosttree.NewFilter(hdb.staticDeps.Resolver())
 	for _, entry := range entries {
 		// Check if the host violates the rules.
 		if filter.Filtered(entry.NetAddress) {
@@ -443,7 +463,7 @@ func (hdb *HostDB) CheckForIPViolations(hosts []types.SiaPublicKey) []types.SiaP
 		// If it didn't then we add it to the filter.
 		filter.Add(entry.NetAddress)
 	}
-	return badHosts
+	return badHosts, nil
 }
 
 // Close closes the hostdb, terminating its scanning threads
@@ -455,38 +475,48 @@ func (hdb *HostDB) Close() error {
 // matching host is found, Host returns false.  For black and white list modes,
 // the Filtered field for the HostDBEntry is set to indicate it the host is
 // being filtered from the filtered hosttree
-func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool) {
+func (hdb *HostDB) Host(spk types.SiaPublicKey) (modules.HostDBEntry, bool, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return modules.HostDBEntry{}, false, errors.AddContext(err, "error adding hostdb threadgroup:")
+	}
+	defer hdb.tg.Done()
+
 	hdb.mu.Lock()
 	whitelist := hdb.filterMode == modules.HostDBActiveWhitelist
 	filteredHosts := hdb.filteredHosts
 	hdb.mu.Unlock()
-	host, exists := hdb.hostTree.Select(spk)
+	host, exists := hdb.staticHostTree.Select(spk)
 	if !exists {
-		return host, exists
+		return host, exists, errHostNotFoundInTree
 	}
 	_, ok := filteredHosts[spk.String()]
 	host.Filtered = whitelist != ok
 	hdb.mu.RLock()
 	updateHostHistoricInteractions(&host, hdb.blockHeight)
 	hdb.mu.RUnlock()
-	return host, exists
+	return host, exists, nil
 }
 
 // Filter returns the hostdb's filterMode and filteredHosts
-func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey) {
+func (hdb *HostDB) Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return modules.HostDBFilterError, nil, errors.AddContext(err, "error adding hostdb threadgroup:")
+	}
+	defer hdb.tg.Done()
+
 	hdb.mu.RLock()
 	defer hdb.mu.RUnlock()
 	filteredHosts := make(map[string]types.SiaPublicKey)
 	for k, v := range hdb.filteredHosts {
 		filteredHosts[k] = v
 	}
-	return hdb.filterMode, filteredHosts
+	return hdb.filterMode, filteredHosts, nil
 }
 
 // SetFilterMode sets the hostdb filter mode
 func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 	hdb.mu.Lock()
@@ -500,13 +530,13 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	if fm == modules.HostDBDisableFilter {
 		// Reset filtered field for hosts
 		for _, pk := range hdb.filteredHosts {
-			err := hdb.hostTree.SetFiltered(pk, false)
+			err := hdb.staticHostTree.SetFiltered(pk, false)
 			if err != nil {
-				hdb.log.Println("Unable to mark entry as not filtered:", err)
+				hdb.staticLog.Println("Unable to mark entry as not filtered:", err)
 			}
 		}
 		// Reset filtered fields
-		hdb.filteredTree = hdb.hostTree
+		hdb.staticFilteredTree = hdb.staticHostTree
 		hdb.filteredHosts = make(map[string]types.SiaPublicKey)
 		hdb.filterMode = fm
 		return nil
@@ -519,7 +549,7 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 	}
 
 	// Create filtered HostTree
-	hdb.filteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
+	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, modules.ProdDependencies.Resolver())
 
 	// Create filteredHosts map
 	filteredHosts := make(map[string]types.SiaPublicKey)
@@ -531,20 +561,20 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 		filteredHosts[h.String()] = h
 
 		// Update host in unfiltered hosttree
-		err := hdb.hostTree.SetFiltered(h, true)
+		err := hdb.staticHostTree.SetFiltered(h, true)
 		if err != nil {
-			hdb.log.Println("Unable to mark entry as filtered:", err)
+			hdb.staticLog.Println("Unable to mark entry as filtered:", err)
 		}
 	}
 	var allErrs error
-	allHosts := hdb.hostTree.All()
+	allHosts := hdb.staticHostTree.All()
 	for _, host := range allHosts {
 		// Add hosts to filtered tree
 		_, ok := filteredHosts[host.PublicKey.String()]
 		if isWhitelist != ok {
 			continue
 		}
-		err := hdb.filteredTree.Insert(host)
+		err := hdb.staticFilteredTree.Insert(host)
 		if err != nil {
 			allErrs = errors.Compose(allErrs, err)
 		}
@@ -558,7 +588,7 @@ func (hdb *HostDB) SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicK
 // hostdb is completed.
 func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 	if err = hdb.tg.Add(); err != nil {
-		return
+		return false, errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 	hdb.mu.Lock()
@@ -569,16 +599,25 @@ func (hdb *HostDB) InitialScanComplete() (complete bool, err error) {
 
 // IPViolationsCheck returns a boolean indicating if the IP violation check is
 // enabled or not.
-func (hdb *HostDB) IPViolationsCheck() bool {
+func (hdb *HostDB) IPViolationsCheck() (bool, error) {
+	if err := hdb.tg.Add(); err != nil {
+		return false, errors.AddContext(err, "error adding hostdb threadgroup:")
+	}
+	defer hdb.tg.Done()
 	hdb.mu.RLock()
 	defer hdb.mu.RUnlock()
-	return !hdb.disableIPViolationCheck
+	return !hdb.disableIPViolationCheck, nil
 }
 
 // SetAllowance updates the allowance used by the hostdb for weighing hosts by
 // updating the host weight function. It will completely rebuild the hosttree so
 // it should be used with care.
 func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
+	if err := hdb.tg.Add(); err != nil {
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
+	}
+	defer hdb.tg.Done()
+
 	// If the allowance is empty, set it to the default allowance. This ensures
 	// that the estimates are at least moderately grounded.
 	if reflect.DeepEqual(allowance, modules.Allowance{}) {
@@ -598,17 +637,23 @@ func (hdb *HostDB) SetAllowance(allowance modules.Allowance) error {
 // SetIPViolationCheck enables or disables the IP violation check. If disabled,
 // CheckForIPViolations won't return bad hosts and RandomHosts will return the
 // address blacklist.
-func (hdb *HostDB) SetIPViolationCheck(enabled bool) {
+func (hdb *HostDB) SetIPViolationCheck(enabled bool) error {
+	if err := hdb.tg.Add(); err != nil {
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
+	}
+	defer hdb.tg.Done()
+
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 	hdb.disableIPViolationCheck = !enabled
+	return nil
 }
 
 // UpdateContracts rebuilds the knownContracts of the HostBD using the provided
 // contracts.
 func (hdb *HostDB) UpdateContracts(contracts []modules.RenterContract) error {
 	if err := hdb.tg.Add(); err != nil {
-		return err
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
 	}
 	defer hdb.tg.Done()
 	hdb.mu.Lock()

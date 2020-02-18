@@ -55,6 +55,7 @@ type ConsensusBlocksGet struct {
 	Height       types.BlockHeight       `json:"height"`
 	ParentID     types.BlockID           `json:"parentid"`
 	Nonce        types.BlockNonce        `json:"nonce"`
+	Difficulty   types.Currency          `json:"difficulty"`
 	Timestamp    types.Timestamp         `json:"timestamp"`
 	MinerPayouts []types.SiacoinOutput   `json:"minerpayouts"`
 	Transactions []ConsensusBlocksGetTxn `json:"transactions"`
@@ -107,9 +108,9 @@ type ConsensusBlocksGetSiafundOutput struct {
 	UnlockHash types.UnlockHash      `json:"unlockhash"`
 }
 
-// ConsensusBlocksGetFromBlock is a helper method that uses a types.Block and
-// types.BlockHeight to create a ConsensusBlocksGet object.
-func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight) ConsensusBlocksGet {
+// ConsensusBlocksGetFromBlock is a helper method that uses a types.Block, types.BlockHeight and
+// types.Currency to create a ConsensusBlocksGet object.
+func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight, d types.Currency) ConsensusBlocksGet {
 	txns := make([]ConsensusBlocksGetTxn, 0, len(b.Transactions))
 	for _, t := range b.Transactions {
 		// Get the transaction's SiacoinOutputs.
@@ -184,6 +185,7 @@ func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight) ConsensusBl
 		Height:       h,
 		ParentID:     b.ParentID,
 		Nonce:        b.Nonce,
+		Difficulty:   d,
 		Timestamp:    b.Timestamp,
 		MinerPayouts: b.MinerPayouts,
 		Transactions: txns,
@@ -236,9 +238,11 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 	id, height := req.FormValue("id"), req.FormValue("height")
 	if id != "" && height != "" {
 		WriteError(w, Error{"can't specify both id and height"}, http.StatusBadRequest)
+		return
 	}
 	if id == "" && height == "" {
 		WriteError(w, Error{"either id or height has to be provided"}, http.StatusBadRequest)
+		return
 	}
 
 	var b types.Block
@@ -267,8 +271,12 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 		WriteError(w, Error{"block doesn't exist"}, http.StatusBadRequest)
 		return
 	}
+
+	target, _ := api.cs.ChildTarget(b.ID())
+	d := target.Difficulty()
+
 	// Write response
-	WriteJSON(w, consensusBlocksGetFromBlock(b, h))
+	WriteJSON(w, consensusBlocksGetFromBlock(b, h, d))
 }
 
 // consensusValidateTransactionsetHandler handles the API calls to

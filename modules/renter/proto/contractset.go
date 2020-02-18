@@ -26,7 +26,6 @@ type ContractSet struct {
 	dir       string
 	mu        sync.Mutex
 	rl        *ratelimit.RateLimit
-	globalRL  *ratelimit.RateLimit
 	wal       *writeaheadlog.WAL
 }
 
@@ -190,6 +189,7 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 
 	// Load the WAL. Any recovered updates will be applied after loading
 	// contracts.
+	//
 	// COMPATv1.3.1RC2 Rename old wals to have the 'wal' extension if new file
 	// doesn't exist.
 	if err := v131RC2RenameWAL(dir); err != nil {

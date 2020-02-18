@@ -21,6 +21,7 @@ import (
 
 var (
 	errNilCS     = errors.New("cannot create contractor with nil consensus set")
+	errNilHDB    = errors.New("cannot create contractor with nil HostDB")
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
 
@@ -34,16 +35,16 @@ var (
 // contracts.
 type Contractor struct {
 	// dependencies
-	cs            consensusSet
-	hdb           hostDB
+	cs            modules.ConsensusSet
+	hdb           modules.HostDB
 	log           *persist.Logger
 	mu            sync.RWMutex
-	persist       persister
+	persistDir    string
 	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
 	tg            siasync.ThreadGroup
-	tpool         transactionPool
-	wallet        wallet
+	tpool         modules.TransactionPool
+	wallet        modules.Wallet
 
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
@@ -75,11 +76,17 @@ type Contractor struct {
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
+	// doubleSpentContracts keep track of all contracts that were double spent by
+	// either the renter or host.
 	staticContracts      *proto.ContractSet
 	oldContracts         map[types.FileContractID]modules.RenterContract
+	doubleSpentContracts map[types.FileContractID]types.BlockHeight
 	recoverableContracts map[types.FileContractID]modules.RecoverableContract
 	renewedFrom          map[types.FileContractID]types.FileContractID
 	renewedTo            map[types.FileContractID]types.FileContractID
+
+	staticChurnLimiter *churnLimiter
+	staticWatchdog     *watchdog
 }
 
 // Allowance returns the current allowance.
@@ -96,18 +103,23 @@ func (c *Contractor) InitRecoveryScan() (err error) {
 		return err
 	}
 	defer c.tg.Done()
-	return c.managedInitRecoveryScan(modules.ConsensusChangeBeginning)
+	return c.callInitRecoveryScan(modules.ConsensusChangeBeginning)
 }
 
 // PeriodSpending returns the amount spent on contracts during the current
 // billing period.
-func (c *Contractor) PeriodSpending() modules.ContractorSpending {
+func (c *Contractor) PeriodSpending() (modules.ContractorSpending, error) {
 	allContracts := c.staticContracts.ViewAll()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	var spending modules.ContractorSpending
 	for _, contract := range allContracts {
+		// Don't count double-spent contracts.
+		if _, doubleSpent := c.doubleSpentContracts[contract.ID]; doubleSpent {
+			continue
+		}
+
 		// Calculate ContractFees
 		spending.ContractFees = spending.ContractFees.Add(contract.ContractFee)
 		spending.ContractFees = spending.ContractFees.Add(contract.TxnFee)
@@ -123,7 +135,12 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 
 	// Calculate needed spending to be reported from old contracts
 	for _, contract := range c.oldContracts {
-		host, exist := c.hdb.Host(contract.HostPublicKey)
+		// Don't count double-spent contracts.
+		if _, doubleSpent := c.doubleSpentContracts[contract.ID]; doubleSpent {
+			continue
+		}
+
+		host, exist, err := c.hdb.Host(contract.HostPublicKey)
 		if contract.StartHeight >= c.currentPeriod {
 			// Calculate spending from contracts that were renewed during the current period
 			// Calculate ContractFees
@@ -136,7 +153,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 			spending.DownloadSpending = spending.DownloadSpending.Add(contract.DownloadSpending)
 			spending.UploadSpending = spending.UploadSpending.Add(contract.UploadSpending)
 			spending.StorageSpending = spending.StorageSpending.Add(contract.StorageSpending)
-		} else if exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
+		} else if err != nil && exist && contract.EndHeight+host.WindowSize+types.MaturityDelay > c.blockHeight {
 			// Calculate funds that are being withheld in contracts
 			spending.WithheldFunds = spending.WithheldFunds.Add(contract.RenterFunds)
 			// Record the largest window size for worst case when reporting the spending
@@ -162,7 +179,7 @@ func (c *Contractor) PeriodSpending() modules.ContractorSpending {
 		spending.Unspent = c.allowance.Funds.Sub(allSpending)
 	}
 
-	return spending
+	return spending, nil
 }
 
 // CurrentPeriod returns the height at which the current allowance period
@@ -204,14 +221,14 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	// contract was renewed
 	newFCID, renewed := c.renewedTo[fcid]
 	if !renewed {
-		return renewed
+		return false
 	}
 
 	// Grab the contract to check its end height
 	contract, ok := c.oldContracts[fcid]
 	if !ok {
-		build.Critical("contract not found in oldContracts, this should never happen")
-		return renewed
+		c.log.Debugln("Contract not found in oldContracts, despite there being a renewal to the contract")
+		return false
 	}
 
 	// Grab the contract it was renewed to to check its end height
@@ -219,8 +236,8 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	if !ok {
 		newContract, ok = c.oldContracts[newFCID]
 		if !ok {
-			build.Critical("contract not tracked in staticContracts of old contracts, this should never happen")
-			return renewed
+			c.log.Debugln("Contract was not found in the database, despite their being another contract that claims to have renewed to it.")
+			return false
 		}
 	}
 
@@ -248,7 +265,7 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, persistDir string) (*Contractor, <-chan error) {
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, persistDir string) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -262,6 +279,10 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 	}
 	if tpool == nil {
 		errChan <- errNilTpool
+		return nil, errChan
+	}
+	if hdb == nil {
+		errChan <- errNilHDB
 		return nil, errChan
 	}
 
@@ -292,11 +313,11 @@ func New(cs consensusSet, wallet walletShim, tpool transactionPool, hdb hostDB, 
 	}
 
 	// Create Contractor using production dependencies.
-	return NewCustomContractor(cs, &WalletBridge{W: wallet}, tpool, hdb, contractSet, NewPersist(persistDir), logger, modules.ProdDependencies)
+	return NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, modules.ProdDependencies)
 }
 
 // contractorBlockingStartup handles the blocking portion of NewCustomContractor.
-func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
+func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp modules.TransactionPool, hdb modules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, error) {
 	// Create the Contractor object.
 	c := &Contractor{
 		staticAlerter: modules.NewAlerter("contractor"),
@@ -304,7 +325,7 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 		staticDeps:    deps,
 		hdb:           hdb,
 		log:           l,
-		persist:       p,
+		persistDir:    persistDir,
 		tpool:         tp,
 		wallet:        w,
 
@@ -316,12 +337,15 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 		editors:              make(map[types.FileContractID]*hostEditor),
 		sessions:             make(map[types.FileContractID]*hostSession),
 		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
+		doubleSpentContracts: make(map[types.FileContractID]types.BlockHeight),
 		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
 		pubKeysToContractID:  make(map[string]types.FileContractID),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
 	}
+	c.staticChurnLimiter = newChurnLimiter(c)
+	c.staticWatchdog = newWatchdog(c)
 
 	// Close the contract set and logger upon shutdown.
 	c.tg.AfterStop(func() {
@@ -371,7 +395,7 @@ func contractorBlockingStartup(cs consensusSet, w wallet, tp transactionPool, hd
 }
 
 // contractorAsyncStartup handles the async portion of NewCustomContractor.
-func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
+func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 	if c.staticDeps.Disrupt("BlockAsyncStartup") {
 		return nil
 	}
@@ -393,11 +417,11 @@ func contractorAsyncStartup(c *Contractor, cs consensusSet) error {
 }
 
 // NewCustomContractor creates a Contractor using the provided dependencies.
-func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb hostDB, contractSet *proto.ContractSet, p persister, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
+func NewCustomContractor(cs modules.ConsensusSet, w modules.Wallet, tp modules.TransactionPool, hdb modules.HostDB, persistDir string, contractSet *proto.ContractSet, l *persist.Logger, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Handle blocking startup.
-	c, err := contractorBlockingStartup(cs, w, tp, hdb, contractSet, p, l, deps)
+	c, err := contractorBlockingStartup(cs, w, tp, hdb, persistDir, contractSet, l, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -420,9 +444,9 @@ func NewCustomContractor(cs consensusSet, w wallet, tp transactionPool, hdb host
 	return c, errChan
 }
 
-// managedInitRecoveryScan starts scanning the whole blockchain at a certain
+// callInitRecoveryScan starts scanning the whole blockchain at a certain
 // ChangeID for recoverable contracts within a separate thread.
-func (c *Contractor) managedInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
+func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (err error) {
 	// Check if we are already scanning the blockchain.
 	if !atomic.CompareAndSwapUint32(&c.atomicScanInProgress, 0, 1) {
 		return errors.New("scan for recoverable contracts is already in progress")

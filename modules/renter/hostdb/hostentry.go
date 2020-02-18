@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // updateHostDBEntry updates a HostDBEntries's historic interactions if more
@@ -74,14 +75,19 @@ func updateHostHistoricInteractions(host *modules.HostDBEntry, bh types.BlockHei
 
 // IncrementSuccessfulInteractions increments the number of successful
 // interactions with a host for a given key
-func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) {
+func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error {
+	if err := hdb.tg.Add(); err != nil {
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
+	}
+	defer hdb.tg.Done()
+
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 
 	// Fetch the host.
-	host, haveHost := hdb.hostTree.Select(key)
+	host, haveHost := hdb.staticHostTree.Select(key)
 	if !haveHost {
-		return
+		return errors.AddContext(errHostNotFoundInTree, "unable to increment successful interaction:")
 	}
 
 	// Update historic values if necessary
@@ -89,20 +95,30 @@ func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) {
 
 	// Increment the successful interactions
 	host.RecentSuccessfulInteractions++
-	hdb.hostTree.Modify(host)
+	hdb.staticHostTree.Modify(host)
+	return nil
 }
 
 // IncrementFailedInteractions increments the number of failed interactions with
 // a host for a given key
-func (hdb *HostDB) IncrementFailedInteractions(key types.SiaPublicKey) {
+func (hdb *HostDB) IncrementFailedInteractions(key types.SiaPublicKey) error {
+	if err := hdb.tg.Add(); err != nil {
+		return errors.AddContext(err, "error adding hostdb threadgroup:")
+	}
+	defer hdb.tg.Done()
+
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
 
+	// If we are offline it probably wasn't the host's fault
+	if !hdb.gateway.Online() {
+		return nil
+	}
+
 	// Fetch the host.
-	host, haveHost := hdb.hostTree.Select(key)
-	if !haveHost || !hdb.gateway.Online() {
-		// If we are offline it probably wasn't the host's fault
-		return
+	host, haveHost := hdb.staticHostTree.Select(key)
+	if !haveHost {
+		return errors.AddContext(errHostNotFoundInTree, "unable to increment failed interaction:")
 	}
 
 	// Update historic values if necessary
@@ -110,5 +126,6 @@ func (hdb *HostDB) IncrementFailedInteractions(key types.SiaPublicKey) {
 
 	// Increment the failed interactions
 	host.RecentFailedInteractions++
-	hdb.hostTree.Modify(host)
+	hdb.staticHostTree.Modify(host)
+	return nil
 }

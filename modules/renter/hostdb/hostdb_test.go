@@ -1,7 +1,6 @@
 package hostdb
 
 import (
-	"bytes"
 	"io/ioutil"
 	"math"
 	"net"
@@ -42,12 +41,12 @@ type hdbTester struct {
 func bareHostDB() *HostDB {
 	hdb := &HostDB{
 		allowance:      modules.DefaultAllowance,
-		log:            persist.NewLogger(ioutil.Discard),
+		staticLog:      persist.NewLogger(ioutil.Discard),
 		knownContracts: make(map[string]contractInfo),
 	}
 	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
-	hdb.hostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
-	hdb.filteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
+	hdb.staticHostTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
+	hdb.staticFilteredTree = hosttree.New(hdb.weightFunc, &modules.ProductionResolver{})
 	return hdb
 }
 
@@ -213,7 +212,7 @@ func TestRandomHosts(t *testing.T) {
 	for i := 0; i < nEntries; i++ {
 		entry := makeHostDBEntry()
 		entries[entry.PublicKey.String()] = entry
-		err := hdbt.hdb.filteredTree.Insert(entry)
+		err := hdbt.hdb.staticFilteredTree.Insert(entry)
 		if err != nil {
 			t.Error(err)
 		}
@@ -317,7 +316,7 @@ func TestRandomHosts(t *testing.T) {
 		if len(rand) != 1 {
 			t.Fatal("wrong number of hosts returned")
 		}
-		if rand[0].PublicKey.String() != hosts[0].PublicKey.String() {
+		if !rand[0].PublicKey.Equals(hosts[0].PublicKey) {
 			t.Error("exclude list seems to be excluding the wrong hosts.")
 		}
 
@@ -329,7 +328,7 @@ func TestRandomHosts(t *testing.T) {
 		if len(rand) != 1 {
 			t.Fatal("wrong number of hosts returned")
 		}
-		if rand[0].PublicKey.String() != hosts[0].PublicKey.String() {
+		if !rand[0].PublicKey.Equals(hosts[0].PublicKey) {
 			t.Error("exclude list seems to be excluding the wrong hosts.")
 		}
 
@@ -419,7 +418,7 @@ func TestRemoveNonexistingHostFromHostTree(t *testing.T) {
 	}
 
 	// Remove a host that doesn't exist from the tree.
-	err = hdbt.hdb.hostTree.Remove(types.SiaPublicKey{})
+	err = hdbt.hdb.staticHostTree.Remove(types.SiaPublicKey{})
 	if err == nil {
 		t.Fatal("There should be an error, but not a panic:", err)
 	}
@@ -441,7 +440,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 
 	// create a HostDBEntry and add it to the tree
 	host := makeHostDBEntry()
-	err = hdbt.hdb.hostTree.Insert(host)
+	err = hdbt.hdb.staticHostTree.Insert(host)
 	if err != nil {
 		t.Error(err)
 	}
@@ -454,7 +453,10 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok := hdbt.hdb.Host(host.PublicKey)
+	host, ok, err := hdbt.hdb.Host(host.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -482,7 +484,10 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok, err = hdbt.hdb.Host(host.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -517,7 +522,10 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	}
 
 	// get updated host from hostdb
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok, err = hdbt.hdb.Host(host.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -539,7 +547,10 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok, err = hdbt.hdb.Host(host.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -560,7 +571,10 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	host, ok = hdbt.hdb.Host(host.PublicKey)
+	host, ok, err = hdbt.hdb.Host(host.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("Modified host not found in hostdb")
 	}
@@ -622,15 +636,24 @@ func TestCheckForIPViolations(t *testing.T) {
 	// Scan the entries. entry1 should be the 'oldest' and entry3 the
 	// 'youngest'. This also inserts the entries into the hosttree.
 	hdbt.hdb.managedScanHost(entry1)
-	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(time.Millisecond)
 
 	hdbt.hdb.managedScanHost(entry2)
-	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(time.Millisecond)
 
 	hdbt.hdb.managedScanHost(entry3)
-	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(time.Millisecond)
 
 	// Make sure that the timestamps are not zero and that they entries have
@@ -651,49 +674,70 @@ func TestCheckForIPViolations(t *testing.T) {
 	// and the following checks will fail.
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry3)
-	entry3, _ = hdbt.hdb.Host(entry3.PublicKey)
+	entry3, _, err = hdbt.hdb.Host(entry3.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry2)
-	entry2, _ = hdbt.hdb.Host(entry2.PublicKey)
+	entry2, _, err = hdbt.hdb.Host(entry2.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	time.Sleep(time.Millisecond)
 	hdbt.hdb.managedScanHost(entry1)
-	entry1, _ = hdbt.hdb.Host(entry1.PublicKey)
+	entry1, _, err = hdbt.hdb.Host(entry1.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add entry1 and entry2. There should be no violation.
-	badHosts := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})
+	badHosts, err := hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(badHosts) != 0 {
 		t.Errorf("Got %v violations, should be 0", len(badHosts))
 	}
 
 	// Add entry3. It should cause a violation for entry 3.
-	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey, entry3.PublicKey})
+	badHosts, err = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry1.PublicKey, entry2.PublicKey, entry3.PublicKey})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 0 && !badHosts[0].Equals(entry3.PublicKey) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 
 	// Calling CheckForIPViolations with entry 2 as the first argument and
 	// entry1 as the second should result in entry3 being the bad host again.
-	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry2.PublicKey, entry1.PublicKey, entry3.PublicKey})
+	badHosts, err = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry2.PublicKey, entry1.PublicKey, entry3.PublicKey})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 0 && !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 0 && !badHosts[0].Equals(entry3.PublicKey) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 
 	// Calling CheckForIPViolations with entry 3 as the first argument should
 	// result in 1 bad host, entry3. The reason being that entry3 is the
 	// 'youngest' entry.
-	badHosts = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry3.PublicKey, entry1.PublicKey, entry2.PublicKey})
+	badHosts, err = hdbt.hdb.CheckForIPViolations([]types.SiaPublicKey{entry3.PublicKey, entry1.PublicKey, entry2.PublicKey})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(badHosts) != 1 {
 		t.Errorf("Got %v violations, should be 1", len(badHosts))
 	}
-	if len(badHosts) > 1 || !bytes.Equal(badHosts[0].Key, entry3.PublicKey.Key) {
+	if len(badHosts) > 1 || !badHosts[0].Equals(entry3.PublicKey) {
 		t.Error("Hdb returned violation for wrong host")
 	}
 }

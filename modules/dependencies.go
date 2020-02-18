@@ -124,9 +124,8 @@ type (
 	// ProductionDependencies are the dependencies used in a Release or Debug
 	// production build.
 	ProductionDependencies struct {
-		shouldInit bool
-		openFiles  map[string]int
-		mu         sync.Mutex
+		openFiles map[string]int
+		mu        sync.Mutex
 	}
 
 	// ProductionFile is the implementation of the File interface that is used

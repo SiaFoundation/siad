@@ -48,7 +48,10 @@ func (wal *writeAheadLog) commitStorageFolderRemoval(sfr storageFolderRemoval) {
 // RemoveStorageFolder will delete a storage folder from the contract manager,
 // moving all of the sectors in the storage folder to new storage folders.
 func (cm *ContractManager) RemoveStorageFolder(index uint16, force bool) error {
-	cm.tg.Add()
+	err := cm.tg.Add()
+	if err != nil {
+		return err
+	}
 	defer cm.tg.Done()
 
 	// Retrieve the specified storage folder.
@@ -65,7 +68,7 @@ func (cm *ContractManager) RemoveStorageFolder(index uint16, force bool) error {
 	defer sf.mu.Unlock()
 
 	// Clear out the sectors in the storage folder.
-	_, err := cm.wal.managedEmptyStorageFolder(index, 0)
+	_, err = cm.wal.managedEmptyStorageFolder(index, 0)
 	if err != nil && !force {
 		return err
 	}

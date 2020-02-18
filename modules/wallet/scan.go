@@ -160,6 +160,9 @@ func (s *seedScanner) scan(cs modules.ConsensusSet, cancel <-chan struct{}) erro
 	numKeys := numInitialKeys
 	for s.numKeys() < maxScanKeys {
 		s.generateKeys(numKeys)
+
+		// Reset scan height between scans.
+		s.scannedHeight = 0
 		if err := cs.ConsensusSetSubscribe(s, modules.ConsensusChangeBeginning, cancel); err != nil {
 			return err
 		}

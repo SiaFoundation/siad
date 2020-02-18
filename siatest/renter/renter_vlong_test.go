@@ -14,8 +14,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -86,11 +85,11 @@ func TestRenterSpendingReporting(t *testing.T) {
 	// allocated when setting the allowance are reflected correctly in the
 	// wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
 		if err != nil {
 			return err
 		}
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -122,7 +121,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	// Check to confirm upload and download spending was captured correctly
 	// and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -133,13 +132,13 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 		if err != nil {
 			return err
 		}
@@ -147,7 +146,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -176,14 +175,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -235,7 +234,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, 0)
 		if err != nil {
 			return err
 		}
@@ -243,7 +242,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -271,14 +270,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and a new period and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -289,7 +288,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Renew contracts by running out of funds
-	_, err = drainContractsByUploading(r, tg, contractor.MinContractFundRenewalThreshold)
+	_, err = siatest.DrainContractsByUploading(r, tg)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
@@ -297,7 +296,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts())*2, 0)
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, len(tg.Hosts()), 0, len(tg.Hosts())*2, 0)
 		if err != nil {
 			return err
 		}
@@ -305,7 +304,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -333,14 +332,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and a new period and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -351,13 +350,13 @@ func TestRenterSpendingReporting(t *testing.T) {
 	}
 
 	// Mine blocks to force contract renewal
-	if err = renewContractsByRenewWindow(r, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm Contracts were renewed as expected
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err := checkExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
+		err := siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts())*2, len(tg.Hosts()))
 		if err != nil {
 			return err
 		}
@@ -365,7 +364,7 @@ func TestRenterSpendingReporting(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err = checkRenewedContractsSpending(rc.ActiveContracts); err != nil {
+		if err = siatest.CheckRenewedContractsSpending(rc.ActiveContracts); err != nil {
 			return err
 		}
 		return nil
@@ -393,14 +392,14 @@ func TestRenterSpendingReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
+	if err = siatest.CheckContractVsReportedSpending(r, windowSize, append(rc.InactiveContracts, rcExpired.ExpiredContracts...), rc.ActiveContracts); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check to confirm reported spending is still accurate with the renewed contracts
 	// and reflected in the wallet balance
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		err = checkBalanceVsSpending(r, initialBalance)
+		err = siatest.CheckBalanceVsSpending(r, initialBalance)
 		if err != nil {
 			return err
 		}
@@ -456,7 +455,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to upload the file to.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 				continue
 			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
@@ -564,7 +563,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 					t.Fatal(err)
 				}
 				err = r.RenterUploadForcePost(lf.Path(), sp, dataPieces, parityPieces, false)
-				if err != nil && !strings.Contains(err.Error(), siafile.ErrPathOverload.Error()) {
+				if err != nil && !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
 					t.Fatal(err)
 				}
 			}
@@ -592,7 +591,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterDeletePost(sp)
+			err = r.RenterFileDeletePost(sp)
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
@@ -611,7 +610,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to create a dir in.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 				continue
 			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
@@ -644,7 +643,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 			}
 			// Get a random directory to delete.
 			dirs, err := r.Dirs()
-			if err != nil && strings.Contains(err.Error(), siadir.ErrUnknownPath.Error()) {
+			if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 				continue
 			}
 			if err != nil && strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
@@ -667,7 +666,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				// NOTE we could probably avoid ignoring ErrPathOverload if we
 				// decided that `siadir.New` returns a potentially existing
 				// directory instead.
-				if err != nil && !strings.Contains(err.Error(), siadir.ErrPathOverload.Error()) {
+				if err != nil && !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
 					t.Fatal(err)
 				}
 			} else {
@@ -789,7 +788,7 @@ func TestUploadStreamFailAndRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Make sure we can download the file.
-	_, downloadedData, err := renter.RenterDownloadHTTPResponseGet(sp, 0, uint64(len(data)))
+	_, downloadedData, err := renter.RenterDownloadHTTPResponseGet(sp, 0, uint64(len(data)), true)
 	if err != nil {
 		t.Fatal(err)
 	}

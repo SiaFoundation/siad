@@ -4,18 +4,13 @@ that a user has uploaded to Sia. This includes the location and health of these
 files. The Renter, via the HostDB and the Contractor, is also responsible for
 picking hosts and maintaining the relationship with them.
 
-*TODO*
-  - Should assumptions for each section be put in a specific **assumptions**
-    section at the end of each section?
-  - Update list of submodules to be links to README files was submodule READMEs
-    are ready
-  - If we like this format for the README we should document it and make it
-    standard for consistency between module READMEs. Things to consider:
-     - What gets `highlighted` - code only
-     - What gets linked
-     - What Sections to have and order
-  - Confirm all assumptions have tests
-  - Create subsystemconsts.go files and add them to the **Key Files** 
+The renter is unique for having two different logs. The first is a general
+renter activity log, and the second is a repair log. The repair log is intended
+to be a high-signal log that tells users what files are being repaired, and
+whether the repair jobs have been successful. Where there are failures, the
+repair log should try and document what those failures were. Every message of
+the repair log should be interesting and useful to a power user, there should be
+no logspam and no messages that would only make sense to siad developers.
 
 ## Submodules
 The Renter has several submodules that each perform a specific function for the
@@ -60,15 +55,21 @@ when performing file operations.
 The Renter has the following subsystems that help carry out its
 responsibilities.
  - [Filesystem Controllers](#filesystem-controllers)
- - [Persistance Subsystem](#persistance-subsystem)
+ - [Fuse Subsystem](#fuse-subsystem)
+ - [Fuse Manager Subsystem](#fuse-manager-subsystem)
+ - [Persistence Subsystem](#persistence-subsystem)
  - [Memory Subsystem](#memory-subsystem)
  - [Worker Subsystem](#worker-subsystem)
  - [Download Subsystem](#download-subsystem)
  - [Download Streaming Subsystem](#download-streaming-subsystem)
+ - [Download By Root Subsystem](#download-by-root-subsystem)
+ - [Skyfile Subsystem](#skyfile-subsystem)
+ - [Stream Buffer Subsystem](#stream-buffer-subsystem)
  - [Upload Subsystem](#upload-subsystem)
  - [Upload Streaming Subsystem](#upload-streaming-subsystem)
  - [Health and Repair Subsystem](#health-and-repair-subsystem)
  - [Backup Subsystem](#backup-subsystem)
+ - [Refresh Paths Subsystem](#refresh-paths-subsystem)
 
 ### Filesystem Controllers
 **Key Files**
@@ -83,7 +84,70 @@ responsibilities.
  - `RenameFile` calls `callThreadedBubbleMetadata` on the current and new
    directories when a file is renamed
 
-### Persistance Subsystem
+### Fuse Subsystem
+**Key Files**
+ - [fuse.go](./fuse.go)
+
+The fuse subsystem enables mounting the renter as a virtual filesystem. When
+mounted, the kernel forwards I/O syscalls on files and folders to the userland
+code in this subsystem. For example, the `read` syscall is implemented by
+downloading data from Sia hosts.
+
+Fuse is implemented using the `hanwen/go-fuse/v2` series of packages, primarily
+`fs` and `fuse`. The fuse package recognizes a single node interface for files
+and folders, but the renter has two structs, one for files and another for
+folders. Each the fuseDirnode and the fuseFilenode implement the same Node
+interfaces.
+
+The fuse implementation is remarkably sensitive to small details. UID mistakes,
+slow load times, or missing/incorrect method implementations can often destroy
+an external application's ability to interact with fuse. Currently we use
+ranger, Nautilus, vlc/mpv, and siastream when testing if fuse is still working
+well. More programs may be added to this list as we discover more programs that
+have unique requirements for working with the fuse package.
+
+The siatest/renter suite has two packages which are useful for testing fuse. The
+first is [fuse\_test.go](../../siatest/renter/fuse_test.go), and the second is
+[fusemock\_test.go](../../siatest/renter/fusemock_test.go). The first file
+leverages a testgroup with a renter, a miner, and several hosts to mimic the Sia
+network, and then mounts a fuse folder which uses the full fuse implementation.
+The second file contains a hand-rolled implementation of a fake filesystem which
+implements the fuse interfaces. Both have a commented out sleep at the end of
+the test which, when uncommented, allows a developer to explore the final
+mounted fuse folder with any system application to see if things are working
+correctly.
+
+The mocked fuse is useful for debugging issues related to the fuse
+implementation. When using the renter implementation, it can be difficult to
+determine whether something is not working because there is a bug in the renter
+code, or whether something is not working because the fuse libraries are being
+used incorrectly. The mocked fuse is an easy way to replicate any desired
+behavior and check for misunderstandings that the programmer may have about how
+the fuse librires are meant to be used.
+
+### Fuse Manager Subsystem
+**Key Files**
+ - [fusemanager.go](./fusemanager.go)
+
+The fuse manager subsystem keeps track of multiple fuse directories that are
+mounted at the same time. It maintains a list of mountpoints, and maps to the
+fuse filesystem object that is mounted at those point. Only one folder can be
+mounted at each mountpoint, but the same folder can be mounted at many
+mountpoints.
+
+When debugging fuse, it can be helpful to enable the 'Debug' option when
+mounting a filesystem. This option is commented out in the fuse manager in
+production, but searching for 'Debug:' in the file will reveal the line that can
+be uncommented to enable debugging. Be warned that when debugging is enabled,
+fuse becomes incredibly verbose.
+
+Upon shutdown, the fuse manager will only attempt to unmount each folder one
+time. If the folder is busy or otherwise in use by another application, the
+unmount will fail and the user will have to manually unmount using `fusermount`
+or `umount` before that folder becomes available again. To the best of our
+current knowledge, there is no way to force an unmount.
+
+### Persistence Subsystem
 **Key Files**
  - [persist_compat.go](./persist_compat.go)
  - [persist.go](./persist.go)
@@ -95,8 +159,27 @@ responsibilities.
 **Key Files**
  - [memory.go](./memory.go)
 
-*TODO* 
-  - fill out subsystem explanation
+The memory subsystem acts as a limiter on the total amount of memory that the
+renter can use. The memory subsystem does not manage actual memory, it's really
+just a counter. When some process in the renter wants to allocate memory, it
+uses the 'Request' method of the memory manager. The memory manager will block
+until enough memory has been returned to allow the request to be granted. The
+process is then responsible for calling 'Return' on the memory manager when it
+is done using the memory.
+
+The memory manager is initialized with a base amount of memory. If a request is
+made for more than the base memory, the memory manager will block until all
+memory has been returned, at which point the memory manager will unblock the
+request. No other memory requests will be unblocked until the large memory
+sufficiently returned.
+
+Because 'Request' and 'Return' are just counters, they can be called as many
+times as necessary in whatever sizes are convenient.
+
+When calling 'Request', a process should be sure to request all necessary memory
+at once, because if a single process calls 'Request' multiple times before
+returning any memory, this can cause a deadlock between multiple processes that
+are stuck waiting for more memory before they release memory.
 
 ### Worker Subsystem
 **Key Files**
@@ -252,6 +335,10 @@ Some downloads, in particular downloads issued by the repair code, have
 already had their memory allocated. These downloads get to skip the heap and
 go straight for the workers.
 
+Before we distribute a download to workers, we check the `localPath` of the
+file to see if it available on disk. If it is, and `disableLocalFetch` isn't
+set, we load the download from disk instead of distributing it to workers.
+
 When a download is distributed to workers, it is given to every single worker
 without checking whether that worker is appropriate for the download. Each
 worker has their own queue, which is bottlenecked by the fact that a worker
@@ -319,6 +406,43 @@ price and total throughput.
 *TODO* 
   - fill out subsystem explanation
 
+### Skyfile Subsystem
+**Key Files**
+ - [skyfile.go](./skyfile.go)
+ - [skyfilefanout.go](./skyfilefanout.go)
+ - [skyfilefanoutfetch.go](./skyfilefanoutfetch.go)
+
+The skyfile system contains methods for encoding, decoding, uploading, and
+downloading skyfiles using Skylinks, and is one of the foundations underpinning
+Skynet.
+
+The skyfile format is a custom format which prepends metadata to a file such
+that the entire file and all associated metadata can be recovered knowing
+nothing more than a single sector root. That single sector root can be encoded
+alongside some compressed fetch offset and length information to create a
+skylink.
+
+**Outbound Complexities**
+ - callUploadStreamFromReader is used to upload new data to the Sia network when
+   creating skyfiles. This call appears three times in
+   [skyfile.go](./skyfile.go)
+
+### Stream Buffer Subsystem
+**Key Files**
+ - [streambuffer.go](./streambuffer.go)
+ - [streambufferlru.go](./streambufferlru.go)
+
+The stream buffer subsystem coordinates buffering for a set of streams. Each
+stream has an LRU which includes both the recently visited data as well as data
+that is being buffered in front of the current read position. The LRU is
+implemented in [streambufferlru.go](./streambufferlru.go).
+
+If there are multiple streams open from the same data source at once, they will
+share their cache. Each stream will maintain its own LRU, but the data is stored
+in a common stream buffer. The stream buffers draw their data from a data source
+interface, which allows multiple different types of data sources to use the
+stream buffer.
+
 ### Upload Subsystem
 **Key Files**
  - [directoryheap.go](./directoryheap.go)
@@ -351,12 +475,33 @@ merkle root and the contract revision.
    `uploadHeap` and then signals the heap's `newUploads` channel so that the
    Repair Loop will work through the heap and upload the chunks
 
+### Download By Root Subsystem
+**Key Files**
+ - [projectdownloadbyroot.go](./projectdownloadbyroot.go)
+ - [workerdownloadbyroot.go](./workerdownloadbyroot.go)
+
+The download by root subsystem exports a single method that allows a caller to
+download or partially download a sector from the Sia network knowing only the
+Merkle root of that sector, and not necessarily knowing which host on the
+network has that sector. The single exported method is 'DownloadByRoot'.
+
+This subsystem was created primarily as a facilitator for the skylinks of
+Skynet. Skylinks provide a merkle root and some offset+length information, but
+do not provide any information about which hosts are storing the sectors. The
+exported method of this subsystem will primarily be called by skylink methods,
+as opposed to being used directly by external users.
+
 ### Upload Streaming Subsystem
 **Key Files**
  - [uploadstreamer.go](./uploadstreamer.go)
 
 *TODO* 
   - fill out subsystem explanation
+
+**Inbound Complexities**
+ - The skyfile subsystem makes three calls to `callUploadStreamFromReader()` in
+   [skyfile.go](./skyfile.go)
+ - The snapshot subsystem makes a call to `callUploadStreamFromReader()`
 
 ### Health and Repair Subsystem
 **Key Files**
@@ -566,26 +711,31 @@ the stuck chunks in the filesystem. The stuck loop does this by first selecting
 a directory containing stuck chunks by calling `managedStuckDirectory`. Then
 `managedBuildAndPushRandomChunk` is called to select a file with stuck chunks to
 then add one stuck chunk from that file to the heap. The stuck loop repeats this
-process of finding a stuck chunk until there are `MaxStuckChunksInHeap` stuck
-chunks in the upload heap. Stuck chunks are priority in the heap, so limiting it
-to `MaxStuckChunksInHeap` at a time prevents the heap from being saturated with
-stuck chunks that potentially cannot be repaired which would cause no other
-files to be repaired. 
+process of finding a stuck chunk until there are `maxRandomStuckChunksInHeap`
+stuck chunks in the upload heap or it has added `maxRandomStuckChunksAddToHeap`
+stuck chunks to the upload heap. Stuck chunks are priority in the heap, so
+limiting it to `maxStuckChunksInHeap` at a time prevents the heap from being
+saturated with stuck chunks that potentially cannot be repaired which would
+cause no other files to be repaired. 
 
 For the stuck loop to begin using the `stuckStack` there needs to have been
 successful stuck chunk repairs. If the repair of a stuck chunk is successful,
 the SiaPath of the SiaFile it came from is added to the Renter's `stuckStack`
 and a signal is sent to the stuck loop so that another stuck chunk can added to
-the heap. The `stuckStack` tracks `maxSuccessfulStuckRepairFiles` number of
-SiaFiles that have had stuck chunks successfully repaired in a LIFO stack. If
-the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when a new
-SiaFile is pushed onto the stack the oldest SiaFile is dropped from the stack so
-the new SiaFile can be added. Additionally, if SiaFile is being added that is
-already being tracked, then the originally reference is removed and the SiaFile
-is added to the top of the Stack. If there have been successful stuck chunk
-repairs, the stuck loop will try and add additional stuck chunks from these
-files first before trying to add a random stuck chunk. The idea being that since
-all the chunks in a SiaFile have the same redundancy settings and were
+the heap. The repair loop with continue to add stuck chunks from the
+`stuckStack` until there are `maxStuckChunksInHeap` stuck chunks in the upload
+heap. Stuck chunks added from the `stuckStack` will have priority over random
+stuck chunks, this is determined by setting the `fileRecentlySuccessful` field
+to true for the chunk. The `stuckStack` tracks `maxSuccessfulStuckRepairFiles`
+number of SiaFiles that have had stuck chunks successfully repaired in a LIFO
+stack. If the LIFO stack already has `maxSuccessfulStuckRepairFiles` in it, when
+a new SiaFile is pushed onto the stack the oldest SiaFile is dropped from the
+stack so the new SiaFile can be added. Additionally, if SiaFile is being added
+that is already being tracked, then the original reference is removed and the
+SiaFile is added to the top of the Stack. If there have been successful stuck
+chunk repairs, the stuck loop will try and add additional stuck chunks from
+these files first before trying to add a random stuck chunk. The idea being that
+since all the chunks in a SiaFile have the same redundancy settings and were
 presumably uploaded around the same time, if one chunk was able to be repaired,
 the other chunks should be able to be repaired as well. Additionally, the reason
 a LIFO stack is used is because the more recent a success was the higher
@@ -624,3 +774,16 @@ it up by finding a stuck chunk.
 The backup subsystem of the renter is responsible for creating local and remote
 backups of the user's data, such that all data is able to be recovered onto a
 new machine should the current machine + metadata be lost.
+
+### Refresh Paths Subsystem
+**Key Files**
+ - [refreshpaths.go](./refreshpaths.go)
+
+The refresh paths subsystem of the renter is a helper subsystem that tracks the
+minimum unique paths that need to be refreshed in order to refresh the entire
+affected portion of the file system.
+
+**Inbound Complexities** 
+ - `callAdd` is used to try and add a new path. 
+ - `callRefreshAll` is used to refresh all the directories corresponding to the
+   unique paths in order to update the filesystem

@@ -1,10 +1,10 @@
 package contractor
 
 import (
-	"errors"
 	"sync"
 	"sync/atomic"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -45,7 +45,7 @@ func (c *Contractor) newRecoveryScanner(rs proto.RenterSeed) *recoveryScanner {
 // filecontracts belonging to the wallet's seed. Once done, all recoverable
 // contracts should be known to the contractor after which it will periodically
 // try to recover them.
-func (rs *recoveryScanner) threadedScan(cs consensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
+func (rs *recoveryScanner) threadedScan(cs modules.ConsensusSet, scanStart modules.ConsensusChangeID, cancel <-chan struct{}) error {
 	if err := rs.c.tg.Add(); err != nil {
 		return err
 	}
@@ -118,7 +118,11 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 			rs := renterSeed.EphemeralRenterSeed(fc.WindowStart)
 			defer fastrand.Read(rs[:])
 			// Validate the identifier.
-			hostKey, valid := csi.IsValid(rs, txn, encryptedHostKey)
+			hostKey, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
+			if err != nil && !errors.Contains(err, proto.ErrCSIDoesNotMatchSeed) {
+				c.log.Println("WARN: error validating the identifier:", err)
+				continue
+			}
 			if !valid {
 				continue
 			}
@@ -165,7 +169,10 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 // was formed with and retrieving the latest revision and sector roots.
 func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) error {
 	// Get the corresponding host.
-	host, ok := c.hdb.Host(rc.HostPublicKey)
+	host, ok, err := c.hdb.Host(rc.HostPublicKey)
+	if err != nil {
+		return errors.AddContext(err, "error getting host from hostdb:")
+	}
 	if !ok {
 		return errors.New("Can't recover contract with unknown host")
 	}
@@ -215,11 +222,24 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		return errors.New("can't recover contract with a host that we already have a contract with")
 	}
 	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	return nil
+
+	// Tell the watchdog to watch this transaction for revisions and storage
+	// proofs.
+	monitorContractArgs := monitorContractArgs{
+		recovered:   true,
+		fcID:        contract.ID,
+		revisionTxn: contract.Transaction,
+	}
+	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
+	if err == errAlreadyWatchingContract {
+		c.log.Debugln("Watchdog already aware of recovered contract")
+		err = nil
+	}
+	return err
 }
 
-// managedRecoverContracts recovers known recoverable contracts.
-func (c *Contractor) managedRecoverContracts() {
+// callRecoverContracts recovers known recoverable contracts.
+func (c *Contractor) callRecoverContracts() {
 	if c.staticDeps.Disrupt("DisableContractRecovery") {
 		return
 	}

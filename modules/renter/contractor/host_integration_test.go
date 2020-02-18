@@ -71,7 +71,7 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -113,8 +113,8 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	return contractor, <-errChan
 }
 
-// newTestingTrio creates a Host, Contractor, and TestMiner that can be used
-// for testing host/renter interactions.
+// newTestingTrio creates a Host, Contractor, and TestMiner that can be
+// used for testing host/renter interactions.
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, error) {
 	testdir := build.TempDir("contractor", name)
 
@@ -178,11 +178,25 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	}
 
 	// wait for hostdb to scan host
-	for i := 0; i < 50 && len(c.hdb.ActiveHosts()) == 0; i++ {
-		time.Sleep(time.Millisecond * 100)
-	}
-	if len(c.hdb.ActiveHosts()) == 0 {
-		return nil, nil, nil, errors.New("host did not make it into the contractor hostdb in time")
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		activeHosts, err := c.hdb.ActiveHosts()
+		if err != nil {
+			return err
+		}
+		if len(activeHosts) == 0 {
+			return errors.New("no active hosts")
+		}
+		complete, scanCheckErr := c.hdb.InitialScanComplete()
+		if scanCheckErr != nil {
+			return scanCheckErr
+		}
+		if !complete {
+			return errors.New("initial scan not complete")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	return h, c, m, nil
@@ -208,7 +222,10 @@ func TestIntegrationFormContract(t *testing.T) {
 	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -241,7 +258,10 @@ func TestFormContractSmallAllowance(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -284,7 +304,10 @@ func TestIntegrationReviseContract(t *testing.T) {
 	defer c.maintenanceLock.Unlock()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -333,7 +356,10 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}
@@ -438,7 +464,7 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 
 	// renew the contract
-	err = c.managedUpdateContractUtility(contract.ID, modules.ContractUtility{GoodForRenew: true})
+	err = c.managedAcquireAndUpdateContractUtility(contract.ID, modules.ContractUtility{GoodForRenew: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +501,7 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 
 	// renew to a lower height
-	err = c.managedUpdateContractUtility(contract.ID, modules.ContractUtility{GoodForRenew: true})
+	err = c.managedAcquireAndUpdateContractUtility(contract.ID, modules.ContractUtility{GoodForRenew: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,7 +753,10 @@ func TestContractPresenceLeak(t *testing.T) {
 	defer c.Close()
 
 	// get the host's entry from the db
-	hostEntry, ok := c.hdb.Host(h.PublicKey())
+	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !ok {
 		t.Fatal("no entry for host in db")
 	}

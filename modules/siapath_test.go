@@ -6,6 +6,32 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var (
+	// TestGlobalSiaPathVar tests that the NewGlobalSiaPath initialization
+	// works.
+	TestGlobalSiaPathVar SiaPath = NewGlobalSiaPath("/testdir")
+)
+
+// TestGlobalSiaPath checks that initializing a new global siapath does not
+// cause any issues.
+func TestGlobalSiaPath(t *testing.T) {
+	sp, err := TestGlobalSiaPathVar.Join("testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror, err := NewSiaPath("/testdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := mirror.Join("testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sp.Equals(expected) {
+		t.Error("the separately spawned siapath should equal the global siapath")
+	}
+}
+
 // TestSiapathValidate verifies that the validate function correctly validates
 // SiaPaths.
 func TestSiapathValidate(t *testing.T) {
@@ -186,6 +212,61 @@ func TestSiapathRebase(t *testing.T) {
 		// Check result.
 		if !res.Equals(expectedPath) {
 			t.Fatalf("'%v' doesn't match '%v'", res.String(), expectedPath.String())
+		}
+	}
+}
+
+// TestSiapathDir probes the Dir function for SiaPaths.
+func TestSiapathDir(t *testing.T) {
+	var pathtests = []struct {
+		path string
+		dir  string
+	}{
+		{"one/dir", "one"},
+		{"many/more/dirs", "many/more"},
+		{"nodir", ""},
+		{"/leadingslash", ""},
+		{"./leadingdotslash", ""},
+		{"", ""},
+		{".", ""},
+	}
+	for _, pathtest := range pathtests {
+		siaPath := SiaPath{
+			Path: pathtest.path,
+		}
+		dir, err := siaPath.Dir()
+		if err != nil {
+			t.Errorf("Dir should not return an error %v, path %v", err, pathtest.path)
+			continue
+		}
+		if dir.Path != pathtest.dir {
+			t.Errorf("Dir %v not the same as expected dir %v ", dir.Path, pathtest.dir)
+			continue
+		}
+	}
+}
+
+// TestSiapathName probes the Name function for SiaPaths.
+func TestSiapathName(t *testing.T) {
+	var pathtests = []struct {
+		path string
+		name string
+	}{
+		{"one/dir", "dir"},
+		{"many/more/dirs", "dirs"},
+		{"nodir", "nodir"},
+		{"/leadingslash", "leadingslash"},
+		{"./leadingdotslash", "leadingdotslash"},
+		{"", ""},
+		{".", ""},
+	}
+	for _, pathtest := range pathtests {
+		siaPath := SiaPath{
+			Path: pathtest.path,
+		}
+		name := siaPath.Name()
+		if name != pathtest.name {
+			t.Errorf("name %v not the same as expected name %v ", name, pathtest.name)
 		}
 	}
 }

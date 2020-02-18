@@ -2,18 +2,18 @@ package siafile
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // createLinkedBlankSiafile creates 2 SiaFiles which use the same SiaFile to
 // store combined chunks. They reside within 'dir'.
+//
+//lint:file-ignore U1000 Ignore unused code, it's for future partial upload code
 func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	// Create a wal.
 	walFilePath := filepath.Join(dir, "writeaheadlog.wal")
@@ -35,18 +35,21 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load partialsSiaFile: %v", err)
 	}
-	partialsEntry := &SiaFileSetEntry{
-		dummyEntry(partialsSiaFile),
-		uint64(fastrand.Intn(math.MaxInt32)),
-	}
+	/*
+		 PARTIAL TODO:
+			partialsEntry := &SiaFileSetEntry{
+				dummyEntry(partialsSiaFile),
+				uint64(fastrand.Intn(math.MaxInt32)),
+			}
+	*/
 	// Create the files.
 	sf1Path := filepath.Join(dir, "sf1"+modules.SiaFileExtension)
 	sf2Path := filepath.Join(dir, "sf2"+modules.SiaFileExtension)
-	sf1, err := New(sf1Path, source, wal, rc, sk, fileSize, fileMode, partialsEntry, false)
+	sf1, err := New(sf1Path, source, wal, rc, sk, fileSize, fileMode, nil, false)
 	if err != nil {
 		return nil, nil, err
 	}
-	sf2, err := New(sf2Path, source, wal, rc, sk, fileSize, fileMode, partialsEntry, false)
+	sf2, err := New(sf2Path, source, wal, rc, sk, fileSize, fileMode, nil, false)
 	if err != nil {
 		return nil, nil, err
 	}

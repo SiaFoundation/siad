@@ -22,19 +22,15 @@ const (
 	// remainingFile is a constant used to indicate that a fileSection can access
 	// the whole remaining file instead of being bound to a certain end offset.
 	remainingFile = -1
-
-	// keyExchangeMaxLen is the maximum number of bytes the renter will read
-	// from the host during the RPC key exchange.
-	keyExchangeMaxLen = 256
 )
 
 var (
 	// The following specifiers are used for deriving different seeds from the
 	// wallet seed.
-	identifierSeedSpecifier = types.Specifier{'i', 'd', 'e', 'n', 't', 'i', 'f', 'i', 'e', 'r', 's', 'e', 'e', 'd'}
-	renterSeedSpecifier     = types.Specifier{'r', 'e', 'n', 't', 'e', 'r'}
-	secretKeySeedSpecifier  = types.Specifier{'s', 'e', 'c', 'r', 'e', 't', 'k', 'e', 'y', 's', 'e', 'e', 'd'}
-	signingKeySeedSpecifier = types.Specifier{'s', 'i', 'g', 'n', 'i', 'n', 'g', 'k', 'e', 'y', 's', 'e', 'e', 'd'}
+	identifierSeedSpecifier = types.NewSpecifier("identifierseed")
+	renterSeedSpecifier     = types.NewSpecifier("renter")
+	secretKeySeedSpecifier  = types.NewSpecifier("secretkeyseed")
+	signingKeySeedSpecifier = types.NewSpecifier("signingkeyseed")
 )
 
 var (

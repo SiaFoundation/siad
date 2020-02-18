@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -38,6 +39,7 @@ func (s invalidVersionError) Error() string {
 
 type peer struct {
 	modules.Peer
+	m    *connmonitor.Monitor
 	rl   *ratelimit.RateLimit
 	sess streamSession
 }
@@ -126,6 +128,8 @@ func (g *Gateway) permanentListen(closeChan chan struct{}) {
 			g.log.Debugln("[PL] Closing permanentListen:", err)
 			return
 		}
+		// Monitor bandwidth on conn
+		conn = connmonitor.NewMonitoredConn(conn, g.m)
 
 		go g.threadedAcceptConn(conn)
 
@@ -200,7 +204,7 @@ func acceptableSessionHeader(ourHeader, remoteHeader sessionHeader, remoteAddr s
 // The requesting peer is added as a node and a peer. The peer is only added if
 // a nil error is returned.
 func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) error {
-	g.log.Debugln("Sending sessionHeader with address", g.myAddr, g.myAddr.IsLocal())
+	g.log.Debugln("Attempting to Accept Connection from Peer; Sending sessionHeader with address", g.myAddr, g.myAddr.IsLocal())
 	// Perform header handshake.
 	g.mu.RLock()
 	ourHeader := sessionHeader{
@@ -213,9 +217,11 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 
 	remoteHeader, err := exchangeRemoteHeader(conn, ourHeader)
 	if err != nil {
+		g.log.Debugln("Unable to Accept Connection with Peer. Conn, err:", conn.RemoteAddr(), conn.LocalAddr(), err)
 		return err
 	}
 	if err := exchangeOurHeader(conn, ourHeader); err != nil {
+		g.log.Debugln("Unable to Accept Connection with Peer. Conn, err:", conn.RemoteAddr(), conn.LocalAddr(), err)
 		return err
 	}
 
@@ -225,6 +231,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 	remoteIP := modules.NetAddress(conn.RemoteAddr().String()).Host()
 	remotePort := remoteHeader.NetAddress.Port()
 	remoteAddr := modules.NetAddress(net.JoinHostPort(remoteIP, remotePort))
+	g.log.Debugln("Making connection with remote peer", remoteAddr)
 
 	// Accept the peer.
 	peer := &peer{
@@ -238,6 +245,7 @@ func (g *Gateway) managedAcceptConnPeer(conn net.Conn, remoteVersion string) err
 			NetAddress: remoteAddr,
 			Version:    remoteVersion,
 		},
+		m:    g.m,
 		rl:   rl,
 		sess: newServerStream(conn, remoteVersion),
 	}
@@ -419,39 +427,52 @@ func (g *Gateway) managedConnectPeer(conn net.Conn, remoteVersion string, remote
 // managedConnect establishes a persistent connection to a peer, and adds it to
 // the Gateway's peer list.
 func (g *Gateway) managedConnect(addr modules.NetAddress) error {
+	g.log.Debugln("Attempting to connect to", addr)
 	// Perform verification on the input address.
 	g.mu.RLock()
 	gaddr := g.myAddr
 	g.mu.RUnlock()
 	if addr == gaddr {
-		return errors.New("can't connect to our own address")
+		err := errors.New("can't connect to our own address")
+		g.log.Debugln("Unable to connect to", addr, "error:", err)
+		return err
 	}
 	if err := addr.IsStdValid(); err != nil {
-		return errors.New("can't connect to invalid address")
+		err := errors.New("can't connect to invalid address")
+		g.log.Debugln("Unable to connect to", addr, "error:", err)
+		return err
 	}
 	if net.ParseIP(addr.Host()) == nil {
-		return errors.New("address must be an IP address")
+		err := errors.New("address must be an IP address")
+		g.log.Debugln("Unable to connect to", addr, "error:", err)
+		return err
 	}
 	if _, exists := g.blacklist[addr.Host()]; exists {
-		return errors.New("can't connect to blacklisted address")
+		err := errors.New("can't connect to blacklisted address")
+		g.log.Debugln("Unable to connect to", addr, "error:", err)
+		return err
 	}
 	g.mu.RLock()
 	_, exists := g.peers[addr]
 	g.mu.RUnlock()
 	if exists {
+		g.log.Debugln("Unable to connect to", addr, "error:", errPeerExists)
 		return errPeerExists
 	}
 
 	// Dial the peer and perform peer initialization.
 	conn, err := g.staticDial(addr)
 	if err != nil {
+		g.log.Debugln("Unable to connect to", addr, "error:", err)
 		return err
 	}
+	g.log.Debugln("Created conn; remote and local addr", conn.RemoteAddr(), conn.LocalAddr())
 
 	// Perform peer initialization.
 	remoteVersion, err := connectVersionHandshake(conn, build.Version)
 	if err != nil {
 		conn.Close()
+		g.log.Debugln("Unable to connect to", addr, "error:", err)
 		return err
 	}
 
@@ -460,6 +481,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 	}
 	if err != nil {
 		conn.Close()
+		g.log.Debugln("Unable to connect to", addr, "error:", err)
 		return err
 	}
 
@@ -478,6 +500,7 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 			NetAddress: addr,
 			Version:    remoteVersion,
 		},
+		m:    g.m,
 		rl:   g.rl,
 		sess: newClientStream(conn, remoteVersion),
 	})
@@ -507,8 +530,9 @@ func (g *Gateway) Connect(addr modules.NetAddress) error {
 }
 
 // Disconnect terminates a connection to a peer and removes it from the
-// Gateway's peer list. The peer's address remains in the node list.
+// Gateway's peer list.
 func (g *Gateway) Disconnect(addr modules.NetAddress) error {
+	g.log.Debugln("Attempting to Disconnect from", addr)
 	if err := g.threads.Add(); err != nil {
 		return err
 	}
@@ -518,7 +542,9 @@ func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 	p, exists := g.peers[addr]
 	g.mu.RUnlock()
 	if !exists {
-		return errors.New("not connected to that node")
+		err := errors.New("not connected to that node")
+		g.log.Debugln("Unable to disconnect to", addr, "error:", err)
+		return err
 	}
 
 	p.sess.Close()
@@ -537,9 +563,11 @@ func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 // if a user wants to connect to a node manually. This also removes the node
 // from the blacklist.
 func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
+	g.log.Debugln("Attempting to Manually Connect to", addr)
 	g.mu.Lock()
 	var err error
 	if _, exists := g.blacklist[addr.Host()]; exists {
+		g.log.Debugln("Removing", addr, "from the blacklist due to Manually trying to Connect")
 		delete(g.blacklist, addr.Host())
 		err = g.saveSync()
 	}
@@ -551,8 +579,10 @@ func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 // specifically used if a user wants to connect to a node manually. This also
 // adds the node to the blacklist.
 func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
+	g.log.Debugln("Attempting to Manually Disconnect from", addr)
 	err := g.Disconnect(addr)
 	if err == nil {
+		g.log.Debugln("Adding", addr, "to the blacklist because of successful manual disconnect")
 		g.mu.Lock()
 		g.blacklist[addr.Host()] = struct{}{}
 		err = g.saveSync()
@@ -563,15 +593,23 @@ func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
 
 // Online returns true if the node is connected to the internet. During testing
 // we always assume that the node is online
-func (g *Gateway) Online() bool {
-	if build.Release == "dev" || build.Release == "testing" {
+func (g *Gateway) Online() (online bool) {
+	defer func() {
+		if online {
+			g.staticAlerter.UnregisterAlert(modules.AlertIDGatewayOffline)
+		} else {
+			g.staticAlerter.RegisterAlert(modules.AlertIDGatewayOffline, AlertMSGGatewayOffline, "", modules.SeverityWarning)
+		}
+	}()
+	disableAutoOnline := g.staticDeps.Disrupt("DisableGatewayAutoOnline")
+	if (build.Release == "dev" || build.Release == "testing") && !disableAutoOnline {
 		return true
 	}
 
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	for _, p := range g.peers {
-		if !p.Local {
+		if !p.Local || disableAutoOnline {
 			return true
 		}
 	}

@@ -24,10 +24,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 )
 
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
-var rpcSettingsDeprecated = types.Specifier{'S', 'e', 't', 't', 'i', 'n', 'g', 's'}
+var rpcSettingsDeprecated = types.NewSpecifier("Settings")
 
 // threadedUpdateHostname periodically runs 'managedLearnHostname', which
 // checks if the host's hostname has changed, and makes an updated host
@@ -333,6 +334,8 @@ func (h *Host) threadedListen(closeChan chan struct{}) {
 		if err != nil {
 			return
 		}
+
+		conn = connmonitor.NewMonitoredConn(conn, h.staticMonitor)
 
 		go h.threadedHandleConn(conn)
 

@@ -124,8 +124,8 @@ type (
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
-		UserID  int         `json:"userid"`  // id of the user who owns the file
-		GroupID int         `json:"groupid"` // id of the group that owns the file
+		UserID  int32       `json:"userid"`  // id of the user who owns the file
+		GroupID int32       `json:"groupid"` // id of the group that owns the file
 
 		// The following fields are the offsets for data that is written to disk
 		// after the pubKeyTable. We reserve a generous amount of space for the
@@ -155,6 +155,11 @@ type (
 		StaticErasureCodeType   [4]byte              `json:"erasurecodetype"`
 		StaticErasureCodeParams [8]byte              `json:"erasurecodeparams"`
 		staticErasureCode       modules.ErasureCoder // not persisted, exists for convenience
+
+		// Skylink tracking. If this siafile is known to have sectors of any
+		// skyfiles, those skyfiles will be listed here. It should be noted that
+		// a single siafile can be responsible for tracking many skyfiles.
+		Skylinks []string `json:"skylinks"`
 	}
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
@@ -183,6 +188,20 @@ func (sf *SiaFile) AccessTime() time.Time {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.AccessTime
+}
+
+// AddSkylink will add a skylink to the SiaFile.
+func (sf *SiaFile) AddSkylink(s modules.Skylink) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	sf.staticMetadata.Skylinks = append(sf.staticMetadata.Skylinks, s.String())
+
+	// Save changes to metadata to disk.
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
 }
 
 // ChangeTime returns the ChangeTime timestamp of the file.
@@ -235,14 +254,7 @@ func (sf *SiaFile) LocalPath() string {
 
 // MasterKey returns the masterkey used to encrypt the file.
 func (sf *SiaFile) MasterKey() crypto.CipherKey {
-	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
-	if err != nil {
-		// This should never happen since the constructor of the SiaFile takes
-		// a CipherKey as an argument which guarantees that it is already a
-		// valid key.
-		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
-	}
-	return sk
+	return sf.staticMasterKey()
 }
 
 // Metadata returns the SiaFile's metadata, resolving any fields related to
@@ -288,8 +300,19 @@ func (sf *SiaFile) PieceSize() uint64 {
 func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	return sf.rename(newSiaFilePath)
+}
+
+// rename changes the name of the file to a new one. To guarantee that renaming
+// the file is atomic across all operating systems, we create a wal transaction
+// that moves over all the chunks one-by-one and deletes the src file.
+func (sf *SiaFile) rename(newSiaFilePath string) error {
 	if sf.deleted {
 		return errors.New("can't rename deleted siafile")
+	}
+	// Check if file exists at new location.
+	if _, err := os.Stat(newSiaFilePath); err == nil {
+		return ErrPathOverload
 	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
@@ -415,6 +438,18 @@ func (sf *SiaFile) numStuckChunks() uint64 {
 // staticChunkSize returns the size of a single chunk of the file.
 func (sf *SiaFile) staticChunkSize() uint64 {
 	return sf.staticMetadata.StaticPieceSize * uint64(sf.staticMetadata.staticErasureCode.MinPieces())
+}
+
+// staticMasterKey returns the masterkey used to encrypt the file.
+func (sf *SiaFile) staticMasterKey() crypto.CipherKey {
+	sk, err := crypto.NewSiaKey(sf.staticMetadata.StaticMasterKeyType, sf.staticMetadata.StaticMasterKey)
+	if err != nil {
+		// This should never happen since the constructor of the SiaFile takes
+		// a CipherKey as an argument which guarantees that it is already a
+		// valid key.
+		panic(errors.AddContext(err, "failed to create masterkey of siafile"))
+	}
+	return sk
 }
 
 // uniqueID creates a random unique SiafileUID.

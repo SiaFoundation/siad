@@ -1,10 +1,7 @@
 package contractor
 
 import (
-	"path/filepath"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -23,12 +20,7 @@ type (
 		NextAddress() (types.UnlockConditions, error)
 		PrimarySeed() (modules.Seed, uint64, error)
 		StartTransaction() (modules.TransactionBuilder, error)
-		Unlocked() (bool, error)
-	}
-	wallet interface {
-		NextAddress() (types.UnlockConditions, error)
-		PrimarySeed() (modules.Seed, uint64, error)
-		StartTransaction() (transactionBuilder, error)
+		RegisterTransaction(types.Transaction, []types.Transaction) (modules.TransactionBuilder, error)
 		Unlocked() (bool, error)
 	}
 	transactionBuilder interface {
@@ -38,9 +30,12 @@ type (
 		AddParents([]types.Transaction)
 		AddSiacoinInput(types.SiacoinInput) uint64
 		AddSiacoinOutput(types.SiacoinOutput) uint64
+		ReplaceSiacoinOutput(uint64, types.SiacoinOutput) error
 		AddTransactionSignature(types.TransactionSignature) uint64
+		Copy() modules.TransactionBuilder
 		Drop()
 		FundSiacoins(types.Currency) error
+		MarkWalletInputs() bool
 		Sign(bool) ([]types.Transaction, error)
 		UnconfirmedParents() ([]types.Transaction, error)
 		View() (types.Transaction, []types.Transaction)
@@ -52,14 +47,15 @@ type (
 	}
 
 	hostDB interface {
-		AllHosts() []modules.HostDBEntry
-		ActiveHosts() []modules.HostDBEntry
-		CheckForIPViolations([]types.SiaPublicKey) []types.SiaPublicKey
-		Filter() (modules.FilterMode, map[string]types.SiaPublicKey)
+		AllHosts() ([]modules.HostDBEntry, error)
+		ActiveHosts() ([]modules.HostDBEntry, error)
+		CheckForIPViolations([]types.SiaPublicKey) ([]types.SiaPublicKey, error)
+		Filter() (modules.FilterMode, map[string]types.SiaPublicKey, error)
 		SetFilterMode(fm modules.FilterMode, hosts []types.SiaPublicKey) error
-		Host(types.SiaPublicKey) (modules.HostDBEntry, bool)
-		IncrementSuccessfulInteractions(key types.SiaPublicKey)
-		IncrementFailedInteractions(key types.SiaPublicKey)
+		Host(types.SiaPublicKey) (modules.HostDBEntry, bool, error)
+		IncrementSuccessfulInteractions(key types.SiaPublicKey) error
+		IncrementFailedInteractions(key types.SiaPublicKey) error
+		InitialScanComplete() (complete bool, err error)
 		RandomHosts(n int, blacklist, addressBlacklist []types.SiaPublicKey) ([]modules.HostDBEntry, error)
 		UpdateContracts([]modules.RenterContract) error
 		ScoreBreakdown(modules.HostDBEntry) (modules.HostScoreBreakdown, error)
@@ -89,31 +85,10 @@ func (ws *WalletBridge) PrimarySeed() (modules.Seed, uint64, error) { return ws.
 // and sign a transaction.
 func (ws *WalletBridge) StartTransaction() (transactionBuilder, error) { return ws.W.StartTransaction() }
 
+// RegisterTransaction creates a new transactionBuilder from a transaction and parent transactions.
+func (ws *WalletBridge) RegisterTransaction(t types.Transaction, parents []types.Transaction) (transactionBuilder, error) {
+	return ws.W.RegisterTransaction(t, parents)
+}
+
 // Unlocked reports whether the wallet bridge is unlocked.
 func (ws *WalletBridge) Unlocked() (bool, error) { return ws.W.Unlocked() }
-
-// stdPersist implements the persister interface. The filename required by
-// these functions is internal to stdPersist.
-type stdPersist struct {
-	filename string
-}
-
-var persistMeta = persist.Metadata{
-	Header:  "Contractor Persistence",
-	Version: "1.3.1",
-}
-
-func (p *stdPersist) save(data contractorPersist) error {
-	return persist.SaveJSON(persistMeta, data, p.filename)
-}
-
-func (p *stdPersist) load(data *contractorPersist) error {
-	return persist.LoadJSON(persistMeta, &data, p.filename)
-}
-
-// NewPersist create a new stdPersist.
-func NewPersist(dir string) *stdPersist {
-	return &stdPersist{
-		filename: filepath.Join(dir, "contractor.json"),
-	}
-}

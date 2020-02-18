@@ -68,7 +68,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 				// None of the storage folders have enough room to house the
 				// sector.
 				wal.mu.Unlock()
-				return modules.ErrInsufficientStorageForSector
+				return errors.New(modules.V1420HostOutOfStorageErrString)
 			}
 			defer sf.mu.RUnlock()
 
@@ -137,7 +137,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 			wal.mu.Unlock()
 			return nil
 		}()
-		if err == modules.ErrInsufficientStorageForSector {
+		if err != nil && err.Error() == modules.V1420HostOutOfStorageErrString {
 			return err
 		} else if err != nil {
 			// Try the next storage folder.
@@ -148,7 +148,7 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 		break
 	}
 	if len(storageFolders) < 1 {
-		return modules.ErrInsufficientStorageForSector
+		return errors.New(modules.V1420HostOutOfStorageErrString)
 	}
 	return nil
 }
@@ -163,6 +163,12 @@ func (wal *writeAheadLog) managedMoveSector(id sectorID) error {
 // invisible to AddSector, and that this is the only thread that will be
 // interacting with the storage folder.
 func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoint uint32) (uint64, error) {
+	// Allow disk trouble simulation, for testing purposes
+	if wal.cm.dependencies.Disrupt("diskTrouble") {
+		wal.cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
+		return 0, errDiskTrouble
+	}
+
 	// Grab the storage folder in question.
 	wal.mu.Lock()
 	sf, exists := wal.cm.storageFolders[sfIndex]
@@ -194,10 +200,14 @@ func (wal *writeAheadLog) managedEmptyStorageFolder(sfIndex uint16, startingPoin
 				select {
 				case id := <-workChan:
 					err := wal.managedMoveSector(id)
+					if err == errDiskTrouble {
+						wal.cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
+					}
 					if err != nil {
 						atomic.AddUint64(&errCount, 1)
 						wal.cm.log.Println("Unable to write sector:", err)
 					}
+
 					wg.Done()
 				case <-doneChan:
 					return

@@ -7,9 +7,13 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See snapshotworkerfetchbackups.go for
-// a clean example.
-
+// exists and complete that piece of work. See workerfetchbackups.go for a clean
+// example.
+//
+// The worker has an ephemeral account on the host. It can use this account to
+// pay for downloads and uploads. In order to ensure the account's balance does
+// not run out, it maintains a balance target by refilling it when necessary.
+//
 // TODO: A single session should be added to the worker that gets maintained
 // within the work loop. All jobs performed by the worker will use the worker's
 // single session.
@@ -25,6 +29,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A worker listens for work on a certain host.
@@ -43,7 +48,8 @@ import (
 type worker struct {
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
-	staticHostPubKey types.SiaPublicKey
+	staticHostPubKey    types.SiaPublicKey
+	staticHostPubKeyStr string
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -62,8 +68,10 @@ type worker struct {
 	downloadMu         sync.Mutex
 	downloadTerminated bool // Has downloading been terminated for this worker?
 
-	// Fetch backups queue for the worker.
-	staticFetchBackupsJobQueue fetchBackupsJobQueue
+	// Job queues for the worker.
+	staticFetchBackupsJobQueue   fetchBackupsJobQueue
+	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+	staticFundAccountJobQueue    fundAccountJobQueue
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -71,6 +79,13 @@ type worker struct {
 	uploadRecentFailure       time.Time                // How recent was the last failure?
 	uploadRecentFailureErr    error                    // What was the reason for the last failure?
 	uploadTerminated          bool                     // Have we stopped uploading?
+
+	// The staticAccount represent the renter's ephemeral account on the host.
+	// It keeps track of the available balance in the account, the worker has a
+	// refill mechanism that keeps the account balance filled up until the
+	// staticBalanceTarget.
+	staticAccount       *account
+	staticBalanceTarget types.Currency
 
 	// Utilities.
 	//
@@ -112,6 +127,17 @@ func (w *worker) managedBlockUntilReady() bool {
 	return true
 }
 
+// staticKilled is a convenience function to determine if a worker has been
+// killed or not.
+func (w *worker) staticKilled() bool {
+	select {
+	case <-w.killChan:
+		return true
+	default:
+		return false
+	}
+}
+
 // staticWake needs to be called any time that a job queued.
 func (w *worker) staticWake() {
 	select {
@@ -142,6 +168,8 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
+	defer w.managedKillFundAccountJobs()
+	defer w.managedKillJobsDownloadByRoot()
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -161,9 +189,24 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		var workAttempted bool
+		// Check if the account needs to be refilled.
+		w.scheduleRefillAccount()
+
+		// Perform any job to fund the account
+		workAttempted := w.managedPerformFundAcountJob()
+		if workAttempted {
+			continue
+		}
+
 		// Perform any job to fetch the list of backups from the host.
 		workAttempted = w.managedPerformFetchBackupsJob()
+		if workAttempted {
+			continue
+		}
+		// Perform any job to fetch data by its sector root. This is given
+		// priority because it is only used by viewnodes, which are service
+		// operators that need to have good performance for their customers.
+		workAttempted = w.managedLaunchJobDownloadByRoot()
 		if workAttempted {
 			continue
 		}
@@ -191,14 +234,67 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
+// scheduleRefillAccount will check if the account needs to be refilled,
+// and will schedule a fund account job if so. This is called every time the
+// worker spends from the account.
+func (w *worker) scheduleRefillAccount() {
+	// Calculate the threshold, if the account's available balance is below this
+	// threshold, we want to trigger a refill. We only refill if we drop below a
+	// threshold because we want to avoid refilling every time we drop 1 hasting
+	// below the target.
+	threshold := w.staticBalanceTarget.Div64(2)
+
+	// Fetch the account's available balance and skip if it's above the
+	// threshold
+	balance := w.staticAccount.AvailableBalance()
+	if balance.Cmp(threshold) >= 0 {
+		return
+	}
+
+	// If it's below the threshold, calculate the refill amount and enqueue a
+	// new fund account job
+	refill := w.staticBalanceTarget.Sub(balance)
+	_ = w.callQueueFundAccount(refill)
+
+	// TODO: handle result chan
+	// TODO: add cooldown in case of failure
+}
+
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) *worker {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+	_, ok, err := r.hostDB.Host(hostPubKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "could not find host entry")
+	}
+	if !ok {
+		return nil, errors.New("host does not exist")
+	}
+
+	// TODO: use the host's external settings settings to calc. an appropriate
+	// balance target
+
+	// TODO: enable the account refiller by setting a balance target greater
+	// than the zero currency
+
+	// TODO: (TL;DR mock causes infinite loop if target is not set to zero) the
+	// target is set to zero because as long as FundEphemeralAccount is mocked,
+	// setting a target larger than zero would create an endless refill loop,
+	// just because there is nothing holding back consecutive refill jobs from
+	// being enqueued (which wakes the workerloop and so on). This is due to
+	// pendingFunds not increasing, which causes the AvailableBalance to remain
+	// the same, which causes a fund account job to be scheduled on every
+	// iteration.
+	balanceTarget := types.ZeroCurrency
+
 	return &worker{
-		staticHostPubKey: hostPubKey,
+		staticHostPubKey:    hostPubKey,
+		staticHostPubKeyStr: hostPubKey.String(),
+
+		staticAccount:       openAccount(hostPubKey, r.hostContractor),
+		staticBalanceTarget: balanceTarget,
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
-
-		renter: r,
-	}
+		renter:   r,
+	}, nil
 }

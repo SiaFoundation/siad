@@ -30,7 +30,7 @@ func TestTransactionReorg(t *testing.T) {
 	testdir := walletTestDir(t.Name())
 
 	// Create two miners
-	miner1, err := siatest.NewNode(siatest.Miner(filepath.Join(testdir, "miner1")))
+	miner1, err := siatest.NewNode(node.Miner(filepath.Join(testdir, "miner1")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestTransactionReorg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	miner2, err := siatest.NewNode(siatest.Miner(filepath.Join(testdir, "miner2")))
+	miner2, err := siatest.NewNode(node.Miner(filepath.Join(testdir, "miner2")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,5 +687,84 @@ func TestWalletForceInit(t *testing.T) {
 	err = wallet.WalletUnlockPost(wip.PrimarySeed)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestWalletUnsyncedNewAddress confirms that a wallet can create a new address
+// after unlocking it but before being synced with consensus.
+func TestWalletUnsyncedNewAddress(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a wallet with a disable async unlock dependency
+	testDir := walletTestDir(t.Name())
+	walletTemplate := node.Wallet(testDir + "/wallet")
+	walletTemplate.WalletDeps = &dependencies.DependencyDisableAsyncUnlock{}
+	walletTemplate.CreateMiner = true
+	wallet, err := siatest.NewNode(walletTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = wallet.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestWalletVerifyPassword initializes a wallet with a custom password and
+// verifies it through the API.
+func TestWalletVerifyPassword(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a new server
+	wallet, err := siatest.NewNode(node.AllModules(walletTestDir(t.Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wallet.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Check that verifying a password when one is not set will fail
+	wvpg, err := wallet.WalletVerifyPasswordGet("wrong")
+	if err != nil {
+		t.Error(err)
+	}
+	if wvpg.Valid {
+		t.Error("Password should not be valid")
+	}
+
+	// Reinit the wallet by using a specific password.
+	seed := modules.Seed{}
+	fastrand.Read(seed[:])
+	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := "password"
+	if err := wallet.WalletInitSeedPost(seedStr, password, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the password is the one used to secure the wallet
+	wvpg, err = wallet.WalletVerifyPasswordGet(password)
+	if err != nil {
+		t.Error(err)
+	}
+	if !wvpg.Valid {
+		t.Error("Password is not valid")
+	}
+
+	// Try and verify an incorrect password
+	wvpg, err = wallet.WalletVerifyPasswordGet("wrong")
+	if err != nil {
+		t.Error(err)
+	}
+	if wvpg.Valid {
+		t.Error("Password should not be valid")
 	}
 }

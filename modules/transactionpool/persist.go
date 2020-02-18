@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	bolt "github.com/coreos/bbolt"
+	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
@@ -206,6 +206,7 @@ func (tp *TransactionPool) initPersist() error {
 			tp.tg.OnStop(func() {
 				tp.consensusSet.Unsubscribe(tp)
 			})
+			return
 		}
 		if err != nil {
 			tp.log.Critical(err)

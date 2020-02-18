@@ -1,8 +1,9 @@
 package contractor
 
 import (
-	"errors"
 	"sync"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -36,14 +37,19 @@ type Session interface {
 	// EndHeight returns the height at which the contract ends.
 	EndHeight() types.BlockHeight
 
-	// Upload revises the underlying contract to store the new data. It
-	// returns the Merkle root of the data.
-	Upload(data []byte) (crypto.Hash, error)
-
 	// Replace replaces the sector at the specified index with data. The old
 	// sector is swapped to the end of the contract data, and is deleted if the
 	// trim flag is set.
 	Replace(data []byte, sectorIndex uint64, trim bool) (crypto.Hash, error)
+
+	// HostSettings will return the currently active host settings for a
+	// session, which allows the workers to check for price gouging and
+	// determine whether or not an operation should continue.
+	HostSettings() modules.HostExternalSettings
+
+	// Upload revises the underlying contract to store the new data. It
+	// returns the Merkle root of the data.
+	Upload(data []byte) (crypto.Hash, error)
 }
 
 // A hostSession modifies a Contract via the renter-host RPC loop. It
@@ -96,6 +102,7 @@ func (hs *hostSession) Close() error {
 	hs.contractor.mu.Lock()
 	delete(hs.contractor.sessions, hs.id)
 	hs.contractor.mu.Unlock()
+
 	return hs.session.Close()
 }
 
@@ -180,6 +187,11 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 	return sectorRoot, nil
 }
 
+// HostSettings returns the currently active host settings for the session.
+func (hs *hostSession) HostSettings() modules.HostExternalSettings {
+	return hs.session.HostSettings()
+}
+
 // Session returns a Session object that can be used to upload, modify, and
 // delete sectors on a host.
 func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Session, err error) {
@@ -208,10 +220,12 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	// sanity checks to see that the host is not swindling us.
 	contract, haveContract := c.staticContracts.View(id)
 	if !haveContract {
-		return nil, errors.New("no record of that contract")
+		return nil, errors.New("contract not found in the renter contract set")
 	}
-	host, haveHost := c.hdb.Host(contract.HostPublicKey)
-	if height > contract.EndHeight {
+	host, haveHost, err := c.hdb.Host(contract.HostPublicKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "error getting host from hostdb:")
+	} else if height > contract.EndHeight {
 		return nil, errors.New("contract has already ended")
 	} else if !haveHost {
 		return nil, errors.New("no record of that host")
@@ -225,6 +239,9 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 
 	// Create the session.
 	s, err := c.staticContracts.NewSession(host, id, height, c.hdb, cancel)
+	if modules.IsContractNotRecognizedErr(err) {
+		err = errors.Compose(err, c.MarkContractBad(id))
+	}
 	if err != nil {
 		return nil, err
 	}

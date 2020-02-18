@@ -13,12 +13,12 @@ import (
 // FormContract forms a contract with a host and submits the contract
 // transaction to tpool. The contract is added to the ContractSet and its
 // metadata is returned.
-func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, err error) {
+func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
 	// Check that the host version is high enough as belt-and-suspenders. This
 	// should never happen because hosts with old versions should be blacklisted
 	// by the contractor.
-	if build.VersionCmp(params.Host.Version, "1.4.1") < 0 {
-		return modules.RenterContract{}, ErrBadHostVersion
+	if build.VersionCmp(params.Host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
 
 	// Extract vars from params, for convenience.
@@ -33,19 +33,35 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	expectedStorage := allowance.ExpectedStorage / allowance.Hosts
 	renterPayout, hostPayout, _, err := modules.RenterPayoutsPreTax(host, funding, txnFee, types.ZeroCurrency, types.ZeroCurrency, period, expectedStorage)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// Check for negative currency.
 	if types.PostTax(startHeight, totalPayout).Cmp(hostPayout) < 0 {
-		return modules.RenterContract{}, errors.New("not enough money to pay both siafund fee and also host payout")
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.New("not enough money to pay both siafund fee and also host payout")
 	}
 	// Fund the transaction.
 	err = txnBuilder.FundSiacoins(funding)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
+
+	// Make a copy of the transaction builder so far, to be used to by the watchdog
+	// to double spend these inputs in case the contract never appears on chain.
+	sweepBuilder := txnBuilder.Copy()
+	if err != nil {
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
+	}
+	// Add an output that sends all fund back to the refundAddress.
+	// Note that in order to send this transaction, a miner fee will have to be subtracted.
+	output := types.SiacoinOutput{
+		Value:      funding,
+		UnlockHash: refundAddress,
+	}
+	sweepBuilder.AddSiacoinOutput(output)
+	sweepTxn, sweepParents = sweepBuilder.View()
+
 	// Add FileContract identifier.
 	fcTxn, _ := txnBuilder.View()
 	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
@@ -95,7 +111,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	txn, parentTxns := txnBuilder.View()
 	unconfirmedParents, err := txnBuilder.UnconfirmedParents()
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	txnSet := append(unconfirmedParents, append(parentTxns, txn)...)
 	txnSet = typesutil.MinimumTransactionSet([]types.Transaction{txn}, txnSet)
@@ -113,7 +129,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	// Initiate protocol.
 	s, err := cs.NewRawSession(host, startHeight, hdb, cancel)
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	defer s.Close()
 
@@ -123,13 +139,13 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 		RenterKey:    uc.PublicKeys[0],
 	}
 	if err := s.writeRequest(modules.RPCLoopFormContract, req); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Read the host's response.
 	var resp modules.LoopContractAdditions
 	if err := s.readResponse(&resp, modules.RPCMinLen); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Incorporate host's modifications.
@@ -146,7 +162,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	if err != nil {
 		err = errors.New("failed to sign transaction: " + err.Error())
 		modules.WriteRPCResponse(s.conn, s.aead, nil, err)
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Calculate signatures added by the transaction builder.
@@ -190,13 +206,13 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 		RevisionSignature:  revisionTxn.TransactionSignatures[0],
 	}
 	if err := modules.WriteRPCResponse(s.conn, s.aead, renterSigs, nil); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Read the host acceptance and signatures.
 	var hostSigs modules.LoopContractSignatures
 	if err := s.readResponse(&hostSigs, modules.RPCMinLen); err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	for _, sig := range hostSigs.ContractSignatures {
 		txnBuilder.AddTransactionSignature(sig)
@@ -217,7 +233,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 		err = nil
 	}
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
 	// Construct contract header.
@@ -238,7 +254,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	// Add contract to set.
 	meta, err := cs.managedInsertContract(header, nil) // no Merkle roots yet
 	if err != nil {
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
-	return meta, nil
+	return meta, minSet, sweepTxn, sweepParents, nil
 }

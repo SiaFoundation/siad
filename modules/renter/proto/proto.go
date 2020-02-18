@@ -17,6 +17,7 @@ type (
 		AddSiacoinInput(types.SiacoinInput) uint64
 		AddSiacoinOutput(types.SiacoinOutput) uint64
 		AddTransactionSignature(types.TransactionSignature) uint64
+		Copy() modules.TransactionBuilder
 		FundSiacoins(types.Currency) error
 		Sign(bool) ([]types.Transaction, error)
 		UnconfirmedParents() ([]types.Transaction, error)
@@ -30,8 +31,8 @@ type (
 	}
 
 	hostDB interface {
-		IncrementSuccessfulInteractions(key types.SiaPublicKey)
-		IncrementFailedInteractions(key types.SiaPublicKey)
+		IncrementSuccessfulInteractions(key types.SiaPublicKey) error
+		IncrementFailedInteractions(key types.SiaPublicKey) error
 	}
 )
 

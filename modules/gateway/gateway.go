@@ -106,18 +106,17 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	connmonitor "gitlab.com/NebulousLabs/monitor"
 
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
 
-var (
-	errNoPeers     = errors.New("no peers")
-	errUnreachable = errors.New("peer did not respond to ping")
-)
+var errNoPeers = errors.New("no peers")
 
 // Gateway implements the modules.Gateway interface.
 type Gateway struct {
 	listener net.Listener
+	m        *connmonitor.Monitor
 	myAddr   modules.NetAddress
 	port     string
 	rl       *ratelimit.RateLimit
@@ -151,17 +150,49 @@ type Gateway struct {
 	peerTG    siasync.ThreadGroup
 
 	// Utilities.
-	log        *persist.Logger
-	mu         sync.RWMutex
-	persist    persistence
-	persistDir string
-	threads    siasync.ThreadGroup
+	log           *persist.Logger
+	mu            sync.RWMutex
+	persist       persistence
+	persistDir    string
+	threads       siasync.ThreadGroup
+	staticAlerter *modules.GenericAlerter
+	staticDeps    modules.Dependencies
 
 	// Unique ID
 	staticID gatewayID
 }
 
 type gatewayID [8]byte
+
+// addToBlacklist adds addresses to the Gateway's blacklist
+func (g *Gateway) addToBlacklist(addresses []string) error {
+	// Add addresses to the blacklist and disconnect from them
+	var err error
+	for _, addr := range addresses {
+		// Check Gateway peer map for address
+		for peerAddr, peer := range g.peers {
+			// If the address corresponds with a peer, close the peer session
+			// and remove the peer from the peer map
+			if peerAddr.Host() == addr {
+				err = errors.Compose(err, peer.sess.Close())
+				delete(g.peers, peerAddr)
+			}
+		}
+		// Check Gateway node map for address
+		for nodeAddr := range g.nodes {
+			// If the address corresponds with a node remove the node from the
+			// node map to prevent the node from being re-connected while
+			// looking for a replacement peer
+			if nodeAddr.Host() == addr {
+				delete(g.nodes, nodeAddr)
+			}
+		}
+
+		// Add address to the blacklist
+		g.blacklist[addr] = struct{}{}
+	}
+	return errors.Compose(err, g.saveSync())
+}
 
 // managedSleep will sleep for the given period of time. If the full time
 // elapses, 'true' is returned. If the sleep is interrupted for shutdown,
@@ -196,6 +227,44 @@ func (g *Gateway) Address() modules.NetAddress {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.myAddr
+}
+
+// AddToBlacklist adds addresses to the Gateway's blacklist
+func (g *Gateway) AddToBlacklist(addresses []string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.addToBlacklist(addresses)
+}
+
+// BandwidthCounters returns the Gateway's upload and download bandwidth
+func (g *Gateway) BandwidthCounters() (uint64, uint64, time.Time, error) {
+	if err := g.threads.Add(); err != nil {
+		return 0, 0, time.Time{}, err
+	}
+	defer g.threads.Done()
+	readBytes, writeBytes := g.m.Counts()
+	startTime := g.m.StartTime()
+	return writeBytes, readBytes, startTime, nil
+}
+
+// Blacklist returns the Gateway's blacklist
+func (g *Gateway) Blacklist() ([]string, error) {
+	if err := g.threads.Add(); err != nil {
+		return nil, err
+	}
+	defer g.threads.Done()
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	var blacklist []string
+	for addr := range g.blacklist {
+		blacklist = append(blacklist, addr)
+	}
+	return blacklist, nil
 }
 
 // Close saves the state of the Gateway and stops its listener process.
@@ -233,6 +302,44 @@ func (g *Gateway) RateLimits() (int64, int64) {
 	return g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed
 }
 
+// RemoveFromBlacklist removes addresses from the Gateway's blacklist
+func (g *Gateway) RemoveFromBlacklist(addresses []string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Remove addresses from the blacklist
+	for _, addr := range addresses {
+		delete(g.blacklist, addr)
+	}
+	return g.saveSync()
+}
+
+// SetBlacklist sets the blacklist of the gateway
+func (g *Gateway) SetBlacklist(addresses []string) error {
+	if err := g.threads.Add(); err != nil {
+		return err
+	}
+	defer g.threads.Done()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Reset the gateway blacklist since we are replacing the list with the new
+	// list of peers
+	g.blacklist = make(map[string]struct{})
+
+	// If the length of addresses is 0 we are done, save and return
+	if len(addresses) == 0 {
+		return g.saveSync()
+	}
+
+	// Add addresses to the blacklist and disconnect from them
+	return g.addToBlacklist(addresses)
+}
+
 // SetRateLimits changes the rate limits for the peer-connections of the
 // gateway.
 func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
@@ -250,6 +357,11 @@ func (g *Gateway) SetRateLimits(downloadSpeed, uploadSpeed int64) error {
 
 // New returns an initialized Gateway.
 func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
+	return NewCustomGateway(addr, bootstrap, persistDir, modules.ProdDependencies)
+}
+
+// NewCustomGateway returns an initialized Gateway with custom dependencies.
+func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modules.Dependencies) (*Gateway, error) {
 	// Create the directory if it doesn't exist.
 	err := os.MkdirAll(persistDir, 0700)
 	if err != nil {
@@ -264,7 +376,9 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 		nodes:     make(map[modules.NetAddress]*node),
 		peers:     make(map[modules.NetAddress]*peer),
 
-		persistDir: persistDir,
+		persistDir:    persistDir,
+		staticAlerter: modules.NewAlerter("gateway"),
+		staticDeps:    deps,
 	}
 
 	// Set Unique GatewayID
@@ -309,13 +423,15 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	// problem, but if it does, we want to know about any errors preventing us
 	// from loading it.
 	if loadErr := g.load(); loadErr != nil && !os.IsNotExist(loadErr) {
-		return nil, loadErr
+		return nil, errors.AddContext(loadErr, "unable to load gateway")
 	}
 	// Create the ratelimiter and set it to the persisted limits.
 	g.rl = ratelimit.NewRateLimit(0, 0, 0)
 	if err := setRateLimits(g.rl, g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed); err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to set rate limits for the gateway")
 	}
+	// Create a Bandwidth monitor
+	g.m = connmonitor.NewMonitor()
 	// Spawn the thread to periodically save the gateway.
 	go g.threadedSaveLoop()
 	// Make sure that the gateway saves after shutdown.
@@ -344,7 +460,8 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	permanentListenClosedChan := make(chan struct{})
 	g.listener, err = net.Listen("tcp", addr)
 	if err != nil {
-		return nil, err
+		context := fmt.Sprintf("unable to create gateway tcp listener with address %v", addr)
+		return nil, errors.AddContext(err, context)
 	}
 	// Automatically close the listener when g.threads.Stop() is called.
 	g.threads.OnStop(func() {
@@ -358,7 +475,8 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	host, port, err := net.SplitHostPort(g.listener.Addr().String())
 	g.port = port
 	if err != nil {
-		return nil, err
+		context := fmt.Sprintf("unable to split host and port from address %v", g.listener.Addr().String())
+		return nil, errors.AddContext(err, context)
 	}
 
 	if ip := net.ParseIP(host); ip.IsUnspecified() && ip != nil {
@@ -398,7 +516,27 @@ func New(addr string, bootstrap bool, persistDir string) (*Gateway, error) {
 	go g.threadedForwardPort(g.port)
 	go g.threadedLearnHostname()
 
+	// Spawn thread to periodically check if the gateway is online.
+	go g.threadedOnlineCheck()
+
 	return g, nil
+}
+
+// threadedOnlineCheck periodically calls 'Online' to register the
+// GatewayOffline alert.
+func (g *Gateway) threadedOnlineCheck() {
+	if err := g.threads.Add(); err != nil {
+		return
+	}
+	defer g.threads.Done()
+	for {
+		select {
+		case <-g.threads.StopChan():
+			return
+		case <-time.After(onlineCheckFrequency):
+		}
+		_ = g.Online()
+	}
 }
 
 // enforce that Gateway satisfies the modules.Gateway interface

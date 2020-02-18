@@ -3,7 +3,9 @@
 *.swo
 
 # build artifacts
+artifacts
 cover
+fullcover
 release
 
 # pdflatex
@@ -14,3 +16,6 @@ doc/whitepaper.pdf
 # IntelliJ IDEA
 .idea
 sia.iml
+
+# VSCode debug files
+debug.test

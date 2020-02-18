@@ -155,9 +155,10 @@ func TestUnitProcessConfig(t *testing.T) {
 
 // TestAPIPassword tests the 'apiPassword' function.
 func TestAPIPassword(t *testing.T) {
-	dir := build.TempDir("siad", t.Name())
 	// If config.Siad.AuthenticateAPI is false, no password should be set
 	var config Config
+	dir := build.TempDir("siad", t.Name())
+
 	config, err := loadAPIPassword(config, dir)
 	if err != nil {
 		t.Fatal(err)

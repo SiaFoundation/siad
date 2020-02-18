@@ -59,11 +59,6 @@ const (
 	// added to the current tpool size when estimating a good fee rate for new
 	// transactions.
 	feeEstimationProportionalPadding = 1.25
-
-	// minExtendMultiplier defines the amount we multiply into the minimum
-	// amount required to extend the fee pool when coming up with a min fee
-	// recommendation.
-	minExtendMultiplier = 1.2
 )
 
 // Variables related to the persisting structures of the transaction pool.
