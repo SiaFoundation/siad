@@ -1737,6 +1737,12 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
+	// Check for nil input
+	if len(append(params.Add, params.Remove...)) == 0 {
+		WriteError(w, Error{"no skylinks submitted"}, http.StatusBadRequest)
+		return
+	}
+
 	// Convert to Skylinks
 	addSkylinks := make([]modules.Skylink, len(params.Add))
 	for i, addStr := range params.Add {

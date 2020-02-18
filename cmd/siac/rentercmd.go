@@ -250,10 +250,18 @@ on top of Sia.`,
 		Run: skynetcmd,
 	}
 
+	skynetBlacklistCmd = &cobra.Command{
+		Use:   "blacklist [skylink]",
+		Short: "Blacklist a skylink from skynet.",
+		Long: `Blacklist a skylink from skynet. Use the --remove flag to
+remove a skylink from the blacklist.`,
+		Run: skynetremovecmd,
+	}
+
 	skynetDownloadCmd = &cobra.Command{
 		Use:   "download [skylink] [destination]",
 		Short: "Download a skylink from skynet.",
-		Long: `Download a file from skynet uisng a skylink. The download may fail unless this
+		Long: `Download a file from skynet using a skylink. The download may fail unless this
 node is configured as a skynet portal. Use the --portal flag to fetch a skylink
 file from a chosen skynet portal.`,
 		Run: skynetdownloadcmd,
@@ -2252,6 +2260,34 @@ func renterfilesuploadcmd(source, path string) {
 func skynetcmd(cmd *cobra.Command, args []string) {
 	cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
+}
+
+// skynetblacklistcmd handles adding and removing a skylink from the Skynet
+// Blacklist
+func skynetblacklistcmd(cmd *cobra.Command, args []string) {
+	if len(args) != 1 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+
+	// Get the skylink
+	skylink := args[0]
+	skylink = strings.TrimPrefix(skylink, "sia://")
+
+	// Check if this is an addition or removal
+	var add, remove []string
+	if skynetBlacklistRemove {
+		remove = append(remove, skylink)
+	} else {
+		add = append(add, skylink)
+	}
+
+	// Try to update the Skynet Blacklist.
+	err := httpClient.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		die("Unable to update skynet blacklist:", err)
+	}
+	fmt.Println("Skynet Blacklist updated")
 }
 
 // skynetdownloadcmd will perform the download of a skylink.
