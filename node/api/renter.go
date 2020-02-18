@@ -1933,8 +1933,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// If there is no filename provided as a query param, check the content
 	// disposition field.
 	if filename == "" {
-		header := w.Header()
-		_, params, err := mime.ParseMediaType(header.Get("Content-Disposition"))
+		_, params, err := mime.ParseMediaType(req.Header.Get("Content-Disposition"))
 		// Ignore any errors.
 		if err == nil {
 			filename = params[filename]
