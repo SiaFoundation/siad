@@ -3,13 +3,15 @@ package skynetblacklist
 import (
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// SkynetBlacklist manages a set of blacklisted skylinks and persists the list to disk
+// SkynetBlacklist manages a set of blacklisted skylinks by tracking the
+// merkleroots and persists the list to disk
 type SkynetBlacklist struct {
-	skylinks         map[modules.Skylink]struct{}
+	merkleroots      map[crypto.Hash]struct{}
 	staticPersistDir string
 
 	mu sync.Mutex
@@ -18,7 +20,7 @@ type SkynetBlacklist struct {
 // New creates a new SkynetBlacklist
 func New(persistDir string) (*SkynetBlacklist, error) {
 	sb := &SkynetBlacklist{
-		skylinks:         make(map[modules.Skylink]struct{}),
+		merkleroots:      make(map[crypto.Hash]struct{}),
 		staticPersistDir: persistDir,
 	}
 
@@ -35,7 +37,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 func (sb *SkynetBlacklist) Blacklisted(skylink modules.Skylink) bool {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-	_, ok := sb.skylinks[skylink]
+	_, ok := sb.merkleroots[skylink.MerkleRoot()]
 	return ok
 }
 

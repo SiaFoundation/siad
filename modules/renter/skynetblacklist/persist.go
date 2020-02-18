@@ -2,94 +2,97 @@ package skynetblacklist
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// initialLength is how big the persistence file is on initialization
-	initialLength = int64(43)
+	// metadataPageSize is the number of bytes set aside for the metadata page
+	// on disk
+	metadataPageSize int64 = 4096
 
-	// trueLength is the length of a persistLink when blacklist is set to true
-	trueLength = int64(76)
+	// headerSize is the number of bytes set aside for the header on disk
+	headerSize int64 = 16
 
-	// falseLength is the length of a persistLink when blacklist is set to false
-	falseLength = int64(77)
+	// versionSize is the number of bytes set aside for the version on disk
+	versionSize int64 = 16
 
-	// filename is the name of the persist file
-	filename = "skynetblacklist.json"
+	// lengthSize is the number of bytes set aside for the length on disk
+	lengthSize int64 = 8
+
+	// persistLinkSize is the size of a persistLink in the blacklist
+	persistLinkSize int64 = 33
+
+	// persistFile is the name of the persist file
+	persistFile string = "skynetblacklist"
 
 	// metadataHeader is the header of the metadata for the persist file
-	metadataHeader = "Skynet Blacklist"
+	metadataHeader string = "Skynet Blacklist"
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = "v1.4.3"
+	metadataVersion string = "v1.4.3"
 )
 
 // persistLink is the information about the link that is persisted on disk
 type persistLink struct {
-	Link        string `json:"link"`
-	Blacklisted bool   `json:"blacklisted"`
+	MerkleRoot  crypto.Hash `json:"merkleroot"`
+	Blacklisted bool        `json:"blacklisted"`
 }
 
-// encodeMetadata encodes the metadata of the persistence file and returns the
-// Buffer containing the encoded data
-func encodeMetadata(header, version string, length int64) (*bytes.Buffer, error) {
-	buf := new(bytes.Buffer)
-	enc := json.NewEncoder(buf)
-	if err := enc.Encode(header); err != nil {
-		return nil, errors.AddContext(err, "unable to encode metadata header")
-	}
-	if err := enc.Encode(version); err != nil {
-		return nil, errors.AddContext(err, "unable to encode metadata version")
-	}
-	if err := enc.Encode(length); err != nil {
-		return nil, errors.AddContext(err, "unable to encode metadata length")
-	}
-	return buf, nil
-}
-
-// decodeMetada decodes the metadata of the persistence file
-func decodeMetadata(dec *json.Decoder) (header, version string, length int64, err error) {
-	if decodeErr := dec.Decode(&header); err != nil {
-		err = errors.AddContext(decodeErr, "unable to read header from persisted json object file")
-		return
-	}
-	if header != metadataHeader {
-		err = errors.New("header doesn't match")
-		return
-	}
-	if decodeErr := dec.Decode(&version); err != nil {
-		err = errors.AddContext(decodeErr, "unable to read version from persisted json object file")
-		return
-	}
-	if version != metadataVersion {
-		err = errors.New("version doesn't match")
-		return
-	}
-	if decodeErr := dec.Decode(&length); err != nil {
-		err = errors.AddContext(decodeErr, "unable to read length from persisted json object file")
-		return
-	}
-	return
-}
-
-// writeAtAndSync writes at an offset and fsyncs the file
-func writeAtAndSync(f *os.File, bytes []byte, offset int64) error {
-	_, err := f.WriteAt(bytes, offset)
+// unmarshalLength reads the first lengthSize bytes of the file and tries to
+// unmarshal them into the length
+func unmarshalLength(f *os.File) (int64, error) {
+	_, err := f.Seek(0, io.SeekStart)
 	if err != nil {
-		return errors.AddContext(err, "unable to write bytes at offset")
+		return 0, err
 	}
-	err = f.Sync()
+	lengthbytes := make([]byte, lengthSize)
+	_, err = f.Read(lengthbytes)
 	if err != nil {
-		return errors.AddContext(err, "unable to fsync file")
+		return 0, err
 	}
-	return nil
+	var length int64
+	err = encoding.Unmarshal(lengthbytes, &length)
+	return length, err
+}
+
+// unmarshalPersistLinks unmarshals a sia encoded persistLinks
+func unmarshalPersistLinks(raw []byte) (persistLinks []persistLink, err error) {
+	// Create the buffer.
+	r := bytes.NewBuffer(raw)
+	// Unmarshal the keys one by one until EOF or a different error occur.
+	for {
+		var pl persistLink
+		if err = pl.unmarshalSia(r); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		persistLinks = append(persistLinks, pl)
+	}
+	return persistLinks, nil
+}
+
+// marshalSia implements the encoding.SiaMarshaler interface.
+func (pl persistLink) marshalSia(w io.Writer) error {
+	e := encoding.NewEncoder(w)
+	e.Encode(pl.MerkleRoot)
+	e.WriteBool(pl.Blacklisted)
+	return e.Err()
+}
+
+// unmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (pl *persistLink) unmarshalSia(r io.Reader) error {
+	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
+	d.Decode(&pl.MerkleRoot)
+	pl.Blacklisted = d.NextBool()
+	return d.Err()
 }
 
 // initPersist initializes the persistence of the SkynetBlacklist
@@ -109,81 +112,73 @@ func (sb *SkynetBlacklist) initPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
-	// Encode the initial metadata
-	buf, err := encodeMetadata(metadataHeader, metadataVersion, initialLength)
+	// Marshal the metadata. By marshalling the metadataPageSize as the first
+	// element we can then quickly encode and decode the length without having
+	// to worry about the header or the version
+	metadataBytes := encoding.MarshalAll(metadataPageSize, metadataHeader, metadataVersion)
+	_, err = f.Write(metadataBytes)
 	if err != nil {
-		return errors.AddContext(err, "unable to encode metadata")
+		return errors.AddContext(err, "unable to write metadata to file on initialization")
 	}
-
-	// Marshal into bytes
-	bytes := buf.Bytes()
-
-	// Write to file
-	err = writeAtAndSync(f, bytes, 0)
+	err = f.Sync()
 	if err != nil {
-		return errors.AddContext(err, "unable to write and sync metadata")
+		return errors.AddContext(err, "unable to fsync file")
 	}
-
 	return nil
 }
 
 // load loads the persisted blacklisted skylinks from disk
 func (sb *SkynetBlacklist) load() error {
 	// Open File
-	f, err := os.Open(filepath.Join(sb.staticPersistDir, filename))
+	f, err := os.Open(filepath.Join(sb.staticPersistDir, persistFile))
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return err
 	}
 	defer f.Close()
 
-	// Decode the metadata to find the length of the file
-	dec := json.NewDecoder(f)
-	_, _, length, err := decodeMetadata(dec)
+	// Unmarshall the length of the file
+	length, err := unmarshalLength(f)
 	if err != nil {
-		return errors.AddContext(err, "unable to decode metadata")
+		return errors.AddContext(err, "unable to unmarshal length")
 	}
 
-	// Decode persist links until the end of the file is reached or bytesRead
-	// has reached the length listed in the metadata
-	bytesRead := initialLength
-	for bytesRead < length {
-		// Decode link
-		var link persistLink
-		err = dec.Decode(&link)
-		if err != nil {
-			break
-		}
+	// Check if there are any persisted links
+	goodBytes := length - metadataPageSize
+	if goodBytes <= 0 {
+		return nil
+	}
 
-		// Load skylink
-		var skylink modules.Skylink
-		err := skylink.LoadString(link.Link)
-		if err != nil {
-			return errors.AddContext(err, "unable to load skylink from string")
-		}
+	// Read raw bytes
+	linkBytes := make([]byte, goodBytes)
+	_, err = f.Seek(metadataPageSize, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	_, err = f.Read(linkBytes)
+	if err != nil {
+		return err
+	}
+	// Decode persist links
+	persistLinks, err := unmarshalPersistLinks(linkBytes)
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal persistLinks")
+	}
 
-		// Remove if not Blacklisted
+	for _, link := range persistLinks {
 		if !link.Blacklisted {
-			bytesRead += falseLength
-			delete(sb.skylinks, skylink)
+			delete(sb.merkleroots, link.MerkleRoot)
 			continue
 		}
-
-		// Add if Blacklisted
-		bytesRead += trueLength
-		sb.skylinks[skylink] = struct{}{}
+		sb.merkleroots[link.MerkleRoot] = struct{}{}
 	}
 
-	// Ignore end of file errors
-	if err.Error() != io.EOF.Error() {
-		return errors.AddContext(err, "unable to decode persistLinks")
-	}
 	return nil
 }
 
@@ -191,79 +186,82 @@ func (sb *SkynetBlacklist) load() error {
 // from the blacklist
 func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	// Create buffer and encoder
-	buf := new(bytes.Buffer)
-	enc := json.NewEncoder(buf)
-
+	var buf bytes.Buffer
 	// Create and encode the persist links
 	for _, skylink := range additions {
-		// Add to skylink map
-		sb.skylinks[skylink] = struct{}{}
+		mr := skylink.MerkleRoot()
+		// Add skylink merkleroot to map
+		sb.merkleroots[mr] = struct{}{}
 
 		// Create persistLink
 		link := persistLink{
-			Link:        skylink.String(),
+			MerkleRoot:  mr,
 			Blacklisted: true,
 		}
 
 		// Encode link
-		err := enc.Encode(link)
+		err := link.marshalSia(&buf)
 		if err != nil {
 			return errors.AddContext(err, "unable to encode persistLink")
 		}
 	}
 	for _, skylink := range removals {
-		// Remove from skylink map
-		delete(sb.skylinks, skylink)
+		mr := skylink.MerkleRoot()
+		// Remove skylink merkleroot from map
+		delete(sb.merkleroots, mr)
 
 		// Create persistLink
 		link := persistLink{
-			Link:        skylink.String(),
+			MerkleRoot:  mr,
 			Blacklisted: false,
 		}
 
 		// Encode link
-		err := enc.Encode(link)
+		err := link.marshalSia(&buf)
 		if err != nil {
 			return errors.AddContext(err, "unable to encode persistLink")
 		}
 	}
 
 	// Open file
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, filename), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
-	// Decode the length
-	dec := json.NewDecoder(f)
-	header, version, length, err := decodeMetadata(dec)
+	// Unmarshall the length of the file
+	length, err := unmarshalLength(f)
 	if err != nil {
-		return errors.AddContext(err, "unable to decode metadata")
+		return errors.AddContext(err, "unable to unmarshal length")
+	}
+	if err != nil {
+		return errors.AddContext(err, "unable to decode length")
 	}
 
 	// Append data and sync
-	offset := length + 1
-	err = writeAtAndSync(f, buf.Bytes(), offset)
+	offset := length
+	_, err = f.WriteAt(buf.Bytes(), offset)
 	if err != nil {
-		return errors.AddContext(err, "unable to write and sync persisted bytes")
+		return errors.AddContext(err, "unable to write bytes at offset")
+	}
+	err = f.Sync()
+	if err != nil {
+		return errors.AddContext(err, "unable to fsync file")
 	}
 
 	// Update length and sync
 	length += int64(buf.Len())
-	metadataBuf, err := encodeMetadata(header, version, length)
-	if err != nil {
-		return errors.AddContext(err, "unable to encode metadata")
-	}
-
-	// Marshal into bytes
-	bytes := metadataBuf.Bytes()
+	lengthBytes := encoding.Marshal(length)
 
 	// Write to file
-	err = writeAtAndSync(f, bytes, 0)
+	_, err = f.WriteAt(lengthBytes, 0)
 	if err != nil {
-		return errors.AddContext(err, "unable to write and sync metadata")
+		return errors.AddContext(err, "unable to write length")
 	}
-
+	err = f.Sync()
+	if err != nil {
+		return errors.AddContext(err, "unable to fsync file")
+	}
 	return nil
 }
