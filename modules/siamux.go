@@ -1,9 +1,11 @@
 package modules
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -18,10 +20,11 @@ const (
 
 // NewSiaMux returns a new SiaMux object
 func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
-	// if the persistDir is empty, point it to the current directory,
-	// os.MkdirAll can not handle empty strings
-	if persistDir == "" {
-		persistDir = "./"
+	// can't use relative path
+	if !filepath.IsAbs(persistDir) {
+		err := errors.New("siamux path needs to be absolute")
+		build.Critical(err)
+		return nil, err
 	}
 
 	// ensure the persist directory exists
