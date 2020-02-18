@@ -23,7 +23,8 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
 	// Choose the appropriate protocol depending on the host version.
-	// TODO: Change version number to 1.4.2
+	// TODO: comment the code back in to enable the new renewal code on the
+	// renter side.
 	if build.VersionCmp(params.Host.Version, "1.4.1") >= 0 {
 		return cs.newRenewAndClean(oldContract, params, txnBuilder, tpool, hdb, cancel)
 	}
@@ -297,9 +298,9 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	return meta, txnSet, sweepTxn, sweepParents, nil
 }
 
-// newRenewAndClean uses the new RPC to renew and simultaneously clean a
-// contract. That way the host doesn't need to provide a storage proof for the
-// renewed contract.
+// newRenewAndClean uses the new RPC to renew a contract, creating a new
+// contract that is identical to the old one, and then cleans the old one to be
+// empty.
 func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
 	// for convenience
 	contract := oldContract.header
@@ -440,7 +441,7 @@ func (cs *ContractSet) newRenewAndClean(oldContract *SafeContract, params Contra
 	finalRev.NewFileMerkleRoot = crypto.Hash{}
 	finalRev.NewRevisionNumber = math.MaxUint64
 
-	// The valid proof outputs become the missed ones since the host won't need
+	// The missed proof outputs become the valid ones since the host won't need
 	// to provide a storage proof.
 	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
 

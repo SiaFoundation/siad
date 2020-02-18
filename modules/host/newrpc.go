@@ -619,7 +619,19 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	h.mu.RLock()
 	hostCollateral := contractCollateral(settings, txnSet[len(txnSet)-1].FileContracts[0])
 	h.mu.RUnlock()
-	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, false, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, nil, hostCollateral, types.ZeroCurrency, types.ZeroCurrency, settings)
+	fca := finalizeContractArgs{
+		builder:                 txnBuilder,
+		renewal:                 false,
+		renterPK:                renterPK,
+		renterSignatures:        renterSigs.ContractSignatures,
+		renterRevisionSignature: renterSigs.RevisionSignature,
+		initialSectorRoots:      nil,
+		hostCollateral:          hostCollateral,
+		hostInitialRevenue:      types.ZeroCurrency,
+		hostInitialRisk:         types.ZeroCurrency,
+		settings:                settings,
+	}
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -703,7 +715,19 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	renewRevenue := renewBasePrice(s.so, settings, fc)
 	renewRisk := renewBaseCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
-	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, false, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, s.so.SectorRoots, renewCollateral, renewRevenue, renewRisk, settings)
+	fca := finalizeContractArgs{
+		builder:                 txnBuilder,
+		renewal:                 false,
+		renterPK:                renterPK,
+		renterSignatures:        renterSigs.ContractSignatures,
+		renterRevisionSignature: renterSigs.RevisionSignature,
+		initialSectorRoots:      s.so.SectorRoots,
+		hostCollateral:          renewCollateral,
+		hostInitialRevenue:      renewRevenue,
+		hostInitialRisk:         renewRisk,
+		settings:                settings,
+	}
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to finalize contract: ", err)
@@ -889,7 +913,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
 		}
 	}
-	// The valid proof outputs become the missed ones since the host won't need
+	// The missed proof outputs become the valid ones since the host won't need
 	// to provide a storage proof.
 	newRevision.NewMissedProofOutputs = newRevision.NewValidProofOutputs
 
@@ -958,7 +982,19 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	renewRevenue := renewBasePrice(s.so, settings, fc)
 	renewRisk := renewBaseCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
-	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, true, renterPK, renterSigs.ContractSignatures, renterSigs.RevisionSignature, s.so.SectorRoots, renewCollateral, renewRevenue, renewRisk, settings)
+	fca := finalizeContractArgs{
+		builder:                 txnBuilder,
+		renewal:                 true,
+		renterPK:                renterPK,
+		renterSignatures:        renterSigs.ContractSignatures,
+		renterRevisionSignature: renterSigs.RevisionSignature,
+		initialSectorRoots:      s.so.SectorRoots,
+		hostCollateral:          renewCollateral,
+		hostInitialRevenue:      renewRevenue,
+		hostInitialRisk:         renewRisk,
+		settings:                settings,
+	}
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to finalize contract: ", err)

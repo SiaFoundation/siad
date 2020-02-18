@@ -178,7 +178,19 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 	h.mu.RLock()
 	hostCollateral := contractCollateral(settings, txnSet[len(txnSet)-1].FileContracts[0])
 	h.mu.RUnlock()
-	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(txnBuilder, false, renterPK, renterTxnSignatures, renterRevisionSignature, nil, hostCollateral, types.ZeroCurrency, types.ZeroCurrency, settings)
+	fca := finalizeContractArgs{
+		builder:                 txnBuilder,
+		renewal:                 false,
+		renterPK:                renterPK,
+		renterSignatures:        renterTxnSignatures,
+		renterRevisionSignature: renterRevisionSignature,
+		initialSectorRoots:      nil,
+		hostCollateral:          hostCollateral,
+		hostInitialRevenue:      types.ZeroCurrency,
+		hostInitialRisk:         types.ZeroCurrency,
+		settings:                settings,
+	}
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
 		// The incoming file contract is not acceptable to the host, indicate
 		// why to the renter.

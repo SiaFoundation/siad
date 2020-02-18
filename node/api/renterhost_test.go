@@ -1096,9 +1096,9 @@ func TestRenterRenew(t *testing.T) {
 	}
 	contractID := rc.Contracts[0].ID
 
-	// Contract size should be >0.
+	// Contract size should be == 0 since contract was cleared.
 	if rc.Contracts[0].Size == 0 {
-		t.Fatalf("contract size should be greater 0 but was %v", rc.Contracts[0].Size)
+		t.Fatalf("contract size should be 0 but was %v", rc.Contracts[0].Size)
 	}
 
 	// Mine enough blocks to enter the renewal window.

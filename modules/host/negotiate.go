@@ -134,6 +134,20 @@ var (
 	errUnknownModification = ErrorCommunication("renter is attempting an action that the host does not understand")
 )
 
+// finalizeContractArgs are the arguments passed into managedFinalizeContract.
+type finalizeContractArgs struct {
+	builder                 modules.TransactionBuilder
+	renewal                 bool
+	renterPK                crypto.PublicKey
+	renterSignatures        []types.TransactionSignature
+	renterRevisionSignature types.TransactionSignature
+	initialSectorRoots      []crypto.Hash
+	hostCollateral          types.Currency
+	hostInitialRevenue      types.Currency
+	hostInitialRisk         types.Currency
+	settings                modules.HostExternalSettings
+}
+
 // createRevisionSignature creates a signature for a file contract revision
 // that signs on the file contract revision. The renter should have already
 // provided the signature. createRevisionSignature will check to make sure that
@@ -164,7 +178,12 @@ func createRevisionSignature(fcr types.FileContractRevision, renterSig types.Tra
 // collateral, and then try submitting the file contract to the transaction
 // pool. If there is no error, the completed transaction set will be returned
 // to the caller.
-func (h *Host) managedFinalizeContract(builder modules.TransactionBuilder, renewal bool, renterPK crypto.PublicKey, renterSignatures []types.TransactionSignature, renterRevisionSignature types.TransactionSignature, initialSectorRoots []crypto.Hash, hostCollateral, hostInitialRevenue, hostInitialRisk types.Currency, settings modules.HostExternalSettings) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
+func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
+	// Extract args
+	builder, renewal, renterPK, renterSignatures := args.builder, args.renewal, args.renterPK, args.renterSignatures
+	renterRevisionSignature, initialSectorRoots, hostCollateral := args.renterRevisionSignature, args.initialSectorRoots, args.hostCollateral
+	hostInitialRevenue, hostInitialRisk, settings := args.hostInitialRevenue, args.hostInitialRisk, args.settings
+
 	for _, sig := range renterSignatures {
 		builder.AddTransactionSignature(sig)
 	}
