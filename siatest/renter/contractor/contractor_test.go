@@ -1413,7 +1413,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	renter := renterNodes[0]
 
 	// Stop the reorg miner before contracts are formed on chain.
-	err = reorgMiner.StopNode()
+	err = tg.RemoveNode(reorgMiner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1467,11 +1467,11 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 
 	// Disable the good miner and the host to prevent them from
 	// mining or re-broadcasting transactions.
-	err = goodMiner.StopNode()
+	err = tg.RemoveNode(goodMiner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = tg.Hosts()[0].StopNode()
+	err = tg.RemoveNode(tg.Hosts()[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1493,7 +1493,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		reorgHeight = cg.Height + 2
 	}
 	// Disable the renter so that it doesn't relay blocks to the reorg miner.
-	err = renter.StopNode()
+	err = tg.RemoveNode(renter)
 	if err != nil {
 		t.Fatal(err)
 	}
