@@ -282,6 +282,13 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 		}
 		nodeParams.RPCAddress = addr + ":0"
 	}
+
+	// Check if the SiaMuxAddress is set, if not we want to set it to use a
+	// random port in testing
+	if nodeParams.SiaMuxAddress == "" {
+		nodeParams.SiaMuxAddress = "localhost:0"
+	}
+
 	// Create server
 	var s *server.Server
 	var err error
