@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"mime/multipart"
 	"testing"
 	"time"
 
@@ -208,6 +207,7 @@ func TestSkynet(t *testing.T) {
 
 	// Create some data to upload as a skyfile.
 	data = fastrand.Bytes(100)
+	reader = bytes.NewReader(data)
 
 	// Call the upload skyfile client call.
 	filename = "testSmallMultipart"
@@ -216,17 +216,6 @@ func TestSkynet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Upload a skyfile using multipart form data
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", filename)
-	_, err = part.Write(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writer.Close()
-
-	reader = bytes.NewReader(body.Bytes())
 	sup = modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
@@ -239,9 +228,7 @@ func TestSkynet(t *testing.T) {
 
 		Reader: reader,
 	}
-	headers := make(map[string]string)
-	headers["Content-Type"] = writer.FormDataContentType()
-	skylink, rshp, err = r.SkynetSkyfilePostCustom(sup, headers)
+	skylink, rshp, err = r.SkynetSkyfileMultiPartPost(sup)
 	if err != nil {
 		t.Fatal(err)
 	}
