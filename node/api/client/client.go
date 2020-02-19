@@ -202,34 +202,9 @@ func (c *Client) post(resource string, data string, obj interface{}) error {
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
 func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, []byte, error) {
-	req, err := c.NewRequest("POST", resource, body)
-	if err != nil {
-		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
-	}
 	// TODO: is this necessary?
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
-	}
-	defer drainAndClose(res.Body)
-
-	if res.StatusCode == http.StatusNotFound {
-		return http.Header{}, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform POST on "+resource)
-	}
-
-	// If the status code is not 2xx, decode and return the accompanying
-	// api.Error.
-	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return http.Header{}, nil, errors.AddContext(readAPIError(res.Body), "POST request error")
-	}
-
-	if res.StatusCode == http.StatusNoContent {
-		// no reason to read the response
-		return res.Header, []byte{}, nil
-	}
-	d, err := ioutil.ReadAll(res.Body)
-	return res.Header, d, err
+	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	return c.postRawResponseWithHeaders(resource, body, headers)
 }
 
 // postRawResponseWithHeaders requests the specified resource and allows to pass
@@ -239,8 +214,8 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
 	}
-	// TODO: is this necessary?
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Decorate the headers on the request object
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
