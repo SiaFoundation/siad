@@ -33,8 +33,8 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	return sb, nil
 }
 
-// Blacklisted indicates if a skylink is currently blacklisted
-func (sb *SkynetBlacklist) Blacklisted(skylink modules.Skylink) bool {
+// IsBlacklisted indicates if a skylink is currently blacklisted
+func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	_, ok := sb.merkleroots[skylink.MerkleRoot()]

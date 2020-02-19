@@ -41,7 +41,7 @@ const (
 	versionSize int64 = 16
 )
 
-// persistLink is the information about the link that is persisted on disk
+// persistLink is the information about the skylink that is persisted on disk
 type persistLink struct {
 	MerkleRoot  crypto.Hash `json:"merkleroot"`
 	Blacklisted bool        `json:"blacklisted"`
@@ -50,12 +50,8 @@ type persistLink struct {
 // unmarshalLength reads the first lengthSize bytes of the file and tries to
 // unmarshal them into the length
 func unmarshalLength(f *os.File) (int64, error) {
-	_, err := f.Seek(0, io.SeekStart)
-	if err != nil {
-		return 0, err
-	}
 	lengthbytes := make([]byte, lengthSize)
-	_, err = f.Read(lengthbytes)
+	_, err := f.ReadAt(lengthbytes, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -152,7 +148,7 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	return nil
 }
 
-// load loads the persisted blacklisted skylinks from disk
+// load loads the persisted blacklist from disk
 func (sb *SkynetBlacklist) load() error {
 	// Open File
 	f, err := os.Open(filepath.Join(sb.staticPersistDir, persistFile))
@@ -176,11 +172,7 @@ func (sb *SkynetBlacklist) load() error {
 
 	// Read raw bytes
 	linkBytes := make([]byte, goodBytes)
-	_, err = f.Seek(metadataPageSize, io.SeekStart)
-	if err != nil {
-		return err
-	}
-	_, err = f.Read(linkBytes)
+	_, err = f.ReadAt(linkBytes, metadataPageSize)
 	if err != nil {
 		return err
 	}
@@ -205,12 +197,12 @@ func (sb *SkynetBlacklist) load() error {
 // update updates the persistence on disk with the new additions and removals
 // from the blacklist
 func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
-	// Create buffer and encoder
+	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
 	for _, skylink := range additions {
-		mr := skylink.MerkleRoot()
 		// Add skylink merkleroot to map
+		mr := skylink.MerkleRoot()
 		sb.merkleroots[mr] = struct{}{}
 
 		// Create persistLink
@@ -226,8 +218,8 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 		}
 	}
 	for _, skylink := range removals {
-		mr := skylink.MerkleRoot()
 		// Remove skylink merkleroot from map
+		mr := skylink.MerkleRoot()
 		delete(sb.merkleroots, mr)
 
 		// Create persistLink
@@ -259,7 +251,7 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	// Append data and sync
 	_, err = f.WriteAt(buf.Bytes(), length)
 	if err != nil {
-		return errors.AddContext(err, "unable to write bytes at offset")
+		return errors.AddContext(err, "unable to append new data to blacklist persist file")
 	}
 	err = f.Sync()
 	if err != nil {

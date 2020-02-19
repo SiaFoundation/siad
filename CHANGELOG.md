@@ -9,6 +9,10 @@ Version History
 ---------------
 
 Latest:
+### v1.4.4
+**Key Updates**
+ - Add ability to blacklist skylinks by merkleroot
+
 ### v1.4.3
 **Key Updates**
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
@@ -16,7 +20,6 @@ Latest:
  - Initialize defaults for the host's ephemeral account settings
  - Add SIA_DATA_DIR environment variable for setting the data directory for
    siad/siac
- - Add blacklist for skylinks
  - Made build process deterministic. Moved related scripts into `release-scripts`
  
 **Bugs Fixed**

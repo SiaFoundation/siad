@@ -59,8 +59,7 @@ const (
 )
 
 var (
-	// ErrSkylinkBlacklisted is the error returned when a blacklisted skylink is
-	// attempted to be downloaded
+	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
 	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
 )
 
@@ -318,7 +317,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	}
 
 	// Check if skylink is blacklisted
-	if r.staticSkynetBlacklist.Blacklisted(skylink) {
+	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
 		// Skylink is blacklisted, return error and try and delete file
 		return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, r.DeleteFile(lup.SiaPath))
 	}
@@ -490,7 +489,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
 	// Check if link is blacklisted
-	if r.staticSkynetBlacklist.Blacklisted(link) {
+	if r.staticSkynetBlacklist.IsBlacklisted(link) {
 		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
 	}
 
@@ -549,7 +548,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters) error {
 	// Check if link is blacklisted
-	if r.staticSkynetBlacklist.Blacklisted(skylink) {
+	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
 		return ErrSkylinkBlacklisted
 	}
 
@@ -667,13 +666,12 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	} else {
 		skylink, err = r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
 	}
-
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
 
-	// Check if skylink is blacklist
-	if !r.staticSkynetBlacklist.Blacklisted(skylink) {
+	// Check if skylink is blacklisted
+	if !r.staticSkynetBlacklist.IsBlacklisted(skylink) {
 		return skylink, nil
 	}
 

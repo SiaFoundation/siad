@@ -2,6 +2,8 @@ package skynetblacklist
 
 import (
 	"bytes"
+	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,7 +11,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// testDir is a helper function for creating the testing directory
+func testDir(name string) string {
+	return build.TempDir("skynetblacklist", name)
+}
 
 // TestPersist tests the persistence of the SkynetBlacklist
 func TestPersist(t *testing.T) {
@@ -19,7 +27,7 @@ func TestPersist(t *testing.T) {
 	t.Parallel()
 
 	// Creat a new SkynetBlacklist
-	testdir := build.TempDir("skynetblacklist", t.Name())
+	testdir := testDir(t.Name())
 	sb, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +36,23 @@ func TestPersist(t *testing.T) {
 	// There should be no skylinks in the blacklist
 	if len(sb.merkleroots) != 0 {
 		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
+	}
+
+	// Append a bunch of random data to the end of the blacklist file to test
+	// corruption
+	filename := filepath.Join(sb.staticPersistDir, persistFile)
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, modules.DefaultFilePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	minNumBytes := int(metadataPageSize)
+	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Update blacklist
@@ -39,8 +64,8 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// There should be no skylinks in the blacklist because we added and then
-	// removed the same skylink
+	// Blacklist should be empty because we added and then removed the same
+	// skylink
 	if len(sb.merkleroots) != 0 {
 		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
 	}
@@ -51,9 +76,9 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// There should be 1 skylink listed now
+	// There should be 1 element in the blacklist now
 	if len(sb.merkleroots) != 1 {
-		t.Fatal("Expected 1 blacklisted skylink but found:", len(sb.merkleroots))
+		t.Fatal("Expected 1 element in the blacklist but found:", len(sb.merkleroots))
 	}
 	mr, ok := sb.merkleroots[skylink.MerkleRoot()]
 	if !ok {
@@ -67,13 +92,13 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// There should be 1 skylink listed now
+	// There should be 1 element in the blacklist
 	if len(sb2.merkleroots) != 1 {
-		t.Fatal("Expected 1 blacklisted skylink but found:", len(sb2.merkleroots))
+		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
 	}
 	mr, ok = sb.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected skylink listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
 	}
 }
 
@@ -154,7 +179,7 @@ func TestMarshalMetadata(t *testing.T) {
 	t.Parallel()
 
 	// Create persist file
-	testdir := build.TempDir("skynetblacklist", t.Name())
+	testdir := testDir(t.Name())
 	err := os.MkdirAll(testdir, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
@@ -206,25 +231,28 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatalf("incorrect decoded length, got %v expected %v", length, 2*metadataPageSize)
 	}
 
-	// // Try unmarshalling all the metadata
-	// _, err = f.Seek(0, io.SeekStart)
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// mdBytes := make([]byte, lengthSize+headerSize+versionSize)
-	// _, err = f.Read(mdBytes)
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// var header, version string
-	// err = encoding.UnmarshalAll(mdBytes, &length, &header, &version)
-	// if err != nil && err != io.EOF {
-	// 	t.Fatal(err)
-	// }
-	// if header != metadataHeader {
-	// 	t.Fatalf("bad header, expected %v got %v", metadataHeader, header)
-	// }
-	// if version != metadataVersion {
-	// 	t.Fatalf("bad version, expected %v got %v", metadataVersion, version)
-	// }
+	// Try unmarshalling all the metadata together and ensure that it did not
+	// get corrupted by the length updates
+	var header, version string
+	_, err = f.Seek(0, io.SeekStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mdBytes, err := ioutil.ReadAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = encoding.UnmarshalAll(mdBytes, &length, &header, &version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if length != 2*metadataPageSize {
+		t.Fatalf("incorrect decoded length, got %v expected %v", length, 2*metadataPageSize)
+	}
+	if header != metadataHeader {
+		t.Fatalf("bad header, expected %v got %v", metadataHeader, header)
+	}
+	if version != metadataVersion {
+		t.Fatalf("bad version, expected %v got %v", metadataVersion, version)
+	}
 }

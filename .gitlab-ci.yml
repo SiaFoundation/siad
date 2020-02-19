@@ -49,7 +49,6 @@ variables:
   ./siatest/renter/hostdb \
   ./siatest/renterhost"
 
-
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
   ## improvements.

@@ -21,7 +21,7 @@ length of good bytes encoded in the metadata.
 
 **Inbound Complexities**
  - `callInitPersist` initializes the persistence file 
-    - `skynetblacklist.New` uses `callInitPersist`
+    - The Skynet Blacklist Subsystem's `New` method uses `callInitPersist`
 
 ### Skynet Blacklist Subsystem
 **Key Files**
@@ -32,9 +32,8 @@ and is used to create a new Skynet Blacklist and return information about the
 Blacklist.
 
 **Exports**
- - `Blacklisted` returns whether or not a skylink merkleroot is blacklisted
+ - `IsBlacklisted` returns whether or not a skylink merkleroot is blacklisted
  - `New` creates and returns a new Skynet Blacklist
 
 **Outbound Complexities**
- - `New` calls `callInitPersist`
- 
+ - `New` calls the Persistence Subsystem's `callInitPersist` method
