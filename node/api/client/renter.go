@@ -582,7 +582,7 @@ func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, da
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
 	values.Set("stream", strconv.FormatBool(true))
-	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r, make(map[string]string))
 	return err
 }
 
@@ -594,7 +594,7 @@ func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPa
 	values := url.Values{}
 	values.Set("repair", strconv.FormatBool(true))
 	values.Set("stream", strconv.FormatBool(true))
-	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r, make(map[string]string))
 	return err
 }
 
@@ -777,7 +777,7 @@ func (c *Client) SkynetSkylinkPinPost(skylink string, lup modules.SkyfileUploadP
 	values.Set("siapath", lup.SiaPath.String())
 
 	query := fmt.Sprintf("/skynet/pin/%s?%s", skylink, values.Encode())
-	_, _, err := c.postRawResponse(query, nil)
+	_, _, err := c.postRawResponse(query, nil, make(map[string]string))
 	if err != nil {
 		return errors.AddContext(err, "post call to "+query+" failed")
 	}
@@ -787,6 +787,13 @@ func (c *Client) SkynetSkylinkPinPost(skylink string, lup modules.SkyfileUploadP
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
 // resulting skylink is returned along with an error.
 func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
+	return c.SkynetSkyfilePostCustom(lup, make(map[string]string))
+}
+
+// SkynetSkyfilePostCustom uses the /skynet/skyfile endpoint to upload a
+// skyfile. The resulting skylink is returned along with an error. This is a
+// custom method that allows passing in headers.
+func (c *Client) SkynetSkyfilePostCustom(lup modules.SkyfileUploadParameters, headers map[string]string) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)
@@ -801,7 +808,7 @@ func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters) (string,
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	_, resp, err := c.postRawResponse(query, lup.Reader)
+	_, resp, err := c.postRawResponse(query, lup.Reader, headers)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
 	}
@@ -834,7 +841,7 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	_, resp, err := c.postRawResponse(query, lup.Reader)
+	_, resp, err := c.postRawResponse(query, lup.Reader, make(map[string]string))
 	if err != nil {
 		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
