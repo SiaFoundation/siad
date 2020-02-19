@@ -840,7 +840,10 @@ func (c *Client) SkynetSkyfileMultiPartPost(lup modules.SkyfileUploadParameters)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to write multipart data")
 	}
-	writer.Close()
+	err = writer.Close()
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to close the multipart writer")
+	}
 
 	reader := bytes.NewReader(body.Bytes())
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
