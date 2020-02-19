@@ -146,10 +146,17 @@ release:
 release-race:
 	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 
+# build builds release binaries locally without installing them.
+build-release:
+	go build -o ./ -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+# build builds dev binaries locally without installing them.
+build-dev:
+	go build -o ./ -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+
 # clean removes all directories that get automatically created during
 # development.
 clean:
-	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release 
+	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release
 
 test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
@@ -210,4 +217,3 @@ whitepaper:
 	pdflatex -output-directory=doc whitepaper.tex
 
 .PHONY: all fmt install release clean test test-v test-long cover whitepaper
-
