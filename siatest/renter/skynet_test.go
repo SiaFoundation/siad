@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -428,11 +429,9 @@ func TestSkynetBlacklist(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	// Create some data to upload as a skyfile.
+	// Create skyfile upload params
 	data := fastrand.Bytes(100 + siatest.Fuzz())
-	// Need it to be a reader.
 	reader := bytes.NewReader(data)
-	// Call the upload skyfile client call.
 	filename := "skyfile"
 	uploadSiaPath, err := modules.NewSiaPath("testskyfile")
 	if err != nil {
@@ -448,7 +447,19 @@ func TestSkynetBlacklist(t *testing.T) {
 
 		Reader: reader,
 	}
+
+	// Upload and create a skylink
 	skylink, _, err := r.SkynetSkyfilePost(lup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the skyfile is registered with the renter
+	sp, err := modules.SkynetFolder.Join(uploadSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileRootGet(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +472,8 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Try to download the file behind the skylink.
+	// Try to download the file behind the skylink, this should fail because of
+	// the blacklist.
 	_, _, err = r.SkynetSkylinkGet(skylink)
 	if err == nil {
 		t.Fatal("Download should have failed")
@@ -470,18 +482,40 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
 	}
 
-	// TODO - reenable testing for blacklisting uploads
-	//
-	// // Try and upload again with force as true to avoid error of path already
-	// // existing. Should also fail
-	// // lup.Force = true
-	// _, err = r.SkynetSkyfilePost(lup, true)
-	// if err == nil {
-	// 	t.Fatal("Expected upload to fail")
-	// }
-	// if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
-	// 	t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
-	// }
+	// Try and upload again with force as true to avoid error of path already
+	// existing. Additionally need to recreate the reader again from the file
+	// data. This should also fail due to the blacklist
+	lup.Force = true
+	lup.Reader = bytes.NewReader(data)
+	_, _, err = r.SkynetSkyfilePost(lup)
+	if err == nil {
+		t.Fatal("Expected upload to fail")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	}
+
+	// Verify that the SiaPath was removed from the renter due to the upload
+	// seeing the blacklist
+	_, err = r.RenterFileGet(sp)
+	if err == nil {
+		t.Fatal("expected error for file not found")
+	}
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatalf("Expected error %v but got %v", filesystem.ErrNotExist, err)
+	}
+
+	// Try Pinning the file, this should fail due to the blacklist
+	pinlup := lup
+	pinlup.FileMetadata = modules.SkyfileMetadata{}
+	pinlup.Reader = nil
+	err = r.SkynetSkylinkPinPost(skylink, pinlup)
+	if err == nil {
+		t.Fatal("Expected pin to fail")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	}
 
 	// Remove skylink from blacklist
 	add = []string{}
@@ -491,7 +525,9 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Try to download the file behind the skylink.
+	// Try to download the file behind the skylink. Even though the file was
+	// removed from the renter node that uploaded it, it should still be
+	// downloadable.
 	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -500,5 +536,11 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Error("upload and download doesn't match")
 		t.Log(data)
 		t.Log(fetchedData)
+	}
+
+	// Pinning the skylink should work now
+	err = r.SkynetSkylinkPinPost(skylink, pinlup)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

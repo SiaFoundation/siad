@@ -548,6 +548,11 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters) error {
+	// Check if link is blacklisted
+	if r.staticSkynetBlacklist.Blacklisted(skylink) {
+		return ErrSkylinkBlacklisted
+	}
+
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize)
 	if err != nil {
