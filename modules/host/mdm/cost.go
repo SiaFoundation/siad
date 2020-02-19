@@ -20,10 +20,11 @@ const programTime = 10
 // becomes larger than the budget of the program, ErrInsufficientBudget is
 // returned.
 func (p *Program) addCost(cost types.Currency) error {
-	p.executionCost = p.executionCost.Add(cost)
-	if p.staticBudget.Cmp(p.executionCost) < 0 {
+	newExecutionCost := p.executionCost.Add(cost)
+	if p.staticBudget.Cmp(newExecutionCost) < 0 {
 		return ErrInsufficientBudget
 	}
+	p.executionCost = newExecutionCost
 	return nil
 }
 
