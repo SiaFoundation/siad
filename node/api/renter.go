@@ -258,6 +258,20 @@ type (
 	}
 )
 
+// Returns the boolean value of the "root" parameter of req, if it exists.
+// Writes an error to w if "root" exists but is not parsable as bool.
+func isCalledWithRootFlag(w http.ResponseWriter, req *http.Request) (root bool) {
+	rootStr := req.FormValue("root")
+	var err error
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
+		}
+	}
+	return
+}
+
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
 // prefix by the user's home directory.
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
@@ -1348,20 +1362,6 @@ func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 	WriteSuccess(w)
-}
-
-// Returns the boolean value of the "root" parameter of req, if it exists.
-// Writes an error to w if "root" exists but is not parsable as bool.
-func isCalledWithRootFlag(w http.ResponseWriter, req *http.Request) (root bool) {
-	rootStr := req.FormValue("root")
-	var err error
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
-		}
-	}
-	return
 }
 
 // renterFileHandler handles GET requests to the /renter/file/:siapath API endpoint.
