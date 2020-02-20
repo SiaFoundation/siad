@@ -149,7 +149,7 @@ release-race:
 # clean removes all directories that get automatically created during
 # development.
 clean:
-	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release
+	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release 
 
 test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
@@ -210,3 +210,4 @@ whitepaper:
 	pdflatex -output-directory=doc whitepaper.tex
 
 .PHONY: all fmt install release clean test test-v test-long cover whitepaper
+
