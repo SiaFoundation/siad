@@ -167,8 +167,8 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// Inject a dependency that forces legacy contract renewal without clearing
 	// the contract.
 	pd := modules.ProdDependencies
-	hcDeps := &dependencies.DependencyRenewWithoutClear{}
-	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, hcDeps, pd)
+	csDeps := &dependencies.DependencyRenewWithoutClear{}
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, csDeps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 		}
 	}
 	if !success {
-		t.Error("does not seem like the host has submitted a storage prof successfully to the network")
+		t.Error("does not seem like the host has submitted a storage proof successfully to the network")
 	}
 }
 
