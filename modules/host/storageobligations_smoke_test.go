@@ -594,9 +594,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 		}},
 	}}
 	ht.host.managedLockStorageObligation(so.id())
-	ht.host.mu.Lock()
-	err = ht.host.modifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
-	ht.host.mu.Unlock()
+	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -814,9 +812,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		}},
 	}}
 	ht.host.managedLockStorageObligation(so.id())
-	ht.host.mu.Lock()
-	err = ht.host.modifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
-	ht.host.mu.Unlock()
+	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -864,9 +860,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		}},
 	}}
 	ht.host.managedLockStorageObligation(so.id())
-	ht.host.mu.Lock()
-	err = ht.host.modifyStorageObligation(so, nil, []crypto.Hash{sectorRoot2}, [][]byte{sectorData2})
-	ht.host.mu.Unlock()
+	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot2}, [][]byte{sectorData2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1052,7 +1046,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 	}}
 	so.RevisionTransactionSet = revisionSet
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.modifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
+	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
 	if err != nil {
 		t.Fatal(err)
 	}
