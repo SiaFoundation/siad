@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -163,7 +164,11 @@ func TestHostAndRentVanilla(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	st, err := createServerTester(t.Name())
+	// Inject a dependency that forces legacy contract renewal without clearing
+	// the contract.
+	pd := modules.ProdDependencies
+	hcDeps := &dependencies.DependencyRenewWithoutClear{}
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, hcDeps, pd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,8 +414,8 @@ func TestHostAndRentVanilla(t *testing.T) {
 			break
 		}
 	}
-	if success {
-		t.Error("host shouldn't have submitted a storage proof since the contract gets cleared after being renewed")
+	if !success {
+		t.Error("does not seem like the host has submitted a storage prof successfully to the network")
 	}
 }
 

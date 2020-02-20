@@ -25,6 +25,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -145,9 +148,10 @@ type serverTester struct {
 	dir string
 }
 
-// assembleServerTester creates a bunch of modules and assembles them into a
-// server tester, without creating any directories or mining any blocks.
-func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
+// assembleServerTesterWithDeps creates a bunch of modules with injected
+// dependencies and assembles them into a server tester, without creating any
+// directories or mining any blocks.
+func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps modules.Dependencies) (*serverTester, error) {
 	// assembleServerTester should not get called during short tests, as it
 	// takes a long time to run.
 	if testing.Short() {
@@ -161,19 +165,19 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	}
 
 	// Create the modules.
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.NewCustomGateway("localhost:0", false, filepath.Join(testdir, modules.GatewayDir), gDeps)
 	if err != nil {
 		return nil, err
 	}
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
+	cs, errChan := consensus.NewCustomConsensusSet(g, false, filepath.Join(testdir, modules.ConsensusDir), cDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
+	tp, err := transactionpool.NewCustomTPool(cs, g, filepath.Join(testdir, modules.TransactionPoolDir), tDeps)
 	if err != nil {
 		return nil, err
 	}
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
+	w, err := wallet.NewCustomWallet(cs, tp, filepath.Join(testdir, modules.WalletDir), wDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -195,11 +199,28 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.New(cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(hDeps, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, mux, filepath.Join(testdir, modules.RenterDir))
+	renterPersistDir := filepath.Join(testdir, modules.RenterDir)
+	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tp, renterPersistDir, hdbDeps)
+	if err := <-errChan; err != nil {
+		return nil, err
+	}
+	logger, err := persist.NewFileLogger(filepath.Join(renterPersistDir, "contractor.log"))
+	if err != nil {
+		return nil, err
+	}
+	contractSet, err := proto.NewContractSet(filepath.Join(renterPersistDir, "contracts"), csDeps)
+	if err != nil {
+		return nil, err
+	}
+	hc, errChan := contractor.NewCustomContractor(cs, w, tp, hdb, renterPersistDir, contractSet, logger, hcDeps)
+	if err := <-errChan; err != nil {
+		return nil, err
+	}
+	r, errChan := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, renterPersistDir, rDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -232,6 +253,12 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 		}
 	}()
 	return st, nil
+}
+
+// assembleServerTester creates a bunch of modules and assembles them into a
+// server tester, without creating any directories or mining any blocks.
+func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, error) {
+	return assembleServerTesterWithDeps(key, testdir, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
 }
 
 // assembleAuthenticatedServerTester creates a bunch of modules and assembles
@@ -392,9 +419,10 @@ func blankServerTester(name string) (*serverTester, error) {
 	return st, nil
 }
 
-// createServerTester creates a server tester object that is ready for testing,
-// including money in the wallet and all modules initialized.
-func createServerTester(name string) (*serverTester, error) {
+// createServerTesterWithDeps creates a server tester object with injected
+// dependencies that is ready for testing, including money in the wallet and all
+// modules initialized.
+func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps modules.Dependencies) (*serverTester, error) {
 	// createServerTester is expensive, and therefore should not be called
 	// during short tests.
 	if testing.Short() {
@@ -405,7 +433,7 @@ func createServerTester(name string) (*serverTester, error) {
 	testdir := build.TempDir("api", name)
 
 	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
-	st, err := assembleServerTester(key, testdir)
+	st, err := assembleServerTesterWithDeps(key, testdir, gDeps, cDeps, tDeps, wDeps, hDeps, rDeps, hdbDeps, hcDeps, csDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -419,6 +447,12 @@ func createServerTester(name string) (*serverTester, error) {
 	}
 
 	return st, nil
+}
+
+// createServerTester creates a server tester object that is ready for testing,
+// including money in the wallet and all modules initialized.
+func createServerTester(name string) (*serverTester, error) {
+	return createServerTesterWithDeps(name, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies)
 }
 
 // createAuthenticatedServerTester creates an authenticated server tester
