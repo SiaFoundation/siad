@@ -146,10 +146,10 @@ release:
 release-race:
 	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 
-# build builds release binaries locally without installing them.
+# build-release builds release binaries locally without installing them.
 build-release:
 	go build -o ./ -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
-# build builds dev binaries locally without installing them.
+# build-dev builds dev binaries locally without installing them.
 build-dev:
 	go build -o ./ -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
