@@ -1409,7 +1409,6 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // renterFileHandler handles POST requests to the /renter/file/:siapath API endpoint.
 func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	panic("\n\n\n>> ENTERING renterFileHandlerPOST\n\n\n")
 	newTrackingPath := req.FormValue("trackingpath")
 	stuck := req.FormValue("stuck")
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
