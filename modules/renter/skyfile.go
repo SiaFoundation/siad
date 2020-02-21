@@ -466,7 +466,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
+func (r *Renter) DownloadSkylink(link modules.Skylink, filename string) (modules.SkyfileMetadata, modules.Streamer, error) {
 	// Pull the offset and fetchSize out of the skylink.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
@@ -500,10 +500,26 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 	}
 	offset += metadataSize
 
+	var subfile modules.SubSkyfileMetadata
+	if filename != "" {
+		for _, sf := range lfm.Subfiles {
+			if sf.Filename == filename {
+				subfile = sf
+				break
+			}
+		}
+		offset += subfile.Offset
+	}
+
 	// If there is no fanout, all of the data will be contained in the base
 	// sector, return a streamer using the data from the base sector.
 	if ll.fanoutSize == 0 {
-		streamer := streamerFromSlice(baseSector[offset : offset+ll.filesize])
+		// TODO clean this up
+		size := ll.filesize
+		if !subfile.Equals(modules.SubSkyfileMetadata{}) {
+			size = subfile.Len
+		}
+		streamer := streamerFromSlice(baseSector[offset : offset+size])
 		return lfm, streamer, nil
 	}
 	if offset+metadataSize+ll.fanoutSize > modules.SectorSize {
@@ -511,7 +527,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
+	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes, subfile)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -580,7 +596,8 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		CipherType: crypto.TypePlain,
 	}
 
-	streamer, err := r.newFanoutStreamer(skylink, ll, fanoutBytes)
+	sf := modules.SubSkyfileMetadata{}
+	streamer, err := r.newFanoutStreamer(skylink, ll, fanoutBytes, sf)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}

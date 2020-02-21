@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -1725,10 +1726,27 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
+func parseFilename(skylink string) string {
+	var filename string
+
+	// Ignore everything after an ampersand
+	splits := strings.SplitN(skylink, "&", 2)
+	base := splits[0]
+
+	// If base contains a "/" we consider everythin after that slash to be the
+	// filename.
+	splits = strings.Split(base, "/")
+	if len(splits) > 1 {
+		filename = strings.Join(splits[1:], "/")
+	}
+	return filename
+}
+
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")
+	strLink = strings.TrimLeft(strLink, "/") // TODO
 	var skylink modules.Skylink
 
 	err := skylink.LoadString(strLink)
@@ -1756,7 +1774,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the stream.
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
+	filename := parseFilename(strLink)
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink, filename)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
@@ -1862,6 +1881,51 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	WriteSuccess(w)
 }
 
+type MultipartReader struct {
+	r         *multipart.Reader
+	parts     []*multipart.Part
+	filenames []string
+}
+
+func NewMultipartReader(r *multipart.Reader) *MultipartReader {
+	return &MultipartReader{
+		r:         r,
+		parts:     make([]*multipart.Part, 0),
+		filenames: make([]string, 0),
+	}
+}
+
+func (mpr *MultipartReader) Parse() error {
+	part, err := mpr.r.NextPart()
+	if err != nil {
+		if err != io.EOF {
+			return err
+		}
+		return nil
+	}
+
+	mpr.filenames = append(mpr.filenames, part.FileName())
+	mpr.parts = append(mpr.parts, part)
+	return nil
+}
+
+func (mpr *MultipartReader) Read(p []byte) (n int, err error) {
+	for len(mpr.parts) > 0 {
+		n, err = mpr.parts[0].Read(p)
+		if err == io.EOF {
+			mpr.parts = mpr.parts[1:]
+		}
+		if n > 0 || err != io.EOF {
+			if err == io.EOF && len(mpr.parts) > 0 {
+				// Don't return EOF yet. More readers remain.
+				err = nil
+			}
+			return
+		}
+	}
+	return 0, io.EOF
+}
+
 // skynetSkyfileHandlerPOST is a dual purpose endpoint. If the 'convertpath'
 // field is set, this endpoint will create a skyfile using an existing siafile.
 // The original siafile and the skyfile will boeth need to be kept in order for
@@ -1938,21 +2002,87 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{fmt.Sprintf("failed to parse media type: %v", err)}, http.StatusBadRequest)
 		return
 	}
-	isMultipartFormData := strings.HasPrefix(mediaType, "multipart/form-data")
 
-	// Depending on the content type, parse the filename and file reader
 	var reader io.Reader
 	var filename string
+	var lfm modules.SkyfileMetadata
+
+	// Depending on the content type, parse the filename and file reader
+	isMultipartFormData := strings.HasPrefix(mediaType, "multipart/form-data")
 	if isMultipartFormData {
-		file, header, err := req.FormFile("file")
+		err := req.ParseMultipartForm(1 << 30)
 		if err != nil {
-			WriteError(w, Error{"failed to find a form file"}, http.StatusBadRequest)
+			WriteError(w, Error{"failed parsing multipart form"}, http.StatusBadRequest)
 			return
 		}
-		defer file.Close()
-		reader = file
-		filename = header.Filename
 
+		isDirectory, _ := strconv.ParseBool(req.PostFormValue("directory"))
+		if isDirectory {
+			fhs := req.MultipartForm.File["files[]"]
+
+			subfiles := make([]modules.SubSkyfileMetadata, len(fhs))
+			readers := make([]io.Reader, len(fhs))
+
+			var offset uint64
+			for i, fh := range fhs {
+				f, err := fh.Open()
+				if err != nil {
+					WriteError(w, Error{"could not open multipart file"}, http.StatusBadRequest)
+					return
+				}
+				readers[i] = f
+
+				modeStr := fh.Header.Get("Mode")
+				mode, err := strconv.Atoi(modeStr)
+				if err != nil {
+					mode = 0666 // TODO
+				}
+
+				subfiles[i] = modules.SubSkyfileMetadata{
+					Filename: fh.Filename,
+					Offset:   offset,
+					Len:      uint64(fh.Size),
+					Mode:     os.FileMode(mode),
+				}
+				offset += subfiles[i].Len
+				// f is one of the files
+			}
+			reader = io.MultiReader(readers...)
+			lfm = modules.SkyfileMetadata{
+				Subfiles: subfiles,
+			}
+		} else {
+			file, header, err := req.FormFile("file")
+			if err != nil {
+				WriteError(w, Error{"could not find multipart file"}, http.StatusBadRequest)
+				return
+			}
+			lfm = modules.SkyfileMetadata{
+				Filename: header.Filename,
+				Mode:     mode, // TODO get from header
+			}
+			reader = file
+		}
+
+		// folder, _ := strconv.ParseBool(req.FormValue("folder"))
+		// if folder {
+		// 	mpr, err := req.MultipartReader()
+		// 	if err != nil {
+		// 		WriteError(w, Error{"failed to create a multipart reader"}, http.StatusBadRequest)
+		// 		return
+		// 	}
+		// 	reader = NewMultipartReader(mpr)
+		// 	filename = ""
+		// } else {
+		// 	file, header, err := req.FormFile("file")
+		// 	if err != nil {
+		// 		WriteError(w, Error{"failed to find a form file"}, http.StatusBadRequest)
+		// 		return
+		// 	}
+		// 	defer file.Close()
+		// 	reader = file
+		// 	filename = header.Filename
+		// }
 	} else {
 		reader = req.Body
 		filename = queryForm.Get("filename")
@@ -1966,21 +2096,22 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 				filename = params[filename]
 			}
 		}
-	}
 
-	if filename == "" {
-		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
-		return
+		if filename == "" {
+			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+			return
+		}
+
+		lfm = modules.SkyfileMetadata{
+			Filename: filename,
+			Mode:     mode,
+		}
 	}
 
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Call the renter to upload the file and create a skylink.
-	lfm := modules.SkyfileMetadata{
-		Filename: filename,
-		Mode:     mode,
-	}
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		Force:               force,

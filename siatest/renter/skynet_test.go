@@ -4,6 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"mime/multipart"
+	"net/textproto"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -447,4 +453,258 @@ func TestSkynet(t *testing.T) {
 	// Maybe this can be accomplished by tagging a flag to the API which has the
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
+}
+
+// TestSkynetMultipartUpload provides end-to-end testin for uploading multiple
+// files as one single skyfile using multipart upload. Files that are uploaded
+// this way are then retrievable by skylink + filename.
+func TestSkynetMultipartUpload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	testMultipartUploadSmall(t, r)
+	testMultipartUploadLarge(t, r)
+}
+
+// testMultipartUploadSmall tests multipart upload for small files, small files
+// are files which are smaller than one sector, and thus don't need a fanout.
+func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
+	var subfiles []modules.SubSkyfileMetadata
+	var offset uint64
+
+	// create a folder with multiple files.
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	addMultipartField(writer, "directory", "true")
+
+	// add a file at root level
+	data := []byte("File1Contents")
+	subfiles = append(subfiles, addMultipartFile(writer, data, "file1", "0600", &offset))
+
+	// add a nested file
+	data = []byte("File2Contents")
+	subfiles = append(subfiles, addMultipartFile(writer, data, "nested/file2", "0640", &offset))
+
+	writer.Close()
+	reader := bytes.NewReader(body.Bytes())
+
+	// Call the upload skyfile client call.
+	uploadSiaPath, err := modules.NewSiaPath("TestFolderUpload")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Subfiles: subfiles,
+		},
+		Reader: reader,
+	}
+
+	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
+	skylink, _, err := r.SkynetSkyfileMultiPartPostNew(sup, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var realSkylink modules.Skylink
+	err = realSkylink.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file behind the skylink.
+	_, fileMetadata, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(sup.FileMetadata, fileMetadata) {
+		t.Log("Expected:", sup.FileMetadata)
+		t.Log("Actual:", fileMetadata)
+		t.Fatal("Metadata mismatch")
+	}
+
+	// Download the second file
+	url := fmt.Sprintf("%s/%s", skylink, sup.FileMetadata.Subfiles[1].Filename)
+	nestedfile, _, err := r.SkynetSkylinkGet(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(nestedfile, data) {
+		t.Fatal("Expected only second file to be downloaded")
+	}
+}
+
+func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
+	var subfiles []modules.SubSkyfileMetadata
+	var offset uint64
+
+	// create a folder with multiple files.
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+
+	// Upload another skyfile, this time ensure that the skyfile is more than
+	// one sector.
+	addMultipartField(writer, "directory", "true")
+
+	// add a small file at root level
+	smallData := []byte("File1Contents")
+	subfiles = append(subfiles, addMultipartFile(writer, smallData, "smallfile1.txt", "0600", &offset))
+
+	// add a large nested file
+	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
+	subfiles = append(subfiles, addMultipartFile(writer, largeData, "nested/largefile2.txt", "0640", &offset))
+
+	writer.Close()
+	allData := body.Bytes()
+	reader := bytes.NewReader(allData)
+
+	// Call the upload skyfile client call.
+	uploadSiaPath, err := modules.NewSiaPath("TestFolderUploadLarge")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Subfiles: subfiles,
+		},
+		Reader: reader,
+	}
+
+	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
+	largeSkylink, _, err := r.SkynetSkyfileMultiPartPostNew(sup, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	largeFetchedData, _, err := r.SkynetSkylinkGet(largeSkylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(largeFetchedData, append(smallData, largeData...)) {
+		t.Fatal("upload and download data does not match for large siafiles", len(largeFetchedData), len(allData))
+	}
+
+	// Check the metadata of the siafile, see that the metadata of the siafile
+	// has the skylink referenced.
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeSkyfilePath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeRenterFile, err := r.RenterFileRootGet(largeSkyfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(largeRenterFile.File.Skylinks) != 1 {
+		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Skylinks))
+	}
+	if largeRenterFile.File.Skylinks[0] != largeSkylink {
+		t.Fatal("skylinks should match")
+		t.Log(largeRenterFile.File.Skylinks[0])
+		t.Log(largeSkylink)
+	}
+
+	// Test the small download
+	smallFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", largeSkylink, sup.FileMetadata.Subfiles[0].Filename))
+
+	if !bytes.Equal(smallFetchedData, smallData) {
+		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(smallFetchedData), len(smallData))
+	}
+
+	largeFetchedData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", largeSkylink, sup.FileMetadata.Subfiles[1].Filename))
+
+	if !bytes.Equal(largeFetchedData, largeData) {
+		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(largeFetchedData), len(largeData))
+	}
+}
+
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+func createFormFileHeaders(fieldname, filename string, headers map[string]string) textproto.MIMEHeader {
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+			escapeQuotes(fieldname), escapeQuotes(filename)))
+	h.Set("Content-Type", "application/octet-stream")
+
+	for k, v := range headers {
+		h.Set(k, v)
+	}
+	return h
+}
+
+func addMultipartFile(w *multipart.Writer, filedata []byte, filename string, filemode string, offset *uint64) modules.SubSkyfileMetadata {
+	h := map[string]string{"mode": filemode}
+	partHeader := createFormFileHeaders("files[]", filename, h)
+	part, err := w.CreatePart(partHeader)
+	if err != nil {
+		panic(err)
+	}
+
+	fmi, err := strconv.Atoi(filemode)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = part.Write(filedata)
+	metadata := modules.SubSkyfileMetadata{
+		Filename: filename,
+		Mode:     os.FileMode(fmi),
+		Len:      uint64(len(filedata)),
+	}
+
+	if offset != nil {
+		metadata.Offset = *offset
+		*offset += metadata.Len
+	}
+
+	return metadata
+}
+
+func addMultipartField(w *multipart.Writer, name, value string) {
+	part, err := w.CreateFormField("directory")
+	if err != nil {
+		panic(err)
+	}
+	_, err = part.Write([]byte(value))
+	if err != nil {
+		panic(err)
+	}
 }

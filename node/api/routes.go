@@ -123,7 +123,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 
 		// Skynet endpoints
-		router.GET("/skynet/skylink/:skylink", api.skynetSkylinkHandlerGET)
+		router.GET("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 

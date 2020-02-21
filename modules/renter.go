@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -939,7 +940,7 @@ type Renter interface {
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink) (SkyfileMetadata, Streamer, error)
+	DownloadSkylink(Skylink, string) (SkyfileMetadata, Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -1076,8 +1077,32 @@ type HostDB interface {
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
+	Filename string               `json:"filename,omitempty"`
+	Mode     os.FileMode          `json:"mode,omitempty"`
+	Subfiles []SubSkyfileMetadata `json:"subfiles"`
+}
+
+// SubSkyfileMetadata is all of the metadata that belongs to a subfile in a
+// skyfile. Most importantly it contains the offset at which the subfile is
+// written and its length. Its filename can potentially include a '/' character
+// as nested files and directories are allowed within a single Skyfile
+type SubSkyfileMetadata struct {
 	Filename string      `json:"filename,omitempty"`
 	Mode     os.FileMode `json:"mode,omitempty"`
+	Offset   uint64      `json:"offset"`
+	Len      uint64      `json:"len"`
+}
+
+// Equals compares two SkyfileMetadata objects for equality
+func (x SkyfileMetadata) Equals(y SkyfileMetadata) bool {
+	// TODO don't use reflect pkg here
+	return reflect.DeepEqual(x, y)
+}
+
+// Equals compares two SubSkyfileMetadata objects for equality
+func (x SubSkyfileMetadata) Equals(y SubSkyfileMetadata) bool {
+	// TODO don't use reflect pkg here
+	return reflect.DeepEqual(x, y)
 }
 
 // SkyfileUploadParameters establishes the parameters such as the intra-root
