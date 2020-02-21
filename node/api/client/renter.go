@@ -1,12 +1,10 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
-	"mime/multipart"
 	"net/url"
 	"os"
 	"strconv"
@@ -817,38 +815,6 @@ func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters) (string,
 	return rshp.Skylink, rshp, err
 }
 
-// SkynetSkyfileMultiPartPostDirectory uses the /skynet/skyfile endpoint to
-// upload a skyfile using multipart form data.  The resulting skylink is
-// returned along with an error.
-func (c *Client) SkynetSkyfileMultiPartPostNew(lup modules.SkyfileUploadParameters, headers map[string]string) (string, api.SkynetSkyfileHandlerPOST, error) {
-	// Set the url values.
-	values := url.Values{}
-	values.Set("filename", lup.FileMetadata.Filename)
-	forceStr := fmt.Sprintf("%t", lup.Force)
-	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
-	values.Set("mode", modeStr)
-	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
-	values.Set("basechunkredundancy", redundancyStr)
-	rootStr := fmt.Sprintf("%t", lup.Root)
-	values.Set("root", rootStr)
-
-	// Make the call to upload the file.
-	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	_, resp, err := c.postRawResponseWithHeaders(query, lup.Reader, headers)
-	if err != nil {
-		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
-	}
-
-	// Parse the response to get the skylink.
-	var rshp api.SkynetSkyfileHandlerPOST
-	err = json.Unmarshal(resp, &rshp)
-	if err != nil {
-		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to parse the skylink upload response")
-	}
-	return rshp.Skylink, rshp, err
-}
-
 // SkynetSkyfileMultiPartPost uses the /skynet/skyfile endpoint to upload a
 // skyfile using multipart form data.  The resulting skylink is returned along
 // with an error.
@@ -865,24 +831,11 @@ func (c *Client) SkynetSkyfileMultiPartPost(lup modules.SkyfileUploadParameters)
 	rootStr := fmt.Sprintf("%t", lup.Root)
 	values.Set("root", rootStr)
 
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", lup.FileMetadata.Filename)
-	_, err = io.Copy(part, lup.Reader)
-	if err != nil {
-		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to write multipart data")
-	}
-	err = writer.Close()
-	if err != nil {
-		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to close the multipart writer")
-	}
-
-	reader := bytes.NewReader(body.Bytes())
-	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	_, resp, err := c.postRawResponseWithHeaders(query, reader, headers)
+
+	headers := map[string]string{"Content-Type": lup.ContentType}
+	_, resp, err := c.postRawResponseWithHeaders(query, lup.Reader, headers)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
 	}

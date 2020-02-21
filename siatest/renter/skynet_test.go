@@ -213,7 +213,6 @@ func TestSkynet(t *testing.T) {
 
 	// Create some data to upload as a skyfile.
 	data = fastrand.Bytes(100)
-	reader = bytes.NewReader(data)
 
 	// Call the upload skyfile client call.
 	filename = "testSmallMultipart"
@@ -221,6 +220,15 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	addMultipartFile(writer, data, "file", filename, "0640", nil)
+	err = writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader = bytes.NewReader(body.Bytes())
 
 	sup = modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
@@ -231,8 +239,8 @@ func TestSkynet(t *testing.T) {
 			Filename: filename,
 			Mode:     0640, // Intentionally does not match any defaults.
 		},
-
-		Reader: reader,
+		Reader:      reader,
+		ContentType: writer.FormDataContentType(),
 	}
 	skylink, rshp, err = r.SkynetSkyfileMultiPartPost(sup)
 	if err != nil {
@@ -500,11 +508,11 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 
 	// add a file at root level
 	data := []byte("File1Contents")
-	subfiles = append(subfiles, addMultipartFile(writer, data, "file1", "0600", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, data, "files[]", "file1", "0600", &offset))
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfiles = append(subfiles, addMultipartFile(writer, data, "nested/file2", "0640", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, data, "files[]", "nested/file2", "0640", &offset))
 
 	writer.Close()
 	reader := bytes.NewReader(body.Bytes())
@@ -523,11 +531,11 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 		FileMetadata: modules.SkyfileMetadata{
 			Subfiles: subfiles,
 		},
-		Reader: reader,
+		Reader:      reader,
+		ContentType: writer.FormDataContentType(),
 	}
 
-	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	skylink, _, err := r.SkynetSkyfileMultiPartPostNew(sup, headers)
+	skylink, _, err := r.SkynetSkyfileMultiPartPost(sup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,11 +582,11 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfiles = append(subfiles, addMultipartFile(writer, smallData, "smallfile1.txt", "0600", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", "0600", &offset))
 
 	// add a large nested file
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
-	subfiles = append(subfiles, addMultipartFile(writer, largeData, "nested/largefile2.txt", "0640", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", "0640", &offset))
 
 	writer.Close()
 	allData := body.Bytes()
@@ -598,11 +606,11 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		FileMetadata: modules.SkyfileMetadata{
 			Subfiles: subfiles,
 		},
-		Reader: reader,
+		Reader:      reader,
+		ContentType: writer.FormDataContentType(),
 	}
 
-	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	largeSkylink, _, err := r.SkynetSkyfileMultiPartPostNew(sup, headers)
+	largeSkylink, _, err := r.SkynetSkyfileMultiPartPost(sup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,9 +678,9 @@ func createFormFileHeaders(fieldname, filename string, headers map[string]string
 	return h
 }
 
-func addMultipartFile(w *multipart.Writer, filedata []byte, filename string, filemode string, offset *uint64) modules.SubSkyfileMetadata {
+func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, filemode string, offset *uint64) modules.SubSkyfileMetadata {
 	h := map[string]string{"mode": filemode}
-	partHeader := createFormFileHeaders("files[]", filename, h)
+	partHeader := createFormFileHeaders(filekey, filename, h)
 	part, err := w.CreatePart(partHeader)
 	if err != nil {
 		panic(err)

@@ -1133,4 +1133,7 @@ type SkyfileUploadParameters struct {
 
 	// Reader supplies the file data for the skyfile.
 	Reader io.Reader `json:"reader"`
+
+	// ContentType indicates the media type of the data supplied by the reader.
+	ContentType string
 }
