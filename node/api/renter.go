@@ -77,6 +77,10 @@ var (
 	// ErrPeriodNeedToBeSet is the error returned when the period is not set for
 	// the allowance
 	ErrPeriodNeedToBeSet = errors.New("period needs to be set if it hasn't been set before")
+
+	// ErrUnableToParseRootFlag is the error returned when the --root flag was
+	// passed but it did not contain a valid boolean value.
+	ErrUnableToParseRootFlag = errors.New("unable to parse 'root' arg")
 )
 
 type (
@@ -260,16 +264,16 @@ type (
 
 // Returns the boolean value of the "root" parameter of req, if it exists.
 // Writes an error to w if "root" exists but is not parsable as bool.
-func isCalledWithRootFlag(w http.ResponseWriter, req *http.Request) (root bool) {
+func isCalledWithRootFlag(req *http.Request) (bool, error) {
 	rootStr := req.FormValue("root")
-	var err error
 	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
-		}
+		return false, nil
 	}
-	return
+	root, err := strconv.ParseBool(rootStr)
+	if err != nil {
+		return false, ErrUnableToParseRootFlag
+	}
+	return root, nil
 }
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
@@ -1374,7 +1378,11 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 	}
 
 	// Determine whether the user is requesting a user siapath, or a root siapath.
-	root := isCalledWithRootFlag(w, req)
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	// Rebase the user's input to the user folder if the user is requesting a user siapath.
 	if !root {
 		siaPath, err = rebaseInputSiaPath(siaPath)
@@ -1561,7 +1569,11 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 	}
 
 	// Determine whether the user is requesting a user siapath, or a root siapath.
-	root := isCalledWithRootFlag(w, req)
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	// Rebase the user's input to the user folder if the user is requesting a user siapath.
 	if !root {
 		siaPath, err = rebaseInputSiaPath(siaPath)
@@ -2364,7 +2376,11 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 	}
 
 	// Determine whether the user is requesting a user siapath, or a root siapath.
-	root := isCalledWithRootFlag(w, req)
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
 	// Rebase the user's input to the user folder if the user is requesting a user siapath.
 	if !root {
 		siaPath, err = rebaseInputSiaPath(siaPath)
