@@ -1773,6 +1773,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	var encMetadata []byte
+
 	// Fetch the stream.
 	filename := parseFilename(strLink)
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink, filename)
@@ -1780,26 +1782,44 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+	if filename == "" {
+		filename = metadata.Filename
+		// Encode the metadata
+		encMetadata, err = json.Marshal(metadata)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+			return
+		}
+	} else {
+		for _, sf := range metadata.Subfiles {
+			if sf.Filename == filename {
+				// Encode the metadata
+				encMetadata, err = json.Marshal(sf)
+				if err != nil {
+					WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+					return
+				}
 
-	// Convert the metadata to a string.
-	encMetadata, err := json.Marshal(metadata)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-		return
+				if sf.ContentType != "" {
+					w.Header().Set("Content-Type", sf.ContentType)
+				}
+				break
+			}
+		}
 	}
 
 	// Set Content-Disposition header, if 'attachment' is true, set the
 	// disposition-type to attachment, otherwise we inline it.
 	var cdh string
 	if attachment {
-		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(metadata.Filename))
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
 	} else {
-		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(metadata.Filename))
+		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
 	}
 	w.Header().Set("Content-Disposition", cdh)
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 
-	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+	http.ServeContent(w, req, filename, time.Time{}, streamer)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -2038,11 +2058,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 					mode = 0666 // TODO
 				}
 
+				contentType := fh.Header.Get("Content-Type")
 				subfiles[i] = modules.SubSkyfileMetadata{
-					Filename: fh.Filename,
-					Offset:   offset,
-					Len:      uint64(fh.Size),
-					Mode:     os.FileMode(mode),
+					Filename:    fh.Filename,
+					ContentType: contentType,
+					Offset:      offset,
+					Len:         uint64(fh.Size),
+					Mode:        os.FileMode(mode),
 				}
 				offset += subfiles[i].Len
 				// f is one of the files

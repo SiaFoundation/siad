@@ -1087,10 +1087,11 @@ type SkyfileMetadata struct {
 // written and its length. Its filename can potentially include a '/' character
 // as nested files and directories are allowed within a single Skyfile
 type SubSkyfileMetadata struct {
-	Filename string      `json:"filename,omitempty"`
-	Mode     os.FileMode `json:"mode,omitempty"`
-	Offset   uint64      `json:"offset"`
-	Len      uint64      `json:"len"`
+	Filename    string      `json:"filename,omitempty"`
+	ContentType string      `json:"contenttype,omitempty"`
+	Mode        os.FileMode `json:"mode,omitempty"`
+	Offset      uint64      `json:"offset"`
+	Len         uint64      `json:"len"`
 }
 
 // Equals compares two SkyfileMetadata objects for equality

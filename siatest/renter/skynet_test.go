@@ -693,9 +693,10 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, f
 
 	_, err = part.Write(filedata)
 	metadata := modules.SubSkyfileMetadata{
-		Filename: filename,
-		Mode:     os.FileMode(fmi),
-		Len:      uint64(len(filedata)),
+		Filename:    filename,
+		ContentType: "application/octet-stream",
+		Mode:        os.FileMode(fmi),
+		Len:         uint64(len(filedata)),
 	}
 
 	if offset != nil {
