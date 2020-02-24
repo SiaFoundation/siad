@@ -130,7 +130,7 @@ func (sl *Skylink) Bitfield() uint16 {
 func (sl *Skylink) LoadString(s string) error {
 	// Trim any parameters that may exist after a question mark. Eventually, it
 	// will be possible to parse these separately as additional/optional
-	// arguments, for now anything after a questionmark is just ignored.
+	// arguments, for now anything after a question mark is just ignored.
 	splits := strings.SplitN(s, "?", 2)
 	// No need to check if there is an element returned by strings.SplitN, so
 	// long as the second arg is not-nil (in this case, '?'), SplitN cannot
