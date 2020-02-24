@@ -81,7 +81,7 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 	// TODO: Construct proof if necessary.
 	var proof []crypto.Hash
 	if i.staticMerkleProof {
-		start := len(i.staticState.merkleRoots)
+		start := len(i.staticState.merkleRoots) - 1
 		end := start + 1
 		proof = crypto.MerkleSectorRangeProof(i.staticState.merkleRoots, start, end)
 	}

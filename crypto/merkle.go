@@ -194,7 +194,10 @@ func MerkleSectorRangeProof(roots []Hash, start, end int) []Hash {
 		leafHashes[i] = [32]byte(roots[i])
 	}
 	sh := merkletree.NewCachedSubtreeHasher(leafHashes)
-	proof, _ := merkletree.BuildRangeProof(start, end, sh)
+	proof, err := merkletree.BuildRangeProof(start, end, sh)
+	if err != nil {
+		build.Critical("BuildRangeProof failed", err)
+	}
 	proofHashes := make([]Hash, len(proof))
 	for i := range proofHashes {
 		proofHashes[i] = Hash(proof[i])
