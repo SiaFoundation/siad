@@ -60,7 +60,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if output.ExecutionCost.Equals(cost) {
+		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
@@ -124,7 +124,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if output.ExecutionCost.Equals(cost) {
+		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {

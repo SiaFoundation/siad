@@ -70,7 +70,7 @@ func TestInstructionHasSector(t *testing.T) {
 		if !bytes.Equal(output.Output, []byte{1}) {
 			t.Fatalf("expected returned value to be 1 for 'true' but was %v", output.Output)
 		}
-		if output.ExecutionCost.Equals(cost) {
+		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
