@@ -27,7 +27,7 @@ func (p *Program) addCost(cost types.Currency) error {
 	return nil
 }
 
-// InitCost is the cost of instantiatine the MDM. It is defined as:
+// InitCost is the cost of instantiate the MDM. It is defined as:
 // 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time
 func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(programLen).Mul64(programInitTime).Add(pt.InitBaseCost)

@@ -8,10 +8,21 @@ import (
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
+	// Cost returns the cost of executing the instruction and the potential
+	// refund should the program not be commmitted.
 	Cost() (cost types.Currency, refund types.Currency, _ error)
+	// Execute executes the instruction without committing the changes to the
+	// storage obligation.
 	Execute(output) output
+	// Memory returns the amount of memory allocated by the instruction which
+	// sticks around beyond the scope of the instruction until the program gets
+	// committed/canceled.
 	Memory() uint64
+	// ReadOnly indicates whether or not the instruction is just readonly. A
+	// readonly instruction doesn't cause the contract's merkle root to change
+	// and can therefore be executed parallel to other readonly instructions.
 	ReadOnly() bool
+	// Time returns the amount of time the execution of the instruction takes.
 	Time() uint64
 }
 
