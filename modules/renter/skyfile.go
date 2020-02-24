@@ -541,14 +541,15 @@ func (r *Renter) DownloadSubfile(link modules.Skylink, filename string) (modules
 	if sfm.Equals(modules.SubfileMetadata{}) {
 		return modules.SubfileMetadata{}, nil, errors.New("unable to find subfile for given filename")
 	}
-	offset += sfm.Offset
 
 	// If there is no fanout, all of the data will be contained in the base
 	// sector, return a streamer using the data from the base sector.
 	if ll.fanoutSize == 0 {
+		offset += sfm.Offset
 		streamer := streamerFromSlice(baseSector[offset : offset+sfm.Len])
 		return sfm, streamer, nil
 	}
+
 	if offset+metadataSize+ll.fanoutSize > modules.SectorSize {
 		return modules.SubfileMetadata{}, nil, errors.New("fanout is more than one sector, that is unsupported in this version")
 	}

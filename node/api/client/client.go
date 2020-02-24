@@ -202,7 +202,6 @@ func (c *Client) post(resource string, data string, obj interface{}) error {
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
 func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, []byte, error) {
-	// TODO: is this necessary?
 	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
 	return c.postRawResponseWithHeaders(resource, body, headers)
 }

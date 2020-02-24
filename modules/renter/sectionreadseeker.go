@@ -35,7 +35,7 @@ func NewSectionReadSeeker(rsc ReadSeekerCloser, off, n uint64) *SectionReadSeeke
 	}
 }
 
-// Read implements the ReadSeekerCloser interface
+// Read implements the io.Reader interface
 func (srs *SectionReadSeeker) Read(p []byte) (n int, err error) {
 	if srs.off >= srs.limit {
 		return 0, io.EOF
@@ -49,7 +49,7 @@ func (srs *SectionReadSeeker) Read(p []byte) (n int, err error) {
 	return
 }
 
-// Seek implements the ReadSeekerCloser interface
+// Seek implements the io.Seeker interface
 func (srs *SectionReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
@@ -77,7 +77,7 @@ func (srs *SectionReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	return offset - int64(srs.base), nil
 }
 
-// Close implements the ReadSeekerCloser interface
+// Close implements the io.Closer interface
 func (srs *SectionReadSeeker) Close() error {
 	return srs.rsc.Close()
 }
