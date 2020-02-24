@@ -261,7 +261,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 		// happens.
 		if !strings.Contains(err.Error(), "exceeds funding") {
 			info := fmt.Sprintf("Error while estimating collateral for host: Host %v, ContractPrice %v, TxnFees %v, Funds %v", entry.PublicKey.String(), entry.ContractPrice.HumanString(), txnFees.HumanString(), allowance.Funds.HumanString())
-			hdb.log.Debugln(errors.AddContext(err, info))
+			hdb.staticLog.Debugln(errors.AddContext(err, info))
 		}
 		return math.SmallestNonzeroFloat64
 	}
@@ -370,7 +370,7 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	}
 
 	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
-	if build.VersionCmp(entry.Version, "1.4.3.0") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.3") < 0 {
 		base = base * 0.95 // Slight penalty against slightly out of date hosts.
 	}
 	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
@@ -465,9 +465,9 @@ func (hdb *HostDB) uptimeAdjustments(entry modules.HostDBEntry) float64 {
 	for _, scan := range entry.ScanHistory[1:] {
 		if recentTime.After(scan.Timestamp) {
 			if build.DEBUG {
-				hdb.log.Critical("Host entry scan history not sorted.")
+				hdb.staticLog.Critical("Host entry scan history not sorted.")
 			} else {
-				hdb.log.Print("WARN: Host entry scan history not sorted.")
+				hdb.staticLog.Print("WARN: Host entry scan history not sorted.")
 			}
 			// Ignore the unsorted scan entry.
 			continue

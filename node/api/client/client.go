@@ -179,13 +179,17 @@ func (c *Client) get(resource string, obj interface{}) error {
 
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
-func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, []byte, error) {
+func (c *Client) postRawResponse(resource string, body io.Reader, headers map[string]string) (http.Header, []byte, error) {
 	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
 	}
 	// TODO: is this necessary?
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
@@ -214,7 +218,8 @@ func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, 
 // request body. The response, if provided, will be decoded into `obj`.
 func (c *Client) post(resource string, data string, obj interface{}) error {
 	// Request resource
-	_, body, err := c.postRawResponse(resource, strings.NewReader(data))
+	headers := make(map[string]string)
+	_, body, err := c.postRawResponse(resource, strings.NewReader(data), headers)
 	if err != nil {
 		return err
 	}

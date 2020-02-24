@@ -111,7 +111,7 @@ func (f *Foo) OnePathDoesNotLock() {
 		}
 	}
 	if 2 < 1 {
-		f.i++ // want "privileged method ExportedConditionalLocking accesses i without holding mutex"
+		f.i++ // want "privileged method OnePathDoesNotLock accesses i without holding mutex"
 	}
 }
 
@@ -122,6 +122,12 @@ func (f *Foo) CallsPrivilegedWithLock() {
 
 func (f *Foo) CallsUnprivilegedWithoutLock() {
 	f.bar() // want "privileged method CallsUnprivilegedWithoutLock calls unprivileged method bar without holding mutex"
+}
+
+func (f *Foo) staticBar() {}
+
+func (f *Foo) CallsStaticWithoutLock() {
+	f.staticBar() // OK
 }
 
 func (f *Foo) CallLiteral() {

@@ -950,6 +950,10 @@ type Renter interface {
 	// about the file and other information which is useful in fetching the
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
+
+	// PinSkylink re-uploads the data stored at the file under that skylink with
+	// the given parameters.
+	PinSkylink(Skylink, SkyfileUploadParameters) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
@@ -1088,6 +1092,10 @@ type SkyfileUploadParameters struct {
 	// already a file or folder at 'SiaPath'. If set to true, any existing file
 	// or folder at 'SiaPath' will be deleted and overwritten.
 	Force bool `json:"force"`
+
+	// Root determines whether the upload should treat the filepath as a path
+	// from system root, or if the path should be from /var/skynet.
+	Root bool `json:"root"`
 
 	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
 	// meaning that only the redundancy needs to be configured by the user.

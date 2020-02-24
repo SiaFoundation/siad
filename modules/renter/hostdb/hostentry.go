@@ -85,7 +85,7 @@ func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error
 	defer hdb.mu.Unlock()
 
 	// Fetch the host.
-	host, haveHost := hdb.hostTree.Select(key)
+	host, haveHost := hdb.staticHostTree.Select(key)
 	if !haveHost {
 		return errors.AddContext(errHostNotFoundInTree, "unable to increment successful interaction:")
 	}
@@ -95,7 +95,7 @@ func (hdb *HostDB) IncrementSuccessfulInteractions(key types.SiaPublicKey) error
 
 	// Increment the successful interactions
 	host.RecentSuccessfulInteractions++
-	hdb.hostTree.Modify(host)
+	hdb.staticHostTree.Modify(host)
 	return nil
 }
 
@@ -116,7 +116,7 @@ func (hdb *HostDB) IncrementFailedInteractions(key types.SiaPublicKey) error {
 	}
 
 	// Fetch the host.
-	host, haveHost := hdb.hostTree.Select(key)
+	host, haveHost := hdb.staticHostTree.Select(key)
 	if !haveHost {
 		return errors.AddContext(errHostNotFoundInTree, "unable to increment failed interaction:")
 	}
@@ -126,6 +126,6 @@ func (hdb *HostDB) IncrementFailedInteractions(key types.SiaPublicKey) error {
 
 	// Increment the failed interactions
 	host.RecentFailedInteractions++
-	hdb.hostTree.Modify(host)
+	hdb.staticHostTree.Modify(host)
 	return nil
 }

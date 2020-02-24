@@ -157,9 +157,9 @@ func TestUnitProcessConfig(t *testing.T) {
 func TestAPIPassword(t *testing.T) {
 	// If config.Siad.AuthenticateAPI is false, no password should be set
 	var config Config
-	config.Siad.SiaDir = build.TempDir("siad", t.Name())
+	dir := build.TempDir("siad", t.Name())
 
-	config, err := loadAPIPassword(config)
+	config, err := loadAPIPassword(config, dir)
 	if err != nil {
 		t.Fatal(err)
 	} else if config.APIPassword != "" {
@@ -167,14 +167,14 @@ func TestAPIPassword(t *testing.T) {
 	}
 	config.Siad.AuthenticateAPI = true
 	// On first invocation, loadAPIPassword should generate a new random password
-	config2, err := loadAPIPassword(config)
+	config2, err := loadAPIPassword(config, dir)
 	if err != nil {
 		t.Fatal(err)
 	} else if config2.APIPassword == "" {
 		t.Fatal("loadAPIPassword should have generated a random password")
 	}
 	// On subsequent invocations, loadAPIPassword should use the previously-generated password
-	config3, err := loadAPIPassword(config)
+	config3, err := loadAPIPassword(config, dir)
 	if err != nil {
 		t.Fatal(err)
 	} else if config3.APIPassword != config2.APIPassword {
@@ -183,7 +183,7 @@ func TestAPIPassword(t *testing.T) {
 	// If the environment variable is set, loadAPIPassword should use that
 	defer os.Setenv("SIA_API_PASSWORD", os.Getenv("SIA_API_PASSWORD"))
 	os.Setenv("SIA_API_PASSWORD", "foobar")
-	config4, err := loadAPIPassword(config)
+	config4, err := loadAPIPassword(config, dir)
 	if err != nil {
 		t.Fatal(err)
 	} else if config4.APIPassword != "foobar" {

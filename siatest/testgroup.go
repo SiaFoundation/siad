@@ -35,6 +35,8 @@ type (
 		renters map[*TestNode]struct{}
 		miners  map[*TestNode]struct{}
 
+		stopped map[*TestNode]struct{}
+
 		dir string
 	}
 )
@@ -78,6 +80,8 @@ func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error
 		hosts:   make(map[*TestNode]struct{}),
 		renters: make(map[*TestNode]struct{}),
 		miners:  make(map[*TestNode]struct{}),
+
+		stopped: make(map[*TestNode]struct{}),
 
 		dir: groupDir,
 	}
@@ -639,6 +643,13 @@ func (tg *TestGroup) Close() error {
 	errs := make([]error, len(tg.nodes))
 	i := 0
 	for n := range tg.nodes {
+		_, ok := tg.stopped[n]
+		if ok {
+			// If the node is stopped, it's been closed already. Skipping here
+			// avoids errors that occur when calling Close() twice on testnodes.
+			continue
+		}
+
 		wg.Add(1)
 		go func(i int, n *TestNode) {
 			errs[i] = n.Close()
@@ -680,6 +691,7 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 	if err != nil {
 		return err
 	}
+	delete(tg.stopped, tn)
 	if err := fullyConnectNodes(tg.Nodes()); err != nil {
 		return err
 	}
@@ -707,6 +719,7 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 	if _, exists := tg.nodes[tn]; !exists {
 		return errors.New("cannot stop node that's not part of the group")
 	}
+	tg.stopped[tn] = struct{}{}
 	return tn.StopNode()
 }
 

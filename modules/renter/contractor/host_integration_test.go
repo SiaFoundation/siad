@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -62,7 +63,7 @@ func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.Transa
 }
 
 // newTestingHost is a helper function that creates a ready-to-use host.
-func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool) (modules.Host, error) {
+func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
@@ -71,7 +72,7 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	if err != nil {
 		return nil, err
 	}
-	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +118,11 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 // used for testing host/renter interactions.
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, error) {
 	testdir := build.TempDir("contractor", name)
-
+	// create mux
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	// create miner
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
@@ -156,7 +161,7 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	}
 
 	// create host and contractor, using same consensus set and gateway
-	h, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp)
+	h, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux)
 	if err != nil {
 		return nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}

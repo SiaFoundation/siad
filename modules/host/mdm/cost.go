@@ -40,6 +40,13 @@ func AppendCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
 	return writeCost.Add(storeCost), storeCost
 }
 
+// WriteCost is the cost of executing a 'Write' instruction of a certain length.
+func WriteCost(pt modules.RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
+	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
+	storeCost := types.ZeroCurrency // no refund since we overwrite existing storage
+	return writeCost, storeCost
+}
+
 // CopyCost is the cost of executing a 'Copy' instruction.
 func CopyCost(pt modules.RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -93,6 +94,9 @@ type NodeParams struct {
 	// Dependencies for storage monitor supporting dependency injection.
 	StorageManagerDeps modules.Dependencies
 
+	// Custom settings for siamux
+	SiaMuxAddress string
+
 	// Custom settings for modules
 	Allowance   modules.Allowance
 	Bootstrap   bool
@@ -116,6 +120,9 @@ type NodeParams struct {
 
 // Node is a collection of Sia modules operating together as a Sia node.
 type Node struct {
+	// The mux of the node.
+	Mux *siamux.SiaMux
+
 	// The modules of the node. Modules that are not initialized will be nil.
 	ConsensusSet    modules.ConsensusSet
 	Explorer        modules.Explorer
@@ -212,18 +219,35 @@ func (n *Node) Close() (err error) {
 		printlnRelease("Closing gateway...")
 		err = errors.Compose(n.Gateway.Close())
 	}
+	if n.Mux != nil {
+		printlnRelease("Closing siamux...")
+		err = errors.Compose(n.Mux.Close())
+	}
 	return err
 }
 
-// New will create a new test node. The inputs to the function are the
-// respective 'New' calls for each module. We need to use this awkward method
-// of initialization because the siatest package cannot import any of the
-// modules directly (so that the modules may use the siatest package to test
+// New will create a new node. The inputs to the function are the respective
+// 'New' calls for each module. We need to use this awkward method of
+// initialization because the siatest package cannot import any of the modules
+// directly (so that the modules may use the siatest package to test
 // themselves).
 func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
-	dir := params.Dir
+	// Make sure the path is an absolute one.
+	dir, err := filepath.Abs(params.Dir)
 	errChan := make(chan error, 1)
+	if err != nil {
+		errChan <- err
+		return nil, errChan
+	}
 
+	// Create the siamux.
+	mux, err := modules.NewSiaMux(dir, params.SiaMuxAddress)
+	if err != nil {
+		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
+		return nil, errChan
+	}
+
+	// Load all modules
 	numModules := params.NumModules()
 	i := 1
 	printfRelease("(%d/%d) Loading siad...\n", i, numModules)
@@ -401,7 +425,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading host...\n", i, numModules)
-		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, params.HostAddress, filepath.Join(dir, modules.HostDir))
+		host, err := host.NewCustomTestHost(hostDeps, smDeps, cs, g, tp, w, mux, params.HostAddress, filepath.Join(dir, modules.HostDir))
 		return host, err
 	}()
 	if err != nil {
@@ -473,7 +497,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			close(c)
 			return nil, c
 		}
-		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, persistDir, renterDeps)
+		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterDeps)
 		go func() {
 			c <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
 			close(c)
@@ -491,6 +515,8 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}()
 
 	return &Node{
+		Mux: mux,
+
 		ConsensusSet:    cs,
 		Explorer:        e,
 		Gateway:         g,
