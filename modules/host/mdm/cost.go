@@ -16,18 +16,23 @@ var ErrInsufficientBudget = errors.New("remaining budget is insufficient")
 // future.
 const programInitTime = 10
 
-// subtractFromBudget will subtract an amount of money from a budget. In case of
-// an underflow ErrInsufficientBudget and the unchanged budget are returned.
-func subtractFromBudget(budget, toSub types.Currency) (types.Currency, error) {
-	if toSub.Cmp(budget) > 0 {
-		return budget, ErrInsufficientBudget
+// addCost increases the cost of the program by 'cost'. If as a result the cost
+// becomes larger than the budget of the program, ErrInsufficientBudget is
+// returned.
+func (p *Program) addCost(cost types.Currency) error {
+	newExecutionCost := p.executionCost.Add(cost)
+	if p.staticBudget.Cmp(newExecutionCost) < 0 {
+		return ErrInsufficientBudget
 	}
-	return budget.Sub(toSub), nil
+	p.executionCost = newExecutionCost
+	return nil
 }
 
 // AppendCost is the cost of executing an 'Append' instruction.
-func AppendCost(pt modules.RPCPriceTable) types.Currency {
-	return WriteCost(pt, modules.SectorSize)
+func AppendCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
+	cost := WriteCost(pt, modules.SectorSize)
+	refund := types.ZeroCurrency // TODO: figure out good refund
+	return cost, refund
 }
 
 // InitCost is the cost of instantiatine the MDM. It is defined as:

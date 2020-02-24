@@ -8,13 +8,20 @@ import (
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
-	Cost() (types.Currency, error)
-	Execute(Output) Output
+	Cost() (cost types.Currency, refund types.Currency, _ error)
+	Execute(output) output
 	ReadOnly() bool
 }
 
-// Output is the type returned by all instructions when being executed.
+// Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
+	output
+	ExecutionCost   types.Currency
+	PotentialRefund types.Currency
+}
+
+// output is the type returned by all instructions when being executed.
+type output struct {
 	// The error will be set to nil unless the instruction experienced an error
 	// during execution. If the instruction did experience an error during
 	// execution, the program will halt at this instruction and no changes will
@@ -50,9 +57,9 @@ type commonInstruction struct {
 	staticState       *programState
 }
 
-// outputFromError is a convenience function to wrap an error in an Output.
-func outputFromError(err error) Output {
-	return Output{
+// errOutput returns an instruction output that contains the specified error.
+func errOutput(err error) output {
+	return output{
 		Error: err,
 	}
 }

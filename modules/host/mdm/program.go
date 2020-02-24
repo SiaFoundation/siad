@@ -53,12 +53,25 @@ type Program struct {
 	staticData         *programData
 	staticProgramState *programState
 
-	remainingBudget types.Currency
+	staticBudget    types.Currency
+	executionCost   types.Currency
+	potentialRefund types.Currency // refund if the program isn't committed
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
 
 	tg *threadgroup.ThreadGroup
+}
+
+// outputFromError is a convenience function to wrap an error in an Output.
+func outputFromError(err error, cost, refund types.Currency) Output {
+	return Output{
+		output: output{
+			Error: err,
+		},
+		ExecutionCost:   cost,
+		PotentialRefund: refund,
+	}
 }
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
@@ -72,10 +85,10 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			priceTable:  pt,
 			merkleRoots: so.SectorRoots(),
 		},
-		remainingBudget: budget,
-		staticData:      openProgramData(data, programDataLen),
-		so:              so,
-		tg:              &mdm.tg,
+		staticBudget: budget,
+		staticData:   openProgramData(data, programDataLen),
+		so:           so,
+		tg:           &mdm.tg,
 	}
 
 	// Convert the instructions.
@@ -103,12 +116,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		err = errors.New("contract needs to be locked for a program with one or more write instructions")
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
-	// Make sure the budget covers the initial cost.
-	p.remainingBudget, err = subtractFromBudget(p.remainingBudget, InitCost(pt, p.staticData.Len()))
+	// Increment the execution cost of the program.
+	err = p.addCost(InitCost(pt, p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
-
 	// Execute all the instructions.
 	if err := p.tg.Add(); err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
@@ -129,31 +141,37 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
 func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) {
-	output := Output{
+	output := output{
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
 	}
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
-			p.outputChan <- outputFromError(ErrInterrupted)
+			p.outputChan <- outputFromError(ErrInterrupted, p.executionCost, p.potentialRefund)
 			break
 		default:
 		}
-		// Subtract the cost of the instruction before running it.
-		cost, err := i.Cost()
+		// Increment the cost before running the instruction.
+		cost, refund, err := i.Cost()
 		if err != nil {
-			p.outputChan <- outputFromError(err)
+			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
 			return
 		}
-		p.remainingBudget, err = subtractFromBudget(p.remainingBudget, cost)
+		err = p.addCost(cost)
 		if err != nil {
-			p.outputChan <- outputFromError(err)
+			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
 			return
 		}
+		// Add the instruction's potential refund to the total.
+		p.potentialRefund = p.potentialRefund.Add(refund)
 		// Execute next instruction.
 		output = i.Execute(output)
-		p.outputChan <- output
+		p.outputChan <- Output{
+			output:          output,
+			ExecutionCost:   p.executionCost,
+			PotentialRefund: p.potentialRefund,
+		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {
 			break
