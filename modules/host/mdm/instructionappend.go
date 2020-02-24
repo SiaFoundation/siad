@@ -75,15 +75,19 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 	i.staticState.gainedSectorData = append(i.staticState.gainedSectorData, sectorData)
 
 	// Update the roots and compute the new merkle root of the contract.
+	oldSectors := i.staticState.merkleRoots
 	i.staticState.merkleRoots = append(i.staticState.merkleRoots, newRoot)
 	newMerkleRoot := cachedMerkleRoot(i.staticState.merkleRoots)
 
 	// Construct proof if necessary.
 	var proof []crypto.Hash
 	if i.staticMerkleProof {
-		start := len(i.staticState.merkleRoots) - 1
-		end := start + 1
-		proof = crypto.MerkleSectorRangeProof(i.staticState.merkleRoots, start, end)
+		numOldSectors := uint64(len(oldSectors))
+		lr := crypto.ProofRange{
+			Start: numOldSectors,
+			End:   numOldSectors + 1,
+		}
+		proof = crypto.MerkleDiffProof([]crypto.ProofRange{lr}, uint64(len(oldSectors)), nil, oldSectors)
 	}
 
 	return Output{
