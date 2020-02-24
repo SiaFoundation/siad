@@ -10,6 +10,12 @@ import (
 // program is not sufficient to execute the next instruction.
 var ErrInsufficientBudget = errors.New("remaining budget is insufficient")
 
+// programInitTime is the time it takes to execute a program. This is a
+// hardcoded value which is meant to be replaced in the future.
+// TODO: The time is hardcoded to 10 for now until we add time management in the
+// future.
+const programInitTime = 10
+
 // addCost increases the cost of the program by 'cost'. If as a result the cost
 // becomes larger than the budget of the program, ErrInsufficientBudget is
 // returned.
@@ -24,7 +30,14 @@ func (p *Program) addCost(cost types.Currency) error {
 // InitCost is the cost of instantiatine the MDM. It is defined as:
 // 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time
 func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
-	return pt.MemoryTimeCost.Mul64(programLen).Mul64(ProgramInitTime).Add(pt.InitBaseCost)
+	return pt.MemoryTimeCost.Mul64(programLen).Mul64(programInitTime).Add(pt.InitBaseCost)
+}
+
+// HasSectorCost is the cost of executing a 'HasSector' instruction.
+func HasSectorCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
+	cost := pt.MemoryTimeCost.Mul64(1 << 20).Mul64(TimeHasSector)
+	refund := types.ZeroCurrency // no refund
+	return cost, refund
 }
 
 // ReadCost is the cost of executing a 'Read' instruction. It is defined as:

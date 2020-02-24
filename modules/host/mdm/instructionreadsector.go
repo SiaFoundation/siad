@@ -22,17 +22,17 @@ type instructionReadSector struct {
 
 // NewReadSectorInstruction creates a modules.Instruction from arguments.
 func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint64, merkleProof bool) modules.Instruction {
-	rsi := modules.Instruction{
+	i := modules.Instruction{
 		Specifier: modules.SpecifierReadSector,
 		Args:      make([]byte, modules.RPCIReadSectorLen),
 	}
-	binary.LittleEndian.PutUint64(rsi.Args[:8], merkleRootOffset)
-	binary.LittleEndian.PutUint64(rsi.Args[8:16], offsetOffset)
-	binary.LittleEndian.PutUint64(rsi.Args[16:24], lengthOffset)
+	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
+	binary.LittleEndian.PutUint64(i.Args[8:16], offsetOffset)
+	binary.LittleEndian.PutUint64(i.Args[16:24], lengthOffset)
 	if merkleProof {
-		rsi.Args[24] = 1
+		i.Args[24] = 1
 	}
-	return rsi
+	return i
 }
 
 // staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the

@@ -5,9 +5,16 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// AppendMemory returns the additional memory consumption of a 'Append' instruction.
+// AppendMemory returns the additional memory consumption of a 'Append'
+// instruction.
 func AppendMemory() uint64 {
 	return modules.SectorSize // A full sector is added to the program's memory until the program is finalized.
+}
+
+// HasSectorMemory returns the additional memory consumption of a 'HasSector'
+// instruction.
+func HasSectorMemory() uint64 {
+	return 0 // 'HasSector' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
 // ReadMemory returns the additional memory consumption of a 'Read' instruction.
