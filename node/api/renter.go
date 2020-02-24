@@ -1820,10 +1820,14 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Parse whether the siapath should be from root or from the skynet folder.
-	root, err := isCalledWithRootFlag(req)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	var root bool
+	rootStr := queryForm.Get("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Parse out the intended siapath.
@@ -1891,10 +1895,14 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse whether the siapath should be from root or from the skynet folder.
-	root, err := isCalledWithRootFlag(req)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	var root bool
+	rootStr := queryForm.Get("root")
+	if rootStr != "" {
+		root, err = strconv.ParseBool(rootStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Parse out the intended siapath.
