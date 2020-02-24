@@ -939,7 +939,13 @@ type Renter interface {
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink, string) (SkyfileMetadata, Streamer, error)
+	// If a filename is specified, it will download the subfile corresponding to
+	// that filename.
+	DownloadSkylink(Skylink) (SkyfileMetadata, Streamer, error)
+
+	// DownloadSubfile will fetch a subfile from the Sia network using the
+	// skylink and the filename of the subfile.
+	DownloadSubfile(Skylink, string) (SubfileMetadata, Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -1076,14 +1082,20 @@ type HostDB interface {
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Filename string                   `json:"filename,omitempty"`
-	Mode     os.FileMode              `json:"mode,omitempty"`
-	Subfiles []SkyfileSubfileMetadata `json:"subfiles"`
+	Filename string            `json:"filename,omitempty"`
+	Mode     os.FileMode       `json:"mode,omitempty"`
+	Subfiles []SubfileMetadata `json:"subfiles"`
 }
 
 // Equals compares two SkyfileMetadata objects for equality
 func (x SkyfileMetadata) Equals(y SkyfileMetadata) bool {
-	if x.Filename != y.Filename || x.Mode != y.Mode {
+	if x.Filename != y.Filename {
+		return false
+	}
+	if x.Mode != y.Mode {
+		return false
+	}
+	if len(x.Subfiles) != len(y.Subfiles) {
 		return false
 	}
 	for _, xsfm := range x.Subfiles {
@@ -1097,32 +1109,32 @@ func (x SkyfileMetadata) Equals(y SkyfileMetadata) bool {
 // SubfileMetadata returns the metadata of the subfile for given filename. If it
 // can not find a subfile with that filename, an empty metadata object is
 // returned.
-func (x SkyfileMetadata) SubfileMetadata(filename string) SkyfileSubfileMetadata {
+func (x SkyfileMetadata) SubfileMetadata(filename string) SubfileMetadata {
 	for _, sf := range x.Subfiles {
 		if sf.Filename == filename {
 			return sf
 		}
 	}
-	return SkyfileSubfileMetadata{}
+	return SubfileMetadata{}
 }
 
-// SkyfileSubfileMetadata is all of the metadata that belongs to a subfile in a
+// SubfileMetadata is all of the metadata that belongs to a subfile in a
 // skyfile. Most importantly it contains the offset at which the subfile is
 // written and its length. Its filename can potentially include a '/' character
 // as nested files and directories are allowed within a single Skyfile
-type SkyfileSubfileMetadata struct {
+type SubfileMetadata struct {
+	Mode        os.FileMode `json:"mode,omitempty"`
 	Filename    string      `json:"filename,omitempty"`
 	ContentType string      `json:"contenttype,omitempty"`
-	Mode        os.FileMode `json:"mode,omitempty"`
 	Offset      uint64      `json:"offset"`
 	Len         uint64      `json:"len"`
 }
 
-// Equals compares two SkyfileSubfileMetadata objects for equality
-func (x SkyfileSubfileMetadata) Equals(y SkyfileSubfileMetadata) bool {
-	return x.Filename == y.Filename &&
+// Equals compares two SubfileMetadata objects for equality
+func (x SubfileMetadata) Equals(y SubfileMetadata) bool {
+	return x.Mode == y.Mode &&
+		x.Filename == y.Filename &&
 		x.ContentType == y.ContentType &&
-		x.Mode == y.Mode &&
 		x.Offset == y.Offset &&
 		x.Len == y.Len
 }

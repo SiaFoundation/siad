@@ -1726,11 +1726,15 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
-func parseFilename(skylink string) string {
+// parseFilename will parse the given skylink and return the filename if any.
+// The filename will be appended to the skylink and can contain slashes. If we
+// the skylink contains a slash, we treat everything after the first slash and
+// before the query string parameters to be the filename.
+func parseFilename(skylinkStr string) string {
 	var filename string
 
 	// Ignore everything after an ampersand
-	splits := strings.SplitN(skylink, "&", 2)
+	splits := strings.SplitN(skylinkStr, "&", 2)
 	base := splits[0]
 
 	// If base contains a "/" we consider everythin after that slash to be the
@@ -1777,39 +1781,57 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	var encMetadata []byte
-
-	// Fetch the stream.
+	// If the skylink contains a filename, try to download the requested subfile
 	filename := parseFilename(strLink)
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, filename)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
-		return
-	}
-	if filename == "" {
-		filename = metadata.Filename
+	if filename != "" {
+		metadata, streamer, err := api.renter.DownloadSubfile(skylink, filename)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+			return
+		}
+
 		// Encode the metadata
-		encMetadata, err = json.Marshal(metadata)
+		encMetadata, err := json.Marshal(metadata)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 			return
 		}
-	} else {
-		for _, sf := range metadata.Subfiles {
-			if sf.Filename == filename {
-				// Encode the metadata
-				encMetadata, err = json.Marshal(sf)
-				if err != nil {
-					WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-					return
-				}
 
-				if sf.ContentType != "" {
-					w.Header().Set("Content-Type", sf.ContentType)
-				}
-				break
-			}
+		// Only set the Content-Type header when the metadata defines one, if we
+		// were to set the header to an empty string, it would prevent the http
+		// library from sniffing the file's content type.
+		if metadata.ContentType != "" {
+			w.Header().Set("Content-Type", metadata.ContentType)
 		}
+
+		// Set Content-Disposition header, if 'attachment' is true, set the
+		// disposition-type to attachment, otherwise we inline it.
+		var cdh string
+		if attachment {
+			cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
+		} else {
+			cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
+		}
+		w.Header().Set("Content-Disposition", cdh)
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+
+		http.ServeContent(w, req, filename, time.Time{}, streamer)
+		return
+	}
+
+	// Download the entire file
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	filename = metadata.Filename
+
+	// Encode the metadata
+	encMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+		return
 	}
 
 	// Set Content-Disposition header, if 'attachment' is true, set the
@@ -2044,7 +2066,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		if isDirectory {
 			fhs := req.MultipartForm.File["files[]"]
 
-			subfiles := make([]modules.SkyfileSubfileMetadata, len(fhs))
+			subfiles := make([]modules.SubfileMetadata, len(fhs))
 			readers := make([]io.Reader, len(fhs))
 
 			var offset uint64
@@ -2063,7 +2085,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 				}
 
 				contentType := fh.Header.Get("Content-Type")
-				subfiles[i] = modules.SkyfileSubfileMetadata{
+				subfiles[i] = modules.SubfileMetadata{
 					Filename:    fh.Filename,
 					ContentType: contentType,
 					Offset:      offset,

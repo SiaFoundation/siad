@@ -463,9 +463,9 @@ func TestSkynet(t *testing.T) {
 	// easier way.
 }
 
-// TestSkynetMultipartUpload provides end-to-end testin for uploading multiple
-// files as one single skyfile using multipart upload. Files that are uploaded
-// this way are then retrievable by skylink + filename.
+// TestSkynetMultipartUpload provides end-to-end testing for uploading multiple
+// files as a single skyfile using multipart file upload. The uploaded subfiles
+// are then retrievable by skylink and their filename.
 func TestSkynetMultipartUpload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -498,7 +498,7 @@ func TestSkynetMultipartUpload(t *testing.T) {
 // testMultipartUploadSmall tests multipart upload for small files, small files
 // are files which are smaller than one sector, and thus don't need a fanout.
 func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
-	var subfiles []modules.SkyfileSubfileMetadata
+	var subfiles []modules.SubfileMetadata
 	var offset uint64
 
 	// create a folder with multiple files.
@@ -569,7 +569,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 }
 
 func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
-	var subfiles []modules.SkyfileSubfileMetadata
+	var subfiles []modules.SubfileMetadata
 	var offset uint64
 
 	// create a folder with multiple files.
@@ -661,24 +661,29 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 
 var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 
+// escapeQuotes escapes the quotes in the given string.
 func escapeQuotes(s string) string {
 	return quoteEscaper.Replace(s)
 }
 
+// createFormFileHeaders builds a header from the given params. These headers are used when creating the parts in a multi-part form upload.
 func createFormFileHeaders(fieldname, filename string, headers map[string]string) textproto.MIMEHeader {
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition",
-		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
-			escapeQuotes(fieldname), escapeQuotes(filename)))
-	h.Set("Content-Type", "application/octet-stream")
+	fieldname = escapeQuotes(fieldname)
+	filename = escapeQuotes(filename)
 
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Type", "application/octet-stream")
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
 	for k, v := range headers {
 		h.Set(k, v)
 	}
 	return h
 }
 
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, filemode string, offset *uint64) modules.SkyfileSubfileMetadata {
+// addMultipartField is a helper function to add a file to the multipart form-
+// data. Note that the given data will be treated as binary data, and the multi
+// part 's ContentType header will be set accordingly.
+func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, filemode string, offset *uint64) modules.SubfileMetadata {
 	h := map[string]string{"mode": filemode}
 	partHeader := createFormFileHeaders(filekey, filename, h)
 	part, err := w.CreatePart(partHeader)
@@ -692,7 +697,7 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, f
 	}
 
 	_, err = part.Write(filedata)
-	metadata := modules.SkyfileSubfileMetadata{
+	metadata := modules.SubfileMetadata{
 		Filename:    filename,
 		ContentType: "application/octet-stream",
 		Mode:        os.FileMode(fmi),
@@ -707,8 +712,10 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, f
 	return metadata
 }
 
+// addMultipartField is a helper function to add a field to the multipart form-
+// data.
 func addMultipartField(w *multipart.Writer, name, value string) {
-	part, err := w.CreateFormField("directory")
+	part, err := w.CreateFormField(name)
 	if err != nil {
 		panic(err)
 	}
