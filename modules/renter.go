@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -1077,16 +1076,41 @@ type HostDB interface {
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Filename string               `json:"filename,omitempty"`
-	Mode     os.FileMode          `json:"mode,omitempty"`
-	Subfiles []SubSkyfileMetadata `json:"subfiles"`
+	Filename string                   `json:"filename,omitempty"`
+	Mode     os.FileMode              `json:"mode,omitempty"`
+	Subfiles []SkyfileSubfileMetadata `json:"subfiles"`
 }
 
-// SubSkyfileMetadata is all of the metadata that belongs to a subfile in a
+// Equals compares two SkyfileMetadata objects for equality
+func (x SkyfileMetadata) Equals(y SkyfileMetadata) bool {
+	if x.Filename != y.Filename || x.Mode != y.Mode {
+		return false
+	}
+	for _, xsfm := range x.Subfiles {
+		if xsfm.Equals(y.SubfileMetadata(xsfm.Filename)) {
+			return false
+		}
+	}
+	return true
+}
+
+// SubfileMetadata returns the metadata of the subfile for given filename. If it
+// can not find a subfile with that filename, an empty metadata object is
+// returned.
+func (x SkyfileMetadata) SubfileMetadata(filename string) SkyfileSubfileMetadata {
+	for _, sf := range x.Subfiles {
+		if sf.Filename == filename {
+			return sf
+		}
+	}
+	return SkyfileSubfileMetadata{}
+}
+
+// SkyfileSubfileMetadata is all of the metadata that belongs to a subfile in a
 // skyfile. Most importantly it contains the offset at which the subfile is
 // written and its length. Its filename can potentially include a '/' character
 // as nested files and directories are allowed within a single Skyfile
-type SubSkyfileMetadata struct {
+type SkyfileSubfileMetadata struct {
 	Filename    string      `json:"filename,omitempty"`
 	ContentType string      `json:"contenttype,omitempty"`
 	Mode        os.FileMode `json:"mode,omitempty"`
@@ -1094,16 +1118,13 @@ type SubSkyfileMetadata struct {
 	Len         uint64      `json:"len"`
 }
 
-// Equals compares two SkyfileMetadata objects for equality
-func (x SkyfileMetadata) Equals(y SkyfileMetadata) bool {
-	// TODO don't use reflect pkg here
-	return reflect.DeepEqual(x, y)
-}
-
-// Equals compares two SubSkyfileMetadata objects for equality
-func (x SubSkyfileMetadata) Equals(y SubSkyfileMetadata) bool {
-	// TODO don't use reflect pkg here
-	return reflect.DeepEqual(x, y)
+// Equals compares two SkyfileSubfileMetadata objects for equality
+func (x SkyfileSubfileMetadata) Equals(y SkyfileSubfileMetadata) bool {
+	return x.Filename == y.Filename &&
+		x.ContentType == y.ContentType &&
+		x.Mode == y.Mode &&
+		x.Offset == y.Offset &&
+		x.Len == y.Len
 }
 
 // SkyfileUploadParameters establishes the parameters such as the intra-root
@@ -1136,5 +1157,5 @@ type SkyfileUploadParameters struct {
 	Reader io.Reader `json:"reader"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
-	ContentType string
+	ContentType string `json:"contenttype"`
 }

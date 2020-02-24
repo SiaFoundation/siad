@@ -1742,11 +1742,15 @@ func parseFilename(skylink string) string {
 	return filename
 }
 
+// cleanSkylinkString cleans up a skylink string by trimming a leading slash.
+func cleanSkylinkString(s string) string {
+	return strings.TrimPrefix(s, "/")
+}
+
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	strLink := ps.ByName("skylink")
-	strLink = strings.TrimLeft(strLink, "/") // TODO
+	strLink := cleanSkylinkString(ps.ByName("skylink"))
 	var skylink modules.Skylink
 
 	err := skylink.LoadString(strLink)
@@ -2040,7 +2044,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		if isDirectory {
 			fhs := req.MultipartForm.File["files[]"]
 
-			subfiles := make([]modules.SubSkyfileMetadata, len(fhs))
+			subfiles := make([]modules.SkyfileSubfileMetadata, len(fhs))
 			readers := make([]io.Reader, len(fhs))
 
 			var offset uint64
@@ -2059,7 +2063,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 				}
 
 				contentType := fh.Header.Get("Content-Type")
-				subfiles[i] = modules.SubSkyfileMetadata{
+				subfiles[i] = modules.SkyfileSubfileMetadata{
 					Filename:    fh.Filename,
 					ContentType: contentType,
 					Offset:      offset,

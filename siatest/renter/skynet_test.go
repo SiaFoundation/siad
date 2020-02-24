@@ -498,7 +498,7 @@ func TestSkynetMultipartUpload(t *testing.T) {
 // testMultipartUploadSmall tests multipart upload for small files, small files
 // are files which are smaller than one sector, and thus don't need a fanout.
 func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
-	var subfiles []modules.SubSkyfileMetadata
+	var subfiles []modules.SkyfileSubfileMetadata
 	var offset uint64
 
 	// create a folder with multiple files.
@@ -569,7 +569,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 }
 
 func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
-	var subfiles []modules.SubSkyfileMetadata
+	var subfiles []modules.SkyfileSubfileMetadata
 	var offset uint64
 
 	// create a folder with multiple files.
@@ -678,7 +678,7 @@ func createFormFileHeaders(fieldname, filename string, headers map[string]string
 	return h
 }
 
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, filemode string, offset *uint64) modules.SubSkyfileMetadata {
+func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, filemode string, offset *uint64) modules.SkyfileSubfileMetadata {
 	h := map[string]string{"mode": filemode}
 	partHeader := createFormFileHeaders(filekey, filename, h)
 	part, err := w.CreatePart(partHeader)
@@ -692,7 +692,7 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, f
 	}
 
 	_, err = part.Write(filedata)
-	metadata := modules.SubSkyfileMetadata{
+	metadata := modules.SkyfileSubfileMetadata{
 		Filename:    filename,
 		ContentType: "application/octet-stream",
 		Mode:        os.FileMode(fmi),

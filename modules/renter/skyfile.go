@@ -500,7 +500,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, filename string) (modules
 	}
 	offset += metadataSize
 
-	var subfile modules.SubSkyfileMetadata
+	var subfile modules.SkyfileSubfileMetadata
 	if filename != "" {
 		for _, sf := range lfm.Subfiles {
 			if sf.Filename == filename {
@@ -516,7 +516,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, filename string) (modules
 	if ll.fanoutSize == 0 {
 		// TODO clean this up
 		size := ll.filesize
-		if !subfile.Equals(modules.SubSkyfileMetadata{}) {
+		if !subfile.Equals(modules.SkyfileSubfileMetadata{}) {
 			size = subfile.Len
 		}
 		streamer := streamerFromSlice(baseSector[offset : offset+size])
@@ -596,7 +596,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		CipherType: crypto.TypePlain,
 	}
 
-	sf := modules.SubSkyfileMetadata{}
+	sf := modules.SkyfileSubfileMetadata{}
 	streamer, err := r.newFanoutStreamer(skylink, ll, fanoutBytes, sf)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
