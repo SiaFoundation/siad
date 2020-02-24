@@ -128,12 +128,12 @@ func (sl *Skylink) Bitfield() uint16 {
 
 // LoadString converts from a string and loads the result into sl.
 func (sl *Skylink) LoadString(s string) error {
-	// Trim any parameters that may exist after an ampersand. Eventually, it
+	// Trim any parameters that may exist after a questionmark. Eventually, it
 	// will be possible to parse these separately as additional/optional
-	// arguments, for now anything after an ampersand is just ignored.
-	splits := strings.SplitN(s, "&", 2)
+	// arguments, for now anything after a questionmark is just ignored.
+	splits := strings.SplitN(s, "?", 2)
 	// No need to check if there is an element returned by strings.SplitN, so
-	// long as the second arg is not-nil (in this case, '&'), SplitN cannot
+	// long as the second arg is not-nil (in this case, '?'), SplitN cannot
 	// return an empty slice.
 	base := splits[0]
 	// Input check, ensure that this string is the expected size.
