@@ -1572,7 +1572,7 @@ func renterfilesdeletecmd(path string) {
 	// Try to delete file.
 	var errFile error
 	if renterDeleteRoot {
-		errFile = httpClient.RenterFileRootDeletePost(siaPath)
+		errFile = httpClient.RenterFileDeleteRootPost(siaPath)
 	} else {
 		errFile = httpClient.RenterFileDeletePost(siaPath)
 	}

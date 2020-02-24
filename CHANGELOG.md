@@ -11,12 +11,12 @@ Version History
 Latest:
 ### v1.4.4
 **Key Updates**
+ - Add `--root` parameter to `siac renter delete` that allows passing absolute
+   instead of relative file paths.
 
 **Bugs Fixed**
 
 **Other**
- - Add `--root` parameter to `siac renter delete` that allows passing absolute
-   instead of relative file paths.
 
 ### v1.4.3
 **Key Updates**

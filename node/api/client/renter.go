@@ -257,9 +257,9 @@ func (c *Client) RenterCancelDownloadPost(id modules.DownloadID) (err error) {
 	return
 }
 
-// RenterFileRootDeletePost uses the /renter/delete endpoint to delete a file.
+// RenterFileDeleteRootPost uses the /renter/delete endpoint to delete a file.
 // It passes the `root=true` flag to indicate an absolute path.
-func (c *Client) RenterFileRootDeletePost(siaPath modules.SiaPath) (err error) {
+func (c *Client) RenterFileDeleteRootPost(siaPath modules.SiaPath) (err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.post(fmt.Sprintf("/renter/delete/%s?root=true", sp), "", nil)
 	return

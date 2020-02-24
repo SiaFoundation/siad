@@ -3158,7 +3158,7 @@ must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
 **root** | bool
-Whether or not to tread the siapath as being relative to the user's home
+Whether or not to treat the siapath as being relative to the user's home
 directory. If this field is not set, the siapath will be interpreted as
 relative to 'home/user/'.  
 
@@ -3619,7 +3619,7 @@ Path to the file in the renter on the network.
 
 ### OPTIONAL
  **root** | bool
- Whether or not to tread the siapath as being relative to the user's home
+ Whether or not to treat the siapath as being relative to the user's home
  directory. If this field is not set, the siapath will be interpreted as
  relative to 'home/user/'.  
 
@@ -4201,7 +4201,7 @@ presented a file with this mode. If no mode is set, the default of 0644 will be
 used.
 
 **root** | bool  
-Whether or not to tread the siapath as being relative to the root directory. If
+Whether or not to treat the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
