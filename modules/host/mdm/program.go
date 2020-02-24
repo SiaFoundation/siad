@@ -28,11 +28,8 @@ type programState struct {
 	blockHeight types.BlockHeight
 	host        Host
 
-	// storage obligation related fields
-	sectorsRemoved   []crypto.Hash
-	sectorsGained    []crypto.Hash
-	gainedSectorData [][]byte
-	merkleRoots      []crypto.Hash
+	// program cache
+	sectors sectors
 
 	// statistic related fields
 	potentialStorageRevenue types.Currency
@@ -84,7 +81,9 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
 			priceTable:  pt,
-			merkleRoots: so.SectorRoots(),
+			sectors: sectors{
+				merkleRoots: so.SectorRoots(),
+			},
 		},
 		staticBudget: budget,
 		staticData:   openProgramData(data, programDataLen),
@@ -196,8 +195,8 @@ func (p *Program) managedFinalize() error {
 		return err
 	}
 	// Commit the changes to the storage obligation.
-	ps := p.staticProgramState
-	err = p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	s := p.staticProgramState.sectors
+	err = p.so.Update(s.merkleRoots, s.sectorsRemoved, s.sectorsGained, s.gainedSectorData)
 	if err != nil {
 		return err
 	}

@@ -70,16 +70,20 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 	if err != nil {
 		return errOutput(err)
 	}
-	// Fetch the requested information
-	hasSector, err := i.staticState.host.HasSector(sectorRoot)
+
+	// Fetch the requested information.
+	ps := i.staticState
+	hasSector, err := ps.sectors.hasSector(ps.host, sectorRoot)
 	if err != nil {
 		return errOutput(err)
 	}
+
 	// Return the output.
 	out := []byte{0}
 	if hasSector {
 		out[0] = 1
 	}
+
 	return output{
 		NewSize:       prevOutput.NewSize,       // size stays the same
 		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same

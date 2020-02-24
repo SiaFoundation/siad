@@ -79,6 +79,7 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	if err != nil {
 		return errOutput(err)
 	}
+
 	// Validate the request.
 	switch {
 	case offset+length > modules.SectorSize:
@@ -92,12 +93,11 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 		return errOutput(err)
 	}
 
-	// Fetch the requested data.
-	sectorData, err := i.staticState.host.ReadSector(sectorRoot)
+	ps := i.staticState
+	sectorData, readData, err := ps.sectors.readSector(ps.host, offset, length, sectorRoot)
 	if err != nil {
 		return errOutput(err)
 	}
-	data := sectorData[offset : offset+length]
 
 	// Construct the Merkle proof, if requested.
 	var proof []crypto.Hash
@@ -111,7 +111,7 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	return output{
 		NewSize:       previousOutput.NewSize,       // size stays the same
 		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
-		Output:        data,
+		Output:        readData,
 		Proof:         proof,
 	}
 }
