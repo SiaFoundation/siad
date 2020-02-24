@@ -78,7 +78,7 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 	i.staticState.merkleRoots = append(i.staticState.merkleRoots, newRoot)
 	newMerkleRoot := cachedMerkleRoot(i.staticState.merkleRoots)
 
-	// TODO: Construct proof if necessary.
+	// Construct proof if necessary.
 	var proof []crypto.Hash
 	if i.staticMerkleProof {
 		start := len(i.staticState.merkleRoots) - 1
