@@ -302,7 +302,7 @@ func main() {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd)
+	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd, skynetPinCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
@@ -340,11 +340,9 @@ func main() {
 		siaDir = os.Getenv("SIA_DATA_DIR")
 		if siaDir != "" {
 			fmt.Println("Using SIA_DATA_DIR environment variable")
+		} else {
+			siaDir = build.DefaultSiaDir()
 		}
-	}
-	// If neither a flag nor env variable was provided, use the default.
-	if siaDir == "" {
-		siaDir = build.DefaultSiaDir()
 	}
 
 	// If the API password wasn't set we try to read it from the file. This must

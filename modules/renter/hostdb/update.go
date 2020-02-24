@@ -37,7 +37,7 @@ func findHostAnnouncements(b types.Block) (announcements []modules.HostDBEntry) 
 func (hdb *HostDB) insertBlockchainHost(host modules.HostDBEntry) {
 	// Remove garbage hosts and local hosts (but allow local hosts in testing).
 	if err := host.NetAddress.IsValid(); err != nil {
-		hdb.log.Debugf("WARN: host '%v' has an invalid NetAddress: %v", host.NetAddress, err)
+		hdb.staticLog.Debugf("WARN: host '%v' has an invalid NetAddress: %v", host.NetAddress, err)
 		return
 	}
 	// Ignore all local hosts announced through the blockchain.
@@ -47,7 +47,7 @@ func (hdb *HostDB) insertBlockchainHost(host modules.HostDBEntry) {
 
 	// Make sure the host gets into the host tree so it does not get dropped if
 	// shutdown occurs before a scan can be performed.
-	oldEntry, exists := hdb.hostTree.Select(host.PublicKey)
+	oldEntry, exists := hdb.staticHostTree.Select(host.PublicKey)
 	if exists {
 		// Replace the netaddress with the most recently announced netaddress.
 		// Also replace the FirstSeen value with the current block height if
@@ -61,7 +61,7 @@ func (hdb *HostDB) insertBlockchainHost(host modules.HostDBEntry) {
 		// Resolve the host's used subnets and update the timestamp if they
 		// changed. We only update the timestamp if resolving the ipNets was
 		// successful.
-		ipNets, err := hdb.managedLookupIPNets(oldEntry.NetAddress)
+		ipNets, err := hdb.staticLookupIPNets(oldEntry.NetAddress)
 		if err == nil && !equalIPNets(ipNets, oldEntry.IPNets) {
 			oldEntry.IPNets = ipNets
 			oldEntry.LastIPNetChange = time.Now()
@@ -69,14 +69,14 @@ func (hdb *HostDB) insertBlockchainHost(host modules.HostDBEntry) {
 		// Modify hosttree
 		err = hdb.modify(oldEntry)
 		if err != nil {
-			hdb.log.Println("ERROR: unable to modify host entry of host tree after a blockchain scan:", err)
+			hdb.staticLog.Println("ERROR: unable to modify host entry of host tree after a blockchain scan:", err)
 		}
 	} else {
 		host.FirstSeen = hdb.blockHeight
 		// Insert into hosttree
 		err := hdb.insert(host)
 		if err != nil {
-			hdb.log.Println("ERROR: unable to insert host entry into host tree after a blockchain scan:", err)
+			hdb.staticLog.Println("ERROR: unable to insert host entry into host tree after a blockchain scan:", err)
 		}
 	}
 
@@ -99,7 +99,7 @@ func (hdb *HostDB) ProcessConsensusChange(cc modules.ConsensusChange) {
 		} else if hdb.blockHeight != 0 {
 			// Sanity check - if the current block is the genesis block, the
 			// hostdb height should be set to zero.
-			hdb.log.Critical("Hostdb has detected a genesis block, but the height of the hostdb is set to ", hdb.blockHeight)
+			hdb.staticLog.Critical("Hostdb has detected a genesis block, but the height of the hostdb is set to ", hdb.blockHeight)
 			hdb.blockHeight = 0
 		}
 	}
@@ -111,7 +111,7 @@ func (hdb *HostDB) ProcessConsensusChange(cc modules.ConsensusChange) {
 		} else if hdb.blockHeight != 0 {
 			// Sanity check - if the current block is the genesis block, the
 			// hostdb height should be set to zero.
-			hdb.log.Critical("Hostdb has detected a genesis block, but the height of the hostdb is set to ", hdb.blockHeight)
+			hdb.staticLog.Critical("Hostdb has detected a genesis block, but the height of the hostdb is set to ", hdb.blockHeight)
 			hdb.blockHeight = 0
 		}
 	}
@@ -119,7 +119,7 @@ func (hdb *HostDB) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Add hosts announced in blocks that were applied.
 	for _, block := range cc.AppliedBlocks {
 		for _, host := range findHostAnnouncements(block) {
-			hdb.log.Debugln("Found a host in a host announcement:", host.NetAddress, host.PublicKey)
+			hdb.staticLog.Debugln("Found a host in a host announcement:", host.NetAddress, host.PublicKey)
 			hdb.insertBlockchainHost(host)
 		}
 	}

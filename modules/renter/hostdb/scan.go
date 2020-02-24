@@ -58,11 +58,11 @@ func (hdb *HostDB) managedUpdateTxnFees() {
 	hdb.mu.RUnlock()
 
 	// Get the new fees from the tpool.
-	_, newTxnFees := hdb.tpool.FeeEstimation()
+	_, newTxnFees := hdb.staticTpool.FeeEstimation()
 
 	// If the change is not significant we are done.
 	if !feeChangeSignificant(oldTxnFees, newTxnFees) {
-		hdb.log.Debugf("No need to update txnFees oldFees %v newFees %v",
+		hdb.staticLog.Debugf("No need to update txnFees oldFees %v newFees %v",
 			oldTxnFees.HumanString(), newTxnFees.HumanString())
 		return
 	}
@@ -77,7 +77,7 @@ func (hdb *HostDB) managedUpdateTxnFees() {
 		// This shouldn't happen.
 		build.Critical("Failed to set the new weight function", err)
 	}
-	hdb.log.Println("Updated the hostdb txnFees to", newTxnFees.HumanString())
+	hdb.staticLog.Println("Updated the hostdb txnFees to", newTxnFees.HumanString())
 }
 
 // queueScan will add a host to the queue to be scanned. The host will be added
@@ -108,7 +108,7 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 	// Sanity check - the scan map and the scan list should have the same
 	// length.
 	if build.DEBUG && len(hdb.scanMap) > len(hdb.scanList)+maxScanningThreads {
-		hdb.log.Critical("The hostdb scan map has seemingly grown too large:", len(hdb.scanMap), len(hdb.scanList), maxScanningThreads)
+		hdb.staticLog.Critical("The hostdb scan map has seemingly grown too large:", len(hdb.scanMap), len(hdb.scanList), maxScanningThreads)
 	}
 
 	hdb.scanWait = true
@@ -126,7 +126,7 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 		defer hdb.tg.Done()
 
 		// Block scan when a specific dependency is provided.
-		hdb.deps.Disrupt("BlockScan")
+		hdb.staticDeps.Disrupt("BlockScan")
 
 		// Due to the patterns used to spin up scanning threads, it's possible
 		// that we get to this point while all scanning threads are currently
@@ -155,7 +155,7 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 			scansRemaining := len(hdb.scanList)
 
 			// Grab the most recent entry for this host.
-			recentEntry, exists := hdb.hostTree.Select(entry.PublicKey)
+			recentEntry, exists := hdb.staticHostTree.Select(entry.PublicKey)
 			if exists {
 				entry = recentEntry
 			}
@@ -163,7 +163,7 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 			// Try to send this entry to an existing idle worker (non-blocking).
 			select {
 			case scanPool <- entry:
-				hdb.log.Debugf("Sending host %v for scan, %v hosts remain", entry.PublicKey.String(), scansRemaining)
+				hdb.staticLog.Debugf("Sending host %v for scan, %v hosts remain", entry.PublicKey.String(), scansRemaining)
 				hdb.mu.Unlock()
 				continue
 			default:
@@ -188,7 +188,7 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 			hdb.mu.Unlock()
 
 			// Block while waiting for an opening in the scan pool.
-			hdb.log.Debugf("Sending host %v for scan, %v hosts remain", entry.PublicKey.String(), scansRemaining)
+			hdb.staticLog.Debugf("Sending host %v for scan, %v hosts remain", entry.PublicKey.String(), scansRemaining)
 			select {
 			case scanPool <- entry:
 				// iterate again
@@ -213,7 +213,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	}
 
 	// Grab the host from the host tree, and update it with the new settings.
-	newEntry, exists := hdb.hostTree.Select(entry.PublicKey)
+	newEntry, exists := hdb.staticHostTree.Select(entry.PublicKey)
 	if exists {
 		newEntry.HostExternalSettings = entry.HostExternalSettings
 		newEntry.IPNets = entry.IPNets
@@ -245,7 +245,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		}
 	} else {
 		if newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Success && netErr != nil {
-			hdb.log.Debugf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
+			hdb.staticLog.Debugf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
 		}
 
 		// Make sure that the current time is after the timestamp of the
@@ -280,7 +280,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		// Remove from hosttrees
 		err := hdb.remove(newEntry.PublicKey)
 		if err != nil {
-			hdb.log.Println("ERROR: unable to remove host newEntry which has had a ton of downtime:", err)
+			hdb.staticLog.Println("ERROR: unable to remove host newEntry which has had a ton of downtime:", err)
 		}
 
 		// The function should terminate here as no more interaction is needed
@@ -304,29 +304,28 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		// Insert into Hosttrees
 		err := hdb.insert(newEntry)
 		if err != nil {
-			hdb.log.Println("ERROR: unable to insert entry which is was thought to be new:", err)
+			hdb.staticLog.Println("ERROR: unable to insert entry which is was thought to be new:", err)
 		} else {
-			hdb.log.Debugf("Adding host %v to the hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
+			hdb.staticLog.Debugf("Adding host %v to the hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
 		}
 	} else {
 		// Modify hosttrees
 		err := hdb.modify(newEntry)
 		if err != nil {
-			hdb.log.Println("ERROR: unable to modify entry which is thought to exist:", err)
+			hdb.staticLog.Println("ERROR: unable to modify entry which is thought to exist:", err)
 		} else {
-			hdb.log.Debugf("Adding host %v to the hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
+			hdb.staticLog.Debugf("Adding host %v to the hostdb. Net error: %v\n", newEntry.PublicKey.String(), netErr)
 		}
 	}
 }
 
-// managedLookupIPNets returns string representations of the CIDR subnets
-// used by the host.  In case of an error we return nil. We don't really care
-// about the error because we don't update host entries if we are offline
-// anyway. So if we fail to resolve a hostname, the problem is not related to
-// us.
-func (hdb *HostDB) managedLookupIPNets(address modules.NetAddress) (ipNets []string, err error) {
+// staticLookupIPNets returns string representations of the CIDR subnets used by
+// the host. In case of an error we return nil. We don't really care about the
+// error because we don't update host entries if we are offline anyway. So if we
+// fail to resolve a hostname, the problem is not related to us.
+func (hdb *HostDB) staticLookupIPNets(address modules.NetAddress) (ipNets []string, err error) {
 	// Lookup the IP addresses of the host.
-	addresses, err := hdb.deps.Resolver().LookupIP(address.Host())
+	addresses, err := hdb.staticDeps.Resolver().LookupIP(address.Host())
 	if err != nil {
 		return nil, err
 	}
@@ -357,11 +356,11 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	// Request settings from the queued host entry.
 	netAddr := entry.NetAddress
 	pubKey := entry.PublicKey
-	hdb.log.Debugf("Scanning host %v at %v", pubKey, netAddr)
+	hdb.staticLog.Debugf("Scanning host %v at %v", pubKey, netAddr)
 
 	// If we use a custom resolver for testing, we replace the custom domain
 	// with 127.0.0.1. Otherwise the scan will fail.
-	if hdb.deps.Disrupt("customResolver") {
+	if hdb.staticDeps.Disrupt("customResolver") {
 		port := netAddr.Port()
 		netAddr = modules.NetAddress(fmt.Sprintf("127.0.0.1:%s", port))
 	}
@@ -369,13 +368,13 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	// Resolve the host's used subnets and update the timestamp if they
 	// changed. We only update the timestamp if resolving the ipNets was
 	// successful.
-	ipNets, err := hdb.managedLookupIPNets(entry.NetAddress)
+	ipNets, err := hdb.staticLookupIPNets(entry.NetAddress)
 	if err == nil && !equalIPNets(ipNets, entry.IPNets) {
 		entry.IPNets = ipNets
 		entry.LastIPNetChange = time.Now()
 	}
 	if err != nil {
-		hdb.log.Debugln("mangedScanHost: failed to look up IP nets", err)
+		hdb.staticLog.Debugln("mangedScanHost: failed to look up IP nets", err)
 	}
 
 	// Update historic interactions of entry if necessary
@@ -516,9 +515,9 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		return nil
 	}()
 	if err != nil {
-		hdb.log.Debugf("Scan of host at %v failed: %v", pubKey, err)
+		hdb.staticLog.Debugf("Scan of host at %v failed: %v", pubKey, err)
 	} else {
-		hdb.log.Debugf("Scan of host at %v succeeded.", pubKey)
+		hdb.staticLog.Debugf("Scan of host at %v succeeded.", pubKey)
 		entry.HostExternalSettings = settings
 	}
 	success := err == nil
@@ -527,7 +526,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	defer hdb.mu.Unlock()
 	// We don't want to override the NetAddress during a scan so we need to
 	// retrieve the most recent NetAddress from the tree first.
-	oldEntry, exists := hdb.hostTree.Select(entry.PublicKey)
+	oldEntry, exists := hdb.staticHostTree.Select(entry.PublicKey)
 	if exists {
 		entry.NetAddress = oldEntry.NetAddress
 	}
@@ -612,12 +611,12 @@ func (hdb *HostDB) threadedScan() {
 	}
 
 	// Block scan when a specific dependency is provided.
-	hdb.deps.Disrupt("BlockScan")
+	hdb.staticDeps.Disrupt("BlockScan")
 
 	// The initial scan might have been interrupted. Queue one scan for every
 	// announced host that was missed by the initial scan and wait for the
 	// scans to finish before starting the scan loop.
-	allHosts := hdb.hostTree.All()
+	allHosts := hdb.staticHostTree.All()
 	hdb.mu.Lock()
 	for _, host := range allHosts {
 		if len(host.ScanHistory) == 0 && host.HistoricUptime == 0 && host.HistoricDowntime == 0 {
@@ -651,7 +650,7 @@ func (hdb *HostDB) threadedScan() {
 		// Grab a set of hosts to scan, grab hosts that are active, inactive, offline
 		// and known to get high diversity.
 		var onlineHosts, offlineHosts, knownHosts []modules.HostDBEntry
-		allHosts := hdb.hostTree.All()
+		allHosts := hdb.staticHostTree.All()
 		for i := len(allHosts) - 1; i >= 0; i-- {
 			if len(onlineHosts) >= hostCheckupQuantity &&
 				len(offlineHosts) >= hostCheckupQuantity &&
@@ -673,7 +672,7 @@ func (hdb *HostDB) threadedScan() {
 		}
 
 		// Queue the scans for each host.
-		hdb.log.Println("Performing scan on", len(onlineHosts), "online hosts and", len(offlineHosts), "offline hosts and", len(knownHosts), "known hosts.")
+		hdb.staticLog.Println("Performing scan on", len(onlineHosts), "online hosts and", len(offlineHosts), "offline hosts and", len(knownHosts), "known hosts.")
 		hdb.mu.Lock()
 		for _, host := range knownHosts {
 			hdb.queueScan(host)

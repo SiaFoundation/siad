@@ -1,10 +1,9 @@
 Version Scheme
 --------------
-Sia uses the following versioning scheme, vX.X.X.X
+Sia uses the following versioning scheme, vX.X.X
  - First Digit signifies a major (compatibility breaking) release
  - Second Digit signifies a major (non compatibility breaking) release
- - Third Digit signifies a minor release
- - Fourth Digit signifies a patch release
+ - Third Digit signifies a minor or patch release
 
 Version History
 ---------------
@@ -13,8 +12,11 @@ Latest:
 ### v1.4.3
 **Key Updates**
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
+ - Integrate SiaMux
+ - Initialize defaults for the host's ephemeral account settings
  - Add SIA_DATA_DIR environment variable for setting the data directory for
    siad/siac
+ - Made build process deterministic. Moved related scripts into `release-scripts`
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
@@ -25,6 +27,9 @@ Latest:
    writing to a file after the contractmanager had shutdown
  - Fixed panic where the watchdog would try to write to the contractor's log
    after the contractor had shutdown
+
+**Other**
+ - Upgrade host metadata to v1.4.3
 
 ### v1.4.2.1
 **Key Updates**

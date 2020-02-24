@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -33,6 +34,8 @@ type renterTester struct {
 	tpool   modules.TransactionPool
 	wallet  modules.Wallet
 
+	mux *siamux.SiaMux
+
 	renter *Renter
 	dir    string
 }
@@ -48,7 +51,7 @@ func (rt *renterTester) Close() error {
 // addHost adds a host to the test group so that it appears in the host db
 func (rt *renterTester) addHost(name string) (modules.Host, error) {
 	testdir := build.TempDir("renter", name)
-	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, rt.mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +139,8 @@ func newRenterTester(name string) (*renterTester, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(testdir, modules.RenterDir))
+
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -151,6 +155,12 @@ func newRenterTester(name string) (*renterTester, error) {
 // the renter. A renter will need to be added and blocks mined to add money to
 // the wallet.
 func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
+	// Create the siamux
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the modules.
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
@@ -184,6 +194,8 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 
 	// Assemble all pieces into a renter tester.
 	return &renterTester{
+		mux: mux,
+
 		cs:      cs,
 		gateway: g,
 		miner:   m,
@@ -194,15 +206,22 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	}, nil
 }
 
-// newRenterTesterWithDependency creates a ready-to-use renter tester with money in the
-// wallet.
+// newRenterTesterWithDependency creates a ready-to-use renter tester with money
+// in the wallet.
 func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*renterTester, error) {
 	testdir := build.TempDir("renter", name)
 	rt, err := newRenterTesterNoRenter(testdir)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, filepath.Join(testdir, modules.RenterDir), deps)
+
+	// Create the siamux
+	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, mux, filepath.Join(testdir, modules.RenterDir), deps)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +233,7 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 }
 
 // newRenterWithDependency creates a Renter with custom dependency
-func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
 	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, persistDir, deps)
 	if err := <-errChan; err != nil {
 		return nil, err
@@ -223,7 +242,7 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, persistDir, deps)
+	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, deps)
 	return renter, <-errChan
 }
 

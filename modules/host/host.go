@@ -79,6 +79,7 @@ import (
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (
@@ -101,13 +102,6 @@ var (
 	errNilTpool   = errors.New("host cannot use a nil transaction pool")
 	errNilWallet  = errors.New("host cannot use a nil wallet")
 	errNilGateway = errors.New("host cannot use nil gateway")
-
-	// persistMetadata is the header that gets written to the persist file, and
-	// is used to recognize other persist files.
-	persistMetadata = persist.Metadata{
-		Header:  "Sia Host",
-		Version: "1.2.0",
-	}
 
 	// rpcPriceGuaranteePeriod defines the amount of time a host will guarantee
 	// its prices to the renter.
@@ -147,6 +141,7 @@ type Host struct {
 	tpool         modules.TransactionPool
 	wallet        modules.Wallet
 	staticAlerter *modules.GenericAlerter
+	staticMux     *siamux.SiaMux
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
@@ -262,7 +257,7 @@ func (h *Host) managedUpdatePriceTable() {
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (*Host, error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -284,6 +279,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		tpool:                    tpool,
 		wallet:                   wallet,
 		staticAlerter:            modules.NewAlerter("host"),
+		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
 
@@ -385,20 +381,20 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 }
 
 // New returns an initialized Host.
-func New(cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(modules.ProdDependencies, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
+func New(cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, address string, persistDir string) (*Host, error) {
+	return newHost(modules.ProdDependencies, new(modules.ProductionDependencies), cs, g, tpool, wallet, mux, address, persistDir)
 }
 
 // NewCustomHost returns an initialized Host using the provided dependencies.
-func NewCustomHost(deps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(deps, new(modules.ProductionDependencies), cs, g, tpool, wallet, address, persistDir)
+func NewCustomHost(deps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, address string, persistDir string) (*Host, error) {
+	return newHost(deps, new(modules.ProductionDependencies), cs, g, tpool, wallet, mux, address, persistDir)
 }
 
 // NewCustomTestHost allows passing in both host dependencies and storage
 // manager dependencies. Used solely for testing purposes, to allow dependency
 // injection into the host's submodules.
-func NewCustomTestHost(deps modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, address string, persistDir string) (*Host, error) {
-	return newHost(deps, smDeps, cs, g, tpool, wallet, address, persistDir)
+func NewCustomTestHost(deps modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, address string, persistDir string) (*Host, error) {
+	return newHost(deps, smDeps, cs, g, tpool, wallet, mux, address, persistDir)
 }
 
 // Close shuts down the host.

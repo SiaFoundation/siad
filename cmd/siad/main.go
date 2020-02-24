@@ -35,6 +35,7 @@ type Config struct {
 		APIaddr      string
 		RPCaddr      string
 		HostAddr     string
+		SiaMuxAddr   string
 		AllowAPIBind bool
 
 		Modules           string
@@ -170,6 +171,10 @@ func main() {
 	root.Flags().BoolVarP(&globalConfig.Siad.NoBootstrap, "no-bootstrap", "", false, "disable bootstrapping on this run")
 	root.Flags().StringVarP(&globalConfig.Siad.Profile, "profile", "", "", "enable profiling with flags 'cmt' for CPU, memory, trace")
 	root.Flags().StringVarP(&globalConfig.Siad.RPCaddr, "rpc-addr", "", ":9981", "which port the gateway listens on")
+
+	//root.Flags().StringVarP(&globalConfig.Siad.SiaMuxAddr, "siamux-addr", "", ":9999", "which port the SiaMux listens on")
+	globalConfig.Siad.SiaMuxAddr = ":9999" // TODO: change this when we want to expose the SiaMux to siad
+
 	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "cghrtw", "enabled modules, see 'siad modules' for more info")
 	root.Flags().BoolVarP(&globalConfig.Siad.AuthenticateAPI, "authenticate-api", "", true, "enable API password protection")
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
@@ -178,10 +183,9 @@ func main() {
 	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
 	if globalConfig.Siad.SiaDir == "" {
 		globalConfig.Siad.SiaDir = os.Getenv("SIA_DATA_DIR")
-	}
-	// If neither a flag nor env variable was provided, use the default.
-	if globalConfig.Siad.SiaDir == "" {
-		globalConfig.Siad.SiaDir = build.DefaultSiaDir()
+		if globalConfig.Siad.SiaDir != "" {
+			fmt.Println("Using SIA_DATA_DIR environment variable")
+		}
 	}
 
 	// Parse cmdline flags, overwriting both the default values and the config

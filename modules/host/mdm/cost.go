@@ -28,6 +28,13 @@ func (p *Program) addCost(cost types.Currency) error {
 	return nil
 }
 
+// AppendCost is the cost of executing an 'Append' instruction.
+func AppendCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
+	cost := WriteCost(pt, modules.SectorSize)
+	refund := types.ZeroCurrency // TODO: figure out good refund
+	return cost, refund
+}
+
 // InitCost is the cost of instantiatine the MDM. It is defined as:
 // 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time
 func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
@@ -41,12 +48,8 @@ func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {
 }
 
 // WriteCost is the cost of executing a 'Write' instruction of a certain length.
-// It's also used to compute the cost of a `WriteSector` and `Append`
-// instruction.
-func WriteCost(pt modules.RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
-	cost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
-	refund := types.ZeroCurrency // TODO: figure out a good refund
-	return cost, refund
+func WriteCost(pt modules.RPCPriceTable, writeLength uint64) types.Currency {
+	return pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
 }
 
 // CopyCost is the cost of executing a 'Copy' instruction.
