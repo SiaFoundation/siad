@@ -77,10 +77,6 @@ var (
 	// ErrPeriodNeedToBeSet is the error returned when the period is not set for
 	// the allowance
 	ErrPeriodNeedToBeSet = errors.New("period needs to be set if it hasn't been set before")
-
-	// ErrUnableToParseRootFlag is the error returned when the --root flag was
-	// passed but it did not contain a valid boolean value.
-	ErrUnableToParseRootFlag = errors.New("unable to parse 'root' arg")
 )
 
 type (
@@ -266,12 +262,12 @@ type (
 // Writes an error to w if "root" exists but is not parsable as bool.
 func isCalledWithRootFlag(req *http.Request) (bool, error) {
 	rootStr := req.FormValue("root")
-	if rootStr != "" {
+	if rootStr == "" {
 		return false, nil
 	}
 	root, err := strconv.ParseBool(rootStr)
 	if err != nil {
-		return false, ErrUnableToParseRootFlag
+		return false, errors.New("unable to parse 'root' arg: " + err.Error())
 	}
 	return root, nil
 }
@@ -1824,14 +1820,10 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Parse whether the siapath should be from root or from the skynet folder.
-	var root bool
-	rootStr := queryForm.Get("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse out the intended siapath.
@@ -1899,14 +1891,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse whether the siapath should be from root or from the skynet folder.
-	var root bool
-	rootStr := queryForm.Get("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse out the intended siapath.
@@ -2286,14 +2274,10 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	var err error
 
 	// Check whether the user is requesting the directory from the root path.
-	var root bool
-	rootStr := req.FormValue("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
-			return
-		}
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	str := ps.ByName("siapath")
