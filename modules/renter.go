@@ -939,8 +939,6 @@ type Renter interface {
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	// If a filename is specified, it will download the subfile corresponding to
-	// that filename.
 	DownloadSkylink(Skylink) (SkyfileMetadata, Streamer, error)
 
 	// DownloadSubfile will fetch a subfile from the Sia network using the
@@ -1087,7 +1085,7 @@ type SkyfileMetadata struct {
 	Subfiles []SubfileMetadata `json:"subfiles"`
 }
 
-// Equals compares two SkyfileMetadata objects for equality
+// Equals compares two SkyfileMetadata objects for equality.
 func (x SkyfileMetadata) Equals(y SkyfileMetadata) bool {
 	if x.Filename != y.Filename {
 		return false

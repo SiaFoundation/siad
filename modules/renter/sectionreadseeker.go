@@ -6,22 +6,36 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-type SectionReadSeeker struct {
-	stream *stream
-	base   uint64
-	off    uint64
-	limit  uint64
+// ReadSeekerCloser is an object that implements both the io.ReadSeeker and
+// io.Closer interfaces
+type ReadSeekerCloser interface {
+	io.Reader
+	io.Seeker
+	io.Closer
 }
 
-func NewSectionReadSeeker(s *stream, off, n uint64) *SectionReadSeeker {
+// SectionReadSeeker is based on the io.SectionReader with the addition of the
+// Seeker interface. It can be used
+type SectionReadSeeker struct {
+	rsc   ReadSeekerCloser
+	base  uint64
+	off   uint64
+	limit uint64
+}
+
+// NewSectionReadSeeker returns a new SectionReadSeeker from given arguments. It
+// allows reading and seeking 'n' bytes from the underlying data start at the
+// given offset.
+func NewSectionReadSeeker(rsc ReadSeekerCloser, off, n uint64) *SectionReadSeeker {
 	return &SectionReadSeeker{
-		stream: s,
-		base:   off,
-		off:    off,
-		limit:  off + n,
+		rsc:   rsc,
+		base:  off,
+		off:   off,
+		limit: off + n,
 	}
 }
 
+// Read implements the ReadSeekerCloser interface
 func (srs *SectionReadSeeker) Read(p []byte) (n int, err error) {
 	if srs.off >= srs.limit {
 		return 0, io.EOF
@@ -30,11 +44,12 @@ func (srs *SectionReadSeeker) Read(p []byte) (n int, err error) {
 		p = p[0:max]
 	}
 
-	n, err = srs.stream.Read(p)
+	n, err = srs.rsc.Read(p)
 	srs.off += uint64(n)
 	return
 }
 
+// Seek implements the ReadSeekerCloser interface
 func (srs *SectionReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
@@ -46,12 +61,15 @@ func (srs *SectionReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	default:
 		return 0, errors.New("invalid value for 'whence' in call to seek")
 	}
+
+	// Note that we allow an offset greater than the limit, however on the next
+	// read we return an EOF.
 	if uint64(offset) < srs.base {
 		return 0, errors.New("invalid offset")
 	}
 
 	srs.off = uint64(offset)
-	_, err := srs.stream.Seek(int64(srs.off), io.SeekStart)
+	_, err := srs.rsc.Seek(int64(srs.off), io.SeekStart)
 	if err != nil {
 		return offset - int64(srs.base), err
 	}
@@ -59,6 +77,7 @@ func (srs *SectionReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	return offset - int64(srs.base), nil
 }
 
+// Close implements the ReadSeekerCloser interface
 func (srs *SectionReadSeeker) Close() error {
-	return srs.stream.Close()
+	return srs.rsc.Close()
 }

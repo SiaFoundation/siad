@@ -8,7 +8,6 @@ import (
 	"net/textproto"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -223,7 +222,7 @@ func TestSkynet(t *testing.T) {
 
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	addMultipartFile(writer, data, "file", filename, "0640", nil)
+	addMultipartFile(writer, data, "file", filename, 0640, nil)
 	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -508,11 +507,11 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 
 	// add a file at root level
 	data := []byte("File1Contents")
-	subfiles = append(subfiles, addMultipartFile(writer, data, "files[]", "file1", "0600", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, data, "files[]", "file1", 0600, &offset))
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfiles = append(subfiles, addMultipartFile(writer, data, "files[]", "nested/file2", "0640", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset))
 
 	writer.Close()
 	reader := bytes.NewReader(body.Bytes())
@@ -529,6 +528,8 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 		Root:                false,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
+			Mode:     os.FileMode(0600),
+			Filename: "MultipartUploadSmall",
 			Subfiles: subfiles,
 		},
 		Reader:      reader,
@@ -568,6 +569,8 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	}
 }
 
+// testMultipartUploadLarge tests multipart upload for large files, large files
+// are files which are larger than one sector, and thus need a fanout streamer.
 func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	var subfiles []modules.SubfileMetadata
 	var offset uint64
@@ -582,11 +585,11 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfiles = append(subfiles, addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", "0600", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset))
 
 	// add a large nested file
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
-	subfiles = append(subfiles, addMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", "0640", &offset))
+	subfiles = append(subfiles, addMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset))
 
 	writer.Close()
 	allData := body.Bytes()
@@ -604,6 +607,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		Root:                false,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
+			Filename: "MultipartUploadLarge",
 			Subfiles: subfiles,
 		},
 		Reader:      reader,
@@ -683,15 +687,10 @@ func createFormFileHeaders(fieldname, filename string, headers map[string]string
 // addMultipartField is a helper function to add a file to the multipart form-
 // data. Note that the given data will be treated as binary data, and the multi
 // part 's ContentType header will be set accordingly.
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, filemode string, offset *uint64) modules.SubfileMetadata {
-	h := map[string]string{"mode": filemode}
+func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SubfileMetadata {
+	h := map[string]string{"mode": fmt.Sprintf("%o", filemode)}
 	partHeader := createFormFileHeaders(filekey, filename, h)
 	part, err := w.CreatePart(partHeader)
-	if err != nil {
-		panic(err)
-	}
-
-	fmi, err := strconv.Atoi(filemode)
 	if err != nil {
 		panic(err)
 	}
@@ -700,7 +699,7 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename, f
 	metadata := modules.SubfileMetadata{
 		Filename:    filename,
 		ContentType: "application/octet-stream",
-		Mode:        os.FileMode(fmi),
+		Mode:        os.FileMode(filemode),
 		Len:         uint64(len(filedata)),
 	}
 
