@@ -94,10 +94,11 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	}
 
 	ps := i.staticState
-	sectorData, readData, err := ps.sectors.readSector(ps.host, offset, length, sectorRoot)
+	sectorData, err := ps.sectors.readSector(ps.host, sectorRoot)
 	if err != nil {
 		return errOutput(err)
 	}
+	readData := sectorData[offset : offset+length]
 
 	// Construct the Merkle proof, if requested.
 	var proof []crypto.Hash

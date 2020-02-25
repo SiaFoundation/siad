@@ -81,9 +81,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
 			priceTable:  pt,
-			sectors: sectors{
-				merkleRoots: so.SectorRoots(),
-			},
+			sectors:     newSectors(so.SectorRoots()),
 		},
 		staticBudget: budget,
 		staticData:   openProgramData(data, programDataLen),
@@ -196,7 +194,7 @@ func (p *Program) managedFinalize() error {
 	}
 	// Commit the changes to the storage obligation.
 	s := p.staticProgramState.sectors
-	err = p.so.Update(s.merkleRoots, s.sectorsRemoved, s.sectorsGained, s.gainedSectorData)
+	err = p.so.Update(s.merkleRoots, s.sectorsRemoved, s.sectorsGained)
 	if err != nil {
 		return err
 	}
