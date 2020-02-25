@@ -257,6 +257,14 @@ func (c *Client) RenterCancelDownloadPost(id modules.DownloadID) (err error) {
 	return
 }
 
+// RenterFileDeleteRootPost uses the /renter/delete endpoint to delete a file.
+// It passes the `root=true` flag to indicate an absolute path.
+func (c *Client) RenterFileDeleteRootPost(siaPath modules.SiaPath) (err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.post(fmt.Sprintf("/renter/delete/%s?root=true", sp), "", nil)
+	return
+}
+
 // RenterFileDeletePost uses the /renter/delete endpoint to delete a file.
 func (c *Client) RenterFileDeletePost(siaPath modules.SiaPath) (err error) {
 	sp := escapeSiaPath(siaPath)
@@ -414,6 +422,7 @@ func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, 
 }
 
 // RenterFileRootGet uses the /renter/file/:siapath endpoint to query a file.
+// It passes the `root=true` flag to indicate an absolute path.
 func (c *Client) RenterFileRootGet(siaPath modules.SiaPath) (rf api.RenterFile, err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.get("/renter/file/"+sp+"?root=true", &rf)
@@ -614,8 +623,16 @@ func (c *Client) RenterDirCreateWithModePost(siaPath modules.SiaPath, mode os.Fi
 	return
 }
 
-// RenterDirDeletePost uses the /renter/dir/ endpoint to delete a directory for the
-// renter
+// RenterDirDeleteRootPost uses the /renter/dir/ endpoint to delete a directory
+// for the renter. It passes the `root=true` flag to indicate an absolute path.
+func (c *Client) RenterDirDeleteRootPost(siaPath modules.SiaPath) (err error) {
+	sp := escapeSiaPath(siaPath)
+	err = c.post(fmt.Sprintf("/renter/dir/%s?root=true", sp), "action=delete", nil)
+	return
+}
+
+// RenterDirDeletePost uses the /renter/dir/ endpoint to delete a directory
+// for the renter
 func (c *Client) RenterDirDeletePost(siaPath modules.SiaPath) (err error) {
 	sp := escapeSiaPath(siaPath)
 	err = c.post(fmt.Sprintf("/renter/dir/%s", sp), "action=delete", nil)
