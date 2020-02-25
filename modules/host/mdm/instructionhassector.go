@@ -52,31 +52,32 @@ func (p *Program) staticDecodeHasSectorInstruction(instruction modules.Instructi
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionHasSector) Cost() (types.Currency, error) {
-	return HasSectorCost(i.staticState.priceTable), nil
+func (i *instructionHasSector) Cost() (types.Currency, types.Currency, error) {
+	cost, refund := HasSectorCost(i.staticState.priceTable)
+	return cost, refund, nil
 }
 
 // Execute executes the 'HasSector' instruction.
-func (i *instructionHasSector) Execute(prevOutput Output) Output {
+func (i *instructionHasSector) Execute(prevOutput output) output {
 	// Fetch the operands.
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	// Fetch the requested information
 	hasSector, err := i.staticState.host.HasSector(sectorRoot)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	// Return the output.
-	output := []byte{0}
+	out := []byte{0}
 	if hasSector {
-		output[0] = 1
+		out[0] = 1
 	}
-	return Output{
+	return output{
 		NewSize:       prevOutput.NewSize,       // size stays the same
 		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
-		Output:        output,
+		Output:        out,
 	}
 }
 
