@@ -45,7 +45,9 @@ func TestInstructionHasSector(t *testing.T) {
 	so.sectorRoots = make([]crypto.Hash, 1) // initial contract has 1 sector
 	cost, refund := HasSectorCost(pt)
 	usedMemory := HasSectorMemory()
-	cost = cost.Add(MemoryCost(pt, usedMemory, TimeHasSector+TimeCommit))
+	memoryCost := MemoryCost(pt, usedMemory, TimeAppend+TimeCommit)
+	initCost := InitCost(pt, dataLen)
+	cost = cost.Add(memoryCost).Add(initCost)
 	fastrand.Read(so.sectorRoots[0][:]) // random initial merkle root
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
@@ -70,7 +72,7 @@ func TestInstructionHasSector(t *testing.T) {
 		if !bytes.Equal(output.Output, []byte{1}) {
 			t.Fatalf("expected returned value to be 1 for 'true' but was %v", output.Output)
 		}
-		if !output.ExecutionCost.Equals(cost) {
+		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {

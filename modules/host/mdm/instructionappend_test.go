@@ -37,7 +37,9 @@ func TestInstructionAppend(t *testing.T) {
 	pt := newTestPriceTable()
 	cost, refund := AppendCost(pt)
 	usedMemory := AppendMemory()
-	cost = cost.Add(MemoryCost(pt, usedMemory, TimeAppend+TimeCommit))
+	memoryCost := MemoryCost(pt, usedMemory, TimeAppend+TimeCommit)
+	initCost := InitCost(pt, dataLen)
+	cost = cost.Add(memoryCost).Add(initCost)
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +62,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost) {
+		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
@@ -124,7 +126,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost) {
+		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {

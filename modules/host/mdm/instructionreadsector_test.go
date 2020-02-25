@@ -46,10 +46,12 @@ func TestInstructionReadSector(t *testing.T) {
 	}
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	programCost := InitCost(pt, dataLen).Add(ReadCost(pt, readLen)) // use the cost of the program as the budget
+	cost, refund := ReadCost(pt, readLen)
 	usedMemory := ReadMemory()
-	programCost = programCost.Add(MemoryCost(pt, usedMemory, TimeReadSector+TimeCommit))
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, so, dataLen, r)
+	memoryCost := MemoryCost(pt, usedMemory, TimeReadSector+TimeCommit)
+	initCost := InitCost(pt, dataLen)
+	cost = cost.Add(memoryCost).Add(initCost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +74,12 @@ func TestInstructionReadSector(t *testing.T) {
 		if uint64(len(output.Output)) != modules.SectorSize {
 			t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(output.Output))
 		}
+		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.PotentialRefund.Equals(refund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
+		}
 		sectorData = output.Output
 		numOutputs++
 	}
@@ -87,8 +95,12 @@ func TestInstructionReadSector(t *testing.T) {
 	length := offset
 	instructions, r, dataLen = newReadSectorProgram(length, offset, crypto.Hash{})
 	// Execute it.
-	programCost = InitCost(pt, dataLen).Add(ReadCost(pt, length)) // use the cost of the program as the budget
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, programCost, so, dataLen, r)
+	cost, refund = ReadCost(pt, length)
+	usedMemory = ReadMemory()
+	memoryCost = MemoryCost(pt, usedMemory, TimeReadSector+TimeCommit)
+	initCost = InitCost(pt, dataLen)
+	cost = cost.Add(memoryCost).Add(initCost)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +124,12 @@ func TestInstructionReadSector(t *testing.T) {
 		}
 		if !bytes.Equal(output.Output, sectorData[modules.SectorSize/2:]) {
 			t.Fatal("output should match the second half of the sector data")
+		}
+		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.PotentialRefund.Equals(refund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
 		}
 		numOutputs++
 	}

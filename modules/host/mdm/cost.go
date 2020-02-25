@@ -50,8 +50,10 @@ func HasSectorCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
 
 // ReadCost is the cost of executing a 'Read' instruction. It is defined as:
 // 'readBaseCost' + 'readLengthCost' * `readLength`
-func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {
-	return pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
+func ReadCost(pt modules.RPCPriceTable, readLength uint64) (types.Currency, types.Currency) {
+	cost := pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
+	refund := types.ZeroCurrency // no refund
+	return cost, refund
 }
 
 // WriteCost is the cost of executing a 'Write' instruction of a certain length.

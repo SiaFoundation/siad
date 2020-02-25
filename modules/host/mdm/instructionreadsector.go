@@ -122,7 +122,8 @@ func (i *instructionReadSector) Cost() (types.Currency, types.Currency, error) {
 	if err != nil {
 		return types.ZeroCurrency, types.ZeroCurrency, err
 	}
-	return ReadCost(i.staticState.priceTable, length), types.ZeroCurrency, nil
+	cost, refund := ReadCost(i.staticState.priceTable, length)
+	return cost, refund, nil
 }
 
 // Memory returns the memory allocated by the 'ReadSector' instruction beyond
