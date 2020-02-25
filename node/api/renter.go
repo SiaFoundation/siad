@@ -2119,7 +2119,7 @@ func skyfileMetadataAndReaderFromRequest(req *http.Request) (*modules.SkyfileMet
 // multipart form request.
 func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.SkyfileMetadata, io.Reader, error) {
 	// Parse the multipart form
-	err := req.ParseMultipartForm(1 << 30)
+	err := req.ParseMultipartForm(32 << 20) // 32MB max memory
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed parsing multipart form")
 	}
