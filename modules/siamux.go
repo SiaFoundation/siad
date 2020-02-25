@@ -16,6 +16,9 @@ import (
 const (
 	// logfile is the filename of the siamux log file
 	logfile = "siamux.log"
+
+	// SiaMuxDir is the name of the siamux dir
+	SiaMuxDir = "siamux"
 )
 
 // NewSiaMux returns a new SiaMux object
