@@ -9,6 +9,14 @@ Version History
 ---------------
 
 Latest:
+### v1.4.4
+**Key Updates**
+ - Add a delay when modifying large contracts on hosts to prevent hosts from
+   becoming unresponsive due to massive disk i/o
+
+**Bugs Fixed**
+**Other**
+
 ### v1.4.3
 **Key Updates**
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
