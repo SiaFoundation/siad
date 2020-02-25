@@ -17,6 +17,8 @@ Latest:
  - Add SIA_DATA_DIR environment variable for setting the data directory for
    siad/siac
  - Made build process deterministic. Moved related scripts into `release-scripts`
+ - Add subfile support to Skylinks. These subfiles can be downloaded separately
+   and enable uploading an entire directory to Skynet.
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race

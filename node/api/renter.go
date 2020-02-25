@@ -1725,35 +1725,10 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
-// parseSubfileFilename will parse the given skylink and return the filename, if
-// any. If present, the filename will be appended to the skylink and can
-// potentially contain slashes. We consider everything following the first '/'
-// to be the filename.
-func parseSubfileFilename(skylinkStr string) string {
-	var filename string
-
-	// Ignore potential query string parameters
-	splits := strings.SplitN(skylinkStr, "?", 2)
-	base := splits[0]
-
-	// If base contains a "/" we consider everything after that slash to be the
-	// filename.
-	splits = strings.Split(base, "/")
-	if len(splits) > 1 {
-		filename = strings.Join(splits[1:], "/")
-	}
-	return filename
-}
-
-// cleanSkylinkString cleans up a skylink string by trimming a leading slash.
-func cleanSkylinkString(s string) string {
-	return strings.TrimPrefix(s, "/")
-}
-
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	strLink := cleanSkylinkString(ps.ByName("skylink"))
+	strLink := ps.ByName("skylink")
 	var skylink modules.Skylink
 
 	err := skylink.LoadString(strLink)
@@ -1780,51 +1755,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// If the skylink contains a filename, try to download the requested subfile
-	filename := parseSubfileFilename(strLink)
-	if filename != "" {
-		metadata, streamer, err := api.renter.DownloadSubfile(skylink, filename)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
-			return
-		}
-
-		// Encode the metadata
-		encMetadata, err := json.Marshal(metadata)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-			return
-		}
-
-		// Only set the Content-Type header when the metadata defines one, if we
-		// were to set the header to an empty string, it would prevent the http
-		// library from sniffing the file's content type.
-		if metadata.ContentType != "" {
-			w.Header().Set("Content-Type", metadata.ContentType)
-		}
-
-		// Set Content-Disposition header, if 'attachment' is true, set the
-		// disposition-type to attachment, otherwise we inline it.
-		var cdh string
-		if attachment {
-			cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
-		} else {
-			cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
-		}
-		w.Header().Set("Content-Disposition", cdh)
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-
-		http.ServeContent(w, req, filename, time.Time{}, streamer)
-		return
-	}
-
 	// Download the entire file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	filename = metadata.Filename
+	filename := metadata.Filename
 
 	// Encode the metadata
 	encMetadata, err := json.Marshal(metadata)
@@ -1845,6 +1782,85 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 
 	http.ServeContent(w, req, filename, time.Time{}, streamer)
+}
+
+// skynetSkylinkSubfileHandlerGET accepts a skylink and a filename as input and
+// will stream the subfile data from the skylink out of the response body as
+// output.
+func (api *API) skynetSkylinkSubfileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink modules.Skylink
+
+	// Parse skylink
+	err := skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse subfile
+	strSubfile := ps.ByName("subfile")
+	strSubfile = strings.TrimPrefix(strSubfile, "/")
+	splits := strings.SplitN(strSubfile, "?", 2)
+	subfile := splits[0]
+	if subfile == "" {
+		WriteError(w, Error{fmt.Sprintf("error parsing subfile: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the querystring.
+	var attachment bool
+	attachmentStr := queryForm.Get("attachment")
+	if attachmentStr != "" {
+		attachment, err = strconv.ParseBool(attachmentStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'attachment' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Try to download the requested subfile
+	metadata, streamer, err := api.renter.DownloadSubfile(skylink, subfile)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	filename := metadata.Filename
+
+	// Encode the metadata
+	encMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	// Only set the Content-Type header when the metadata defines one, if we
+	// were to set the header to an empty string, it would prevent the http
+	// library from sniffing the file's content type.
+	if metadata.ContentType != "" {
+		w.Header().Set("Content-Type", metadata.ContentType)
+	}
+
+	// Set Content-Disposition header, if 'attachment' is true, set the
+	// disposition-type to attachment, otherwise we inline it.
+	var cdh string
+	if attachment {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
+	} else {
+		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
+	}
+	w.Header().Set("Content-Disposition", cdh)
+	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+
+	http.ServeContent(w, req, filename, time.Time{}, streamer)
+	return
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -2102,14 +2118,8 @@ func skyfileMetadataAndReaderFromRequest(req *http.Request) (*modules.SkyfileMet
 // returns a skyfile metadata object and reader in the case the request is a
 // multipart form request.
 func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.SkyfileMetadata, io.Reader, error) {
-	// Partially build up the metadata (filename & mode)
-	sfm, _, err := skyfileMetadataAndReaderFromRequest(req)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	// Parse the multipart form
-	err = req.ParseMultipartForm(1 << 30)
+	err := req.ParseMultipartForm(1 << 30)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed parsing multipart form")
 	}
@@ -2140,6 +2150,12 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 			Filename: mpfHeaders[0].Filename,
 			Mode:     mode,
 		}, file, nil
+	}
+
+	// Partially build up the metadata (filename & mode)
+	sfm, _, err := skyfileMetadataAndReaderFromRequest(req)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// If there are multiple, treat the entire upload as one with all separate
