@@ -258,8 +258,8 @@ type (
 	}
 )
 
-// Returns the boolean value of the "root" parameter of req, if it exists.
-// Returns an error if "root" exists but is not parsable as bool.
+// Returns the boolean value of the 'root' parameter of req or an error if
+// it exists but is not parsable as bool.
 func isCalledWithRootFlag(req *http.Request) (bool, error) {
 	rootStr := req.FormValue("root")
 	if rootStr == "" {
