@@ -2122,20 +2122,20 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 		return nil, nil, errors.AddContext(err, "failed parsing multipart form")
 	}
 
-	// Check if the request form is supposed to contain an entire directory.
-	// Should it be the case, the caller will have signaled this using the
-	// "directory" form field
-	dirfield := req.PostFormValue("directory")
-	dirupload, _ := strconv.ParseBool(dirfield)
+	// Parse out all of the multipart file headers
+	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
+	if len(mpfHeaders) == 0 {
+		return nil, nil, errors.AddContext(err, "could not find multipart file")
+	}
 
-	// In the simple case, we are uploading a single file
-	if !dirupload {
-		file, header, err := req.FormFile("file")
+	// If there is only one fileheader, treat it as a single file upload
+	if len(mpfHeaders) == 1 {
+		file, err := mpfHeaders[0].Open()
 		if err != nil {
-			return nil, nil, errors.AddContext(err, "could not find multipart file")
+			return nil, nil, errors.AddContext(err, "could not open multipart file")
 		}
 
-		modeStr := header.Header.Get("Mode")
+		modeStr := mpfHeaders[0].Header.Get("Mode")
 		var mode os.FileMode
 		if modeStr != "" {
 			_, err := fmt.Sscanf(modeStr, "%o", &mode)
@@ -2145,22 +2145,17 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 		}
 
 		return &modules.SkyfileMetadata{
-			Filename: header.Filename,
-			Mode:     os.FileMode(mode),
+			Filename: mpfHeaders[0].Filename,
+			Mode:     mode,
 		}, file, nil
 	}
 
-	// In case we are uploading an entire directory, parse out all of the files
-	// and build the subfile metadata objects
-	fhs := req.MultipartForm.File["files[]"]
-	if len(fhs) == 0 {
-		return nil, nil, errors.AddContext(err, "could not find files")
-	}
-
-	sfm.Subfiles = make([]modules.SubfileMetadata, len(fhs))
-	readers := make([]io.Reader, len(fhs))
+	// If there are multiple, treat the entire upload as one with all separate
+	// files being subfiles. This is used for uploading a directory to Skynet.
+	sfm.Subfiles = make([]modules.SubfileMetadata, len(mpfHeaders))
+	readers := make([]io.Reader, len(mpfHeaders))
 	var offset uint64
-	for i, fh := range fhs {
+	for i, fh := range mpfHeaders {
 		f, err := fh.Open()
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "could not open multipart file")
@@ -2181,11 +2176,11 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 		contentType := fh.Header.Get("Content-Type")
 
 		sfm.Subfiles[i] = modules.SubfileMetadata{
+			Mode:        mode,
 			Filename:    fh.Filename,
 			ContentType: contentType,
 			Offset:      offset,
 			Len:         uint64(fh.Size),
-			Mode:        os.FileMode(mode),
 		}
 		offset += sfm.Subfiles[i].Len
 	}

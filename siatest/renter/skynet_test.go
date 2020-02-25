@@ -500,10 +500,9 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	var subfiles []modules.SubfileMetadata
 	var offset uint64
 
-	// create a folder with multiple files.
+	// create a multipart upload that uploads several files.
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	addMultipartField(writer, "directory", "true")
 
 	// add a file at root level
 	data := []byte("File1Contents")
@@ -575,13 +574,9 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	var subfiles []modules.SubfileMetadata
 	var offset uint64
 
-	// create a folder with multiple files.
+	// create a multipart upload that uploads several files.
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-
-	// Upload another skyfile, this time ensure that the skyfile is more than
-	// one sector.
-	addMultipartField(writer, "directory", "true")
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
@@ -709,17 +704,4 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	}
 
 	return metadata
-}
-
-// addMultipartField is a helper function to add a field to the multipart form-
-// data.
-func addMultipartField(w *multipart.Writer, name, value string) {
-	part, err := w.CreateFormField(name)
-	if err != nil {
-		panic(err)
-	}
-	_, err = part.Write([]byte(value))
-	if err != nil {
-		panic(err)
-	}
 }

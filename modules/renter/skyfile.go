@@ -509,8 +509,8 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 	return lfm, fs, nil
 }
 
-// DownloadSkylink will take a link and turn it into the metadata and data of a
-// download.
+// DownloadSubfile will take a skylink and filename, and turn it into the
+// metadata and data of a download for the subfile with given filename.
 func (r *Renter) DownloadSubfile(link modules.Skylink, filename string) (modules.SubfileMetadata, modules.Streamer, error) {
 	// Fetch the leading chunk.
 	baseSector, offset, err := r.DownloadLeadingChunk(link)
