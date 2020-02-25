@@ -1725,18 +1725,18 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
-// parseFilename will parse the given skylink and return the filename if any.
-// The filename will be appended to the skylink and can contain slashes. If we
-// the skylink contains a slash, we treat everything after the first slash and
-// before the query string parameters to be the filename.
-func parseFilename(skylinkStr string) string {
+// parseSubfileFilename will parse the given skylink and return the filename, if
+// any. If present, the filename will be appended to the skylink and can
+// potentially contain slashes. We consider everything following the first '/'
+// to be the filename.
+func parseSubfileFilename(skylinkStr string) string {
 	var filename string
 
-	// Ignore everything after an ampersand
-	splits := strings.SplitN(skylinkStr, "&", 2)
+	// Ignore potential query string parameters
+	splits := strings.SplitN(skylinkStr, "?", 2)
 	base := splits[0]
 
-	// If base contains a "/" we consider everythin after that slash to be the
+	// If base contains a "/" we consider everything after that slash to be the
 	// filename.
 	splits = strings.Split(base, "/")
 	if len(splits) > 1 {
@@ -1781,7 +1781,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// If the skylink contains a filename, try to download the requested subfile
-	filename := parseFilename(strLink)
+	filename := parseSubfileFilename(strLink)
 	if filename != "" {
 		metadata, streamer, err := api.renter.DownloadSubfile(skylink, filename)
 		if err != nil {
