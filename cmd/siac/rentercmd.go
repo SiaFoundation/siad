@@ -201,7 +201,7 @@ allowance of 500SC, 12w period, 50 hosts, and 4w renew window will be used.`,
 	renterRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
 		Short: "set maxdownloadspeed and maxuploadspeed",
-		Long: `Set the maxdownloadspeed and maxuploadspeed in 
+		Long: `Set the maxdownloadspeed and maxuploadspeed in
 Bytes per second: B/s, KB/s, MB/s, GB/s, TB/s
 or
 Bits per second: Bps, Kbps, Mbps, Gbps, Tbps
@@ -1578,7 +1578,12 @@ func renterfilesdeletecmd(path string) {
 		die("Couldn't parse SiaPath:", err)
 	}
 	// Try to delete file.
-	errFile := httpClient.RenterFileDeletePost(siaPath)
+	var errFile error
+	if renterDeleteRoot {
+		errFile = httpClient.RenterFileDeleteRootPost(siaPath)
+	} else {
+		errFile = httpClient.RenterFileDeletePost(siaPath)
+	}
 	if errFile == nil {
 		fmt.Printf("Deleted file '%v'\n", path)
 		return
@@ -1586,7 +1591,12 @@ func renterfilesdeletecmd(path string) {
 		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 	}
 	// Try to delete folder.
-	errDir := httpClient.RenterDirDeletePost(siaPath)
+	var errDir error
+	if renterDeleteRoot {
+		errDir = httpClient.RenterDirDeleteRootPost(siaPath)
+	} else {
+		errDir = httpClient.RenterDirDeletePost(siaPath)
+	}
 	if errDir == nil {
 		fmt.Printf("Deleted directory '%v'\n", path)
 		return

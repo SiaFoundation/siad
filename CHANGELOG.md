@@ -12,6 +12,30 @@ Latest:
 ### v1.4.4
 **Key Updates**
  - Add ability to blacklist skylinks by merkleroot
+ - Add `--root` parameter to `siac renter delete` that allows passing absolute
+   instead of relative file paths.
+ - 
+ -
+ -
+ -
+ -
+ -
+
+**Bugs Fixed**
+ - 
+ -
+ -
+ -
+ -
+ -
+
+**Other**
+ - 
+ -
+ -
+ -
+ -
+ -
 
 ### v1.4.3
 **Key Updates**
