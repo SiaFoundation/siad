@@ -193,12 +193,12 @@ func TestSkylink(t *testing.T) {
 
 	// Try giving a skylink extra params and loading that.
 	slStr := sl.String()
-	params := slStr + "&fdsafdsafdsa"
+	params := slStr + "?fdsafdsafdsa"
 	err = sl.LoadString(params)
 	if err != nil {
 		t.Error("should be no issues loading a skylink with params")
 	}
-	// Add more ampersands
+	// Add more params, separated by ampersands, per URL standards
 	params = params + "&fffffdsafdsafdsa"
 	err = sl.LoadString(params)
 	if err != nil {
