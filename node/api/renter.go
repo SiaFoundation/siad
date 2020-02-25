@@ -1798,6 +1798,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	w.Header().Set("Content-Disposition", cdh)
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, filename, time.Time{}, streamer)
 }
@@ -1876,6 +1877,7 @@ func (api *API) skynetSkylinkSubfileHandlerGET(w http.ResponseWriter, req *http.
 	}
 	w.Header().Set("Content-Disposition", cdh)
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, filename, time.Time{}, streamer)
 	return
