@@ -20,14 +20,22 @@ const programInitTime = 10
 // becomes larger than the budget of the program, ErrInsufficientBudget is
 // returned.
 func (p *Program) addCost(cost types.Currency) error {
-	p.executionCost = p.executionCost.Add(cost)
-	if p.staticBudget.Cmp(p.executionCost) < 0 {
+	newExecutionCost := p.executionCost.Add(cost)
+	if p.staticBudget.Cmp(newExecutionCost) < 0 {
 		return ErrInsufficientBudget
 	}
+	p.executionCost = newExecutionCost
 	return nil
 }
 
-// InitCost is the cost of instantiate the MDM. It is defined as:
+// AppendCost is the cost of executing an 'Append' instruction.
+func AppendCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
+	writeCost := pt.WriteLengthCost.Mul64(modules.SectorSize).Add(pt.WriteBaseCost)
+	storeCost := pt.WriteStoreCost.Mul64(modules.SectorSize) // potential refund
+	return writeCost.Add(storeCost), storeCost
+}
+
+// InitCost is the cost of instantiatine the MDM. It is defined as:
 // 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time
 func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(programLen).Mul64(programInitTime).Add(pt.InitBaseCost)
@@ -44,13 +52,6 @@ func HasSectorCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
 // 'readBaseCost' + 'readLengthCost' * `readLength`
 func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {
 	return pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
-}
-
-// AppendCost is the cost of executing an 'Append' instruction.
-func AppendCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
-	writeCost := pt.WriteLengthCost.Mul64(modules.SectorSize).Add(pt.WriteBaseCost)
-	storeCost := pt.WriteStoreCost.Mul64(modules.SectorSize) // potential refund
-	return writeCost.Add(storeCost), storeCost
 }
 
 // WriteCost is the cost of executing a 'Write' instruction of a certain length.

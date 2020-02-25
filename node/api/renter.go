@@ -258,6 +258,20 @@ type (
 	}
 )
 
+// Returns the boolean value of the "root" parameter of req, if it exists.
+// Writes an error to w if "root" exists but is not parsable as bool.
+func isCalledWithRootFlag(req *http.Request) (bool, error) {
+	rootStr := req.FormValue("root")
+	if rootStr == "" {
+		return false, nil
+	}
+	root, err := strconv.ParseBool(rootStr)
+	if err != nil {
+		return false, errors.New("unable to parse 'root' arg: " + err.Error())
+	}
+	return root, nil
+}
+
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
 // prefix by the user's home directory.
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
@@ -1359,20 +1373,13 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 
-	// Determine whether the user is requesting a user siapath, or a root
-	// siapath.
-	var root bool
-	rootStr := req.FormValue("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
-			return
-		}
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
-
-	// Rebase the users input to the user folder if the user is requesting a
-	// user siapath.
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
 	if !root {
 		siaPath, err = rebaseInputSiaPath(siaPath)
 		if err != nil {
@@ -1556,11 +1563,22 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
+
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	err = api.renter.DeleteFile(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -2264,14 +2282,10 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	var err error
 
 	// Check whether the user is requesting the directory from the root path.
-	var root bool
-	rootStr := req.FormValue("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
-			return
-		}
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	str := ps.ByName("siapath")
@@ -2328,8 +2342,8 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	return
 }
 
-// renterDirHandlerPOST handles the API call to create, delete and rename a
-// directory
+// renterDirHandlerPOST handles POST requests to /renter/dir/:siapath?action=<>
+// in order to create, delete, and rename a directory
 func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse action
 	action := req.FormValue("action")
@@ -2352,11 +2366,22 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
+
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	if action == "create" {
 		// Call the renter to create directory
 		err := api.renter.CreateDir(siaPath, mode)
