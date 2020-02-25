@@ -2,14 +2,20 @@ package renter
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"mime/multipart"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -460,4 +466,136 @@ func TestSkynet(t *testing.T) {
 	// Maybe this can be accomplished by tagging a flag to the API which has the
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
+}
+
+// TestSkynetDisableForce verifies the behavior of force and the header that
+// allows disabling forcefully uploading a Skyfile
+func TestSkynetDisableForce(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// Create some data to upload.
+	data := fastrand.Bytes(100)
+	reader := bytes.NewReader(data)
+
+	// Create the sia path
+	uploadSiaPath, err := modules.NewSiaPath("testDisableForce")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify normal force behaviour
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testDisableForce",
+			Mode:     os.FileMode(0640), // Intentionally does not match any defaults.
+		},
+		Reader: reader,
+	}
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloaded, _, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(downloaded, data) {
+		t.Fatal("Unexpected data returend for skylink")
+	}
+
+	// Upload data to that same siapath again, without setting the force
+	// flag, this should result in failure as there already exists a file at
+	// that specified path.
+	data = fastrand.Bytes(100)
+	sup.Reader = bytes.NewReader(data)
+	_, _, err = r.SkynetSkyfilePost(sup)
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatal(err)
+	}
+
+	// Upload once more, but now use force. It should allow us to
+	// overwrite the file at the existing path
+	sup.Force = true
+	sup.Reader = bytes.NewReader(data)
+	skylink, _, err = r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloaded, _, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(downloaded, data) {
+		t.Fatal("Unexpected data returend for skylink")
+	}
+
+	// Upload using the force flag again, however now we set the
+	// Skynet-Disable-Force to false, which should prevent us from uploading.
+	// Because we have to pass in a custom header, we have to setup the request
+	// ourselves and can not use the client.
+	req, err := skynetSkyfilePostRequestWithHeaders(r, sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Skynet-Disable-Force", "true")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	res, err := http.DefaultClient.Do(req)
+	if res.StatusCode != 400 {
+		t.Log(res)
+		t.Fatal("Expected HTTP Bad Request")
+	}
+	var apiErr api.Error
+	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(apiErr.Error(), "already exists") {
+		t.Log(res)
+		t.Fatal(apiErr)
+	}
+}
+
+// skynetSkyfilePostRequestWithHeaders is a helper function that turns the given
+// SkyfileUploadParameters into a SkynetSkyfilePost request, allowing additional
+// headers to be set on the request object
+func skynetSkyfilePostRequestWithHeaders(r *siatest.TestNode, sup modules.SkyfileUploadParameters) (*http.Request, error) {
+	values := url.Values{}
+	values.Set("filename", sup.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", sup.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", sup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", sup.BaseChunkRedundancy)
+	values.Set("basechunkredundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", sup.Root)
+	values.Set("root", rootStr)
+
+	resource := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), values.Encode())
+	return r.NewRequest("POST", resource, sup.Reader)
 }

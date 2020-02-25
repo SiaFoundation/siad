@@ -1825,13 +1825,27 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// Check whether force upload is allowed. Skynet portals might disallow
+	// passing the force flag, if they want to they can set overrule the force
+	// flag by passing in the 'Skynet-Disable-Force' header
+	allowForce := true
+	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	if strDisableForce != "" {
+		disableForce, err := strconv.ParseBool(strDisableForce)
+		if err == nil && disableForce {
+			allowForce = false
+		}
+	}
+
 	// Check whether existing file should be overwritten
 	force := false
-	if f := queryForm.Get("force"); f != "" {
-		force, err = strconv.ParseBool(f)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
+	if allowForce {
+		if f := queryForm.Get("force"); f != "" {
+			force, err = strconv.ParseBool(f)
+			if err != nil {
+				WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+				return
+			}
 		}
 	}
 
@@ -1900,13 +1914,27 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Check whether force upload is allowed. Skynet portals might disallow
+	// passing the force flag, if they want to they can set overrule the force
+	// flag by passing in the 'Skynet-Disable-Force' header
+	allowForce := true
+	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	if strDisableForce != "" {
+		disableForce, err := strconv.ParseBool(strDisableForce)
+		if err == nil && disableForce {
+			allowForce = false
+		}
+	}
+
 	// Check whether existing file should be overwritten
 	force := false
-	if f := queryForm.Get("force"); f != "" {
-		force, err = strconv.ParseBool(f)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
+	if allowForce {
+		if f := queryForm.Get("force"); f != "" {
+			force, err = strconv.ParseBool(f)
+			if err != nil {
+				WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+				return
+			}
 		}
 	}
 

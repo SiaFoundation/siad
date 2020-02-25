@@ -4205,6 +4205,14 @@ the query string parameter will get priority.
 For more details on setting Content-Disposition:
 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
 
+**Skynet-Disable-Force** | bool  
+This request header allows overruling the behaviour of the `force` parameter
+that can be passed in through the query string parameters. This header is useful
+for Skynet portal operators that would like to have some control over the
+requests that are being passed to siad. To avoid having to parse query string
+parameters and overrule them that way, this header can be set to disable the
+force flag and disallow overwriting the file at the given siapath.
+
 ### JSON Response
 > JSON Response Example
 ```go
