@@ -7,19 +7,27 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash) ([]modules.Instruction, []byte) {
+func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
 	instructions := []modules.Instruction{
 		NewHasSectorInstruction(0),
 	}
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
-	return instructions, data
+
+	// Compute cost and used memory.
+	cost, refund := HasSectorCost(pt)
+	usedMemory := HasSectorMemory()
+	memoryCost := MemoryCost(pt, usedMemory, TimeAppend+TimeCommit)
+	initCost := InitCost(pt, uint64(len(data)))
+	cost = cost.Add(memoryCost).Add(initCost)
+	return instructions, data, cost, refund, usedMemory
 }
 
 // TestInstructionHasSector tests executing a program with a single
@@ -37,19 +45,14 @@ func TestInstructionHasSector(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create a program to check for a sector on the host.
-	instructions, programData := newHasSectorProgram(sectorRoot)
+	pt := newTestPriceTable()
+	instructions, programData, cost, refund, usedMemory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	pt := newTestPriceTable()
 	so := newTestStorageObligation(true)
 	so.sectorRoots = make([]crypto.Hash, 1) // initial contract has 1 sector
-	cost, refund := HasSectorCost(pt)
-	usedMemory := HasSectorMemory()
-	memoryCost := MemoryCost(pt, usedMemory, TimeAppend+TimeCommit)
-	initCost := InitCost(pt, dataLen)
-	cost = cost.Add(memoryCost).Add(initCost)
-	fastrand.Read(so.sectorRoots[0][:]) // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
+	fastrand.Read(so.sectorRoots[0][:])     // random initial merkle root
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
