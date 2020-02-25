@@ -82,12 +82,7 @@ func (i *instructionAppend) Execute(prevOutput Output) Output {
 	// Construct proof if necessary.
 	var proof []crypto.Hash
 	if i.staticMerkleProof {
-		numOldSectors := uint64(len(oldSectors))
-		lr := crypto.ProofRange{
-			Start: numOldSectors,
-			End:   numOldSectors + 1,
-		}
-		proof = crypto.MerkleDiffProof([]crypto.ProofRange{lr}, uint64(len(oldSectors)), nil, oldSectors)
+		proof = crypto.MerkleDiffProof(nil, uint64(len(oldSectors)), nil, oldSectors)
 	}
 
 	return Output{

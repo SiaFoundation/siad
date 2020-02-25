@@ -109,8 +109,11 @@ func TestInstructionAppend(t *testing.T) {
 		if output.NewMerkleRoot != cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}) {
 			t.Fatalf("expected merkle root to be root of appended sector: %v != %v", imr, output.NewMerkleRoot)
 		}
-		if len(output.Proof) != 0 {
+		if len(output.Proof) != 1 {
 			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
+		}
+		if output.Proof[0] != appendDataRoot1 {
+			t.Logf("proof should just be hash %v but was %v", appendDataRoot1, output.Proof[0])
 		}
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
