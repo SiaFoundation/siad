@@ -44,7 +44,8 @@ func TestInstructionHasSector(t *testing.T) {
 	so := newTestStorageObligation(true)
 	so.sectorRoots = make([]crypto.Hash, 1) // initial contract has 1 sector
 	fastrand.Read(so.sectorRoots[0][:])     // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(HasSectorCost(pt)), so, dataLen, bytes.NewReader(programData))
+	cost, _ := HasSectorCost(pt)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
