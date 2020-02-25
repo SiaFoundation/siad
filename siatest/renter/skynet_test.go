@@ -705,3 +705,136 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 
 	return metadata
 }
+
+// TestSkynetNoFilename verifies that posting a Skyfile without providing a
+// filename fails.
+func TestSkynetNoFilename(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	reader := bytes.NewReader(data)
+
+	// Call the upload skyfile client call.
+	uploadSiaPath, err := modules.NewSiaPath("testNoFilename")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "",   // Intentionally leave empty to trigger failure.
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
+
+		Reader: reader,
+	}
+
+	// Try posting the skyfile without providing a filename
+	_, _, err = r.SkynetSkyfilePost(sup)
+	if err == nil || !strings.Contains(err.Error(), "no filename provided") {
+		t.Log("Error:", err)
+		t.Fatal("Expected SkynetSkyfilePost to fail due to lack of a filename")
+	}
+
+	sup.FileMetadata.Filename = "testNoFilename"
+	_, _, err = r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Log("Error:", err)
+		t.Fatal("Expected SkynetSkyfilePost to succeed if filename is provided")
+	}
+
+	// Do the same for a multipart upload
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	data = []byte("File1Contents")
+	nofilename := ""
+	subfile := addMultipartFile(writer, data, "files[]", nofilename, 0600, nil)
+	writer.Close()
+	reader = bytes.NewReader(body.Bytes())
+
+	// Call the upload skyfile client call.
+	uploadSiaPath, err = modules.NewSiaPath("testNoFilenameMultipart")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sup = modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Mode:     os.FileMode(0600),
+			Filename: "MultipartUploadSmall",
+			Subfiles: []modules.SubfileMetadata{subfile},
+		},
+		Reader:      reader,
+		ContentType: writer.FormDataContentType(),
+	}
+
+	// Note: we have to check for a different error message here. This is due to
+	// the fact that the http library uses the filename when parsing the
+	// multipart form request. Not providing a filename, makes it interpret the
+	// file as a form value, which leads to the file not being find, opposed to
+	// erroring on the filename not being set.
+	_, _, err = r.SkynetSkyfileMultiPartPost(sup)
+	if err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
+		t.Log("Error:", err)
+		t.Fatal("Expected SkynetSkyfilePost to fail due to lack of a filename")
+	}
+
+	// recreate the reader
+	body = new(bytes.Buffer)
+	writer = multipart.NewWriter(body)
+
+	subfile = addMultipartFile(writer, []byte("File1Contents"), "files[]", "testNoFilenameMultipart", 0600, nil)
+	writer.Close()
+	reader = bytes.NewReader(body.Bytes())
+
+	supWithFilename := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Mode:     os.FileMode(0600),
+			Filename: "MultipartUploadSmall",
+			Subfiles: []modules.SubfileMetadata{subfile},
+		},
+		Reader:      reader,
+		ContentType: writer.FormDataContentType(),
+	}
+
+	_, _, err = r.SkynetSkyfileMultiPartPost(supWithFilename)
+	if err != nil {
+		t.Log("Error:", err)
+		t.Fatal("Expected SkynetSkyfileMultiPartPost to succeed if filename is provided")
+	}
+}

@@ -2091,14 +2091,6 @@ func skyfileMetadataAndReaderFromRequest(req *http.Request) (*modules.SkyfileMet
 	// Parse the filename from the query params. If there is no filename
 	// provided as a query param, check the content disposition field.
 	filename := queryForm.Get("filename")
-	if filename == "" {
-		cd := req.Header.Get("Content-Disposition")
-		_, params, err := mime.ParseMediaType(cd)
-		// Ignore any errors.
-		if err == nil {
-			filename = params[filename]
-		}
-	}
 
 	return &modules.SkyfileMetadata{
 		Filename: filename,
@@ -2125,7 +2117,7 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 	// Parse out all of the multipart file headers
 	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
 	if len(mpfHeaders) == 0 {
-		return nil, nil, errors.AddContext(err, "could not find multipart file")
+		return nil, nil, errors.New("could not find multipart file")
 	}
 
 	// If there is only one fileheader, treat it as a single file upload
