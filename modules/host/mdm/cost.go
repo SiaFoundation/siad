@@ -42,8 +42,10 @@ func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
 }
 
 // HasSectorCost is the cost of executing a 'HasSector' instruction.
-func HasSectorCost(pt modules.RPCPriceTable) types.Currency {
-	return pt.MemoryTimeCost.Mul64(1 << 20).Mul64(1) // TODO: figure out a better time than 1
+func HasSectorCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
+	cost := pt.MemoryTimeCost.Mul64(1 << 20).Mul64(1) // TODO: figure out a better time than 1
+	refund := types.ZeroCurrency                      // no refund for HasSector instructions
+	return cost, refund
 }
 
 // ReadCost is the cost of executing a 'Read' instruction. It is defined as:
