@@ -22,17 +22,17 @@ type instructionReadSector struct {
 
 // NewReadSectorInstruction creates a modules.Instruction from arguments.
 func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint64, merkleProof bool) modules.Instruction {
-	rsi := modules.Instruction{
+	i := modules.Instruction{
 		Specifier: modules.SpecifierReadSector,
 		Args:      make([]byte, modules.RPCIReadSectorLen),
 	}
-	binary.LittleEndian.PutUint64(rsi.Args[:8], merkleRootOffset)
-	binary.LittleEndian.PutUint64(rsi.Args[8:16], offsetOffset)
-	binary.LittleEndian.PutUint64(rsi.Args[16:24], lengthOffset)
+	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
+	binary.LittleEndian.PutUint64(i.Args[8:16], offsetOffset)
+	binary.LittleEndian.PutUint64(i.Args[16:24], lengthOffset)
 	if merkleProof {
-		rsi.Args[24] = 1
+		i.Args[24] = 1
 	}
-	return rsi
+	return i
 }
 
 // staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the
@@ -65,19 +65,19 @@ func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 }
 
 // Execute executes the 'Read' instruction.
-func (i *instructionReadSector) Execute(previousOutput Output) Output {
+func (i *instructionReadSector) Execute(previousOutput output) output {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	offset, err := i.staticData.Uint64(i.offsetOffset)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	// Validate the request.
 	switch {
@@ -89,13 +89,13 @@ func (i *instructionReadSector) Execute(previousOutput Output) Output {
 		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
 	}
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 
 	// Fetch the requested data.
 	sectorData, err := i.staticState.host.ReadSector(sectorRoot)
 	if err != nil {
-		return outputFromError(err)
+		return errOutput(err)
 	}
 	data := sectorData[offset : offset+length]
 
@@ -108,7 +108,7 @@ func (i *instructionReadSector) Execute(previousOutput Output) Output {
 	}
 
 	// Return the output.
-	return Output{
+	return output{
 		NewSize:       previousOutput.NewSize,       // size stays the same
 		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
 		Output:        data,
@@ -117,12 +117,12 @@ func (i *instructionReadSector) Execute(previousOutput Output) Output {
 }
 
 // Cost returns the cost of a ReadSector instruction.
-func (i *instructionReadSector) Cost() (types.Currency, error) {
+func (i *instructionReadSector) Cost() (types.Currency, types.Currency, error) {
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
-		return types.ZeroCurrency, err
+		return types.ZeroCurrency, types.ZeroCurrency, err
 	}
-	return ReadCost(i.staticState.priceTable, length), nil
+	return ReadCost(i.staticState.priceTable, length), types.ZeroCurrency, nil
 }
 
 // ReadOnly for the 'ReadSector' instruction is 'true'.

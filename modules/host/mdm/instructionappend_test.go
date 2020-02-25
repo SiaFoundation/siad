@@ -35,7 +35,8 @@ func TestInstructionAppend(t *testing.T) {
 	// Execute it.
 	so := newTestStorageObligation(true)
 	pt := newTestPriceTable()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(WriteCost(pt, modules.SectorSize)), so, dataLen, bytes.NewReader(programData))
+	cost, refund := AppendCost(pt)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +57,12 @@ func TestInstructionAppend(t *testing.T) {
 		}
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
+		}
+		if output.ExecutionCost.Equals(cost) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.PotentialRefund.Equals(refund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
 		}
 		numOutputs++
 	}
@@ -94,7 +101,7 @@ func TestInstructionAppend(t *testing.T) {
 	dataLen = uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(WriteCost(pt, modules.SectorSize)), so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +121,12 @@ func TestInstructionAppend(t *testing.T) {
 		}
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
+		}
+		if output.ExecutionCost.Equals(cost) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.PotentialRefund.Equals(refund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
 		}
 		numOutputs++
 	}
