@@ -47,6 +47,13 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 	return h.blockHeight
 }
 
+// HasSector indicates whether the host stores a sector with a given root or
+// not.
+func (h *TestHost) HasSector(sectorRoot crypto.Hash) (bool, error) {
+	_, exists := h.sectors[sectorRoot]
+	return exists, nil
+}
+
 // ReadSector implements the Host interface by returning a random sector for
 // each root. Calling ReadSector multiple times on the same root will result in
 // the same data.
@@ -112,6 +119,8 @@ func newTestPriceTable() modules.RPCPriceTable {
 		MemoryTimeCost:       types.SiacoinPrecision,
 		ReadBaseCost:         types.SiacoinPrecision,
 		ReadLengthCost:       types.SiacoinPrecision,
+		WriteBaseCost:        types.SiacoinPrecision,
+		WriteLengthCost:      types.SiacoinPrecision,
 	}
 }
 

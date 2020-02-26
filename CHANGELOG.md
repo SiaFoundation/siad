@@ -13,9 +13,26 @@ Latest:
 **Key Updates**
  - Add a delay when modifying large contracts on hosts to prevent hosts from
    becoming unresponsive due to massive disk i/o
+ - Add `--root` parameter to `siac renter delete` that allows passing absolute
+   instead of relative file paths.
+ - 
+ - 
+ - 
 
 **Bugs Fixed**
+ - Fixed `siac skynet ls` not working when files were passed as input. It is now
+   able to access specific files in the Skynet folder.
+ - 
+ - 
+ - 
+ - 
+
 **Other**
+ - 
+ - 
+ - 
+ - 
+ - 
 
 ### v1.4.3
 **Key Updates**

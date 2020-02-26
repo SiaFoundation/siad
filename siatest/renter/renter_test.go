@@ -683,13 +683,66 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected IsNotExist err, but got err:", err)
 	}
 
+	// create a file to test file deletion
+	lf1, err := ld.NewFile(size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf1, err := r.UploadBlocking(lf1, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test deleting a file by its relative path
+	err = r.RenterFileDeletePost(rf1.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Test deleting directory
 	if err = r.RenterDirDeletePost(rd.SiaPath()); err != nil {
 		t.Fatal(err)
 	}
 
+	// Create a new set of remote files and dirs, so we can test deleting with a
+	// root path
+	rd2, err := r.UploadNewDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ld2, err := fd.CreateDir("subDir1a/subDir2a/subDir3a-" + persist.RandomSuffix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf2, err := ld2.NewFile(size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf2, err := r.UploadBlocking(lf2, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test deleting a file by its root path
+	rf2RootPath, err := modules.NewSiaPath("/home/user/" + rf2.SiaPath().Path)
+	err = r.RenterFileDeleteRootPost(rf2RootPath)
+	if err != nil {
+		t.Fatal(fmt.Errorf(err.Error() + " => " + rf2RootPath.Path))
+	}
+
+	// Test deleting directory by its root path
+	rd2RootPath, err := modules.NewSiaPath("/home/user/" + rd2.SiaPath().Path)
+	if err = r.RenterDirDeleteRootPost(rd2RootPath); err != nil {
+		t.Fatal(fmt.Errorf(err.Error() + " => " + rd2RootPath.Path))
+	}
+
 	// Check that siadir was deleted from disk
 	_, err = os.Stat(rd.SiaPath().SiaDirSysPath(r.RenterFilesDir()))
+	if !os.IsNotExist(err) {
+		t.Fatal("Expected IsNotExist err, but got err:", err)
+	}
+	// Check that siadir was deleted from disk by root path
+	_, err = os.Stat(rd2.SiaPath().SiaDirSysPath(r.RenterFilesDir()))
 	if !os.IsNotExist(err) {
 		t.Fatal("Expected IsNotExist err, but got err:", err)
 	}
