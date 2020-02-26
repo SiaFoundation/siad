@@ -324,22 +324,22 @@ func (sm *SkykeyManager) load() error {
 	}
 	defer file.Close()
 
-	// Check if the file has a header.
+	// Check if the file has a header.  If there is not, then set the default
+	// values and save it.
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
 	}
-
-	// If there is no header, set the default values and create it.
 	if fileInfo.Size() < int64(headerLen) {
 		sm.version = SkykeyVersion
 		sm.fileLen = uint64(headerLen)
-		err = sm.saveHeader(file)
-	} else { // Otherwise load the existing header.
-		err = sm.loadHeader(file)
-		if err != nil {
-			return errors.AddContext(err, "Error loading header")
-		}
+		return sm.saveHeader(file)
+	}
+
+	// Otherwise load the existing header and all the skykeys in the file.
+	err = sm.loadHeader(file)
+	if err != nil {
+		return errors.AddContext(err, "Error loading header")
 	}
 
 	n := headerLen
