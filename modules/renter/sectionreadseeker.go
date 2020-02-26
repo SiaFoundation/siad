@@ -9,8 +9,7 @@ import (
 // ReadSeekerCloser is an object that implements both the io.ReadSeeker and
 // io.Closer interfaces
 type ReadSeekerCloser interface {
-	io.Reader
-	io.Seeker
+	io.ReadSeeker
 	io.Closer
 }
 
