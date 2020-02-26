@@ -36,8 +36,8 @@ var (
 	SkykeyFileMagic = "SkykeyFile"
 
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
-	errNoSkykeysWithThatName       = errors.New("No key with that name")
-	errNoSkykeysWithThatId         = errors.New("No key is assocated with that Id")
+	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
+	errNoSkykeysWithThatId         = errors.New("No Skykey is assocated with that Id")
 	errSkykeyNameAlreadyExists     = errors.New("Skykey name already exists.")
 	errSkykeyNameToolong           = errors.New("Skykey name exceeds max length")
 
@@ -322,6 +322,7 @@ func (sm *SkykeyManager) load() error {
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
+	defer file.Close()
 
 	// Check if the file has a header.
 	fileInfo, err := file.Stat()
@@ -376,10 +377,11 @@ func (sm *SkykeyManager) load() error {
 
 // Save appends the last key to the skykey file and updates/syncs the header.
 func (sm *SkykeyManager) save() error {
-	file, err := os.OpenFile(sm.persistFile, os.O_RDWR|os.O_CREATE, 0750)
+	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, 0750)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
+	defer file.Close()
 
 	// Seek to the end of the known-to-be-valid part of the file.
 	_, err = file.Seek(int64(sm.fileLen), io.SeekStart)
