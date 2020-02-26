@@ -119,6 +119,8 @@ func newTestPriceTable() modules.RPCPriceTable {
 		MemoryTimeCost:       types.SiacoinPrecision,
 		ReadBaseCost:         types.SiacoinPrecision,
 		ReadLengthCost:       types.SiacoinPrecision,
+		WriteBaseCost:        types.SiacoinPrecision,
+		WriteLengthCost:      types.SiacoinPrecision,
 	}
 }
 

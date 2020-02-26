@@ -60,10 +60,10 @@ func TestNewProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	var r io.Reader
 	// Create instruction.
-	instructions, r, dataLen := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{})
+	pt := newTestPriceTable()
+	instructions, r, dataLen, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
-	pt := newTestPriceTable()
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen), newTestStorageObligation(true), dataLen, r)
 	if err != nil {
 		t.Fatal(err)
