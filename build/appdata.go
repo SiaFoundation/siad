@@ -23,7 +23,7 @@ func DefaultSiaDir() string {
 	}
 }
 
-// DefaultSkynetDir returns default data directory for miscellenous Skynet data,
+// DefaultSkynetDir returns default data directory for miscellaneous Skynet data,
 // e.g. skykeys. The values for supported operating systems are:
 //
 // Linux:   $HOME/.skynet
