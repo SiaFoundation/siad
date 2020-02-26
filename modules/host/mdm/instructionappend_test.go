@@ -110,7 +110,7 @@ func TestInstructionAppend(t *testing.T) {
 			t.Fatalf("expected merkle root to be root of appended sector: %v != %v", imr, output.NewMerkleRoot)
 		}
 		if len(output.Proof) != 1 {
-			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
+			t.Fatalf("expected proof length to be %v but was %v", 1, len(output.Proof))
 		}
 		if output.Proof[0] != appendDataRoot1 {
 			t.Logf("proof should just be hash %v but was %v", appendDataRoot1, output.Proof[0])
