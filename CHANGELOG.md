@@ -13,6 +13,7 @@ Latest:
 **Key Updates**
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
+- Add XChaCha20 CipherKey.
 
 **Bugs Fixed**
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
