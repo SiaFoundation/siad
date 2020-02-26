@@ -109,6 +109,10 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*writeaheadlog.Transaction
 
+	// refCounter keeps track of the number of references to each sector. Once
+	// that number falls to zero we can reuse or drop that sector.
+	refCounter *RefCounter
+
 	headerFile *fileSection
 	wal        *writeaheadlog.WAL
 	mu         sync.Mutex
@@ -460,7 +464,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 }
 
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
-	_, err := cs.insertRefCounter(h.ID(), len(roots)) // TODO: do we need the refcounter file for anything?
+	rc, err := cs.insertRefCounter(h.ID(), int64(len(roots)))
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -500,6 +504,7 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 		header:      h,
 		merkleRoots: merkleRoots,
 		headerFile:  headerSection,
+		refCounter:  &rc,
 		wal:         cs.wal,
 	}
 	cs.mu.Lock()
@@ -510,16 +515,16 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 }
 
 // Creates a refcounter file to accompany the contract file
-func (cs *ContractSet) insertRefCounter(fcID types.FileContractID, numSectors int) (RefCounter, error) {
+func (cs *ContractSet) insertRefCounter(fcID types.FileContractID, numSectors int64) (RefCounter, error) {
 	f, err := os.Create(filepath.Join(cs.dir, fcID.String()+contractExtension))
 	if err != nil {
 		return RefCounter{}, err
 	}
 	h := RefCounterHeader{
-		Version:                 RefCounterVersion,
-		ID:                      fcID,
-		GarbageCollectionOffset: 0,
-		NumSectors:              uint64(numSectors),
+		Version:       RefCounterVersion,
+		ID:            fcID,
+		GarbageOffset: 0,
+		NumSectors:    numSectors,
 	}
 	// create fileSections
 	headerSection := newFileSection(f, 0, RefCounterHeaderSize)
@@ -528,17 +533,21 @@ func (cs *ContractSet) insertRefCounter(fcID types.FileContractID, numSectors in
 	if _, err := headerSection.WriteAt(encoding.Marshal(h), 0); err != nil {
 		return RefCounter{}, err
 	}
-	// initialise the counts for all sectors with ones
+	// Initialise the counts for all sectors with a high enough value, so they
+	// won't be deleted until we run a sweep and determine the actual count:
 	zeroCounts := make([]byte, 2*numSectors, 2*numSectors)
-	for i := 0; i < numSectors; i += 2 {
-		zeroCounts[i+1] = 1
+	for i := int64(1); i < numSectors; i += 2 {
+		zeroCounts[i] = 255
 	}
 	if _, err = countsSection.WriteAt(zeroCounts, 0); err != nil {
 		return RefCounter{}, err
 	}
-	// TODO: is this the proper way to handle byte slices written to disk?
-	// We won't be able to modify the disk by working with this value...
-	return RefCounter{RefCounterHeader: h, SectorCounts: zeroCounts}, nil
+	return RefCounter{
+		RefCounterHeader: h,
+		sectorCounts:     zeroCounts,
+		headerFS:         headerSection,
+		countsFS:         countsSection,
+	}, nil
 }
 
 // loadSafeContractHeader will load a contract from disk, checking for legacy
