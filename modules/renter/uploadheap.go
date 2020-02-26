@@ -620,6 +620,23 @@ func (r *Renter) managedBlockUntilSynced() bool {
 		return false
 	case <-r.hostContractor.Synced():
 		return true
+	default:
+	}
+
+	for {
+		synced := r.cs.Synced()
+		if synced {
+			return true
+		}
+
+		select {
+		case <-r.tg.StopChan():
+			return false
+		case <-time.After(syncCheckInterval):
+			return true
+		case <-r.hostContractor.Synced():
+			return true
+		}
 	}
 }
 
