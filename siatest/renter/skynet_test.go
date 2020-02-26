@@ -491,8 +491,9 @@ func TestSkynetBlacklist(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	// Create skyfile upload params
-	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Create skyfile upload params, data should be larger than a sector size to
+	// test large file uploads and the deletion of their extended data.
+	data := fastrand.Bytes(int(modules.SectorSize) + 100 + siatest.Fuzz())
 	reader := bytes.NewReader(data)
 	filename := "skyfile"
 	uploadSiaPath, err := modules.NewSiaPath("testskyfile")
@@ -516,12 +517,21 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Confirm that the skyfile is registered with the renter
+	// Confirm that the skyfile and its extended info are registered with the
+	// renter
 	sp, err := modules.SkynetFolder.Join(uploadSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = r.RenterFileRootGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spExtended, err := modules.NewSiaPath(sp.String() + renter.ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileRootGet(spExtended)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,9 +567,16 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
 	}
 
-	// Verify that the SiaPath was removed from the renter due to the upload
-	// seeing the blacklist
+	// Verify that the SiaPath and Extended SiaPath were removed from the renter
+	// due to the upload seeing the blacklist
 	_, err = r.RenterFileGet(sp)
+	if err == nil {
+		t.Fatal("expected error for file not found")
+	}
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatalf("Expected error %v but got %v", filesystem.ErrNotExist, err)
+	}
+	_, err = r.RenterFileGet(spExtended)
 	if err == nil {
 		t.Fatal("expected error for file not found")
 	}
@@ -600,7 +617,7 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Log(fetchedData)
 	}
 
-	// Pinning the skylink should work now
+	// Pinning the skylink should also work now
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err != nil {
 		t.Fatal(err)

@@ -61,6 +61,10 @@ const (
 var (
 	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
 	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
+
+	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
+	// a large file upload
+	ExtendedSuffix = "-extended"
 )
 
 // skyfileLayout explains the layout information that is used for storing data
@@ -406,7 +410,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 	}
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + "-extended")
+	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
@@ -676,6 +680,13 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	}
 
 	// Skylink is blacklisted, try and delete the file and return an error
-	err = r.DeleteFile(lup.SiaPath)
-	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, err)
+	deleteErr := r.DeleteFile(lup.SiaPath)
+	if largeFile {
+		extendedSiaPath, err := modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "unable to create extended SiaPath for large skyfile deletion")
+		}
+		deleteErr = errors.Compose(deleteErr, r.DeleteFile(extendedSiaPath))
+	}
+	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, deleteErr)
 }

@@ -220,6 +220,8 @@ func (sb *SkynetBlacklist) load() error {
 
 // update updates the persistence on disk with the new additions and removals
 // from the blacklist
+//
+// NOTE: this method does not check for duplicate additions or removals
 func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	// Create buffer for encoder
 	var buf bytes.Buffer
