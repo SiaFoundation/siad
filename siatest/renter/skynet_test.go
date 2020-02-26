@@ -526,7 +526,7 @@ func TestSkynetDisableForce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(downloaded, data) {
-		t.Fatal("Unexpected data returend for skylink")
+		t.Fatal("Unexpected data returned for skylink")
 	}
 
 	// Upload data to that same siapath again, without setting the force
@@ -552,7 +552,7 @@ func TestSkynetDisableForce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(downloaded, data) {
-		t.Fatal("Unexpected data returend for skylink")
+		t.Fatal("Unexpected data returned for skylink")
 	}
 
 	// Upload using the force flag again, however now we set the
