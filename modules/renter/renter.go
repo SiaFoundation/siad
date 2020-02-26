@@ -42,6 +42,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblacklist"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -217,7 +218,7 @@ type Renter struct {
 	mu                    *siasync.RWMutex
 	repairLog             *persist.Logger
 	staticFuseManager     renterFuseManager
-	staticSkykeyManager   *skykeyManager
+	staticSkykeyManager   *skykey.SkykeyManager
 	staticStreamBufferSet *streamBufferSet
 	tg                    threadgroup.ThreadGroup
 	tpool                 modules.TransactionPool
@@ -885,7 +886,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if build.Release == "testing" {
 		skykeyManDir = persistDir
 	}
-	r.staticSkykeyManager, err = newSkykeyManager(skykeyManDir)
+	r.staticSkykeyManager, err = skykey.NewSkykeyManager(skykeyManDir)
 	if err != nil {
 		return nil, err
 	}
