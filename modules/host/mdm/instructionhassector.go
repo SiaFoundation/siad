@@ -57,6 +57,12 @@ func (i *instructionHasSector) Cost() (types.Currency, types.Currency, error) {
 	return cost, refund, nil
 }
 
+// Memory returns the memory allocated by this instruction beyond the end of its
+// lifetime.
+func (i *instructionHasSector) Memory() uint64 {
+	return HasSectorMemory()
+}
+
 // Execute executes the 'HasSector' instruction.
 func (i *instructionHasSector) Execute(prevOutput output) output {
 	// Fetch the operands.
@@ -84,4 +90,9 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 // ReadOnly for the 'HasSector' instruction is 'true'.
 func (i *instructionHasSector) ReadOnly() bool {
 	return true
+}
+
+// Time returns the execution time of an 'HasSector' instruction.
+func (i *instructionHasSector) Time() uint64 {
+	return TimeHasSector
 }

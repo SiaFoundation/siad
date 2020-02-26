@@ -170,6 +170,13 @@ your saved list.
 * `siac renter queue` shows the download queue. This is only relevant
 if you have multiple downloads happening simultaneously.
 
+#### Skynet tasks
+* `siac skynet ls` displays a list of the your uploaded skyfiles currently
+on Skynet by nickname, and their filesizes.
+
+* `siac skynet blacklist [skylink]` will add or remove a skylink from the
+  Renter's Skynet Blacklist
+
 #### Gateway tasks
 * `siac gateway` prints info about the gateway, including its address and how
 many peers it's connected to.
@@ -201,7 +208,3 @@ has the same affect as C^c on the terminal.
 * `siac version` displays the version string of siac.
 
 * `siac update` checks the server for updates.
-
-#### Skynet tasks
-* `siac skynet blacklist [skylink]` will add or remove a skylink from the
-  Renter's Skynet Blacklist
