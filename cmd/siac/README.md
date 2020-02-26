@@ -170,6 +170,10 @@ your saved list.
 * `siac renter queue` shows the download queue. This is only relevant
 if you have multiple downloads happening simultaneously.
 
+#### Skynet tasks
+* `siac skynet ls` displays a list of the your uploaded skyfiles currently
+on Skynet by nickname, and their filesizes.
+
 #### Gateway tasks
 * `siac gateway` prints info about the gateway, including its address and how
 many peers it's connected to.

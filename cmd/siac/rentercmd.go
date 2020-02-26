@@ -2356,7 +2356,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Check if the command is hitting a single file.
 	if !sp.IsRoot() {
-		rf, err := httpClient.RenterFileGet(sp)
+		rf, err := httpClient.RenterFileRootGet(sp)
 		if err == nil {
 			if len(rf.File.Skylinks) == 0 {
 				fmt.Println("File is not pinning any skylinks")
