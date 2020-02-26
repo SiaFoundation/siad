@@ -3,20 +3,14 @@ package renter
 import (
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
-
-// ReadSeekCloser is an object that implements both the io.ReadSeeker and
-// io.Closer interfaces
-type ReadSeekCloser interface {
-	io.ReadSeeker
-	io.Closer
-}
 
 // SectionReadSeeker is based on the io.SectionReader with the addition of the
 // Seeker interface. It can be used
 type SectionReadSeeker struct {
-	rsc   ReadSeekCloser
+	s     modules.Streamer
 	base  uint64
 	off   uint64
 	limit uint64
@@ -25,9 +19,9 @@ type SectionReadSeeker struct {
 // NewSectionReadSeeker returns a new SectionReadSeeker from given arguments. It
 // allows reading and seeking 'n' bytes from the underlying data start at the
 // given offset.
-func NewSectionReadSeeker(rsc ReadSeekCloser, off, n uint64) *SectionReadSeeker {
+func NewSectionReadSeeker(s modules.Streamer, off, n uint64) *SectionReadSeeker {
 	return &SectionReadSeeker{
-		rsc:   rsc,
+		s:     s,
 		base:  off,
 		off:   off,
 		limit: off + n,
@@ -43,7 +37,7 @@ func (srs *SectionReadSeeker) Read(p []byte) (n int, err error) {
 		p = p[0:max]
 	}
 
-	n, err = srs.rsc.Read(p)
+	n, err = srs.s.Read(p)
 	srs.off += uint64(n)
 	return
 }
@@ -68,7 +62,7 @@ func (srs *SectionReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	srs.off = uint64(offset)
-	_, err := srs.rsc.Seek(int64(srs.off), io.SeekStart)
+	_, err := srs.s.Seek(int64(srs.off), io.SeekStart)
 	if err != nil {
 		return offset - int64(srs.base), err
 	}
@@ -78,5 +72,5 @@ func (srs *SectionReadSeeker) Seek(offset int64, whence int) (int64, error) {
 
 // Close implements the io.Closer interface
 func (srs *SectionReadSeeker) Close() error {
-	return srs.rsc.Close()
+	return srs.s.Close()
 }
