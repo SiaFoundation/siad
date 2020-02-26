@@ -4118,8 +4118,7 @@ See [standard responses](#standard-responses).
 > Stream the whole file.  
 
 ```bash
-# TODO: Update the link after the format is finalized
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-ehGt8m4f9MsrqlrHA"
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
@@ -4145,6 +4144,23 @@ the file as though it is an attachment instead of rendering it.
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
 json object which matches the modules.SkyfileMetadata struct.
 
+> Skynet-File-Metadata Response Header Example
+```go
+{
+"mode": 640         // os.FileMode
+"filename": "adir", // string
+"subfiles": [       // []SubfileMetadata | null
+  {
+  "mode":         640               // os.FileMode
+  "filename":     "adir/file1.txt", // string
+  "contenttype":  "text/plain",     // string
+  "offset":       6,                // uint64
+  "len":          6                 // uint64
+  }
+]
+}
+```
+
 ### Response Body
 
 The response body is the raw data for the file.
@@ -4155,8 +4171,7 @@ The response body is the raw data for the file.
 > Stream a single subfile of a skyfile.  
 
 ```bash
-# TODO: Update the link after the format is finalized
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-ehGt8m4f9MsrqlrHA/file1.txt"
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/file1.txt"
 ```  
 
 downloads a single subfile from a skylink using http streaming. This call blocks
@@ -4165,7 +4180,7 @@ until the data is received.
 ### Path Parameters 
 ### Required
 **skylink** | string  
-The skylink that should be downloaded.
+The skylink to the file that should be downloaded.
 
 **subfile** | string  
 The filename of the subfile that should be downloaded.
@@ -4184,6 +4199,17 @@ the file as though it is an attachment instead of rendering it.
 
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
 json object which matches the modules.SkyfileMetadata struct.
+
+> Skynet-File-Metadata Response Header Example
+```go
+{
+"mode":         640               // os.FileMode
+"filename":     "adir/file1.txt", // string
+"contenttype":  "text/plain",     // string
+"offset":       6,                // uint64
+"len":          6                 // uint64
+}
+```
 
 ### Response Body
 

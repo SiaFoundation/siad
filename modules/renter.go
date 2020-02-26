@@ -1082,7 +1082,7 @@ type HostDB interface {
 type SkyfileMetadata struct {
 	Filename string            `json:"filename,omitempty"`
 	Mode     os.FileMode       `json:"mode,omitempty"`
-	Subfiles []SubfileMetadata `json:"subfiles"`
+	Subfiles []SubfileMetadata `json:"subfiles,omitempty"`
 }
 
 // Equals compares two SkyfileMetadata objects for equality.
@@ -1124,8 +1124,8 @@ type SubfileMetadata struct {
 	Mode        os.FileMode `json:"mode,omitempty"`
 	Filename    string      `json:"filename,omitempty"`
 	ContentType string      `json:"contenttype,omitempty"`
-	Offset      uint64      `json:"offset"`
-	Len         uint64      `json:"len"`
+	Offset      uint64      `json:"offset,omitempty"`
+	Len         uint64      `json:"len,omitempty"`
 }
 
 // Equals compares two SubfileMetadata objects for equality
