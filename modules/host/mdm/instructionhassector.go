@@ -72,11 +72,7 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 	}
 
 	// Fetch the requested information.
-	ps := i.staticState
-	hasSector, err := ps.sectors.hasSector(ps.host, sectorRoot)
-	if err != nil {
-		return errOutput(err)
-	}
+	hasSector := i.staticState.sectors.hasSector(sectorRoot)
 
 	// Return the output.
 	out := []byte{0}

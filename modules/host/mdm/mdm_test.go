@@ -28,7 +28,7 @@ type (
 	}
 )
 
-func newTestHost() Host {
+func newTestHost() *TestHost {
 	return &TestHost{
 		sectors: make(map[crypto.Hash][]byte),
 	}

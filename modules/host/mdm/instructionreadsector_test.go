@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newReadSectorProgram is a convenience method which prepares the instructions
@@ -47,10 +46,7 @@ func TestInstructionReadSector(t *testing.T) {
 	readLen := modules.SectorSize
 	// Execute it.
 	so := newTestStorageObligation(true)
-	so.sectorRoots = make([]crypto.Hash, 10)
-	for i := 0; i < 10; i++ { // initial contract size is 10 sectors.
-		fastrand.Read(so.sectorRoots[i][:]) // random initial merkle root
-	}
+	so.sectorRoots = randomSectorRoots(10)
 	instructions, r, dataLen, cost, refund, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
 	// Execute it.
 	ics := so.ContractSize()

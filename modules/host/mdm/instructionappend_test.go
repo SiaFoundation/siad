@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newAppendProgram is a convenience method which prepares the instructions
@@ -36,7 +35,7 @@ func TestInstructionAppend(t *testing.T) {
 	defer mdm.Stop()
 
 	// Create a program to append a full sector to a storage obligation.
-	appendData1 := fastrand.Bytes(int(modules.SectorSize))
+	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
 	instructions, programData, cost, refund, usedMemory := newAppendProgram(appendData1, true, pt)
@@ -102,7 +101,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatal("sectorRoots contains wrong root")
 	}
 	// Execute same program again to append another sector.
-	appendData2 := fastrand.Bytes(int(modules.SectorSize)) // new random data
+	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
 	instructions, programData, cost, refund, usedMemory = newAppendProgram(appendData2, true, pt)
 	dataLen = uint64(len(programData))

@@ -14,6 +14,7 @@ type sectors struct {
 	merkleRoots    []crypto.Hash
 }
 
+// newSectors creates a program cache given an initial list of sector roots.
 func newSectors(roots []crypto.Hash) sectors {
 	return sectors{
 		sectorsRemoved: make([]crypto.Hash, 0),
@@ -28,34 +29,29 @@ func (s *sectors) appendSector(sectorData []byte) crypto.Hash {
 
 	s.sectorsGained[newRoot] = sectorData
 
-	// Update the roots and compute the new merkle root of the contract.
+	// Update the roots.
 	s.merkleRoots = append(s.merkleRoots, newRoot)
-	newMerkleRoot := cachedMerkleRoot(s.merkleRoots)
 
-	return newMerkleRoot
+	// Return the new merkle root of the contract.
+	return cachedMerkleRoot(s.merkleRoots)
 }
 
 // hasSector checks if the given root exists, first checking the program cache
 // and then querying the host.
-func (s *sectors) hasSector(host Host, sectorRoot crypto.Hash) (bool, error) {
-	if _, exists := s.sectorsGained[sectorRoot]; exists {
-		return true, nil
+func (s *sectors) hasSector(sectorRoot crypto.Hash) bool {
+	for _, root := range s.merkleRoots {
+		if root == sectorRoot {
+			return true
+		}
 	}
-
-	return host.HasSector(sectorRoot)
+	return false
 }
 
 // readSector reads data from the given root, returning the entire sector.
 func (s *sectors) readSector(host Host, sectorRoot crypto.Hash) ([]byte, error) {
-	// Check merkleRoots first -- otherwise the root wasn't added, or was deleted.
-	inList := false
-	for _, root := range s.merkleRoots {
-		if root == sectorRoot {
-			inList = true
-			break
-		}
-	}
-	if !inList {
+	// Check if the sector exists first-- otherwise the root wasn't added, or
+	// was deleted.
+	if !s.hasSector(sectorRoot) {
 		return nil, errors.New("root not found in list of roots")
 	}
 
@@ -65,9 +61,5 @@ func (s *sectors) readSector(host Host, sectorRoot crypto.Hash) ([]byte, error) 
 	}
 
 	// Check the host.
-	data, err := host.ReadSector(sectorRoot)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
+	return host.ReadSector(sectorRoot)
 }
