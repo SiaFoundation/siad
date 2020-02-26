@@ -746,8 +746,9 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 // SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
 // file.
 func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {
-	if strings.Contains(skylink, "/") {
-		return nil, modules.SkyfileMetadata{}, errors.New("illegal character '/' in skylink")
+	var s modules.Skylink
+	if err := s.LoadString(skylink); err != nil {
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "invalid skylink")
 	}
 
 	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
@@ -770,6 +771,11 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 // SkynetSkylinkGetSubfile uses the /skynet/skylink/subfile endpoint to download
 // a subfile from a skylink file.
 func (c *Client) SkynetSkylinkGetSubfile(skylink, subfile string) ([]byte, modules.SkyfileMetadata, error) {
+	var s modules.Skylink
+	if err := s.LoadString(skylink); err != nil {
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "invalid skylink")
+	}
+
 	getQuery := fmt.Sprintf("/skynet/skylink/%s/%s", skylink, subfile)
 	header, fileData, err := c.getRawResponse(getQuery)
 	if err != nil {
