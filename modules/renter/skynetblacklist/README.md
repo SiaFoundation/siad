@@ -14,7 +14,7 @@ The following subsystems help the Skynet Blacklist module execute its responsibi
 
 The Persistence subsystem is responsible for the disk interaction and ensuring
 safe and performant ACID operations. An append only structure is used with a
-length of good bytes encoded in the metadata. 
+length of fsync'd bytes encoded in the metadata.
 
 **Exports**
  - `Update`

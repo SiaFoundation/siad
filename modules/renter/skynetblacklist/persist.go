@@ -11,86 +11,109 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// headerSize is the number of bytes set aside for the header on disk
-	headerSize int64 = 16
-
 	// lengthSize is the number of bytes set aside for the length on disk
 	lengthSize int64 = 8
-
-	// metadataHeader is the header of the metadata for the persist file
-	metadataHeader string = "Skynet Blacklist"
 
 	// metadataPageSize is the number of bytes set aside for the metadata page
 	// on disk
 	metadataPageSize int64 = 4096
 
-	// metadataVersion is the version of the persistence file
-	metadataVersion string = "v1.4.3"
-
 	// persistFile is the name of the persist file
 	persistFile string = "skynetblacklist"
 
-	// persistLinkSize is the size of a persistLink in the blacklist
-	persistLinkSize int64 = 33
-
-	// versionSize is the number of bytes set aside for the version on disk
-	versionSize int64 = 16
+	// persistMerkleRootSize is the size of a persisted merkleroot in the
+	// blacklist
+	persistMerkleRootSize int64 = 33
 )
 
-// persistLink is the information about the skylink that is persisted on disk
-type persistLink struct {
-	MerkleRoot  crypto.Hash `json:"merkleroot"`
-	Blacklisted bool        `json:"blacklisted"`
+var (
+	// Metadata validation errors
+	errWrongHeader  = errors.New("wrong header")
+	errWrongVersion = errors.New("wrong version")
+
+	// metadataHeader is the header of the metadata for the persist file
+	metadataHeader = types.NewSpecifier("SkynetBlacklist\n")
+
+	// metadataVersion is the version of the persistence file
+	metadataVersion = types.NewSpecifier("v1.4.3\n")
+)
+
+// marshalMetadata marshals the Skynet Blacklist's metadata and returns the byte
+// slice
+func (sb *SkynetBlacklist) marshalMetadata() ([]byte, error) {
+	headerBytes, headerErr := metadataHeader.MarshalText()
+	versionBytes, versionErr := metadataVersion.MarshalText()
+	lengthBytes := encoding.Marshal(sb.persistLength)
+	metadataBytes := append(headerBytes, append(versionBytes, lengthBytes...)...)
+	return metadataBytes, errors.Compose(headerErr, versionErr)
 }
 
-// unmarshalLength reads the first lengthSize bytes of the file and tries to
-// unmarshal them into the length
-func unmarshalLength(f *os.File) (int64, error) {
-	lengthbytes := make([]byte, lengthSize)
-	_, err := f.ReadAt(lengthbytes, 0)
+// unmarshalMetadata ummarshals the Skynet Blacklist's metadata from the
+// provided byte slice
+func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
+	// Define offsets for reading from provided byte slice
+	versionOffset := types.SpecifierLen
+	lengthOffset := 2 * types.SpecifierLen
+
+	// Unmarshal and check Header and Version for correctness
+	var header, version types.Specifier
+	err := header.UnmarshalText(raw[:versionOffset])
 	if err != nil {
-		return 0, err
+		return errors.AddContext(err, "unable to unmarshal header")
 	}
-	var length int64
-	err = encoding.Unmarshal(lengthbytes, &length)
-	return length, err
-}
+	if header != metadataHeader {
+		return errWrongHeader
+	}
+	err = version.UnmarshalText(raw[versionOffset:lengthOffset])
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal version")
+	}
+	if version != metadataVersion {
+		return errWrongVersion
+	}
 
-// unmarshalPersistLinks unmarshals a sia encoded persistLinks
-func unmarshalPersistLinks(raw []byte) (persistLinks []persistLink, err error) {
-	// Create the buffer.
-	r := bytes.NewBuffer(raw)
-	// Unmarshal the keys one by one until EOF or a different error occur.
-	for {
-		var pl persistLink
-		if err = pl.unmarshalSia(r); err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		persistLinks = append(persistLinks, pl)
-	}
-	return persistLinks, nil
+	// Unmarshal the length
+	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
 }
 
 // marshalSia implements the encoding.SiaMarshaler interface.
-func (pl persistLink) marshalSia(w io.Writer) error {
+func marshalSia(w io.Writer, merkleRoot crypto.Hash, blacklisted bool) error {
 	e := encoding.NewEncoder(w)
-	e.Encode(pl.MerkleRoot)
-	e.WriteBool(pl.Blacklisted)
+	e.Encode(merkleRoot)
+	e.WriteBool(blacklisted)
 	return e.Err()
 }
 
+// unmarshalBlacklist unmarshals the sia encoded blacklist
+func unmarshalBlacklist(r io.Reader, numMerkleRoots int64) (map[crypto.Hash]struct{}, error) {
+	// Unmarshal numLinks blacklisted links one by one
+	blacklist := make(map[crypto.Hash]struct{})
+	for i := int64(0); i < numMerkleRoots; i++ {
+		merkleRoot, blacklisted, err := unmarshalSia(r)
+		if err != nil {
+			return nil, err
+		}
+		if !blacklisted {
+			delete(blacklist, merkleRoot)
+			continue
+		}
+		blacklist[merkleRoot] = struct{}{}
+	}
+	return blacklist, nil
+}
+
 // unmarshalSia implements the encoding.SiaUnmarshaler interface.
-func (pl *persistLink) unmarshalSia(r io.Reader) error {
+func unmarshalSia(r io.Reader) (merkleRoot crypto.Hash, blacklisted bool, err error) {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	d.Decode(&pl.MerkleRoot)
-	pl.Blacklisted = d.NextBool()
-	return d.Err()
+	d.Decode(&merkleRoot)
+	blacklisted = d.NextBool()
+	err = d.Err()
+	return
 }
 
 // UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
@@ -123,10 +146,12 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	}
 	defer f.Close()
 
-	// Marshal the metadata. By marshalling the metadataPageSize as the first
-	// element we can then quickly encode and decode the length without having
-	// to worry about the header or the version
-	metadataBytes := encoding.MarshalAll(metadataPageSize, metadataHeader, metadataVersion)
+	// Marshal the metadata.
+	sb.persistLength = metadataPageSize
+	metadataBytes, err := sb.marshalMetadata()
+	if err != nil {
+		return errors.AddContext(err, "unable to marshal metadata")
+	}
 
 	// Sanity check that the metadataBytes are less than the metadatPageSize
 	if int64(len(metadataBytes)) > metadataPageSize {
@@ -158,38 +183,37 @@ func (sb *SkynetBlacklist) load() error {
 	}
 	defer f.Close()
 
-	// Unmarshall the length of the file
-	length, err := unmarshalLength(f)
+	// Check the Header and Version of the file
+	metadataSize := int64(2*types.SpecifierLen) + lengthSize
+	metadataBytes := make([]byte, metadataSize)
+	_, err = f.ReadAt(metadataBytes, 0)
 	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal length")
+		return errors.AddContext(err, "enable to read metadata bytes from file")
+	}
+	err = sb.unmarshalMetadata(metadataBytes)
+	if err != nil {
+		return errors.AddContext(err, "enable to unmarshal metadata bytes")
 	}
 
-	// Check if there are any persisted links
-	goodBytes := length - metadataPageSize
+	// Check if there is a persisted blacklist after the metatdata
+	goodBytes := sb.persistLength - metadataPageSize
 	if goodBytes <= 0 {
 		return nil
 	}
 
-	// Read raw bytes
-	linkBytes := make([]byte, goodBytes)
-	_, err = f.ReadAt(linkBytes, metadataPageSize)
+	// Seek to the start of the persisted blacklist
+	_, err = f.Seek(metadataPageSize, 0)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to seek to start of persisted blacklist")
 	}
 	// Decode persist links
-	persistLinks, err := unmarshalPersistLinks(linkBytes)
+	blacklist, err := unmarshalBlacklist(f, goodBytes/persistMerkleRootSize)
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal persistLinks")
 	}
 
 	// Add to Skynet Blacklist
-	for _, link := range persistLinks {
-		if !link.Blacklisted {
-			delete(sb.merkleroots, link.MerkleRoot)
-			continue
-		}
-		sb.merkleroots[link.MerkleRoot] = struct{}{}
-	}
+	sb.merkleroots = blacklist
 
 	return nil
 }
@@ -205,14 +229,8 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 		mr := skylink.MerkleRoot()
 		sb.merkleroots[mr] = struct{}{}
 
-		// Create persistLink
-		link := persistLink{
-			MerkleRoot:  mr,
-			Blacklisted: true,
-		}
-
-		// Encode link
-		err := link.marshalSia(&buf)
+		// Marshal the update
+		err := marshalSia(&buf, mr, true)
 		if err != nil {
 			return errors.AddContext(err, "unable to encode persistLink")
 		}
@@ -222,34 +240,22 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 		mr := skylink.MerkleRoot()
 		delete(sb.merkleroots, mr)
 
-		// Create persistLink
-		link := persistLink{
-			MerkleRoot:  mr,
-			Blacklisted: false,
-		}
-
-		// Encode link
-		err := link.marshalSia(&buf)
+		// Marshal the update
+		err := marshalSia(&buf, mr, false)
 		if err != nil {
 			return errors.AddContext(err, "unable to encode persistLink")
 		}
 	}
 
 	// Open file
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
-	// Unmarshall the length of the file
-	length, err := unmarshalLength(f)
-	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal length")
-	}
-
 	// Append data and sync
-	_, err = f.WriteAt(buf.Bytes(), length)
+	_, err = f.WriteAt(buf.Bytes(), sb.persistLength)
 	if err != nil {
 		return errors.AddContext(err, "unable to append new data to blacklist persist file")
 	}
@@ -259,11 +265,12 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 	}
 
 	// Update length and sync
-	length += int64(buf.Len())
-	lengthBytes := encoding.Marshal(length)
+	sb.persistLength += int64(buf.Len())
+	lengthBytes := encoding.Marshal(sb.persistLength)
 
 	// Write to file
-	_, err = f.WriteAt(lengthBytes, 0)
+	lengthOffset := int64(2 * types.SpecifierLen)
+	_, err = f.WriteAt(lengthBytes, lengthOffset)
 	if err != nil {
 		return errors.AddContext(err, "unable to write length")
 	}

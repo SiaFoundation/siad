@@ -201,3 +201,7 @@ has the same affect as C^c on the terminal.
 * `siac version` displays the version string of siac.
 
 * `siac update` checks the server for updates.
+
+#### Skynet tasks
+* `siac skynet blacklist [skylink]` will add or remove a skylink from the
+  Renter's Skynet Blacklist

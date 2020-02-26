@@ -675,8 +675,7 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		return skylink, nil
 	}
 
-	// Skylink must have been blacklisted by another node, delete the file and
-	// return an error
+	// Skylink is blacklisted, try and delete the file and return an error
 	err = r.DeleteFile(lup.SiaPath)
 	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, err)
 }

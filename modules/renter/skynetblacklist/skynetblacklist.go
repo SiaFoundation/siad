@@ -12,6 +12,7 @@ import (
 // merkleroots and persists the list to disk
 type SkynetBlacklist struct {
 	merkleroots      map[crypto.Hash]struct{}
+	persistLength    int64
 	staticPersistDir string
 
 	mu sync.Mutex

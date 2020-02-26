@@ -2,8 +2,6 @@ package skynetblacklist
 
 import (
 	"bytes"
-	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -107,66 +106,62 @@ func TestMarshalSia(t *testing.T) {
 	// Test MarshalSia
 	var skylink modules.Skylink
 	var buf bytes.Buffer
-	pl := persistLink{
-		MerkleRoot:  skylink.MerkleRoot(),
-		Blacklisted: true,
-	}
-	err := pl.marshalSia(&buf)
+	merkleRoot := skylink.MerkleRoot()
+	blacklisted := false
+	err := marshalSia(&buf, merkleRoot, blacklisted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if int64(buf.Len()) != persistLinkSize {
-		t.Fatalf("Expected buf to be of size %v but got %v", persistLinkSize, buf.Len())
+	if int64(buf.Len()) != persistMerkleRootSize {
+		t.Fatalf("Expected buf to be of size %v but got %v", persistMerkleRootSize, buf.Len())
 	}
-	pl.Blacklisted = false
-	err = pl.marshalSia(&buf)
+	blacklisted = true
+	err = marshalSia(&buf, merkleRoot, blacklisted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if int64(buf.Len()) != 2*persistLinkSize {
-		t.Fatalf("Expected buf to be of size %v but got %v", 2*persistLinkSize, buf.Len())
+	if int64(buf.Len()) != 2*persistMerkleRootSize {
+		t.Fatalf("Expected buf to be of size %v but got %v", 2*persistMerkleRootSize, buf.Len())
 	}
 
 	// Test unmarshalSia, links should unmarshal in the order they were marshalled
-	var link persistLink
 	r := bytes.NewBuffer(buf.Bytes())
-	err = link.unmarshalSia(r)
+	mr, bl, err := unmarshalSia(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if link.MerkleRoot != skylink.MerkleRoot() {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", skylink.MerkleRoot(), link.MerkleRoot)
+	if merkleRoot != mr {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, mr)
 	}
-	if !link.Blacklisted {
+	if bl {
 		t.Fatal("expected persisted link to be blacklisted")
 	}
-	err = link.unmarshalSia(r)
+	mr, bl, err = unmarshalSia(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if link.MerkleRoot != skylink.MerkleRoot() {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", skylink.MerkleRoot(), link.MerkleRoot)
+	if merkleRoot != mr {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, mr)
 	}
-	if link.Blacklisted {
-		t.Fatal("expected persisted link not to be blacklisted")
+	if !bl {
+		t.Fatal("expected persisted link to be blacklisted")
 	}
 
 	// Test unmarshalPersistLinks
-	persistLinks, err := unmarshalPersistLinks(buf.Bytes())
+	r = bytes.NewBuffer(buf.Bytes())
+	blacklist, err := unmarshalBlacklist(r, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persistLinks[0].MerkleRoot != skylink.MerkleRoot() {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", skylink.MerkleRoot(), persistLinks[0].MerkleRoot)
+
+	// Since the merkleroot is the same the blacklist should only have a length
+	// of 1 since the non blacklisted merkleroot was added first
+	if len(blacklist) != 1 {
+		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v, got %v", 1, len(blacklist))
 	}
-	if !persistLinks[0].Blacklisted {
-		t.Fatal("expected persisted link to be blacklisted")
-	}
-	if persistLinks[1].MerkleRoot != skylink.MerkleRoot() {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", skylink.MerkleRoot(), persistLinks[1].MerkleRoot)
-	}
-	if persistLinks[1].Blacklisted {
-		t.Fatal("expected persisted link not to be blacklisted")
+	_, ok := blacklist[merkleRoot]
+	if !ok {
+		t.Fatal("merkleroot not found in blacklist")
 	}
 }
 
@@ -185,14 +180,22 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	filename := filepath.Join(testdir, persistFile)
-	f, err := os.Create(filename)
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
 
-	// Marshal the metadata.
-	metadataBytes := encoding.MarshalAll(metadataPageSize, metadataHeader, metadataVersion)
+	// Create empty struct of a skynet blacklist and set the length. Not using
+	// the New method to avoid overwritten persist file on disk
+	sb := SkynetBlacklist{}
+	sb.persistLength = metadataPageSize
+
+	// Marshal the metadata and write to disk
+	metadataBytes, err := sb.marshalMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = f.Write(metadataBytes)
 	if err != nil {
 		t.Fatal(err)
@@ -202,18 +205,10 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Unmarshal the length and verify it was initialized correctly
-	length, err := unmarshalLength(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if length != metadataPageSize {
-		t.Fatalf("incorrect decoded length, got %v expected %v", length, metadataPageSize)
-	}
-
 	// Update the length, and write to disk
-	length += metadataPageSize
-	_, err = f.WriteAt(encoding.Marshal(length), 0)
+	lengthOffset := int64(2 * types.SpecifierLen)
+	lengthBytes := encoding.Marshal(2 * metadataPageSize)
+	_, err = f.WriteAt(lengthBytes, lengthOffset)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,37 +217,71 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify the update was successful
-	length, err = unmarshalLength(f)
+	// Try unmarshaling the metadata to ensure that it did not get corrupted by
+	// the length updates
+	metadataSize := lengthOffset + lengthSize
+	mdBytes := make([]byte, metadataSize)
+	_, err = f.ReadAt(mdBytes, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if length != 2*metadataPageSize {
-		t.Fatalf("incorrect decoded length, got %v expected %v", length, 2*metadataPageSize)
+	// The header and the version are checked during the unmarshaling of the
+	// metadata
+	err = sb.unmarshalMetadata(mdBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sb.persistLength != 2*metadataPageSize {
+		t.Fatalf("incorrect decoded length, got %v expected %v", sb.persistLength, 2*metadataPageSize)
 	}
 
-	// Try unmarshalling all the metadata together and ensure that it did not
-	// get corrupted by the length updates
-	var header, version string
-	_, err = f.Seek(0, io.SeekStart)
+	// Write an incorrect version and verify that unmarshaling the metadata will
+	// fail for unmarshaling a bad version
+	badVersion := types.NewSpecifier("badversion")
+	badBytes, err := badVersion.MarshalText()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mdBytes, err := ioutil.ReadAll(f)
+	_, err = f.WriteAt(badBytes, types.SpecifierLen)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = encoding.UnmarshalAll(mdBytes, &length, &header, &version)
+	err = f.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if length != 2*metadataPageSize {
-		t.Fatalf("incorrect decoded length, got %v expected %v", length, 2*metadataPageSize)
+	mdBytes = make([]byte, metadataSize)
+	_, err = f.ReadAt(mdBytes, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if header != metadataHeader {
-		t.Fatalf("bad header, expected %v got %v", metadataHeader, header)
+	err = sb.unmarshalMetadata(mdBytes)
+	if err != errWrongVersion {
+		t.Fatalf("Expected %v got %v", errWrongVersion, err)
 	}
-	if version != metadataVersion {
-		t.Fatalf("bad version, expected %v got %v", metadataVersion, version)
+
+	// Write an incorrect header and verify that unmarshaling the metadata will
+	// fail for unmarshaling a bad header
+	badHeader := types.NewSpecifier("badheader")
+	badBytes, err = badHeader.MarshalText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.WriteAt(badBytes, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mdBytes = make([]byte, metadataSize)
+	_, err = f.ReadAt(mdBytes, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sb.unmarshalMetadata(mdBytes)
+	if err != errWrongHeader {
+		t.Fatalf("Expected %v got %v", errWrongHeader, err)
 	}
 }
