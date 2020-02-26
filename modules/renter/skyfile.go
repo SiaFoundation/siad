@@ -468,7 +468,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
 	// Fetch the leading chunk.
-	baseSector, offset, err := r.DownloadLeadingChunk(link)
+	baseSector, offset, err := r.downloadLeadingChunk(link)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, err
 	}
@@ -513,7 +513,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 // metadata and data of a download for the subfile with given filename.
 func (r *Renter) DownloadSkyfileSubfile(link modules.Skylink, filename string) (modules.SkyfileSubfileMetadata, modules.Streamer, error) {
 	// Fetch the leading chunk.
-	baseSector, offset, err := r.DownloadLeadingChunk(link)
+	baseSector, offset, err := r.downloadLeadingChunk(link)
 	if err != nil {
 		return modules.SkyfileSubfileMetadata{}, nil, err
 	}
@@ -680,9 +680,9 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	return r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
 }
 
-// DownloadLeadingChunk will download the first sector of the file for given
+// downloadLeadingChunk will download the first sector of the file for given
 // skylink.
-func (r *Renter) DownloadLeadingChunk(link modules.Skylink) ([]byte, uint64, error) {
+func (r *Renter) downloadLeadingChunk(link modules.Skylink) ([]byte, uint64, error) {
 	// Pull the offset and fetchSize out of the skylink.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {

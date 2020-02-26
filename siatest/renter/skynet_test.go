@@ -512,7 +512,10 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	data = []byte("File2Contents")
 	subfiles = append(subfiles, addMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset))
 
-	writer.Close()
+	err := writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	reader := bytes.NewReader(body.Bytes())
 
 	// Call the upload skyfile client call.
@@ -585,7 +588,10 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
 	subfiles = append(subfiles, addMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset))
 
-	writer.Close()
+	err := writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	allData := body.Bytes()
 	reader := bytes.NewReader(allData)
 
@@ -775,7 +781,10 @@ func TestSkynetNoFilename(t *testing.T) {
 	data = []byte("File1Contents")
 	nofilename := ""
 	subfile := addMultipartFile(writer, data, "files[]", nofilename, 0600, nil)
-	writer.Close()
+	err = writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	reader = bytes.NewReader(body.Bytes())
 
 	// Call the upload skyfile client call.
@@ -814,7 +823,10 @@ func TestSkynetNoFilename(t *testing.T) {
 	writer = multipart.NewWriter(body)
 
 	subfile = addMultipartFile(writer, []byte("File1Contents"), "files[]", "testNoFilenameMultipart", 0600, nil)
-	writer.Close()
+	err = writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	reader = bytes.NewReader(body.Bytes())
 
 	supWithFilename := modules.SkyfileUploadParameters{
