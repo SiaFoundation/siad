@@ -154,6 +154,50 @@ func (sm *SkykeyManager) CreateKey(name string, cipherTypeString string) (Skykey
 	return skykey, nil
 }
 
+// AddKey creates a key with the given name, cipherType, and entropy and adds it
+// to the key file.
+func (sm *SkykeyManager) AddKey(name string, cipherTypeString string, entropy []byte) (Skykey, error) {
+	if len(name) > MaxKeyNameLen {
+		return Skykey{}, errSkykeyNameToolong
+	}
+
+	var cipherType crypto.CipherType
+	err := cipherType.FromString(cipherTypeString)
+	if err != nil {
+		return Skykey{}, errors.AddContext(err, "AddKey error decoding cipherType")
+	}
+	if !sm.SupportsCipherType(cipherType) {
+		return Skykey{}, errUnsupportedSkykeyCipherType
+	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	_, ok := sm.idsByName[name]
+	if ok {
+		return Skykey{}, errSkykeyNameAlreadyExists
+	}
+
+	// Generate the new key.
+	cipherKey, err := crypto.NewSiaKey(cipherType, entropy)
+	if err != nil {
+		return Skykey{}, errors.AddContext(err, "Error creating new cipher key")
+	}
+	skykey := Skykey{name, cipherType, cipherKey.Key()}
+	keyId := skykey.Id()
+
+	// Store the new key.
+	sm.idsByName[name] = string(keyId)
+	sm.keysById[keyId] = skykey
+	sm.keys = append(sm.keys, skykey)
+
+	err = sm.save()
+	if err != nil {
+		return Skykey{}, err
+	}
+	return skykey, nil
+
+}
+
 // GetIdByName returns the Id associated with the given key name.
 func (sm *SkykeyManager) GetIdByName(name string) (string, error) {
 	sm.mu.Lock()

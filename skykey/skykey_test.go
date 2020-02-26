@@ -18,7 +18,6 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Create a key manager.
-	cipherType := crypto.TypeThreefish.String()
 	persistDir := build.TempDir(t.Name())
 	keyMan, err := NewSkykeyManager(persistDir)
 	if err != nil {
@@ -34,6 +33,7 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Creating a key with name longer than the max allowed should fail.
+	cipherType := crypto.TypeThreefish.String()
 	var longName [MaxKeyNameLen + 1]byte
 	for i := 0; i < len(longName); i++ {
 		longName[i] = 0x41 // "A"
@@ -157,6 +157,44 @@ func TestSkykeyManager(t *testing.T) {
 	for i, key := range keyMan.keys {
 		if !key.equals(keyMan2.keys[i]) {
 			t.Fatal("Expected same keys")
+		}
+	}
+
+	// Check that AddKey works properly by re-adding all the keys from the first
+	// 2 key managers into a new one.
+	persistDir = build.TempDir(t.Name(), "add-only-keyman")
+	addKeyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, key := range keyMan.keys {
+		addedKey, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !addedKey.equals(key) {
+			t.Fatal("Expected keys to be equal")
+		}
+	}
+
+	// Check for the correct number of keys.
+	if len(addKeyMan.keys) != 3 {
+		t.Fatal("Wrong number of keys", len(addKeyMan.keys))
+	}
+	if len(addKeyMan.keysById) != 3 {
+		t.Fatal("Wrong number of keys", len(addKeyMan.keys))
+	}
+	if len(addKeyMan.idsByName) != 3 {
+		t.Fatal("Wrong number of keys", len(addKeyMan.keys))
+	}
+
+	// Try re-adding the same keys, and check that the duplicate name error is
+	// shown.
+	for _, key := range keyMan.keys {
+		_, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
+		if !errors.Contains(err, errSkykeyNameAlreadyExists) {
+			t.Fatal(err)
 		}
 	}
 }
