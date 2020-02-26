@@ -460,6 +460,18 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 }
 
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
+	_, err := cs.insertRefCounter(h.ID(), len(roots)) // TODO: do we need the refcounter file for anything?
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	defer func() {
+		if err != nil {
+			// The contract couldn't be formed - remove the refcounter file.
+			// Ignore errors - nothing we can do and they don't matter much.
+			os.Remove(filepath.Join(cs.dir, h.ID().String()+refCounterExtension))
+		}
+	}()
+
 	if err := h.validate(); err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -495,6 +507,38 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
 	cs.mu.Unlock()
 	return sc.Metadata(), nil
+}
+
+// Creates a refcounter file to accompany the contract file
+func (cs *ContractSet) insertRefCounter(fcID types.FileContractID, numSectors int) (RefCounter, error) {
+	f, err := os.Create(filepath.Join(cs.dir, fcID.String()+contractExtension))
+	if err != nil {
+		return RefCounter{}, err
+	}
+	h := RefCounterHeader{
+		Version:                 RefCounterVersion,
+		ID:                      fcID,
+		GarbageCollectionOffset: 0,
+		NumSectors:              uint64(numSectors),
+	}
+	// create fileSections
+	headerSection := newFileSection(f, 0, RefCounterHeaderSize)
+	countsSection := newFileSection(f, RefCounterHeaderSize, -1)
+	// write header
+	if _, err := headerSection.WriteAt(encoding.Marshal(h), 0); err != nil {
+		return RefCounter{}, err
+	}
+	// initialise the counts for all sectors with ones
+	zeroCounts := make([]byte, 2*numSectors, 2*numSectors)
+	for i := 0; i < numSectors; i += 2 {
+		zeroCounts[i+1] = 1
+	}
+	if _, err = countsSection.WriteAt(zeroCounts, 0); err != nil {
+		return RefCounter{}, err
+	}
+	// TODO: is this the proper way to handle byte slices written to disk?
+	// We won't be able to modify the disk by working with this value...
+	return RefCounter{RefCounterHeader: h, SectorCounts: zeroCounts}, nil
 }
 
 // loadSafeContractHeader will load a contract from disk, checking for legacy
