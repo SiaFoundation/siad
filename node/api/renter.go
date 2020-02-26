@@ -1788,6 +1788,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// Only set the Content-Type header when the metadata defines one, if we
+	// were to set the header to an empty string, it would prevent the http
+	// library from sniffing the file's content type.
+	if metadata.ContentType != "" {
+		w.Header().Set("Content-Type", metadata.ContentType)
+	}
+
 	// Set Content-Disposition header, if 'attachment' is true, set the
 	// disposition-type to attachment, otherwise we inline it.
 	var cdh string
@@ -2167,8 +2174,9 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 		}
 
 		return &modules.SkyfileMetadata{
-			Filename: mpfHeaders[0].Filename,
-			Mode:     mode,
+			Mode:        mode,
+			Filename:    mpfHeaders[0].Filename,
+			ContentType: mpfHeaders[0].Header.Get("Content-Type"),
 		}, file, nil
 	}
 

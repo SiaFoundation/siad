@@ -36,6 +36,9 @@ var (
 	// manually by the user.
 	ErrDownloadCancelled = errors.New("download was cancelled")
 
+	// ErrSkyfileSubfileNotFound is returned when a subfile could not be found.
+	ErrSkyfileSubfileNotFound = errors.New("subfile not found in skyfile")
+
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being
@@ -1080,40 +1083,22 @@ type HostDB interface {
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Filename string                   `json:"filename,omitempty"`
-	Mode     os.FileMode              `json:"mode,omitempty"`
-	Subfiles []SkyfileSubfileMetadata `json:"subfiles,omitempty"`
+	Mode        os.FileMode              `json:"mode,omitempty"`
+	Filename    string                   `json:"filename,omitempty"`
+	ContentType string                   `json:"contenttype,omitempty"`
+	Subfiles    []SkyfileSubfileMetadata `json:"subfiles,omitempty"`
 }
 
-// Equals compares two SkyfileMetadata objects for equality.
-func (x SkyfileMetadata) Equals(y SkyfileMetadata) bool {
-	if x.Filename != y.Filename {
-		return false
-	}
-	if x.Mode != y.Mode {
-		return false
-	}
-	if len(x.Subfiles) != len(y.Subfiles) {
-		return false
-	}
-	for _, xsfm := range x.Subfiles {
-		if xsfm.Equals(y.SkyfileSubfileMetadata(xsfm.Filename)) {
-			return false
-		}
-	}
-	return true
-}
-
-// SkyfileSubfileMetadata returns the metadata of the subfile for given
+// SubfileMetadata returns the metadata of the subfile for given
 // filename. If it can not find a subfile with that filename, an empty metadata
 // object is returned.
-func (x SkyfileMetadata) SkyfileSubfileMetadata(filename string) SkyfileSubfileMetadata {
+func (x SkyfileMetadata) SubfileMetadata(filename string) (SkyfileSubfileMetadata, error) {
 	for _, sf := range x.Subfiles {
 		if sf.Filename == filename {
-			return sf
+			return sf, nil
 		}
 	}
-	return SkyfileSubfileMetadata{}
+	return SkyfileSubfileMetadata{}, ErrSkyfileSubfileNotFound
 }
 
 // SkyfileSubfileMetadata is all of the metadata that belongs to a subfile in a
@@ -1126,15 +1111,6 @@ type SkyfileSubfileMetadata struct {
 	ContentType string      `json:"contenttype,omitempty"`
 	Offset      uint64      `json:"offset,omitempty"`
 	Len         uint64      `json:"len,omitempty"`
-}
-
-// Equals compares two SkyfileSubfileMetadata objects for equality
-func (x SkyfileSubfileMetadata) Equals(y SkyfileSubfileMetadata) bool {
-	return x.Mode == y.Mode &&
-		x.Filename == y.Filename &&
-		x.ContentType == y.ContentType &&
-		x.Offset == y.Offset &&
-		x.Len == y.Len
 }
 
 // SkyfileUploadParameters establishes the parameters such as the intra-root
@@ -1168,4 +1144,27 @@ type SkyfileUploadParameters struct {
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`
+}
+
+// SkyfilePinParameters establishes the parameters that can be set when pinning
+// a Skylink. Note that this is a subset of the parameters that can be set when
+// uploading a Skyfile.
+type SkyfilePinParameters struct {
+	// SiaPath defines the siapath that the skyfile is going to be uploaded to.
+	// Recommended that the skyfile is placed in /var/skynet
+	SiaPath SiaPath `json:"siapath"`
+
+	// Force determines whether the upload should overwrite an existing siafile
+	// at 'SiaPath'. If set to false, an error will be returned if there is
+	// already a file or folder at 'SiaPath'. If set to true, any existing file
+	// or folder at 'SiaPath' will be deleted and overwritten.
+	Force bool `json:"force"`
+
+	// Root determines whether the upload should treat the filepath as a path
+	// from system root, or if the path should be from /var/skynet.
+	Root bool `json:"root"`
+
+	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
+	// meaning that only the redundancy needs to be configured by the user.
+	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
 }

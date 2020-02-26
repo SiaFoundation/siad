@@ -6,9 +6,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// ReadSeekerCloser is an object that implements both the io.ReadSeeker and
+// ReadSeekCloser is an object that implements both the io.ReadSeeker and
 // io.Closer interfaces
-type ReadSeekerCloser interface {
+type ReadSeekCloser interface {
 	io.ReadSeeker
 	io.Closer
 }
@@ -16,7 +16,7 @@ type ReadSeekerCloser interface {
 // SectionReadSeeker is based on the io.SectionReader with the addition of the
 // Seeker interface. It can be used
 type SectionReadSeeker struct {
-	rsc   ReadSeekerCloser
+	rsc   ReadSeekCloser
 	base  uint64
 	off   uint64
 	limit uint64
@@ -25,7 +25,7 @@ type SectionReadSeeker struct {
 // NewSectionReadSeeker returns a new SectionReadSeeker from given arguments. It
 // allows reading and seeking 'n' bytes from the underlying data start at the
 // given offset.
-func NewSectionReadSeeker(rsc ReadSeekerCloser, off, n uint64) *SectionReadSeeker {
+func NewSectionReadSeeker(rsc ReadSeekCloser, off, n uint64) *SectionReadSeeker {
 	return &SectionReadSeeker{
 		rsc:   rsc,
 		base:  off,

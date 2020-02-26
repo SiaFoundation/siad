@@ -2441,7 +2441,7 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		die("Could not parse destination siapath:", err)
 	}
 
-	sup := modules.SkyfileUploadParameters{
+	sup := modules.SkyfilePinParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
 	}

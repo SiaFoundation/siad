@@ -344,7 +344,7 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pinLUP := modules.SkyfileUploadParameters{
+	pinLUP := modules.SkyfilePinParameters{
 		SiaPath:             pinSiaPath,
 		Force:               force,
 		Root:                false,
@@ -377,7 +377,7 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	largePinLUP := modules.SkyfileUploadParameters{
+	largePinLUP := modules.SkyfilePinParameters{
 		SiaPath:             largePinSiaPath,
 		Force:               force,
 		Root:                false,

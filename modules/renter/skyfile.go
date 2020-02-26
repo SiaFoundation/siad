@@ -502,7 +502,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes, modules.SkyfileSubfileMetadata{})
+	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -537,8 +537,8 @@ func (r *Renter) DownloadSkyfileSubfile(link modules.Skylink, filename string) (
 	offset += metadataSize
 
 	// Find the subfile for given filename
-	sfm := lfm.SkyfileSubfileMetadata(filename)
-	if sfm.Equals(modules.SkyfileSubfileMetadata{}) {
+	sfm, err := lfm.SubfileMetadata(filename)
+	if err == modules.ErrSkyfileSubfileNotFound {
 		return modules.SkyfileSubfileMetadata{}, nil, errors.New("unable to find subfile for given filename")
 	}
 
@@ -555,7 +555,7 @@ func (r *Renter) DownloadSkyfileSubfile(link modules.Skylink, filename string) (
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, ll, fanoutBytes, sfm)
+	fs, err := r.newSubfileFanoutStreamer(link, ll, fanoutBytes, sfm)
 	if err != nil {
 		return modules.SkyfileSubfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -624,8 +624,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		CipherType: crypto.TypePlain,
 	}
 
-	sf := modules.SkyfileSubfileMetadata{}
-	streamer, err := r.newFanoutStreamer(skylink, ll, fanoutBytes, sf)
+	streamer, err := r.newFanoutStreamer(skylink, ll, fanoutBytes)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}

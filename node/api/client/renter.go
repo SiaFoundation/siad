@@ -803,25 +803,16 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
 // given skylink.
-func (c *Client) SkynetSkylinkPinPost(skylink string, lup modules.SkyfileUploadParameters) error {
-	// Check for misuse of lup.
-	if !lup.FileMetadata.Equals(modules.SkyfileMetadata{}) {
-		return errors.New("file metadata should not be set when pinning an existing skylink, skylink already has metadata")
-	}
-	if lup.Reader != nil {
-		return errors.New("should not include reader when pinning a skylink, the download will be performed automatically")
-	}
-
+func (c *Client) SkynetSkylinkPinPost(skylink string, spp modules.SkyfilePinParameters) error {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", lup.FileMetadata.Filename)
-	forceStr := fmt.Sprintf("%t", lup.Force)
+	forceStr := fmt.Sprintf("%t", spp.Force)
 	values.Set("force", forceStr)
-	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	redundancyStr := fmt.Sprintf("%v", spp.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
-	rootStr := fmt.Sprintf("%t", lup.Root)
+	rootStr := fmt.Sprintf("%t", spp.Root)
 	values.Set("root", rootStr)
-	values.Set("siapath", lup.SiaPath.String())
+	values.Set("siapath", spp.SiaPath.String())
 
 	query := fmt.Sprintf("/skynet/pin/%s?%s", skylink, values.Encode())
 	_, _, err := c.postRawResponse(query, nil)
