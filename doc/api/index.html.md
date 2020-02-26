@@ -4149,7 +4149,7 @@ json object which matches the modules.SkyfileMetadata struct.
 {
 "mode": 640         // os.FileMode
 "filename": "adir", // string
-"subfiles": [       // []SubfileMetadata | null
+"subfiles": [       // []SkyfileSubfileMetadata | null
   {
   "mode":         640               // os.FileMode
   "filename":     "adir/file1.txt", // string

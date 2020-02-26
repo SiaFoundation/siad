@@ -1846,7 +1846,7 @@ func (api *API) skynetSkylinkSubfileHandlerGET(w http.ResponseWriter, req *http.
 	}
 
 	// Try to download the requested subfile
-	metadata, streamer, err := api.renter.DownloadSubfile(skylink, subfile)
+	metadata, streamer, err := api.renter.DownloadSkyfileSubfile(skylink, subfile)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
@@ -2180,7 +2180,7 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 
 	// If there are multiple, treat the entire upload as one with all separate
 	// files being subfiles. This is used for uploading a directory to Skynet.
-	sfm.Subfiles = make([]modules.SubfileMetadata, len(mpfHeaders))
+	sfm.Subfiles = make([]modules.SkyfileSubfileMetadata, len(mpfHeaders))
 	readers := make([]io.Reader, len(mpfHeaders))
 	var offset uint64
 	for i, fh := range mpfHeaders {
@@ -2203,7 +2203,7 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (*modules.S
 		// parse content type from multipart header
 		contentType := fh.Header.Get("Content-Type")
 
-		sfm.Subfiles[i] = modules.SubfileMetadata{
+		sfm.Subfiles[i] = modules.SkyfileSubfileMetadata{
 			Mode:        mode,
 			Filename:    fh.Filename,
 			ContentType: contentType,

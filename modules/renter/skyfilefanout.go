@@ -40,7 +40,7 @@ type fanoutStreamBufferDataSource struct {
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // skyfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the skyfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanoutBytes []byte, sf modules.SubfileMetadata) (modules.Streamer, error) {
+func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanoutBytes []byte, sf modules.SkyfileSubfileMetadata) (modules.Streamer, error) {
 	// Create the erasure coder and the master key.
 	masterKey, err := crypto.NewSiaKey(ll.cipherType, ll.cipherKey[:])
 	if err != nil {
@@ -70,7 +70,7 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanou
 
 	// If we are streaming a subfile, wrap the streamer in a section read seeker
 	// that limits the reads to the appropriate offsets.
-	if !sf.Equals(modules.SubfileMetadata{}) {
+	if !sf.Equals(modules.SkyfileSubfileMetadata{}) {
 		return NewSectionReadSeeker(stream, sf.Offset, sf.Len), nil
 	}
 	return stream, nil

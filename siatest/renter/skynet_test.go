@@ -497,7 +497,7 @@ func TestSkynetMultipartUpload(t *testing.T) {
 // testMultipartUploadSmall tests multipart upload for small files, small files
 // are files which are smaller than one sector, and thus don't need a fanout.
 func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
-	var subfiles []modules.SubfileMetadata
+	var subfiles []modules.SkyfileSubfileMetadata
 	var offset uint64
 
 	// create a multipart upload that uploads several files.
@@ -570,7 +570,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 // testMultipartUploadLarge tests multipart upload for large files, large files
 // are files which are larger than one sector, and thus need a fanout streamer.
 func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
-	var subfiles []modules.SubfileMetadata
+	var subfiles []modules.SkyfileSubfileMetadata
 	var offset uint64
 
 	// create a multipart upload that uploads several files.
@@ -681,7 +681,7 @@ func createFormFileHeaders(fieldname, filename string, headers map[string]string
 // addMultipartField is a helper function to add a file to the multipart form-
 // data. Note that the given data will be treated as binary data, and the multi
 // part 's ContentType header will be set accordingly.
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SubfileMetadata {
+func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
 	h := map[string]string{"mode": fmt.Sprintf("%o", filemode)}
 	partHeader := createFormFileHeaders(filekey, filename, h)
 	part, err := w.CreatePart(partHeader)
@@ -690,7 +690,7 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	}
 
 	_, err = part.Write(filedata)
-	metadata := modules.SubfileMetadata{
+	metadata := modules.SkyfileSubfileMetadata{
 		Filename:    filename,
 		ContentType: "application/octet-stream",
 		Mode:        os.FileMode(filemode),
@@ -792,7 +792,7 @@ func TestSkynetNoFilename(t *testing.T) {
 		FileMetadata: modules.SkyfileMetadata{
 			Mode:     os.FileMode(0600),
 			Filename: "MultipartUploadSmall",
-			Subfiles: []modules.SubfileMetadata{subfile},
+			Subfiles: []modules.SkyfileSubfileMetadata{subfile},
 		},
 		Reader:      reader,
 		ContentType: writer.FormDataContentType(),
@@ -825,7 +825,7 @@ func TestSkynetNoFilename(t *testing.T) {
 		FileMetadata: modules.SkyfileMetadata{
 			Mode:     os.FileMode(0600),
 			Filename: "MultipartUploadSmall",
-			Subfiles: []modules.SubfileMetadata{subfile},
+			Subfiles: []modules.SkyfileSubfileMetadata{subfile},
 		},
 		Reader:      reader,
 		ContentType: writer.FormDataContentType(),
