@@ -493,7 +493,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 
 	// Parse out the skyfile metadata.
 	var lfm modules.SkyfileMetadata
-	metadataSize := uint64(ll.metadataSize)
+	metadataSize := ll.metadataSize
 	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
