@@ -1185,62 +1185,32 @@ type SkyfileUploadParameters struct {
 
 	// This metadata will be included in the base chunk, meaning that this
 	// metadata is visible to the downloader before any of the file data is
-	// visible. Note that this field is ignored for multipart uploads, in case
-	// of multipart uploads the file metadata is constructed using the
-	// information in the MIME part headers.
+	// visible.
 	FileMetadata SkyfileMetadata `json:"filemetadata"`
 
 	// Reader supplies the file data for the skyfile.
 	Reader io.Reader `json:"reader"`
 }
 
-// SkyfileMultipartUploadParameters establishes the parameters for multipart
-// uploads such as the intra-root erasure coding.
+// SkyfileMultipartUploadParameters defines the parameters specific to multipart
+// uploads. See SkyfileUploadParameters for a detailed description of the
+// fields.
 type SkyfileMultipartUploadParameters struct {
-	// SiaPath defines the siapath that the skyfile is going to be uploaded to.
-	// Recommended that the skyfile is placed in /var/skynet
-	SiaPath SiaPath `json:"siapath"`
-
-	// Force determines whether the upload should overwrite an existing siafile
-	// at 'SiaPath'. If set to false, an error will be returned if there is
-	// already a file or folder at 'SiaPath'. If set to true, any existing file
-	// or folder at 'SiaPath' will be deleted and overwritten.
-	Force bool `json:"force"`
-
-	// Root determines whether the upload should treat the filepath as a path
-	// from system root, or if the path should be from /var/skynet.
-	Root bool `json:"root"`
-
-	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
-	// meaning that only the redundancy needs to be configured by the user.
-	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
-
-	// Reader supplies the file data for the skyfile.
-	Reader io.Reader `json:"reader"`
+	SiaPath             SiaPath   `json:"siapath"`
+	Force               bool      `json:"force"`
+	Root                bool      `json:"root"`
+	BaseChunkRedundancy uint8     `json:"basechunkredundancy"`
+	Reader              io.Reader `json:"reader"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`
 }
 
-// SkyfilePinParameters establishes the parameters that can be set when pinning
-// a Skylink. Note that this is a subset of the parameters that can be set when
-// uploading a Skyfile.
+// SkyfilePinParameters defines the parameters specific to pinning a skylink.
+// See SkyfileUploadParameters for a detailed description of the fields.
 type SkyfilePinParameters struct {
-	// SiaPath defines the siapath that the skyfile is going to be uploaded to.
-	// Recommended that the skyfile is placed in /var/skynet
-	SiaPath SiaPath `json:"siapath"`
-
-	// Force determines whether the upload should overwrite an existing siafile
-	// at 'SiaPath'. If set to false, an error will be returned if there is
-	// already a file or folder at 'SiaPath'. If set to true, any existing file
-	// or folder at 'SiaPath' will be deleted and overwritten.
-	Force bool `json:"force"`
-
-	// Root determines whether the upload should treat the filepath as a path
-	// from system root, or if the path should be from /var/skynet.
-	Root bool `json:"root"`
-
-	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
-	// meaning that only the redundancy needs to be configured by the user.
-	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
+	SiaPath             SiaPath `json:"siapath"`
+	Force               bool    `json:"force"`
+	Root                bool    `json:"root"`
+	BaseChunkRedundancy uint8   `json:"basechunkredundancy"`
 }
