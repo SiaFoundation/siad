@@ -16,12 +16,12 @@ The Persistence subsystem is responsible for the disk interaction and ensuring
 safe and performant ACID operations. An append only structure is used with a
 length of fsync'd bytes encoded in the metadata.
 
-**Exports**
- - `Update`
-
 **Inbound Complexities**
  - `callInitPersist` initializes the persistence file 
     - The Skynet Blacklist Subsystem's `New` method uses `callInitPersist`
+ - `callUpdateAndAppend` updates the skynet blacklist and appends the
+   information to the persistence file
+    - The Skynet Blacklist Subsytem's `Update` method uses `callUpdateAndAppend`
 
 ### Skynet Blacklist Subsystem
 **Key Files**
@@ -34,6 +34,8 @@ Blacklist.
 **Exports**
  - `IsBlacklisted` returns whether or not a skylink merkleroot is blacklisted
  - `New` creates and returns a new Skynet Blacklist
+ - `Update` updates the blacklist
 
 **Outbound Complexities**
  - `New` calls the Persistence Subsystem's `callInitPersist` method
+ - `Update` calls the Persistence Subsystem's `callUpdateAndAppend` method

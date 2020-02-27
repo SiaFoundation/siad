@@ -41,3 +41,8 @@ func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 	_, ok := sb.merkleroots[skylink.MerkleRoot()]
 	return ok
 }
+
+// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
+func (sb *SkynetBlacklist) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
+	return sb.callUpdateAndAppend(additions, removals)
+}

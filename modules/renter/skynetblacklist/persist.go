@@ -53,34 +53,6 @@ func (sb *SkynetBlacklist) marshalMetadata() ([]byte, error) {
 	return metadataBytes, errors.Compose(headerErr, versionErr)
 }
 
-// unmarshalMetadata ummarshals the Skynet Blacklist's metadata from the
-// provided byte slice
-func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
-	// Define offsets for reading from provided byte slice
-	versionOffset := types.SpecifierLen
-	lengthOffset := 2 * types.SpecifierLen
-
-	// Unmarshal and check Header and Version for correctness
-	var header, version types.Specifier
-	err := header.UnmarshalText(raw[:versionOffset])
-	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal header")
-	}
-	if header != metadataHeader {
-		return errWrongHeader
-	}
-	err = version.UnmarshalText(raw[versionOffset:lengthOffset])
-	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal version")
-	}
-	if version != metadataVersion {
-		return errWrongVersion
-	}
-
-	// Unmarshal the length
-	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
-}
-
 // marshalSia implements the encoding.SiaMarshaler interface.
 func marshalSia(w io.Writer, merkleRoot crypto.Hash, blacklisted bool) error {
 	e := encoding.NewEncoder(w)
@@ -114,13 +86,6 @@ func unmarshalSia(r io.Reader) (merkleRoot crypto.Hash, blacklisted bool, err er
 	blacklisted = d.NextBool()
 	err = d.Err()
 	return
-}
-
-// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
-func (sb *SkynetBlacklist) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-	return sb.update(additions, removals)
 }
 
 // initPersist initializes the persistence of the SkynetBlacklist
@@ -173,56 +138,14 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	return nil
 }
 
-// load loads the persisted blacklist from disk
-func (sb *SkynetBlacklist) load() error {
-	// Open File
-	f, err := os.Open(filepath.Join(sb.staticPersistDir, persistFile))
-	if err != nil {
-		// Intentionally don't add context to allow for IsNotExist error check
-		return err
-	}
-	defer f.Close()
-
-	// Check the Header and Version of the file
-	metadataSize := int64(2*types.SpecifierLen) + lengthSize
-	metadataBytes := make([]byte, metadataSize)
-	_, err = f.ReadAt(metadataBytes, 0)
-	if err != nil {
-		return errors.AddContext(err, "enable to read metadata bytes from file")
-	}
-	err = sb.unmarshalMetadata(metadataBytes)
-	if err != nil {
-		return errors.AddContext(err, "enable to unmarshal metadata bytes")
-	}
-
-	// Check if there is a persisted blacklist after the metatdata
-	goodBytes := sb.persistLength - metadataPageSize
-	if goodBytes <= 0 {
-		return nil
-	}
-
-	// Seek to the start of the persisted blacklist
-	_, err = f.Seek(metadataPageSize, 0)
-	if err != nil {
-		return errors.AddContext(err, "unable to seek to start of persisted blacklist")
-	}
-	// Decode persist links
-	blacklist, err := unmarshalBlacklist(f, goodBytes/persistMerkleRootSize)
-	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal persistLinks")
-	}
-
-	// Add to Skynet Blacklist
-	sb.merkleroots = blacklist
-
-	return nil
-}
-
-// update updates the persistence on disk with the new additions and removals
-// from the blacklist
+// callUpdateAndAppend updates the blacklist with the additions and
+// removals and append the changes to the persist file on disk
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
+func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Skylink) error {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
@@ -281,4 +204,77 @@ func (sb *SkynetBlacklist) update(additions, removals []modules.Skylink) error {
 		return errors.AddContext(err, "unable to fsync file")
 	}
 	return nil
+}
+
+// load loads the persisted blacklist from disk
+func (sb *SkynetBlacklist) load() error {
+	// Open File
+	f, err := os.Open(filepath.Join(sb.staticPersistDir, persistFile))
+	if err != nil {
+		// Intentionally don't add context to allow for IsNotExist error check
+		return err
+	}
+	defer f.Close()
+
+	// Check the Header and Version of the file
+	metadataSize := int64(2*types.SpecifierLen) + lengthSize
+	metadataBytes := make([]byte, metadataSize)
+	_, err = f.ReadAt(metadataBytes, 0)
+	if err != nil {
+		return errors.AddContext(err, "enable to read metadata bytes from file")
+	}
+	err = sb.unmarshalMetadata(metadataBytes)
+	if err != nil {
+		return errors.AddContext(err, "enable to unmarshal metadata bytes")
+	}
+
+	// Check if there is a persisted blacklist after the metatdata
+	goodBytes := sb.persistLength - metadataPageSize
+	if goodBytes <= 0 {
+		return nil
+	}
+
+	// Seek to the start of the persisted blacklist
+	_, err = f.Seek(metadataPageSize, 0)
+	if err != nil {
+		return errors.AddContext(err, "unable to seek to start of persisted blacklist")
+	}
+	// Decode persist links
+	blacklist, err := unmarshalBlacklist(f, goodBytes/persistMerkleRootSize)
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal persistLinks")
+	}
+
+	// Add to Skynet Blacklist
+	sb.merkleroots = blacklist
+
+	return nil
+}
+
+// unmarshalMetadata ummarshals the Skynet Blacklist's metadata from the
+// provided byte slice
+func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
+	// Define offsets for reading from provided byte slice
+	versionOffset := types.SpecifierLen
+	lengthOffset := 2 * types.SpecifierLen
+
+	// Unmarshal and check Header and Version for correctness
+	var header, version types.Specifier
+	err := header.UnmarshalText(raw[:versionOffset])
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal header")
+	}
+	if header != metadataHeader {
+		return errWrongHeader
+	}
+	err = version.UnmarshalText(raw[versionOffset:lengthOffset])
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal version")
+	}
+	if version != metadataVersion {
+		return errWrongVersion
+	}
+
+	// Unmarshal the length
+	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
 }
