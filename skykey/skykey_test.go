@@ -13,7 +13,7 @@ import (
 
 // TestSkykeyManager tests the basic functionality of the skykeyManager.
 func TestSkykeyManager(t *testing.T) {
-	if len(SkykeyVersion) > maxVersionStringLen {
+	if len(skykeyVersion) > maxVersionStringLen {
 		t.Fatal("Skykey version must be less than the max length")
 	}
 
@@ -25,7 +25,7 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Check that the header values are set.
-	if keyMan.version != SkykeyVersion {
+	if keyMan.version != skykeyVersion {
 		t.Fatal("Expected version to be set")
 	}
 	if int(keyMan.fileLen) < headerLen {
@@ -144,7 +144,7 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Check that the header values are set.
-	if keyMan2.version != SkykeyVersion {
+	if keyMan2.version != skykeyVersion {
 		t.Fatal("Expected version to be set")
 	}
 	if keyMan2.fileLen != fileLen {

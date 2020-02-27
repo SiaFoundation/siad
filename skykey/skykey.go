@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	SkykeyVersion       = "1.4.3"
+	skykeyVersion       = "1.4.3"
 	maxVersionStringLen = 32 // maximum length of the version string
 
 	// MaxKeyNameLen is the maximum length of a skykey's name.
@@ -331,7 +331,7 @@ func (sm *SkykeyManager) load() error {
 		return err
 	}
 	if fileInfo.Size() < int64(headerLen) {
-		sm.version = SkykeyVersion
+		sm.version = skykeyVersion
 		sm.fileLen = uint64(headerLen)
 		return sm.saveHeader(file)
 	}
