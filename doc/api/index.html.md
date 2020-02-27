@@ -4118,7 +4118,11 @@ See [standard responses](#standard-responses).
 > Stream the whole file.  
 
 ```bash
+# entire file
 curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+
+# subfile
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/nested/file.txt"
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
@@ -4127,7 +4131,8 @@ received.
 ### Path Parameters 
 ### Required
 **skylink** | string  
-The skylink that should be downloaded.
+The skylink that should be downloaded. The skylink can contain an optional
+filename. If that is the case only the requested subfile will get downloaded.
 
 ### Query String Parameters
 ### OPTIONAL
@@ -4142,7 +4147,9 @@ the file as though it is an attachment instead of rendering it.
 **Skynet-File-Metadata** | SkyfileMetadata
 
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
-json object which matches the modules.SkyfileMetadata struct.
+json object which matches the modules.SkyfileMetadata struct, or the
+modules.SkyfileSubfileMetadata if a filename was provided along with the
+skylink.
 
 > Skynet-File-Metadata Response Header Example
 ```go
@@ -4158,56 +4165,6 @@ json object which matches the modules.SkyfileMetadata struct.
   "len":          6                 // uint64
   }
 ]
-}
-```
-
-### Response Body
-
-The response body is the raw data for the file.
-
-## /skynet/skylink/*skylink*/*subfile* [GET]
-> curl example  
-
-> Stream a single subfile of a skyfile.  
-
-```bash
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/file1.txt"
-```  
-
-downloads a single subfile from a skylink using http streaming. This call blocks
-until the data is received.
-
-### Path Parameters 
-### Required
-**skylink** | string  
-The skylink to the file that should be downloaded.
-
-**subfile** | string  
-The filename of the subfile that should be downloaded.
-
-### Query String Parameters
-### OPTIONAL
-
-**attachment** | bool  
-If 'attachment' is set to true, the Content-Disposition http header will be set
-to 'attachment' instead of 'inline'. This will cause web browsers to download
-the file as though it is an attachment instead of rendering it.
-
-### Response Header
-
-**Skynet-File-Metadata** | SkyfileMetadata
-
-The header field "Skynet-FileMetadata" will be set such that it has an encoded
-json object which matches the modules.SkyfileMetadata struct.
-
-> Skynet-File-Metadata Response Header Example
-```go
-{
-"mode":         640               // os.FileMode
-"filename":     "adir/file1.txt", // string
-"contenttype":  "text/plain",     // string
-"offset":       6,                // uint64
-"len":          6                 // uint64
 }
 ```
 
