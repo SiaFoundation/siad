@@ -19,12 +19,12 @@ type limitStreamer struct {
 }
 
 // NewLimitStreamer wraps the given modules.Streamer and ensures it can only be read from within the given offset and size boundary. It does this by wrapping both the Read and Seek calls and adjusting the offset and size of the returned byte slice appropriately.
-func NewLimitStreamer(s modules.Streamer, off, size uint64) modules.Streamer {
+func NewLimitStreamer(s modules.Streamer, offset, size uint64) modules.Streamer {
 	return &limitStreamer{
 		stream: s,
-		base:   off,
-		off:    off,
-		limit:  off + size,
+		base:   offset,
+		off:    offset,
+		limit:  offset + size,
 	}
 }
 

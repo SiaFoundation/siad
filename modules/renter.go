@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -1079,22 +1081,75 @@ type HostDB interface {
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Mode        os.FileMode              `json:"mode,omitempty"`
-	Filename    string                   `json:"filename,omitempty"`
-	ContentType string                   `json:"contenttype,omitempty"`
-	Subfiles    []SkyfileSubfileMetadata `json:"subfiles,omitempty"`
+	Mode     os.FileMode                       `json:"mode,omitempty"`
+	Filename string                            `json:"filename,omitempty"`
+	Subfiles map[string]SkyfileSubfileMetadata `json:"subfiles,omitempty"`
 }
 
-// SubfileMetadata returns the metadata of the subfile for given
-// filename. If it can not find a subfile with that filename, an empty metadata
-// object is returned.
-func (x SkyfileMetadata) SubfileMetadata(filename string) (SkyfileSubfileMetadata, error) {
-	for _, sf := range x.Subfiles {
-		if sf.Filename == filename {
-			return sf, nil
+// SubDir returns a subset of the SkyfileMetadata that contains all of the
+// subfiles for the given path. This is effectively the metadata for the given
+// subdirectory. The offset in the subfiles will have been adjusted by the min
+// offset of the directory. Both the offset and size are returned.
+func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) {
+	// Sanity check this function is never called on legacy SkyfileMetadata
+	if sm.Subfiles == nil {
+		build.Critical("ForPath was called on a legacy SkyfileMetadata, this is not allowed as legacy SkyfileMetadata has no subfiles")
+	}
+
+	dir := SkyfileMetadata{
+		Filename: path,
+		Subfiles: make(map[string]SkyfileSubfileMetadata),
+	}
+	for _, sf := range sm.Subfiles {
+		filename := sf.Filename
+		if !strings.HasPrefix(filename, "/") {
+			filename = fmt.Sprintf("/%s", filename)
+		}
+		if strings.HasPrefix(filename, path) {
+			dir.Subfiles[sf.Filename] = sf
 		}
 	}
-	return SkyfileSubfileMetadata{}, ErrSkyfileSubfileNotFound
+
+	offset := dir.offset()
+	if offset > 0 {
+		for _, sf := range dir.Subfiles {
+			sf.Offset -= offset
+			dir.Subfiles[sf.Filename] = sf
+		}
+	}
+	return dir, offset, dir.size()
+}
+
+// size returns the total size, which is the sum of the length of all subfiles.
+func (sm SkyfileMetadata) size() uint64 {
+	var total uint64
+	for _, sf := range sm.Subfiles {
+		total += sf.Len
+	}
+	return total
+}
+
+// offset returns the smallest offset of the subfile with the smallest offset.
+func (sm SkyfileMetadata) offset() uint64 {
+	var min uint64 = math.MaxUint64
+	for _, sf := range sm.Subfiles {
+		if sf.Offset < min {
+			min = sf.Offset
+		}
+	}
+	return min
+}
+
+// ContentType returns the Content Type of the data. We only return a
+// content-type if it has exactly one subfile. As that is the only case where we
+// can be sure of it.
+func (sm SkyfileMetadata) ContentType() string {
+	if len(sm.Subfiles) == 1 {
+		for _, sf := range sm.Subfiles {
+			return sf.ContentType
+		}
+	}
+	return ""
 }
 
 // SkyfileSubfileMetadata is all of the metadata that belongs to a subfile in a
@@ -1132,8 +1187,35 @@ type SkyfileUploadParameters struct {
 
 	// This metadata will be included in the base chunk, meaning that this
 	// metadata is visible to the downloader before any of the file data is
-	// visible.
+	// visible. Note that this field is ignored for multipart uploads, in case
+	// of multipart uploads the file metadata is constructed using the
+	// information in the MIME part headers.
 	FileMetadata SkyfileMetadata `json:"filemetadata"`
+
+	// Reader supplies the file data for the skyfile.
+	Reader io.Reader `json:"reader"`
+}
+
+// SkyfileMultipartUploadParameters establishes the parameters for multipart
+// uploads such as the intra-root erasure coding.
+type SkyfileMultipartUploadParameters struct {
+	// SiaPath defines the siapath that the skyfile is going to be uploaded to.
+	// Recommended that the skyfile is placed in /var/skynet
+	SiaPath SiaPath `json:"siapath"`
+
+	// Force determines whether the upload should overwrite an existing siafile
+	// at 'SiaPath'. If set to false, an error will be returned if there is
+	// already a file or folder at 'SiaPath'. If set to true, any existing file
+	// or folder at 'SiaPath' will be deleted and overwritten.
+	Force bool `json:"force"`
+
+	// Root determines whether the upload should treat the filepath as a path
+	// from system root, or if the path should be from /var/skynet.
+	Root bool `json:"root"`
+
+	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
+	// meaning that only the redundancy needs to be configured by the user.
+	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
 
 	// Reader supplies the file data for the skyfile.
 	Reader io.Reader `json:"reader"`
