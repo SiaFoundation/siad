@@ -467,10 +467,19 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
-	// Fetch the leading chunk.
-	baseSector, offset, err := r.downloadLeadingChunk(link)
+	// Pull the offset and fetchSize out of the skylink.
+	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
-		return modules.SkyfileMetadata{}, nil, err
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
+	}
+
+	// Fetch the leading chunk.
+	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
+	if err != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
+	}
+	if len(baseSector) < SkyfileLayoutSize {
+		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
 	// Parse out the skyfileLayout.
@@ -624,24 +633,4 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		return r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
 	}
 	return r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
-}
-
-// downloadLeadingChunk will download the first sector of the file for given
-// skylink.
-func (r *Renter) downloadLeadingChunk(link modules.Skylink) ([]byte, uint64, error) {
-	// Pull the offset and fetchSize out of the skylink.
-	offset, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return nil, 0, errors.AddContext(err, "unable to parse skylink")
-	}
-
-	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
-	if err != nil {
-		return nil, 0, errors.AddContext(err, "unable to fetch base sector of skylink")
-	}
-	if len(baseSector) < SkyfileLayoutSize {
-		return nil, 0, errors.New("download did not fetch enough data, layout cannot be decoded")
-	}
-	return baseSector, offset, nil
 }
