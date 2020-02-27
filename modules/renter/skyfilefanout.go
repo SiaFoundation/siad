@@ -10,7 +10,6 @@ package renter
 // appended immedately after, and so on.
 
 import (
-	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -57,8 +56,9 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanou
 		staticErasureCoder: ec,
 		staticLayout:       ll,
 		staticMasterKey:    masterKey,
-		staticStreamID:     streamDataSourceID(crypto.HashObject(fmt.Sprintf("%s/%v", link.String(), ll.filesize))),
-		staticRenter:       r,
+		staticStreamID:     streamDataSourceID(crypto.HashObject(link.String())),
+
+		staticRenter: r,
 	}
 	err = fs.decodeFanout(fanoutBytes)
 	if err != nil {
@@ -67,7 +67,6 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanou
 
 	// Grab and return the stream.
 	stream := r.staticStreamBufferSet.callNewStream(fs, 0)
-
 	return stream, nil
 }
 

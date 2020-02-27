@@ -177,28 +177,6 @@ func (c *Client) get(resource string, obj interface{}) error {
 	return nil
 }
 
-// post makes a POST request to the resource at `resource`, using `data` as the
-// request body. The response, if provided, will be decoded into `obj`.
-func (c *Client) post(resource string, data string, obj interface{}) error {
-	// Request resource
-	_, body, err := c.postRawResponse(resource, strings.NewReader(data))
-	if err != nil {
-		return err
-	}
-	if obj == nil {
-		// No need to decode response
-		return nil
-	}
-
-	// Decode response
-	buf := bytes.NewBuffer(body)
-	err = json.NewDecoder(buf).Decode(obj)
-	if err != nil {
-		return errors.AddContext(err, "could not read response")
-	}
-	return nil
-}
-
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
 func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, []byte, error) {
@@ -245,4 +223,26 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 	}
 	d, err := ioutil.ReadAll(res.Body)
 	return res.Header, d, err
+}
+
+// post makes a POST request to the resource at `resource`, using `data` as the
+// request body. The response, if provided, will be decoded into `obj`.
+func (c *Client) post(resource string, data string, obj interface{}) error {
+	// Request resource
+	_, body, err := c.postRawResponse(resource, strings.NewReader(data))
+	if err != nil {
+		return err
+	}
+	if obj == nil {
+		// No need to decode response
+		return nil
+	}
+
+	// Decode response
+	buf := bytes.NewBuffer(body)
+	err = json.NewDecoder(buf).Decode(obj)
+	if err != nil {
+		return errors.AddContext(err, "could not read response")
+	}
+	return nil
 }
