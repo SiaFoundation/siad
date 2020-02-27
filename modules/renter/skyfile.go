@@ -509,59 +509,6 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 	return lfm, fs, nil
 }
 
-// DownloadSkyfileSubfile will take a skylink and filename, and turn it into the
-// metadata and data of a download for the subfile with given filename.
-func (r *Renter) DownloadSkyfileSubfile(link modules.Skylink, filename string) (modules.SkyfileSubfileMetadata, modules.Streamer, error) {
-	// Fetch the leading chunk.
-	baseSector, offset, err := r.downloadLeadingChunk(link)
-	if err != nil {
-		return modules.SkyfileSubfileMetadata{}, nil, err
-	}
-
-	// Parse out the skyfileLayout.
-	var ll skyfileLayout
-	ll.decode(baseSector)
-	offset += SkyfileLayoutSize
-
-	// Parse out the fanout.
-	fanoutBytes := baseSector[offset : offset+ll.fanoutSize]
-	offset += ll.fanoutSize
-
-	// Parse out the skyfile metadata.
-	var lfm modules.SkyfileMetadata
-	metadataSize := uint64(ll.metadataSize)
-	err = json.Unmarshal(baseSector[offset:offset+metadataSize], &lfm)
-	if err != nil {
-		return modules.SkyfileSubfileMetadata{}, nil, errors.AddContext(err, "unable to parse link file metadata")
-	}
-	offset += metadataSize
-
-	// Find the subfile for given filename
-	sfm, err := lfm.SubfileMetadata(filename)
-	if err == modules.ErrSkyfileSubfileNotFound {
-		return modules.SkyfileSubfileMetadata{}, nil, errors.New("unable to find subfile for given filename")
-	}
-
-	// If there is no fanout, all of the data will be contained in the base
-	// sector, return a streamer using the data from the base sector.
-	if ll.fanoutSize == 0 {
-		offset += sfm.Offset
-		streamer := streamerFromSlice(baseSector[offset : offset+sfm.Len])
-		return sfm, streamer, nil
-	}
-
-	if offset+metadataSize+ll.fanoutSize > modules.SectorSize {
-		return modules.SkyfileSubfileMetadata{}, nil, errors.New("fanout is more than one sector, that is unsupported in this version")
-	}
-
-	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newSubfileFanoutStreamer(link, ll, fanoutBytes, sfm)
-	if err != nil {
-		return modules.SkyfileSubfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
-	}
-	return sfm, fs, nil
-}
-
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters) error {

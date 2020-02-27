@@ -944,10 +944,6 @@ type Renter interface {
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	DownloadSkylink(Skylink) (SkyfileMetadata, Streamer, error)
 
-	// DownloadSkyfileSubfile will fetch a subfile from the Sia network using
-	// the skylink and the filename of the subfile.
-	DownloadSkyfileSubfile(Skylink, string) (SkyfileSubfileMetadata, Streamer, error)
-
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
 	// file.

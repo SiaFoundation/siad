@@ -1852,26 +1852,36 @@ func (api *API) skynetSkylinkSubfileHandlerGET(w http.ResponseWriter, req *http.
 		}
 	}
 
-	// Try to download the requested subfile
-	metadata, streamer, err := api.renter.DownloadSkyfileSubfile(skylink, subfile)
+	// Fetch a streamer for the entire file
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	filename := metadata.Filename
+
+	// Extract the subfile metadata
+	sfMetadata, err := metadata.SubfileMetadata(subfile)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch subfile %v, err: %v", subfile, err)}, http.StatusInternalServerError)
+		return
+	}
+	filename := sfMetadata.Filename
 
 	// Encode the metadata
-	encMetadata, err := json.Marshal(metadata)
+	encMetadata, err := json.Marshal(sfMetadata)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
+	// Wrap the streamer to ensure only the subfile can be read from it.
+	streamer = NewLimitStreamer(streamer, sfMetadata.Offset, sfMetadata.Len)
+
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
-	if metadata.ContentType != "" {
-		w.Header().Set("Content-Type", metadata.ContentType)
+	if sfMetadata.ContentType != "" {
+		w.Header().Set("Content-Type", sfMetadata.ContentType)
 	}
 
 	// Set Content-Disposition header, if 'attachment' is true, set the

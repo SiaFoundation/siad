@@ -37,17 +37,6 @@ type fanoutStreamBufferDataSource struct {
 	mu           sync.Mutex
 }
 
-// newSubfileFanoutStreamer will create a modules.Streamer that streams only the
-// given subfile from the fanout of a skyfile. It does this by wrapping a fanout
-// streamer and limiting the offset and length of the underlying stream.
-func (r *Renter) newSubfileFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanoutBytes []byte, sf modules.SkyfileSubfileMetadata) (modules.Streamer, error) {
-	stream, err := r.newFanoutStreamer(link, ll, fanoutBytes)
-	if err != nil {
-		return nil, err
-	}
-	return NewSectionReadSeeker(stream, sf.Offset, sf.Len), nil
-}
-
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // skyfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the skyfile, and then passing that to the stream buffer set.
