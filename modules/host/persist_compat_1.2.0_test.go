@@ -24,7 +24,8 @@ const (
 // then load the host on top of the given directory.
 func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, error) {
 	// Create the siamux
-	mux, err := modules.NewSiaMux(modulesDir, "localhost:0")
+	siaMuxDir := filepath.Join(modulesDir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, modulesDir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
