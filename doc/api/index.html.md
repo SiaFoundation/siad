@@ -2537,7 +2537,7 @@ period is over, the contracts will be renewed and the spending will be reset.
 
 **renewwindow** | blocks  
 The renew window is how long the user has to renew their contracts. At the end
-of the period, all of the contracts expire. The contracts need to be renewewd
+of the period, all of the contracts expire. The contracts need to be renewed
 before they expire, otherwise the user will lose all of their files. The renew
 window is the window of time at the end of the period during which the renter
 will renew the users contracts. For example, if the renew window is 1 week long,

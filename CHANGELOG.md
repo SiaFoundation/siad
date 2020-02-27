@@ -20,6 +20,7 @@ Latest:
  -
  -
  -
+ - Add `siac skynet unpin` subcommand.
 
 **Bugs Fixed**
  - 

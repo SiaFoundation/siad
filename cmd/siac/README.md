@@ -171,8 +171,32 @@ your saved list.
 if you have multiple downloads happening simultaneously.
 
 #### Skynet tasks
-* `siac skynet ls` displays a list of the your uploaded skyfiles currently
-on Skynet by nickname, and their filesizes.
+* `siac skynet upload [source filepath] [destination siapath]` uploads a file to
+  Skynet. A skylink will be produced which can be shared and used to retrieve
+  the file. The file that gets uploaded will be pinned to this Sia node, meaning
+  that this node will pay for storage and repairs until the file is manually
+  deleted.
+
+* `siac skynet ls` lists all skyfiles that the user has pinned along with the
+  corresponding skylinks. By default, only files in var/skynet/ will be
+  displayed.
+
+* `siac skynet download [skylink] [destination]` downloads a file from Skynet
+  using a skylink.
+
+* `siac skynet pin [skylink] [destination siapath]` pins the file associated
+  with this skylink by re-uploading an exact copy. This ensures that the file
+  will still be available on skynet as long as you continue maintaining the file
+  in your renter.
+
+* `siac skynet unpin [siapath]` unpins a skyfile, deleting it from your list of
+  stored files.
+
+* `siac skynet convert [source siaPath] [destination siaPath]` converts a
+  siafile to a skyfile and then generates its skylink. A new skylink will be
+  created in the user's skyfile directory. The skyfile and the original siafile
+  are both necessary to pin the file and keep the skylink active. The skyfile
+  will consume an additional 40 MiB of storage.
 
 * `siac skynet blacklist [skylink]` will add or remove a skylink from the
   Renter's Skynet Blacklist

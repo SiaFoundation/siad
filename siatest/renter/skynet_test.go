@@ -375,6 +375,19 @@ func TestSkynet(t *testing.T) {
 		t.Fatal("skylink mismatch")
 	}
 
+	// Unpinning test.
+	//
+	// Try deleting the file (equivalent to unpin).
+	err = r.RenterFileDeleteRootPost(fullPinSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the file is no longer present.
+	_, err = r.RenterFileRootGet(fullPinSiaPath)
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("skyfile still present after deletion")
+	}
+
 	// Try another pin test, this time with the large skylink.
 	largePinSiaPath, err := modules.NewSiaPath("testLargePinPath")
 	if err != nil {
@@ -404,6 +417,16 @@ func TestSkynet(t *testing.T) {
 	}
 	if pinnedFile.File.Skylinks[0] != largeSkylink {
 		t.Fatal("skylink mismatch")
+	}
+	// Try deleting the file.
+	err = r.RenterFileDeleteRootPost(fullLargePinSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the file is no longer present.
+	_, err = r.RenterFileRootGet(fullLargePinSiaPath)
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("skyfile still present after deletion")
 	}
 
 	// TODO: We don't actually check at all whether the presence of the new
