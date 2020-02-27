@@ -66,7 +66,7 @@ Latest:
 **Other**
  - Split out renter siatests into 2 groups for faster pipelines 
  - 
- - 
+ - Add README to the `siatest` package 
  - 
  - Bump golangci-lint version to v1.23.8
  - 
