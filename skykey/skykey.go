@@ -285,6 +285,9 @@ func (sm *SkykeyManager) loadHeader(file *os.File) error {
 	if !build.IsVersion(sm.version) {
 		return errors.New("skykey file header missing version")
 	}
+	if build.VersionCmp(skykeyVersion, sm.version) < 0 {
+		return errors.New("Unknown skykey version")
+	}
 
 	// Read the length of the file into the key manager.
 	dec.Decode(&sm.fileLen)
