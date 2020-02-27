@@ -1747,8 +1747,18 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")
-	var skylink modules.Skylink
+	strLink = strings.TrimPrefix(strLink, "/")
 
+	// Parse out optional subfile
+	var subfile string
+	splits := strings.SplitN(strLink, "?", 2)
+	splits = strings.SplitN(splits[0], "/", 2)
+	if len(splits) > 1 {
+		subfile = splits[1]
+	}
+
+	// Parse skylink
+	var skylink modules.Skylink
 	err := skylink.LoadString(strLink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
@@ -1779,109 +1789,47 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	filename := metadata.Filename
 
-	// Encode the metadata
-	encMetadata, err := json.Marshal(metadata)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-		return
-	}
+	var filename string
+	var encMetadata []byte
+	var contentType string
 
-	// Only set the Content-Type header when the metadata defines one, if we
-	// were to set the header to an empty string, it would prevent the http
-	// library from sniffing the file's content type.
-	if metadata.ContentType != "" {
-		w.Header().Set("Content-Type", metadata.ContentType)
-	}
-
-	// Set Content-Disposition header, if 'attachment' is true, set the
-	// disposition-type to attachment, otherwise we inline it.
-	var cdh string
-	if attachment {
-		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
-	} else {
-		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
-	}
-	w.Header().Set("Content-Disposition", cdh)
-	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	http.ServeContent(w, req, filename, time.Time{}, streamer)
-}
-
-// skynetSkylinkSubfileHandlerGET accepts a skylink and a filename as input and
-// will stream the subfile data from the skylink out of the response body as
-// output.
-func (api *API) skynetSkylinkSubfileHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	strLink := ps.ByName("skylink")
-	var skylink modules.Skylink
-
-	// Parse skylink
-	err := skylink.LoadString(strLink)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-		return
-	}
-
-	// Parse subfile
-	strSubfile := ps.ByName("subfile")
-	strSubfile = strings.TrimPrefix(strSubfile, "/")
-	splits := strings.SplitN(strSubfile, "?", 2)
-	subfile := splits[0]
 	if subfile == "" {
-		WriteError(w, Error{fmt.Sprintf("error parsing subfile: %v", err)}, http.StatusBadRequest)
-		return
-	}
-
-	// Parse the query params.
-	queryForm, err := url.ParseQuery(req.URL.RawQuery)
-	if err != nil {
-		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
-		return
-	}
-
-	// Parse the querystring.
-	var attachment bool
-	attachmentStr := queryForm.Get("attachment")
-	if attachmentStr != "" {
-		attachment, err = strconv.ParseBool(attachmentStr)
+		// Encode the metadata
+		encMetadata, err = json.Marshal(metadata)
 		if err != nil {
-			WriteError(w, Error{"unable to parse 'attachment' parameter: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 			return
 		}
-	}
+		contentType = metadata.ContentType
+		filename = metadata.Filename
+	} else {
+		// Find the subfile metadata
+		sfMetadata, err := metadata.SubfileMetadata(subfile)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to fetch subfile %v, err: %v", subfile, err)}, http.StatusInternalServerError)
+			return
+		}
 
-	// Fetch a streamer for the entire file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
-		return
-	}
+		// Encode the subfile's metadata
+		encMetadata, err = json.Marshal(sfMetadata)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+			return
+		}
 
-	// Extract the subfile metadata
-	sfMetadata, err := metadata.SubfileMetadata(subfile)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch subfile %v, err: %v", subfile, err)}, http.StatusInternalServerError)
-		return
-	}
-	filename := sfMetadata.Filename
+		// Wrap the streamer to ensure only the subfile can be read from it
+		streamer = NewLimitStreamer(streamer, sfMetadata.Offset, sfMetadata.Len)
 
-	// Encode the metadata
-	encMetadata, err := json.Marshal(sfMetadata)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
-		return
+		contentType = sfMetadata.ContentType
+		filename = sfMetadata.Filename
 	}
-
-	// Wrap the streamer to ensure only the subfile can be read from it.
-	streamer = NewLimitStreamer(streamer, sfMetadata.Offset, sfMetadata.Len)
 
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
-	if sfMetadata.ContentType != "" {
-		w.Header().Set("Content-Type", sfMetadata.ContentType)
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
 	}
 
 	// Set Content-Disposition header, if 'attachment' is true, set the
@@ -1897,7 +1845,6 @@ func (api *API) skynetSkylinkSubfileHandlerGET(w http.ResponseWriter, req *http.
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, filename, time.Time{}, streamer)
-	return
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
