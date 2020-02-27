@@ -556,7 +556,7 @@ func TestSkynetDisableForce(t *testing.T) {
 	}
 
 	// Upload using the force flag again, however now we set the
-	// Skynet-Disable-Force to false, which should prevent us from uploading.
+	// Skynet-Disable-Force to true, which should prevent us from uploading.
 	// Because we have to pass in a custom header, we have to setup the request
 	// ourselves and can not use the client.
 	req, err := skynetSkyfilePostRequestWithHeaders(r, sup)
@@ -575,7 +575,7 @@ func TestSkynetDisableForce(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(apiErr.Error(), "already exists") {
+	if !strings.Contains(apiErr.Error(), "'force' has been disabled") {
 		t.Log(res)
 		t.Fatal(apiErr)
 	}

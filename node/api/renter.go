@@ -1850,21 +1850,27 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	strDisableForce := req.Header.Get("Skynet-Disable-Force")
 	if strDisableForce != "" {
 		disableForce, err := strconv.ParseBool(strDisableForce)
-		if err == nil && disableForce {
-			allowForce = false
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'Skynet-Disable-Force' header: " + err.Error()}, http.StatusBadRequest)
+			return
 		}
+		allowForce = !disableForce
 	}
 
 	// Check whether existing file should be overwritten
 	force := false
-	if allowForce {
-		if f := queryForm.Get("force"); f != "" {
-			force, err = strconv.ParseBool(f)
-			if err != nil {
-				WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
-				return
-			}
+	if strForce := queryForm.Get("force"); strForce != "" {
+		force, err = strconv.ParseBool(strForce)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
 		}
+	}
+
+	// Notify the caller force has been disabled
+	if !allowForce && force {
+		WriteError(w, Error{"'force' has been disabled on this node" + err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether the redundancy has been set.
@@ -1939,21 +1945,27 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	strDisableForce := req.Header.Get("Skynet-Disable-Force")
 	if strDisableForce != "" {
 		disableForce, err := strconv.ParseBool(strDisableForce)
-		if err == nil && disableForce {
-			allowForce = false
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'Skynet-Disable-Force' header: " + err.Error()}, http.StatusBadRequest)
+			return
 		}
+		allowForce = !disableForce
 	}
 
 	// Check whether existing file should be overwritten
 	force := false
-	if allowForce {
-		if f := queryForm.Get("force"); f != "" {
-			force, err = strconv.ParseBool(f)
-			if err != nil {
-				WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
-				return
-			}
+	if strForce := queryForm.Get("force"); strForce != "" {
+		force, err = strconv.ParseBool(strForce)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
 		}
+	}
+
+	// Notify the caller force has been disabled
+	if !allowForce && force {
+		WriteError(w, Error{"'force' has been disabled on this node"}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether the redundancy has been set.
