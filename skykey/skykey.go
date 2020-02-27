@@ -64,7 +64,6 @@ type SkykeyManager struct {
 
 	version string
 	fileLen uint64 // Invariant: fileLen is at least headerLen
-	keys    []Skykey
 
 	persistFile string
 	mu          sync.Mutex
@@ -153,14 +152,8 @@ func (sm *SkykeyManager) CreateKey(name string, cipherTypeString string) (Skykey
 	// Generate the new key.
 	cipherKey := crypto.GenerateSiaKey(cipherType)
 	skykey := Skykey{name, cipherType, cipherKey.Key()}
-	keyId := skykey.Id()
 
-	// Store the new key.
-	sm.idsByName[name] = keyId
-	sm.keysById[keyId] = skykey
-	sm.keys = append(sm.keys, skykey)
-
-	err = sm.save()
+	err = sm.saveKey(skykey)
 	if err != nil {
 		return Skykey{}, err
 	}
@@ -196,19 +189,12 @@ func (sm *SkykeyManager) AddKey(name string, cipherTypeString string, entropy []
 		return Skykey{}, errors.AddContext(err, "Error creating new cipher key")
 	}
 	skykey := Skykey{name, cipherType, cipherKey.Key()}
-	keyId := skykey.Id()
 
-	// Store the new key.
-	sm.idsByName[name] = keyId
-	sm.keysById[keyId] = skykey
-	sm.keys = append(sm.keys, skykey)
-
-	err = sm.save()
+	err = sm.saveKey(skykey)
 	if err != nil {
 		return Skykey{}, err
 	}
 	return skykey, nil
-
 }
 
 // GetIdByName returns the Id associated with the given key name.
@@ -370,7 +356,6 @@ func (sm *SkykeyManager) load() error {
 		}
 
 		// Store the skykey.
-		sm.keys = append(sm.keys, sk)
 		sm.idsByName[sk.Name] = sk.Id()
 		sm.keysById[sk.Id()] = sk
 
@@ -388,8 +373,15 @@ func (sm *SkykeyManager) load() error {
 	return nil
 }
 
-// Save appends the last key to the skykey file and updates/syncs the header.
-func (sm *SkykeyManager) save() error {
+// saveKey saves the key and  appends it to the skykey file and updates/syncs
+// the header.
+func (sm *SkykeyManager) saveKey(skykey Skykey) error {
+	keyId := skykey.Id()
+
+	// Store the new key.
+	sm.idsByName[skykey.Name] = keyId
+	sm.keysById[keyId] = skykey
+
 	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, 0750)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
@@ -403,8 +395,7 @@ func (sm *SkykeyManager) save() error {
 	}
 
 	writer := newCountingWriter(file)
-	lastKey := sm.keys[len(sm.keys)-1]
-	err = lastKey.marshalSia(writer)
+	err = skykey.marshalSia(writer)
 	if err != nil {
 		return errors.AddContext(err, "Error writing skykey to file")
 	}

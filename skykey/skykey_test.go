@@ -109,14 +109,11 @@ func TestSkykeyManager(t *testing.T) {
 	if skykey2.equals(skykey) {
 		t.Fatal("Expected different skykey to be created")
 	}
-	if len(keyMan.keys) != 3 {
-		t.Fatal("Wrong number of keys", len(keyMan.keys))
-	}
 	if len(keyMan.keysById) != 3 {
-		t.Fatal("Wrong number of keys", len(keyMan.keys))
+		t.Fatal("Wrong number of keys", len(keyMan.keysById))
 	}
 	if len(keyMan.idsByName) != 3 {
-		t.Fatal("Wrong number of keys", len(keyMan.keys))
+		t.Fatal("Wrong number of keys", len(keyMan.idsByName))
 	}
 
 	// Check GetKeyByName returns the keys with the expected Id.
@@ -151,11 +148,11 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal("Expected file len to match previous keyMan", fileLen, keyMan2.fileLen)
 	}
 
-	if len(keyMan.keys) != len(keyMan2.keys) {
+	if len(keyMan.keysById) != len(keyMan2.keysById) {
 		t.Fatal("Expected same number of keys")
 	}
-	for i, key := range keyMan.keys {
-		if !key.equals(keyMan2.keys[i]) {
+	for id, key := range keyMan.keysById {
+		if !key.equals(keyMan2.keysById[id]) {
 			t.Fatal("Expected same keys")
 		}
 	}
@@ -168,7 +165,7 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, key := range keyMan.keys {
+	for _, key := range keyMan.keysById {
 		addedKey, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
 		if err != nil {
 			t.Fatal(err)
@@ -179,19 +176,16 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Check for the correct number of keys.
-	if len(addKeyMan.keys) != 3 {
-		t.Fatal("Wrong number of keys", len(addKeyMan.keys))
-	}
 	if len(addKeyMan.keysById) != 3 {
-		t.Fatal("Wrong number of keys", len(addKeyMan.keys))
+		t.Fatal("Wrong number of keys", len(addKeyMan.keysById))
 	}
 	if len(addKeyMan.idsByName) != 3 {
-		t.Fatal("Wrong number of keys", len(addKeyMan.keys))
+		t.Fatal("Wrong number of keys", len(addKeyMan.idsByName))
 	}
 
 	// Try re-adding the same keys, and check that the duplicate name error is
 	// shown.
-	for _, key := range keyMan.keys {
+	for _, key := range keyMan.keysById {
 		_, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
 		if !errors.Contains(err, errSkykeyNameAlreadyExists) {
 			t.Fatal(err)
