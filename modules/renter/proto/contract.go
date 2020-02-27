@@ -109,9 +109,9 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*writeaheadlog.Transaction
 
-	// refCounter keeps track of the number of references to each sector. Once
-	// that number falls to zero we can reuse or drop that sector.
-	refCounter *RefCounter
+	// // refCounter keeps track of the number of references to each sector. Once
+	// // that number falls to zero we can reuse or drop that sector.
+	// refCounter *RefCounter
 
 	headerFile *fileSection
 	wal        *writeaheadlog.WAL
@@ -464,17 +464,18 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 }
 
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
-	rc, err := cs.insertRefCounter(h.ID(), int64(len(roots)))
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
-	defer func() {
-		if err != nil {
-			// The contract couldn't be formed - remove the refcounter file.
-			// Ignore errors - nothing we can do and they don't matter much.
-			os.Remove(filepath.Join(cs.dir, h.ID().String()+refCounterExtension))
-		}
-	}()
+	// rcFilepath := filepath.Join(cs.dir, h.ID().String()+contractExtension)
+	// rc, err := NewRefCounter(rcFilepath, int64(len(roots)))
+	// if err != nil {
+	// 	return modules.RenterContract{}, errors.AddContext(err, "failed to create a reference counter file")
+	// }
+	// defer func() {
+	// 	if err != nil {
+	// 		// The contract couldn't be formed - remove the refcounter file.
+	// 		// Ignore errors - nothing we can do and they don't matter much.
+	// 		os.Remove(rcFilepath)
+	// 	}
+	// }()
 
 	if err := h.validate(); err != nil {
 		return modules.RenterContract{}, err
@@ -504,50 +505,14 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 		header:      h,
 		merkleRoots: merkleRoots,
 		headerFile:  headerSection,
-		refCounter:  &rc,
-		wal:         cs.wal,
+		// refCounter:  &rc,
+		wal: cs.wal,
 	}
 	cs.mu.Lock()
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
 	cs.mu.Unlock()
 	return sc.Metadata(), nil
-}
-
-// Creates a refcounter file to accompany the contract file
-func (cs *ContractSet) insertRefCounter(fcID types.FileContractID, numSectors int64) (RefCounter, error) {
-	f, err := os.Create(filepath.Join(cs.dir, fcID.String()+contractExtension))
-	if err != nil {
-		return RefCounter{}, err
-	}
-	h := RefCounterHeader{
-		Version:       RefCounterVersion,
-		ID:            fcID,
-		GarbageOffset: 0,
-		NumSectors:    numSectors,
-	}
-	// create fileSections
-	headerSection := newFileSection(f, 0, RefCounterHeaderSize)
-	countsSection := newFileSection(f, RefCounterHeaderSize, -1)
-	// write header
-	if _, err := headerSection.WriteAt(encoding.Marshal(h), 0); err != nil {
-		return RefCounter{}, err
-	}
-	// Initialise the counts for all sectors with a high enough value, so they
-	// won't be deleted until we run a sweep and determine the actual count:
-	zeroCounts := make([]byte, 2*numSectors, 2*numSectors)
-	for i := int64(1); i < numSectors; i += 2 {
-		zeroCounts[i] = 255
-	}
-	if _, err = countsSection.WriteAt(zeroCounts, 0); err != nil {
-		return RefCounter{}, err
-	}
-	return RefCounter{
-		RefCounterHeader: h,
-		sectorCounts:     zeroCounts,
-		headerFS:         headerSection,
-		countsFS:         countsSection,
-	}, nil
 }
 
 // loadSafeContractHeader will load a contract from disk, checking for legacy
@@ -633,13 +598,23 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 			unappliedTxns = append(unappliedTxns, t)
 		}
 	}
+
+	// // load the refcounter
+	// refCounterFileName := strings.Replace(filename, contractExtension, refCounterExtension, 1)
+	// refCounter, err := LoadRefCounter(refCounterFileName)
+	// if err != nil {
+	// 	// TODO: Trigger RefCounter file creation if the file was not found.
+	// 	// Delete the file and recreate it, if there was a different error.
+	// }
+
 	// add to set
 	sc := &SafeContract{
 		header:        header,
 		merkleRoots:   merkleRoots,
 		unappliedTxns: unappliedTxns,
-		headerFile:    headerSection,
-		wal:           cs.wal,
+		// refCounter:    &refCounter,
+		headerFile: headerSection,
+		wal:        cs.wal,
 	}
 
 	// apply the wal txns if necessary.
