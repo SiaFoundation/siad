@@ -94,8 +94,8 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Check that the correct error for a random unknown key is given.
-	randomIdBytes := fastrand.Bytes(24)
-	randomId := string(randomIdBytes)
+	var randomId SkykeyId
+	fastrand.Read(randomId[:])
 	_, err = keyMan.GetKeyById(randomId)
 	if err != errNoSkykeysWithThatId {
 		t.Fatal(err)
