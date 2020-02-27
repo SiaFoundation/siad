@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -22,9 +24,8 @@ const (
 
 // loadExistingHostWithNewDeps will create all of the dependencies for a host,
 // then load the host on top of the given directory.
-func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, error) {
+func loadExistingHostWithNewDeps(modulesDir, siaMuxDir, hostDir string) (modules.Host, error) {
 	// Create the siamux
-	siaMuxDir := filepath.Join(modulesDir, modules.SiaMuxDir)
 	mux, err := modules.NewSiaMux(siaMuxDir, modulesDir, "localhost:0")
 	if err != nil {
 		return nil, err
@@ -52,6 +53,15 @@ func loadExistingHostWithNewDeps(modulesDir, hostDir string) (modules.Host, erro
 	h, err := NewCustomHost(modules.ProdDependencies, cs, g, tp, w, mux, "localhost:0", hostDir)
 	if err != nil {
 		return nil, err
+	}
+
+	pubKey := mux.PublicKey()
+	if !bytes.Equal(h.publicKey.Key, pubKey[:]) {
+		return nil, errors.New("host and siamux pubkeys don't match")
+	}
+	privKey := mux.PrivateKey()
+	if !bytes.Equal(h.secretKey[:], privKey[:]) {
+		return nil, errors.New("host and siamux privkeys don't match")
 	}
 	return h, nil
 }
@@ -126,7 +136,8 @@ func TestV112StorageManagerUpgrade(t *testing.T) {
 
 	// Patching complete. Proceed to create the host and verify that the
 	// upgrade went smoothly.
-	host, err := loadExistingHostWithNewDeps(modulesDir, legacyHost)
+	siaMuxDir := filepath.Join(modulesDir, modules.SiaMuxDir)
+	host, err := loadExistingHostWithNewDeps(modulesDir, siaMuxDir, legacyHost)
 	if err != nil {
 		t.Fatal(err)
 	}
