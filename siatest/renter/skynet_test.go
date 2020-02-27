@@ -561,7 +561,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Download the second file
-	nestedfile, _, err := r.SkynetSkylinkGetSubfile(skylink, sup.FileMetadata.Subfiles[1].Filename)
+	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, sup.FileMetadata.Subfiles[1].Filename))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -650,13 +650,13 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Test the small download
-	smallFetchedData, _, err := r.SkynetSkylinkGetSubfile(largeSkylink, sup.FileMetadata.Subfiles[0].Filename)
+	smallFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", largeSkylink, sup.FileMetadata.Subfiles[0].Filename))
 
 	if !bytes.Equal(smallFetchedData, smallData) {
 		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(smallFetchedData), len(smallData))
 	}
 
-	largeFetchedData, _, err = r.SkynetSkylinkGetSubfile(largeSkylink, sup.FileMetadata.Subfiles[1].Filename)
+	largeFetchedData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", largeSkylink, sup.FileMetadata.Subfiles[1].Filename))
 
 	if !bytes.Equal(largeFetchedData, largeData) {
 		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(largeFetchedData), len(largeData))
