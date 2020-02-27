@@ -2,21 +2,29 @@ package proto
 
 import (
 	"encoding/binary"
+	"fmt"
+	"io"
 	"math"
 	"os"
+	"regexp"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
 	// RefCounterHeaderSize is the size of the header in bytes
-	RefCounterHeaderSize = int64(56)
+	RefCounterHeaderSize = int64(8)
 
 	// RefCounterVersion defines the latest version of the RefCounter
-	// TODO: How do we actually do versioning? Check other structs.
-	RefCounterVersion = [8]byte{0, 0, 0, 0, 0, 0, 0, 1}
+	RefCounterVersion = [8]byte{1, 0, 0, 0, 0, 0, 0, 0}
+
+	// ErrInvalidFilePath is thrown when we try to create a RefCounter but supply
+	// a bad file path. A correct file path consists of:
+	// a correct path + FileContractID hash + refCounterExtension
+	ErrInvalidFilePath = errors.New("invalid refcounter file path")
 
 	// ErrInvalidSectorNumber is thrown when the requested sector doesnt' exist
 	ErrInvalidSectorNumber = errors.New("invalid sector given - it does not exist")
@@ -33,15 +41,10 @@ type (
 	RefCounter struct {
 		RefCounterHeader
 
-		// Holds the number of references to that sector. Uses 2 bytes per sector.
-		sectorCounts []uint16
-
-		headerFS *fileSection
-		countsFS *fileSection
-		mu       sync.Mutex
+		filepath     string   // where the refcounter is persisted on disk
+		sectorCounts []uint16 // number of references per sector
+		mu           sync.Mutex
 	}
-
-	// TODO: Persist filename
 
 	// RefCounterHeader contains metadata about the reference counter file
 	RefCounterHeader struct {
@@ -60,10 +63,7 @@ func (rc *RefCounter) IncrementCount(secNum int64) (uint16, error) {
 		// TODO: Handle the overflow!
 	}
 	rc.sectorCounts[secNum]++
-	secBytes := make([]byte, 2, 2)
-	binary.LittleEndian.PutUint16(secBytes, rc.sectorCounts[secNum])
-	rc.countsFS.WriteAt(secBytes, secNum*2)
-	return rc.sectorCounts[secNum], nil
+	return rc.sectorCounts[secNum], rc.syncCountToDisk(secNum, rc.sectorCounts[secNum])
 }
 
 // DecrementCount decrements the reference counter of a given sector. The sector
@@ -73,15 +73,14 @@ func (rc *RefCounter) DecrementCount(secNum int64) (uint16, error) {
 	if secNum < 0 || secNum >= int64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
-	if rc.sectorCounts[secNum] == 0 { // handle the case where it might already be zero
+	// we check before decrementing in order to avoid a possible underflow if the
+	// counter is somehow zero
+	if rc.sectorCounts[secNum] <= 1 {
 		rc.managedMarkSectorAsGarbage(secNum)
 		return 0, nil
 	}
 	rc.sectorCounts[secNum]--
-	secBytes := make([]byte, 2, 2)
-	binary.LittleEndian.PutUint16(secBytes, rc.sectorCounts[secNum])
-	rc.countsFS.WriteAt(secBytes, secNum*2)
-	return rc.sectorCounts[secNum], nil
+	return rc.sectorCounts[secNum], rc.syncCountToDisk(secNum, rc.sectorCounts[secNum])
 }
 
 // GetCount returns the number of references to the given sector
@@ -93,6 +92,11 @@ func (rc *RefCounter) GetCount(secNum int64) (uint16, error) {
 	return rc.sectorCounts[secNum], nil
 }
 
+// DeleteRefCounter deletes the counter's file from disk
+func (rc *RefCounter) DeleteRefCounter() (err error) {
+	return os.Remove(rc.filepath)
+}
+
 func (rc *RefCounter) managedMarkSectorAsGarbage(secNum int64) {
 	// this method is unexported and the secNum validation is already done.
 	// TODO: get the contract, swap the sectors, recalculate the merkle root (?)
@@ -100,11 +104,45 @@ func (rc *RefCounter) managedMarkSectorAsGarbage(secNum int64) {
 	rc.mu.Lock()
 	rc.sectorCounts[secNum] = rc.sectorCounts[len(rc.sectorCounts)-1]
 	rc.sectorCounts = rc.sectorCounts[:len(rc.sectorCounts)-1]
+	rc.shrinkFile(2) // TODO: use WAL
 	rc.mu.Unlock()
+}
+
+// Stores the given sector count on disk
+func (rc *RefCounter) syncCountToDisk(secNum int64, c uint16) error {
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	offset := RefCounterHeaderSize + secNum*2
+	bytes := make([]byte, 2)
+	binary.LittleEndian.PutUint16(bytes, c)
+	_, err = f.WriteAt(bytes, offset)
+	return err
+}
+
+func (rc *RefCounter) shrinkFile(numBytes int64) error {
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	info, err := os.Stat(rc.filepath)
+	if err != nil {
+		return err
+	}
+
+	return f.Truncate(info.Size() - numBytes)
 }
 
 // NewRefCounter creates a new sector reference counter file to accompany a contract file
 func NewRefCounter(path string, numSectors int64) (RefCounter, error) {
+	if !isValidRefCounterPath(path) {
+		return RefCounter{}, ErrInvalidFilePath
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return RefCounter{}, err
@@ -139,42 +177,50 @@ func NewRefCounter(path string, numSectors int64) (RefCounter, error) {
 	return RefCounter{
 		RefCounterHeader: h,
 		sectorCounts:     zeroCounts,
-		headerFS:         headerSection,
-		countsFS:         countsSection,
+		filepath:         path,
 	}, nil
 }
 
 // LoadRefCounter loads a refcounter from disk
 func LoadRefCounter(path string) (RefCounter, error) {
-	f, err := os.OpenFile(path, os.O_RDWR, 0600)
+	f, err := os.Open(path)
 	if err != nil {
 		return RefCounter{}, err
 	}
-	defer func() {
-		if err != nil {
-			f.Close()
-		}
-	}()
+	defer f.Close()
 
-	// TODO: Implement
-	// headerSection := newFileSection(f, 0, RefCounterHeaderSize)
-	// countsSection := newFileSection(f, RefCounterHeaderSize, remainingFile)
+	stat, err := f.Stat()
+	if err != nil {
+		return RefCounter{}, err
+	}
+	decodeMaxSize := int(stat.Size() * 3)
 
-	// header, err := loadSafeContractHeader(f, int(RefCounterHeaderSize))
-	// if err != nil {
-	// 	return RefCounter{}, errors.AddContext(err, "unable to load refcounter header")
-	// }
+	var header RefCounterHeader
+	err = encoding.NewDecoder(f, decodeMaxSize).Decode(&header)
+	if err != nil {
+		return RefCounter{}, errors.AddContext(err, "unable to load refcounter header")
+	}
 
-	return RefCounter{}, nil
+	numSectors := (stat.Size() - RefCounterHeaderSize) / 2
+	sectorCounts := make([]uint16, numSectors)
+	f.Seek(RefCounterHeaderSize, io.SeekStart)
+	err = encoding.NewDecoder(f, decodeMaxSize).Decode(&sectorCounts)
+	if err != nil {
+		return RefCounter{}, errors.AddContext(err, "unable to load refcounter data")
+	}
+
+	return RefCounter{
+		RefCounterHeader: header,
+		filepath:         path,
+		sectorCounts:     sectorCounts,
+	}, nil
 }
 
-// DeleteRefCounter deletes the counter's file from disk
-// TODO: should the refcounter know where its file is? FileContractID?
-func (rc *RefCounter) DeleteRefCounter(path string) (err error) {
-	_, err = os.Stat(path)
+func isValidRefCounterPath(path string) bool {
+	r, err := regexp.Compile(fmt.Sprintf(`^.*[0-9a-f]{64}\%s$`, refCounterExtension))
 	if err != nil {
-		return
+		build.Critical("refCounterExtension's value breaks our regex", err)
+		return false
 	}
-	err = errors.Compose(rc.headerFS.Close(), rc.countsFS.Close(), os.Remove(path))
-	return
+	return r.Match([]byte(path))
 }

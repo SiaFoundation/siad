@@ -16,7 +16,7 @@ const (
 	contractExtension = ".contract"
 
 	// refCounterExtension is the extention given to reference counter files.
-	refCounterExtension = ".refcounter"
+	refCounterExtension = ".rc"
 
 	// rootsDiskLoadBulkSize is the max number of roots we read from disk at
 	// once to avoid using up all the ram.
