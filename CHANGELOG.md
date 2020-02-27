@@ -35,8 +35,7 @@ Latest:
  - Add `siac skynet unpin` subcommand.
  -
  -
- - Extend `siac renter -v` to show breakdown of file health and estimate size
- of contract data.
+ - Extend `siac renter -v` to show breakdown of file health.
  -
  -
 

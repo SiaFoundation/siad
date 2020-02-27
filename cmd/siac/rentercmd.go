@@ -23,13 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -383,35 +380,6 @@ func rentercmd() {
 	dirs := getDir(modules.RootSiaPath(), false, true)
 	fmt.Println()
 	renterFileHealthSummary(dirs)
-
-	// Print out the expect contract data
-	fmt.Println()
-	renterContractSize(dirs)
-}
-
-// renterContractSize shows the expected amount of data that the renter will be
-// storing in its contract based on the files that are uploaded
-//
-// NOTE: this function assumes 3x redundancy
-func renterContractSize(dirs []directoryInfo) {
-	minFileSize := siatest.ChunkSize(uint64(renter.DefaultDataPieces), crypto.TypeDefaultRenter)
-	var siaSize uint64
-	for _, dir := range dirs {
-		for _, file := range dir.files {
-			// Determine number of 40MiB chunks
-			size := uint64(file.Size())
-			numChunks := size / minFileSize
-			if size%minFileSize != 0 {
-				numChunks++
-			}
-			siaSize += numChunks * minFileSize * 3
-		}
-	}
-
-	fmt.Printf(`File Size vs Contract Size
-  Total File Size:          %v
-  Expected Contract Size:   %v
-`, modules.FilesizeUnits(dirs[0].dir.AggregateSize), modules.FilesizeUnits(siaSize))
 }
 
 // renterFileHealthSummary prints out a summary of the status of all the files
