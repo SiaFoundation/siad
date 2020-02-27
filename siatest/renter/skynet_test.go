@@ -806,6 +806,7 @@ func TestSkynetNoFilename(t *testing.T) {
 	}
 }
 
+// TestSkynetSubDirDownload verifies downloading data from a skyfile using a path to download single subfiles or subdirectories
 func TestSkynetSubDirDownload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -932,5 +933,16 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Log("expected: ", mdF3Expected)
 		t.Log("actual: ", mdF3)
 		t.Fatal("Unexpected subfile metadata for file 3")
+	}
+
+	// get a single sub file
+	downloadFile2, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a/file2.txt", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(dataFile2, downloadFile2) {
+		t.Log("expected:", dataFile2)
+		t.Log("actual:", downloadFile2)
+		t.Fatal("Unexpected data for file 2")
 	}
 }
