@@ -106,7 +106,7 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 	go r.callThreadedBubbleMetadata(oldDirSiaPath)
 	// Call callThreadedBubbleMetadata on the new directory to make sure the
 	// system metadata is updated to reflect the move.
-	newDirSiaPath, err := currentName.Dir()
+	newDirSiaPath, err := newName.Dir()
 	if err != nil {
 		return err
 	}
