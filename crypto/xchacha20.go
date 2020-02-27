@@ -15,7 +15,7 @@ import (
 const numRounds = 20
 
 // xChaCha20Cipher implements the CipherKey interface using the XChaCha20 stream
-// cipher. It embeds the *chacha.Cipher type.  All Encryption/Decryption methods
+// cipher. It embeds the *chacha.Cipher type. All Encryption/Decryption methods
 // reset the cipher keystream when they are done. To skip ahead in the keystream
 // you can manuallly set the counter, or use DecryptBytesInPlace with a
 // blockIndex which will set the counter automatically. Note that this cipher is
