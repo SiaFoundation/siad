@@ -870,7 +870,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticSkynetBlacklist = sb
 
 	// Load all saved data.
-	err := r.managedInitPersist()
+	err = r.managedInitPersist()
 	if err != nil {
 		return nil, err
 	}
