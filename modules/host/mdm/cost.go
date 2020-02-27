@@ -30,9 +30,9 @@ func (p *Program) addCost(cost types.Currency) error {
 
 // AppendCost is the cost of executing an 'Append' instruction.
 func AppendCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
-	cost := WriteCost(pt, modules.SectorSize)
-	refund := types.ZeroCurrency // TODO: figure out good refund
-	return cost, refund
+	writeCost := pt.WriteLengthCost.Mul64(modules.SectorSize).Add(pt.WriteBaseCost)
+	storeCost := pt.WriteStoreCost.Mul64(modules.SectorSize) // potential refund
+	return writeCost.Add(storeCost), storeCost
 }
 
 // InitCost is the cost of instantiatine the MDM. It is defined as:
@@ -43,20 +43,24 @@ func InitCost(pt modules.RPCPriceTable, programLen uint64) types.Currency {
 
 // HasSectorCost is the cost of executing a 'HasSector' instruction.
 func HasSectorCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
-	cost := pt.MemoryTimeCost.Mul64(1 << 20).Mul64(1) // TODO: figure out a better time than 1
-	refund := types.ZeroCurrency                      // no refund for HasSector instructions
+	cost := pt.MemoryTimeCost.Mul64(1 << 20).Mul64(TimeHasSector)
+	refund := types.ZeroCurrency // no refund
 	return cost, refund
 }
 
 // ReadCost is the cost of executing a 'Read' instruction. It is defined as:
 // 'readBaseCost' + 'readLengthCost' * `readLength`
-func ReadCost(pt modules.RPCPriceTable, readLength uint64) types.Currency {
-	return pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
+func ReadCost(pt modules.RPCPriceTable, readLength uint64) (types.Currency, types.Currency) {
+	cost := pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
+	refund := types.ZeroCurrency // no refund
+	return cost, refund
 }
 
 // WriteCost is the cost of executing a 'Write' instruction of a certain length.
-func WriteCost(pt modules.RPCPriceTable, writeLength uint64) types.Currency {
-	return pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
+func WriteCost(pt modules.RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
+	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
+	storeCost := types.ZeroCurrency // no refund since we overwrite existing storage
+	return writeCost, storeCost
 }
 
 // CopyCost is the cost of executing a 'Copy' instruction.
