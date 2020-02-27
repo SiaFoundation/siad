@@ -38,9 +38,6 @@ var (
 	// manually by the user.
 	ErrDownloadCancelled = errors.New("download was cancelled")
 
-	// ErrSkyfileSubfileNotFound is returned when a subfile could not be found.
-	ErrSkyfileSubfileNotFound = errors.New("subfile not found in skyfile")
-
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being
@@ -1087,9 +1084,10 @@ type SkyfileMetadata struct {
 }
 
 // SubDir returns a subset of the SkyfileMetadata that contains all of the
-// subfiles for the given path. This is effectively the metadata for the given
-// subdirectory. The offset in the subfiles will have been adjusted by the min
-// offset of the directory. Both the offset and size are returned.
+// subfiles for the given path. The path can lead to both a directory or a file.
+// Note that this method will return the subfiles with offsets relative to the
+// given path, so if a directory is requested, the subfiles in that directory
+// will start at offset 0, relative to the path.
 func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) {
 	// Sanity check this function is never called on legacy SkyfileMetadata
 	if sm.Subfiles == nil {
@@ -1120,6 +1118,18 @@ func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) 
 	return dir, offset, dir.size()
 }
 
+// ContentType returns the Content Type of the data. We only return a
+// content-type if it has exactly one subfile. As that is the only case where we
+// can be sure of it.
+func (sm SkyfileMetadata) ContentType() string {
+	if len(sm.Subfiles) == 1 {
+		for _, sf := range sm.Subfiles {
+			return sf.ContentType
+		}
+	}
+	return ""
+}
+
 // size returns the total size, which is the sum of the length of all subfiles.
 func (sm SkyfileMetadata) size() uint64 {
 	var total uint64
@@ -1138,18 +1148,6 @@ func (sm SkyfileMetadata) offset() uint64 {
 		}
 	}
 	return min
-}
-
-// ContentType returns the Content Type of the data. We only return a
-// content-type if it has exactly one subfile. As that is the only case where we
-// can be sure of it.
-func (sm SkyfileMetadata) ContentType() string {
-	if len(sm.Subfiles) == 1 {
-		for _, sf := range sm.Subfiles {
-			return sf.ContentType
-		}
-	}
-	return ""
 }
 
 // SkyfileSubfileMetadata is all of the metadata that belongs to a subfile in a

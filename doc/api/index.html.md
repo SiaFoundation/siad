@@ -4121,8 +4121,11 @@ See [standard responses](#standard-responses).
 # entire file
 curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
 
-# subfile
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/nested/file.txt"
+# directory
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/folder"
+
+# sub file
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/folder/file.txt"
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
@@ -4131,8 +4134,9 @@ received.
 ### Path Parameters 
 ### Required
 **skylink** | string  
-The skylink that should be downloaded. The skylink can contain an optional
-filename. If that is the case only the requested subfile will get downloaded.
+The skylink that should be downloaded. The skylink can contain an optional path.
+This path can specify a directory or a particular file. If specified, only that
+file or directory will be returned.
 
 ### Query String Parameters
 ### OPTIONAL
@@ -4147,22 +4151,21 @@ the file as though it is an attachment instead of rendering it.
 **Skynet-File-Metadata** | SkyfileMetadata
 
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
-json object which matches the modules.SkyfileMetadata struct, or the
-modules.SkyfileSubfileMetadata if a filename was provided along with the
-skylink.
+json object which matches the modules.SkyfileMetadata struct. If a path was
+supplied, this metadata will be relative to the given path.
 
-> Skynet-File-Metadata Response Header Example
+> Skynet-File-Metadata Response Header Example 
 ```go
 {
-"mode": 640         // os.FileMode
-"filename": "adir", // string
-"subfiles": [       // []SkyfileSubfileMetadata | null
+"mode":               // os.FileMode
+"filename": "folder", // string
+"subfiles": [         // []SkyfileSubfileMetadata | null
   {
-  "mode":         640               // os.FileMode
-  "filename":     "adir/file1.txt", // string
-  "contenttype":  "text/plain",     // string
-  "offset":       6,                // uint64
-  "len":          6                 // uint64
+  "mode":         640                 // os.FileMode
+  "filename":     "folder/file1.txt", // string
+  "contenttype":  "text/plain",       // string
+  "offset":       0,                  // uint64
+  "len":          6                   // uint64
   }
 ]
 }
