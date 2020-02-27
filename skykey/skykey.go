@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -16,9 +17,6 @@ import (
 )
 
 const (
-	skykeyVersion       = "1.4.3"
-	maxVersionStringLen = 32 // maximum length of the version string
-
 	// SkyKeyIdLen is the length of a
 	SkykeyIdLen = 16
 
@@ -26,16 +24,19 @@ const (
 	MaxKeyNameLen = 128
 
 	// headerLen is the length of the skykey file header.
-	headerLen = types.SpecifierLen + maxVersionStringLen + 8
+	headerLen = types.SpecifierLen + types.SpecifierLen + 8
 )
 
 var (
+	skykeyVersionString = "1.4.3"
+	skykeyVersion       = types.NewSpecifier(skykeyVersionString)
+
 	// SkykeySpecifier is used as a prefix when hashing Skykeys to compute their
 	// Id.
 	SkykeySpecifier = types.NewSpecifier("Skykey")
 
 	// SkykeyFileMagic is the first piece of data found in a Skykey file.
-	SkykeyFileMagic = "SkykeyFile"
+	SkykeyFileMagic = types.NewSpecifier("SkykeyFile")
 
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
 	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
@@ -62,7 +63,7 @@ type SkykeyManager struct {
 	idsByName map[string]SkykeyId
 	keysById  map[SkykeyId]Skykey
 
-	version string
+	version types.Specifier
 	fileLen uint64 // Invariant: fileLen is at least headerLen
 
 	persistFile string
@@ -271,7 +272,7 @@ func (sm *SkykeyManager) loadHeader(file *os.File) error {
 	}
 
 	dec := encoding.NewDecoder(bytes.NewReader(headerBytes), encoding.DefaultAllocLimit)
-	var magic string
+	var magic types.Specifier
 	dec.Decode(&magic)
 	if magic != SkykeyFileMagic {
 		return errors.New("Expected skykey file magic")
@@ -282,10 +283,16 @@ func (sm *SkykeyManager) loadHeader(file *os.File) error {
 		return errors.AddContext(dec.Err(), "Error decoding skykey file version")
 	}
 
-	if !build.IsVersion(sm.version) {
+	versionBytes, err := sm.version.MarshalText()
+	if err != nil {
+		return err
+	}
+	version := strings.ReplaceAll(string(versionBytes), string(0x0), "")
+
+	if !build.IsVersion(version) {
 		return errors.New("skykey file header missing version")
 	}
-	if build.VersionCmp(skykeyVersion, sm.version) < 0 {
+	if build.VersionCmp(skykeyVersionString, version) < 0 {
 		return errors.New("Unknown skykey version")
 	}
 
@@ -297,10 +304,6 @@ func (sm *SkykeyManager) loadHeader(file *os.File) error {
 // saveHeader saves the header data of the skykey file to disk and syncs the
 // file.
 func (sm *SkykeyManager) saveHeader(file *os.File) error {
-	if len(sm.version) > maxVersionStringLen {
-		return errors.New("Version string too long")
-	}
-
 	_, err := file.Seek(0, 0)
 	if err != nil {
 		return errors.AddContext(err, "Unable to save skykey header")

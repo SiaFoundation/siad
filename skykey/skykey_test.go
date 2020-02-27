@@ -13,10 +13,6 @@ import (
 
 // TestSkykeyManager tests the basic functionality of the skykeyManager.
 func TestSkykeyManager(t *testing.T) {
-	if len(skykeyVersion) > maxVersionStringLen {
-		t.Fatal("Skykey version must be less than the max length")
-	}
-
 	// Create a key manager.
 	persistDir := build.TempDir(t.Name())
 	keyMan, err := NewSkykeyManager(persistDir)
