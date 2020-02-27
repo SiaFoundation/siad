@@ -74,14 +74,22 @@ type SkykeyManager struct {
 // amount of bytes written.
 type countingWriter struct {
 	writer io.Writer
-	count  *int
+	count  int
+}
+
+func newCountingWriter(w io.Writer) *countingWriter {
+	return &countingWriter{w, 0}
 }
 
 // Write implements the io.Writer interface.
-func (cw countingWriter) Write(p []byte) (n int, err error) {
+func (cw *countingWriter) Write(p []byte) (n int, err error) {
 	n, err = cw.writer.Write(p)
-	*cw.count += n
+	cw.count += n
 	return
+}
+
+func (cw countingWriter) BytesWritten() uint64 {
+	return uint64(cw.count)
 }
 
 // unmarshalSia decodes the Skykey into the reader.
@@ -394,8 +402,7 @@ func (sm *SkykeyManager) save() error {
 		return err
 	}
 
-	var writerCount int
-	writer := countingWriter{file, &writerCount}
+	writer := newCountingWriter(file)
 	lastKey := sm.keys[len(sm.keys)-1]
 	err = lastKey.marshalSia(writer)
 	if err != nil {
@@ -408,6 +415,6 @@ func (sm *SkykeyManager) save() error {
 	}
 
 	// Update the header
-	sm.fileLen += uint64(writerCount)
+	sm.fileLen += writer.BytesWritten()
 	return sm.saveHeader(file)
 }
