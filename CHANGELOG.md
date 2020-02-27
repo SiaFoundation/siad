@@ -11,6 +11,7 @@ Version History
 Latest:
 ### v1.4.4
 **Key Updates**
+ - Add ability to blacklist skylinks by merkleroot
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
  -
@@ -34,10 +35,22 @@ Latest:
  - Add `siac skynet unpin` subcommand.
 
 **Bugs Fixed**
+ - 
+ -
+ -
+ -
+ -
+ -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
 
 **Other**
+ - 
+ -
+ -
+ -
+ -
+ -
 
 ### v1.4.3
 **Key Updates**

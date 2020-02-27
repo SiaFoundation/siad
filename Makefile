@@ -42,6 +42,7 @@ pkgs = ./build \
 	./modules/renter/proto \
 	./modules/renter/siadir \
 	./modules/renter/siafile \
+	./modules/renter/skynetblacklist \
 	./modules/transactionpool \
 	./modules/wallet \
 	./node \

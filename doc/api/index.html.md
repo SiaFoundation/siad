@@ -4112,14 +4112,39 @@ See [standard responses](#standard-responses).
 
 # Skynet
 
+## /skynet/blacklist [POST]
+> curl example
+```go
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+```
+
+updates the list of skylinks that should be blacklisted from Skynet. This
+endpoint can be used to both add and remove skylinks from the blacklist.
+
+### Path Parameters
+### REQUIRED
+At least one of the following fields needs to be non empty.
+
+**add** | array of strings  
+add is an array of skylinks that should be added to the blacklisted
+
+**remove** | array of strings  
+remove is an array of skylinks that should be removed from the blacklist
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /skynet/skylink/*skylink* [GET]
 > curl example  
 
 > Stream the whole file.  
 
-```bash
-# TODO: Update the link after the format is finalized
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-ehGt8m4f9MsrqlrHA"
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
@@ -4152,10 +4177,10 @@ The response body is the raw data for the file.
 ## /skynet/skyfile/*siapath* [POST]
 > curl example  
 
-```bash
-# This command uploads the file 'myImage.png' to the Sia folder
-# 'var/skynet/images/myImage.png'. Users who download the file will see the name
-# name 'image.png'.
+```go
+// This command uploads the file 'myImage.png' to the Sia folder
+// 'var/skynet/images/myImage.png'. Users who download the file will see the name
+// 'image.png'.
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?name=image.png" --data-binary @myImage.png
 ```
 
