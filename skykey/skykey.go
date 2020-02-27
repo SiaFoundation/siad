@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -323,7 +324,7 @@ func (sm *SkykeyManager) saveHeader(file *os.File) error {
 // it exists. If it does not exist, it initializes that file with the default
 // header values.
 func (sm *SkykeyManager) load() error {
-	file, err := os.OpenFile(sm.persistFile, os.O_RDWR|os.O_CREATE, 0750)
+	file, err := os.OpenFile(sm.persistFile, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
@@ -388,7 +389,7 @@ func (sm *SkykeyManager) saveKey(skykey Skykey) error {
 	sm.idsByName[skykey.Name] = keyId
 	sm.keysById[keyId] = skykey
 
-	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, 0750)
+	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
