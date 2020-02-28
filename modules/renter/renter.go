@@ -40,6 +40,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblacklist"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -166,6 +167,9 @@ type Renter struct {
 
 	// File management.
 	staticFileSystem *filesystem.FileSystem
+
+	// Skynet Management
+	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -856,6 +860,13 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
+	// Add SkynetBlacklist
+	sb, err := skynetblacklist.New(r.persistDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new skynet blacklist")
+	}
+	r.staticSkynetBlacklist = sb
+
 	// Load all saved data.
 	if err := r.managedInitPersist(); err != nil {
 		return nil, err
@@ -872,7 +883,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		go r.threadedUpdateRenterHealth()
 	}
 	// Unsubscribe on shutdown.
-	err := r.tg.OnStop(func() error {
+	err = r.tg.OnStop(func() error {
 		cs.Unsubscribe(r)
 		return nil
 	})

@@ -53,15 +53,24 @@ type (
 	}
 )
 
-// readSector will read the sector in the file, starting from the provided
-// location.
-func readSector(f modules.File, sectorIndex uint32) ([]byte, error) {
-	b := make([]byte, modules.SectorSize)
-	_, err := f.ReadAt(b, int64(uint64(sectorIndex)*modules.SectorSize))
+// readPartialSector will read a sector from the storage manager, returning the
+// 'length' bytes at offset 'offset' that match the input sector root.
+func readPartialSector(f modules.File, sectorIndex uint32, offset, length uint64) ([]byte, error) {
+	if offset+length > modules.SectorSize {
+		return nil, errors.New("readPartialSector: read is out of bounds")
+	}
+	b := make([]byte, length)
+	_, err := f.ReadAt(b, int64(uint64(sectorIndex)*modules.SectorSize+offset))
 	if err != nil {
 		return nil, build.ExtendErr("unable to read within storage folder", err)
 	}
 	return b, nil
+}
+
+// readSector will read the sector in the file, starting from the provided
+// location.
+func readSector(f modules.File, sectorIndex uint32) ([]byte, error) {
+	return readPartialSector(f, sectorIndex, 0, modules.SectorSize)
 }
 
 // readFullMetadata will read a full sector metadata file into memory.
@@ -113,9 +122,9 @@ func (cm *ContractManager) managedSectorID(sectorRoot crypto.Hash) (id sectorID)
 	return id
 }
 
-// ReadSector will read a sector from the storage manager, returning the bytes
-// that match the input sector root.
-func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
+// ReadPartialSector will read a sector from the storage manager, returning the
+// 'length' bytes at offset 'offset' that match the input sector root.
+func (cm *ContractManager) ReadPartialSector(root crypto.Hash, offset, length uint64) ([]byte, error) {
 	err := cm.tg.Add()
 	if err != nil {
 		return nil, err
@@ -143,13 +152,19 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	}
 
 	// Read the sector.
-	sectorData, err := readSector(sf.sectorFile, sl.index)
+	sectorData, err := readPartialSector(sf.sectorFile, sl.index, offset, length)
 	if err != nil {
 		atomic.AddUint64(&sf.atomicFailedReads, 1)
 		return nil, build.ExtendErr("unable to fetch sector", err)
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulReads, 1)
 	return sectorData, nil
+}
+
+// ReadSector will read a sector from the storage manager, returning the bytes
+// that match the input sector root.
+func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
+	return cm.ReadPartialSector(root, 0, modules.SectorSize)
 }
 
 // managedLockSector grabs a sector lock.

@@ -99,7 +99,18 @@ func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
 	return cost, refund, nil
 }
 
+// Memory returns the memory allocated by the 'Append' instruction beyond the
+// lifetime of the instruction.
+func (i *instructionAppend) Memory() uint64 {
+	return AppendMemory()
+}
+
 // ReadOnly for the 'Append' instruction is 'false'.
 func (i *instructionAppend) ReadOnly() bool {
 	return false
+}
+
+// Time returns the execution time of an 'Append' instruction.
+func (i *instructionAppend) Time() uint64 {
+	return TimeAppend
 }

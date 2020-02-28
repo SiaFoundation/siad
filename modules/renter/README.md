@@ -22,6 +22,7 @@ README files should be reviewed.
  - Proto
  - SiaDir
  - SiaFile
+ - Skynet Blacklist
 
 ### Contractor
 The Contractor manages the Renter's contracts and is responsible for all
@@ -50,6 +51,11 @@ ACIDity when performing file operations.
 The SiaFile module is the code that defines what a file is on the Sia network.
 It also manages accesses and updates to the file, ensuring safety and ACIDity
 when performing file operations.
+
+### Skynet Blacklist
+The Skynet Blacklist module manages the list of skylinks that the Renter wants
+blacklisted. It also manages persisting the blacklist in a ACID and performant
+manner.
 
 ## Subsystems
 The Renter has the following subsystems that help carry out its

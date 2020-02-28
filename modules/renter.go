@@ -951,6 +951,9 @@ type Renter interface {
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
 
+	// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
+	UpdateSkynetBlacklist(additions, removals []Skylink) error
+
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.
 	PinSkylink(Skylink, SkyfileUploadParameters) error

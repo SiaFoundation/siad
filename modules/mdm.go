@@ -27,11 +27,14 @@ var (
 )
 
 const (
-	// RPCIHasSectorLen is the expected length of the 'Args' of a HasSector instruction.
+	// RPCIHasSectorLen is the expected length of the 'Args' of a HasSector
+	// instruction.
 	RPCIHasSectorLen = 8
 
-	// RPCIReadSectorLen is the expected length of the 'Args' of a ReadSector instruction.
+	// RPCIReadSectorLen is the expected length of the 'Args' of a ReadSector
+	// instruction.
 	RPCIReadSectorLen = 25
+
 	// RPCIAppendLen is the expected length of the 'Args' of an Append
 	// instructon.
 	RPCIAppendLen = 9

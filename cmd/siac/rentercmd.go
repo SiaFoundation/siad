@@ -250,10 +250,18 @@ on top of Sia.`,
 		Run: skynetcmd,
 	}
 
+	skynetBlacklistCmd = &cobra.Command{
+		Use:   "blacklist [skylink]",
+		Short: "Blacklist a skylink from skynet.",
+		Long: `Blacklist a skylink from skynet. Use the --remove flag to
+remove a skylink from the blacklist.`,
+		Run: skynetblacklistcmd,
+	}
+
 	skynetDownloadCmd = &cobra.Command{
 		Use:   "download [skylink] [destination]",
 		Short: "Download a skylink from skynet.",
-		Long: `Download a file from skynet uisng a skylink. The download may fail unless this
+		Long: `Download a file from skynet using a skylink. The download may fail unless this
 node is configured as a skynet portal. Use the --portal flag to fetch a skylink
 file from a chosen skynet portal.`,
 		Run: skynetdownloadcmd,
@@ -268,18 +276,26 @@ maintaining the file in your renter.`,
 		Run: wrap(skynetpincmd),
 	}
 
+	skynetUnpinCmd = &cobra.Command{
+		Use:   "unpin [siapath]",
+		Short: "Unpin a pinned skyfile.",
+		Long: `Unpin the pinned skyfile at the given siapath. The file will continue to be
+available on Skynet if other nodes have pinned the file.`,
+		Run: wrap(skynetunpincmd),
+	}
+
 	skynetLsCmd = &cobra.Command{
 		Use:   "ls",
 		Short: "List all skyfiles that the user has pinned.",
 		Long: `List all skyfiles that the user has pinned along with the corresponding
-skylinks. By default, only files in var/skylinks will be displayed. The --root
+skylinks. By default, only files in var/skynet/ will be displayed. The --root
 flag can be used to view skyfiles pinned in other folders.`,
 		Run: skynetlscmd,
 	}
 
 	skynetUploadCmd = &cobra.Command{
 		Use:   "upload [source filepath] [destination siapath]",
-		Short: "Upload a file to Skynet",
+		Short: "Upload a file to Skynet.",
 		Long: `Upload a file to Skynet. A skylink will be produced which can be shared and used
 to retrieve the file. The file that gets uploaded will be pinned to this Sia
 node, meaning that this node will pay for storage and repairs until the file is
@@ -977,7 +993,7 @@ double the default number of default hosts be treated as a maximum.`)
 	// renewWindow
 	fmt.Println(`4/8: Renew Window
 The renew window is how long the user has to renew their contracts. At the end
-of the period, all of the contracts expire. The contracts need to be renewewd
+of the period, all of the contracts expire. The contracts need to be renewed
 before they expire, otherwise the user will lose all of their files. The renew
 window is the window of time at the end of the period during which the renter
 will renew the users contracts. For example, if the renew window is 1 week long,
@@ -2273,6 +2289,34 @@ func skynetcmd(cmd *cobra.Command, args []string) {
 	os.Exit(exitCodeUsage)
 }
 
+// skynetblacklistcmd handles adding and removing a skylink from the Skynet
+// Blacklist
+func skynetblacklistcmd(cmd *cobra.Command, args []string) {
+	if len(args) != 1 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+
+	// Get the skylink
+	skylink := args[0]
+	skylink = strings.TrimPrefix(skylink, "sia://")
+
+	// Check if this is an addition or removal
+	var add, remove []string
+	if skynetBlacklistRemove {
+		remove = append(remove, skylink)
+	} else {
+		add = append(add, skylink)
+	}
+
+	// Try to update the Skynet Blacklist.
+	err := httpClient.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		die("Unable to update skynet blacklist:", err)
+	}
+	fmt.Println("Skynet Blacklist updated")
+}
+
 // skynetdownloadcmd will perform the download of a skylink.
 func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if len(args) != 2 {
@@ -2356,7 +2400,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Check if the command is hitting a single file.
 	if !sp.IsRoot() {
-		rf, err := httpClient.RenterFileGet(sp)
+		rf, err := httpClient.RenterFileRootGet(sp)
 		if err == nil {
 			if len(rf.File.Skylinks) == 0 {
 				fmt.Println("File is not pinning any skylinks")
@@ -2502,6 +2546,35 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		}
 	}
 	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
+}
+
+// skynetunpincmd will unpin and delete the file from the Renter.
+func skynetunpincmd(siaPathStr string) {
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(siaPathStr)
+	if err != nil {
+		die("Could not parse siapath:", err)
+	}
+
+	// Parse out the intended siapath.
+	if !skynetUnpinRoot {
+		siaPath, err = modules.SkynetFolder.Join(siaPath.String())
+		if err != nil {
+			die("could not build siapath:", err)
+		}
+	}
+
+	// Try to delete file.
+	errFile := httpClient.RenterFileDeleteRootPost(siaPath)
+	if errFile == nil {
+		fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
+		return
+	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
+		die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
+	}
+
+	// Unknown file/folder.
+	die(fmt.Sprintf("Unknown path '%v'", siaPath))
 }
 
 // skynetconvertcmd will convert an existing siafile to a skyfile and skylink on

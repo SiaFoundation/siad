@@ -256,10 +256,17 @@ type (
 		MerkleRoot crypto.Hash `json:"merkleroot"`
 		Bitfield   uint16      `json:"bitfield"`
 	}
+
+	// SkynetBlacklistPOST contains the information needed for the
+	// /skynet/blacklist POST endpoint to be called
+	SkynetBlacklistPOST struct {
+		Add    []string `json:"add"`
+		Remove []string `json:"remove"`
+	}
 )
 
-// Returns the boolean value of the "root" parameter of req, if it exists.
-// Writes an error to w if "root" exists but is not parsable as bool.
+// Returns the boolean value of the 'root' parameter of req or an error if
+// it exists but is not parsable as bool.
 func isCalledWithRootFlag(req *http.Request) (bool, error) {
 	rootStr := req.FormValue("root")
 	if rootStr == "" {
@@ -1741,6 +1748,54 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return dp, nil
+}
+
+// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
+func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters
+	var params SkynetBlacklistPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check for nil input
+	if len(append(params.Add, params.Remove...)) == 0 {
+		WriteError(w, Error{"no skylinks submitted"}, http.StatusBadRequest)
+		return
+	}
+
+	// Convert to Skylinks
+	addSkylinks := make([]modules.Skylink, len(params.Add))
+	for i, addStr := range params.Add {
+		var skylink modules.Skylink
+		err := skylink.LoadString(addStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		addSkylinks[i] = skylink
+	}
+	removeSkylinks := make([]modules.Skylink, len(params.Remove))
+	for i, removeStr := range params.Remove {
+		var skylink modules.Skylink
+		err := skylink.LoadString(removeStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		removeSkylinks[i] = skylink
+	}
+
+	// Update the Skynet Blacklist
+	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
+	if err != nil {
+		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteSuccess(w)
 }
 
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
