@@ -1994,6 +1994,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 
+		if filename == "" && len(subfiles) == 1 {
+			filename = subfiles[0].Filename
+		}
+
 		lup.Reader = reader
 		lup.FileMetadata = modules.SkyfileMetadata{
 			Filename: filename,
