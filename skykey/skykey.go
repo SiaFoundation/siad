@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aead/chacha20/chacha"
+
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -126,19 +128,13 @@ func (sk *Skykey) equals(otherKey Skykey) bool {
 // SupportsCipherType returns true if and only if the SkykeyManager supports
 // keys with the given cipher type.
 func (sm *SkykeyManager) SupportsCipherType(ct crypto.CipherType) bool {
-	return ct == crypto.TypeThreefish // TODO: Change to XChaCha20
+	return ct == crypto.TypeXChaCha20
 }
 
 // CreateKey creates a new Skykey under the given name and cipherType.
-func (sm *SkykeyManager) CreateKey(name string, cipherTypeString string) (Skykey, error) {
+func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (Skykey, error) {
 	if len(name) > MaxKeyNameLen {
 		return Skykey{}, errSkykeyNameToolong
-	}
-
-	var cipherType crypto.CipherType
-	err := cipherType.FromString(cipherTypeString)
-	if err != nil {
-		return Skykey{}, errors.AddContext(err, "CreateKey error decoding cipherType")
 	}
 	if !sm.SupportsCipherType(cipherType) {
 		return Skykey{}, errUnsupportedSkykeyCipherType
@@ -155,7 +151,7 @@ func (sm *SkykeyManager) CreateKey(name string, cipherTypeString string) (Skykey
 	cipherKey := crypto.GenerateSiaKey(cipherType)
 	skykey := Skykey{name, cipherType, cipherKey.Key()}
 
-	err = sm.saveKey(skykey)
+	err := sm.saveKey(skykey)
 	if err != nil {
 		return Skykey{}, err
 	}
@@ -164,15 +160,9 @@ func (sm *SkykeyManager) CreateKey(name string, cipherTypeString string) (Skykey
 
 // AddKey creates a key with the given name, cipherType, and entropy and adds it
 // to the key file.
-func (sm *SkykeyManager) AddKey(name string, cipherTypeString string, entropy []byte) (Skykey, error) {
+func (sm *SkykeyManager) AddKey(name string, cipherType crypto.CipherType, entropy []byte) (Skykey, error) {
 	if len(name) > MaxKeyNameLen {
 		return Skykey{}, errSkykeyNameToolong
-	}
-
-	var cipherType crypto.CipherType
-	err := cipherType.FromString(cipherTypeString)
-	if err != nil {
-		return Skykey{}, errors.AddContext(err, "AddKey error decoding cipherType")
 	}
 	if !sm.SupportsCipherType(cipherType) {
 		return Skykey{}, errUnsupportedSkykeyCipherType
@@ -183,6 +173,12 @@ func (sm *SkykeyManager) AddKey(name string, cipherTypeString string, entropy []
 	_, ok := sm.idsByName[name]
 	if ok {
 		return Skykey{}, errSkykeyNameAlreadyExists
+	}
+
+	// Extend the entropy for a 0 nonce. XChaCha20Keys require a nonce in the
+	// entropy. We set it to 0 here because they nonces are stored in Skyfiles.
+	if cipherType == crypto.TypeXChaCha20 {
+		entropy = append(entropy, make([]byte, chacha.XNonceSize)...)
 	}
 
 	// Generate the new key.

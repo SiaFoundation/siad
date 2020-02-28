@@ -29,7 +29,7 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Creating a key with name longer than the max allowed should fail.
-	cipherType := crypto.TypeThreefish.String()
+	cipherType := crypto.TypeXChaCha20
 	var longName [MaxKeyNameLen + 1]byte
 	for i := 0; i < len(longName); i++ {
 		longName[i] = 0x41 // "A"
@@ -42,6 +42,12 @@ func TestSkykeyManager(t *testing.T) {
 	// Creating a key with name less than or equal to max len should be ok.
 	_, err = keyMan.CreateKey(string(longName[:len(longName)-1]), cipherType)
 	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsupported cipher types should cause an error.
+	_, err = keyMan.CreateKey("test_key1", crypto.TypeTwofish)
+	if !errors.Contains(err, errUnsupportedSkykeyCipherType) {
 		t.Fatal(err)
 	}
 
@@ -162,7 +168,7 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	for _, key := range keyMan.keysByID {
-		addedKey, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
+		addedKey, err := addKeyMan.AddKey(key.Name, key.CipherType, key.Entropy)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +188,7 @@ func TestSkykeyManager(t *testing.T) {
 	// Try re-adding the same keys, and check that the duplicate name error is
 	// shown.
 	for _, key := range keyMan.keysByID {
-		_, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
+		_, err := addKeyMan.AddKey(key.Name, key.CipherType, key.Entropy)
 		if !errors.Contains(err, errSkykeyNameAlreadyExists) {
 			t.Fatal(err)
 		}
