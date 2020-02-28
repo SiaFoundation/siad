@@ -2124,7 +2124,7 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		}
 
 		// parse content type from multipart header
-		contentType := mpfHeaders[0].Header.Get("Content-Type")
+		contentType := fh.Header.Get("Content-Type")
 
 		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
 			Mode:        mode,
