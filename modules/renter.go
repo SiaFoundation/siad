@@ -1078,10 +1078,14 @@ type HostDB interface {
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Mode     os.FileMode                       `json:"mode,omitempty"`
-	Filename string                            `json:"filename,omitempty"`
-	Subfiles map[string]SkyfileSubfileMetadata `json:"subfiles,omitempty"`
+	Mode     os.FileMode     `json:"mode,omitempty"`
+	Filename string          `json:"filename,omitempty"`
+	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
 }
+
+// SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
+// filename.
+type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 
 // SubDir returns a subset of the SkyfileMetadata that contains all of the
 // subfiles for the given path. The path can lead to both a directory or a file.
@@ -1096,7 +1100,7 @@ func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) 
 
 	dir := SkyfileMetadata{
 		Filename: path,
-		Subfiles: make(map[string]SkyfileSubfileMetadata),
+		Subfiles: make(SkyfileSubfiles),
 	}
 	for _, sf := range sm.Subfiles {
 		filename := sf.Filename
@@ -1201,6 +1205,11 @@ type SkyfileMultipartUploadParameters struct {
 	Root                bool      `json:"root"`
 	BaseChunkRedundancy uint8     `json:"basechunkredundancy"`
 	Reader              io.Reader `json:"reader"`
+
+	// Filename indicates the filename of the skyfile. For multipart uploads
+	// this falls back to the siapath if not provided. This filename will be the
+	// name of the attachment if the skyfile is downloaded.
+	Filename string `json:"filename"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`

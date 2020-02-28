@@ -1968,6 +1968,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
+	// Parse the filename from the query params.
+	filename := queryForm.Get("filename")
+
 	// Parse Content-Type from the request headers
 	ct := req.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(ct)
@@ -1976,37 +1979,55 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	var sfm modules.SkyfileMetadata
-	var reader io.Reader
-
-	// Build the Skyfile metadata from the request
-	if strings.HasPrefix(mediaType, "multipart/form-data") {
-		sfm, reader, err = skyfileMetadataAndReaderFromMultiPartRequest(req)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
-			return
-		}
-	} else {
-		sfm, reader, err = skyfileMetadataAndReaderFromRequest(req)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed parsing request: %v", err)}, http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Validate filename
-	if sfm.Subfiles == nil && sfm.Filename == "" {
-		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
-		return
-	}
-
-	// Call the renter to upload the file and create a skylink.
+	// Build the upload parameters
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		Force:               force,
 		BaseChunkRedundancy: redundancy,
-		FileMetadata:        sfm,
-		Reader:              reader,
+	}
+
+	// Build the Skyfile metadata from the request
+	if strings.HasPrefix(mediaType, "multipart/form-data") {
+		subfiles, reader, err := skyfileParseMultiPartRequest(req)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
+			return
+		}
+
+		// For multipart uploads we fall back to the name in the siapath if
+		// there is no filename provided.
+		if filename == "" {
+			filename = siaPath.Name()
+		}
+
+		lup.Reader = reader
+		lup.FileMetadata = modules.SkyfileMetadata{
+			Filename: filename,
+			Subfiles: subfiles,
+		}
+	} else {
+		// Parse out the filemode
+		modeStr := queryForm.Get("mode")
+		var mode os.FileMode
+		if modeStr != "" {
+			_, err := fmt.Sscanf(modeStr, "%o", &mode)
+			if err != nil {
+				WriteError(w, Error{"unable to parse mode: " + err.Error()}, http.StatusBadRequest)
+				return
+			}
+		}
+
+		lup.Reader = req.Body
+		lup.FileMetadata = modules.SkyfileMetadata{
+			Mode:     mode,
+			Filename: filename,
+		}
+	}
+
+	// Ensure we have a filename
+	if lup.FileMetadata.Filename == "" {
+		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
@@ -2054,52 +2075,22 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	})
 }
 
-// skyfileMetadataAndReaderFromRequest parses the given request and returns a
-// skyfile metadata object and reader.
-func skyfileMetadataAndReaderFromRequest(req *http.Request) (modules.SkyfileMetadata, io.Reader, error) {
-	// Parse query string parameters
-	queryForm, err := url.ParseQuery(req.URL.RawQuery)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to parse query params")
-	}
-
-	// Parse out the filemode
-	modeStr := queryForm.Get("mode")
-	var mode os.FileMode
-	if modeStr != "" {
-		_, err := fmt.Sscanf(modeStr, "%o", &mode)
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to parse file mode")
-		}
-	}
-
-	// Parse the filename from the query params. If there is no filename
-	// provided as a query param, check the content disposition field.
-	filename := queryForm.Get("filename")
-
-	return modules.SkyfileMetadata{
-		Filename: filename,
-		Mode:     mode,
-	}, req.Body, nil
-}
-
-// skyfileMetadataAndReaderFromMultiPartRequest parses the given request and
-// returns a skyfile metadata object and reader in the case the request is a
-// multipart form request.
-func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (modules.SkyfileMetadata, io.Reader, error) {
-	var sfm modules.SkyfileMetadata
-	sfm.Subfiles = make(map[string]modules.SkyfileSubfileMetadata)
+// skyfileParseMultiPartRequest parses the given request and returns the
+// subfiles found in the multipart request body, alongside with an io.Reader
+// containing all of the files.
+func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, error) {
+	subfiles := make(modules.SkyfileSubfiles)
 
 	// Parse the multipart form
 	err := req.ParseMultipartForm(32 << 20) // 32MB max memory
 	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed parsing multipart form")
+		return subfiles, nil, errors.AddContext(err, "failed parsing multipart form")
 	}
 
 	// Parse out all of the multipart file headers
 	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
 	if len(mpfHeaders) == 0 {
-		return modules.SkyfileMetadata{}, nil, errors.New("could not find multipart file")
+		return subfiles, nil, errors.New("could not find multipart file")
 	}
 
 	// If there are multiple, treat the entire upload as one with all separate
@@ -2109,7 +2100,7 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (modules.Sk
 	for i, fh := range mpfHeaders {
 		f, err := fh.Open()
 		if err != nil {
-			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "could not open multipart file")
+			return subfiles, nil, errors.AddContext(err, "could not open multipart file")
 		}
 		readers[i] = f
 
@@ -2119,20 +2110,20 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (modules.Sk
 		if modeStr != "" {
 			_, err := fmt.Sscanf(modeStr, "%o", &mode)
 			if err != nil {
-				return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to parse file mode")
+				return subfiles, nil, errors.AddContext(err, "failed to parse file mode")
 			}
 		}
 
 		// parse filename from multipart
 		filename := fh.Filename
 		if filename == "" {
-			return modules.SkyfileMetadata{}, nil, errors.New("no filename provided")
+			return subfiles, nil, errors.New("no filename provided")
 		}
 
 		// parse content type from multipart header
 		contentType := mpfHeaders[0].Header.Get("Content-Type")
 
-		sfm.Subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
+		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
 			Mode:        mode,
 			Filename:    filename,
 			ContentType: contentType,
@@ -2141,8 +2132,7 @@ func skyfileMetadataAndReaderFromMultiPartRequest(req *http.Request) (modules.Sk
 		}
 		offset += uint64(fh.Size)
 	}
-
-	return sfm, io.MultiReader(readers...), nil
+	return subfiles, io.MultiReader(readers...), nil
 }
 
 // renterStreamHandler handles downloads from the /renter/stream endpoint

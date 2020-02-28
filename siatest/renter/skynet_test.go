@@ -468,7 +468,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	// create a multipart upload that uploads several files.
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	subfiles := make(map[string]modules.SkyfileSubfileMetadata)
+	subfiles := make(modules.SkyfileSubfiles)
 
 	// add a file at root level
 	data := []byte("File1Contents")
@@ -517,7 +517,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	expected := modules.SkyfileMetadata{Subfiles: subfiles}
+	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles}
 	if !reflect.DeepEqual(expected, fileMetadata) {
 		t.Log("Expected:", expected)
 		t.Log("Actual:", fileMetadata)
@@ -542,7 +542,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	// create a multipart upload that uploads several files.
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	subfiles := make(map[string]modules.SkyfileSubfileMetadata)
+	subfiles := make(modules.SkyfileSubfiles)
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
@@ -755,7 +755,7 @@ func TestSkynetNoFilename(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	subfiles := make(map[string]modules.SkyfileSubfileMetadata)
+	subfiles := make(modules.SkyfileSubfiles)
 	subfiles[subfile.Filename] = subfile
 	mup := modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
@@ -788,7 +788,7 @@ func TestSkynetNoFilename(t *testing.T) {
 	}
 	reader = bytes.NewReader(body.Bytes())
 
-	subfiles = make(map[string]modules.SkyfileSubfileMetadata)
+	subfiles = make(modules.SkyfileSubfiles)
 	subfiles[subfile.Filename] = subfile
 	mup = modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
