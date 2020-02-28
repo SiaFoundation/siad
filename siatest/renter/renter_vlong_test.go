@@ -796,3 +796,64 @@ func TestUploadStreamFailAndRepair(t *testing.T) {
 		t.Fatal("downloaded data doesn't match uploaded data")
 	}
 }
+
+// TestHostChurnSiafileDefragRegression tests that constant host churn won't
+// ever stop the SiaFile from being repaired to full health again.
+func TestHostChurnSiafileDefragRegression(t *testing.T) {
+	if testing.Short() || !build.VLONG {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Upload a file to all hosts.
+	r := tg.Renters()[0]
+	_, rf, err := r.UploadNewFileBlocking(100, 1, uint64(len(tg.Hosts())-1), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Take hosts offline.
+	for _, host := range tg.Hosts() {
+		if err := tg.RemoveNode(host); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Add hosts until we have had 100 hosts which all have repaired the file at
+	// some point.
+	// Go through 200 hosts
+	for i := 0; i < 40; i++ {
+		// Wait for redundancy to drop to 0.
+		if err := r.WaitForDecreasingRedundancy(rf, 0); err != nil {
+			t.Fatal(err)
+		}
+		// Spin up new hosts.
+		_, err := tg.AddNodeN(node.HostTemplate, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Health should go back up.
+		if err := r.WaitForUploadHealth(rf); err != nil {
+			t.Fatal(err)
+		}
+		// Take hosts offline.
+		for _, host := range tg.Hosts() {
+			if err := tg.RemoveNode(host); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
