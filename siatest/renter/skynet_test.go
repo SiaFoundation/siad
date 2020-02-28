@@ -974,7 +974,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get a single sub file
-	downloadFile2, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/js/5.f4f.chunk.js.map", skylink))
+	downloadFile2, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a/5.f4f.chunk.js.map", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
