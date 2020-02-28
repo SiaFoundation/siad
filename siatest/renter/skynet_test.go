@@ -236,21 +236,16 @@ func TestSkynet(t *testing.T) {
 	writer.Close()
 
 	reader = bytes.NewReader(body.Bytes())
-	sup = modules.SkyfileUploadParameters{
+	mup := modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
 		Root:                false,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-
-		Reader: reader,
+		Reader:              reader,
+		ContentType:         writer.FormDataContentType(),
+		Filename:            filename,
 	}
-	headers := make(map[string]string)
-	headers["Content-Type"] = writer.FormDataContentType()
-	skylink, rshp, err = r.SkynetSkyfilePostCustom(sup, headers)
+	skylink, rshp, err = r.SkynetSkyfileMultiPartPost(mup)
 	if err != nil {
 		t.Fatal(err)
 	}
