@@ -1206,9 +1206,7 @@ type SkyfileMultipartUploadParameters struct {
 	BaseChunkRedundancy uint8     `json:"basechunkredundancy"`
 	Reader              io.Reader `json:"reader"`
 
-	// Filename indicates the filename of the skyfile. For multipart uploads
-	// this falls back to the siapath if not provided. This filename will be the
-	// name of the attachment if the skyfile is downloaded.
+	// Filename indicates the filename of the skyfile.
 	Filename string `json:"filename"`
 
 	// ContentType indicates the media type of the data supplied by the reader.

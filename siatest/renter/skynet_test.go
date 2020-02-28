@@ -499,6 +499,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 		BaseChunkRedundancy: 2,
 		Reader:              reader,
 		ContentType:         writer.FormDataContentType(),
+		Filename:            "TestFolderUpload",
 	}
 
 	skylink, _, err := r.SkynetSkyfileMultiPartPost(sup)
@@ -573,6 +574,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		Root:                false,
 		BaseChunkRedundancy: 2,
 		Reader:              reader,
+		Filename:            "TestFolderUploadLarge",
 		ContentType:         writer.FormDataContentType(),
 	}
 
@@ -764,6 +766,7 @@ func TestSkynetNoFilename(t *testing.T) {
 		BaseChunkRedundancy: 2,
 		Reader:              reader,
 		ContentType:         writer.FormDataContentType(),
+		Filename:            "testNoFilenameMultipart",
 	}
 
 	// Note: we have to check for a different error message here. This is due to
@@ -797,6 +800,7 @@ func TestSkynetNoFilename(t *testing.T) {
 		BaseChunkRedundancy: 2,
 		Reader:              reader,
 		ContentType:         writer.FormDataContentType(),
+		Filename:            "testNoFilenameMultipart",
 	}
 
 	_, _, err = r.SkynetSkyfileMultiPartPost(mup)
@@ -859,6 +863,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		BaseChunkRedundancy: 2,
 		Reader:              reader,
 		ContentType:         writer.FormDataContentType(),
+		Filename:            "testSkynetSubfileDownload",
 	}
 
 	skylink, _, err := r.SkynetSkyfileMultiPartPost(mup)

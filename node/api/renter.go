@@ -1994,12 +1994,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 
-		// For multipart uploads we fall back to the name in the siapath if
-		// there is no filename provided.
-		if filename == "" {
-			filename = siaPath.Name()
-		}
-
 		lup.Reader = reader
 		lup.FileMetadata = modules.SkyfileMetadata{
 			Filename: filename,
