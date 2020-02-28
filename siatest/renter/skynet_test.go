@@ -89,7 +89,7 @@ func TestSkynet(t *testing.T) {
 	if rshp.Bitfield != realSkylink.Bitfield() {
 		t.Fatal("mismatch")
 	}
-	t.Log("Example skylink:", skylink)
+
 	// Check the redundancy on the file.
 	skynetUploadPath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
 	if err != nil {
@@ -456,8 +456,41 @@ func TestSkynetMultipartUpload(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
+	testMultipartUploadEmpty(t, r)
 	testMultipartUploadSmall(t, r)
 	testMultipartUploadLarge(t, r)
+}
+
+// testMultipartUploadEmpty tests you can perform a multipart upload without
+// any subfiles.
+func testMultipartUploadEmpty(t *testing.T, r *siatest.TestNode) {
+	// create a multipart upload that without any files
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	err := writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := bytes.NewReader(body.Bytes())
+
+	uploadSiaPath, err := modules.NewSiaPath("TestNoFileUpload")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Reader:              reader,
+		ContentType:         writer.FormDataContentType(),
+		Filename:            "TestNoFileUpload",
+	}
+
+	if _, _, err = r.SkynetSkyfileMultiPartPost(sup); err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
+		t.Fatal("Expected upload to fail because no files are given, err:", err)
+	}
 }
 
 // testMultipartUploadSmall tests multipart upload for small files, small files
@@ -842,8 +875,8 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	dataFile1 := []byte("file1.txt")
 	dataFile2 := []byte("file2.txt")
 	dataFile3 := []byte("file3.txt")
-	addMultipartFile(writer, dataFile1, "files[]", "/a/file1.txt", 0600, nil)
-	addMultipartFile(writer, dataFile2, "files[]", "/a/file2.txt", 0600, nil)
+	addMultipartFile(writer, dataFile1, "files[]", "/js/5.f4f8b583.chunk.js", 0600, nil)
+	addMultipartFile(writer, dataFile2, "files[]", "/js/5.f4f.chunk.js.map", 0600, nil)
 	addMultipartFile(writer, dataFile3, "files[]", "/b/file3.txt", 0640, nil)
 
 	if err = writer.Close(); err != nil {
@@ -941,7 +974,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get a single sub file
-	downloadFile2, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a/file2.txt", skylink))
+	downloadFile2, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/js/5.f4f.chunk.js.map", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
