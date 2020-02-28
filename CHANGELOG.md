@@ -45,7 +45,7 @@ Latest:
    able to access specific files in the Skynet folder.
 
 **Other**
- - 
+ - Split out renter siatests into 2 groups for faster pipelines
  -
  -
  -
