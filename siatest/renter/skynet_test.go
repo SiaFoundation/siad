@@ -547,7 +547,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Try to download the file behind the skylink.
-	_, fileMetadata, err := r.SkynetSkylinkGet(skylink)
+	_, fileMetadata, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -617,7 +617,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	largeFetchedData, _, err := r.SkynetSkylinkGet(largeSkylink)
+	largeFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", largeSkylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -905,8 +905,15 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// get all data
-	allData, _, err := r.SkynetSkylinkGet(skylink)
+	// get all data without specifying format, since the file contains multiple
+	// subfiles, this should fail
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
+		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
+	}
+
+	// now specify the correct format
+	allData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
