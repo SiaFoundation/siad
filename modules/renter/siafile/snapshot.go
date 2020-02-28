@@ -41,7 +41,7 @@ type SnapshotReader struct {
 
 // Close closes the underlying file.
 func (sfr *SnapshotReader) Close() error {
-	sfr.sf.mu.RUnlock()
+	defer sfr.sf.mu.RUnlock()
 	return sfr.f.Close()
 }
 
