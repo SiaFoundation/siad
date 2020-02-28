@@ -1093,11 +1093,6 @@ type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 // given path, so if a directory is requested, the subfiles in that directory
 // will start at offset 0, relative to the path.
 func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) {
-	// Sanity check this function is never called on legacy SkyfileMetadata
-	if sm.Subfiles == nil {
-		build.Critical("ForPath was called on a legacy SkyfileMetadata, this is not allowed as legacy SkyfileMetadata has no subfiles")
-	}
-
 	dir := SkyfileMetadata{
 		Filename: path,
 		Subfiles: make(SkyfileSubfiles),

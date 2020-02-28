@@ -1793,7 +1793,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
-	if path != "/" && metadata.Subfiles != nil {
+	if path != "/" {
 		var offset, size uint64
 		metadata, offset, size = metadata.SubDir(path)
 		if len(metadata.Subfiles) == 0 {

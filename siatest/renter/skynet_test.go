@@ -875,8 +875,8 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	dataFile1 := []byte("file1.txt")
 	dataFile2 := []byte("file2.txt")
 	dataFile3 := []byte("file3.txt")
-	addMultipartFile(writer, dataFile1, "files[]", "/js/5.f4f8b583.chunk.js", 0600, nil)
-	addMultipartFile(writer, dataFile2, "files[]", "/js/5.f4f.chunk.js.map", 0600, nil)
+	addMultipartFile(writer, dataFile1, "files[]", "/a/5.f4f8b583.chunk.js", 0600, nil)
+	addMultipartFile(writer, dataFile2, "files[]", "/a/5.f4f.chunk.js.map", 0600, nil)
 	addMultipartFile(writer, dataFile3, "files[]", "/b/file3.txt", 0640, nil)
 
 	if err = writer.Close(); err != nil {
