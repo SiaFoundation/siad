@@ -1838,6 +1838,17 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Parse the format.
+	var format string
+	formatStr := strings.ToLower(queryForm.Get("format"))
+	if formatStr != "" {
+		if formatStr != "concat" {
+			WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat'"}, http.StatusBadRequest)
+			return
+		}
+		format = formatStr
+	}
+
 	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
@@ -1849,10 +1860,15 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
 	if path != "/" {
+		var dir bool
 		var offset, size uint64
-		metadata, offset, size = metadata.SubDir(path)
+		metadata, dir, offset, size = metadata.ForPath(path)
 		if len(metadata.Subfiles) == 0 {
 			WriteError(w, Error{fmt.Sprintf("failed to download file for path: %v, ", path)}, http.StatusNotFound)
+			return
+		}
+		if dir && format == "" {
+			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
 		streamer = NewLimitStreamer(streamer, offset, size)

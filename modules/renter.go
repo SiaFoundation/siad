@@ -1090,16 +1090,18 @@ type SkyfileMetadata struct {
 // filename.
 type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 
-// SubDir returns a subset of the SkyfileMetadata that contains all of the
+// ForPath returns a subset of the SkyfileMetadata that contains all of the
 // subfiles for the given path. The path can lead to both a directory or a file.
 // Note that this method will return the subfiles with offsets relative to the
 // given path, so if a directory is requested, the subfiles in that directory
 // will start at offset 0, relative to the path.
-func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) {
-	dir := SkyfileMetadata{
+func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, uint64) {
+	metadata := SkyfileMetadata{
 		Filename: path,
 		Subfiles: make(SkyfileSubfiles),
 	}
+
+	dir := false
 
 	// Try to find an exact match
 	for _, sf := range sm.Subfiles {
@@ -1108,14 +1110,16 @@ func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) 
 			filename = fmt.Sprintf("/%s", filename)
 		}
 		if filename == path {
-			dir.Subfiles[sf.Filename] = sf
+			metadata.Subfiles[sf.Filename] = sf
 			break
 		}
 	}
 
 	// If we have not found an exact match, look for directories.
 	// This means we can safely ensire a trailing slash.
-	if len(dir.Subfiles) == 0 {
+	if len(metadata.Subfiles) == 0 {
+		dir = true
+
 		if strings.HasSuffix(path, "/") {
 			path = fmt.Sprintf("%s/", path)
 		}
@@ -1125,19 +1129,19 @@ func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) 
 				filename = fmt.Sprintf("/%s", filename)
 			}
 			if strings.HasPrefix(filename, path) {
-				dir.Subfiles[sf.Filename] = sf
+				metadata.Subfiles[sf.Filename] = sf
 			}
 		}
 	}
 
-	offset := dir.offset()
+	offset := metadata.offset()
 	if offset > 0 {
-		for _, sf := range dir.Subfiles {
+		for _, sf := range metadata.Subfiles {
 			sf.Offset -= offset
-			dir.Subfiles[sf.Filename] = sf
+			metadata.Subfiles[sf.Filename] = sf
 		}
 	}
-	return dir, offset, dir.size()
+	return metadata, dir, offset, metadata.size()
 }
 
 // ContentType returns the Content Type of the data. We only return a

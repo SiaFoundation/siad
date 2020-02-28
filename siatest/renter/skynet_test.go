@@ -919,7 +919,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "/" (equals all data)
-	allData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/", skylink))
+	allData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/?format=concat", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -930,7 +930,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "a"
-	dataDirA, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a", skylink))
+	dataDirA, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a?format=concat", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -942,7 +942,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "b"
-	dataDirB, metadataDirB, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/b", skylink))
+	dataDirB, metadataDirB, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=concat", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -983,6 +983,18 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Log("expected:", dataFile2)
 		t.Log("actual:", downloadFile2)
 		t.Fatal("Unexpected data for file 2")
+	}
+
+	// verify we get a 400 if we don't supply the format parameter
+	_, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/b", skylink))
+	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
+		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
+	}
+
+	// verify we get a 400 if we supply an unsupported format parameter
+	_, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=raw", skylink))
+	if err == nil || !strings.Contains(err.Error(), "unable to parse 'format'") {
+		t.Fatal("Expected download to fail because we are downloading a directory and an invalid format was provided, err:", err)
 	}
 }
 

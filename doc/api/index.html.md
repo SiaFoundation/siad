@@ -4172,6 +4172,12 @@ If 'attachment' is set to true, the Content-Disposition http header will be set
 to 'attachment' instead of 'inline'. This will cause web browsers to download
 the file as though it is an attachment instead of rendering it.
 
+**format** | string  
+If 'format' is set, the skylink can point to a directory and it will return the
+data inside that directory. Format will decide the format in which it is
+returned. Currently we only support 'concat', which will return the concatenated
+data of all subfiles in that directory.
+
 ### Response Header
 
 **Skynet-File-Metadata** | SkyfileMetadata
