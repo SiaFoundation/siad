@@ -294,11 +294,13 @@ flag can be used to view skyfiles pinned in other folders.`,
 	}
 
 	skynetUploadCmd = &cobra.Command{
-		Use:   "upload [source filepath] [destination siapath]",
-		Short: "Upload a file to Skynet.",
-		Long: `Upload a file to Skynet. A skylink will be produced which can be shared and used
-to retrieve the file. The file that gets uploaded will be pinned to this Sia
-node, meaning that this node will pay for storage and repairs until the file is
+		Use:   "upload [source path] [destination siapath]",
+		Short: "Upload a file or a directory to Skynet.",
+		Long: `Upload a file or a directory to Skynet. A skylink will be produced which
+can be shared and used to retrieve the file. If the given path is a directory all
+files under that directory will be uploaded individually and an individual skylink
+will be produced for each. All files that get uploaded will be pinned to this Sia
+node, meaning that this node will pay for storage and repairs until the files are
 manually deleted.`,
 		Run: wrap(skynetuploadcmd),
 	}
@@ -2509,15 +2511,21 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
 	if err != nil {
-		die("Unable to open source file:", err)
+		die("Unable to open source path:", err)
 	}
 	defer file.Close()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
-	_, sourceName := filepath.Split(sourcePath)
 
+	// If the source path is a directory upload all of its contents recursively
+	if fi.IsDir() {
+		skynetuploaddir(file, sourcePath, destSiaPath)
+		return
+	}
+
+	_, sourceName := filepath.Split(sourcePath)
 	// Perform the upload and print the result.
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
@@ -2546,6 +2554,36 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		}
 	}
 	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
+}
+
+// handles the process of recursively uploading all files in a directory
+func skynetuploaddir(dir *os.File, sourcePath, destSiaPath string) {
+	fis, err := dir.Readdir(-1)
+	if err != nil {
+		die("Unable to read source directory:", err)
+	}
+	if len(fis) == 0 {
+		die("Cannot upload an empty directory")
+	}
+	for i := 0; i < len(fis); i++ {
+		name := fis[i].Name()
+		newSourcePath := filepath.Join(sourcePath, name)
+		newDestSiaPath := filepath.Join(destSiaPath, name)
+
+		// do not process empty directories
+		if fis[i].IsDir() {
+			dir, err := os.Open(newSourcePath)
+			if err != nil {
+				die("Unable to read subdirectory:", err)
+			}
+			defer dir.Close()
+			_, err = dir.Readdir(1)
+			if err != nil && err.Error() == "EOF" {
+				continue
+			}
+		}
+		skynetuploadcmd(newSourcePath, newDestSiaPath)
+	}
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
