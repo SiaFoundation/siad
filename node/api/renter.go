@@ -1797,7 +1797,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		var offset, size uint64
 		metadata, offset, size = metadata.SubDir(path)
 		if len(metadata.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download file for path: %v, ", path)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to download file for path: %v, ", path)}, http.StatusNotFound)
 			return
 		}
 		streamer = NewLimitStreamer(streamer, offset, size)
