@@ -264,9 +264,6 @@ func TestSkynet(t *testing.T) {
 		t.Log(data)
 		t.Log(fetchedData)
 	}
-	if metadata.Mode != 0640 {
-		t.Error("bad mode")
-	}
 	if metadata.Filename != filename {
 		t.Error("bad filename")
 	}
