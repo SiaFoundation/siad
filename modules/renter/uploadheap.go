@@ -615,14 +615,6 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 // managedBlockUntilSynced will block until the contractor is synced with the
 // peer-to-peer network.
 func (r *Renter) managedBlockUntilSynced() bool {
-	select {
-	case <-r.tg.StopChan():
-		return false
-	case <-r.hostContractor.Synced():
-		return true
-	default:
-	}
-
 	for {
 		synced := r.cs.Synced()
 		if synced {
@@ -633,7 +625,7 @@ func (r *Renter) managedBlockUntilSynced() bool {
 		case <-r.tg.StopChan():
 			return false
 		case <-time.After(syncCheckInterval):
-			return true
+			continue
 		case <-r.hostContractor.Synced():
 			return true
 		}
