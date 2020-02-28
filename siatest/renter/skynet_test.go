@@ -1109,6 +1109,7 @@ func TestSkynetBlacklist(t *testing.T) {
 	pinlup := modules.SkyfilePinParameters{
 		SiaPath:             uploadSiaPath,
 		BaseChunkRedundancy: 2,
+		Force:               true,
 	}
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err == nil {
