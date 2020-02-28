@@ -32,7 +32,7 @@ type RPCPriceTable struct {
 
 	// Cost values specific to the DropSectors instruction.
 	DropSectorsBaseCost   types.Currency `json:"dropsectorsbasecost"`
-	DropSectorsLengthCost types.Currency `json:"dropsectorcost"`
+	DropSectorsLengthCost types.Currency `json:"dropsectorslengthcost"`
 
 	// Cost values specific to the Read instruction.
 	ReadBaseCost   types.Currency `json:"readbasecost"`

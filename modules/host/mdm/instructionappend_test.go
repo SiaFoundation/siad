@@ -16,7 +16,7 @@ func newAppendInstruction(merkleProof bool, dataOffset uint64, runningCost, runn
 	i := NewAppendInstruction(dataOffset, merkleProof)
 
 	// Compute cost and used memory.
-	usedMemory := runningMemory+AppendMemory()
+	usedMemory := runningMemory + AppendMemory()
 	memoryCost := MemoryCost(pt, usedMemory, TimeAppend)
 	instructionCost, refund := modules.MDMAppendCost(pt)
 	cost := runningCost.Add(memoryCost).Add(instructionCost)

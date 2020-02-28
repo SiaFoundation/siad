@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"fmt"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -20,8 +19,8 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
 
 	// Compute cost and used memory
-	usedMemory := runningMemory+DropSectorsMemory()
-	time := TimeDropSectors*numSectorsDropped
+	usedMemory := runningMemory + DropSectorsMemory()
+	time := TimeDropSectors * numSectorsDropped
 	memoryCost := MemoryCost(pt, usedMemory, time)
 	instructionCost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
 	cost := runningCost.Add(memoryCost).Add(instructionCost)
@@ -38,7 +37,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Construct the program.
 
-	dataLen := 2*modules.SectorSize + 8*2
+	dataLen := 3*modules.SectorSize + 8*3
 	programData := make([]byte, dataLen)
 	pt := newTestPriceTable()
 	initCost := modules.MDMInitCost(pt, dataLen)
@@ -53,20 +52,29 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	copy(programData[modules.SectorSize:2*modules.SectorSize], sectorData2)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
+	instruction3, cost3, refund3, memory3 := newAppendInstruction(false, 2*modules.SectorSize, cost2, refund2, memory2, pt)
+	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
+	copy(programData[2*modules.SectorSize:3*modules.SectorSize], sectorData3)
+	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
+
 	// Don't drop any sectors.
-	instruction3, cost3, refund3, memory3 := newDropSectorsInstruction(programData, 2*modules.SectorSize, 0, cost2, refund2, memory2, pt)
+	instruction4, cost4, refund4, memory4 := newDropSectorsInstruction(programData, 3*modules.SectorSize, 0, cost3, refund3, memory3, pt)
 
-	// Drop both sectors at once.
-	instruction4, cost4, refund4, memory4 := newDropSectorsInstruction(programData, 2*modules.SectorSize+8, 2, cost3, refund3, memory3, pt)
+	// Drop one sector.
+	instruction5, cost5, refund5, memory5 := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, cost4, refund4, memory4, pt)
 
-	cost := cost4.Add(MemoryCost(pt, memory4, TimeCommit))
+	instruction6, cost6, refund6, memory6 := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, cost5, refund5, memory5, pt)
+
+	// Drop two remaining sectors.
+
+	cost := cost6.Add(MemoryCost(pt, memory6, TimeCommit))
 
 	// Construct the inputs and expected outputs.
 	instructions := []modules.Instruction{
 		// Append
-		instruction1, instruction2,
+		instruction1, instruction2, instruction3,
 		// DropSectors
-		instruction3, instruction4,
+		instruction4, instruction5, instruction6,
 	}
 	testOutputs := []Output{
 		{
@@ -87,25 +95,44 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 			cost2,
 			refund2,
 		},
-		// 0 sectors dropped.
 		{
 			output{
-				NewSize:       2 * modules.SectorSize,
-				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+				NewSize:       3 * modules.SectorSize,
+				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
 				Proof:         []crypto.Hash{},
 			},
 			cost3,
 			refund3,
 		},
-		// 2 sectors dropped.
+		// 0 sectors dropped.
+		{
+			output{
+				NewSize:       3 * modules.SectorSize,
+				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
+				Proof:         []crypto.Hash{},
+			},
+			cost4,
+			refund4,
+		},
+		// 1 sector dropped.
+		{
+			output{
+				NewSize:       2 * modules.SectorSize,
+				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+				Proof:         []crypto.Hash{cachedMerkleRoot(merkleRoots2)},
+			},
+			cost5,
+			refund5,
+		},
+		// 2 remaining sectors dropped.
 		{
 			output{
 				NewSize:       0,
 				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{}),
-				Proof:         crypto.MerkleSectorRangeProof(merkleRoots2, 0, 1),
+				Proof:         []crypto.Hash{},
 			},
-			cost4,
-			refund4,
+			cost6,
+			refund6,
 		},
 	}
 
@@ -121,7 +148,6 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	var lastOutput Output
 	for output := range outputs {
 		testOutput := testOutputs[numOutputs]
-		fmt.Println(testOutput.ExecutionCost)
 
 		if output.Error != testOutput.Error {
 			t.Fatalf("expected err %v, got %v", testOutput.Error, output.Error)
@@ -133,6 +159,9 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 			t.Fatalf("expected merkle root %v, got %v", testOutput.NewMerkleRoot, output.NewMerkleRoot)
 		}
 		// Check proof.
+		if len(output.Proof) != len(testOutput.Proof) {
+			t.Fatalf("expected proof to have length %v but was %v", len(testOutput.Proof), len(output.Proof))
+		}
 		for i, proof := range output.Proof {
 			if proof != testOutput.Proof[i] {
 				t.Fatalf("expected proof %v, got %v", proof, output.Proof[i])

@@ -96,10 +96,8 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 	// Construct the proof, if necessary, before updating the roots.
 	var proof []crypto.Hash
 	if i.staticMerkleProof && numSectorsDropped > 0 {
-		// First dropped sector.
-		start := int(newNumSectors)
-		end := start + 1
-		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, start, end)
+		// Create proof with range covering the dropped sectors.
+		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, int(newNumSectors), int(oldNumSectors))
 	}
 
 	newMerkleRoot := ps.sectors.dropSectors(numSectorsDropped)
