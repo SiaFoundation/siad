@@ -14,7 +14,7 @@ func AppendMemory() uint64 {
 // DropSectorsMemory returns the additional memory consumption of a
 // `DropSectors` instruction
 func DropSectorsMemory() uint64 {
-	return 0
+	return 0 // 'DropSectors' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
 // HasSectorMemory returns the additional memory consumption of a 'HasSector'

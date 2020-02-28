@@ -46,7 +46,7 @@ func (s *sectors) dropSectors(numSectorsDropped uint64) crypto.Hash {
 	droppedRoots := s.merkleRoots[newNumSectors:]
 	s.merkleRoots = s.merkleRoots[:newNumSectors]
 
-	// Update the storage obligation.
+	// Update the program cache.
 	for _, dropped := range droppedRoots {
 		_, prs := s.sectorsGained[dropped]
 		if prs {

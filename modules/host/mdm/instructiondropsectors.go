@@ -58,21 +58,7 @@ func (p *Program) staticDecodeDropSectorsInstruction(instruction modules.Instruc
 
 // Execute executes the 'DropSectors' instruction.
 //
-// 1. The data is fetched and checked for validity:
-//
-//   a. The number of sectors must be less than or equal to the number of
-//   sectors in the contract.
-//
-//   b. If the number of sectors is 0 this instruction is a noop.
-//
-// 2. Remove the specified number of merkle roots.
-//
-// 3. Add the merkle roots that were just removed to the list of removed
-// sectors.
-//
-// 4. Compute the new merkle root of the contract.
-//
-// TODO: finances + proof
+// If the number of sectors is 0 this instruction is a noop.
 func (i *instructionDropSectors) Execute(prevOutput output) output {
 	// Fetch the data.
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
@@ -80,17 +66,14 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 		return errOutput(errors.New("bad input: numSectorsOffset"))
 	}
 
+	// Verify input.
 	oldSize := prevOutput.NewSize
 	oldNumSectors := oldSize / modules.SectorSize
-
-	// Verify input.
 	if numSectorsDropped > oldNumSectors {
 		return errOutput(fmt.Errorf("bad input: numSectors (%v) is greater than the number of sectors in the contract (%v)", numSectorsDropped, oldNumSectors))
 	}
 
 	newNumSectors := oldNumSectors - numSectorsDropped
-	newSize := newNumSectors * modules.SectorSize
-
 	ps := i.staticState
 
 	// Construct the proof, if necessary, before updating the roots.
@@ -105,7 +88,7 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 	// TODO: Update finances.
 
 	return output{
-		NewSize:       newSize,
+		NewSize:       newNumSectors * modules.SectorSize,
 		NewMerkleRoot: newMerkleRoot,
 		Proof:         proof,
 	}
