@@ -48,7 +48,7 @@ type (
 
 	// RefCounterHeader contains metadata about the reference counter file
 	RefCounterHeader struct {
-		version [8]byte
+		Version [8]byte
 	}
 )
 
@@ -147,8 +147,9 @@ func NewRefCounter(path string, numSectors int64) (RefCounter, error) {
 	if err != nil {
 		return RefCounter{}, err
 	}
+	defer f.Close()
 	h := RefCounterHeader{
-		version: RefCounterVersion,
+		Version: RefCounterVersion,
 	}
 	// create fileSections
 	headerSection := newFileSection(f, 0, RefCounterHeaderSize)
@@ -193,10 +194,9 @@ func LoadRefCounter(path string) (RefCounter, error) {
 	if err != nil {
 		return RefCounter{}, err
 	}
-	decodeMaxSize := int(stat.Size() * 3)
 
 	var header RefCounterHeader
-	err = encoding.NewDecoder(f, decodeMaxSize).Decode(&header)
+	err = encoding.NewDecoder(f, encoding.DefaultAllocLimit).Decode(&header)
 	if err != nil {
 		return RefCounter{}, errors.AddContext(err, "unable to load refcounter header")
 	}
@@ -204,7 +204,7 @@ func LoadRefCounter(path string) (RefCounter, error) {
 	numSectors := (stat.Size() - RefCounterHeaderSize) / 2
 	sectorCounts := make([]uint16, numSectors)
 	f.Seek(RefCounterHeaderSize, io.SeekStart)
-	err = encoding.NewDecoder(f, decodeMaxSize).Decode(&sectorCounts)
+	err = encoding.NewDecoder(f, encoding.DefaultAllocLimit).Decode(&sectorCounts)
 	if err != nil {
 		return RefCounter{}, errors.AddContext(err, "unable to load refcounter data")
 	}
