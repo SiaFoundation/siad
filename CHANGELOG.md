@@ -73,6 +73,8 @@ Latest:
 
 **Other**
  - Upgrade host metadata to v1.4.3
+ - Add Skynet-Disable-Force header to allow disabling the force update feature
+   on Skynet uploads
 
 ### v1.4.2.1
 **Key Updates**
