@@ -28,7 +28,6 @@ require (
 	golang.org/x/crypto v0.0.0-20200208060501-ecb85df21340
 	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
 	golang.org/x/tools v0.0.0-20200130002326-2f3ba24bd6e7
-	lukechampine.com/us v1.13.0
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
