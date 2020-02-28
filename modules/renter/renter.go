@@ -469,8 +469,13 @@ func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FileNod
 	goodForRenew = make(map[string]bool)
 	offline = make(map[string]bool)
 	for _, e := range entrys {
+		var used []types.SiaPublicKey
 		for _, pk := range e.HostPublicKeys() {
 			pks[pk.String()] = pk
+			used = append(used, pk)
+		}
+		if err := e.UpdateUsedHosts(used); err != nil {
+			r.log.Debugln("WARN: Could not update used hosts:", err)
 		}
 	}
 	// Build 2 maps that map every pubkey to its offline and goodForRenew
@@ -488,19 +493,6 @@ func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FileNod
 		goodForRenew[pk.String()] = cu.GoodForRenew
 		offline[pk.String()] = r.hostContractor.IsOffline(pk)
 		contracts[pk.String()] = contract
-	}
-	// Update the used hosts of the Siafile. Only consider the ones that
-	// are goodForRenew.
-	var used []types.SiaPublicKey
-	for _, pk := range pks {
-		if _, gfr := goodForRenew[pk.String()]; gfr {
-			used = append(used, pk)
-		}
-	}
-	for _, e := range entrys {
-		if err := e.UpdateUsedHosts(used); err != nil {
-			r.log.Debugln("WARN: Could not update used hosts:", err)
-		}
 	}
 	// Update the cached expiration of the siafiles.
 	for _, e := range entrys {
