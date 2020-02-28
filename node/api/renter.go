@@ -1950,14 +1950,34 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// Check whether force upload is allowed. Skynet portals might disallow
+	// passing the force flag, if they want to they can set overrule the force
+	// flag by passing in the 'Skynet-Disable-Force' header
+	allowForce := true
+	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	if strDisableForce != "" {
+		disableForce, err := strconv.ParseBool(strDisableForce)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'Skynet-Disable-Force' header: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		allowForce = !disableForce
+	}
+
 	// Check whether existing file should be overwritten
 	force := false
-	if f := queryForm.Get("force"); f != "" {
-		force, err = strconv.ParseBool(f)
+	if strForce := queryForm.Get("force"); strForce != "" {
+		force, err = strconv.ParseBool(strForce)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
+	}
+
+	// Notify the caller force has been disabled
+	if !allowForce && force {
+		WriteError(w, Error{"'force' has been disabled on this node" + err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether the redundancy has been set.
@@ -2025,14 +2045,34 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Check whether force upload is allowed. Skynet portals might disallow
+	// passing the force flag, if they want to they can set overrule the force
+	// flag by passing in the 'Skynet-Disable-Force' header
+	allowForce := true
+	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	if strDisableForce != "" {
+		disableForce, err := strconv.ParseBool(strDisableForce)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'Skynet-Disable-Force' header: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		allowForce = !disableForce
+	}
+
 	// Check whether existing file should be overwritten
 	force := false
-	if f := queryForm.Get("force"); f != "" {
-		force, err = strconv.ParseBool(f)
+	if strForce := queryForm.Get("force"); strForce != "" {
+		force, err = strconv.ParseBool(strForce)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
+	}
+
+	// Notify the caller force has been disabled
+	if !allowForce && force {
+		WriteError(w, Error{"'force' has been disabled on this node"}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether the redundancy has been set.

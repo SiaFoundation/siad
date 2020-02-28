@@ -20,7 +20,7 @@ Latest:
  -
  -
  -
- -
+ - No user-agent needed for Skylink downloads
  -
  -
  -
@@ -33,6 +33,11 @@ Latest:
  - 
  - Add XChaCha20 CipherKey.
  - Add `siac skynet unpin` subcommand.
+ -
+ -
+ - Extend `siac renter -v` to show breakdown of file health.
+ -
+ -
 
 **Bugs Fixed**
  - 
@@ -43,6 +48,12 @@ Latest:
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
+ -
+ -
+ - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
+   used.
+ -
+ -
 
 **Other**
  - 
@@ -51,6 +62,8 @@ Latest:
  -
  -
  -
+ -
+
 
 ### v1.4.3
 **Key Updates**
@@ -74,6 +87,8 @@ Latest:
 
 **Other**
  - Upgrade host metadata to v1.4.3
+ - Add Skynet-Disable-Force header to allow disabling the force update feature
+   on Skynet uploads
 
 ### v1.4.2.1
 **Key Updates**

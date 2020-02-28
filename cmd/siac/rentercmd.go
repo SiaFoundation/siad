@@ -368,13 +368,59 @@ func rentercmd() {
 		die(err)
 	}
 
-	if !renterListVerbose {
+	if !renterVerbose {
 		return
 	}
 
 	// Print out ratelimit info about the renter
 	fmt.Println()
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
+
+	// Print out file health summary for the renter
+	dirs := getDir(modules.RootSiaPath(), false, true)
+	fmt.Println()
+	renterFileHealthSummary(dirs)
+}
+
+// renterFileHealthSummary prints out a summary of the status of all the files
+// in the renter to track the progress of the files
+func renterFileHealthSummary(dirs []directoryInfo) {
+	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable uint64
+	total := dirs[0].dir.AggregateNumFiles
+	for _, dir := range dirs {
+		for _, file := range dir.files {
+			switch {
+			case file.MaxHealthPercent == 100:
+				fullHealth++
+			case file.MaxHealthPercent > 75:
+				greater75++
+			case file.MaxHealthPercent > 50:
+				greater50++
+			case file.MaxHealthPercent > 25:
+				greater25++
+			case file.MaxHealthPercent > 0:
+				greater0++
+			default:
+				unrecoverable++
+			}
+		}
+	}
+
+	percentFullHealth := 100 * fullHealth / total
+	percentAbove75 := 100 * greater75 / total
+	percentAbove50 := 100 * greater50 / total
+	percentAbove25 := 100 * greater25 / total
+	percentAbove0 := 100 * greater0 / total
+	percentUnrecoverable := 100 * unrecoverable / total
+
+	fmt.Printf(`File Health Summary:
+  %% At 100%%:            %v%%
+  %% Between 75%% - 100%%: %v%%
+  %% Between 50%% - 75%%:  %v%%
+  %% Between 25%% - 50%%:  %v%%
+  %% Between 0%% - 25%%:   %v%%
+  %% Unrecoverable:      %v%%
+`, percentFullHealth, percentAbove75, percentAbove50, percentAbove25, percentAbove0, percentUnrecoverable)
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
