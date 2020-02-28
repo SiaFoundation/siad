@@ -58,6 +58,15 @@ const (
 	SkyfileVersion = 1
 )
 
+var (
+	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
+	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
+
+	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
+	// a large file upload
+	ExtendedSuffix = "-extended"
+)
+
 // skyfileLayout explains the layout information that is used for storing data
 // inside of the skyfile. The skyfileLayout always appears as the first bytes
 // of the leading chunk.
@@ -311,11 +320,27 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 		return modules.Skylink{}, errors.AddContext(err, "unable to build skylink")
 	}
 
+	// Check if skylink is blacklisted
+	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
+		// Skylink is blacklisted, return error and try and delete file
+		return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, r.DeleteFile(lup.SiaPath))
+	}
+
 	// Add the skylink to the siafiles.
 	err1 := fileNode.AddSkylink(skylink)
 	err2 := newFileNode.AddSkylink(skylink)
 	err = errors.Compose(err1, err2)
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+}
+
+// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
+func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
+	err := r.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkynetBlacklist.UpdateSkynetBlacklist(additions, removals)
 }
 
 // uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If
@@ -385,7 +410,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 	}
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + "-extended")
+	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
@@ -467,6 +492,11 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
+	// Check if link is blacklisted
+	if r.staticSkynetBlacklist.IsBlacklisted(link) {
+		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
+	}
+
 	// Pull the offset and fetchSize out of the skylink.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
@@ -521,6 +551,11 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters) error {
+	// Check if link is blacklisted
+	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
+		return ErrSkylinkBlacklisted
+	}
+
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize)
 	if err != nil {
@@ -629,8 +664,29 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
+	var skylink modules.Skylink
 	if largeFile {
-		return r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
+		skylink, err = r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
+	} else {
+		skylink, err = r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
 	}
-	return r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
+	}
+
+	// Check if skylink is blacklisted
+	if !r.staticSkynetBlacklist.IsBlacklisted(skylink) {
+		return skylink, nil
+	}
+
+	// Skylink is blacklisted, try and delete the file and return an error
+	deleteErr := r.DeleteFile(lup.SiaPath)
+	if largeFile {
+		extendedSiaPath, err := modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "unable to create extended SiaPath for large skyfile deletion")
+		}
+		deleteErr = errors.Compose(deleteErr, r.DeleteFile(extendedSiaPath))
+	}
+	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, deleteErr)
 }

@@ -888,3 +888,17 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	}
 	return rshp.Skylink, err
 }
+
+// SkynetBlacklistPost requests the /skynet/blacklist endpoint
+func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
+	sbp := api.SkynetBlacklistPOST{
+		Add:    additions,
+		Remove: removals,
+	}
+	data, err := json.Marshal(sbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/skynet/blacklist", string(data), nil)
+	return
+}

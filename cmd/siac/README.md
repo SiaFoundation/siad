@@ -198,6 +198,9 @@ if you have multiple downloads happening simultaneously.
   are both necessary to pin the file and keep the skylink active. The skyfile
   will consume an additional 40 MiB of storage.
 
+* `siac skynet blacklist [skylink]` will add or remove a skylink from the
+  Renter's Skynet Blacklist
+
 #### Gateway tasks
 * `siac gateway` prints info about the gateway, including its address and how
 many peers it's connected to.
