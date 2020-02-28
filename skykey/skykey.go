@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	// SkyKeyIdLen is the length of a
-	SkykeyIdLen = 16
+	// SkyKeyIDLen is the length of a SkykeyID
+	SkykeyIDLen = 16
 
 	// MaxKeyNameLen is the maximum length of a skykey's name.
 	MaxKeyNameLen = 128
@@ -33,7 +33,7 @@ var (
 	skykeyVersion       = types.NewSpecifier(skykeyVersionString)
 
 	// SkykeySpecifier is used as a prefix when hashing Skykeys to compute their
-	// Id.
+	// ID.
 	SkykeySpecifier = types.NewSpecifier("Skykey")
 
 	// SkykeyFileMagic is the first piece of data found in a Skykey file.
@@ -41,7 +41,7 @@ var (
 
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
 	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
-	errNoSkykeysWithThatId         = errors.New("No Skykey is assocated with that Id")
+	errNoSkykeysWithThatID         = errors.New("No Skykey is assocated with that ID")
 	errSkykeyNameAlreadyExists     = errors.New("Skykey name already exists.")
 	errSkykeyNameToolong           = errors.New("Skykey name exceeds max length")
 
@@ -49,7 +49,7 @@ var (
 	SkykeyPersistFilename = "skykeys.dat"
 )
 
-type SkykeyId [SkykeyIdLen]byte
+type SkykeyID [SkykeyIDLen]byte
 
 // Skykey is a key used to encrypt/decrypt skyfiles.
 type Skykey struct {
@@ -61,8 +61,8 @@ type Skykey struct {
 // SkykeyManager manages the creation and handling of new skykeys which can be
 // referenced by their unique name or identifier.
 type SkykeyManager struct {
-	idsByName map[string]SkykeyId
-	keysById  map[SkykeyId]Skykey
+	idsByName map[string]SkykeyID
+	keysByID  map[SkykeyID]Skykey
 
 	version types.Specifier
 	fileLen uint64 // Invariant: fileLen is at least headerLen
@@ -111,16 +111,16 @@ func (sk Skykey) marshalSia(w io.Writer) error {
 	return e.Err()
 }
 
-// Id returns the Id for the Skykey.
-func (sk Skykey) Id() (keyId SkykeyId) {
+// ID returns the ID for the Skykey.
+func (sk Skykey) ID() (keyID SkykeyID) {
 	h := crypto.HashAll(SkykeySpecifier, sk.CipherType, sk.Entropy)
-	copy(keyId[:], h[:SkykeyIdLen])
-	return keyId
+	copy(keyID[:], h[:SkykeyIDLen])
+	return keyID
 }
 
 // equals returns true if and only if the two Skykeys are equal.
 func (sk *Skykey) equals(otherKey Skykey) bool {
-	return sk.Name == otherKey.Name && sk.Id() == otherKey.Id() && sk.CipherType.String() == otherKey.CipherType.String()
+	return sk.Name == otherKey.Name && sk.ID() == otherKey.ID() && sk.CipherType.String() == otherKey.CipherType.String()
 }
 
 // SupportsCipherType returns true if and only if the SkykeyManager supports
@@ -199,14 +199,14 @@ func (sm *SkykeyManager) AddKey(name string, cipherTypeString string, entropy []
 	return skykey, nil
 }
 
-// GetIdByName returns the Id associated with the given key name.
-func (sm *SkykeyManager) GetIdByName(name string) (SkykeyId, error) {
+// GetIDByName returns the ID associated with the given key name.
+func (sm *SkykeyManager) GetIDByName(name string) (SkykeyID, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	id, ok := sm.idsByName[name]
 	if !ok {
-		return SkykeyId{}, errNoSkykeysWithThatName
+		return SkykeyID{}, errNoSkykeysWithThatName
 	}
 	return id, nil
 }
@@ -221,22 +221,22 @@ func (sm *SkykeyManager) GetKeyByName(name string) (Skykey, error) {
 		return Skykey{}, errNoSkykeysWithThatName
 	}
 
-	key, ok := sm.keysById[id]
+	key, ok := sm.keysByID[id]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatId
+		return Skykey{}, errNoSkykeysWithThatID
 	}
 
 	return key, nil
 }
 
-// GetKeyById returns the Skykey associated with that Id.
-func (sm *SkykeyManager) GetKeyById(id SkykeyId) (Skykey, error) {
+// GetKeyByID returns the Skykey associated with that ID.
+func (sm *SkykeyManager) GetKeyByID(id SkykeyID) (Skykey, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	key, ok := sm.keysById[id]
+	key, ok := sm.keysByID[id]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatId
+		return Skykey{}, errNoSkykeysWithThatID
 	}
 	return key, nil
 }
@@ -244,8 +244,8 @@ func (sm *SkykeyManager) GetKeyById(id SkykeyId) (Skykey, error) {
 // NewSkykeyManager creates a SkykeyManager for managing skykeys.
 func NewSkykeyManager(persistDir string) (*SkykeyManager, error) {
 	sm := &SkykeyManager{
-		idsByName:   make(map[string]SkykeyId),
-		keysById:    make(map[SkykeyId]Skykey),
+		idsByName:   make(map[string]SkykeyID),
+		keysByID:    make(map[SkykeyID]Skykey),
 		fileLen:     0,
 		persistFile: filepath.Join(persistDir, SkykeyPersistFilename),
 	}
@@ -348,13 +348,13 @@ func (sm *SkykeyManager) load() error {
 		return errors.AddContext(err, "Error loading header")
 	}
 
-	n := headerLen
 	_, err = file.Seek(int64(headerLen), io.SeekStart)
 	if err != nil {
 		return err
 	}
 
 	// Read all the skykeys up to the length set in the header.
+	n := headerLen
 	for n < int(sm.fileLen) {
 		var sk Skykey
 		err = sk.unmarshalSia(file)
@@ -363,8 +363,8 @@ func (sm *SkykeyManager) load() error {
 		}
 
 		// Store the skykey.
-		sm.idsByName[sk.Name] = sk.Id()
-		sm.keysById[sk.Id()] = sk
+		sm.idsByName[sk.Name] = sk.ID()
+		sm.keysByID[sk.ID()] = sk
 
 		// Set n to current offset in file.
 		currOffset, err := file.Seek(0, io.SeekCurrent)
@@ -383,11 +383,11 @@ func (sm *SkykeyManager) load() error {
 // saveKey saves the key and  appends it to the skykey file and updates/syncs
 // the header.
 func (sm *SkykeyManager) saveKey(skykey Skykey) error {
-	keyId := skykey.Id()
+	keyID := skykey.ID()
 
 	// Store the new key.
-	sm.idsByName[skykey.Name] = keyId
-	sm.keysById[keyId] = skykey
+	sm.idsByName[skykey.Name] = keyID
+	sm.keysByID[keyID] = skykey
 
 	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {

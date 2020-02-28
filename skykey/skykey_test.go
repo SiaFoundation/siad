@@ -72,28 +72,28 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal("Expected skykey name to already exist", err)
 	}
 
-	// Check the correct Id is returned.
-	id, err := keyMan.GetIdByName("test_key1")
+	// Check the correct ID is returned.
+	id, err := keyMan.GetIDByName("test_key1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != skykey.Id() {
-		t.Fatal("Expected matching keyId")
+	if id != skykey.ID() {
+		t.Fatal("Expected matching keyID")
 	}
 
 	// Check that the correct error for a random unknown key is given.
 	randomNameBytes := fastrand.Bytes(24)
 	randomName := string(randomNameBytes)
-	id, err = keyMan.GetIdByName(randomName)
+	id, err = keyMan.GetIDByName(randomName)
 	if err != errNoSkykeysWithThatName {
 		t.Fatal(err)
 	}
 
 	// Check that the correct error for a random unknown key is given.
-	var randomId SkykeyId
-	fastrand.Read(randomId[:])
-	_, err = keyMan.GetKeyById(randomId)
-	if err != errNoSkykeysWithThatId {
+	var randomID SkykeyID
+	fastrand.Read(randomID[:])
+	_, err = keyMan.GetKeyByID(randomID)
+	if err != errNoSkykeysWithThatID {
 		t.Fatal(err)
 	}
 
@@ -105,20 +105,20 @@ func TestSkykeyManager(t *testing.T) {
 	if skykey2.equals(skykey) {
 		t.Fatal("Expected different skykey to be created")
 	}
-	if len(keyMan.keysById) != 3 {
-		t.Fatal("Wrong number of keys", len(keyMan.keysById))
+	if len(keyMan.keysByID) != 3 {
+		t.Fatal("Wrong number of keys", len(keyMan.keysByID))
 	}
 	if len(keyMan.idsByName) != 3 {
 		t.Fatal("Wrong number of keys", len(keyMan.idsByName))
 	}
 
-	// Check GetKeyByName returns the keys with the expected Id.
+	// Check GetKeyByName returns the keys with the expected ID.
 	key1Copy, err := keyMan.GetKeyByName("test_key1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !key1Copy.equals(skykey) {
-		t.Fatal("Expected key Id to match")
+		t.Fatal("Expected key ID to match")
 	}
 
 	key2Copy, err := keyMan.GetKeyByName("test_key2")
@@ -126,7 +126,7 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !key2Copy.equals(skykey2) {
-		t.Fatal("Expected key Id to match")
+		t.Fatal("Expected key ID to match")
 	}
 	fileLen := keyMan.fileLen
 
@@ -144,11 +144,11 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal("Expected file len to match previous keyMan", fileLen, keyMan2.fileLen)
 	}
 
-	if len(keyMan.keysById) != len(keyMan2.keysById) {
+	if len(keyMan.keysByID) != len(keyMan2.keysByID) {
 		t.Fatal("Expected same number of keys")
 	}
-	for id, key := range keyMan.keysById {
-		if !key.equals(keyMan2.keysById[id]) {
+	for id, key := range keyMan.keysByID {
+		if !key.equals(keyMan2.keysByID[id]) {
 			t.Fatal("Expected same keys")
 		}
 	}
@@ -161,7 +161,7 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, key := range keyMan.keysById {
+	for _, key := range keyMan.keysByID {
 		addedKey, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
 		if err != nil {
 			t.Fatal(err)
@@ -172,8 +172,8 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Check for the correct number of keys.
-	if len(addKeyMan.keysById) != 3 {
-		t.Fatal("Wrong number of keys", len(addKeyMan.keysById))
+	if len(addKeyMan.keysByID) != 3 {
+		t.Fatal("Wrong number of keys", len(addKeyMan.keysByID))
 	}
 	if len(addKeyMan.idsByName) != 3 {
 		t.Fatal("Wrong number of keys", len(addKeyMan.idsByName))
@@ -181,7 +181,7 @@ func TestSkykeyManager(t *testing.T) {
 
 	// Try re-adding the same keys, and check that the duplicate name error is
 	// shown.
-	for _, key := range keyMan.keysById {
+	for _, key := range keyMan.keysByID {
 		_, err := addKeyMan.AddKey(key.Name, key.CipherType.String(), key.Entropy)
 		if !errors.Contains(err, errSkykeyNameAlreadyExists) {
 			t.Fatal(err)
