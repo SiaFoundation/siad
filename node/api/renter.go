@@ -1994,8 +1994,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 
+		// Use the filename of the first subfile if it's not passed as query
+		// string parameter and there's only one subfile.
 		if filename == "" && len(subfiles) == 1 {
-			filename = subfiles[0].Filename
+			for _, sf := range subfiles {
+				filename = sf.Filename
+				break
+			}
 		}
 
 		lup.Reader = reader
