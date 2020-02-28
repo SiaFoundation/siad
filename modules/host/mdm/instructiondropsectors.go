@@ -119,11 +119,26 @@ func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) 
 	if err != nil {
 		return types.Currency{}, types.Currency{}, errors.New("bad input: numSectorsOffset")
 	}
-	cost, refund := MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
+	cost, refund := modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
 	return cost, refund, nil
+}
+
+// Memory returns the memory allocated by the 'DropSectors' instruction beyond
+// the lifetime of the instruction.
+func (i *instructionDropSectors) Memory() uint64 {
+	return DropSectorsMemory()
 }
 
 // ReadOnly for the 'DropSectors' instruction is 'false'.
 func (i *instructionDropSectors) ReadOnly() bool {
 	return false
+}
+
+// Time returns the execution time of the 'DropSectors' instruction.
+func (i *instructionDropSectors) Time() (uint64, error) {
+	numDropped, err := i.staticData.Uint64(i.numSectorsOffset)
+	if err != nil {
+		return 0, err
+	}
+	return TimeDropSectors * numDropped, nil
 }

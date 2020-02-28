@@ -10,20 +10,28 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// newAppendInstruction is a convenience method for creating a single
+// Append instruction.
+func newAppendInstruction(merkleProof bool, dataOffset uint64, runningCost, runningRefund types.Currency, runningMemory uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64) {
+	i := NewAppendInstruction(dataOffset, merkleProof)
+
+	// Compute cost and used memory.
+	usedMemory := runningMemory+AppendMemory()
+	memoryCost := MemoryCost(pt, usedMemory, TimeAppend)
+	instructionCost, refund := modules.MDMAppendCost(pt)
+	cost := runningCost.Add(memoryCost).Add(instructionCost)
+
+	return i, cost, runningRefund.Add(refund), usedMemory
+}
+
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
 func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	instructions := []modules.Instruction{
-		NewAppendInstruction(0, merkleProof),
-	}
-
-	// Compute cost and used memory.
-	cost, refund := modules.MDMAppendCost(pt)
-	usedMemory := modules.MDMAppendMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeAppend+modules.MDMTimeCommit)
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
-	cost = cost.Add(memoryCost).Add(initCost)
+	i, cost, refund, usedMemory := newAppendInstruction(merkleProof, 0, initCost, types.ZeroCurrency, 0, pt)
+	instructions := []modules.Instruction{i}
+	cost = cost.Add(modules.MDMMemoryCost(pt, usedMemory, TimeCommit))
 	return instructions, sectorData, cost, refund, usedMemory
 }
 

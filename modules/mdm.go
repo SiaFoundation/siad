@@ -40,6 +40,10 @@ const (
 	// MDMTimeWriteSector is the time for executing a 'WriteSector' instruction.
 	MDMTimeWriteSector = 10000
 
+	// RPCIAppendLen is the expected length of the 'Args' of an Append
+	// instructon.
+	RPCIAppendLen = 9
+
 	// RPCIDropSectorsLen is the expected length of the 'Args' of a DropSectors
 	// Instruction.
 	RPCIDropSectorsLen = 9
@@ -51,10 +55,6 @@ const (
 	// RPCIReadSectorLen is the expected length of the 'Args' of a ReadSector
 	// instruction.
 	RPCIReadSectorLen = 25
-
-	// RPCIAppendLen is the expected length of the 'Args' of an Append
-	// instructon.
-	RPCIAppendLen = 9
 )
 
 var (
@@ -130,9 +130,12 @@ func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
-// MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction.
-func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) types.Currency {
-	return types.SiacoinPrecision // TODO: figure out good cost
+// DropSectorsCost is the cost of executing a 'DropSectors' instruction for a
+// certain number of dropped sectors.
+func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
+	cost := pt.DropSectorsLengthCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
+	refund := types.ZeroCurrency
+	return cost, refund
 }
 
 // MDMSwapCost is the cost of executing a 'Swap' instruction.

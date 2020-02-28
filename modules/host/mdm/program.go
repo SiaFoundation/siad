@@ -167,7 +167,11 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		// Add the memory the next instruction is going to allocate to the
 		// total.
 		p.usedMemory += i.Memory()
-		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, i.Time())
+		time, err := i.Time()
+		if err != nil {
+			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
+		}
+		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
 		// Get the instruction cost and refund.
 		instructionCost, refund, err := i.Cost()
 		if err != nil {

@@ -105,6 +105,6 @@ func (i *instructionAppend) ReadOnly() bool {
 }
 
 // Time returns the execution time of an 'Append' instruction.
-func (i *instructionAppend) Time() uint64 {
-	return modules.MDMTimeAppend
+func (i *instructionAppend) Time() (uint64, error) {
+	return modules.MDMTimeAppend, nil
 }
