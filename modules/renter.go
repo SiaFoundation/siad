@@ -1102,13 +1102,33 @@ func (sm SkyfileMetadata) SubDir(path string) (SkyfileMetadata, uint64, uint64) 
 		Filename: path,
 		Subfiles: make(SkyfileSubfiles),
 	}
+
+	// Try to find an exact match
 	for _, sf := range sm.Subfiles {
 		filename := sf.Filename
 		if !strings.HasPrefix(filename, "/") {
 			filename = fmt.Sprintf("/%s", filename)
 		}
-		if strings.HasPrefix(filename, path) {
+		if filename == path {
 			dir.Subfiles[sf.Filename] = sf
+			break
+		}
+	}
+
+	// If we have not found an exact match, look for directories.
+	// This means we can safely ensire a trailing slash.
+	if len(dir.Subfiles) == 0 {
+		if strings.HasSuffix(path, "/") {
+			path = fmt.Sprintf("%s/", path)
+		}
+		for _, sf := range sm.Subfiles {
+			filename := sf.Filename
+			if !strings.HasPrefix(filename, "/") {
+				filename = fmt.Sprintf("/%s", filename)
+			}
+			if strings.HasPrefix(filename, path) {
+				dir.Subfiles[sf.Filename] = sf
+			}
 		}
 	}
 
