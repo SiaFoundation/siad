@@ -76,6 +76,7 @@ Latest:
  - Add SIA_DATA_DIR environment variable for setting the data directory for
    siad/siac
  - Made build process deterministic. Moved related scripts into `release-scripts`
+ - Add directory support to Skylinks.
  - Enabled Lockcheck code anaylzer
  - Added Bandwidth monitoring to the host module
  

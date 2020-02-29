@@ -4143,8 +4143,15 @@ responses](#standard-responses).
 
 > Stream the whole file.  
 
-```go
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"
+```bash
+# entire file
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+
+# directory
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/folder"
+
+# sub file
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/folder/file.txt"
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
@@ -4153,7 +4160,9 @@ received.
 ### Path Parameters 
 ### Required
 **skylink** | string  
-The skylink that should be downloaded.
+The skylink that should be downloaded. The skylink can contain an optional path.
+This path can specify a directory or a particular file. If specified, only that
+file or directory will be returned.
 
 ### Query String Parameters
 ### OPTIONAL
@@ -4163,12 +4172,36 @@ If 'attachment' is set to true, the Content-Disposition http header will be set
 to 'attachment' instead of 'inline'. This will cause web browsers to download
 the file as though it is an attachment instead of rendering it.
 
+**format** | string  
+If 'format' is set, the skylink can point to a directory and it will return the
+data inside that directory. Format will decide the format in which it is
+returned. Currently we only support 'concat', which will return the concatenated
+data of all subfiles in that directory.
+
 ### Response Header
 
 **Skynet-File-Metadata** | SkyfileMetadata
 
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
-json object which matches the modules.SkyfileMetadata struct.
+json object which matches the modules.SkyfileMetadata struct. If a path was
+supplied, this metadata will be relative to the given path.
+
+> Skynet-File-Metadata Response Header Example 
+```go
+{
+"mode":               // os.FileMode
+"filename": "folder", // string
+"subfiles": [         // []SkyfileSubfileMetadata | null
+  {
+  "mode":         640                 // os.FileMode
+  "filename":     "folder/file1.txt", // string
+  "contenttype":  "text/plain",       // string
+  "offset":       0,                  // uint64
+  "len":          6                   // uint64
+  }
+]
+}
+```
 
 ### Response Body
 
@@ -4234,9 +4267,8 @@ this field is not set, the siapath will be interpreted as relative to
 ### OPTIONAL
 **Content-Disposition** | string  
 If the filename is set in the Content-Disposition field, that filename will be
-used as the filename of the object being uploaded. If both the content
-disposition are set, and the query string parameter are set for the filename,
-the query string parameter will get priority.
+used as the filename of the object being uploaded. Note that this header is only
+taken into consideration when using a multipart form upload.
 
 For more details on setting Content-Disposition:
 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
