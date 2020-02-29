@@ -215,59 +215,6 @@ func TestSkynet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create some data to upload as a skyfile.
-	data = fastrand.Bytes(100)
-
-	// Call the upload skyfile client call.
-	filename = "testSmallMultipart"
-	uploadSiaPath, err = modules.NewSiaPath("testSmallPathMultipart")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Upload a skyfile using multipart form data
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", filename)
-	_, err = part.Write(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writer.Close()
-
-	reader = bytes.NewReader(body.Bytes())
-	mup := modules.SkyfileMultipartUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Reader:              reader,
-		ContentType:         writer.FormDataContentType(),
-		Filename:            filename,
-	}
-	skylink, rshp, err = r.SkynetSkyfileMultiPartPost(mup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = realSkylink.LoadString(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Try to download the file behind the skylink.
-	fetchedData, metadata, err = r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(fetchedData, data) {
-		t.Error("upload and download doesn't match")
-		t.Log(data)
-		t.Log(fetchedData)
-	}
-	if metadata.Filename != filename {
-		t.Error("bad filename")
-	}
-
 	// Upload another skyfile, this time ensure that the skyfile is more than
 	// one sector.
 	largeData := fastrand.Bytes(int(modules.SectorSize*2) + siatest.Fuzz())
