@@ -201,7 +201,7 @@ func TestSkynet(t *testing.T) {
 	if len(rootRdg.Files) != 1 {
 		t.Fatal("expecting a file to be in the root folder after uploading")
 	}
-	err = build.Retry(35, 400*time.Millisecond, func() error {
+	err = build.Retry(250, 250*time.Millisecond, func() error {
 		uploadedFile, err := r.RenterFileRootGet(rootUploadSiaPath)
 		if err != nil {
 			return err
