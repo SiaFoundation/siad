@@ -67,6 +67,8 @@ Latest:
 
 ### v1.4.3
 **Key Updates**
+ - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
+   skylinks, uploads, downloads, and pinning
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
  - Integrate SiaMux
  - Initialize defaults for the host's ephemeral account settings
@@ -74,6 +76,8 @@ Latest:
    siad/siac
  - Made build process deterministic. Moved related scripts into `release-scripts`
  - Add directory support to Skylinks.
+ - Enabled Lockcheck code anaylzer
+ - Added Bandwidth monitoring to the host module
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
@@ -87,6 +91,7 @@ Latest:
 
 **Other**
  - Upgrade host metadata to v1.4.3
+ - Removed stubs from testing
  - Add Skynet-Disable-Force header to allow disabling the force update feature
    on Skynet uploads
 
