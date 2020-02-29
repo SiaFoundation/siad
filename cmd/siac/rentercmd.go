@@ -2579,8 +2579,11 @@ func skynetuploaddir(dir *os.File, sourcePath, destSiaPath string) {
 			defer dir.Close()
 			_, err = dir.Readdir(1)
 			if err != nil && err.Error() == "EOF" {
+				// This directory is empty - skip it.
 				continue
 			}
+			// We specifically do not check for other errors because those will be
+			// handled by the call to skynetuploadcmd.
 		}
 		skynetuploadcmd(newSourcePath, newDestSiaPath)
 	}
