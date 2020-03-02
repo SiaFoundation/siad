@@ -330,6 +330,8 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		if err != nil {
 			return err
 		}
+		// Modify name to match path within skyfile.
+		header.Name = file.Filename
 		// Write header.
 		if err := tw.WriteHeader(header); err != nil {
 			return err
