@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -2532,8 +2533,9 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 	}
 
 	spp := modules.SkyfilePinParameters{
-		SiaPath: siaPath,
-		Root:    skynetUploadRoot,
+		SiaPath:             siaPath,
+		Root:                skynetUploadRoot,
+		BaseChunkRedundancy: renter.SkyfileDefaultBaseChunkRedundancy,
 	}
 
 	err = httpClient.SkynetSkylinkPinPost(skylink, spp)
