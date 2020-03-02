@@ -820,8 +820,13 @@ func TestHostChurnSiafileDefragRegression(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	// Upload a file to all hosts.
+	// Increase the renter's allowance to avoid complications during the test.
 	r := tg.Renters()[0]
+	a := siatest.DefaultAllowance
+	a.MaxPeriodChurn *= 100
+	a.Funds = a.Funds.Mul64(100)
+	r.RenterPostAllowance(a)
+	// Upload a file to all hosts.
 	_, rf, err := r.UploadNewFileBlocking(100, 1, uint64(len(tg.Hosts())-1), false)
 	if err != nil {
 		t.Fatal(err)
