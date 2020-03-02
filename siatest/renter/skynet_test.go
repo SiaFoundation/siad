@@ -149,6 +149,44 @@ func TestSkynet(t *testing.T) {
 		t.Fatal("reader data doesn't match data")
 	}
 
+	// Try to download the file explicitly using the ReaderGet method with the
+	// default formatter.
+	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatDefault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readerData, err = ioutil.ReadAll(skylinkReader)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+
+	// Try to download the file using the ReaderGet method with the concat
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatConcat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readerData, err = ioutil.ReadAll(skylinkReader)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+
 	// Get the list of files in the skynet directory and see if the file is
 	// present.
 	rdg, err := r.RenterDirRootGet(modules.SkynetFolder)
@@ -566,7 +604,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Try to download the file behind the skylink.
-	_, fileMetadata, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
+	_, fileMetadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +674,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	largeFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", largeSkylink))
+	largeFetchedData, _, err := r.SkynetSkylinkGet(largeSkylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -932,7 +970,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// now specify the correct format
-	allData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
+	allData, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -945,7 +983,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "/" (equals all data)
-	allData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/?format=concat", skylink))
+	allData, _, err = r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -956,7 +994,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "a"
-	dataDirA, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a?format=concat", skylink))
+	dataDirA, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -968,7 +1006,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "b"
-	dataDirB, metadataDirB, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=concat", skylink))
+	dataDirB, metadataDirB, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/b", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1018,7 +1056,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// verify we get a 400 if we supply an unsupported format parameter
-	_, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=raw", skylink))
+	_, _, err = r.SkynetSkylinkFormattedGet(fmt.Sprintf("%s/b", skylink), modules.SkyfileFormat("raw"))
 	if err == nil || !strings.Contains(err.Error(), "unable to parse 'format'") {
 		t.Fatal("Expected download to fail because we are downloading a directory and an invalid format was provided, err:", err)
 	}

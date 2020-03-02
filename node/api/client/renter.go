@@ -763,6 +763,28 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
 }
 
+// SkynetSkylinkFormattedGet uses the /skynet/skylink endpoint to download a skylink
+// file.
+func (c *Client) SkynetSkylinkFormattedGet(skylink string, format modules.SkyfileFormat) ([]byte, modules.SkyfileMetadata, error) {
+	values := url.Values{}
+	values.Set("format", string(format))
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	header, fileData, err := c.getRawResponse(getQuery)
+	if err != nil {
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+	}
+
+	var sm modules.SkyfileMetadata
+	strMetadata := header.Get("Skynet-File-Metadata")
+	if strMetadata != "" {
+		err = json.Unmarshal([]byte(strMetadata), &sm)
+		if err != nil {
+			return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "unable to unmarshal skyfile metadata")
+		}
+	}
+	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
+}
+
 // SkynetSkylinkReaderGet uses the /skynet/skylink endpoint to fetch a reader of
 // the file data.
 func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
