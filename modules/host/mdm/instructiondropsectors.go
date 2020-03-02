@@ -77,8 +77,12 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 	ps := i.staticState
 
 	// Construct the proof, if necessary, before updating the roots.
+	//
+	// If no sectors were dropped or all sectors were dropped, the proof should
+	// be empty. In the latter case, we also send the leaf hashes of the dropped
+	// leaves, which is enough to compute and verify the original merkle roof.
 	var proof []crypto.Hash
-	if i.staticMerkleProof && numSectorsDropped > 0 {
+	if i.staticMerkleProof && numSectorsDropped > 0 && newNumSectors > 0 {
 		// Create proof with range covering the dropped sectors.
 		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, int(newNumSectors), int(oldNumSectors))
 	}
