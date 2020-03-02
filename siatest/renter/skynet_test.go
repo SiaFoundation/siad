@@ -716,7 +716,7 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	metadata := modules.SkyfileSubfileMetadata{
 		Filename:    filename,
 		ContentType: "application/octet-stream",
-		Mode:        os.FileMode(filemode),
+		FileMode:    os.FileMode(filemode),
 		Len:         uint64(len(filedata)),
 	}
 
@@ -988,7 +988,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	mdF3Expected := modules.SkyfileSubfileMetadata{
-		Mode:        os.FileMode(0640),
+		FileMode:    os.FileMode(0640),
 		Filename:    "/b/file3.txt",
 		ContentType: "application/octet-stream",
 		Offset:      0,

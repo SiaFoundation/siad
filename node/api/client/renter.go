@@ -771,6 +771,16 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 	return reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
+// SkynetSkylinkFormattedReaderGet uses the /skynet/skylink endpoint to fetch a
+// reader of the file data.
+func (c *Client) SkynetSkylinkFormattedReaderGet(skylink string, format modules.SkyfileFormat) (io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("format", string(format))
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, errors.AddContext(err, "unable to fetch skylink data")
+}
+
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
 // given skylink.
 func (c *Client) SkynetSkylinkPinPost(skylink string, params modules.SkyfilePinParameters) error {

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -293,6 +295,51 @@ func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 		return modules.UserSiaPath(), nil
 	}
 	return modules.UserSiaPath().Join(siaPath.String())
+}
+
+// serveTar serves skyfiles as a tar by reading them from r and writing the
+// archive to dst.
+func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
+	tw := tar.NewWriter(dst)
+	// Get the files to tar.
+	files := md.Subfiles
+	// If there are no files, it's a single file download. Manually construct a
+	// SkyfileSubfileMetadata from the SkyfileMetadata.
+	if len(md.Subfiles) == 0 {
+		// Fetch the length of the file by seeking to the end and then back to
+		// the start.
+		length, err := streamer.Seek(0, io.SeekEnd)
+		if err != nil {
+			return err
+		}
+		_, err = streamer.Seek(0, io.SeekStart)
+		if err != nil {
+			return err
+		}
+		// Construct the SkyfileSubfileMetadata.
+		files[md.Filename] = modules.SkyfileSubfileMetadata{
+			FileMode: md.Mode,
+			Filename: md.Filename,
+			Offset:   0,
+			Len:      uint64(length),
+		}
+	}
+	for _, file := range md.Subfiles {
+		// Create header.
+		header, err := tar.FileInfoHeader(file, file.Name())
+		if err != nil {
+			return err
+		}
+		// Write header.
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		// Write file content.
+		if _, err := io.CopyN(tw, streamer, header.Size); err != nil {
+			return err
+		}
+	}
+	return tw.Close()
 }
 
 // trimSiaDirFolder is a helper method to trim /home/siafiles off of the
@@ -1860,20 +1907,38 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Parse the format.
-	var format string
-	formatStr := strings.ToLower(queryForm.Get("format"))
-	if formatStr != "" {
-		if formatStr != "concat" {
-			WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat'"}, http.StatusBadRequest)
-			return
-		}
-		format = formatStr
+	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
+	if format == modules.SkyfileFormatDefault {
+		format = modules.SkyfileFormatTar // establish default
+	} else if format != modules.SkyfileFormatTar &&
+		format != modules.SkyfileFormatConcat &&
+		format != modules.SkyfileFormatTarGz {
+		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar' and 'targz'"}, http.StatusBadRequest)
+		return
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	defer streamer.Close()
+
+	// If requested, serve the content as a tar archive or compressed tar archive.
+	if format == modules.SkyfileFormatTar {
+		w.Header().Set("content-type", "application/x-tar")
+		err = serveTar(w, metadata, streamer)
+		return
+	} else if format == modules.SkyfileFormatTarGz {
+		w.Header().Set("content-type", "application/x-gtar ")
+		gzw := gzip.NewWriter(w)
+		err = serveTar(w, metadata, streamer)
+		err = errors.Compose(err, gzw.Close())
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
@@ -2268,7 +2333,7 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		contentType := fh.Header.Get("Content-Type")
 
 		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
-			Mode:        mode,
+			FileMode:    mode,
 			Filename:    filename,
 			ContentType: contentType,
 			Offset:      offset,
