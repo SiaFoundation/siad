@@ -257,6 +257,12 @@ type (
 		Bitfield   uint16      `json:"bitfield"`
 	}
 
+	// SkynetBlacklistGET contains the information queried for the
+	// /skynet/blacklist GET endpoint
+	SkynetBlacklistGET struct {
+		Blacklist []crypto.Hash `json:"blacklist"`
+	}
+
 	// SkynetBlacklistPOST contains the information needed for the
 	// /skynet/blacklist POST endpoint to be called
 	SkynetBlacklistPOST struct {
@@ -1748,6 +1754,21 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	}
 
 	return dp, nil
+}
+
+// skynetBlacklistHandlerGET handles the API call to get the list of
+// blacklisted skylinks
+func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the Blacklist
+	blacklist, err := api.renter.Blacklist()
+	if err != nil {
+		WriteError(w, Error{"unable to get the blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetBlacklistGET{
+		Blacklist: blacklist,
+	})
 }
 
 // skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks

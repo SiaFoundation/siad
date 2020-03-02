@@ -333,6 +333,16 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
+// Blacklist returns the merkleroots that are blacklisted
+func (r *Renter) Blacklist() ([]crypto.Hash, error) {
+	err := r.tg.Add()
+	if err != nil {
+		return []crypto.Hash{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkynetBlacklist.Blacklist(), nil
+}
+
 // UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
 func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
 	err := r.tg.Add()
