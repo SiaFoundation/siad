@@ -2553,7 +2553,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			die("could not fetch skypath:", err)
 		}
 	}
-	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n\n", skypath, skylink)
+	fmt.Printf("Skyfile uploaded successfully to %v\n -> Skylink: sia://%v\n", skypath, skylink)
 }
 
 // handles the process of recursively uploading all files in a directory
