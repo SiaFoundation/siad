@@ -317,6 +317,7 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 			return err
 		}
 		// Construct the SkyfileSubfileMetadata.
+		files = make(map[string]modules.SkyfileSubfileMetadata)
 		files[md.Filename] = modules.SkyfileSubfileMetadata{
 			FileMode: md.Mode,
 			Filename: md.Filename,

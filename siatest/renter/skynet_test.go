@@ -1,9 +1,12 @@
 package renter
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -27,7 +30,7 @@ import (
 
 // TestSkynet provides basic end-to-end testing for uploading skyfiles and
 // downloading the resulting skylinks.
-func TestSkynet(t *testing.T) {
+func TestSkynetX(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -185,6 +188,40 @@ func TestSkynet(t *testing.T) {
 	}
 	if !bytes.Equal(readerData, data) {
 		t.Fatal("reader data doesn't match data")
+	}
+
+	// Try to download the file using the ReaderGet method with the targz
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatConcat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err := gzip.NewReader(skylinkReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzr.Close()
+	tr := tar.NewReader(gzr)
+	header, err := tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	println("header", header.Name)
+	readerData, err = ioutil.ReadAll(tr)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected error to be EOF but was", err)
 	}
 
 	// Get the list of files in the skynet directory and see if the file is
