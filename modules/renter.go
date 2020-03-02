@@ -1185,7 +1185,7 @@ func (sm SkyfileMetadata) offset() uint64 {
 // written and its length. Its filename can potentially include a '/' character
 // as nested files and directories are allowed within a single Skyfile
 type SkyfileSubfileMetadata struct {
-	FileMode    os.FileMode `json:"mode,omitempty"` // different json name for compat reasons
+	FileMode    os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
 	Filename    string      `json:"filename,omitempty"`
 	ContentType string      `json:"contenttype,omitempty"`
 	Offset      uint64      `json:"offset,omitempty"`
