@@ -21,7 +21,7 @@ func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTa
 
 	// Compute cost and used memory.
 	cost, refund := AppendCost(pt)
-	usedMemory := AppendMemory()
+	usedMemory := InitMemory() + AppendMemory()
 	memoryCost := MemoryCost(pt, usedMemory, TimeAppend+TimeCommit)
 	initCost := InitCost(pt, uint64(len(sectorData)))
 	cost = cost.Add(memoryCost).Add(initCost)

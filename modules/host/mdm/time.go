@@ -10,7 +10,7 @@ const (
 	ProgramInitTime = 10
 
 	// TimeAppend is the time for executing an 'Append' instruction.
-	TimeAppend = 10000
+	TimeAppend = 10e3
 
 	// TimeCommit is the time used for executing managedFinalize.
 	TimeCommit = 50e3
@@ -19,8 +19,8 @@ const (
 	TimeHasSector = 1
 
 	// TimeReadSector is the time for executing a 'ReadSector' instruction.
-	TimeReadSector = 1000
+	TimeReadSector = 1e3
 
 	// TimeWriteSector is the time for executing a 'WriteSector' instruction.
-	TimeWriteSector = 10000
+	TimeWriteSector = 10e3
 )

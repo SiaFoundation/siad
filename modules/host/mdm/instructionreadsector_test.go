@@ -28,7 +28,7 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modu
 
 	// Compute cost and used memory.
 	cost, refund := ReadCost(pt, length)
-	usedMemory := ReadMemory()
+	usedMemory := InitMemory() + ReadMemory()
 	memoryCost := MemoryCost(pt, usedMemory, TimeReadSector+TimeCommit)
 	initCost := InitCost(pt, uint64(len(data)))
 	cost = cost.Add(memoryCost).Add(initCost)

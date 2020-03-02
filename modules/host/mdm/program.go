@@ -87,6 +87,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			merkleRoots: so.SectorRoots(),
 		},
 		staticBudget: budget,
+		usedMemory:   InitMemory(),
 		staticData:   openProgramData(data, programDataLen),
 		so:           so,
 		tg:           &mdm.tg,

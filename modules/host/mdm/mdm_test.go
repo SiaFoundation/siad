@@ -111,16 +111,20 @@ func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved, sectorsGain
 
 // newTestPriceTable returns a price table for testing that charges 1 Hasting
 // for every operation/rpc.
+//
+// TODO: is 1 Hasting too low? An append costs 2*SectorSize
 func newTestPriceTable() modules.RPCPriceTable {
+	// defaultCost := types.SiacoinPrecision.Div64(modules.SectorSize)
 	return modules.RPCPriceTable{
 		Expiry:               time.Now().Add(time.Minute).Unix(),
-		UpdatePriceTableCost: types.SiacoinPrecision,
-		InitBaseCost:         types.SiacoinPrecision,
-		MemoryTimeCost:       types.SiacoinPrecision,
-		ReadBaseCost:         types.SiacoinPrecision,
-		ReadLengthCost:       types.SiacoinPrecision,
-		WriteBaseCost:        types.SiacoinPrecision,
-		WriteLengthCost:      types.SiacoinPrecision,
+		UpdatePriceTableCost: types.NewCurrency64(1),
+		InitBaseCost:         types.NewCurrency64(1),
+		MemoryTimeCost:       types.NewCurrency64(1),
+		ReadBaseCost:         types.NewCurrency64(1),
+		ReadLengthCost:       types.NewCurrency64(1),
+		WriteBaseCost:        types.NewCurrency64(1),
+		WriteLengthCost:      types.NewCurrency64(1),
+		WriteStoreCost:       types.NewCurrency64(1),
 	}
 }
 
