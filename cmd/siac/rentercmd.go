@@ -2565,28 +2565,33 @@ func skynetuploaddir(dir *os.File, sourcePath, destSiaPath string) {
 	if len(fis) == 0 {
 		die("Cannot upload an empty directory")
 	}
-	for i := 0; i < len(fis); i++ {
-		name := fis[i].Name()
-		newSourcePath := filepath.Join(sourcePath, name)
-		newDestSiaPath := filepath.Join(destSiaPath, name)
 
-		// do not process empty directories
-		if fis[i].IsDir() {
-			dir, err := os.Open(newSourcePath)
-			if err != nil {
-				die("Unable to read subdirectory:", err)
-			}
-			defer dir.Close()
-			_, err = dir.Readdir(1)
-			if err != nil && err.Error() == "EOF" {
-				// This directory is empty - skip it.
-				continue
-			}
-			// We specifically do not check for other errors because those will be
-			// handled by the call to skynetuploadcmd.
-		}
-		skynetuploadcmd(newSourcePath, newDestSiaPath)
+	for i := range fis {
+		go skynetUploadEntity(fis[i], sourcePath, destSiaPath)
 	}
+}
+
+func skynetUploadEntity(fi os.FileInfo, sourcePath, destSiaPath string) {
+	name := fi.Name()
+	newSourcePath := filepath.Join(sourcePath, name)
+	newDestSiaPath := filepath.Join(destSiaPath, name)
+
+	// do not process empty directories
+	if fi.IsDir() {
+		dir, err := os.Open(newSourcePath)
+		if err != nil {
+			die("Unable to read subdirectory:", err)
+		}
+		defer dir.Close()
+		_, err = dir.Readdir(1)
+		if err != nil && err.Error() == "EOF" {
+			// This directory is empty - skip it.
+			return
+		}
+		// We specifically do not check for other errors because those will be
+		// handled by the call to skynetuploadcmd.
+	}
+	skynetuploadcmd(newSourcePath, newDestSiaPath)
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
