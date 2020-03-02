@@ -190,9 +190,38 @@ func TestSkynetX(t *testing.T) {
 		t.Fatal("reader data doesn't match data")
 	}
 
+	// Try to download the file using the ReaderGet method with the tar
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatTar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(skylinkReader)
+	header, err := tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	println("header", header.Name)
+	readerData, err = ioutil.ReadAll(tr)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected error to be EOF but was", err)
+	}
+
 	// Try to download the file using the ReaderGet method with the targz
 	// formatter.
-	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatConcat)
+	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatTarGz)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,12 +230,11 @@ func TestSkynetX(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer gzr.Close()
-	tr := tar.NewReader(gzr)
-	header, err := tr.Next()
+	tr = tar.NewReader(gzr)
+	header, err = tr.Next()
 	if err != nil {
 		t.Fatal(err)
 	}
-	println("header", header.Name)
 	readerData, err = ioutil.ReadAll(tr)
 	if err != nil {
 		err = errors.Compose(err, skylinkReader.Close())

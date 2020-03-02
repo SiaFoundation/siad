@@ -1,9 +1,12 @@
 package client
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/url"
 	"os"
@@ -769,9 +772,31 @@ func (c *Client) SkynetSkylinkFormattedGet(skylink string, format modules.Skyfil
 	values := url.Values{}
 	values.Set("format", string(format))
 	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
-	header, fileData, err := c.getRawResponse(getQuery)
+	var reader io.Reader
+	header, body, err := c.getReaderResponse(getQuery)
 	if err != nil {
 		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+	}
+	defer body.Close()
+	reader = body
+
+	// Wrap the response body according to the chosen format.
+	if format == modules.SkyfileFormatTarGz {
+		gzr, err := gzip.NewReader(reader)
+		if err != nil {
+			return nil, modules.SkyfileMetadata{}, err
+		}
+		defer gzr.Close()
+		reader = gzr
+	}
+	if format == modules.SkyfileFormatTarGz || format == modules.SkyfileFormatTar {
+		reader = tar.NewReader(reader)
+	}
+
+	// Read the fileData.
+	fileData, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return nil, modules.SkyfileMetadata{}, err
 	}
 
 	var sm modules.SkyfileMetadata
