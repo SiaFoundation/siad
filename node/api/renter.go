@@ -1864,14 +1864,18 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		var offset, size uint64
 		metadata, dir, offset, size = metadata.ForPath(path)
 		if len(metadata.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download file for path: %v, ", path)}, http.StatusNotFound)
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
 		if dir && format == "" {
-			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
-		streamer = NewLimitStreamer(streamer, offset, size)
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
 	} else {
 		if len(metadata.Subfiles) > 1 && format == "" {
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
