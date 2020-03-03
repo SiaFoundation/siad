@@ -1215,20 +1215,6 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	if !bytes.Equal(data, dataFile2) {
 		t.Fatal("file doesn't match expected content")
 	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath3 {
-		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile3) {
-		t.Fatal("file doesn't match expected content")
-	}
 	_, err = tr.Next()
 	if err != io.EOF {
 		t.Fatal("expected io.EOF got", err)
@@ -1236,7 +1222,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	skyfileReader.Close()
 
 	// now specify the targz format
-	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1272,20 +1258,6 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
-	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath3 {
-		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile3) {
 		t.Fatal("file doesn't match expected content")
 	}
 	_, err = tr.Next()

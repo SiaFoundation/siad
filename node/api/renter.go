@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -302,7 +303,13 @@ func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
 	tw := tar.NewWriter(dst)
 	// Get the files to tar.
-	files := md.Subfiles
+	var files []modules.SkyfileSubfileMetadata
+	for _, file := range md.Subfiles {
+		files = append(files, file)
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Offset < files[j].Offset
+	})
 	// If there are no files, it's a single file download. Manually construct a
 	// SkyfileSubfileMetadata from the SkyfileMetadata.
 	if len(files) == 0 {
@@ -317,13 +324,12 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 			return err
 		}
 		// Construct the SkyfileSubfileMetadata.
-		files = make(map[string]modules.SkyfileSubfileMetadata)
-		files[md.Filename] = modules.SkyfileSubfileMetadata{
+		files = append(files, modules.SkyfileSubfileMetadata{
 			FileMode: md.Mode,
 			Filename: md.Filename,
 			Offset:   0,
 			Len:      uint64(length),
-		}
+		})
 	}
 	for _, file := range files {
 		// Create header.
