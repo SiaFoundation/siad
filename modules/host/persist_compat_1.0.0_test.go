@@ -37,7 +37,8 @@ func TestHostPersistCompat100(t *testing.T) {
 
 	// Create a new siamux to ensure it has the chance to load the appropriate
 	// set of keys
-	mux, err := modules.NewSiaMux(ht.persistDir, "localhost:0")
+	siaMuxDir := filepath.Join(ht.persistDir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, ht.persistDir, "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
