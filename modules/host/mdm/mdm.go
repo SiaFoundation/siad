@@ -19,7 +19,7 @@ type StorageObligation interface {
 	// SectorRoots returns the roots of the storage obligation.
 	SectorRoots() []crypto.Hash
 	// Update updates the storage obligation.
-	Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error
+	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error
 }
 
 // Host defines the minimal interface a Host needs to

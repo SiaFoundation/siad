@@ -179,13 +179,24 @@ func (c *Client) get(resource string, obj interface{}) error {
 
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
-func (c *Client) postRawResponse(resource string, body io.Reader, headers map[string]string) (http.Header, []byte, error) {
+func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, []byte, error) {
+	// Default the Content-Type header to "application/x-www-form-urlencoded",
+	// if the caller is performing a multipart form-data upload he can do so by
+	// using `postRawResponseWithHeaders` and manually set the Content-Type
+	// header himself.
+	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	return c.postRawResponseWithHeaders(resource, body, headers)
+}
+
+// postRawResponseWithHeaders requests the specified resource and allows to pass
+// custom headers. The response, if provided, will be returned in a byte slice
+func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, headers map[string]string) (http.Header, []byte, error) {
 	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
 	}
-	// TODO: is this necessary?
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Decorate the headers on the request object
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -218,8 +229,7 @@ func (c *Client) postRawResponse(resource string, body io.Reader, headers map[st
 // request body. The response, if provided, will be decoded into `obj`.
 func (c *Client) post(resource string, data string, obj interface{}) error {
 	// Request resource
-	headers := make(map[string]string)
-	_, body, err := c.postRawResponse(resource, strings.NewReader(data), headers)
+	_, body, err := c.postRawResponse(resource, strings.NewReader(data))
 	if err != nil {
 		return err
 	}
