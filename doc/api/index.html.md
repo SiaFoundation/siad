@@ -4131,7 +4131,7 @@ returns the list of merkleroots that are blacklisted.
 }
 ```
 **blacklist** | Hashes  
-The blacklist is a list of Merkleroots, which as hashes, that are blacklisted.
+The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
 
 ## /skynet/blacklist [POST]
 > curl example

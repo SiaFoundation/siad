@@ -32,7 +32,7 @@ and is used to create a new Skynet Blacklist and return information about the
 Blacklist.
 
 **Exports**
- - `Blacklist` returns the list of blacklisted merkleroots
+ - `Blacklist` returns the list of blacklisted merkle roots
  - `IsBlacklisted` returns whether or not a skylink merkleroot is blacklisted
  - `New` creates and returns a new Skynet Blacklist
  - `Update` updates the blacklist
