@@ -153,8 +153,8 @@ func TestSkynet(t *testing.T) {
 	}
 
 	// Try to download the file explicitly using the ReaderGet method with the
-	// default formatter.
-	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatDefault)
+	// no formatter.
+	skylinkReader, err = r.SkynetSkylinkFormattedReaderGet(skylink, modules.SkyfileFormatNotSpecified)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1040,7 +1040,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// now specify the correct format
-	allData, _, err := r.SkynetSkylinkGet(skylink)
+	allData, _, err := r.SkynetSkylinkFormattedGet(skylink, modules.SkyfileFormatConcat)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1053,7 +1053,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "/" (equals all data)
-	allData, _, err = r.SkynetSkylinkGet(skylink)
+	allData, _, err = r.SkynetSkylinkFormattedGet(skylink, modules.SkyfileFormatConcat)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1064,7 +1064,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "a"
-	dataDirA, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a", skylink))
+	dataDirA, _, err := r.SkynetSkylinkFormattedGet(fmt.Sprintf("%s/a", skylink), modules.SkyfileFormatConcat)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1076,7 +1076,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	// get all data for path "b"
-	dataDirB, metadataDirB, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/b", skylink))
+	dataDirB, metadataDirB, err := r.SkynetSkylinkFormattedGet(fmt.Sprintf("%s/b", skylink), modules.SkyfileFormatConcat)
 	if err != nil {
 		t.Fatal(err)
 	}

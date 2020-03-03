@@ -1226,9 +1226,9 @@ func (sm SkyfileSubfileMetadata) Sys() interface{} {
 type SkyfileFormat string
 
 var (
-	// SkyfileFormatDefault is the default format for the endpoint when the
+	// SkyfileFormatNotSpecified is the default format for the endpoint when the
 	// format isn't specified explicitly.
-	SkyfileFormatDefault = SkyfileFormat("")
+	SkyfileFormatNotSpecified = SkyfileFormat("")
 	// SkyfileFormatConcat returns the skyfiles in a concatenated manner.
 	SkyfileFormatConcat = SkyfileFormat("concat")
 	// SkyfileFormatTar returns the skyfiles as a .tar.

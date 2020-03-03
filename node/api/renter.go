@@ -1911,8 +1911,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse the format.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
-	if format == modules.SkyfileFormatDefault {
-		format = modules.SkyfileFormatConcat // establish default
+	if format == modules.SkyfileFormatNotSpecified {
+		// not specified
 	} else if format != modules.SkyfileFormatTar &&
 		format != modules.SkyfileFormatConcat &&
 		format != modules.SkyfileFormatTarGz {
