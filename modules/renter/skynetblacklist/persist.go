@@ -221,11 +221,11 @@ func (sb *SkynetBlacklist) load() error {
 	metadataBytes := make([]byte, metadataSize)
 	_, err = f.ReadAt(metadataBytes, 0)
 	if err != nil {
-		return errors.AddContext(err, "enable to read metadata bytes from file")
+		return errors.AddContext(err, "unable to read metadata bytes from file")
 	}
 	err = sb.unmarshalMetadata(metadataBytes)
 	if err != nil {
-		return errors.AddContext(err, "enable to unmarshal metadata bytes")
+		return errors.AddContext(err, "unable to unmarshal metadata bytes")
 	}
 
 	// Check if there is a persisted blacklist after the metatdata
