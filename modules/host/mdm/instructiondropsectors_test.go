@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -11,6 +12,25 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// TestDropSectorsVerify tests verification of DropSectors input.
+func TestDropSectorsVerify(t *testing.T) {
+	tests := []struct {
+		numDropped, oldNum uint64
+		err                error
+	}{
+		{0, 0, nil},
+		{0, 1, nil},
+		{1, 1, nil},
+		{2, 1, fmt.Errorf("bad input: numSectors (%v) is greater than the number of sectors in the contract (%v)", 2, 1)},
+	}
+	for _, test := range tests {
+		err := dropSectorsVerify(test.numDropped, test.oldNum)
+		if err != test.err && err.Error() != test.err.Error() {
+			t.Errorf("dropSectorsVerify(%v, %v): expected '%v', got '%v'", test.numDropped, test.oldNum, test.err, err)
+		}
+	}
+}
 
 // newDropSectorsInstruction is a convenience method for creating a single
 // DropSectors instruction.

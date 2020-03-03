@@ -67,10 +67,10 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 	}
 
 	// Verify input.
-	oldSize := prevOutput.NewSize
-	oldNumSectors := oldSize / modules.SectorSize
-	if numSectorsDropped > oldNumSectors {
-		return errOutput(fmt.Errorf("bad input: numSectors (%v) is greater than the number of sectors in the contract (%v)", numSectorsDropped, oldNumSectors))
+	oldNumSectors := prevOutput.NewSize / modules.SectorSize
+	err = dropSectorsVerify(numSectorsDropped, oldNumSectors)
+	if err != nil {
+		return errOutput(err)
 	}
 
 	newNumSectors := oldNumSectors - numSectorsDropped
@@ -96,6 +96,14 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 		NewMerkleRoot: newMerkleRoot,
 		Proof:         proof,
 	}
+}
+
+// dropSectorsVerify verifies the input to a DropSectors instruction.
+func dropSectorsVerify(numSectorsDropped, oldNumSectors uint64) error {
+	if numSectorsDropped > oldNumSectors {
+		return fmt.Errorf("bad input: numSectors (%v) is greater than the number of sectors in the contract (%v)", numSectorsDropped, oldNumSectors)
+	}
+	return nil
 }
 
 // Cost returns the Cost of the DropSectors instruction.
