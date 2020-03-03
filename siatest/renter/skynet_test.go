@@ -30,7 +30,7 @@ import (
 
 // TestSkynet provides basic end-to-end testing for uploading skyfiles and
 // downloading the resulting skylinks.
-func TestSkynetX(t *testing.T) {
+func TestSkynet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -182,12 +182,12 @@ func TestSkynetX(t *testing.T) {
 		err = errors.Compose(err, skylinkReader.Close())
 		t.Fatal(err)
 	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
 	err = skylinkReader.Close()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !bytes.Equal(readerData, data) {
-		t.Fatal("reader data doesn't match data")
 	}
 
 	// Try to download the file using the ReaderGet method with the tar
@@ -201,14 +201,12 @@ func TestSkynetX(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	println("header", header.Name)
+	if header.Name != filename {
+		t.Fatalf("expected filename in archive to be %v but was %v", filename, header.Name)
+	}
 	readerData, err = ioutil.ReadAll(tr)
 	if err != nil {
 		err = errors.Compose(err, skylinkReader.Close())
-		t.Fatal(err)
-	}
-	err = skylinkReader.Close()
-	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(readerData, data) {
@@ -217,6 +215,10 @@ func TestSkynetX(t *testing.T) {
 	_, err = tr.Next()
 	if err != io.EOF {
 		t.Fatal("expected error to be EOF but was", err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Try to download the file using the ReaderGet method with the targz
@@ -235,13 +237,12 @@ func TestSkynetX(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if header.Name != filename {
+		t.Fatalf("expected filename in archive to be %v but was %v", filename, header.Name)
+	}
 	readerData, err = ioutil.ReadAll(tr)
 	if err != nil {
 		err = errors.Compose(err, skylinkReader.Close())
-		t.Fatal(err)
-	}
-	err = skylinkReader.Close()
-	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(readerData, data) {
@@ -250,6 +251,10 @@ func TestSkynetX(t *testing.T) {
 	_, err = tr.Next()
 	if err != io.EOF {
 		t.Fatal("expected error to be EOF but was", err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Get the list of files in the skynet directory and see if the file is

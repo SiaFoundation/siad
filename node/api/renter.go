@@ -305,7 +305,7 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 	files := md.Subfiles
 	// If there are no files, it's a single file download. Manually construct a
 	// SkyfileSubfileMetadata from the SkyfileMetadata.
-	if len(md.Subfiles) == 0 {
+	if len(files) == 0 {
 		// Fetch the length of the file by seeking to the end and then back to
 		// the start.
 		length, err := streamer.Seek(0, io.SeekEnd)
@@ -325,7 +325,7 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 			Len:      uint64(length),
 		}
 	}
-	for _, file := range md.Subfiles {
+	for _, file := range files {
 		// Create header.
 		header, err := tar.FileInfoHeader(file, file.Name())
 		if err != nil {
@@ -1936,7 +1936,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	} else if format == modules.SkyfileFormatTarGz {
 		w.Header().Set("content-type", "application/x-gtar ")
 		gzw := gzip.NewWriter(w)
-		err = serveTar(w, metadata, streamer)
+		err = serveTar(gzw, metadata, streamer)
 		err = errors.Compose(err, gzw.Close())
 		return
 	}
