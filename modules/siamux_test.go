@@ -15,13 +15,14 @@ import (
 // when the host's persitence metadata version is v1.4.2
 func TestSiaMuxCompat(t *testing.T) {
 	// ensure the host's persistence file does not exist
-	persistDir := filepath.Join(os.TempDir(), t.Name())
-	persistPath := filepath.Join(persistDir, HostDir, HostSettingsFile)
+	siaDataDir := filepath.Join(os.TempDir(), t.Name())
+	siaMuxDir := filepath.Join(siaDataDir, SiaMuxDir)
+	persistPath := filepath.Join(siaDataDir, HostDir, HostSettingsFile)
 	os.Remove(persistPath)
 
 	// create a new siamux, seeing as there won't be a host persistence file, it
 	// will act as if this is a fresh new node and create a new key pair
-	mux, err := NewSiaMux(persistDir, "localhost:0")
+	mux, err := NewSiaMux(siaMuxDir, siaDataDir, "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestSiaMuxCompat(t *testing.T) {
 	mux.Close()
 
 	// re-open the mux and verify it uses the same keys
-	mux, err = NewSiaMux(persistDir, "localhost:0")
+	mux, err = NewSiaMux(siaMuxDir, siaDataDir, "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestSiaMuxCompat(t *testing.T) {
 	// initialised using the host's key pair
 
 	// create the host directory if it doesn't exist.
-	err = os.MkdirAll(filepath.Join(persistDir, HostDir), 0700)
+	err = os.MkdirAll(filepath.Join(siaDataDir, HostDir), 0700)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,7 @@ func TestSiaMuxCompat(t *testing.T) {
 	}
 
 	// create a new siamux
-	mux, err = NewSiaMux(persistDir, "localhost:0")
+	mux, err = NewSiaMux(siaMuxDir, siaDataDir, "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}

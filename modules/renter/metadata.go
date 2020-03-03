@@ -112,7 +112,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				continue
 			}
 
-			// If 75% or more of the redundancy are missing, register an alert for the file.
+			// If 75% or more of the redundancy is missing, register an alert
+			// for the file.
 			uid := string(fileMetadata.UID)
 			if maxHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth); maxHealth >= AlertSiafileLowRedundancyThreshold {
 				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,

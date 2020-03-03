@@ -250,7 +250,8 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	}
 
 	// Create the siamux
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
