@@ -1,8 +1,6 @@
 package client
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -766,11 +764,11 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
 }
 
-// SkynetSkylinkFormattedGet uses the /skynet/skylink endpoint to download a skylink
-// file.
-func (c *Client) SkynetSkylinkFormattedGet(skylink string, format modules.SkyfileFormat) ([]byte, modules.SkyfileMetadata, error) {
+// SkynetSkylinkConcatGet uses the /skynet/skylink endpoint to download a
+// skylink file with the 'concat' format specified.
+func (c *Client) SkynetSkylinkConcatGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {
 	values := url.Values{}
-	values.Set("format", string(format))
+	values.Set("format", string(modules.SkyfileFormatConcat))
 	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
 	var reader io.Reader
 	header, body, err := c.getReaderResponse(getQuery)
@@ -779,19 +777,6 @@ func (c *Client) SkynetSkylinkFormattedGet(skylink string, format modules.Skyfil
 	}
 	defer body.Close()
 	reader = body
-
-	// Wrap the response body according to the chosen format.
-	if format == modules.SkyfileFormatTarGz {
-		gzr, err := gzip.NewReader(reader)
-		if err != nil {
-			return nil, modules.SkyfileMetadata{}, err
-		}
-		defer gzr.Close()
-		reader = gzr
-	}
-	if format == modules.SkyfileFormatTarGz || format == modules.SkyfileFormatTar {
-		reader = tar.NewReader(reader)
-	}
 
 	// Read the fileData.
 	fileData, err := ioutil.ReadAll(reader)
@@ -818,11 +803,31 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 	return reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
-// SkynetSkylinkFormattedReaderGet uses the /skynet/skylink endpoint to fetch a
-// reader of the file data.
-func (c *Client) SkynetSkylinkFormattedReaderGet(skylink string, format modules.SkyfileFormat) (io.ReadCloser, error) {
+// SkynetSkylinkConcatReaderGet uses the /skynet/skylink endpoint to fetch a
+// reader of the file data with the 'concat' format specified.
+func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, error) {
 	values := url.Values{}
-	values.Set("format", string(format))
+	values.Set("format", string(modules.SkyfileFormatConcat))
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkTarReaderGet uses the /skynet/skylink endpoint to fetch a
+// reader of the file data with the 'tar' format specified.
+func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("format", string(modules.SkyfileFormatTar))
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkTarGzReaderGet uses the /skynet/skylink endpoint to fetch a
+// reader of the file data with the 'targz' format specified.
+func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("format", string(modules.SkyfileFormatTarGz))
 	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
 	_, reader, err := c.getReaderResponse(getQuery)
 	return reader, errors.AddContext(err, "unable to fetch skylink data")
