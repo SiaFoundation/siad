@@ -156,7 +156,8 @@ func newRenterTester(name string) (*renterTester, error) {
 // the wallet.
 func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	// Create the siamux
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +217,8 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 	}
 
 	// Create the siamux
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
