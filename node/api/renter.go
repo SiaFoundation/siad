@@ -1928,23 +1928,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	// If requested, serve the content as a tar archive or compressed tar archive.
-	if format == modules.SkyfileFormatTar {
-		w.Header().Set("content-type", "application/x-tar")
-		err = serveTar(w, metadata, streamer)
-		return
-	} else if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("content-type", "application/x-gtar ")
-		gzw := gzip.NewWriter(w)
-		err = serveTar(gzw, metadata, streamer)
-		err = errors.Compose(err, gzw.Close())
-		return
-	}
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
-		return
-	}
-
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
@@ -1970,6 +1953,23 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
+	}
+
+	// If requested, serve the content as a tar archive or compressed tar archive.
+	if format == modules.SkyfileFormatTar {
+		w.Header().Set("content-type", "application/x-tar")
+		err = serveTar(w, metadata, streamer)
+		return
+	} else if format == modules.SkyfileFormatTarGz {
+		w.Header().Set("content-type", "application/x-gtar ")
+		gzw := gzip.NewWriter(w)
+		err = serveTar(gzw, metadata, streamer)
+		err = errors.Compose(err, gzw.Close())
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+		return
 	}
 
 	// Encode the metadata
