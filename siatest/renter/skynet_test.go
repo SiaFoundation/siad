@@ -674,7 +674,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Try to download the file behind the skylink.
-	_, fileMetadata, err := r.SkynetSkylinkGet(skylink)
+	_, fileMetadata, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -744,7 +744,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	largeFetchedData, _, err := r.SkynetSkylinkGet(largeSkylink)
+	largeFetchedData, _, err := r.SkynetSkylinkConcatGet(largeSkylink)
 	if err != nil {
 		t.Fatal(err)
 	}
