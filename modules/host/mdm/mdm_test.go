@@ -28,7 +28,7 @@ type (
 	}
 )
 
-func newTestHost() Host {
+func newTestHost() *TestHost {
 	return &TestHost{
 		sectors: make(map[crypto.Hash][]byte),
 	}
@@ -91,19 +91,19 @@ func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
 	return so.sectorRoots
 }
 
-// Update implements the StorageObligation interface
-func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+// Update implements the StorageObligation interface.
+func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
 	for _, removedSector := range sectorsRemoved {
 		if _, exists := so.sectorMap[removedSector]; !exists {
 			return errors.New("sector doesn't exist")
 		}
 		delete(so.sectorMap, removedSector)
 	}
-	for i, gainedSector := range sectorsGained {
+	for gainedSector, gainedSectorData := range sectorsGained {
 		if _, exists := so.sectorMap[gainedSector]; exists {
 			return errors.New("sector already exists")
 		}
-		so.sectorMap[gainedSector] = gainedSectorData[i]
+		so.sectorMap[gainedSector] = gainedSectorData
 	}
 	so.sectorRoots = sectorRoots
 	return nil
@@ -119,6 +119,8 @@ func newTestPriceTable() modules.RPCPriceTable {
 		MemoryTimeCost:       types.SiacoinPrecision,
 		ReadBaseCost:         types.SiacoinPrecision,
 		ReadLengthCost:       types.SiacoinPrecision,
+		WriteBaseCost:        types.SiacoinPrecision,
+		WriteLengthCost:      types.SiacoinPrecision,
 	}
 }
 

@@ -79,6 +79,7 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	if err != nil {
 		return errOutput(err)
 	}
+
 	// Validate the request.
 	switch {
 	case offset+length > modules.SectorSize:
@@ -92,12 +93,12 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 		return errOutput(err)
 	}
 
-	// Fetch the requested data.
-	sectorData, err := i.staticState.host.ReadSector(sectorRoot)
+	ps := i.staticState
+	sectorData, err := ps.sectors.readSector(ps.host, sectorRoot)
 	if err != nil {
 		return errOutput(err)
 	}
-	data := sectorData[offset : offset+length]
+	readData := sectorData[offset : offset+length]
 
 	// Construct the Merkle proof, if requested.
 	var proof []crypto.Hash
@@ -111,7 +112,7 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	return output{
 		NewSize:       previousOutput.NewSize,       // size stays the same
 		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
-		Output:        data,
+		Output:        readData,
 		Proof:         proof,
 	}
 }
@@ -122,10 +123,22 @@ func (i *instructionReadSector) Cost() (types.Currency, types.Currency, error) {
 	if err != nil {
 		return types.ZeroCurrency, types.ZeroCurrency, err
 	}
-	return ReadCost(i.staticState.priceTable, length), types.ZeroCurrency, nil
+	cost, refund := ReadCost(i.staticState.priceTable, length)
+	return cost, refund, nil
+}
+
+// Memory returns the memory allocated by the 'ReadSector' instruction beyond
+// the lifetime of the instruction.
+func (i *instructionReadSector) Memory() uint64 {
+	return ReadMemory()
 }
 
 // ReadOnly for the 'ReadSector' instruction is 'true'.
 func (i *instructionReadSector) ReadOnly() bool {
 	return true
+}
+
+// Time returns the execution time of a 'ReadSector' instruction.
+func (i *instructionReadSector) Time() uint64 {
+	return TimeReadSector
 }

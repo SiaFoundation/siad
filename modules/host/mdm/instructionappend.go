@@ -63,27 +63,21 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 		return errOutput(err)
 	}
 	newFileSize := prevOutput.NewSize + modules.SectorSize
-	newRoot := crypto.MerkleRoot(sectorData)
 
 	// TODO: How to update finances with EA?
 	// i.staticState.potentialStorageRevenue = i.staticState.potentialStorageRevenue.Add(types.ZeroCurrency)
 	// i.staticState.riskedCollateral = i.staticState.riskedCollateral.Add(types.ZeroCurrency)
 	// i.staticState.potentialUploadRevenue = i.staticState.potentialUploadRevenue.Add(types.ZeroCurrency)
 
-	// Update the storage obligation.
-	i.staticState.sectorsGained = append(i.staticState.sectorsGained, newRoot)
-	i.staticState.gainedSectorData = append(i.staticState.gainedSectorData, sectorData)
-
-	// Update the roots and compute the new merkle root of the contract.
-	i.staticState.merkleRoots = append(i.staticState.merkleRoots, newRoot)
-	newMerkleRoot := cachedMerkleRoot(i.staticState.merkleRoots)
+	ps := i.staticState
+	newMerkleRoot := ps.sectors.appendSector(sectorData)
 
 	// TODO: Construct proof if necessary.
 	var proof []crypto.Hash
 	if i.staticMerkleProof {
-		start := len(i.staticState.merkleRoots)
+		start := len(ps.sectors.merkleRoots)
 		end := start + 1
-		proof = crypto.MerkleSectorRangeProof(i.staticState.merkleRoots, start, end)
+		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, start, end)
 	}
 
 	return output{
@@ -99,7 +93,18 @@ func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
 	return cost, refund, nil
 }
 
+// Memory returns the memory allocated by the 'Append' instruction beyond the
+// lifetime of the instruction.
+func (i *instructionAppend) Memory() uint64 {
+	return AppendMemory()
+}
+
 // ReadOnly for the 'Append' instruction is 'false'.
 func (i *instructionAppend) ReadOnly() bool {
 	return false
+}
+
+// Time returns the execution time of an 'Append' instruction.
+func (i *instructionAppend) Time() uint64 {
+	return TimeAppend
 }

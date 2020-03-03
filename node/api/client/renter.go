@@ -591,7 +591,7 @@ func (c *Client) RenterUploadStreamPost(r io.Reader, siaPath modules.SiaPath, da
 	values.Set("paritypieces", strconv.FormatUint(parityPieces, 10))
 	values.Set("force", strconv.FormatBool(force))
 	values.Set("stream", strconv.FormatBool(true))
-	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r, make(map[string]string))
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err
 }
 
@@ -603,7 +603,7 @@ func (c *Client) RenterUploadStreamRepairPost(r io.Reader, siaPath modules.SiaPa
 	values := url.Values{}
 	values.Set("repair", strconv.FormatBool(true))
 	values.Set("stream", strconv.FormatBool(true))
-	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r, make(map[string]string))
+	_, _, err := c.postRawResponse(fmt.Sprintf("/renter/uploadstream/%s?%s", sp, values.Encode()), r)
 	return err
 }
 
@@ -773,28 +773,20 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
 // given skylink.
-func (c *Client) SkynetSkylinkPinPost(skylink string, lup modules.SkyfileUploadParameters) error {
-	// Check for misuse of lup.
-	if lup.FileMetadata != (modules.SkyfileMetadata{}) {
-		return errors.New("file metadata should not be set when pinning an existing skylink, skylink already has metadata")
-	}
-	if lup.Reader != nil {
-		return errors.New("should not include reader when pinning a skylink, the download will be performed automatically")
-	}
+func (c *Client) SkynetSkylinkPinPost(skylink string, params modules.SkyfilePinParameters) error {
 
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", lup.FileMetadata.Filename)
-	forceStr := fmt.Sprintf("%t", lup.Force)
+	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
-	rootStr := fmt.Sprintf("%t", lup.Root)
+	rootStr := fmt.Sprintf("%t", params.Root)
 	values.Set("root", rootStr)
-	values.Set("siapath", lup.SiaPath.String())
+	values.Set("siapath", params.SiaPath.String())
 
 	query := fmt.Sprintf("/skynet/pin/%s?%s", skylink, values.Encode())
-	_, _, err := c.postRawResponse(query, nil, make(map[string]string))
+	_, _, err := c.postRawResponse(query, nil)
 	if err != nil {
 		return errors.AddContext(err, "post call to "+query+" failed")
 	}
@@ -803,29 +795,54 @@ func (c *Client) SkynetSkylinkPinPost(skylink string, lup modules.SkyfileUploadP
 
 // SkynetSkyfilePost uses the /skynet/skyfile endpoint to upload a skyfile.  The
 // resulting skylink is returned along with an error.
-func (c *Client) SkynetSkyfilePost(lup modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
-	return c.SkynetSkyfilePostCustom(lup, make(map[string]string))
-}
-
-// SkynetSkyfilePostCustom uses the /skynet/skyfile endpoint to upload a
-// skyfile. The resulting skylink is returned along with an error. This is a
-// custom method that allows passing in headers.
-func (c *Client) SkynetSkyfilePostCustom(lup modules.SkyfileUploadParameters, headers map[string]string) (string, api.SkynetSkyfileHandlerPOST, error) {
+func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", lup.FileMetadata.Filename)
-	forceStr := fmt.Sprintf("%t", lup.Force)
+	values.Set("filename", params.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
 	values.Set("mode", modeStr)
-	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
+	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
-	rootStr := fmt.Sprintf("%t", lup.Root)
+	rootStr := fmt.Sprintf("%t", params.Root)
 	values.Set("root", rootStr)
 
 	// Make the call to upload the file.
-	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	_, resp, err := c.postRawResponse(query, lup.Reader, headers)
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
+	_, resp, err := c.postRawResponse(query, params.Reader)
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
+	}
+
+	// Parse the response to get the skylink.
+	var rshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to parse the skylink upload response")
+	}
+	return rshp.Skylink, rshp, err
+}
+
+// SkynetSkyfileMultiPartPost uses the /skynet/skyfile endpoint to upload a
+// skyfile using multipart form data.  The resulting skylink is returned along
+// with an error.
+func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("filename", params.Filename)
+	forceStr := fmt.Sprintf("%t", params.Force)
+	values.Set("force", forceStr)
+	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
+	values.Set("basechunkredundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", params.Root)
+	values.Set("root", rootStr)
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
+
+	headers := map[string]string{"Content-Type": params.ContentType}
+	_, resp, err := c.postRawResponseWithHeaders(query, params.Reader, headers)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
 	}
@@ -858,7 +875,7 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
-	_, resp, err := c.postRawResponse(query, lup.Reader, make(map[string]string))
+	_, resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
 		return "", errors.AddContext(err, "post call to "+query+" failed")
 	}
@@ -870,4 +887,18 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 		return "", errors.AddContext(err, "unable to parse the skylink upload response")
 	}
 	return rshp.Skylink, err
+}
+
+// SkynetBlacklistPost requests the /skynet/blacklist endpoint
+func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
+	sbp := api.SkynetBlacklistPOST{
+		Add:    additions,
+		Remove: removals,
+	}
+	data, err := json.Marshal(sbp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/skynet/blacklist", string(data), nil)
+	return
 }

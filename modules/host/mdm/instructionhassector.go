@@ -57,6 +57,12 @@ func (i *instructionHasSector) Cost() (types.Currency, types.Currency, error) {
 	return cost, refund, nil
 }
 
+// Memory returns the memory allocated by this instruction beyond the end of its
+// lifetime.
+func (i *instructionHasSector) Memory() uint64 {
+	return HasSectorMemory()
+}
+
 // Execute executes the 'HasSector' instruction.
 func (i *instructionHasSector) Execute(prevOutput output) output {
 	// Fetch the operands.
@@ -64,16 +70,16 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 	if err != nil {
 		return errOutput(err)
 	}
-	// Fetch the requested information
-	hasSector, err := i.staticState.host.HasSector(sectorRoot)
-	if err != nil {
-		return errOutput(err)
-	}
+
+	// Fetch the requested information.
+	hasSector := i.staticState.sectors.hasSector(sectorRoot)
+
 	// Return the output.
 	out := []byte{0}
 	if hasSector {
 		out[0] = 1
 	}
+
 	return output{
 		NewSize:       prevOutput.NewSize,       // size stays the same
 		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
@@ -84,4 +90,9 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 // ReadOnly for the 'HasSector' instruction is 'true'.
 func (i *instructionHasSector) ReadOnly() bool {
 	return true
+}
+
+// Time returns the execution time of an 'HasSector' instruction.
+func (i *instructionHasSector) Time() uint64 {
+	return TimeHasSector
 }

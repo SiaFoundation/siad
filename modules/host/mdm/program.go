@@ -28,11 +28,8 @@ type programState struct {
 	blockHeight types.BlockHeight
 	host        Host
 
-	// storage obligation related fields
-	sectorsRemoved   []crypto.Hash
-	sectorsGained    []crypto.Hash
-	gainedSectorData [][]byte
-	merkleRoots      []crypto.Hash
+	// program cache
+	sectors sectors
 
 	// statistic related fields
 	potentialStorageRevenue types.Currency
@@ -56,6 +53,7 @@ type Program struct {
 	staticBudget    types.Currency
 	executionCost   types.Currency
 	potentialRefund types.Currency // refund if the program isn't committed
+	usedMemory      uint64
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -83,7 +81,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
 			priceTable:  pt,
-			merkleRoots: so.SectorRoots(),
+			sectors:     newSectors(so.SectorRoots()),
 		},
 		staticBudget: budget,
 		staticData:   openProgramData(data, programDataLen),
@@ -152,12 +150,18 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 			break
 		default:
 		}
-		// Increment the cost before running the instruction.
-		cost, refund, err := i.Cost()
+		// Add the memory the next instruction is going to allocate to the
+		// total.
+		p.usedMemory += i.Memory()
+		memoryCost := MemoryCost(p.staticProgramState.priceTable, p.usedMemory, i.Time())
+		// Get the instruction cost and refund.
+		instructionCost, refund, err := i.Cost()
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
 			return
 		}
+		cost := memoryCost.Add(instructionCost)
+		// Increment the cost.
 		err = p.addCost(cost)
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
@@ -182,9 +186,15 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
 func (p *Program) managedFinalize() error {
+	// Compute the memory cost of finalizing the program.
+	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * TimeCommit)
+	err := p.addCost(memoryCost)
+	if err != nil {
+		return err
+	}
 	// Commit the changes to the storage obligation.
-	ps := p.staticProgramState
-	err := p.so.Update(ps.merkleRoots, ps.sectorsRemoved, ps.sectorsGained, ps.gainedSectorData)
+	s := p.staticProgramState.sectors
+	err = p.so.Update(s.merkleRoots, s.sectorsRemoved, s.sectorsGained)
 	if err != nil {
 		return err
 	}

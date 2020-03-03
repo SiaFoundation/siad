@@ -11,21 +11,74 @@ Version History
 Latest:
 ### v1.4.4
 **Key Updates**
+ - Add ability to blacklist skylinks by merkleroot
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
+ - Uploading resumes more quickly after restart
+ -
+ -
+ -
+ -
+ -
+ -
+ - No user-agent needed for Skylink downloads
+ -
+ -
+ -
+ -
+ -
+ -
+ -
+ -
+ - 
+ - 
+ - Add XChaCha20 CipherKey.
+ - Add `siac skynet unpin` subcommand.
+ -
+ -
+ - Extend `siac renter -v` to show breakdown of file health.
+ -
+ -
 
 **Bugs Fixed**
+ - 
+ -
+ -
+ -
+ -
+ -
+ - Fixed `siac skynet ls` not working when files were passed as input. It is now
+   able to access specific files in the Skynet folder.
+ -
+ -
+ - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
+   used.
+ -
+ -
 
 **Other**
+ - Split out renter siatests into 2 groups for faster pipelines
+ -
+ -
+ -
+ -
+ -
+ -
+
 
 ### v1.4.3
 **Key Updates**
+ - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
+   skylinks, uploads, downloads, and pinning
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
  - Integrate SiaMux
  - Initialize defaults for the host's ephemeral account settings
  - Add SIA_DATA_DIR environment variable for setting the data directory for
    siad/siac
  - Made build process deterministic. Moved related scripts into `release-scripts`
+ - Add directory support to Skylinks.
+ - Enabled Lockcheck code anaylzer
+ - Added Bandwidth monitoring to the host module
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
@@ -39,6 +92,9 @@ Latest:
 
 **Other**
  - Upgrade host metadata to v1.4.3
+ - Removed stubs from testing
+ - Add Skynet-Disable-Force header to allow disabling the force update feature
+   on Skynet uploads
 
 ### v1.4.2.1
 **Key Updates**

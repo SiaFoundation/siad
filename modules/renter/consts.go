@@ -55,6 +55,16 @@ var (
 		Standard: 0.25,
 		Testing:  0.25,
 	}).(float64)
+
+	// syncCheckInterval is how often the repair heap checks the consensus code
+	// to see if the renter is synced. This is created because the contractor
+	// may not update the synced channel until a block is received under some
+	// conditions.
+	syncCheckInterval = build.Select(build.Var{
+		Dev:      time.Second * 3,
+		Standard: time.Second * 5,
+		Testing:  time.Second,
+	}).(time.Duration)
 )
 
 // Default memory usage parameters.
