@@ -20,7 +20,8 @@ Latest:
  - 
  - Add ability to blacklist skylinks by merkleroot
  - Uploading resumes more quickly after restart
- -
+ - Add ability to pack many files into the same or adjacent sectors while
+   producing unique skylinks for each file
  -
  -
  - `siac skynet upload` now supports uploading directories. All files are

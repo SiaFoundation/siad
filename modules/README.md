@@ -125,13 +125,13 @@ The following levels of severity are currently available:
 *TODO* 
   - fill out subsystem explanation
 
-### Packaging
+### Packing
 **Key Files**
-- [packaging.go](./packaging.go)
+- [packing.go](./packing.go)
 
 The smallest amount of data that can be uploaded to the Sia network is 4 MiB. This limitation can be overcome by packing multiple files together. The upload batching commands can pack a bunch of small files into the same sector, producing a unique skylink for each file.
 
-Batch uploads work much the same as uploads, except that a JSON manifest is provided which pairs a list of source files to their destination siapaths. Every file in the manifest must be smaller than 4 MiB. An algorithm will run which attempts to optimally pack the list of files into as few chunks as possible, where each chunk is 4 MiB in size.
+Batch uploads work much the same as uploads, except that a JSON manifest is provided which pairs a list of source files to their destination siapaths. Every file in the manifest must be smaller than 4 MiB. The packing algorithm attempts to optimally pack the list of files into as few chunks as possible, where each chunk is 4 MiB in size.
 
 ### Siad Configuration
 **Key Files**
