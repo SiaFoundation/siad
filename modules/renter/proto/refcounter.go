@@ -23,7 +23,7 @@ var (
 	ErrInvalidSectorNumber = errors.New("invalid sector given - it does not exist")
 
 	// RefCounterVersion defines the latest version of the RefCounter
-	RefCounterVersion = [8]byte{1, 0, 0, 0, 0, 0, 0, 0}
+	RefCounterVersion = [8]byte{1}
 )
 
 const (
