@@ -17,7 +17,7 @@ var (
 	RefCounterHeaderSize = int64(8)
 
 	// RefCounterVersion defines the latest version of the RefCounter
-	RefCounterVersion = [8]byte{1, 0, 0, 0, 0, 0, 0, 0}
+	RefCounterVersion = [8]byte{1}
 
 	// ErrInvalidFilePath is thrown when we try to create a RefCounter but supply
 	// a bad file path. A correct file path consists of:
