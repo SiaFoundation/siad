@@ -498,6 +498,11 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			return nil, c
 		}
 		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterDeps)
+		if err := modules.PeekErr(errChanRenter); err != nil {
+			c <- err
+			close(c)
+			return nil, c
+		}
 		go func() {
 			c <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
 			close(c)
