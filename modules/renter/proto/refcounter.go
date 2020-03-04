@@ -34,7 +34,7 @@ var (
 	// we initialise the counters with this relatively high value, so we don't run
 	// the risk of the sectors being accidentally marked as garbage if someone
 	// deletes a number of backups before we've been able to get the actual
-	// redundancy value
+	// reference count value
 	initialCounterValue = uint16(1024)
 )
 
@@ -105,6 +105,8 @@ func (rc *RefCounter) DeleteRefCounter() (err error) {
 	return os.Remove(rc.filepath)
 }
 
+// managedMarkSectorAsGarbage ensures the sector is dropped from the contract
+// file and also drops it from the list of sector counters
 func (rc *RefCounter) managedMarkSectorAsGarbage(secNum int64) {
 	// this method is unexported and the secNum validation is already done.
 	// TODO: perform the sector drop in the contract
@@ -115,7 +117,7 @@ func (rc *RefCounter) managedMarkSectorAsGarbage(secNum int64) {
 	rc.mu.Unlock()
 }
 
-// Stores the given sector count on disk
+// syncCountToDisk stores the given sector count on disk
 func (rc *RefCounter) syncCountToDisk(secNum int64, c uint16) error {
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
 	if err != nil {
@@ -131,6 +133,7 @@ func (rc *RefCounter) syncCountToDisk(secNum int64, c uint16) error {
 	return f.Sync()
 }
 
+// dropSectorFromFile removes the given sector's counter from the refcounter file
 func (rc *RefCounter) dropSectorFromFile(secNum int64) error {
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
 	if err != nil {
@@ -149,6 +152,9 @@ func (rc *RefCounter) dropSectorFromFile(secNum int64) error {
 	if _, err = f.WriteAt(b, offset(secNum)); err != nil {
 		return err
 	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
 	return f.Truncate(info.Size() - 2)
 }
 
@@ -159,7 +165,7 @@ func NewRefCounter(path string, numSectors int64) (RefCounter, error) {
 	}
 	f, err := os.Create(path)
 	if err != nil {
-		return RefCounter{}, err
+		return RefCounter{}, errors.AddContext(err, "Failed to create a file on disk")
 	}
 	defer f.Close()
 	h := RefCounterHeader{
@@ -237,6 +243,8 @@ func deserializeHeader(b []byte, h *RefCounterHeader) error {
 	return nil
 }
 
+// isValidRefCounterPath validates that the given path is valid for storing a
+// reference counter file
 func isValidRefCounterPath(path string) bool {
 	r, err := regexp.Compile(fmt.Sprintf(`^.*[0-9a-f]{64}\%s$`, refCounterExtension))
 	if err != nil {

@@ -109,10 +109,6 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*writeaheadlog.Transaction
 
-	// // refCounter keeps track of the number of references to each sector. Once
-	// // that number falls to zero we can reuse or drop that sector.
-	// refCounter *RefCounter
-
 	headerFile *fileSection
 	wal        *writeaheadlog.WAL
 	mu         sync.Mutex
