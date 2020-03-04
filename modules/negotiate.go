@@ -309,6 +309,8 @@ type (
 		// which is the most recent.
 		RevisionNumber uint64 `json:"revisionnumber"`
 		Version        string `json:"version"`
+
+		SiaMuxPort uint64 `json:"siamuxport"`
 	}
 
 	// HostOldExternalSettings are the pre-v1.4.0 host settings.
@@ -609,31 +611,6 @@ func WriteRPCRequest(w io.Writer, aead cipher.AEAD, rpcID types.Specifier, req i
 		return WriteRPCMessage(w, aead, req)
 	}
 	return nil
-}
-
-// rpcResponse is a helper type for encoding and decoding RPC response messages.
-type rpcResponse struct {
-	err  *RPCError
-	data interface{}
-}
-
-func (resp *rpcResponse) MarshalSia(w io.Writer) error {
-	if resp.data == nil {
-		resp.data = struct{}{}
-	}
-	return encoding.NewEncoder(w).EncodeAll(resp.err, resp.data)
-}
-
-func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
-	// NOTE: no allocation limit is required because this method is always
-	// called via encoding.Unmarshal, which already imposes an allocation limit.
-	d := encoding.NewDecoder(r, 0)
-	if err := d.Decode(&resp.err); err != nil {
-		return err
-	} else if resp.err != nil {
-		return resp.err
-	}
-	return d.Decode(resp.data)
 }
 
 // WriteRPCResponse writes an RPC response or error using the new loop

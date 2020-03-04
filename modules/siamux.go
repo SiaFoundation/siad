@@ -57,6 +57,12 @@ func NewSiaMux(siaMuxDir, siaDir, address string) (*siamux.SiaMux, error) {
 	return siamux.New(address, logger, siaMuxDir)
 }
 
+// SiaPKToMuxPK turns a SiaPublicKey into a mux.ED25519PublicKey
+func SiaPKToMuxPK(spk types.SiaPublicKey) (mk mux.ED25519PublicKey) {
+	copy(mk[:], spk.Key)
+	return
+}
+
 // compatLoadKeysFromHost will try and load the host's keypair from its
 // persistence file. It tries all host metadata versions before v143. From that
 // point on, the siamux was introduced and will already have a correct set of

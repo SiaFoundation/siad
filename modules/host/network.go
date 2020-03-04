@@ -15,6 +15,7 @@ package host
 // have to keep all the files following a renew in order to get the money.
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"sync/atomic"
@@ -24,7 +25,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
@@ -231,6 +234,18 @@ func (h *Host) initNetworking(address string) (err error) {
 
 	// Launch the listener.
 	go h.threadedListen(threadedListenerClosedChan)
+
+	// Create a listener for the SiaMux.
+	err = h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.threadedHandleStream)
+	if err != nil {
+		return errors.AddContext(err, "Failed to subscribe to the SiaMux")
+	}
+
+	// Close the listener when h.tg.OnStop is called.
+	h.tg.OnStop(func() {
+		h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
+	})
+
 	return nil
 }
 
@@ -243,8 +258,8 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 	defer h.tg.Done()
 
-	// Close the conn on host.Close or when the method terminates, whichever comes
-	// first.
+	// Close the conn on host.Close or when the method terminates, whichever
+	// comes first.
 	connCloseChan := make(chan struct{})
 	defer close(connCloseChan)
 	go func() {
@@ -318,6 +333,74 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	if err != nil {
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		err = extendErr("error with "+conn.RemoteAddr().String()+": ", err)
+		h.managedLogError(err)
+	}
+}
+
+// threadedHandleStream handles incoming SiaMux streams.
+func (h *Host) threadedHandleStream(stream siamux.Stream) {
+	err := h.tg.Add()
+	if err != nil {
+		return
+	}
+	defer h.tg.Done()
+
+	// close the stream on host.Close or when the method terminates, whichever
+	// comes first.
+	streamCloseChan := make(chan struct{})
+	defer close(streamCloseChan)
+	go func() {
+		select {
+		case <-h.tg.StopChan():
+		case <-streamCloseChan:
+		}
+		stream.Close()
+	}()
+
+	// TODO: enable this when stream.SetDeadline is implemented on SiaMux
+	// set an initial duration that is generous, but finite. RPCs can extend
+	// this if desired
+	// err = stream.SetDeadline(time.Now().Add(5 * time.Minute))
+	// if err != nil {
+	// 	h.log.Println("WARN: could not set deadline on connection:", err)
+	// 	return
+	// }
+
+	// read the RPC id
+	var rpcID types.Specifier
+	err = modules.RPCRead(stream, &rpcID)
+	if err != nil {
+		modules.RPCWriteError(stream, errors.New("Failed to read RPC id"))
+		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+		return
+	}
+
+	// read the price table, the renter will send its pricetable UUID by means
+	// of identification, except for when it is updating its price table
+	if rpcID != modules.RPCUpdatePriceTable {
+		var ptID types.Specifier
+		err = modules.RPCRead(stream, &ptID)
+		if err != nil {
+			modules.RPCWriteError(stream, errors.New("Failed to read price table UUID"))
+			atomic.AddUint64(&h.atomicErroredCalls, 1)
+			return
+		}
+		// TODO verify if a price table exists
+		// TODO verify it has not yet expired
+	}
+
+	switch rpcID {
+	default:
+		// TODO log stream.RemoteAddr().String() when it is implemented on the
+		// SiaMux
+		h.log.Debugf("WARN: incoming stream requested unknown RPC \"%v\"", rpcID)
+		err = errors.New(fmt.Sprintf("Unrecognized RPC id %v", rpcID))
+		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
+	}
+
+	if err != nil {
+		modules.RPCWriteError(stream, err)
+		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		h.managedLogError(err)
 	}
 }
