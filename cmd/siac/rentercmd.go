@@ -2566,27 +2566,25 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	}
 
 	// Collect all filenames under this directory with their relative paths.
-	filenames := []string{}
-	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			filenames = append(filenames, path)
-		}
-		return nil
-	})
-
+	counterUploaded := 0
 	wg := sync.WaitGroup{}
-	for _, fn := range filenames {
+	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
 		wg.Add(1)
 		go func(filename string) {
 			// get only the filename and path, relative to the original destSiaPath
 			// in order to figure out where to put the file
 			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
 			skynetuploadfile(filename, newDestSiaPath)
+			counterUploaded++
 			wg.Done()
-		}(fn)
-	}
+		}(path)
+		return nil
+	})
 	wg.Wait()
-	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filenames))
+	fmt.Printf("Successfully uploaded %d skyfiles!\n", counterUploaded)
 }
 
 // handles the upload of a single file
