@@ -1984,7 +1984,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse basechunkrerdundancy: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse basechunkredundancy: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}

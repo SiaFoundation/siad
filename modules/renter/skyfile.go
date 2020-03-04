@@ -556,6 +556,9 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		return ErrSkylinkBlacklisted
 	}
 
+	// Set sane defaults for unspecified values.
+	skyfileEstablishDefaults(&lup)
+
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize)
 	if err != nil {
