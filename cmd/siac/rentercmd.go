@@ -2590,6 +2590,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 }
 
 // handles the upload of a single file
+// it should only be called from skynetuploadcmd
 func skynetuploadfile(sourcePath, destSiaPath string) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
