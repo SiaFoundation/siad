@@ -62,8 +62,8 @@ type (
 // IncrementCount increments the reference counter of a given sector. The sector
 // is specified by its sequential number (`secNum`).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) IncrementCount(secNum int64) (uint16, error) {
-	if secNum < 0 || secNum >= int64(len(rc.sectorCounts)) {
+func (rc *RefCounter) IncrementCount(secNum uint64) (uint16, error) {
+	if secNum < 0 || secNum >= uint64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
 	if rc.sectorCounts[secNum] == math.MaxUint16 {
@@ -76,15 +76,15 @@ func (rc *RefCounter) IncrementCount(secNum int64) (uint16, error) {
 // DecrementCount decrements the reference counter of a given sector. The sector
 // is specified by its sequential number (`secNum`).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) DecrementCount(secNum int64) (uint16, error) {
-	if secNum < 0 || secNum >= int64(len(rc.sectorCounts)) {
+func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
+	if secNum < 0 || secNum >= uint64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
 	// we check before decrementing in order to avoid a possible underflow if the
 	// counter is somehow zero
 	if rc.sectorCounts[secNum] <= 1 {
-		rc.managedMarkSectorAsGarbage(secNum)
-		return 0, nil
+		err := rc.managedMarkSectorAsGarbage(secNum)
+		return 0, err
 	}
 	rc.sectorCounts[secNum]--
 	return rc.sectorCounts[secNum], rc.syncCountToDisk(secNum, rc.sectorCounts[secNum])
@@ -92,8 +92,8 @@ func (rc *RefCounter) DecrementCount(secNum int64) (uint16, error) {
 
 // GetCount returns the number of references to the given sector
 // Note: Use a pointer because a gigabyte file has >512B RefCounter object.
-func (rc *RefCounter) GetCount(secNum int64) (uint16, error) {
-	if secNum < 0 || secNum >= int64(len(rc.sectorCounts)) {
+func (rc *RefCounter) GetCount(secNum uint64) (uint16, error) {
+	if secNum < 0 || secNum >= uint64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
 	return rc.sectorCounts[secNum], nil
@@ -106,18 +106,57 @@ func (rc *RefCounter) DeleteRefCounter() (err error) {
 
 // managedMarkSectorAsGarbage ensures the sector is dropped from the contract
 // file and also drops it from the list of sector counters
-func (rc *RefCounter) managedMarkSectorAsGarbage(secNum int64) {
+func (rc *RefCounter) managedMarkSectorAsGarbage(secNum uint64) error {
 	// this method is unexported and the secNum validation is already done.
 	// TODO: perform the sector drop in the contract
 	rc.mu.Lock()
-	rc.sectorCounts[secNum] = rc.sectorCounts[len(rc.sectorCounts)-1]
-	rc.sectorCounts = rc.sectorCounts[:len(rc.sectorCounts)-1] // drop the last one
-	rc.dropSectorFromFile(secNum)                              // TODO: use WAL
-	rc.mu.Unlock()
+	defer rc.mu.Unlock()
+
+	if err := rc.swap(secNum, uint64(len(rc.sectorCounts)-1)); err != nil {
+		return err
+	}
+	return rc.truncate(2)
+}
+
+func (rc *RefCounter) swap(i, j uint64) error {
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	first := make([]byte, 2, 2)
+	if _, err = f.ReadAt(first, int64(offset(i))); err != nil {
+		return err
+	}
+	second := make([]byte, 2, 2)
+	if _, err = f.ReadAt(second, int64(offset(j))); err != nil {
+		return err
+	}
+	if _, err = f.WriteAt(first, int64(offset(j))); err != nil {
+		return err
+	}
+	if _, err = f.WriteAt(second, int64(offset(i))); err != nil {
+		return err
+	}
+	return f.Sync()
+}
+
+func (rc *RefCounter) truncate(n uint64) error {
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := os.Stat(rc.filepath)
+	if err != nil {
+		return err
+	}
+	return f.Truncate(info.Size() - int64(n))
 }
 
 // syncCountToDisk stores the given sector count on disk
-func (rc *RefCounter) syncCountToDisk(secNum int64, c uint16) error {
+func (rc *RefCounter) syncCountToDisk(secNum uint64, c uint16) error {
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
 	if err != nil {
 		return err
@@ -126,39 +165,14 @@ func (rc *RefCounter) syncCountToDisk(secNum int64, c uint16) error {
 
 	bytes := make([]byte, 2, 2)
 	binary.LittleEndian.PutUint16(bytes, c)
-	if _, err = f.WriteAt(bytes, offset(secNum)); err != nil {
+	if _, err = f.WriteAt(bytes, int64(offset(secNum))); err != nil {
 		return err
 	}
 	return f.Sync()
 }
 
-// dropSectorFromFile removes the given sector's counter from the refcounter file
-func (rc *RefCounter) dropSectorFromFile(secNum int64) error {
-	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	info, err := os.Stat(rc.filepath)
-	if err != nil {
-		return err
-	}
-	b := make([]byte, 2, 2)
-	if _, err = f.ReadAt(b, info.Size()-2); err != nil {
-		return err
-	}
-	if _, err = f.WriteAt(b, offset(secNum)); err != nil {
-		return err
-	}
-	if err = f.Sync(); err != nil {
-		return err
-	}
-	return f.Truncate(info.Size() - 2)
-}
-
 // NewRefCounter creates a new sector reference counter file to accompany a contract file
-func NewRefCounter(path string, numSectors int64) (RefCounter, error) {
+func NewRefCounter(path string, numSectors uint64) (RefCounter, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return RefCounter{}, errors.AddContext(err, "Failed to create a file on disk")
@@ -173,7 +187,7 @@ func NewRefCounter(path string, numSectors int64) (RefCounter, error) {
 	}
 
 	zeroCounts := make([]uint16, numSectors, numSectors)
-	for i := int64(0); i < numSectors; i++ {
+	for i := uint64(0); i < numSectors; i++ {
 		zeroCounts[i] = initialCounterValue
 	}
 	zeroBytes := make([]byte, numSectors*2, numSectors*2)
@@ -233,7 +247,7 @@ func LoadRefCounter(path string) (RefCounter, error) {
 
 // deserializeHeader deserializes a header from []byte
 func deserializeHeader(b []byte, h *RefCounterHeader) error {
-	if int64(len(b)) < RefCounterHeaderSize {
+	if uint64(len(b)) < RefCounterHeaderSize {
 		return ErrInvalidHeaderData
 	}
 	copy(h.Version[:], b[:8])
@@ -241,7 +255,7 @@ func deserializeHeader(b []byte, h *RefCounterHeader) error {
 }
 
 // offset calculates the byte offset of the sector counter in the file on disk
-func offset(secNum int64) int64 {
+func offset(secNum uint64) uint64 {
 	return RefCounterHeaderSize + secNum*2
 }
 

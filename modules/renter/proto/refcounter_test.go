@@ -19,7 +19,7 @@ func TestRefCounter(t *testing.T) {
 
 	// prepare for the tests
 	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
-	testSectorsCount := int64(17)
+	testSectorsCount := uint64(17)
 	testDir := build.TempDir(t.Name())
 	if err := os.MkdirAll(testDir, 0700); err != nil {
 		t.Fatal("Failed to create test directory:", err)
@@ -71,8 +71,6 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(emsg)
 	}
 
-	// TODO: increment beyond uint16 max value
-
 	// decrement to zero
 	count = 1
 	for count > 0 {
@@ -98,7 +96,7 @@ func TestRefCounter(t *testing.T) {
 
 	// make sure we have the right number of counts after the truncation
 	// (nothing was truncated away that we still needed)
-	if int64(len(rcLoaded.sectorCounts)) != testSectorsCount-1 {
+	if uint64(len(rcLoaded.sectorCounts)) != testSectorsCount-1 {
 		t.Fatal(fmt.Sprintf("Wrong sector count after trucate/load, expected: %d, actual: %d", testSectorsCount-1, len(rcLoaded.sectorCounts)))
 	}
 
