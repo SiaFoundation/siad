@@ -107,7 +107,7 @@ func (w *Wallet) UnconfirmedBalance() (outgoingSiacoins types.Currency, incoming
 
 // SendSiacoins creates a transaction sending 'amount' to 'dest'. The transaction
 // is submitted to the transaction pool and is also returned.
-func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) (txns []types.Transaction, err error) {
+func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash, feeIncluded bool) (txns []types.Transaction, err error) {
 	if err := w.tg.Add(); err != nil {
 		err = modules.ErrWalletShutdown
 		return nil, err
@@ -129,6 +129,10 @@ func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) (txn
 
 	_, tpoolFee := w.tpool.FeeEstimation()
 	tpoolFee = tpoolFee.Mul64(750) // Estimated transaction size in bytes
+	// If the fee is to be included then subtract it now.
+	if feeIncluded {
+		amount = amount.Sub(tpoolFee)
+	}
 	output := types.SiacoinOutput{
 		Value:      amount,
 		UnlockHash: dest,

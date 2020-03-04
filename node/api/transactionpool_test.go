@@ -73,7 +73,7 @@ func TestTransactionPoolRawHandlerPOST(t *testing.T) {
 
 	// Create a transaction on one node and fetch it.
 	sentValue := types.SiacoinPrecision.Mul64(1000)
-	txns, err := st.wallet.SendSiacoins(sentValue, types.UnlockHash{})
+	txns, err := st.wallet.SendSiacoins(sentValue, types.UnlockHash{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestTransactionPoolConfirmed(t *testing.T) {
 
 	// Create a transaction.
 	sentValue := types.SiacoinPrecision.Mul64(1000)
-	txns, err := st.wallet.SendSiacoins(sentValue, types.UnlockHash{})
+	txns, err := st.wallet.SendSiacoins(sentValue, types.UnlockHash{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

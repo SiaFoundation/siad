@@ -214,7 +214,7 @@ func TestValidRevertedTransaction(t *testing.T) {
 	// make some transactions on tpt
 	var txnSets [][]types.Transaction
 	for i := 0; i < 5; i++ {
-		txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{})
+		txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -313,7 +313,7 @@ func TestTransactionPoolPruning(t *testing.T) {
 		t.Fatal(err)
 	}
 	tpt2.gateway.Disconnect(tpt.gateway.Address())
-	txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{})
+	txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +429,7 @@ func TestDatabaseUpgrade(t *testing.T) {
 	// make some transactions on tpt
 	var txnSets [][]types.Transaction
 	for i := 0; i < 5; i++ {
-		txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{})
+		txns, err := tpt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(1000), types.UnlockHash{}, false)
 		if err != nil {
 			t.Fatal(err)
 		}

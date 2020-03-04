@@ -26,7 +26,7 @@ func TestTryValidTransactionSet(t *testing.T) {
 	initialHash := cst.cs.dbConsensusChecksum()
 
 	// Try a valid transaction.
-	_, err = cst.wallet.SendSiacoins(types.NewCurrency64(1), types.UnlockHash{})
+	_, err = cst.wallet.SendSiacoins(types.NewCurrency64(1), types.UnlockHash{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestTryInvalidTransactionSet(t *testing.T) {
 	initialHash := cst.cs.dbConsensusChecksum()
 
 	// Try a valid transaction followed by an invalid transaction.
-	_, err = cst.wallet.SendSiacoins(types.NewCurrency64(1), types.UnlockHash{})
+	_, err = cst.wallet.SendSiacoins(types.NewCurrency64(1), types.UnlockHash{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -197,7 +197,7 @@ func TestUnspentOutputs(t *testing.T) {
 	// create a dummy address and send coins to it
 	addr := types.UnlockHash{1}
 
-	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(77), addr)
+	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(77), addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestWatchOnly(t *testing.T) {
 	sk := generateSpendableKey(modules.Seed{}, 1234)
 	addr := sk.UnlockConditions.UnlockHash()
 
-	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(77), addr)
+	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(77), addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}

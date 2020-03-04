@@ -496,7 +496,7 @@ func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, 
 	var txns []types.Transaction
 	if req.FormValue("outputs") != "" {
 		// multiple amounts + destinations
-		if req.FormValue("amount") != "" || req.FormValue("destination") != "" {
+		if req.FormValue("amount") != "" || req.FormValue("destination") != "" || req.FormValue("feeIncluded") != "" {
 			WriteError(w, Error{"cannot supply both 'outputs' and single amount+destination pair"}, http.StatusInternalServerError)
 			return
 		}
@@ -524,8 +524,13 @@ func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, 
 			WriteError(w, Error{"could not read address from POST call to /wallet/siacoins"}, http.StatusBadRequest)
 			return
 		}
+		feeIncluded, err := scanBool(req.FormValue("feeIncluded"))
+		if err != nil {
+			WriteError(w, Error{"could not read feeIncluded from POST call to /wallet/siacoins"}, http.StatusBadRequest)
+			return
+		}
 
-		txns, err = api.wallet.SendSiacoins(amount, dest)
+		txns, err = api.wallet.SendSiacoins(amount, dest, feeIncluded)
 		if err != nil {
 			WriteError(w, Error{"error when calling /wallet/siacoins: " + err.Error()}, http.StatusInternalServerError)
 			return

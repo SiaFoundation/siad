@@ -59,7 +59,7 @@ func TestUpdate(t *testing.T) {
 
 	// create a transaction
 	addr, _ := wt.wallet.NextAddress()
-	txnSet, err := wt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(10), addr.UnlockHash())
+	txnSet, err := wt.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(10), addr.UnlockHash(), false)
 	if err != nil {
 		t.Fatal(err)
 	}

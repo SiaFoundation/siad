@@ -44,7 +44,7 @@ func TestTransactionReorg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wsp, err := miner1.WalletSiacoinsPost(types.SiacoinPrecision, uc.Address)
+	wsp, err := miner1.WalletSiacoinsPost(types.SiacoinPrecision, uc.Address, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestWatchOnly(t *testing.T) {
 	}
 	addr := uc.UnlockHash()
 
-	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr)
+	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestUnspentOutputs(t *testing.T) {
 	// create a dummy address and send coins to it
 	addr := types.UnlockHash{1}
 
-	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr)
+	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func TestWalletSendUnsynced(t *testing.T) {
 	}
 
 	// Check error returned from single siacoin post
-	_, err = wallet.WalletSiacoinsPost(types.ZeroCurrency, types.UnlockHash{})
+	_, err = wallet.WalletSiacoinsPost(types.ZeroCurrency, types.UnlockHash{}, false)
 	if err == nil {
 		t.Fatal("expected an error to be returned for not being synced")
 	}

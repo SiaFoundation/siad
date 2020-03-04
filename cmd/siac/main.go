@@ -20,6 +20,7 @@ var (
 	// Flags.
 	dictionaryLanguage        string // dictionary for seed utils
 	uploadedsizeUtilVerbose   bool   // display additional info for "utils upload-size"
+	feeIncluded               bool   // include the fee in the balance being sent
 	hostContractOutputType    string // output type for host contracts
 	hostVerbose               bool   // display additional host info
 	hostFolderRemoveForce     bool   // force folder remove
@@ -322,6 +323,7 @@ func main() {
 	walletInitSeedCmd.Flags().BoolVarP(&initForce, "force", "", false, "destroy the existing wallet")
 	walletLoadCmd.AddCommand(walletLoad033xCmd, walletLoadSeedCmd, walletLoadSiagCmd)
 	walletSendCmd.AddCommand(walletSendSiacoinsCmd, walletSendSiafundsCmd)
+	walletSendSiacoinsCmd.Flags().BoolVarP(&feeIncluded, "fee-included", "", false, "Take the transaction fee out of the balance being submitted instead of the fee being additional")
 	walletUnlockCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Display interactive password prompt even if SIA_WALLET_PASSWORD is set")
 	walletBroadcastCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Decode transaction as base64 instead of JSON")
 	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")

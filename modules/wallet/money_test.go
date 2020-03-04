@@ -32,20 +32,20 @@ func TestSendSiacoins(t *testing.T) {
 	if !confirmedBal.Equals(types.CalculateCoinbase(1)) {
 		t.Error("unexpected confirmed balance")
 	}
-	if !unconfirmedOut.Equals(types.ZeroCurrency) {
+	if !unconfirmedOut.IsZero() {
 		t.Error("unconfirmed balance should be 0")
 	}
-	if !unconfirmedIn.Equals(types.ZeroCurrency) {
+	if !unconfirmedIn.IsZero() {
 		t.Error("unconfirmed balance should be 0")
 	}
 
-	// Send 5000 hastings. The wallet will automatically add a fee. Outgoing
-	// unconfirmed siacoins - incoming unconfirmed siacoins should equal 5000 +
-	// fee.
+	// Send siacoins. The wallet will automatically add a fee. Outgoing
+	// unconfirmed siacoins - incoming unconfirmed siacoins should equal amount
+	// sent + fee.
 	sendValue := types.SiacoinPrecision.Mul64(3)
 	_, tpoolFee := wt.wallet.tpool.FeeEstimation()
 	tpoolFee = tpoolFee.Mul64(750)
-	_, err = wt.wallet.SendSiacoins(sendValue, types.UnlockHash{})
+	_, err = wt.wallet.SendSiacoins(sendValue, types.UnlockHash{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +81,92 @@ func TestSendSiacoins(t *testing.T) {
 	if !confirmedBal3.Equals(confirmedBal2.Add(types.CalculateCoinbase(2)).Sub(sendValue).Sub(tpoolFee)) {
 		t.Error("confirmed balance did not adjust to the expected value")
 	}
-	if !unconfirmedOut3.Equals(types.ZeroCurrency) {
+	if !unconfirmedOut3.IsZero() {
 		t.Error("unconfirmed balance should be 0")
 	}
-	if !unconfirmedIn3.Equals(types.ZeroCurrency) {
+	if !unconfirmedIn3.IsZero() {
+		t.Error("unconfirmed balance should be 0")
+	}
+}
+
+// TestSendSiacoinsFeeIncluded probes the SendSiacoins method of the wallet with
+// feeIncluded=true.
+func TestSendSiacoinsFeeIncluded(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name(), modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// Get the initial balance - should be 1 block. The unconfirmed balances
+	// should be 0.
+	confirmedBal, _, _, err := wt.wallet.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unconfirmedOut, unconfirmedIn, err := wt.wallet.UnconfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !confirmedBal.Equals(types.CalculateCoinbase(1)) {
+		t.Error("unexpected confirmed balance")
+	}
+	if !unconfirmedOut.IsZero() {
+		t.Error("unconfirmed balance should be 0")
+	}
+	if !unconfirmedIn.IsZero() {
+		t.Error("unconfirmed balance should be 0")
+	}
+
+	// Send siacoins. The wallet will automatically add a fee. Outgoing
+	// unconfirmed siacoins - incoming unconfirmed siacoins should equal amount
+	// sent (without an additional fee).
+	sendValue := types.SiacoinPrecision.Mul64(3)
+	_, tpoolFee := wt.wallet.tpool.FeeEstimation()
+	tpoolFee = tpoolFee.Mul64(750)
+	_, err = wt.wallet.SendSiacoins(sendValue, types.UnlockHash{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmedBal2, _, _, err := wt.wallet.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unconfirmedOut2, unconfirmedIn2, err := wt.wallet.UnconfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !confirmedBal2.Equals(confirmedBal) {
+		t.Error("confirmed balance changed without introduction of blocks")
+	}
+	if !unconfirmedOut2.Equals(unconfirmedIn2.Add(sendValue)) {
+		t.Error("sending siacoins appears to be ineffective")
+	}
+
+	// Move the balance into the confirmed set.
+	b, _ := wt.miner.FindBlock()
+	err = wt.cs.AcceptBlock(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmedBal3, _, _, err := wt.wallet.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unconfirmedOut3, unconfirmedIn3, err := wt.wallet.UnconfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !confirmedBal3.Equals(confirmedBal2.Add(types.CalculateCoinbase(2)).Sub(sendValue)) {
+		t.Error("confirmed balance did not adjust to the expected value")
+	}
+	if !unconfirmedOut3.IsZero() {
+		t.Error("unconfirmed balance should be 0")
+	}
+	if !unconfirmedIn3.IsZero() {
 		t.Error("unconfirmed balance should be 0")
 	}
 }
@@ -109,14 +191,14 @@ func TestIntegrationSendOverUnder(t *testing.T) {
 
 	// Spend too many siacoins.
 	tooManyCoins := types.SiacoinPrecision.Mul64(1e12)
-	_, err = wt.wallet.SendSiacoins(tooManyCoins, types.UnlockHash{})
+	_, err = wt.wallet.SendSiacoins(tooManyCoins, types.UnlockHash{}, false)
 	if err == nil {
 		t.Error("low balance err not returned after attempting to send too many coins:", err)
 	}
 
 	// Spend a reasonable amount of siacoins.
 	reasonableCoins := types.SiacoinPrecision.Mul64(100e3)
-	_, err = wt.wallet.SendSiacoins(reasonableCoins, types.UnlockHash{})
+	_, err = wt.wallet.SendSiacoins(reasonableCoins, types.UnlockHash{}, false)
 	if err != nil {
 		t.Error("unexpected error: ", err)
 	}
@@ -137,11 +219,11 @@ func TestIntegrationSpendHalfHalf(t *testing.T) {
 
 	// Spend more than half of the coins twice.
 	halfPlus := types.SiacoinPrecision.Mul64(200e3)
-	_, err = wt.wallet.SendSiacoins(halfPlus, types.UnlockHash{})
+	_, err = wt.wallet.SendSiacoins(halfPlus, types.UnlockHash{}, false)
 	if err != nil {
 		t.Error("unexpected error: ", err)
 	}
-	_, err = wt.wallet.SendSiacoins(halfPlus, types.UnlockHash{1})
+	_, err = wt.wallet.SendSiacoins(halfPlus, types.UnlockHash{1}, false)
 	if err == nil {
 		t.Error("wallet appears to be reusing outputs when building transactions: ", err)
 	}
@@ -160,12 +242,12 @@ func TestIntegrationSpendUnconfirmed(t *testing.T) {
 
 	// Spend the only output.
 	halfPlus := types.SiacoinPrecision.Mul64(200e3)
-	_, err = wt.wallet.SendSiacoins(halfPlus, types.UnlockHash{})
+	_, err = wt.wallet.SendSiacoins(halfPlus, types.UnlockHash{}, false)
 	if err != nil {
 		t.Error("unexpected error: ", err)
 	}
 	someMore := types.SiacoinPrecision.Mul64(75e3)
-	_, err = wt.wallet.SendSiacoins(someMore, types.UnlockHash{1})
+	_, err = wt.wallet.SendSiacoins(someMore, types.UnlockHash{1}, false)
 	if err != nil {
 		t.Error("wallet appears to be struggling to spend unconfirmed outputs")
 	}
@@ -248,7 +330,7 @@ func TestSendSiacoinsAcceptTxnSetFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps.fail()
-	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash())
+	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash(), false)
 	if err == nil {
 		t.Fatal("SendSiacoins should have failed but didn't")
 	}
@@ -270,7 +352,7 @@ func TestSendSiacoinsAcceptTxnSetFailed(t *testing.T) {
 	}
 
 	// Send some coins using SendSiacoins
-	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash())
+	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash(), false)
 	if err != nil {
 		t.Fatalf("SendSiacoins failed: %v", err)
 	}
