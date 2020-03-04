@@ -2548,6 +2548,49 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 
 // skynetuploadcmd will upload a file to Skynet.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
+	// Open the source file.
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		die("Unable to open source path:", err)
+	}
+	defer file.Close()
+	fi, err := file.Stat()
+	if err != nil {
+		die("Unable to fetch source fileinfo:", err)
+	}
+
+	if !fi.IsDir() {
+		skynetuploadfile(sourcePath, destSiaPath)
+		fmt.Printf("Successfully uploaded skyfile!\n")
+		return
+	}
+
+	// Collect all filenames under this directory with their relative paths.
+	filenames := []string{}
+	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			filenames = append(filenames, path)
+		}
+		return nil
+	})
+
+	wg := sync.WaitGroup{}
+	for _, fn := range filenames {
+		wg.Add(1)
+		go func(filename string) {
+			// get only the filename and path, relative to the original destSiaPath
+			// in order to figure out where to put the file
+			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
+			skynetuploadfile(filename, newDestSiaPath)
+			wg.Done()
+		}(fn)
+	}
+	wg.Wait()
+	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filenames))
+}
+
+// handles the upload of a single file
+func skynetuploadfile(sourcePath, destSiaPath string) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
 	if err != nil {
@@ -2564,10 +2607,8 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
-
-	// If the source path is a directory upload all of its contents recursively
+	// Do not process directories. Those should be processes by skynetuploadcmd.
 	if fi.IsDir() {
-		skynetuploaddir(file, sourcePath, destSiaPath)
 		return
 	}
 
@@ -2599,45 +2640,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			die("could not fetch skypath:", err)
 		}
 	}
-	fmt.Printf("Skyfile uploaded successfully to %v\n -> Skylink: sia://%v\n", skypath, skylink)
-}
-
-// handles the process of recursively uploading all files in a directory
-func skynetuploaddir(dir *os.File, sourcePath, destSiaPath string) {
-	fis, err := dir.Readdir(-1)
-	if err != nil {
-		die("Unable to read source directory:", err)
-	}
-	if len(fis) == 0 {
-		die("Cannot upload an empty directory")
-	}
-
-	for i := range fis {
-		go skynetUploadEntity(fis[i], sourcePath, destSiaPath)
-	}
-}
-
-func skynetUploadEntity(fi os.FileInfo, sourcePath, destSiaPath string) {
-	name := fi.Name()
-	newSourcePath := filepath.Join(sourcePath, name)
-	newDestSiaPath := filepath.Join(destSiaPath, name)
-
-	// do not process empty directories
-	if fi.IsDir() {
-		dir, err := os.Open(newSourcePath)
-		if err != nil {
-			die("Unable to read subdirectory:", err)
-		}
-		defer dir.Close()
-		_, err = dir.Readdir(1)
-		if err != nil && err.Error() == "EOF" {
-			// This directory is empty - skip it.
-			return
-		}
-		// We specifically do not check for other errors because those will be
-		// handled by the call to skynetuploadcmd.
-	}
-	skynetuploadcmd(newSourcePath, newDestSiaPath)
+	fmt.Printf("%v\n -> Skylink: sia://%v\n", skypath, skylink)
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
