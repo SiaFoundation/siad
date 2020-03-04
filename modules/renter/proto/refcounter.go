@@ -2,40 +2,39 @@ package proto
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 	"os"
-	"regexp"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
-	// RefCounterHeaderSize is the size of the header in bytes
-	RefCounterHeaderSize = int64(8)
-
-	// RefCounterVersion defines the latest version of the RefCounter
-	RefCounterVersion = [8]byte{1}
-
-	// ErrInvalidFilePath is thrown when we try to create a RefCounter but supply
+	// ErrInvalidFilePath is returned when we try to create a RefCounter but supply
 	// a bad file path. A correct file path consists of:
 	// a correct path + FileContractID hash + refCounterExtension
 	ErrInvalidFilePath = errors.New("invalid refcounter file path")
 
-	// ErrInvalidHeaderData is thrown when we try to deserialize the header from
+	// ErrInvalidHeaderData is returned when we try to deserialize the header from
 	// a []byte with incorrect data
 	ErrInvalidHeaderData = errors.New("invalid header data")
 
-	// ErrInvalidSectorNumber is thrown when the requested sector doesnt' exist
+	// ErrInvalidSectorNumber is returned when the requested sector doesnt' exist
 	ErrInvalidSectorNumber = errors.New("invalid sector given - it does not exist")
+
+	// RefCounterVersion defines the latest version of the RefCounter
+	RefCounterVersion = [8]byte{1, 0, 0, 0, 0, 0, 0, 0}
+)
+
+const (
+	// RefCounterHeaderSize is the size of the header in bytes
+	RefCounterHeaderSize = 8
 
 	// we initialise the counters with this relatively high value, so we don't run
 	// the risk of the sectors being accidentally marked as garbage if someone
 	// deletes a number of backups before we've been able to get the actual
 	// reference count value
-	initialCounterValue = uint16(1024)
+	initialCounterValue = 1024
 )
 
 type (
@@ -68,7 +67,7 @@ func (rc *RefCounter) IncrementCount(secNum int64) (uint16, error) {
 		return 0, ErrInvalidSectorNumber
 	}
 	if rc.sectorCounts[secNum] == math.MaxUint16 {
-		// TODO: Handle the overflow!
+		return 0, errors.New("sector count overflow")
 	}
 	rc.sectorCounts[secNum]++
 	return rc.sectorCounts[secNum], rc.syncCountToDisk(secNum, rc.sectorCounts[secNum])
@@ -160,9 +159,6 @@ func (rc *RefCounter) dropSectorFromFile(secNum int64) error {
 
 // NewRefCounter creates a new sector reference counter file to accompany a contract file
 func NewRefCounter(path string, numSectors int64) (RefCounter, error) {
-	if !isValidRefCounterPath(path) {
-		return RefCounter{}, ErrInvalidFilePath
-	}
 	f, err := os.Create(path)
 	if err != nil {
 		return RefCounter{}, errors.AddContext(err, "Failed to create a file on disk")
@@ -235,6 +231,7 @@ func LoadRefCounter(path string) (RefCounter, error) {
 	}, nil
 }
 
+// deserializeHeader deserializes a header from []byte
 func deserializeHeader(b []byte, h *RefCounterHeader) error {
 	if int64(len(b)) < RefCounterHeaderSize {
 		return ErrInvalidHeaderData
@@ -243,21 +240,12 @@ func deserializeHeader(b []byte, h *RefCounterHeader) error {
 	return nil
 }
 
-// isValidRefCounterPath validates that the given path is valid for storing a
-// reference counter file
-func isValidRefCounterPath(path string) bool {
-	r, err := regexp.Compile(fmt.Sprintf(`^.*[0-9a-f]{64}\%s$`, refCounterExtension))
-	if err != nil {
-		build.Critical("refCounterExtension's value breaks our regex", err)
-		return false
-	}
-	return r.Match([]byte(path))
-}
-
+// offset calculates the byte offset of the sector counter in the file on disk
 func offset(secNum int64) int64 {
 	return RefCounterHeaderSize + secNum*2
 }
 
+// serializeHeader serializes a header to []byte
 func serializeHeader(h RefCounterHeader) []byte {
 	b := make([]byte, RefCounterHeaderSize, RefCounterHeaderSize)
 	copy(b[:8], h.Version[:])
