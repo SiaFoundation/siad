@@ -73,10 +73,6 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
 	}
-	// path = filepath.Join(cs.dir, c.header.ID().String()+refCounterExtension)
-	// if err = c.refCounter.DeleteRefCounter(path); err != nil {
-	// 	build.ExtendErr("Failed to delete RefCounter from disk:", err)
-	// }
 }
 
 // IDs returns the fcid of each contract with in the set. The contracts are not

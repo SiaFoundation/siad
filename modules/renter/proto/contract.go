@@ -464,19 +464,6 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 }
 
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
-	// rcFilepath := filepath.Join(cs.dir, h.ID().String()+contractExtension)
-	// rc, err := NewRefCounter(rcFilepath, int64(len(roots)))
-	// if err != nil {
-	// 	return modules.RenterContract{}, errors.AddContext(err, "failed to create a reference counter file")
-	// }
-	// defer func() {
-	// 	if err != nil {
-	// 		// The contract couldn't be formed - remove the refcounter file.
-	// 		// Ignore errors - nothing we can do and they don't matter much.
-	// 		os.Remove(rcFilepath)
-	// 	}
-	// }()
-
 	if err := h.validate(); err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -505,8 +492,7 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 		header:      h,
 		merkleRoots: merkleRoots,
 		headerFile:  headerSection,
-		// refCounter:  &rc,
-		wal: cs.wal,
+		wal:         cs.wal,
 	}
 	cs.mu.Lock()
 	cs.contracts[sc.header.ID()] = sc
@@ -599,22 +585,13 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 		}
 	}
 
-	// // load the refcounter
-	// refCounterFileName := strings.Replace(filename, contractExtension, refCounterExtension, 1)
-	// refCounter, err := LoadRefCounter(refCounterFileName)
-	// if err != nil {
-	// 	// TODO: Trigger RefCounter file creation if the file was not found.
-	// 	// Delete the file and recreate it, if there was a different error.
-	// }
-
 	// add to set
 	sc := &SafeContract{
 		header:        header,
 		merkleRoots:   merkleRoots,
 		unappliedTxns: unappliedTxns,
-		// refCounter:    &refCounter,
-		headerFile: headerSection,
-		wal:        cs.wal,
+		headerFile:    headerSection,
+		wal:           cs.wal,
 	}
 
 	// apply the wal txns if necessary.
