@@ -2,8 +2,10 @@ package mdm
 
 import (
 	"errors"
+	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // sectors contains the program cache, including gained and removed sectors as
@@ -25,7 +27,10 @@ func newSectors(roots []crypto.Hash) sectors {
 
 // appendSector adds the data to the program cache and returns the new merkle
 // root.
-func (s *sectors) appendSector(sectorData []byte) crypto.Hash {
+func (s *sectors) appendSector(sectorData []byte) (crypto.Hash, error) {
+	if uint64(len(sectorData)) != modules.SectorSize {
+		return crypto.Hash{}, fmt.Errorf("trying to append data of length %v", len(sectorData))
+	}
 	newRoot := crypto.MerkleRoot(sectorData)
 
 	s.sectorsGained[newRoot] = sectorData
@@ -34,13 +39,17 @@ func (s *sectors) appendSector(sectorData []byte) crypto.Hash {
 	s.merkleRoots = append(s.merkleRoots, newRoot)
 
 	// Return the new merkle root of the contract.
-	return cachedMerkleRoot(s.merkleRoots)
+	return cachedMerkleRoot(s.merkleRoots), nil
 }
 
 // dropSectors drops the specified number of sectors and returns the new merkle
 // root.
-func (s *sectors) dropSectors(numSectorsDropped uint64) crypto.Hash {
-	newNumSectors := uint64(len(s.merkleRoots)) - numSectorsDropped
+func (s *sectors) dropSectors(numSectorsDropped uint64) (crypto.Hash, error) {
+	oldNumSectors := uint64(len(s.merkleRoots))
+	if numSectorsDropped > oldNumSectors {
+		return crypto.Hash{}, fmt.Errorf("trying to drop %v sectors which is more than the amount of sectors (%v)", numSectorsDropped, oldNumSectors)
+	}
+	newNumSectors := oldNumSectors - numSectorsDropped
 
 	// Update the roots.
 	droppedRoots := s.merkleRoots[newNumSectors:]
@@ -59,7 +68,7 @@ func (s *sectors) dropSectors(numSectorsDropped uint64) crypto.Hash {
 	}
 
 	// Compute the new merkle root of the contract.
-	return cachedMerkleRoot(s.merkleRoots)
+	return cachedMerkleRoot(s.merkleRoots), nil
 }
 
 // hasSector checks if the given root exists, first checking the program cache

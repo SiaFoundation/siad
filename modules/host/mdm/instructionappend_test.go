@@ -12,16 +12,10 @@ import (
 
 // newAppendInstruction is a convenience method for creating a single
 // Append instruction.
-func newAppendInstruction(merkleProof bool, dataOffset uint64, runningCost, runningRefund types.Currency, runningMemory uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64) {
+func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
 	i := NewAppendInstruction(dataOffset, merkleProof)
-
-	// Compute cost and used memory.
-	usedMemory := runningMemory + AppendMemory()
-	memoryCost := MemoryCost(pt, usedMemory, TimeAppend)
-	instructionCost, refund := modules.MDMAppendCost(pt)
-	cost := runningCost.Add(memoryCost).Add(instructionCost)
-
-	return i, cost, runningRefund.Add(refund), usedMemory
+	cost, refund := modules.MDMAppendCost(pt)
+	return i, cost, refund, AppendMemory(), TimeAppend
 }
 
 // newAppendProgram is a convenience method which prepares the instructions
@@ -29,10 +23,11 @@ func newAppendInstruction(merkleProof bool, dataOffset uint64, runningCost, runn
 // AppendInstruction.
 func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
-	i, cost, refund, usedMemory := newAppendInstruction(merkleProof, 0, initCost, types.ZeroCurrency, 0, pt)
+	i, cost, refund, memory, time := newAppendInstruction(merkleProof, 0, pt)
+	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, 0, cost, refund, memory, time)
 	instructions := []modules.Instruction{i}
-	cost = cost.Add(modules.MDMMemoryCost(pt, usedMemory, TimeCommit))
-	return instructions, sectorData, cost, refund, usedMemory
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, TimeCommit))
+	return instructions, sectorData, cost, refund, memory
 }
 
 // TestInstructionAppend tests executing a program with a single

@@ -51,8 +51,17 @@ func TestAppendSector(t *testing.T) {
 	newSectorData := randomSectorData()
 	newSector := crypto.MerkleRoot(newSectorData)
 
+	// Try appending an invalid sector -- should fail.
+	_, err := s.appendSector([]byte{0})
+	if err == nil {
+		t.Fatal("expected error when appending an invalid sector")
+	}
+
 	// Append sector.
-	newMerkleRoot := s.appendSector(newSectorData)
+	newMerkleRoot, err := s.appendSector(newSectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Calculate expected roots.
 	sectorRoots = append(sectorRoots, newSector)
@@ -75,6 +84,55 @@ func TestAppendSector(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
 		t.Fatalf("expected sector roots different than actual sector roots")
+	}
+}
+
+// TestDropSectors tests dropping sectors from the cache.
+func TestDropSectors(t *testing.T) {
+	// Initialize the sectors.
+	sectorRoots := randomSectorRoots(10)
+	s := newSectors(sectorRoots)
+
+	// Try dropping zero sectors.
+	root, err := s.dropSectors(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root != cachedMerkleRoot(sectorRoots) {
+		t.Fatalf("unexpected merkle root")
+	}
+	if len(s.merkleRoots) != 10 {
+		t.Fatalf("expected sectors length after dropping to be %v but was %v", 10, len(s.merkleRoots))
+	}
+
+	// Try dropping half the sectors.
+	root, err = s.dropSectors(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root != cachedMerkleRoot(sectorRoots[:5]) {
+		t.Fatalf("unexpected merkle root")
+	}
+	if len(s.merkleRoots) != 5 {
+		t.Fatalf("expected sectors length after dropping to be %v but was %v", 5, len(s.merkleRoots))
+	}
+
+	// Try dropping all remaining sectors.
+	root, err = s.dropSectors(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root != cachedMerkleRoot([]crypto.Hash{}) {
+		t.Fatalf("unexpected merkle root")
+	}
+	if len(s.merkleRoots) != 0 {
+		t.Fatalf("expected sectors length after dropping to be %v but was %v", 0, len(s.merkleRoots))
+	}
+
+	// Try dropping some more sectors -- should fail.
+	_, err = s.dropSectors(5)
+	if err == nil {
+		t.Fatal("expected error when dropping too many sectors")
 	}
 }
 

@@ -34,18 +34,13 @@ func TestDropSectorsVerify(t *testing.T) {
 
 // newDropSectorsInstruction is a convenience method for creating a single
 // DropSectors instruction.
-func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, runningCost, runningRefund types.Currency, runningMemory uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64) {
+func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
 	i := NewDropSectorsInstruction(dataOffset, true)
 	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
 
-	// Compute cost and used memory
-	usedMemory := runningMemory + DropSectorsMemory()
-	time := TimeDropSectors * numSectorsDropped
-	memoryCost := MemoryCost(pt, usedMemory, time)
-	instructionCost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
-	cost := runningCost.Add(memoryCost).Add(instructionCost)
-
-	return i, cost, runningRefund.Add(refund), usedMemory
+	time := TimeDropSingleSector * numSectorsDropped
+	cost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
+	return i, cost, refund, DropSectorsMemory(), time
 }
 
 // TestProgramWithDropSectors tests executing a program with multiple append and swap
@@ -62,32 +57,38 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	pt := newTestPriceTable()
 	initCost := modules.MDMInitCost(pt, dataLen)
 
-	instruction1, cost1, refund1, memory1 := newAppendInstruction(false, 0, initCost, types.ZeroCurrency, 0, pt)
+	instruction1, cost, refund, memory, time := newAppendInstruction(false, 0, pt)
+	cost1, refund1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, 0, cost, refund, memory, time)
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[:modules.SectorSize], sectorData1)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
-	instruction2, cost2, refund2, memory2 := newAppendInstruction(false, modules.SectorSize, cost1, refund1, memory1, pt)
+	instruction2, cost, refund, memory, time := newAppendInstruction(false, modules.SectorSize, pt)
+	cost2, refund2, memory2 := updateRunningCosts(pt, cost1, refund1, memory1, cost, refund, memory, time)
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[modules.SectorSize:2*modules.SectorSize], sectorData2)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
-	instruction3, cost3, refund3, memory3 := newAppendInstruction(false, 2*modules.SectorSize, cost2, refund2, memory2, pt)
+	instruction3, cost, refund, memory, time := newAppendInstruction(false, 2*modules.SectorSize, pt)
+	cost3, refund3, memory3 := updateRunningCosts(pt, cost2, refund2, memory2, cost, refund, memory, time)
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[2*modules.SectorSize:3*modules.SectorSize], sectorData3)
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
-	instruction4, cost4, refund4, memory4 := newDropSectorsInstruction(programData, 3*modules.SectorSize, 0, cost3, refund3, memory3, pt)
+	instruction4, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize, 0, pt)
+	cost4, refund4, memory4 := updateRunningCosts(pt, cost3, refund3, memory3, cost, refund, memory, time)
 
 	// Drop one sector.
-	instruction5, cost5, refund5, memory5 := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, cost4, refund4, memory4, pt)
+	instruction5, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, pt)
+	cost5, refund5, memory5 := updateRunningCosts(pt, cost4, refund4, memory4, cost, refund, memory, time)
 
-	instruction6, cost6, refund6, memory6 := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, cost5, refund5, memory5, pt)
+	instruction6, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
+	cost6, refund6, memory6 := updateRunningCosts(pt, cost5, refund5, memory5, cost, refund, memory, time)
 
 	// Drop two remaining sectors.
 
-	cost := cost6.Add(MemoryCost(pt, memory6, TimeCommit))
+	cost = cost6.Add(MemoryCost(pt, memory6, TimeCommit))
 
 	// Construct the inputs and expected outputs.
 	instructions := []modules.Instruction{

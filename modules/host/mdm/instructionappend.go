@@ -70,7 +70,10 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 	// i.staticState.potentialUploadRevenue = i.staticState.potentialUploadRevenue.Add(types.ZeroCurrency)
 
 	ps := i.staticState
-	newMerkleRoot := ps.sectors.appendSector(sectorData)
+	newMerkleRoot, err := ps.sectors.appendSector(sectorData)
+	if err != nil {
+		return errOutput(err)
+	}
 
 	// TODO: Construct proof if necessary.
 	var proof []crypto.Hash

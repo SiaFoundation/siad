@@ -87,7 +87,10 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, int(newNumSectors), int(oldNumSectors))
 	}
 
-	newMerkleRoot := ps.sectors.dropSectors(numSectorsDropped)
+	newMerkleRoot, err := ps.sectors.dropSectors(numSectorsDropped)
+	if err != nil {
+		return errOutput(err)
+	}
 
 	// TODO: Update finances.
 
@@ -133,5 +136,5 @@ func (i *instructionDropSectors) Time() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return TimeDropSectors * numDropped, nil
+	return TimeDropSingleSector * numDropped, nil
 }
