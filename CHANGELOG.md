@@ -33,6 +33,7 @@ Latest:
  - 
  - 
  - Add XChaCha20 CipherKey.
+ - Add Skykey Manager.
  - Add `siac skynet unpin` subcommand.
  -
  -
