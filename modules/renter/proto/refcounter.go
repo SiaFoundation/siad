@@ -82,12 +82,10 @@ func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
 	}
 	rc.sectorCounts[secNum]--
 	if rc.sectorCounts[secNum] == 0 {
-		rc.mu.Lock()
-		defer rc.mu.Unlock()
-		if err := rc.swap(secNum, uint64(len(rc.sectorCounts)-1)); err != nil {
+		if err := rc.managedSwap(secNum, uint64(len(rc.sectorCounts)-1)); err != nil {
 			return 0, errors.AddContext(err, "failed to swap sectors")
 		}
-		if err := rc.truncate(2); err != nil {
+		if err := rc.managedTruncate(1); err != nil {
 			return 0, errors.AddContext(err, "failed to truncate")
 		}
 		return 0, nil
@@ -109,35 +107,58 @@ func (rc *RefCounter) DeleteRefCounter() (err error) {
 	return os.Remove(rc.filepath)
 }
 
-// swap swaps two sectors. This affects both the contract file and refcounters (both in memory and on disk).
-func (rc *RefCounter) swap(i, j uint64) error {
+// callSwap swaps the two sectors at the given indices. This affects both the contract file and reference counters
+// in memory and on disk.
+func callSwap(rc *RefCounter, i, j uint64) error {
+	return rc.managedSwap(i, j)
+}
+
+// managedSwap swaps two sectors. This affects both the contract file and reference counters in memory and on disk.
+func (rc *RefCounter) managedSwap(first, second uint64) error {
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	// swap the values in memory
-	rc.sectorCounts[i], rc.sectorCounts[j] = rc.sectorCounts[j], rc.sectorCounts[i]
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	// swap the values on disk
+	// do this first in order to avoid de-sync between disk and memory in case of an error
 	buf := make([]byte, 2)
-	binary.LittleEndian.PutUint16(buf, rc.sectorCounts[i])
-	if _, err = f.WriteAt(buf, int64(offset(i))); err != nil {
+	binary.LittleEndian.PutUint16(buf, rc.sectorCounts[first])
+	if _, err = f.WriteAt(buf, int64(offset(second))); err != nil {
 		return err
 	}
-	binary.LittleEndian.PutUint16(buf, rc.sectorCounts[j])
-	if _, err = f.WriteAt(buf, int64(offset(j))); err != nil {
+	binary.LittleEndian.PutUint16(buf, rc.sectorCounts[second])
+	if _, err = f.WriteAt(buf, int64(offset(first))); err != nil {
 		return err
 	}
-	return f.Sync()
+	if err = f.Sync(); err != nil {
+		return err
+	}
+
+	// swap the values in memory
+	rc.sectorCounts[first], rc.sectorCounts[second] = rc.sectorCounts[second], rc.sectorCounts[first]
+	return nil
 }
 
-// truncate removes the last `n` bytes from the refcounter file on disk
-func (rc *RefCounter) truncate(n uint64) error {
-	if n/2 > uint64(len(rc.sectorCounts)) {
-		return fmt.Errorf("cannot truncate more than the total number of counts. number of counts: %d, counts to truncate: %d", len(rc.sectorCounts), n/2)
+// callTruncate removes the last `n` sector counts from the refcounter file
+// both in memory and on disk
+func callTruncate(rc *RefCounter, n uint64) error {
+	return rc.managedTruncate(n)
+}
+
+// managedTruncate removes the last `n` sector counts from the refcounter file
+// both in memory and on disk
+func (rc *RefCounter) managedTruncate(n uint64) error {
+	if n > uint64(len(rc.sectorCounts)) {
+		return fmt.Errorf("cannot truncate more than the total number of counts. number of counts: %d, counts to truncate: %d", len(rc.sectorCounts), n)
 	}
-	rc.sectorCounts = rc.sectorCounts[:uint64(len(rc.sectorCounts))-n/2]
+
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	// truncate the file on disk
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
 	if err != nil {
 		return err
@@ -147,7 +168,13 @@ func (rc *RefCounter) truncate(n uint64) error {
 	if err != nil {
 		return err
 	}
-	return f.Truncate(info.Size() - int64(n))
+	if err = f.Truncate(info.Size() - int64(n*2)); err != nil {
+		return err
+	}
+
+	// truncate the data in memory
+	rc.sectorCounts = rc.sectorCounts[:uint64(len(rc.sectorCounts))-n]
+	return nil
 }
 
 // writeCount stores the given sector count on disk

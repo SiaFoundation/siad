@@ -1,10 +1,13 @@
 package proto
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -100,6 +103,14 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(fmt.Sprintf("Wrong sector count after trucate/load, expected: %d, actual: %d", testSectorsCount-1, len(rcLoaded.sectorCounts)))
 	}
 
+	// individually test callSwap and callTruncate
+	if err = testCallSwap(&rc, rcFilePath); err != nil {
+		t.Fatal(err)
+	}
+	if err = testCallTruncate(&rc, rcFilePath, 4); err != nil {
+		t.Fatal(err)
+	}
+
 	// delete the ref counter
 	err = rc.DeleteRefCounter()
 	if err != nil {
@@ -109,6 +120,67 @@ func TestRefCounter(t *testing.T) {
 	if err == nil {
 		t.Fatal("RefCounter deletion finished successfully but the file is still on disk", err)
 	}
+}
+
+// testCallSwap specifically tests the callSwap method available outside the
+// subsystem
+func testCallSwap(rc *RefCounter, filepath string) error {
+	// these hold the values we expect to find at positions 2 and 4 after the swap
+	expectedCount2 := rc.sectorCounts[4]
+	expectedCount4 := rc.sectorCounts[2]
+	if err := callSwap(rc, 2, 4); err != nil {
+		return err
+	}
+	// check if we properly swapped in memory
+	if expectedCount4 != rc.sectorCounts[4] || expectedCount2 != rc.sectorCounts[2] {
+		return errors.New("failed to swap counts in memory")
+	}
+	// check if we properly swapped on disk
+	f, err := os.OpenFile(filepath, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	buf := make([]byte, 2)
+	if _, err := f.ReadAt(buf, int64(offset(4))); err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	if expectedCount4 != binary.LittleEndian.Uint16(buf) {
+		return errors.New("failed to swap counts on disk")
+	}
+	if _, err := f.ReadAt(buf, int64(offset(2))); err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	if expectedCount2 != binary.LittleEndian.Uint16(buf) {
+		return errors.New("failed to swap counts on disk")
+	}
+	return nil
+}
+
+// testCallTruncate specifically tests the callSwap method available outside
+// the subsystem
+func testCallTruncate(rc *RefCounter, filepath string, n uint64) error {
+	fiBefore, err := os.Stat(filepath)
+	if err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	numSectorsDisk := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
+	numSectorsMem := uint64(len(rc.sectorCounts))
+	if err := callTruncate(rc, n); err != nil {
+		return err
+	}
+	if numSectorsMem-n != uint64(len(rc.sectorCounts)) {
+		return fmt.Errorf("failed to truncate data in memory by %d sectors. Sectors before: %d, sectors after: %d", n, numSectorsMem, len(rc.sectorCounts))
+	}
+	fiAfter, err := os.Stat(filepath)
+	if err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
+	if numSectorsDisk-n != numSectorsDiskAfter {
+		return fmt.Errorf("failed to truncate data on disk by %d sectors. Sectors before: %d, sectors after: %d", n, numSectorsDisk, numSectorsDiskAfter)
+	}
+	return nil
 }
 
 // testCounterVal generates a specific count value based on the given `n`
