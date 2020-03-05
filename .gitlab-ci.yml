@@ -4,50 +4,54 @@ stages:
   - deploy
 
 variables:
-  legacy_pkgs: "./node \
-  ./node/api \
-  ./node/api/server"
-  package_pkgs: "./build \
-  ./cmd/sia-node-scanner \
-  ./cmd/siac \
-  ./cmd/siad \
-  ./compatibility \
-  ./crypto \
-  ./encoding \
-  ./modules \
-  ./modules/consensus \
-  ./modules/explorer \
-  ./modules/gateway \
-  ./modules/host \
-  ./modules/host/contractmanager \
-  ./modules/host/mdm \
-  ./modules/renter \
-  ./modules/renter/contractor \
-  ./modules/renter/filesystem \
-  ./modules/renter/hostdb \
-  ./modules/renter/hostdb/hosttree \
-  ./modules/renter/proto \
-  ./modules/renter/siadir \
-  ./modules/renter/siafile \
-  ./modules/renter/skynetblacklist \
-  ./modules/miner \
-  ./modules/wallet \
-  ./modules/transactionpool \
-  ./persist \
-  ./sync \
-  ./types"
-  siatest_pkgs: "./siatest \
-  ./siatest/consensus \
-  ./siatest/daemon \
-  ./siatest/gateway \
-  ./siatest/host \
-  ./siatest/miner \
-  ./siatest/transactionpool \
-  ./siatest/wallet"
+  legacy_pkgs: >-
+    ./node
+    ./node/api
+    ./node/api/server
+  package_pkgs: >-
+    ./build
+    ./cmd/sia-node-scanner
+    ./cmd/siac
+    ./cmd/siad
+    ./compatibility
+    ./crypto
+    ./encoding
+    ./modules
+    ./modules/consensus
+    ./modules/explorer
+    ./modules/gateway
+    ./modules/host
+    ./modules/host/contractmanager
+    ./modules/host/mdm
+    ./modules/renter
+    ./modules/renter/contractor
+    ./modules/renter/filesystem
+    ./modules/renter/hostdb
+    ./modules/renter/hostdb/hosttree
+    ./modules/renter/proto
+    ./modules/renter/siadir
+    ./modules/renter/siafile
+    ./modules/renter/skynetblacklist
+    ./modules/miner
+    ./modules/wallet
+    ./modules/transactionpool
+    ./persist
+    ./sync
+    ./types
+  siatest_pkgs: >-
+    ./siatest
+    ./siatest/consensus
+    ./siatest/daemon
+    ./siatest/gateway
+    ./siatest/host
+    ./siatest/miner
+    ./siatest/transactionpool
+    ./siatest/wallet
   siatest_renter_pkgs: "./siatest/renter"
-  siatest_renter_sub_pkgs: "./siatest/renter/contractor \
-  ./siatest/renter/hostdb \
-  ./siatest/renterhost"
+  siatest_renter_sub_pkgs: >-
+    ./siatest/renter/contractor
+    ./siatest/renter/hostdb
+    ./siatest/renterhost
 
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
