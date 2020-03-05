@@ -198,8 +198,8 @@ func (sm *SkykeyManager) AddKey(name string, cipherType crypto.CipherType, entro
 	return skykey, nil
 }
 
-// GetIDByName returns the ID associated with the given key name.
-func (sm *SkykeyManager) GetIDByName(name string) (SkykeyID, error) {
+// IDByName returns the ID associated with the given key name.
+func (sm *SkykeyManager) IDByName(name string) (SkykeyID, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -210,8 +210,8 @@ func (sm *SkykeyManager) GetIDByName(name string) (SkykeyID, error) {
 	return id, nil
 }
 
-// GetKeyByName returns the Skykey associated with that key name.
-func (sm *SkykeyManager) GetKeyByName(name string) (Skykey, error) {
+// KeyByName returns the Skykey associated with that key name.
+func (sm *SkykeyManager) KeyByName(name string) (Skykey, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -228,8 +228,8 @@ func (sm *SkykeyManager) GetKeyByName(name string) (Skykey, error) {
 	return key, nil
 }
 
-// GetKeyByID returns the Skykey associated with that ID.
-func (sm *SkykeyManager) GetKeyByID(id SkykeyID) (Skykey, error) {
+// KeyByID returns the Skykey associated with that ID.
+func (sm *SkykeyManager) KeyByID(id SkykeyID) (Skykey, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 

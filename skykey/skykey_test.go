@@ -79,7 +79,7 @@ func TestSkykeyManager(t *testing.T) {
 	}
 
 	// Check the correct ID is returned.
-	id, err := keyMan.GetIDByName("test_key1")
+	id, err := keyMan.IDByName("test_key1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestSkykeyManager(t *testing.T) {
 	// Check that the correct error for a random unknown key is given.
 	randomNameBytes := fastrand.Bytes(24)
 	randomName := string(randomNameBytes)
-	id, err = keyMan.GetIDByName(randomName)
+	id, err = keyMan.IDByName(randomName)
 	if err != errNoSkykeysWithThatName {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestSkykeyManager(t *testing.T) {
 	// Check that the correct error for a random unknown key is given.
 	var randomID SkykeyID
 	fastrand.Read(randomID[:])
-	_, err = keyMan.GetKeyByID(randomID)
+	_, err = keyMan.KeyByID(randomID)
 	if err != errNoSkykeysWithThatID {
 		t.Fatal(err)
 	}
@@ -118,8 +118,8 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal("Wrong number of keys", len(keyMan.idsByName))
 	}
 
-	// Check GetKeyByName returns the keys with the expected ID.
-	key1Copy, err := keyMan.GetKeyByName("test_key1")
+	// Check KeyByName returns the keys with the expected ID.
+	key1Copy, err := keyMan.KeyByName("test_key1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestSkykeyManager(t *testing.T) {
 		t.Fatal("Expected key ID to match")
 	}
 
-	key2Copy, err := keyMan.GetKeyByName("test_key2")
+	key2Copy, err := keyMan.KeyByName("test_key2")
 	if err != nil {
 		t.Fatal(err)
 	}
