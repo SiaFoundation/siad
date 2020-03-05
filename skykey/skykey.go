@@ -27,11 +27,12 @@ const (
 	MaxKeyNameLen = 128
 
 	// headerLen is the length of the skykey file header.
+	// It is the length of the magic, the version, and and the file length.
 	headerLen = types.SpecifierLen + types.SpecifierLen + 8
 )
 
 var (
-	skykeyVersionString = "1.4.3"
+	skykeyVersionString = "1.4.4"
 	skykeyVersion       = types.NewSpecifier(skykeyVersionString)
 
 	// SkykeySpecifier is used as a prefix when hashing Skykeys to compute their
@@ -51,6 +52,7 @@ var (
 	SkykeyPersistFilename = "skykeys.dat"
 )
 
+// SkykeyID is the identifier of a skykey.
 type SkykeyID [SkykeyIDLen]byte
 
 // Skykey is a key used to encrypt/decrypt skyfiles.
@@ -80,6 +82,7 @@ type countingWriter struct {
 	count  int
 }
 
+// newCountingWriter returns a countingWriter.
 func newCountingWriter(w io.Writer) *countingWriter {
 	return &countingWriter{w, 0}
 }
@@ -247,7 +250,7 @@ func NewSkykeyManager(persistDir string) (*SkykeyManager, error) {
 	}
 
 	// create the persist dir if it doesn't already exist.
-	err := os.MkdirAll(persistDir, 0750)
+	err := os.MkdirAll(persistDir, modules.DefaultFilePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +329,7 @@ func (sm *SkykeyManager) load() error {
 	}
 	defer file.Close()
 
-	// Check if the file has a header.  If there is not, then set the default
+	// Check if the file has a header. If there is not, then set the default
 	// values and save it.
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -376,7 +379,7 @@ func (sm *SkykeyManager) load() error {
 	return nil
 }
 
-// saveKey saves the key and  appends it to the skykey file and updates/syncs
+// saveKey saves the key and appends it to the skykey file and updates/syncs
 // the header.
 func (sm *SkykeyManager) saveKey(skykey Skykey) error {
 	keyID := skykey.ID()
