@@ -825,6 +825,7 @@ func TestHostChurnSiafileDefragRegression(t *testing.T) {
 	a := siatest.DefaultAllowance
 	a.MaxPeriodChurn *= 100
 	a.Funds = a.Funds.Mul64(100)
+	a.Hosts = 200
 	r.RenterPostAllowance(a)
 	// Upload a file to all hosts.
 	_, rf, err := r.UploadNewFileBlocking(100, 1, uint64(len(tg.Hosts())-1), false)
