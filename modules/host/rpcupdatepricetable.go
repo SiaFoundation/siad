@@ -2,11 +2,9 @@ package host
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -31,7 +29,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 			return err
 		}
 		pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
-		h.uuidToPriceTable[pt.UUID] = pt
+		h.priceTableMap[pt.UUID] = pt
 		return nil
 	}(); err != nil {
 		return errors.AddContext(err, "Failed to copy the host price table")
@@ -56,26 +54,18 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// just received. This essentially means the host is optimistically sending
 	// over the price table, which is ok.
 
+	// TODO: enable when the PaymentProcessor gets introduced
 	// process payment
-	pp := h.NewPaymentProcessor()
-	amountPaid, err := pp.ProcessPaymentForRPC(stream)
-	if err != nil {
-		return errors.AddContext(err, "Failed to process payment")
-	}
-
+	// pp := h.NewPaymentProcessor()
+	// amountPaid, err := pp.ProcessPaymentForRPC(stream)
+	// if err != nil {
+	// 	return errors.AddContext(err, "Failed to process payment")
+	// }
 	// verify payment
-	expected := pt.UpdatePriceTableCost
-	if amountPaid.Cmp(expected) < 0 {
-		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
-	}
+	// expected := pt.UpdatePriceTableCost
+	// if amountPaid.Cmp(expected) < 0 {
+	// 	return errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
+	// }
 
 	return nil
-}
-
-// managedCalculateUpdatePriceTableCost calculates the price for the
-// UpdatePriceTableRPC. The price can be dependant on numerous factors.
-// Note: for now this is a fixed cost equaling the base RPC price.
-func (h *Host) managedCalculateUpdatePriceTableCost() types.Currency {
-	hIS := h.InternalSettings()
-	return hIS.MinBaseRPCPrice
 }
