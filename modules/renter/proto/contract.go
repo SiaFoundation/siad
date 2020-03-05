@@ -580,7 +580,6 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 			unappliedTxns = append(unappliedTxns, t)
 		}
 	}
-
 	// add to set
 	sc := &SafeContract{
 		header:        header,
