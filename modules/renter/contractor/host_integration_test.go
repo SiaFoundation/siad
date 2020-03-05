@@ -119,7 +119,8 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, error) {
 	testdir := build.TempDir("contractor", name)
 	// create mux
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, nil, nil, err
 	}

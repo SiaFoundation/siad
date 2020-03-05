@@ -46,7 +46,8 @@ Latest:
  -
 
 **Bugs Fixed**
- - 
+ - Fixed bug in startup where an error being returned by the renter's blocking
+   startup process was being missed
  -
  -
  -
@@ -60,7 +61,7 @@ Latest:
  - 
 
 **Other**
- - 
+ - Split out renter siatests into 2 groups for faster pipelines 
  - 
  - 
  - 
@@ -71,11 +72,8 @@ Latest:
    used.
  -
  -
- - Split out renter siatests into 2 groups for faster pipelines
- -
- -
- -
- -
+ - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
+   to safely acquire the host pubkey.
  -
  -
 

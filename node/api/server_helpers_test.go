@@ -155,7 +155,8 @@ func assembleServerTester(key crypto.CipherKey, testdir string) (*serverTester, 
 	}
 
 	// Create the siamux
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +246,8 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	}
 
 	// Create the siamux.
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}

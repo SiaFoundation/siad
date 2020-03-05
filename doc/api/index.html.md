@@ -4112,6 +4112,27 @@ See [standard responses](#standard-responses).
 
 # Skynet
 
+## /skynet/blacklist [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
+```
+
+returns the list of merkleroots that are blacklisted.
+
+### JSON Response
+```go
+{
+  "blacklist": {
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+  }
+}
+```
+**blacklist** | Hashes  
+The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
+
 ## /skynet/blacklist [POST]
 > curl example
 ```go

@@ -953,6 +953,9 @@ type Renter interface {
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
 
+	// Blacklist returns the merkleroots that are blacklisted
+	Blacklist() ([]crypto.Hash, error)
+
 	// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
 	UpdateSkynetBlacklist(additions, removals []Skylink) error
 

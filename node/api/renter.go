@@ -257,6 +257,12 @@ type (
 		Bitfield   uint16      `json:"bitfield"`
 	}
 
+	// SkynetBlacklistGET contains the information queried for the
+	// /skynet/blacklist GET endpoint
+	SkynetBlacklistGET struct {
+		Blacklist []crypto.Hash `json:"blacklist"`
+	}
+
 	// SkynetBlacklistPOST contains the information needed for the
 	// /skynet/blacklist POST endpoint to be called
 	SkynetBlacklistPOST struct {
@@ -1750,6 +1756,21 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
+// skynetBlacklistHandlerGET handles the API call to get the list of
+// blacklisted skylinks
+func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the Blacklist
+	blacklist, err := api.renter.Blacklist()
+	if err != nil {
+		WriteError(w, Error{"unable to get the blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetBlacklistGET{
+		Blacklist: blacklist,
+	})
+}
+
 // skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
 func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
@@ -1864,14 +1885,18 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		var offset, size uint64
 		metadata, dir, offset, size = metadata.ForPath(path)
 		if len(metadata.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download file for path: %v, ", path)}, http.StatusNotFound)
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
 		if dir && format == "" {
-			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
-		streamer = NewLimitStreamer(streamer, offset, size)
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
 	} else {
 		if len(metadata.Subfiles) > 1 && format == "" {
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
@@ -1984,7 +2009,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse basechunkrerdundancy: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse basechunkredundancy: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}

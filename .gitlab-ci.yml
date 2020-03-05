@@ -158,7 +158,7 @@ siatest-renter-tests:
 siatest-renter-sub-tests:
   <<: *default_test_params
   cache:
-    key: siatest-renter-tests-sub-cache
+    key: siatest-renter-sub-tests-cache
     paths:
       - .cache
   script:

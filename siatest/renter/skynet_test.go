@@ -348,6 +348,20 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pin the file again but without specifying the BaseChunkRedundancy.
+	largePinSiaPath, err = modules.NewSiaPath("testLargePinPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	largePinLUP = modules.SkyfilePinParameters{
+		SiaPath: largePinSiaPath,
+		Force:   force,
+		Root:    false,
+	}
+	err = r.SkynetSkylinkPinPost(largeSkylink, largePinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// See if the file is present.
 	fullLargePinSiaPath, err := modules.SkynetFolder.Join(largePinSiaPath.String())
 	if err != nil {
@@ -1188,7 +1202,7 @@ func TestSkynetBlacklist(t *testing.T) {
 	}
 
 	// Upload and create a skylink
-	skylink, _, err := r.SkynetSkyfilePost(lup)
+	skylink, sshp, err := r.SkynetSkyfilePost(lup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1218,6 +1232,19 @@ func TestSkynetBlacklist(t *testing.T) {
 	err = r.SkynetBlacklistPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Confirm that the Skylink is blacklisted by verifying the merkleroot is in
+	// the blacklist
+	sbg, err := r.SkynetBlacklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blacklist) != 1 {
+		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 1, len(sbg.Blacklist))
+	}
+	if sbg.Blacklist[0] != sshp.MerkleRoot {
+		t.Fatalf("Merkleroots don't match, expected %v got %v", sshp.MerkleRoot, sbg.Blacklist[0])
 	}
 
 	// Try to download the file behind the skylink, this should fail because of
@@ -1280,6 +1307,15 @@ func TestSkynetBlacklist(t *testing.T) {
 	err = r.SkynetBlacklistPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Verify that the skylink is removed from the Blacklist
+	sbg, err = r.SkynetBlacklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blacklist) != 0 {
+		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 0, len(sbg.Blacklist))
 	}
 
 	// Try to download the file behind the skylink. Even though the file was
