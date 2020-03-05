@@ -124,7 +124,7 @@ func (h *Host) managedDownloadIteration(conn net.Conn, so *storageObligation) er
 		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 	}}
 	h.mu.Lock()
-	err = h.modifyStorageObligation(*so, nil, nil, nil)
+	err = h.modifyStorageObligation(*so, nil, nil)
 	h.mu.Unlock()
 	if err != nil {
 		return extendErr("failed to modify storage obligation: ", ErrorInternal(modules.WriteNegotiationRejection(conn, err).Error()))

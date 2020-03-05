@@ -33,6 +33,15 @@ func (h *Host) managedLockStorageObligation(soid types.FileContractID) {
 	tl.Lock()
 }
 
+// managedIsLockedStorageObligation checks if the storage obligation for the
+// given filecontract id is locked
+func (h *Host) managedIsLockedStorageObligation(soid types.FileContractID) (locked bool) {
+	h.mu.RLock()
+	_, locked = h.lockedStorageObligations[soid]
+	h.mu.RUnlock()
+	return
+}
+
 // managedTryLockStorageObligation attempts to put a storage obligation under
 // lock, returning an error if the lock cannot be obtained.
 func (h *Host) managedTryLockStorageObligation(soid types.FileContractID, timeout time.Duration) error {

@@ -10,14 +10,17 @@ import (
 // StorageObligation defines the minimal interface a StorageObligation needs to
 // implement to be used by the mdm.
 type StorageObligation interface {
-	// ContractSize returns the current contract size of the storage obligation.
-	ContractSize() uint64
 	// Locked returns whether or not the storage obligation is locked.
 	Locked() bool
-	// MerkleRoot returns the filecontract's current root.
-	MerkleRoot() crypto.Hash
-	// SectorRoots returns the roots of the storage obligation.
-	SectorRoots() []crypto.Hash
+	// ContractSize returns the current contract size of the storage obligation.
+	// It will return an error if the underlying SO is not locked.
+	ContractSize() (uint64, error)
+	// MerkleRoot returns the filecontract's current root. It will return
+	// an error if the underlying SO is not locked.
+	MerkleRoot() (crypto.Hash, error)
+	// SectorRoots returns the roots of the storage obligation. It will return
+	// an error if the underlying SO is not locked.
+	SectorRoots() ([]crypto.Hash, error)
 	// Update updates the storage obligation.
 	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error
 }

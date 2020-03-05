@@ -77,8 +77,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 	var storageRevenue types.Currency
 	var newCollateral types.Currency
 	var sectorsRemoved []crypto.Hash
-	var sectorsGained []crypto.Hash
-	var gainedSectorData [][]byte
+	sectorsGained := make(map[crypto.Hash][]byte)
 	err = func() error {
 		for _, modification := range modifications {
 			// Check that the index points to an existing sector root. If the type
@@ -116,8 +115,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 
 				// Insert the sector into the root list.
 				newRoot := crypto.MerkleRoot(modification.Data)
-				sectorsGained = append(sectorsGained, newRoot)
-				gainedSectorData = append(gainedSectorData, modification.Data)
+				sectorsGained[newRoot] = modification.Data
 				so.SectorRoots = append(so.SectorRoots[:modification.SectorIndex], append([]crypto.Hash{newRoot}, so.SectorRoots[modification.SectorIndex:]...)...)
 			case modules.ActionModify:
 				// Check that the offset and length are okay. Length is already
@@ -142,8 +140,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 				// sector has been replaced with a new sector.
 				newRoot := crypto.MerkleRoot(sector)
 				sectorsRemoved = append(sectorsRemoved, so.SectorRoots[modification.SectorIndex])
-				sectorsGained = append(sectorsGained, newRoot)
-				gainedSectorData = append(gainedSectorData, sector)
+				sectorsGained[newRoot] = sector
 				so.SectorRoots[modification.SectorIndex] = newRoot
 			default:
 				return errUnknownModification
@@ -180,7 +177,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 	so.PotentialUploadRevenue = so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	so.RevisionTransactionSet = []types.Transaction{txn}
 	h.mu.Lock()
-	err = h.modifyStorageObligation(*so, sectorsRemoved, sectorsGained, gainedSectorData)
+	err = h.modifyStorageObligation(*so, sectorsRemoved, sectorsGained)
 	h.mu.Unlock()
 	if err != nil {
 		modules.WriteNegotiationRejection(conn, err) // Error is ignored so that the error type can be preserved in extendErr.

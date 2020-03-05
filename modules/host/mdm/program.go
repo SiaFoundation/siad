@@ -75,13 +75,18 @@ func outputFromError(err error, cost, refund types.Currency) Output {
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
+	roots, err := so.SectorRoots()
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "Could not execute program")
+	}
+
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
 			priceTable:  pt,
-			sectors:     newSectors(so.SectorRoots()),
+			sectors:     newSectors(roots),
 		},
 		staticBudget: budget,
 		staticData:   openProgramData(data, programDataLen),
@@ -90,7 +95,6 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 	}
 
 	// Convert the instructions.
-	var err error
 	var instruction instruction
 	for _, i := range instructions {
 		switch i.Specifier {
@@ -123,6 +127,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 	if err := p.tg.Add(); err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
+	cs, err := so.ContractSize()
+	
 	go func() {
 		defer p.staticData.Close()
 		defer p.tg.Done()
