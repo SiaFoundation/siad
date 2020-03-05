@@ -59,6 +59,10 @@ func NewSiaMux(siaMuxDir, siaDir, address string) (*siamux.SiaMux, error) {
 
 // SiaPKToMuxPK turns a SiaPublicKey into a mux.ED25519PublicKey
 func SiaPKToMuxPK(spk types.SiaPublicKey) (mk mux.ED25519PublicKey) {
+	// Sanity check key length
+	if len(spk.Key) != len(mk) {
+		build.Critical("Expected the given SiaPublicKey to have a length equal to the mux.ED25519PublicKey length")
+	}
 	copy(mk[:], spk.Key)
 	return
 }
