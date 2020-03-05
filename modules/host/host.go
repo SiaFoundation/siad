@@ -176,7 +176,8 @@ type Host struct {
 	// listed. These host's RPC prices are dynamic, and are subject to various
 	// conditions specific to the RPC in question. Examples of such conditions
 	// are congestion, load, liquidity, etc.
-	priceTable modules.RPCPriceTable
+	priceTable       modules.RPCPriceTable
+	uuidToPriceTable map[types.Specifier]*modules.RPCPriceTable
 
 	// Misc state.
 	db            *persist.BoltDatabase
