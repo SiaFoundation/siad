@@ -93,7 +93,7 @@ func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
 // GetCount returns the number of references to the given sector
 // Note: Use a pointer because a gigabyte file has >512B RefCounter object.
 func (rc *RefCounter) GetCount(secNum uint64) (uint16, error) {
-	if secNum < 0 || secNum >= uint64(len(rc.sectorCounts)) {
+	if secNum >= uint64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
 	return rc.sectorCounts[secNum], nil
