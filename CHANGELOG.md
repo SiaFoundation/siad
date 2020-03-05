@@ -11,7 +11,6 @@ Version History
 Latest:
 ### v1.4.4
 **Key Updates**
-<<<<<<< HEAD
  - Add a delay when modifying large contracts on hosts to prevent hosts from
    becoming unresponsive due to massive disk i/o
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
