@@ -2,6 +2,7 @@ package host
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"reflect"
@@ -10,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
@@ -44,6 +45,63 @@ func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
 		t.Log("expected:", pt)
 		t.Log("actual:", ptUmar)
 		t.Fatal("Unmarshaled table doesn't match expected one")
+	}
+}
+
+// TestPruneExpiredPriceTables verifies the rpc price tables get pruned from the
+// host's price table map if they have expired.
+func TestPruneExpiredPriceTables(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	ht, err := blankHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// create a test stream
+	stream, err := createTestStream(ht.host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	// call the update price table rpc
+	err = ht.host.managedRPCUpdatePriceTable(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify there's at least one price table
+	ht.host.mu.Lock()
+	numPTs := len(ht.host.priceTableMap)
+	ht.host.mu.Unlock()
+
+	if numPTs == 0 {
+		t.Fatal("Expected at least one price table to be set in the host's price table map")
+	}
+
+	// get its uuid
+	var uuid types.Specifier
+	for uuid = range ht.host.priceTableMap {
+		break
+	}
+
+	// sleep for the duration of the price guarantee + the epxiry frequency,
+	// this is the worst case of how long it can take before the price table
+	// gets expired
+	time.Sleep(pruneExpiredRPCPriceTableFrequency + rpcPriceGuaranteePeriod)
+
+	// verify it was expired
+	ht.host.mu.Lock()
+	_, exists := ht.host.priceTableMap[uuid]
+	ht.host.mu.Unlock()
+	if exists {
+		t.Fatal("Expected RPC price table to be pruned because it should have expired")
 	}
 }
 
@@ -81,7 +139,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		defer stream.Close()
 
 		// write the rpc id
-		err = encoding.WriteObject(stream, modules.RPCUpdatePriceTable)
+		err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 		if err != nil {
 			t.Log("Failed to write rpc id", err)
 			atomic.AddUint64(&atomicErrors, 1)
@@ -131,7 +189,12 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 		// read the rpc id
 		var id types.Specifier
-		encoding.ReadObject(stream, &id, 4096)
+		err = modules.RPCRead(stream, &id)
+		if err != nil {
+			t.Log(err)
+			atomic.AddUint64(&atomicErrors, 1)
+			return
+		}
 
 		// call the update price table RPC, we purposefully ignore the error
 		// here because the client is not providing payment. This RPC call will
@@ -190,4 +253,18 @@ func createTestingConns() (clientConn, serverConn net.Conn) {
 	clientConn, _ = net.Dial("tcp", ln.Addr().String())
 	wg.Wait()
 	return
+}
+
+// createTestStream is a helper method to create a stream
+func createTestStream(h *Host) (siamux.Stream, error) {
+	hes := h.ExternalSettings()
+	muxAddress := fmt.Sprintf("%s:%d", hes.NetAddress.Host(), hes.SiaMuxPort)
+	mux := h.staticMux
+
+	// fetch a stream from the mux
+	stream, err := mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, modules.SiaPKToMuxPK(h.publicKey))
+	if err != nil {
+		return nil, err
+	}
+	return stream, nil
 }
