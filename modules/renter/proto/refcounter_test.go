@@ -42,12 +42,12 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// get count
-	count, err := rc.GetCount(2)
+	count, err := rc.Count(2)
 	if err != nil {
 		t.Fatal("Failed to get the count:", err)
 	}
 	if count != testCounterVal(2) {
-		emsg := fmt.Sprintf("Wrong count returned on GetCount, expected %d, got %d:", testCounterVal(2), count)
+		emsg := fmt.Sprintf("Wrong count returned on Count, expected %d, got %d:", testCounterVal(2), count)
 		t.Fatal(emsg)
 	}
 
@@ -111,6 +111,7 @@ func TestRefCounter(t *testing.T) {
 	}
 }
 
+// testCounterVal generates a specific count value based on the given `n`
 func testCounterVal(n uint16) uint16 {
 	return n*10 + 1
 }

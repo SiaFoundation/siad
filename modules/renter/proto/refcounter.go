@@ -80,19 +80,27 @@ func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
 	if secNum >= uint64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
-	// we check before decrementing in order to avoid a possible underflow if the
-	// counter is somehow zero
-	if rc.sectorCounts[secNum] <= 1 {
-		err := rc.managedMarkSectorAsGarbage(secNum)
-		return 0, err
+	if rc.sectorCounts[secNum] == 0 {
+		return 0, errors.New("sector count underflow")
 	}
 	rc.sectorCounts[secNum]--
+	if rc.sectorCounts[secNum] == 0 {
+		rc.mu.Lock()
+		defer rc.mu.Unlock()
+		if err := rc.swap(secNum, uint64(len(rc.sectorCounts)-1)); err != nil {
+			return 0, errors.AddContext(err, "failed to swap sectors")
+		}
+		if err := rc.truncate(2); err != nil {
+			return 0, errors.AddContext(err, "failed to truncate")
+		}
+		return 0, nil
+	}
 	return rc.sectorCounts[secNum], rc.syncCountToDisk(secNum, rc.sectorCounts[secNum])
 }
 
-// GetCount returns the number of references to the given sector
+// Count returns the number of references to the given sector
 // Note: Use a pointer because a gigabyte file has >512B RefCounter object.
-func (rc *RefCounter) GetCount(secNum uint64) (uint16, error) {
+func (rc *RefCounter) Count(secNum uint64) (uint16, error) {
 	if secNum >= uint64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
@@ -104,20 +112,7 @@ func (rc *RefCounter) DeleteRefCounter() (err error) {
 	return os.Remove(rc.filepath)
 }
 
-// managedMarkSectorAsGarbage ensures the sector is dropped from the contract
-// file and also drops it from the list of sector counters
-func (rc *RefCounter) managedMarkSectorAsGarbage(secNum uint64) error {
-	// this method is unexported and the secNum validation is already done.
-	// TODO: perform the sector drop in the contract
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-
-	if err := rc.swap(secNum, uint64(len(rc.sectorCounts)-1)); err != nil {
-		return err
-	}
-	return rc.truncate(2)
-}
-
+// swap swaps two sectors. This affects both the contract file and refcounters (both in memory and on disk).
 func (rc *RefCounter) swap(i, j uint64) error {
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
 	if err != nil {
@@ -125,23 +120,22 @@ func (rc *RefCounter) swap(i, j uint64) error {
 	}
 	defer f.Close()
 
-	first := make([]byte, 2, 2)
-	if _, err = f.ReadAt(first, int64(offset(i))); err != nil {
+	// swap the values in memory
+	rc.sectorCounts[i], rc.sectorCounts[j] = rc.sectorCounts[j], rc.sectorCounts[i]
+	// swap the values on disk
+	buf := make([]byte, 2)
+	binary.LittleEndian.PutUint16(buf, rc.sectorCounts[i])
+	if _, err = f.WriteAt(buf, int64(offset(i))); err != nil {
 		return err
 	}
-	second := make([]byte, 2, 2)
-	if _, err = f.ReadAt(second, int64(offset(j))); err != nil {
-		return err
-	}
-	if _, err = f.WriteAt(first, int64(offset(j))); err != nil {
-		return err
-	}
-	if _, err = f.WriteAt(second, int64(offset(i))); err != nil {
+	binary.LittleEndian.PutUint16(buf, rc.sectorCounts[j])
+	if _, err = f.WriteAt(buf, int64(offset(j))); err != nil {
 		return err
 	}
 	return f.Sync()
 }
 
+// truncate removes the last `n` bytes from the refcounter file on disk
 func (rc *RefCounter) truncate(n uint64) error {
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
 	if err != nil {
