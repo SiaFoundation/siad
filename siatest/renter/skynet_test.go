@@ -348,6 +348,20 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pin the file again but without specifying the BaseChunkRedundancy.
+	largePinSiaPath, err = modules.NewSiaPath("testLargePinPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	largePinLUP = modules.SkyfilePinParameters{
+		SiaPath: largePinSiaPath,
+		Force:   force,
+		Root:    false,
+	}
+	err = r.SkynetSkylinkPinPost(largeSkylink, largePinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// See if the file is present.
 	fullLargePinSiaPath, err := modules.SkynetFolder.Join(largePinSiaPath.String())
 	if err != nil {
