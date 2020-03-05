@@ -339,23 +339,14 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 
 // threadedHandleStream handles incoming SiaMux streams.
 func (h *Host) threadedHandleStream(stream siamux.Stream) {
+	// close the stream when the method terminates
+	defer stream.Close()
+
 	err := h.tg.Add()
 	if err != nil {
 		return
 	}
 	defer h.tg.Done()
-
-	// close the stream on host.Close or when the method terminates, whichever
-	// comes first.
-	streamCloseChan := make(chan struct{})
-	defer close(streamCloseChan)
-	go func() {
-		select {
-		case <-h.tg.StopChan():
-		case <-streamCloseChan:
-		}
-		stream.Close()
-	}()
 
 	// TODO: enable this when stream.SetDeadline is implemented on SiaMux
 	// set an initial duration that is generous, but finite. RPCs can extend
@@ -370,7 +361,9 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	var rpcID types.Specifier
 	err = modules.RPCRead(stream, &rpcID)
 	if err != nil {
-		modules.RPCWriteError(stream, errors.New("Failed to read RPC id"))
+		if wErr := modules.RPCWriteError(stream, errors.New("Failed to read RPC id")); wErr != nil {
+			h.managedLogError(err)
+		}
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
@@ -381,7 +374,9 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		var ptID types.Specifier
 		err = modules.RPCRead(stream, &ptID)
 		if err != nil {
-			modules.RPCWriteError(stream, errors.New("Failed to read price table UUID"))
+			if wErr := modules.RPCWriteError(stream, errors.New("Failed to read price table UUID")); wErr != nil {
+				h.managedLogError(err)
+			}
 			atomic.AddUint64(&h.atomicErroredCalls, 1)
 			return
 		}
@@ -399,7 +394,7 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	}
 
 	if err != nil {
-		modules.RPCWriteError(stream, err)
+		err = errors.Compose(err, modules.RPCWriteError(stream, err))
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		h.managedLogError(err)
 	}

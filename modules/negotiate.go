@@ -310,7 +310,7 @@ type (
 		RevisionNumber uint64 `json:"revisionnumber"`
 		Version        string `json:"version"`
 
-		SiaMuxPort uint64 `json:"siamuxport"`
+		SiaMuxPort string `json:"siamuxport"`
 	}
 
 	// HostOldExternalSettings are the pre-v1.4.0 host settings.
