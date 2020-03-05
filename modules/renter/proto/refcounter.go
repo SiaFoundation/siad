@@ -77,7 +77,7 @@ func (rc *RefCounter) IncrementCount(secNum uint64) (uint16, error) {
 // is specified by its sequential number (`secNum`).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
-	if secNum < 0 || secNum >= uint64(len(rc.sectorCounts)) {
+	if secNum >= uint64(len(rc.sectorCounts)) {
 		return 0, ErrInvalidSectorNumber
 	}
 	// we check before decrementing in order to avoid a possible underflow if the
