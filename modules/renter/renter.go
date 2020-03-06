@@ -42,6 +42,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblacklist"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -217,6 +218,7 @@ type Renter struct {
 	mu                    *siasync.RWMutex
 	repairLog             *persist.Logger
 	staticFuseManager     renterFuseManager
+	staticSkykeyManager   *skykey.SkykeyManager
 	staticStreamBufferSet *streamBufferSet
 	tg                    threadgroup.ThreadGroup
 	tpool                 modules.TransactionPool
@@ -868,7 +870,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticSkynetBlacklist = sb
 
 	// Load all saved data.
-	if err := r.managedInitPersist(); err != nil {
+	err = r.managedInitPersist()
+	if err != nil {
 		return nil, err
 	}
 	// After persist is initialized, push the root directory onto the directory
@@ -876,6 +879,17 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.managedPushUnexploredDirectory(modules.RootSiaPath())
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
+
+	// Create the skykey manager.
+	// In testing, keep the skykeys with the rest of the renter data.
+	skykeyManDir := build.DefaultSkynetDir()
+	if build.Release == "testing" {
+		skykeyManDir = persistDir
+	}
+	r.staticSkykeyManager, err = skykey.NewSkykeyManager(skykeyManDir)
+	if err != nil {
+		return nil, err
+	}
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
