@@ -123,7 +123,9 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
 
 		// Skynet endpoints
-		router.GET("/skynet/skylink/:skylink", api.skynetSkylinkHandlerGET)
+		router.GET("/skynet/blacklist", api.skynetBlacklistHandlerGET)
+		router.POST("/skynet/blacklist", RequirePassword(api.skynetBlacklistHandlerPOST, requiredPassword))
+		router.GET("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 
@@ -259,5 +261,5 @@ func RequirePassword(h httprouter.Handle, password string) httprouter.Handle {
 
 // isUnrestricted checks if a request may bypass the useragent check.
 func isUnrestricted(req *http.Request) bool {
-	return strings.HasPrefix(req.URL.Path, "/renter/stream/")
+	return strings.HasPrefix(req.URL.Path, "/renter/stream/") || strings.HasPrefix(req.URL.Path, "/skynet/skylink")
 }

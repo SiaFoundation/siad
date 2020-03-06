@@ -1,9 +1,11 @@
 package modules
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -14,18 +16,33 @@ import (
 const (
 	// logfile is the filename of the siamux log file
 	logfile = "siamux.log"
+
+	// SiaMuxDir is the name of the siamux dir
+	SiaMuxDir = "siamux"
 )
 
 // NewSiaMux returns a new SiaMux object
-func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
+func NewSiaMux(siaMuxDir, siaDir, address string) (*siamux.SiaMux, error) {
+	// can't use relative path
+	if !filepath.IsAbs(siaMuxDir) || !filepath.IsAbs(siaDir) {
+		err := errors.New("paths need to be absolute")
+		build.Critical(err)
+		return nil, err
+	}
+
 	// ensure the persist directory exists
-	err := os.MkdirAll(persistDir, 0700)
+	err := os.MkdirAll(siaMuxDir, 0700)
 	if err != nil {
 		return nil, err
 	}
 
+	// CompatV143 migrate existing mux in siaDir root to siaMuxDir.
+	if err := compatV143MigrateSiaMux(siaMuxDir, siaDir); err != nil {
+		return nil, err
+	}
+
 	// create a logger
-	file, err := os.OpenFile(filepath.Join(persistDir, logfile), os.O_RDWR|os.O_CREATE, 0600)
+	file, err := os.OpenFile(filepath.Join(siaMuxDir, logfile), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -33,12 +50,11 @@ func NewSiaMux(persistDir, address string) (*siamux.SiaMux, error) {
 
 	// create a siamux, if the host's persistence file is at v120 we want to
 	// recycle the host's key pair to use in the siamux
-	pubKey, privKey, compat := compatLoadKeysFromHost(persistDir)
+	pubKey, privKey, compat := compatLoadKeysFromHost(siaDir)
 	if compat {
-		return siamux.CompatV1421NewWithKeyPair(address, logger, persistDir, privKey, pubKey)
+		return siamux.CompatV1421NewWithKeyPair(address, logger, siaMuxDir, privKey, pubKey)
 	}
-
-	return siamux.New(address, logger, persistDir)
+	return siamux.New(address, logger, siaMuxDir)
 }
 
 // compatLoadKeysFromHost will try and load the host's keypair from its
@@ -72,4 +88,39 @@ func compatLoadKeysFromHost(persistDir string) (pubKey mux.ED25519PublicKey, pri
 
 	compat = false
 	return
+}
+
+// compatV143MigrateSiaMux migrates the SiaMux from the root dir of the sia data
+// dir to the siamux subdir.
+func compatV143MigrateSiaMux(siaMuxDir, siaDir string) error {
+	oldPath := filepath.Join(siaDir, "siamux.json")
+	newPath := filepath.Join(siaMuxDir, "siamux.json")
+	oldPathTmp := filepath.Join(siaDir, "siamux.json_temp")
+	newPathTmp := filepath.Join(siaMuxDir, "siamux.json_temp")
+	oldPathLog := filepath.Join(siaDir, logfile)
+	newPathLog := filepath.Join(siaMuxDir, logfile)
+	_, errOld := os.Stat(oldPath)
+	_, errNew := os.Stat(newPath)
+
+	// Migrate if old file exists but no file at new location exists yet.
+	migrated := false
+	if errOld == nil && os.IsNotExist(errNew) {
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return err
+		}
+		migrated = true
+	}
+	// If no migration is necessary we are done.
+	if !migrated {
+		return nil
+	}
+	// If we migrated the main files, also migrate the tmp files if available.
+	if err := os.Rename(oldPathTmp, newPathTmp); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	// Also migrate the log file.
+	if err := os.Rename(oldPathLog, newPathLog); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

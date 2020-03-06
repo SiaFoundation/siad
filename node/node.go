@@ -226,17 +226,22 @@ func (n *Node) Close() (err error) {
 	return err
 }
 
-// New will create a new test node. The inputs to the function are the
-// respective 'New' calls for each module. We need to use this awkward method
-// of initialization because the siatest package cannot import any of the
-// modules directly (so that the modules may use the siatest package to test
+// New will create a new node. The inputs to the function are the respective
+// 'New' calls for each module. We need to use this awkward method of
+// initialization because the siatest package cannot import any of the modules
+// directly (so that the modules may use the siatest package to test
 // themselves).
 func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
-	dir := params.Dir
+	// Make sure the path is an absolute one.
+	dir, err := filepath.Abs(params.Dir)
 	errChan := make(chan error, 1)
+	if err != nil {
+		errChan <- err
+		return nil, errChan
+	}
 
 	// Create the siamux.
-	mux, err := modules.NewSiaMux(dir, params.SiaMuxAddress)
+	mux, err := modules.NewSiaMux(filepath.Join(dir, modules.SiaMuxDir), dir, params.SiaMuxAddress)
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
 		return nil, errChan
@@ -493,6 +498,11 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			return nil, c
 		}
 		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterDeps)
+		if err := modules.PeekErr(errChanRenter); err != nil {
+			c <- err
+			close(c)
+			return nil, c
+		}
 		go func() {
 			c <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
 			close(c)

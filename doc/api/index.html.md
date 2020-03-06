@@ -2537,7 +2537,7 @@ period is over, the contracts will be renewed and the spending will be reset.
 
 **renewwindow** | blocks  
 The renew window is how long the user has to renew their contracts. At the end
-of the period, all of the contracts expire. The contracts need to be renewewd
+of the period, all of the contracts expire. The contracts need to be renewed
 before they expire, otherwise the user will lose all of their files. The renew
 window is the window of time at the end of the period during which the renter
 will renew the users contracts. For example, if the renew window is 1 week long,
@@ -3157,6 +3157,11 @@ Location where the directory will reside in the renter on the network. The path
 must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
+**root** | bool
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.  
+
 ### Query String Parameters
 ### REQUIRED
 **action** | string  
@@ -3611,6 +3616,12 @@ only the entry in the renter. Will return an error if the target is a folder.
 ### REQUIRED
 **siapath** | string  
 Path to the file in the renter on the network.
+
+### OPTIONAL
+ **root** | bool
+ Whether or not to treat the siapath as being relative to the user's home
+ directory. If this field is not set, the siapath will be interpreted as
+ relative to 'home/user/'.  
 
 ### Response
 
@@ -4101,14 +4112,67 @@ See [standard responses](#standard-responses).
 
 # Skynet
 
+## /skynet/blacklist [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
+```
+
+returns the list of merkleroots that are blacklisted.
+
+### JSON Response
+```go
+{
+  "blacklist": {
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+  }
+}
+```
+**blacklist** | Hashes  
+The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
+
+## /skynet/blacklist [POST]
+> curl example
+```go
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+```
+
+updates the list of skylinks that should be blacklisted from Skynet. This
+endpoint can be used to both add and remove skylinks from the blacklist.
+
+### Path Parameters
+### REQUIRED
+At least one of the following fields needs to be non empty.
+
+**add** | array of strings  
+add is an array of skylinks that should be added to the blacklisted
+
+**remove** | array of strings  
+remove is an array of skylinks that should be removed from the blacklist
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /skynet/skylink/*skylink* [GET]
 > curl example  
 
 > Stream the whole file.  
 
 ```bash
-# TODO: Update the link after the format is finalized
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/AAAtQI8_78U_ytrCBuhgBdF4lcO6-ehGt8m4f9MsrqlrHA"
+# entire file
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+
+# directory
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/folder"
+
+# sub file
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg/folder/file.txt"
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
@@ -4117,7 +4181,9 @@ received.
 ### Path Parameters 
 ### Required
 **skylink** | string  
-The skylink that should be downloaded.
+The skylink that should be downloaded. The skylink can contain an optional path.
+This path can specify a directory or a particular file. If specified, only that
+file or directory will be returned.
 
 ### Query String Parameters
 ### OPTIONAL
@@ -4127,12 +4193,36 @@ If 'attachment' is set to true, the Content-Disposition http header will be set
 to 'attachment' instead of 'inline'. This will cause web browsers to download
 the file as though it is an attachment instead of rendering it.
 
+**format** | string  
+If 'format' is set, the skylink can point to a directory and it will return the
+data inside that directory. Format will decide the format in which it is
+returned. Currently we only support 'concat', which will return the concatenated
+data of all subfiles in that directory.
+
 ### Response Header
 
 **Skynet-File-Metadata** | SkyfileMetadata
 
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
-json object which matches the modules.SkyfileMetadata struct.
+json object which matches the modules.SkyfileMetadata struct. If a path was
+supplied, this metadata will be relative to the given path.
+
+> Skynet-File-Metadata Response Header Example 
+```go
+{
+"mode":               // os.FileMode
+"filename": "folder", // string
+"subfiles": [         // []SkyfileSubfileMetadata | null
+  {
+  "mode":         640                 // os.FileMode
+  "filename":     "folder/file1.txt", // string
+  "contenttype":  "text/plain",       // string
+  "offset":       0,                  // uint64
+  "len":          6                   // uint64
+  }
+]
+}
+```
 
 ### Response Body
 
@@ -4141,10 +4231,10 @@ The response body is the raw data for the file.
 ## /skynet/skyfile/*siapath* [POST]
 > curl example  
 
-```bash
-# This command uploads the file 'myImage.png' to the Sia folder
-# 'var/skynet/images/myImage.png'. Users who download the file will see the name
-# name 'image.png'.
+```go
+// This command uploads the file 'myImage.png' to the Sia folder
+// 'var/skynet/images/myImage.png'. Users who download the file will see the name
+// 'image.png'.
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?name=image.png" --data-binary @myImage.png
 ```
 
@@ -4190,7 +4280,7 @@ presented a file with this mode. If no mode is set, the default of 0644 will be
 used.
 
 **root** | bool  
-Whether or not to tread the siapath as being relative to the root directory. If
+Whether or not to treat the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
@@ -4198,12 +4288,19 @@ this field is not set, the siapath will be interpreted as relative to
 ### OPTIONAL
 **Content-Disposition** | string  
 If the filename is set in the Content-Disposition field, that filename will be
-used as the filename of the object being uploaded. If both the content
-disposition are set, and the query string parameter are set for the filename,
-the query string parameter will get priority.
+used as the filename of the object being uploaded. Note that this header is only
+taken into consideration when using a multipart form upload.
 
 For more details on setting Content-Disposition:
 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+
+**Skynet-Disable-Force** | bool  
+This request header allows overruling the behaviour of the `force` parameter
+that can be passed in through the query string parameters. This header is useful
+for Skynet portal operators that would like to have some control over the
+requests that are being passed to siad. To avoid having to parse query string
+parameters and overrule them that way, this header can be set to disable the
+force flag and disallow overwriting the file at the given siapath.
 
 ### JSON Response
 > JSON Response Example

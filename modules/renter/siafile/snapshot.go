@@ -254,7 +254,7 @@ func (sf *SiaFile) readlockSnapshot(sp modules.SiaPath, chunks []chunk) (*Snapsh
 			allPieces = allPieces[len(chunk.Pieces[pieceIndex]):]
 			for i, piece := range chunk.Pieces[pieceIndex] {
 				pieces[pieceIndex][i] = Piece{
-					HostPubKey: sf.pubKeyTable[piece.HostTableOffset].PublicKey,
+					HostPubKey: sf.hostKey(piece.HostTableOffset).PublicKey,
 					MerkleRoot: piece.MerkleRoot,
 				}
 			}

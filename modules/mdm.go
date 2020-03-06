@@ -27,9 +27,14 @@ var (
 )
 
 const (
+	// RPCIHasSectorLen is the expected length of the 'Args' of a HasSector
+	// instruction.
+	RPCIHasSectorLen = 8
+
 	// RPCIReadSectorLen is the expected length of the 'Args' of a ReadSector
-	// Instruction.
+	// instruction.
 	RPCIReadSectorLen = 25
+
 	// RPCIAppendLen is the expected length of the 'Args' of an Append
 	// instructon.
 	RPCIAppendLen = 9
@@ -38,6 +43,10 @@ const (
 var (
 	// SpecifierAppend is the specifier for the Append RPC.
 	SpecifierAppend = InstructionSpecifier{'A', 'p', 'p', 'e', 'n', 'd'}
+
+	// SpecifierHasSector is the specifier for the ReadSector RPC.
+	SpecifierHasSector = InstructionSpecifier{'H', 'a', 's', 'S', 'e', 'c', 't', 'o', 'r'}
+
 	// SpecifierReadSector is the specifier for the ReadSector RPC.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
 )

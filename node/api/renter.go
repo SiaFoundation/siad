@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -255,7 +256,34 @@ type (
 		MerkleRoot crypto.Hash `json:"merkleroot"`
 		Bitfield   uint16      `json:"bitfield"`
 	}
+
+	// SkynetBlacklistGET contains the information queried for the
+	// /skynet/blacklist GET endpoint
+	SkynetBlacklistGET struct {
+		Blacklist []crypto.Hash `json:"blacklist"`
+	}
+
+	// SkynetBlacklistPOST contains the information needed for the
+	// /skynet/blacklist POST endpoint to be called
+	SkynetBlacklistPOST struct {
+		Add    []string `json:"add"`
+		Remove []string `json:"remove"`
+	}
 )
+
+// Returns the boolean value of the 'root' parameter of req or an error if
+// it exists but is not parsable as bool.
+func isCalledWithRootFlag(req *http.Request) (bool, error) {
+	rootStr := req.FormValue("root")
+	if rootStr == "" {
+		return false, nil
+	}
+	root, err := strconv.ParseBool(rootStr)
+	if err != nil {
+		return false, errors.New("unable to parse 'root' arg: " + err.Error())
+	}
+	return root, nil
+}
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
 // prefix by the user's home directory.
@@ -1358,20 +1386,13 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 
-	// Determine whether the user is requesting a user siapath, or a root
-	// siapath.
-	var root bool
-	rootStr := req.FormValue("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
-			return
-		}
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
-
-	// Rebase the users input to the user folder if the user is requesting a
-	// user siapath.
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
 	if !root {
 		siaPath, err = rebaseInputSiaPath(siaPath)
 		if err != nil {
@@ -1555,11 +1576,22 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
+
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	err = api.renter.DeleteFile(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
@@ -1724,12 +1756,85 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	return dp, nil
 }
 
+// skynetBlacklistHandlerGET handles the API call to get the list of
+// blacklisted skylinks
+func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the Blacklist
+	blacklist, err := api.renter.Blacklist()
+	if err != nil {
+		WriteError(w, Error{"unable to get the blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetBlacklistGET{
+		Blacklist: blacklist,
+	})
+}
+
+// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
+func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters
+	var params SkynetBlacklistPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check for nil input
+	if len(append(params.Add, params.Remove...)) == 0 {
+		WriteError(w, Error{"no skylinks submitted"}, http.StatusBadRequest)
+		return
+	}
+
+	// Convert to Skylinks
+	addSkylinks := make([]modules.Skylink, len(params.Add))
+	for i, addStr := range params.Add {
+		var skylink modules.Skylink
+		err := skylink.LoadString(addStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		addSkylinks[i] = skylink
+	}
+	removeSkylinks := make([]modules.Skylink, len(params.Remove))
+	for i, removeStr := range params.Remove {
+		var skylink modules.Skylink
+		err := skylink.LoadString(removeStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+			return
+		}
+		removeSkylinks[i] = skylink
+	}
+
+	// Update the Skynet Blacklist
+	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
+	if err != nil {
+		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")
-	var skylink modules.Skylink
+	strLink = strings.TrimPrefix(strLink, "/")
 
+	// Parse out optional path to a subfile
+	path := "/" // default to root
+	splits := strings.SplitN(strLink, "?", 2)
+	splits = strings.SplitN(splits[0], "/", 2)
+	if len(splits) > 1 {
+		path = fmt.Sprintf("/%s", splits[1])
+	}
+
+	// Parse skylink
+	var skylink modules.Skylink
 	err := skylink.LoadString(strLink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
@@ -1754,30 +1859,76 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Fetch the stream.
+	// Parse the format.
+	var format string
+	formatStr := strings.ToLower(queryForm.Get("format"))
+	if formatStr != "" {
+		if formatStr != "concat" {
+			WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat'"}, http.StatusBadRequest)
+			return
+		}
+		format = formatStr
+	}
+
+	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
-	// Convert the metadata to a string.
+	// If path is different from the root, limit the streamer and return the
+	// appropriate subset of the metadata. This is done by wrapping the streamer
+	// so it only returns the files defined in the subset of the metadata.
+	if path != "/" {
+		var dir bool
+		var offset, size uint64
+		metadata, dir, offset, size = metadata.ForPath(path)
+		if len(metadata.Subfiles) == 0 {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
+			return
+		}
+		if dir && format == "" {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
+			return
+		}
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
+	} else {
+		if len(metadata.Subfiles) > 1 && format == "" {
+			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Encode the metadata
 	encMetadata, err := json.Marshal(metadata)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
+	// Only set the Content-Type header when the metadata defines one, if we
+	// were to set the header to an empty string, it would prevent the http
+	// library from sniffing the file's content type.
+	if metadata.ContentType() != "" {
+		w.Header().Set("Content-Type", metadata.ContentType())
+	}
+
 	// Set Content-Disposition header, if 'attachment' is true, set the
 	// disposition-type to attachment, otherwise we inline it.
 	var cdh string
 	if attachment {
-		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(metadata.Filename))
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
 	} else {
-		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(metadata.Filename))
+		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
 	}
 	w.Header().Set("Content-Disposition", cdh)
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
@@ -1824,21 +1975,41 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// Check whether force upload is allowed. Skynet portals might disallow
+	// passing the force flag, if they want to they can set overrule the force
+	// flag by passing in the 'Skynet-Disable-Force' header
+	allowForce := true
+	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	if strDisableForce != "" {
+		disableForce, err := strconv.ParseBool(strDisableForce)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'Skynet-Disable-Force' header: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		allowForce = !disableForce
+	}
+
 	// Check whether existing file should be overwritten
 	force := false
-	if f := queryForm.Get("force"); f != "" {
-		force, err = strconv.ParseBool(f)
+	if strForce := queryForm.Get("force"); strForce != "" {
+		force, err = strconv.ParseBool(strForce)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
 
+	// Notify the caller force has been disabled
+	if !allowForce && force {
+		WriteError(w, Error{"'force' has been disabled on this node" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
 		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse basechunkrerdundancy: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"unable to parse basechunkredundancy: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -1899,14 +2070,34 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Check whether force upload is allowed. Skynet portals might disallow
+	// passing the force flag, if they want to they can set overrule the force
+	// flag by passing in the 'Skynet-Disable-Force' header
+	allowForce := true
+	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	if strDisableForce != "" {
+		disableForce, err := strconv.ParseBool(strDisableForce)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'Skynet-Disable-Force' header: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		allowForce = !disableForce
+	}
+
 	// Check whether existing file should be overwritten
 	force := false
-	if f := queryForm.Get("force"); f != "" {
-		force, err = strconv.ParseBool(f)
+	if strForce := queryForm.Get("force"); strForce != "" {
+		force, err = strconv.ParseBool(strForce)
 		if err != nil {
 			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
+	}
+
+	// Notify the caller force has been disabled
+	if !allowForce && force {
+		WriteError(w, Error{"'force' has been disabled on this node"}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether the redundancy has been set.
@@ -1918,51 +2109,79 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Call the renter to upload the file and create a skylink.
+	// Parse the filename from the query params.
 	filename := queryForm.Get("filename")
-	modeStr := queryForm.Get("mode")
-	var mode os.FileMode
-	if modeStr != "" {
-		_, err := fmt.Sscanf(modeStr, "%o", &mode)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to parse file mode: %v", err)}, http.StatusBadRequest)
-			return
-		}
-	}
 
-	// If there is no filename provided as a query param, check the content
-	// disposition field.
-	if filename == "" {
-		header := w.Header()
-		_, params, err := mime.ParseMediaType(header.Get("Content-Disposition"))
-		// Ignore any errors.
-		if err == nil {
-			filename = params[filename]
-		}
-	}
-	if filename == "" {
-		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+	// Parse Content-Type from the request headers
+	ct := req.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed parsing Content-Type header: %v", err)}, http.StatusBadRequest)
 		return
 	}
 
-	lfm := modules.SkyfileMetadata{
-		Filename: filename,
-		Mode:     mode,
-	}
+	// Build the upload parameters
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		Force:               force,
 		BaseChunkRedundancy: redundancy,
-
-		FileMetadata: lfm,
 	}
+
+	// Build the Skyfile metadata from the request
+	if strings.HasPrefix(mediaType, "multipart/form-data") {
+		subfiles, reader, err := skyfileParseMultiPartRequest(req)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
+			return
+		}
+
+		// Use the filename of the first subfile if it's not passed as query
+		// string parameter and there's only one subfile.
+		if filename == "" && len(subfiles) == 1 {
+			for _, sf := range subfiles {
+				filename = sf.Filename
+				break
+			}
+		}
+
+		lup.Reader = reader
+		lup.FileMetadata = modules.SkyfileMetadata{
+			Filename: filename,
+			Subfiles: subfiles,
+		}
+	} else {
+		// Parse out the filemode
+		modeStr := queryForm.Get("mode")
+		var mode os.FileMode
+		if modeStr != "" {
+			_, err := fmt.Sscanf(modeStr, "%o", &mode)
+			if err != nil {
+				WriteError(w, Error{"unable to parse mode: " + err.Error()}, http.StatusBadRequest)
+				return
+			}
+		}
+
+		lup.Reader = req.Body
+		lup.FileMetadata = modules.SkyfileMetadata{
+			Mode:     mode,
+			Filename: filename,
+		}
+	}
+
+	// Ensure we have a filename
+	if lup.FileMetadata.Filename == "" {
+		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		return
+	}
+
+	// Enable CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
-		lup.Reader = req.Body
 		skylink, err := api.renter.UploadSkyfile(lup)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
@@ -1992,11 +2211,72 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
 		return
 	}
+
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
 		MerkleRoot: skylink.MerkleRoot(),
 		Bitfield:   skylink.Bitfield(),
 	})
+}
+
+// skyfileParseMultiPartRequest parses the given request and returns the
+// subfiles found in the multipart request body, alongside with an io.Reader
+// containing all of the files.
+func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, error) {
+	subfiles := make(modules.SkyfileSubfiles)
+
+	// Parse the multipart form
+	err := req.ParseMultipartForm(32 << 20) // 32MB max memory
+	if err != nil {
+		return subfiles, nil, errors.AddContext(err, "failed parsing multipart form")
+	}
+
+	// Parse out all of the multipart file headers
+	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
+	if len(mpfHeaders) == 0 {
+		return subfiles, nil, errors.New("could not find multipart file")
+	}
+
+	// If there are multiple, treat the entire upload as one with all separate
+	// files being subfiles. This is used for uploading a directory to Skynet.
+	readers := make([]io.Reader, len(mpfHeaders))
+	var offset uint64
+	for i, fh := range mpfHeaders {
+		f, err := fh.Open()
+		if err != nil {
+			return subfiles, nil, errors.AddContext(err, "could not open multipart file")
+		}
+		readers[i] = f
+
+		// parse mode from multipart header
+		modeStr := fh.Header.Get("Mode")
+		var mode os.FileMode
+		if modeStr != "" {
+			_, err := fmt.Sscanf(modeStr, "%o", &mode)
+			if err != nil {
+				return subfiles, nil, errors.AddContext(err, "failed to parse file mode")
+			}
+		}
+
+		// parse filename from multipart
+		filename := fh.Filename
+		if filename == "" {
+			return subfiles, nil, errors.New("no filename provided")
+		}
+
+		// parse content type from multipart header
+		contentType := fh.Header.Get("Content-Type")
+
+		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
+			Mode:        mode,
+			Filename:    filename,
+			ContentType: contentType,
+			Offset:      offset,
+			Len:         uint64(fh.Size),
+		}
+		offset += uint64(fh.Size)
+	}
+	return subfiles, io.MultiReader(readers...), nil
 }
 
 // renterStreamHandler handles downloads from the /renter/stream endpoint
@@ -2233,14 +2513,10 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	var err error
 
 	// Check whether the user is requesting the directory from the root path.
-	var root bool
-	rootStr := req.FormValue("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' arg"}, http.StatusBadRequest)
-			return
-		}
+	root, err := isCalledWithRootFlag(req)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	str := ps.ByName("siapath")
@@ -2297,8 +2573,8 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 	return
 }
 
-// renterDirHandlerPOST handles the API call to create, delete and rename a
-// directory
+// renterDirHandlerPOST handles POST requests to /renter/dir/:siapath?action=<>
+// in order to create, delete, and rename a directory
 func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse action
 	action := req.FormValue("action")
@@ -2321,11 +2597,22 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
+
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	if action == "create" {
 		// Call the renter to create directory
 		err := api.renter.CreateDir(siaPath, mode)
