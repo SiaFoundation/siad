@@ -42,8 +42,7 @@ func TestInstructionAppend(t *testing.T) {
 	dataLen := uint64(len(programData))
 	// Execute it.
 	so := newTestStorageObligation(true)
-	snapshot := so // TestStorageObligation implements the snapshot interface
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, snapshot, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
