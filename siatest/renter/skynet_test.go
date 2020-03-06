@@ -349,7 +349,8 @@ func TestSkynet(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Pin the file again but without specifying the BaseChunkRedundancy.
-	largePinSiaPath, err = modules.NewSiaPath("testLargePinPath")
+	// Use a different Siapath to avoid path conflict.
+	largePinSiaPath, err = modules.NewSiaPath("testLargePinPath2")
 	if err != nil {
 		t.Fatal(err)
 	}
