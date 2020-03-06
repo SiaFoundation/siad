@@ -47,7 +47,8 @@ variables:
     ./siatest/miner
     ./siatest/transactionpool
     ./siatest/wallet
-  siatest_renter_pkgs: "./siatest/renter"
+  siatest_renter_pkgs: >-
+    ./siatest/renter
   siatest_renter_sub_pkgs: >-
     ./siatest/renter/contractor
     ./siatest/renter/hostdb
