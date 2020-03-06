@@ -8,6 +8,8 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -27,11 +29,9 @@ const (
 	// RefCounterHeaderSize is the size of the header in bytes
 	RefCounterHeaderSize = 8
 
-	// we initialise the counters with this relatively high value, so we don't run
-	// the risk of the sectors being accidentally marked as garbage if someone
-	// deletes a number of backups before we've been able to get the actual
-	// reference count value
-	initialCounterValue = 1024
+	// initialCounterValue is the value with which we initialize the counter
+	// this value will be later updated to reflect the real number of references
+	initialCounterValue = 1
 )
 
 type (
@@ -81,15 +81,6 @@ func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
 		return 0, errors.New("sector count underflow")
 	}
 	rc.sectorCounts[secNum]--
-	if rc.sectorCounts[secNum] == 0 {
-		if err := rc.managedSwap(secNum, uint64(len(rc.sectorCounts)-1)); err != nil {
-			return 0, errors.AddContext(err, "failed to swap sectors")
-		}
-		if err := rc.managedTruncate(1); err != nil {
-			return 0, errors.AddContext(err, "failed to truncate")
-		}
-		return 0, nil
-	}
 	return rc.sectorCounts[secNum], rc.writeCount(secNum, rc.sectorCounts[secNum])
 }
 
@@ -115,7 +106,7 @@ func callSwap(rc *RefCounter, i, j uint64) error {
 
 // managedSwap swaps two sectors. This affects both the contract file and reference counters in memory and on disk.
 func (rc *RefCounter) managedSwap(first, second uint64) error {
-	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
 	}
@@ -159,7 +150,7 @@ func (rc *RefCounter) managedTruncate(n uint64) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	// truncate the file on disk
-	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
 	}
@@ -179,7 +170,7 @@ func (rc *RefCounter) managedTruncate(n uint64) error {
 
 // writeCount stores the given sector count on disk
 func (rc *RefCounter) writeCount(secNum uint64, c uint16) error {
-	f, err := os.OpenFile(rc.filepath, os.O_RDWR, 0600)
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
 	}

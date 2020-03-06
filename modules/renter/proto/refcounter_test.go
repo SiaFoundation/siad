@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -136,7 +138,7 @@ func testCallSwap(rc *RefCounter, filepath string) error {
 		return errors.New("failed to swap counts in memory")
 	}
 	// check if we properly swapped on disk
-	f, err := os.OpenFile(filepath, os.O_RDWR, 0600)
+	f, err := os.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
 	}
