@@ -317,11 +317,11 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		// the start.
 		length, err := streamer.Seek(0, io.SeekEnd)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "serveTar: failed to seek to end of skyfile")
 		}
 		_, err = streamer.Seek(0, io.SeekStart)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "serveTar: failed to seek to start of skyfile")
 		}
 		// Construct the SkyfileSubfileMetadata.
 		files = append(files, modules.SkyfileSubfileMetadata{
@@ -1917,9 +1917,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse the format.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
-	if format == modules.SkyfileFormatNotSpecified {
-		// not specified
-	} else if format != modules.SkyfileFormatTar &&
+	if format != modules.SkyfileFormatNotSpecified &&
+		format != modules.SkyfileFormatTar &&
 		format != modules.SkyfileFormatConcat &&
 		format != modules.SkyfileFormatTarGz {
 		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar' and 'targz'"}, http.StatusBadRequest)
@@ -1945,7 +1944,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-		if dir && format == "" {
+		if dir && format == modules.SkyfileFormatNotSpecified {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
