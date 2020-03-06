@@ -4166,7 +4166,7 @@ responses](#standard-responses).
 curl -I -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
 ```
 
-This curl command requests performs a HEAD request that fetches the headers for
+This curl command performs a HEAD request that fetches the headers for
 the given skylink. These headers are identical to the ones that would be
 returned if the request had been a GET request.
 
