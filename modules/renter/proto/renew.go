@@ -25,9 +25,9 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	// Choose the appropriate protocol depending on the host version.
 	// TODO: comment the code back in to enable the new renewal code on the
 	// renter side.
-	if build.VersionCmp(params.Host.Version, "1.4.3") >= 0 && !cs.deps.Disrupt("RenewWithoutClear") {
-		return cs.newRenewAndClear(oldContract, params, txnBuilder, tpool, hdb, cancel)
-	}
+	//	if build.VersionCmp(params.Host.Version, "1.4.5") >= 0 && !cs.deps.Disrupt("RenewWithoutClear") {
+	//		return cs.newRenewAndClear(oldContract, params, txnBuilder, tpool, hdb, cancel)
+	//	}
 	return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
 }
 
