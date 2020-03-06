@@ -2567,19 +2567,22 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 	// Collect all filenames under this directory with their relative paths.
 	counterUploaded := 0
-	wg := sync.WaitGroup{}
+	var wg sync.WaitGroup
 	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			die(fmt.Sprintf("Failed to process path %s: ", path), err)
+		}
 		if info.IsDir() {
 			return nil
 		}
 		wg.Add(1)
 		go func(filename string) {
+			defer wg.Done()
 			// get only the filename and path, relative to the original destSiaPath
 			// in order to figure out where to put the file
 			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
 			skynetuploadfile(filename, newDestSiaPath)
 			counterUploaded++
-			wg.Done()
 		}(path)
 		return nil
 	})
@@ -2587,8 +2590,8 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", counterUploaded)
 }
 
-// handles the upload of a single file
-// it should only be called from skynetuploadcmd
+// skynetuploadfile handles the upload of a single file. It should only be
+// called from skynetuploadcmd
 func skynetuploadfile(sourcePath, destSiaPath string) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
@@ -2606,7 +2609,7 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
-	// Do not process directories. Those should be processes by skynetuploadcmd.
+	// Do not process directories. Those should be processed by skynetuploadcmd.
 	if fi.IsDir() {
 		return
 	}
