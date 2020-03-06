@@ -180,9 +180,8 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 func (p *Program) managedFinalize(so StorageObligation) error {
 	// Make sure that the contract is locked unless the program we're executing
 	// is a readonly program.
-	if !p.readOnly() && so.Locked() {
-		err := errors.New("contract needs to be locked for a program with one or more write instructions")
-		return errors.Compose(err, p.staticData.Close())
+	if !p.readOnly() && !so.Locked() {
+		return errors.New("contract needs to be locked for a program with one or more write instructions")
 	}
 
 	// Compute the memory cost of finalizing the program.

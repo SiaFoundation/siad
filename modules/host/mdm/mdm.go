@@ -17,16 +17,13 @@ type StorageObligation interface {
 }
 
 // StorageObligationSnapshot defines an interface the snapshot must adhere to in
-// order for the mdmd to be able to execute a program.
+// order for the mdm to be able to execute a program.
 type StorageObligationSnapshot interface {
 	// ContractSize returns the current contract size of the storage obligation.
-	// It will return an error if the underlying SO is not locked.
 	ContractSize() uint64
-	// MerkleRoot returns the filecontract's current root. It will return
-	// an error if the underlying SO is not locked.
+	// MerkleRoot returns the filecontract's current root.
 	MerkleRoot() crypto.Hash
-	// SectorRoots returns the roots of the storage obligation. It will return
-	// an error if the underlying SO is not locked.
+	// SectorRoots returns the roots of the storage obligation.
 	SectorRoots() []crypto.Hash
 }
 
