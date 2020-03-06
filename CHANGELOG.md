@@ -61,7 +61,7 @@ Latest:
  - Split out renter siatests into 2 groups for faster pipelines
  -
  - Add HEAD request support for Skylink route
- -
+ - Add timeout parameter to Skylink route
  -
  -
  -

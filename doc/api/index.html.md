@@ -4223,6 +4223,12 @@ data inside that directory. Format will decide the format in which it is
 returned. Currently we only support 'concat', which will return the concatenated
 data of all subfiles in that directory.
 
+**timeout** | int  
+If 'timeout' is set, the download will fail if the Skyfile can not be retrieved 
+before it expires. Note that this timeout does not cover the actual download 
+time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
+value of 0 will be ignored.
+
 ### Response Header
 
 **Skynet-File-Metadata** | SkyfileMetadata
