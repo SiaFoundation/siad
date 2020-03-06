@@ -11,9 +11,14 @@ Version History
 Latest:
 ### v1.4.4
 **Key Updates**
- - Add ability to blacklist skylinks by merkleroot
+ - Add a delay when modifying large contracts on hosts to prevent hosts from
+   becoming unresponsive due to massive disk i/o
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
+ - 
+ - 
+ - 
+ - Add ability to blacklist skylinks by merkleroot
  - Uploading resumes more quickly after restart
  -
  -
@@ -50,6 +55,17 @@ Latest:
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
+ - 
+ - 
+ - 
+ - 
+
+**Other**
+ - Split out renter siatests into 2 groups for faster pipelines 
+ - 
+ - 
+ - 
+ - 
  -
  -
  - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
@@ -60,16 +76,6 @@ Latest:
    to safely acquire the host pubkey.
  -
  -
-
-**Other**
- - Split out renter siatests into 2 groups for faster pipelines
- -
- -
- -
- -
- -
- -
-
 
 ### v1.4.3
 **Key Updates**
