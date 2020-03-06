@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// SkyKeyIDLen is the length of a SkykeyID
+	// SkykeyIDLen is the length of a SkykeyID
 	SkykeyIDLen = 16
 
 	// MaxKeyNameLen is the maximum length of a skykey's name.
