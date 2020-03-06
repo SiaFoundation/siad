@@ -229,10 +229,12 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 	newWorker.callQueueJobDownloadByRoot(jdbr)
 }
 
-// threadedSetTimeout sets the given timeout on the project. If the project does
-// not complete before the timeout expires, it will forcefully complete the
-// project and indicate the root has not been found in due time.
+// threadedSetTimeout sets a timeout on the project. If the root is not found
+// before the timeout expires, the project is finished.
 func (pdbr *projectDownloadByRoot) threadedSetTimeout(timeout time.Duration) {
+	if timeout == 0 {
+		return
+	}
 	if err := pdbr.tg.Add(); err != nil {
 		return
 	}
@@ -244,7 +246,7 @@ func (pdbr *projectDownloadByRoot) threadedSetTimeout(timeout time.Duration) {
 	case <-pdbr.completeChan:
 	case <-time.After(timeout):
 		pdbr.mu.Lock()
-		pdbr.rootFound = true
+		pdbr.rootFound = true // Ensure workers do not needlessly perform the download
 		pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after: %vs", timeout.Seconds())))
 		pdbr.mu.Unlock()
 		close(pdbr.completeChan)
@@ -300,14 +302,11 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		w.callQueueJobDownloadByRoot(jdbr)
 	}
 
-	// Set timeout, if the project does not complete before the timeout expires,
-	// the project will forcefully complete.
-	if timeout > 0 {
-		if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
-			timeout = time.Duration(1) // trigger instant timeout
-		}
-		go pdbr.threadedSetTimeout(timeout)
+	// Apply the timeout to the project. A timeout of 0 will be ignored.
+	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
+		timeout = time.Duration(1) // instant timeout
 	}
+	go pdbr.threadedSetTimeout(timeout)
 
 	// Block until the project has completed.
 	<-pdbr.completeChan
