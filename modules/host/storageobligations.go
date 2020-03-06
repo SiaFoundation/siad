@@ -262,6 +262,8 @@ func (mso *MDMStorageObligation) Locked() bool {
 
 // Update satisfies the mdm.StorageObligation interface.
 func (mso *MDMStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
+	mso.h.mu.Lock()
+	defer mso.h.mu.Unlock()
 	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained)
 }
 
