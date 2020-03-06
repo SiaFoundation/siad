@@ -37,6 +37,7 @@ variables:
     ./modules/transactionpool
     ./persist
     ./sync
+    ./skykey
     ./types
   siatest_pkgs: >-
     ./siatest
@@ -128,7 +129,7 @@ legacy-tests:
     key: legacy-cache
     paths:
       - .cache
-  script: 
+  script:
     - make test-long run=. pkgs="$legacy_pkgs"
 
 package-tests:
@@ -138,8 +139,8 @@ package-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs="$package_pkgs"
-    
+    - make test-long run=. pkgs="$package_pkgs"    
+
 siatest-tests:
   <<: *default_test_params
   cache:
@@ -173,12 +174,12 @@ siatest-renter-sub-tests:
 
 legacy-tests-nightly:
   <<: *default_nightly_params
-  script: 
+  script:
     - make test-vlong run=. pkgs="$legacy_pkgs"
 
 package-tests-nightly:
   <<: *default_nightly_params
-  script: 
+  script:
     - make test-vlong run=. pkgs="$package_pkgs"
 
 siatest-tests-nightly:

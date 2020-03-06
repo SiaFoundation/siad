@@ -123,14 +123,14 @@ func (i *instructionReadSector) Cost() (types.Currency, types.Currency, error) {
 	if err != nil {
 		return types.ZeroCurrency, types.ZeroCurrency, err
 	}
-	cost, refund := ReadCost(i.staticState.priceTable, length)
+	cost, refund := modules.MDMReadCost(i.staticState.priceTable, length)
 	return cost, refund, nil
 }
 
 // Memory returns the memory allocated by the 'ReadSector' instruction beyond
 // the lifetime of the instruction.
 func (i *instructionReadSector) Memory() uint64 {
-	return ReadMemory()
+	return modules.MDMReadMemory()
 }
 
 // ReadOnly for the 'ReadSector' instruction is 'true'.
@@ -140,5 +140,5 @@ func (i *instructionReadSector) ReadOnly() bool {
 
 // Time returns the execution time of a 'ReadSector' instruction.
 func (i *instructionReadSector) Time() uint64 {
-	return TimeReadSector
+	return modules.MDMTimeReadSector
 }
