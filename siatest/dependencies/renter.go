@@ -6,6 +6,17 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// DependencyTimeoutProjectDownloadByRoot immediately times out projects that
+// try to download a sector by its root.
+type DependencyTimeoutProjectDownloadByRoot struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt prevents SiafileEntries in the upload code from being closed.
+func (d *DependencyTimeoutProjectDownloadByRoot) Disrupt(s string) bool {
+	return s == "timeoutProjectDownloadByRoot"
+}
+
 // DependencyDisableCloseUploadEntry prevents SiaFileEntries in the upload code
 // from being closed.
 type DependencyDisableCloseUploadEntry struct {

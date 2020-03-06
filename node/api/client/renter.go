@@ -767,8 +767,8 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
 // are returned if the skyfile were to be requested using the SkynetSkylinkGet
 // method.
-func (c *Client) SkynetSkylinkHead(skylink string) (int, http.Header, error) {
-	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+func (c *Client) SkynetSkylinkHead(skylink string, timeout int) (int, http.Header, error) {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?timeout=%d", skylink, timeout)
 	return c.head(getQuery)
 }
 

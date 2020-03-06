@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -20,8 +21,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -1191,7 +1194,7 @@ func TestSkynetHeadRequest(t *testing.T) {
 	// Perform a GET and HEAD request and compare the response headers and
 	// content length.
 	data, metadata, err := r.SkynetSkylinkGet(skylink)
-	_, header, err := r.SkynetSkylinkHead(skylink)
+	_, header, err := r.SkynetSkylinkHead(skylink, 0)
 
 	// Verify Skynet-File-Metadata
 	strMetadata := header.Get("Skynet-File-Metadata")
@@ -1238,8 +1241,24 @@ func TestSkynetHeadRequest(t *testing.T) {
 	}
 
 	// Perform a HEAD request for a skylink that does not exist
-	status, header, err := r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
-	if status != http.StatusInternalServerError {
+	status, header, err := r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+
+	// Create a renter with a timeout dependency injected
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyTimeoutProjectDownloadByRoot{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Perform the same HEAD request but now expect it to timeout and thus
+	// return a 404.
+	status, _, err = r.SkynetSkylinkHead(skylink, 1)
+	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
 }

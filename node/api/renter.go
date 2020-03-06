@@ -1870,10 +1870,26 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		format = formatStr
 	}
 
+	// Parse the timeout.
+	var timeout time.Duration
+	timeoutStr := strings.ToLower(queryForm.Get("timeout"))
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Contains(err, renter.ErrRootNotFound) {
+			status = http.StatusNotFound
+		}
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, status)
 		return
 	}
 
@@ -2025,7 +2041,11 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 
 	err = api.renter.PinSkylink(skylink, lup)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusBadRequest)
+		status := http.StatusInternalServerError
+		if errors.Contains(err, renter.ErrRootNotFound) {
+			status = http.StatusNotFound
+		}
+		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, status)
 		return
 	}
 
