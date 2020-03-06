@@ -414,7 +414,7 @@ func walletsendsiacoinscmd(amount, dest string) {
 	if _, err := fmt.Sscan(dest, &hash); err != nil {
 		die("Failed to parse destination address", err)
 	}
-	_, err = httpClient.WalletSiacoinsPost(value, hash, feeIncluded)
+	_, err = httpClient.WalletSiacoinsPost(value, hash, walletTxnFeeIncluded)
 	if err != nil {
 		die("Could not send siacoins:", err)
 	}

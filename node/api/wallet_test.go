@@ -1387,149 +1387,9 @@ func TestWalletChangePassword(t *testing.T) {
 	}
 }
 
-// TestWalletSiacoins tests the /wallet/siacoins endpoint, including the
-// feeIncluded parameter, making sure that the wallet balance is subtracted
-// appropriately
+// TestWalletSiacoins tests the /wallet/siacoins endpoint, including sending
+// to multiple addresses.
 func TestWalletSiacoins(t *testing.T) {
-	if testing.Short() || !build.VLONG {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	st, err := createServerTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.server.panicClose()
-	st2, err := blankServerTester(t.Name() + "-wallet2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st2.server.Close()
-	st3, err := blankServerTester(t.Name() + "-wallet3")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st3.server.Close()
-
-	// Mine two more blocks with 'st' to get extra outputs to spend.
-	for i := 0; i < 2; i++ {
-		_, err := st.miner.AddBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Get the original balance.
-	var wg WalletGET
-	err = st.getAPI("/wallet", &wg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	originalBalance := wg.ConfirmedSiacoinBalance.Add(types.ZeroCurrency)
-
-	// Connect all the wallets together.
-	wallets := []*serverTester{st, st2, st3}
-	err = fullyConnectNodes(wallets)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Send 10KS in a single-send to st2 with additional fees.
-	sendAmount := types.SiacoinPrecision.Mul64(10e3)
-	var wag WalletAddressGET
-	err = st2.getAPI("/wallet/address", &wag)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sendSiacoinsValues := url.Values{}
-	sendSiacoinsValues.Set("amount", sendAmount.String())
-	sendSiacoinsValues.Set("destination", wag.Address.String())
-	sendSiacoinsValues.Set("feeIncluded", "false")
-	if err = st.stdPostAPI("/wallet/siacoins", sendSiacoinsValues); err != nil {
-		t.Fatal(err)
-	}
-
-	// Mine a block to confirm the send.
-	block, err := st.miner.AddBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Wait for the block to propagate.
-	_, err = synchronizationCheck(wallets)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check that more than 10KS was spent.
-	err = st.getAPI("/wallet", &wg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	newBalance := wg.ConfirmedSiacoinBalance
-	// Subtract the amount mined.
-	// for _, payout := range block.MinerPayouts {
-	// 	newBalance = newBalance.Sub(payout.Value)
-	// }
-	for _, tx := range block.Transactions {
-		for _, out := range tx.SiacoinOutputs {
-			newBalance = newBalance.Sub(out.Value)
-		}
-	}
-	fmt.Printf("o: %v\nn: %v\n", originalBalance.Sub(sendAmount).String(), newBalance.String())
-	if originalBalance.Sub(sendAmount).Cmp(newBalance) <= 0 {
-		t.Error("no fees were spent")
-	}
-
-	// Send 10KS in a single-send to st3 without additional fees.
-	originalBalance = newBalance.Add(types.ZeroCurrency)
-	err = st3.getAPI("/wallet/address", &wag)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sendSiacoinsValues = url.Values{}
-	sendSiacoinsValues.Set("amount", sendAmount.String())
-	sendSiacoinsValues.Set("destination", wag.Address.String())
-	sendSiacoinsValues.Set("feeIncluded", "true")
-	if err = st.stdPostAPI("/wallet/siacoins", sendSiacoinsValues); err != nil {
-		t.Fatal(err)
-	}
-
-	// Mine a block to confirm the send.
-	block, err = st.miner.AddBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Wait for the block to propagate.
-	_, err = synchronizationCheck(wallets)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check that exactly 10KS was spent.
-	err = st.getAPI("/wallet", &wg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	newBalance = wg.ConfirmedSiacoinBalance
-	// Subtract the amount mined.
-	for _, payout := range block.MinerPayouts {
-		newBalance = newBalance.Sub(payout.Value)
-	}
-	// for _, tx := range block.Transactions {
-	// 	for _, out := range tx.SiacoinOutputs {
-	// 		newBalance = newBalance.Sub(out.Value)
-	// 	}
-	// }
-	fmt.Printf("o: %v\nn: %v\n", originalBalance.String(), newBalance.String())
-	if newBalance.Cmp(originalBalance) != 0 {
-		t.Error("exact amount wasn't sent")
-	}
-}
-
-// TestWalletSiacoinsOutputs tests the /wallet/siacoins endpoint by setting
-// `outputs`, including sending to multiple addresses.
-func TestWalletSiacoinsOutputs(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()
 	}
@@ -1582,7 +1442,7 @@ func TestWalletSiacoinsOutputs(t *testing.T) {
 	}
 
 	// Send 10KS in a single-send to st2.
-	sendAmount := types.SiacoinPrecision.Mul64(10e3)
+	sendAmount := types.SiacoinPrecision.Mul64(10000)
 	var wag WalletAddressGET
 	err = st2.getAPI("/wallet/address", &wag)
 	if err != nil {
