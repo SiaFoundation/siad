@@ -128,7 +128,7 @@ legacy-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs=$legacy_pkgs
+    - make test-long run=. pkgs="$legacy_pkgs"
 
 package-tests:
   <<: *default_test_params
@@ -137,7 +137,7 @@ package-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs=$package_pkgs
+    - make test-long run=. pkgs="$package_pkgs"
     
 siatest-tests:
   <<: *default_test_params
@@ -146,7 +146,7 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs=$siatest_pkgs
+    - make test-long run=. pkgs="$siatest_pkgs"
 
 siatest-renter-tests:
   <<: *default_test_params
@@ -157,7 +157,7 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs=$siatest_renter_pkgs
+    - make test-long run=. pkgs="$siatest_renter_pkgs"
 
 siatest-renter-sub-tests:
   <<: *default_test_params
@@ -168,33 +168,33 @@ siatest-renter-sub-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs=$siatest_renter_sub_pkgs
+    - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
 
 legacy-tests-nightly:
   <<: *default_nightly_params
   script: 
-    - make test-vlong run=. pkgs=$legacy_pkgs
+    - make test-vlong run=. pkgs="$legacy_pkgs"
 
 package-tests-nightly:
   <<: *default_nightly_params
   script: 
-    - make test-vlong run=. pkgs=$package_pkgs
+    - make test-vlong run=. pkgs="$package_pkgs"
 
 siatest-tests-nightly:
   <<: *default_nightly_params
   script:
-    - make test-vlong run=. pkgs=$siatest_pkgs
+    - make test-vlong run=. pkgs="$siatest_pkgs"
 
 siatest-renter-tests-nightly:
   <<: *default_nightly_params
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-vlong run=. pkgs=$siatest_renter_pkgs
+    - make test-vlong run=. pkgs="$siatest_renter_pkgs"
 
 siatest-renter-sub-tests-nightly:
   <<: *default_nightly_params
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-vlong run=. pkgs=$siatest_renter_sub_pkgs
+    - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
