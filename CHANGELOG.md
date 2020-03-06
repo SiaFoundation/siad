@@ -22,6 +22,8 @@ Latest:
  - Uploading resumes more quickly after restart
  - Add ability to pack many files into the same or adjacent sectors while
    producing unique skylinks for each file
+ - Fix default expected upload/download values displaying 0 when setting an
+   initial allowance
  -
  -
  - `siac skynet upload` now supports uploading directories. All files are
