@@ -294,11 +294,13 @@ flag can be used to view skyfiles pinned in other folders.`,
 	}
 
 	skynetUploadCmd = &cobra.Command{
-		Use:   "upload [source filepath] [destination siapath]",
-		Short: "Upload a file to Skynet.",
-		Long: `Upload a file to Skynet. A skylink will be produced which can be shared and used
-to retrieve the file. The file that gets uploaded will be pinned to this Sia
-node, meaning that this node will pay for storage and repairs until the file is
+		Use:   "upload [source path] [destination siapath]",
+		Short: "Upload a file or a directory to Skynet.",
+		Long: `Upload a file or a directory to Skynet. A skylink will be produced which
+can be shared and used to retrieve the file. If the given path is a directory all
+files under that directory will be uploaded individually and an individual skylink
+will be produced for each. All files that get uploaded will be pinned to this Sia
+node, meaning that this node will pay for storage and repairs until the files are
 manually deleted.`,
 		Run: wrap(skynetuploadcmd),
 	}
@@ -2546,6 +2548,51 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 
 // skynetuploadcmd will upload a file to Skynet.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
+	// Open the source file.
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		die("Unable to open source path:", err)
+	}
+	defer file.Close()
+	fi, err := file.Stat()
+	if err != nil {
+		die("Unable to fetch source fileinfo:", err)
+	}
+
+	if !fi.IsDir() {
+		skynetuploadfile(sourcePath, destSiaPath)
+		fmt.Printf("Successfully uploaded skyfile!\n")
+		return
+	}
+
+	// Collect all filenames under this directory with their relative paths.
+	counterUploaded := 0
+	var wg sync.WaitGroup
+	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			die(fmt.Sprintf("Failed to process path %s: ", path), err)
+		}
+		if info.IsDir() {
+			return nil
+		}
+		wg.Add(1)
+		go func(filename string) {
+			defer wg.Done()
+			// get only the filename and path, relative to the original destSiaPath
+			// in order to figure out where to put the file
+			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
+			skynetuploadfile(filename, newDestSiaPath)
+			counterUploaded++
+		}(path)
+		return nil
+	})
+	wg.Wait()
+	fmt.Printf("Successfully uploaded %d skyfiles!\n", counterUploaded)
+}
+
+// skynetuploadfile handles the upload of a single file. It should only be
+// called from skynetuploadcmd
+func skynetuploadfile(sourcePath, destSiaPath string) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
 	if err != nil {
@@ -2555,15 +2602,19 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
 	if err != nil {
-		die("Unable to open source file:", err)
+		die("Unable to open source path:", err)
 	}
 	defer file.Close()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
-	_, sourceName := filepath.Split(sourcePath)
+	// Do not process directories. Those should be processed by skynetuploadcmd.
+	if fi.IsDir() {
+		return
+	}
 
+	_, sourceName := filepath.Split(sourcePath)
 	// Perform the upload and print the result.
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
@@ -2591,7 +2642,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			die("could not fetch skypath:", err)
 		}
 	}
-	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
+	fmt.Printf("%v\n -> Skylink: sia://%v\n", skypath, skylink)
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
