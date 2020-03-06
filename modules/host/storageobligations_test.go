@@ -3,6 +3,7 @@ package host
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -78,5 +79,60 @@ func TestStorageObligationID(t *testing.T) {
 	}
 	if so2.id() != so2.OriginTransactionSet[1].FileContractID(0) {
 		t.Error("id function of storage obligation incorrect for file contracts with dependencies")
+	}
+}
+
+// TestStorageObligationSnapshot verifies the functionality of the snapshot
+// function.
+func TestStorageObligationSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// Add a storage obligation to the host
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a file contract revision
+	sectorRoot, sectorData := randSector()
+	so.SectorRoots = []crypto.Hash{sectorRoot}
+	validPayouts, missedPayouts := so.payouts()
+	so.RevisionTransactionSet = []types.Transaction{{
+		FileContractRevisions: []types.FileContractRevision{{
+			ParentID:          so.id(),
+			UnlockConditions:  types.UnlockConditions{},
+			NewRevisionNumber: 1,
+
+			NewFileSize:           uint64(len(sectorData)),
+			NewFileMerkleRoot:     sectorRoot,
+			NewWindowStart:        so.expiration(),
+			NewWindowEnd:          so.proofDeadline(),
+			NewValidProofOutputs:  validPayouts,
+			NewMissedProofOutputs: missedPayouts,
+			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
+		}},
+	}}
+
+	// Take a snapshot & verify its fields
+	snapshot := so.snapshot()
+	if snapshot.ContractSize() != uint64(len(sectorData)) {
+		t.Fatalf("Unexpected contract size, expected %v but received %v", uint64(len(sectorData)), snapshot.ContractSize())
+	}
+	if snapshot.MerkleRoot() != sectorRoot {
+		t.Fatalf("Unexpected merkle root, expected %v but received %v", sectorRoot, snapshot.MerkleRoot())
+	}
+	if len(snapshot.SectorRoots()) != 1 {
+		t.Fatal("Unexpected number of sector roots")
+	}
+	if snapshot.SectorRoots()[0] != sectorRoot {
+		t.Fatalf("Unexpected sector root, expected %v but received %v", sectorRoot, snapshot.SectorRoots()[0])
 	}
 }

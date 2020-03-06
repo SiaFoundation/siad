@@ -49,9 +49,10 @@ func TestInstructionReadSector(t *testing.T) {
 	so.sectorRoots = randomSectorRoots(10)
 	instructions, r, dataLen, cost, refund, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
 	// Execute it.
-	ics := so.ContractSize()
-	imr := so.MerkleRoot()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
+	snapshot := so // TestStorageObligation implements the snapshot interface
+	ics := snapshot.ContractSize()
+	imr := snapshot.MerkleRoot()
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, snapshot, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}

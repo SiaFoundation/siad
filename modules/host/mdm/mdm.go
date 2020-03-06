@@ -12,17 +12,22 @@ import (
 type StorageObligation interface {
 	// Locked returns whether or not the storage obligation is locked.
 	Locked() bool
-	// ContractSize returns the current contract size of the storage obligation.
-	// It will return an error if the underlying SO is not locked.
-	ContractSize() (uint64, error)
-	// MerkleRoot returns the filecontract's current root. It will return
-	// an error if the underlying SO is not locked.
-	MerkleRoot() (crypto.Hash, error)
-	// SectorRoots returns the roots of the storage obligation. It will return
-	// an error if the underlying SO is not locked.
-	SectorRoots() ([]crypto.Hash, error)
 	// Update updates the storage obligation.
 	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error
+}
+
+// StorageObligationSnapshot defines an interface the snapshot must adhere to in
+// order for the mdmd to be able to execute a program.
+type StorageObligationSnapshot interface {
+	// ContractSize returns the current contract size of the storage obligation.
+	// It will return an error if the underlying SO is not locked.
+	ContractSize() uint64
+	// MerkleRoot returns the filecontract's current root. It will return
+	// an error if the underlying SO is not locked.
+	MerkleRoot() crypto.Hash
+	// SectorRoots returns the roots of the storage obligation. It will return
+	// an error if the underlying SO is not locked.
+	SectorRoots() []crypto.Hash
 }
 
 // Host defines the minimal interface a Host needs to

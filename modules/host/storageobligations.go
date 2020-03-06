@@ -177,53 +177,6 @@ func (i storageObligationStatus) String() string {
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 
-// MDMStorageObligation wraps a host and storage obligation to satisfy the
-// mdm.StorageObligation interface.
-type MDMStorageObligation struct {
-	so storageObligation
-	h  *Host
-}
-
-// newMDMStorageObligation returns a new MDMStorageObligation which wraps the
-// given storage obligation.
-func newMDMStorageObligation(so storageObligation, h *Host) mdm.StorageObligation {
-	return &MDMStorageObligation{so: so, h: h}
-}
-
-// Locked satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) Locked() bool {
-	return mso.h.managedIsLockedStorageObligation(mso.so.id())
-}
-
-// ContractSize satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) ContractSize() (uint64, error) {
-	if !mso.Locked() {
-		return 0, errObligationUnlocked
-	}
-	return mso.so.recentRevision().NewFileSize, nil
-}
-
-// MerkleRoot satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) MerkleRoot() (crypto.Hash, error) {
-	if !mso.Locked() {
-		return crypto.Hash{}, errObligationUnlocked
-	}
-	return mso.so.recentRevision().NewFileMerkleRoot, nil
-}
-
-// SectorRoots satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) SectorRoots() ([]crypto.Hash, error) {
-	if !mso.Locked() {
-		return nil, errObligationUnlocked
-	}
-	return mso.so.SectorRoots, nil
-}
-
-// Update satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
-	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained)
-}
-
 // managedGetStorageObligation fetches a storage obligation from the database.
 func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
 	h.mu.RLock()
@@ -258,6 +211,69 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 	}
 	soid := so.id()
 	return tx.Bucket(bucketStorageObligations).Put(soid[:], soBytes)
+}
+
+// StorageObligationSnapshot is a snapshot of a StorageObligation. A snapshot is
+// a deep-copy and can be accessed without locking at the cost of being a frozen
+// readonly representation of an SO which only exists in memory. Note that this
+// snapshot only contains the properties required by the MDM to execute a
+// program. This can be extended in the future to support other use cases.
+type StorageObligationSnapshot struct {
+	staticContractSize uint64
+	staticMerkleRoot   crypto.Hash
+	staticSectorRoots  []crypto.Hash
+}
+
+// ContractSize returns the size of the underlying contract, which is static and
+// is the value of the contract size at the time the snapshot was taken.
+func (sos StorageObligationSnapshot) ContractSize() uint64 {
+	return sos.staticContractSize
+}
+
+// MerkleRoot returns the merkleroot, which is static and is the value of the
+// merkle root at the time the snapshot was taken.
+func (sos StorageObligationSnapshot) MerkleRoot() crypto.Hash {
+	return sos.staticMerkleRoot
+}
+
+// SectorRoots returns the sector roots, which is static and are the sector
+// roots present at the time the snapshot was taken.
+func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
+	return sos.staticSectorRoots
+}
+
+// MDMStorageObligation wraps a host and storage obligation to satisfy the
+// mdm.StorageObligation interface.
+type MDMStorageObligation struct {
+	so storageObligation
+	h  *Host
+}
+
+// newMDMStorageObligation returns a new MDMStorageObligation which wraps the
+// given storage obligation.
+func newMDMStorageObligation(so storageObligation, h *Host) mdm.StorageObligation {
+	return &MDMStorageObligation{so: so, h: h}
+}
+
+// Locked satisfies the mdm.StorageObligation interface.
+func (mso *MDMStorageObligation) Locked() bool {
+	return mso.h.managedIsLockedStorageObligation(mso.so.id())
+}
+
+// Update satisfies the mdm.StorageObligation interface.
+func (mso *MDMStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
+	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained)
+}
+
+// snapshot returns a snapshot of the StorageObligation, note that the
+// StorageObligation must be locked when calling this function.
+func (so storageObligation) snapshot() StorageObligationSnapshot {
+	rev := so.recentRevision()
+	return StorageObligationSnapshot{
+		staticContractSize: rev.NewFileSize,
+		staticMerkleRoot:   rev.NewFileMerkleRoot,
+		staticSectorRoots:  so.SectorRoots,
+	}
 }
 
 // expiration returns the height at which the storage obligation expires.

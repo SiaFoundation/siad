@@ -44,13 +44,14 @@ func TestInstructionHasSector(t *testing.T) {
 	}
 	// Create a program to check for a sector on the host.
 	so := newTestStorageObligation(true)
+	snapshot := so // TestStorageObligation implements the snapshot interface
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
 	instructions, programData, cost, refund, usedMemory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, InitCost(pt, dataLen).Add(cost), snapshot, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

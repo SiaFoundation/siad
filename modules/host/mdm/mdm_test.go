@@ -74,30 +74,21 @@ func (so *TestStorageObligation) Locked() bool {
 }
 
 // ContractSize implements the StorageObligation interface.
-func (so *TestStorageObligation) ContractSize() (uint64, error) {
-	if !so.Locked() {
-		return 0, errors.New("StorageObligation is not locked")
-	}
-	return uint64(len(so.sectorRoots)) * modules.SectorSize, nil
+func (so *TestStorageObligation) ContractSize() uint64 {
+	return uint64(len(so.sectorRoots)) * modules.SectorSize
 }
 
 // MerkleRoot implements the StorageObligation interface.
-func (so *TestStorageObligation) MerkleRoot() (crypto.Hash, error) {
-	if !so.Locked() {
-		return crypto.Hash{}, errors.New("StorageObligation is not locked")
-	}
+func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
 	if len(so.sectorRoots) == 0 {
-		return crypto.Hash{}, nil
+		return crypto.Hash{}
 	}
-	return cachedMerkleRoot(so.sectorRoots), nil
+	return cachedMerkleRoot(so.sectorRoots)
 }
 
 // SectorRoots implements the StorageObligation interface.
-func (so *TestStorageObligation) SectorRoots() ([]crypto.Hash, error) {
-	if !so.Locked() {
-		return nil, errors.New("StorageObligation is not locked")
-	}
-	return so.sectorRoots, nil
+func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
+	return so.sectorRoots
 }
 
 // Update implements the StorageObligation interface.

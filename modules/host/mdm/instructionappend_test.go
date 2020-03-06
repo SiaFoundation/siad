@@ -42,7 +42,8 @@ func TestInstructionAppend(t *testing.T) {
 	dataLen := uint64(len(programData))
 	// Execute it.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
+	snapshot := so // TestStorageObligation implements the snapshot interface
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, snapshot, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 0)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.
@@ -148,7 +149,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 1)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.

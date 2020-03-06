@@ -45,7 +45,6 @@ type programState struct {
 // final instruction is executed, the MDM will create an updated revision of the
 // FileContract which has to be signed by the renter and the host.
 type Program struct {
-	so                 StorageObligation
 	instructions       []instruction
 	staticData         *programData
 	staticProgramState *programState
@@ -74,27 +73,22 @@ func outputFromError(err error, cost, refund types.Currency) Output {
 
 // ExecuteProgram initializes a new program from a set of instructions and a reader
 // which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, so StorageObligation, programDataLen uint64, data io.Reader) (func() error, <-chan Output, error) {
-	roots, err := so.SectorRoots()
-	if err != nil {
-		return nil, nil, errors.AddContext(err, "Could not execute program")
-	}
-
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
 			priceTable:  pt,
-			sectors:     newSectors(roots),
+			sectors:     newSectors(sos.SectorRoots()),
 		},
 		staticBudget: budget,
 		staticData:   openProgramData(data, programDataLen),
-		so:           so,
 		tg:           &mdm.tg,
 	}
 
 	// Convert the instructions.
+	var err error
 	var instruction instruction
 	for _, i := range instructions {
 		switch i.Specifier {
@@ -112,12 +106,6 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		}
 		p.instructions = append(p.instructions, instruction)
 	}
-	// Make sure that the contract is locked unless the program we're executing
-	// is a readonly program.
-	if !p.readOnly() && !p.so.Locked() {
-		err = errors.New("contract needs to be locked for a program with one or more write instructions")
-		return nil, nil, errors.Compose(err, p.staticData.Close())
-	}
 	// Increment the execution cost of the program.
 	err = p.addCost(InitCost(pt, p.staticData.Len()))
 	if err != nil {
@@ -127,13 +115,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 	if err := p.tg.Add(); err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
-	cs, err := so.ContractSize()
-	
 	go func() {
 		defer p.staticData.Close()
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		p.executeInstructions(ctx, so.ContractSize(), so.MerkleRoot())
+		p.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
 	}()
 	// If the program is readonly there is no need to finalize it.
 	if p.readOnly() {
@@ -191,7 +177,14 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
-func (p *Program) managedFinalize() error {
+func (p *Program) managedFinalize(so StorageObligation) error {
+	// Make sure that the contract is locked unless the program we're executing
+	// is a readonly program.
+	if !p.readOnly() && so.Locked() {
+		err := errors.New("contract needs to be locked for a program with one or more write instructions")
+		return errors.Compose(err, p.staticData.Close())
+	}
+
 	// Compute the memory cost of finalizing the program.
 	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * TimeCommit)
 	err := p.addCost(memoryCost)
@@ -200,7 +193,7 @@ func (p *Program) managedFinalize() error {
 	}
 	// Commit the changes to the storage obligation.
 	s := p.staticProgramState.sectors
-	err = p.so.Update(s.merkleRoots, s.sectorsRemoved, s.sectorsGained)
+	err = so.Update(s.merkleRoots, s.sectorsRemoved, s.sectorsGained)
 	if err != nil {
 		return err
 	}
