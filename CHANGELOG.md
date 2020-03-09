@@ -32,7 +32,7 @@ Latest:
  -
  -
  -
- -
+ - Add flags for tag and targz for skyfile streaming
  -
  -
  -
@@ -53,7 +53,8 @@ Latest:
  -
  -
  -
- -
+ - Fix repair bug where unused hosts were not being properly updated for a
+   siafile
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
