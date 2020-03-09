@@ -269,6 +269,13 @@ type (
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
 	}
+
+	// SkynetStats contains per-hour statistical data about skynet
+	SkynetStats struct {
+		Hour      time.Time `json:"hour"`
+		NumFiles  int       `json:"numberOfFiles"`
+		TotalSize uint64    `json:"totalSize"`
+	}
 )
 
 // Returns the boolean value of the 'root' parameter of req or an error if
@@ -2217,6 +2224,26 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		MerkleRoot: skylink.MerkleRoot(),
 		Bitfield:   skylink.Bitfield(),
 	})
+}
+
+// skynetStatsHandlerGET responds with a JSONArray with per-hour statistical
+// data about skynet, e.g. number of files uploaded, total size, etc.
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	files, err := api.renter.FileList(modules.SkynetFolder, true, true)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	stats := make(map[time.Time]*SkynetStats)
+	for _, f := range files {
+		hour := f.CreateTime.Truncate(time.Hour)
+		if _, ok := stats[hour]; !ok {
+			stats[hour] = &SkynetStats{Hour: hour}
+		}
+		stats[hour].NumFiles++
+		stats[hour].TotalSize += f.Filesize
+	}
+	WriteJSON(w, stats)
 }
 
 // skyfileParseMultiPartRequest parses the given request and returns the
