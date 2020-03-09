@@ -49,4 +49,15 @@ func TestHasSector(t *testing.T) {
 	if !exists {
 		t.Fatal(fmt.Sprintf("Unexpected HasSector response: %v, sector has been added", exists))
 	}
+
+	// Delete the sector and check again
+	err = cmt.cm.DeleteSector(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	exists = cmt.cm.HasSector(root)
+	if exists {
+		t.Fatal(fmt.Sprintf("Unexpected HasSector response: %v, sector has been deleted", exists))
+	}
 }
