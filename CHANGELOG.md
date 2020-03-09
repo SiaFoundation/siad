@@ -69,6 +69,7 @@ Latest:
  - 
  - 
  -
+ - Add HEAD request support for Skylink route
  -
  - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
    used.
