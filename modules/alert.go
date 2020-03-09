@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 )
 
 // The following consts are the different types of severity levels available in
@@ -63,7 +65,7 @@ type (
 	// Alerter is the interface implemented by all top-level modules. It's an
 	// interface that allows for asking a module about potential issues.
 	Alerter interface {
-		Alerts() []Alert
+		Alerts() (crit, err, warn []Alert)
 	}
 
 	// Alert is a type that contains essential information about an alert.
@@ -165,15 +167,22 @@ func NewAlerter(module string) *GenericAlerter {
 }
 
 // Alerts returns the current alerts tracked by the alerter.
-func (a *GenericAlerter) Alerts() []Alert {
+func (a *GenericAlerter) Alerts() (crit, err, warn []Alert) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
-	alerts := make([]Alert, 0, len(a.alerts))
 	for _, alert := range a.alerts {
-		alerts = append(alerts, alert)
+		switch alert.Severity {
+		case SeverityCritical:
+			crit = append(crit, alert)
+		case SeverityError:
+			err = append(err, alert)
+		case SeverityWarning:
+			warn = append(warn, alert)
+		default:
+		}
+		build.Critical("Alerts: invalid severity", alert.Severity)
 	}
-	return alerts
+	return
 }
 
 // RegisterAlert adds an alert to the alerter.

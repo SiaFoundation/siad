@@ -294,25 +294,48 @@ func updateToRelease(version string) error {
 // daemonAlertsHandlerGET handles the API call that returns the alerts of all
 // loaded modules.
 func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	alerts := make([]modules.Alert, 0, 6) // initialize slice to avoid "null" in response.
+	// initialize slices to avoid "null" in response.
+	crit := make([]modules.Alert, 0, 6)
+	err := make([]modules.Alert, 0, 6)
+	warn := make([]modules.Alert, 0, 6)
 	if api.gateway != nil {
-		alerts = append(alerts, api.gateway.Alerts()...)
+		c, e, w := api.gateway.Alerts()
+		crit = append(crit, c...)
+		err = append(crit, e...)
+		warn = append(crit, w...)
 	}
 	if api.cs != nil {
-		alerts = append(alerts, api.cs.Alerts()...)
+		c, e, w := api.cs.Alerts()
+		crit = append(crit, c...)
+		err = append(crit, e...)
+		warn = append(crit, w...)
 	}
 	if api.tpool != nil {
-		alerts = append(alerts, api.tpool.Alerts()...)
+		c, e, w := api.tpool.Alerts()
+		crit = append(crit, c...)
+		err = append(crit, e...)
+		warn = append(crit, w...)
 	}
 	if api.wallet != nil {
-		alerts = append(alerts, api.wallet.Alerts()...)
+		c, e, w := api.wallet.Alerts()
+		crit = append(crit, c...)
+		err = append(crit, e...)
+		warn = append(crit, w...)
 	}
 	if api.renter != nil {
-		alerts = append(alerts, api.renter.Alerts()...)
+		c, e, w := api.renter.Alerts()
+		crit = append(crit, c...)
+		err = append(crit, e...)
+		warn = append(crit, w...)
 	}
 	if api.host != nil {
-		alerts = append(alerts, api.host.Alerts()...)
+		c, e, w := api.host.Alerts()
+		crit = append(crit, c...)
+		err = append(crit, e...)
+		warn = append(crit, w...)
 	}
+	// Sort alerts by severity. Critical first, then Error and finally Warning.
+	alerts := append(crit, append(err, warn...)...)
 	WriteJSON(w, DaemonAlertsGet{
 		Alerts: alerts,
 	})

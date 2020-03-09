@@ -411,7 +411,8 @@ the rest of Sia.
 curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
 ```
 
-Returns the alerts of the Sia instance.
+Returns the alerts of the Sia instance sorted by severity from highest to
+lowest.
 
 ### JSON Response
 > JSON Response Example
