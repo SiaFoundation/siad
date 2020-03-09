@@ -32,7 +32,8 @@ Latest:
  -
  -
  -
- -
+ - Add new endpoint `/skynet/stats` that provides statistical information about skynet - how many files and of what 
+    total size were uploaded for each hour.
  -
  -
  -
