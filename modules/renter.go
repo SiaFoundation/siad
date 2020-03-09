@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -1184,12 +1185,57 @@ func (sm SkyfileMetadata) offset() uint64 {
 // written and its length. Its filename can potentially include a '/' character
 // as nested files and directories are allowed within a single Skyfile
 type SkyfileSubfileMetadata struct {
-	Mode        os.FileMode `json:"mode,omitempty"`
+	FileMode    os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
 	Filename    string      `json:"filename,omitempty"`
 	ContentType string      `json:"contenttype,omitempty"`
 	Offset      uint64      `json:"offset,omitempty"`
 	Len         uint64      `json:"len,omitempty"`
 }
+
+// IsDir implements the os.FileInfo interface for SkyfileSubfileMetadata.
+func (sm SkyfileSubfileMetadata) IsDir() bool {
+	return false
+}
+
+// Mode implements the os.FileInfo interface for SkyfileSubfileMetadata.
+func (sm SkyfileSubfileMetadata) Mode() os.FileMode {
+	return sm.FileMode
+}
+
+// ModTime implements the os.FileInfo interface for SkyfileSubfileMetadata.
+func (sm SkyfileSubfileMetadata) ModTime() time.Time {
+	return time.Time{} // no modtime available
+}
+
+// Name implements the os.FileInfo interface for SkyfileSubfileMetadata.
+func (sm SkyfileSubfileMetadata) Name() string {
+	return filepath.Base(sm.Filename)
+}
+
+// Size implements the os.FileInfo interface for SkyfileSubfileMetadata.
+func (sm SkyfileSubfileMetadata) Size() int64 {
+	return int64(sm.Len)
+}
+
+// Sys implements the os.FileInfo interface for SkyfileSubfileMetadata.
+func (sm SkyfileSubfileMetadata) Sys() interface{} {
+	return nil
+}
+
+// SkyfileFormat is the file format the API uses to return a Skyfile as.
+type SkyfileFormat string
+
+var (
+	// SkyfileFormatNotSpecified is the default format for the endpoint when the
+	// format isn't specified explicitly.
+	SkyfileFormatNotSpecified = SkyfileFormat("")
+	// SkyfileFormatConcat returns the skyfiles in a concatenated manner.
+	SkyfileFormatConcat = SkyfileFormat("concat")
+	// SkyfileFormatTar returns the skyfiles as a .tar.
+	SkyfileFormatTar = SkyfileFormat("tar")
+	// SkyfileFormatTarGz returns the skyfiles as a .tar.gz.
+	SkyfileFormatTarGz = SkyfileFormat("targz")
+)
 
 // SkyfileUploadParameters establishes the parameters such as the intra-root
 // erasure coding.
