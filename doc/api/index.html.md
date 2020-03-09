@@ -4227,7 +4227,8 @@ data of all subfiles in that directory.
 If 'timeout' is set, the download will fail if the Skyfile can not be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
 time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
-value of 0 will be ignored.
+value of 0 will be ignored. If no timeout is given, the default will be used,
+which is a 30 second timeout.
 
 ### Response Header
 
@@ -4237,10 +4238,11 @@ The header field "Skynet-FileMetadata" will be set such that it has an encoded
 json object which matches the modules.SkyfileMetadata struct. If a path was
 supplied, this metadata will be relative to the given path.
 
-**Skynet-Request-Timeout** | bool
+**Skynet-Request-Timeout** | string
 
 The header field "Skynet-Request-Timeout" will be set if the request timed out 
-after a user configured timeout period. The value will always be "true".
+after a user configured timeout period. The value will be a string
+representation of the timeout, e.g. 30s.
 
 > Skynet-File-Metadata Response Header Example 
 ```go

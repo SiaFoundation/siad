@@ -1926,7 +1926,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Parse the timeout.
-	var timeout time.Duration
+	timeout := time.Duration(30 * time.Second) // default
 	timeoutStr := queryForm.Get("timeout")
 	if timeoutStr != "" {
 		timeoutInt, err := strconv.Atoi(timeoutStr)
@@ -1945,7 +1945,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			status = http.StatusNotFound
 		}
 		if errors.Contains(err, renter.ErrProjectTimedOut) {
-			w.Header().Set("Skynet-Request-Timeout", "true")
+			w.Header().Set("Skynet-Request-Timeout", fmt.Sprintf("%vs", timeout.Seconds()))
 		}
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, status)
 		return
