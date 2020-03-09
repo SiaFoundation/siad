@@ -270,6 +270,10 @@ type (
 		Remove []string `json:"remove"`
 	}
 
+	// SkynetStatsGET contains the information queried for the
+	// /skynet/stats GET endpoint
+	SkynetStatsGET []SkynetStats
+
 	// SkynetStats contains per-hour statistical data about skynet
 	SkynetStats struct {
 		Hour      time.Time `json:"hour"`
@@ -2234,14 +2238,18 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	stats := make(map[time.Time]*SkynetStats)
+	statsMap := make(map[time.Time]*SkynetStats)
 	for _, f := range files {
 		hour := f.CreateTime.Truncate(time.Hour)
-		if _, ok := stats[hour]; !ok {
-			stats[hour] = &SkynetStats{Hour: hour}
+		if _, ok := statsMap[hour]; !ok {
+			statsMap[hour] = &SkynetStats{Hour: hour}
 		}
-		stats[hour].NumFiles++
-		stats[hour].TotalSize += f.Filesize
+		statsMap[hour].NumFiles++
+		statsMap[hour].TotalSize += f.Filesize
+	}
+	stats := make([]*SkynetStats, 0, len(statsMap))
+	for _, v := range statsMap {
+		stats = append(stats, v)
 	}
 	WriteJSON(w, stats)
 }

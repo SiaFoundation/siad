@@ -448,10 +448,9 @@ func TestSkynet(t *testing.T) {
 	// easier way.
 }
 
-// TestSkynetMultipartUpload provides end-to-end testing for uploading multiple
-// files as a single skyfile using multipart file upload. The uploaded subfiles
-// are then retrievable by skylink and their filename.
-func TestSkynetMultipartUpload(t *testing.T) {
+// TestSkynetUpload holds a comprehensive test suite that covers Skynet's
+// upload and upload-dependent features
+func TestSkynetUpload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -476,6 +475,14 @@ func TestSkynetMultipartUpload(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
+	testMultipartUpload(t, r)
+	testStats(t, r)
+}
+
+// testMultipartUpload provides end-to-end testing for uploading multiple
+// files as a single skyfile using multipart file upload. The uploaded subfiles
+// are then retrievable by skylink and their filename.
+func testMultipartUpload(t *testing.T, r *siatest.TestNode) {
 	testMultipartUploadEmpty(t, r)
 	testMultipartUploadSmall(t, r)
 	testMultipartUploadLarge(t, r)
@@ -677,6 +684,78 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 
 	if !bytes.Equal(largeFetchedData, largeData) {
 		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(largeFetchedData), len(largeData))
+	}
+}
+
+// testStats tests the validity of the response of /skynet/stats endpoint
+func testStats(t *testing.T, r *siatest.TestNode) {
+	statsBeforeArr, err := r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files := make(map[string]int)
+	files["statfile1"] = 1024
+	files["statfile2"] = 2048
+
+	uploadedFilesSize := 0
+	uploadedFilesCount := 0
+	for name, size := range files {
+		uploadSiaPath, err := modules.NewSiaPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data := fastrand.Bytes(size)
+		sup := modules.SkyfileUploadParameters{
+			SiaPath:             uploadSiaPath,
+			Force:               false,
+			Root:                false,
+			BaseChunkRedundancy: 2,
+			FileMetadata: modules.SkyfileMetadata{
+				Filename: name,
+				Mode:     modules.DefaultFilePerm,
+			},
+
+			Reader: bytes.NewReader(data),
+		}
+		if _, _, err = r.SkynetSkyfilePost(sup); err != nil {
+			t.Fatal(err)
+		}
+		// round the upload size up to the next 4KB
+		if size%4096 == 0 {
+			uploadedFilesSize += size
+		} else {
+			uploadedFilesSize += 4096 * (1 + size/4096)
+		}
+		uploadedFilesCount++
+	}
+
+	currentHour := time.Now().Truncate(time.Hour)
+	statsAfterArr, err := r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var statsBefore api.SkynetStats
+	for _, st := range statsBeforeArr {
+		if st.Hour == currentHour {
+			statsBefore = st
+			break
+		}
+	}
+	var statsAfter api.SkynetStats
+	for _, st := range statsAfterArr {
+		if st.Hour == currentHour {
+			statsAfter = st
+			break
+		}
+	}
+
+	if statsBefore.NumFiles+uploadedFilesCount != statsAfter.NumFiles {
+		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", statsBefore.NumFiles+uploadedFilesCount, statsAfter.NumFiles))
+	}
+	if statsBefore.TotalSize+uint64(uploadedFilesSize) != statsAfter.TotalSize {
+		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.TotalSize+uint64(uploadedFilesSize), statsAfter.TotalSize))
 	}
 }
 
