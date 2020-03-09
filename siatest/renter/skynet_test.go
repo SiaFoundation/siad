@@ -1206,7 +1206,13 @@ func TestSkynetHeadRequest(t *testing.T) {
 	// Perform a GET and HEAD request and compare the response headers and
 	// content length.
 	data, metadata, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, header, err := r.SkynetSkylinkHead(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify Skynet-File-Metadata
 	strMetadata := header.Get("Skynet-File-Metadata")
