@@ -73,7 +73,7 @@ type projectDownloadByRoot struct {
 	// Project output. Once the project has been completed, completeChan will be
 	// closed. The data and error fields contain the final output for the
 	// project. If the project is run using a timeout, the cancelChan will be
-	// closed when the root can not be found before the timeout expires.
+	// closed when the timeout expires before the root could be found.
 	data         []byte
 	err          error
 	completeChan chan struct{}
