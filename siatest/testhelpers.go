@@ -1,6 +1,39 @@
 package siatest
 
-import "gitlab.com/NebulousLabs/fastrand"
+import (
+	"testing"
+
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+)
+
+// SubTest is a helper struct for running subtests when tests can use the same
+// test group
+type SubTest struct {
+	Name string
+	Test func(*testing.T, *TestGroup)
+}
+
+// RunSubTests is a helper function to run the subtests when tests can use the
+// same test group
+func RunSubTests(t *testing.T, params GroupParams, directory string, tests []SubTest) error {
+	tg, err := NewGroupFromTemplate(directory, params)
+	if err != nil {
+		return errors.AddContext(err, "failed to create group")
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Run subtests
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Test(t, tg)
+		})
+	}
+	return nil
+}
 
 // Fuzz returns 0, 1 or -1. This can be used to test for random off-by-one
 // errors in the code. For example fuzz can be used to create a File that is

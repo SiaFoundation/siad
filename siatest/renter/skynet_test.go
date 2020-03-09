@@ -28,8 +28,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSkynet provides basic end-to-end testing for uploading skyfiles and
-// downloading the resulting skylinks.
+// TestSkynet verifies the functionality of Skynet, a decentralized CDN and
+// sharing platform.
 func TestSkynet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -42,17 +42,27 @@ func TestSkynet(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
+	groupDir := renterTestDir(t.Name())
+
+	// Specify subtests to run
+	subTests := []siatest.SubTest{
+		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
+		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
+		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
+		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+	}
+
+	// Run tests
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+}
+
+// testSkynetBasic provides basic end-to-end testing for uploading skyfiles and
+// downloading the resulting skylinks.
+func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload as a skyfile.
@@ -556,42 +566,13 @@ func TestSkynet(t *testing.T) {
 	// easier way.
 }
 
-// TestSkynetMultipartUpload provides end-to-end testing for uploading multiple
-// files as a single skyfile using multipart file upload. The uploaded subfiles
-// are then retrievable by skylink and their filename.
-func TestSkynetMultipartUpload(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+// testSkynetMultipartUpload tests you can perform a multipart upload. It will
+// verify the upload without any subfiles, with small subfiles and with large
+// subfiles. Small files are files which are smaller than one sector, and thus
+// don't need a fanout. Large files are files what span multiple sectors
+func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	testMultipartUploadEmpty(t, r)
-	testMultipartUploadSmall(t, r)
-	testMultipartUploadLarge(t, r)
-}
-
-// testMultipartUploadEmpty tests you can perform a multipart upload without
-// any subfiles.
-func testMultipartUploadEmpty(t *testing.T, r *siatest.TestNode) {
 	// create a multipart upload that without any files
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
@@ -619,16 +600,13 @@ func testMultipartUploadEmpty(t *testing.T, r *siatest.TestNode) {
 	if _, _, err = r.SkynetSkyfileMultiPartPost(sup); err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
 		t.Fatal("Expected upload to fail because no files are given, err:", err)
 	}
-}
 
-// testMultipartUploadSmall tests multipart upload for small files, small files
-// are files which are smaller than one sector, and thus don't need a fanout.
-func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
+	// TEST SMALL SUBFILE
 	var offset uint64
 
 	// create a multipart upload that uploads several files.
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
+	body = new(bytes.Buffer)
+	writer = multipart.NewWriter(body)
 	subfiles := make(modules.SkyfileSubfiles)
 
 	// add a file at root level
@@ -641,19 +619,19 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	subfile = addMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset)
 	subfiles[subfile.Filename] = subfile
 
-	err := writer.Close()
+	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader := bytes.NewReader(body.Bytes())
+	reader = bytes.NewReader(body.Bytes())
 
 	// Call the upload skyfile client call.
-	uploadSiaPath, err := modules.NewSiaPath("TestFolderUpload")
+	uploadSiaPath, err = modules.NewSiaPath("TestFolderUpload")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sup := modules.SkyfileMultipartUploadParameters{
+	sup = modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
 		Root:                false,
@@ -694,21 +672,17 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	if !bytes.Equal(nestedfile, data) {
 		t.Fatal("Expected only second file to be downloaded")
 	}
-}
 
-// testMultipartUploadLarge tests multipart upload for large files, large files
-// are files which are larger than one sector, and thus need a fanout streamer.
-func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
-	var offset uint64
+	// LARGE SUBFILES
 
 	// create a multipart upload that uploads several files.
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	subfiles := make(modules.SkyfileSubfiles)
+	body = new(bytes.Buffer)
+	writer = multipart.NewWriter(body)
+	subfiles = make(modules.SkyfileSubfiles)
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfile := addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	subfile = addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	// add a large nested file
@@ -716,20 +690,20 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	subfile = addMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
 	subfiles[subfile.Filename] = subfile
 
-	err := writer.Close()
+	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 	allData := body.Bytes()
-	reader := bytes.NewReader(allData)
+	reader = bytes.NewReader(allData)
 
 	// Call the upload skyfile client call.
-	uploadSiaPath, err := modules.NewSiaPath("TestFolderUploadLarge")
+	uploadSiaPath, err = modules.NewSiaPath("TestFolderUploadLarge")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sup := modules.SkyfileMultipartUploadParameters{
+	sup = modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
 		Root:                false,
@@ -788,79 +762,9 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	}
 }
 
-var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
-
-// escapeQuotes escapes the quotes in the given string.
-func escapeQuotes(s string) string {
-	return quoteEscaper.Replace(s)
-}
-
-// createFormFileHeaders builds a header from the given params. These headers are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename string, headers map[string]string) textproto.MIMEHeader {
-	fieldname = escapeQuotes(fieldname)
-	filename = escapeQuotes(filename)
-
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Type", "application/octet-stream")
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
-	for k, v := range headers {
-		h.Set(k, v)
-	}
-	return h
-}
-
-// addMultipartField is a helper function to add a file to the multipart form-
-// data. Note that the given data will be treated as binary data, and the multi
-// part 's ContentType header will be set accordingly.
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
-	h := map[string]string{"mode": fmt.Sprintf("%o", filemode)}
-	partHeader := createFormFileHeaders(filekey, filename, h)
-	part, err := w.CreatePart(partHeader)
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = part.Write(filedata)
-	metadata := modules.SkyfileSubfileMetadata{
-		Filename:    filename,
-		ContentType: "application/octet-stream",
-		FileMode:    os.FileMode(filemode),
-		Len:         uint64(len(filedata)),
-	}
-
-	if offset != nil {
-		metadata.Offset = *offset
-		*offset += metadata.Len
-	}
-
-	return metadata
-}
-
-// TestSkynetNoFilename verifies that posting a Skyfile without providing a
+// testSkynetNoFilename verifies that posting a Skyfile without providing a
 // filename fails.
-func TestSkynetNoFilename(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload as a skyfile.
@@ -971,30 +875,8 @@ func TestSkynetNoFilename(t *testing.T) {
 	}
 }
 
-// TestSkynetSubDirDownload verifies downloading data from a skyfile using a path to download single subfiles or subdirectories
-func TestSkynetSubDirDownload(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+// testSkynetSubDirDownload verifies downloading data from a skyfile using a path to download single subfiles or subdirectories
+func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	body := new(bytes.Buffer)
@@ -1010,7 +892,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	addMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
 	addMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
 
-	if err = writer.Close(); err != nil {
+	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
 	reader := bytes.NewReader(body.Bytes())
@@ -1324,31 +1206,9 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 }
 
-// TestSkynetDisableForce verifies the behavior of force and the header that
+// testSkynetDisableForce verifies the behavior of force and the header that
 // allows disabling forcefully uploading a Skyfile
-func TestSkynetDisableForce(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload.
@@ -1437,49 +1297,8 @@ func TestSkynetDisableForce(t *testing.T) {
 	}
 }
 
-// skynetSkyfilePostRequestWithHeaders is a helper function that turns the given
-// SkyfileUploadParameters into a SkynetSkyfilePost request, allowing additional
-// headers to be set on the request object
-func skynetSkyfilePostRequestWithHeaders(r *siatest.TestNode, sup modules.SkyfileUploadParameters) (*http.Request, error) {
-	values := url.Values{}
-	values.Set("filename", sup.FileMetadata.Filename)
-	forceStr := fmt.Sprintf("%t", sup.Force)
-	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", sup.FileMetadata.Mode)
-	values.Set("mode", modeStr)
-	redundancyStr := fmt.Sprintf("%v", sup.BaseChunkRedundancy)
-	values.Set("basechunkredundancy", redundancyStr)
-	rootStr := fmt.Sprintf("%t", sup.Root)
-	values.Set("root", rootStr)
-
-	resource := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), values.Encode())
-	return r.NewRequest("POST", resource, sup.Reader)
-}
-
-// TestSkynetBlacklist tests the skynet blacklist module
-func TestSkynetBlacklist(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+// testSkynetBlacklist tests the skynet blacklist module
+func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create skyfile upload params, data should be larger than a sector size to
@@ -1637,4 +1456,70 @@ func TestSkynetBlacklist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// escapeQuotes escapes the quotes in the given string.
+func escapeQuotes(s string) string {
+	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+	return quoteEscaper.Replace(s)
+}
+
+// createFormFileHeaders builds a header from the given params. These headers are used when creating the parts in a multi-part form upload.
+func createFormFileHeaders(fieldname, filename string, headers map[string]string) textproto.MIMEHeader {
+	fieldname = escapeQuotes(fieldname)
+	filename = escapeQuotes(filename)
+
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Type", "application/octet-stream")
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
+	for k, v := range headers {
+		h.Set(k, v)
+	}
+	return h
+}
+
+// addMultipartField is a helper function to add a file to the multipart form-
+// data. Note that the given data will be treated as binary data, and the multi
+// part 's ContentType header will be set accordingly.
+func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
+	h := map[string]string{"mode": fmt.Sprintf("%o", filemode)}
+	partHeader := createFormFileHeaders(filekey, filename, h)
+	part, err := w.CreatePart(partHeader)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = part.Write(filedata)
+	metadata := modules.SkyfileSubfileMetadata{
+		Filename:    filename,
+		ContentType: "application/octet-stream",
+		FileMode:    os.FileMode(filemode),
+		Len:         uint64(len(filedata)),
+	}
+
+	if offset != nil {
+		metadata.Offset = *offset
+		*offset += metadata.Len
+	}
+
+	return metadata
+}
+
+// skynetSkyfilePostRequestWithHeaders is a helper function that turns the given
+// SkyfileUploadParameters into a SkynetSkyfilePost request, allowing additional
+// headers to be set on the request object
+func skynetSkyfilePostRequestWithHeaders(r *siatest.TestNode, sup modules.SkyfileUploadParameters) (*http.Request, error) {
+	values := url.Values{}
+	values.Set("filename", sup.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", sup.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", sup.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", sup.BaseChunkRedundancy)
+	values.Set("basechunkredundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", sup.Root)
+	values.Set("root", rootStr)
+
+	resource := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), values.Encode())
+	return r.NewRequest("POST", resource, sup.Reader)
 }
