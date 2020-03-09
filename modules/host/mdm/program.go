@@ -115,7 +115,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
 	// Increment the execution cost of the program.
-	err = p.addCost(InitCost(pt, p.staticData.Len()))
+	err = p.addCost(modules.MDMInitCost(pt, p.staticData.Len()))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
@@ -153,7 +153,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		// Add the memory the next instruction is going to allocate to the
 		// total.
 		p.usedMemory += i.Memory()
-		memoryCost := MemoryCost(p.staticProgramState.priceTable, p.usedMemory, i.Time())
+		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, i.Time())
 		// Get the instruction cost and refund.
 		instructionCost, refund, err := i.Cost()
 		if err != nil {
@@ -187,7 +187,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 // only be called after the channel returned by Execute is closed.
 func (p *Program) managedFinalize() error {
 	// Compute the memory cost of finalizing the program.
-	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * TimeCommit)
+	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * modules.MDMTimeCommit)
 	err := p.addCost(memoryCost)
 	if err != nil {
 		return err
@@ -210,4 +210,16 @@ func (p *Program) readOnly() bool {
 		}
 	}
 	return true
+}
+
+// addCost increases the cost of the program by 'cost'. If as a result the cost
+// becomes larger than the budget of the program, ErrInsufficientBudget is
+// returned.
+func (p *Program) addCost(cost types.Currency) error {
+	newExecutionCost := p.executionCost.Add(cost)
+	if p.staticBudget.Cmp(newExecutionCost) < 0 {
+		return modules.ErrMDMInsufficientBudget
+	}
+	p.executionCost = newExecutionCost
+	return nil
 }

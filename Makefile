@@ -64,6 +64,7 @@ pkgs = ./build \
 	./siatest/renterhost \
 	./siatest/transactionpool \
 	./siatest/wallet \
+	./skykey \
 	./sync \
 	./types \
 	./types/typesutil

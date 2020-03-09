@@ -4112,6 +4112,27 @@ See [standard responses](#standard-responses).
 
 # Skynet
 
+## /skynet/blacklist [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
+```
+
+returns the list of merkleroots that are blacklisted.
+
+### JSON Response
+```go
+{
+  "blacklist": {
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+    "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
+  }
+}
+```
+**blacklist** | Hashes  
+The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
+
 ## /skynet/blacklist [POST]
 > curl example
 ```go
@@ -4137,6 +4158,30 @@ remove is an array of skylinks that should be removed from the blacklist
 
 standard success or error response. See [standard
 responses](#standard-responses).
+
+## /skynet/skylink/*skylink* [HEAD]
+> curl example
+
+```bash
+curl -I -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+```
+
+This curl command performs a HEAD request that fetches the headers for
+the given skylink. These headers are identical to the ones that would be
+returned if the request had been a GET request.
+
+### Path Parameters
+See [/skynet/skylink/skylink](#skynetskylinkskylink-get)
+
+### Query String Parameters
+See [/skynet/skylink/skylink](#skynetskylinkskylink-get)
+
+### Response Header
+See [/skynet/skylink/skylink](#skynetskylinkskylink-get)
+
+### Response Body
+
+This request has an empty response body.
 
 ## /skynet/skylink/*skylink* [GET]
 > curl example  
