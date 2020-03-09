@@ -1872,7 +1872,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse the timeout.
 	var timeout time.Duration
-	timeoutStr := strings.ToLower(queryForm.Get("timeout"))
+	timeoutStr := queryForm.Get("timeout")
 	if timeoutStr != "" {
 		timeoutInt, err := strconv.Atoi(timeoutStr)
 		if err != nil {
