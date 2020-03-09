@@ -12,7 +12,7 @@ type DependencyTimeoutProjectDownloadByRoot struct {
 	modules.ProductionDependencies
 }
 
-// Disrupt prevents SiafileEntries in the upload code from being closed.
+// Disrupt forces an immediate timeout for DownloadByRoot projects.
 func (d *DependencyTimeoutProjectDownloadByRoot) Disrupt(s string) bool {
 	return s == "timeoutProjectDownloadByRoot"
 }
