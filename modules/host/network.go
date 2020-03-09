@@ -240,7 +240,6 @@ func (h *Host) initNetworking(address string) (err error) {
 	if err != nil {
 		return errors.AddContext(err, "Failed to subscribe to the SiaMux")
 	}
-
 	// Close the listener when h.tg.OnStop is called.
 	h.tg.OnStop(func() {
 		h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
@@ -390,9 +389,6 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	}
 
 	switch rpcID {
-	// TODO: enable when the host should support the UpdatePriceTableRPC
-	// case modules.RPCUpdatePriceTable:
-	// 	err = extendErr("incoming RPCUpdatePriceTable failed: ", h.managedRPCUpdatePriceTable(stream))
 	default:
 		// TODO log stream.RemoteAddr().String() when it is implemented on the
 		// SiaMux
