@@ -18,10 +18,9 @@ Renter. This README will provide brief overviews of the submodules, but for more
 detailed descriptions of the inner workings of the submodules the respective
 README files should be reviewed.
  - Contractor
+ - Filesystem
  - HostDB
  - Proto
- - SiaDir
- - SiaFile
  - Skynet Blacklist
 
 ### Contractor
@@ -29,6 +28,12 @@ The Contractor manages the Renter's contracts and is responsible for all
 contract actions such as new contract formation and contract renewals. The
 Contractor determines which contracts are GoodForUpload and GoodForRenew and
 marks them accordingly.
+
+### Filesystem
+The Filesystem is responsible for ensuring that all of its supported file
+formats can be accessed in a threadsafe manner. It doesn't handle any
+persistence directly but instead relies on the underlying format's package to
+handle that itself.
 
 ### HostDB
 The HostDB curates and manages a list of hosts that may be useful for the renter
@@ -41,16 +46,6 @@ The proto module implements the renter's half of the renter-host protocol,
 including contract formation and renewal RPCs, uploading and downloading,
 verifying Merkle proofs, and synchronizing revision states. It is a low-level
 module whose functionality is largely wrapped by the Contractor.
-
-### SiaDir
-The SiaDir module is the code that defines what a directory is on the Sia
-network. It also manages accesses and updates to the file, ensuring safety and
-ACIDity when performing file operations.
-
-### SiaFile
-The SiaFile module is the code that defines what a file is on the Sia network.
-It also manages accesses and updates to the file, ensuring safety and ACIDity
-when performing file operations.
 
 ### Skynet Blacklist
 The Skynet Blacklist module manages the list of skylinks that the Renter wants

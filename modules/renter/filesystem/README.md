@@ -35,6 +35,25 @@ to optimize the performance of the data structure.
 Locking like this avoids a lot of lock contention and enables us to easily
 and efficiently delete and rename folders.
 
+## Submodules
+The Filesystem has several submodules that each perform a specific function
+for the Renter. This README will provide brief overviews of the submodules,
+but for more detailed descriptions of the inner workings of the submodules
+the respective README files should be reviewed.
+ - SiaDir
+ - SiaFile
+
+### SiaDir
+The SiaDir module is the code that defines what a directory is on the Sia
+network. It also manages accesses and updates to the file, ensuring safety and
+ACIDity when performing file operations.
+
+### SiaFile
+The SiaFile module is the code that defines what a file is on the Sia network.
+It also manages accesses and updates to the file, ensuring safety and ACIDity
+when performing file operations.
+
+
 # Subsystems
 The Filesystem has the following subsystems.
 - [Filesystem](#filesystem)
