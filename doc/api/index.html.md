@@ -4335,18 +4335,18 @@ returns statistical information about the skynet, e.g. number of files uploaded
 [
     {
         "hour": "2020-03-05T18:00:00+01:00",
-        "numberOfFiles": 2,
-        "totalSize": 44527895
+        "numfiles": 2,
+        "totalsize": 44527895
     },
     {
         "hour": "2020-03-05T19:00:00+01:00",
-        "numberOfFiles": 4,
-        "totalSize": 52916503
+        "numfiles": 4,
+        "totalsize": 52916503
     },
     {
         "hour": "2020-03-03T11:00:00+01:00",
-        "numberOfFiles": 1,
-        "totalSize": 4194304
+        "numfiles": 1,
+        "totalsize": 4194304
     }
 ]
 ```

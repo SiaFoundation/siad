@@ -277,8 +277,8 @@ type (
 	// SkynetStats contains per-hour statistical data about skynet
 	SkynetStats struct {
 		Hour      time.Time `json:"hour"`
-		NumFiles  int       `json:"numberOfFiles"`
-		TotalSize uint64    `json:"totalSize"`
+		NumFiles  int       `json:"numfiles"`
+		TotalSize uint64    `json:"totalsize"`
 	}
 )
 
@@ -2232,7 +2232,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetStatsHandlerGET responds with a JSONArray with per-hour statistical
 // data about skynet, e.g. number of files uploaded, total size, etc.
-func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	files, err := api.renter.FileList(modules.SkynetFolder, true, true)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
