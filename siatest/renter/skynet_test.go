@@ -1,9 +1,12 @@
 package renter
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -151,6 +154,111 @@ func TestSkynet(t *testing.T) {
 	}
 	if !bytes.Equal(readerData, data) {
 		t.Fatal("reader data doesn't match data")
+	}
+
+	// Try to download the file explicitly using the ReaderGet method with the
+	// no formatter.
+	skylinkReader, err = r.SkynetSkylinkReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readerData, err = ioutil.ReadAll(skylinkReader)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+
+	// Try to download the file using the ReaderGet method with the concat
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkConcatReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readerData, err = ioutil.ReadAll(skylinkReader)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file using the ReaderGet method with the tar
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkTarReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(skylinkReader)
+	header, err := tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filename {
+		t.Fatalf("expected filename in archive to be %v but was %v", filename, header.Name)
+	}
+	readerData, err = ioutil.ReadAll(tr)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected error to be EOF but was", err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file using the ReaderGet method with the targz
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err := gzip.NewReader(skylinkReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzr.Close()
+	tr = tar.NewReader(gzr)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filename {
+		t.Fatalf("expected filename in archive to be %v but was %v", filename, header.Name)
+	}
+	readerData, err = ioutil.ReadAll(tr)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected error to be EOF but was", err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Get the list of files in the skynet directory and see if the file is
@@ -347,6 +455,21 @@ func TestSkynet(t *testing.T) {
 		Force:               force,
 		Root:                false,
 		BaseChunkRedundancy: 2,
+	}
+	err = r.SkynetSkylinkPinPost(largeSkylink, largePinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pin the file again but without specifying the BaseChunkRedundancy.
+	// Use a different Siapath to avoid path conflict.
+	largePinSiaPath, err = modules.NewSiaPath("testLargePinPath2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	largePinLUP = modules.SkyfilePinParameters{
+		SiaPath: largePinSiaPath,
+		Force:   force,
+		Root:    false,
 	}
 	err = r.SkynetSkylinkPinPost(largeSkylink, largePinLUP)
 	if err != nil {
@@ -555,7 +678,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Try to download the file behind the skylink.
-	_, fileMetadata, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
+	_, fileMetadata, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +748,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	largeFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", largeSkylink))
+	largeFetchedData, _, err := r.SkynetSkylinkConcatGet(largeSkylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -705,7 +828,7 @@ func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	metadata := modules.SkyfileSubfileMetadata{
 		Filename:    filename,
 		ContentType: "application/octet-stream",
-		Mode:        os.FileMode(filemode),
+		FileMode:    os.FileMode(filemode),
 		Len:         uint64(len(filedata)),
 	}
 
@@ -884,9 +1007,12 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	dataFile1 := []byte("file1.txt")
 	dataFile2 := []byte("file2.txt")
 	dataFile3 := []byte("file3.txt")
-	addMultipartFile(writer, dataFile1, "files[]", "/a/5.f4f8b583.chunk.js", 0600, nil)
-	addMultipartFile(writer, dataFile2, "files[]", "/a/5.f4f.chunk.js.map", 0600, nil)
-	addMultipartFile(writer, dataFile3, "files[]", "/b/file3.txt", 0640, nil)
+	filePath1 := "/a/5.f4f8b583.chunk.js"
+	filePath2 := "/a/5.f4f.chunk.js.map"
+	filePath3 := "/b/file3.txt"
+	addMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	addMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	addMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
 
 	if err = writer.Close(); err != nil {
 		t.Fatal(err)
@@ -920,8 +1046,8 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
 	}
 
-	// now specify the correct format
-	allData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
+	// now specify a correct format
+	allData, _, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -933,19 +1059,122 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal("Unexpected data for dir A")
 	}
 
-	// get all data for path "/" (equals all data)
-	allData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/?format=concat", skylink))
+	// now specify the tar format
+	skyfileReader, err := r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(expected, allData) {
-		t.Log("expected:", expected)
-		t.Log("actual:", allData)
-		t.Fatal("Unexpected data for dir A")
+	tr := tar.NewReader(skyfileReader)
+	header, err := tr.Next()
+	if err != nil {
+		t.Fatal(err)
 	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err := ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath3 {
+		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile3) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	skyfileReader.Close()
 
-	// get all data for path "a"
-	dataDirA, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a?format=concat", skylink))
+	// now specify the targz format
+	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err := gzip.NewReader(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzr.Close()
+	tr = tar.NewReader(gzr)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath3 {
+		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile3) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	gzr.Close()
+	skyfileReader.Close()
+
+	// get all data for path "a" using the concat format
+	dataDirA, _, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -956,8 +1185,94 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal("Unexpected data for dir A")
 	}
 
+	// now specify the tar format
+	skyfileReader, err = r.SkynetSkylinkTarReaderGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr = tar.NewReader(skyfileReader)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	skyfileReader.Close()
+
+	// now specify the targz format
+	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err = gzip.NewReader(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzr.Close()
+	tr = tar.NewReader(gzr)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	gzr.Close()
+	skyfileReader.Close()
+
 	// get all data for path "b"
-	dataDirB, metadataDirB, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=concat", skylink))
+	dataDirB, metadataDirB, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/b", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -977,7 +1292,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	mdF3Expected := modules.SkyfileSubfileMetadata{
-		Mode:        os.FileMode(0640),
+		FileMode:    os.FileMode(0640),
 		Filename:    "/b/file3.txt",
 		ContentType: "application/octet-stream",
 		Offset:      0,

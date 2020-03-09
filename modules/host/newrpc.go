@@ -362,9 +362,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	s.so.RiskedCollateral = s.so.RiskedCollateral.Add(newCollateral)
 	s.so.PotentialUploadRevenue = s.so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	h.mu.Lock()
-	err = h.modifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData)
-	h.mu.Unlock()
+	err = h.managedModifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -505,9 +503,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	h.mu.Lock()
-	err = h.modifyStorageObligation(s.so, nil, nil, nil)
-	h.mu.Unlock()
+	err = h.managedModifyStorageObligation(s.so, nil, nil, nil)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -821,9 +817,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	h.mu.Lock()
-	err = h.modifyStorageObligation(s.so, nil, nil, nil)
-	h.mu.Unlock()
+	err = h.managedModifyStorageObligation(s.so, nil, nil, nil)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to modify storage obligation: ", err)

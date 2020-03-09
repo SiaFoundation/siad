@@ -3,52 +3,6 @@ stages:
   - test
   - deploy
 
-variables:
-  legacy_pkgs: "./node \
-  ./node/api \
-  ./node/api/server"
-  package_pkgs: "./build \
-  ./cmd/sia-node-scanner \
-  ./cmd/siac \
-  ./cmd/siad \
-  ./compatibility \
-  ./crypto \
-  ./encoding \
-  ./modules \
-  ./modules/consensus \
-  ./modules/explorer \
-  ./modules/gateway \
-  ./modules/host \
-  ./modules/host/contractmanager \
-  ./modules/host/mdm \
-  ./modules/renter \
-  ./modules/renter/contractor \
-  ./modules/renter/filesystem \
-  ./modules/renter/hostdb \
-  ./modules/renter/hostdb/hosttree \
-  ./modules/renter/proto \
-  ./modules/renter/siadir \
-  ./modules/renter/siafile \
-  ./modules/renter/skynetblacklist \
-  ./modules/miner \
-  ./modules/wallet \
-  ./modules/transactionpool \
-  ./persist \
-  ./sync \
-  ./types"
-  siatest_pkgs: "./siatest \
-  ./siatest/consensus \
-  ./siatest/daemon \
-  ./siatest/gateway \
-  ./siatest/host \
-  ./siatest/miner \
-  ./siatest/transactionpool \
-  ./siatest/wallet"
-  siatest_renter_pkgs: "./siatest/renter"
-  siatest_renter_sub_pkgs: "./siatest/renter/contractor \
-  ./siatest/renter/hostdb \
-  ./siatest/renterhost"
-
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
   ## improvements.
@@ -124,7 +78,7 @@ legacy-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs=$legacy_pkgs
+    - make test-long run=. pkgs="./node ./node/api ./node/api/server"
 
 package-tests:
   <<: *default_test_params
@@ -133,7 +87,7 @@ package-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs=$package_pkgs
+    - make test-long run=. pkgs="./build ./cmd/sia-node-scanner ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/host/mdm ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/renter/skynetblacklist ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./skykey ./types"
     
 siatest-tests:
   <<: *default_test_params
@@ -142,7 +96,7 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs=$siatest_pkgs
+    - make test-long run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
 
 siatest-renter-tests:
   <<: *default_test_params
@@ -153,7 +107,7 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs=$siatest_renter_pkgs
+    - make test-long run=. pkgs="./siatest/renter"
 
 siatest-renter-sub-tests:
   <<: *default_test_params
@@ -164,33 +118,33 @@ siatest-renter-sub-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs=$siatest_renter_sub_pkgs
+    - make test-long run=. pkgs="./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
 
 legacy-tests-nightly:
   <<: *default_nightly_params
   script: 
-    - make test-vlong run=. pkgs=$legacy_pkgs
+    - make test-vlong run=. pkgs="./node ./node/api ./node/api/server"
 
 package-tests-nightly:
   <<: *default_nightly_params
   script: 
-    - make test-vlong run=. pkgs=$package_pkgs
+    - make test-vlong run=. pkgs="./build ./cmd/sia-node-scanner ./cmd/siac ./cmd/siad ./compatibility ./crypto ./encoding ./modules ./modules/consensus ./modules/explorer ./modules/gateway ./modules/host ./modules/host/contractmanager ./modules/host/mdm ./modules/renter ./modules/renter/contractor ./modules/renter/filesystem ./modules/renter/hostdb ./modules/renter/hostdb/hosttree ./modules/renter/proto ./modules/renter/siadir ./modules/renter/siafile ./modules/renter/skynetblacklist ./modules/miner ./modules/wallet ./modules/transactionpool ./persist ./sync ./skykey ./types"
 
 siatest-tests-nightly:
   <<: *default_nightly_params
   script:
-    - make test-vlong run=. pkgs=$siatest_pkgs
+    - make test-vlong run=. pkgs="./siatest ./siatest/consensus ./siatest/daemon ./siatest/gateway ./siatest/host ./siatest/miner ./siatest/transactionpool ./siatest/wallet"
 
 siatest-renter-tests-nightly:
   <<: *default_nightly_params
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-vlong run=. pkgs=$siatest_renter_pkgs
+    - make test-vlong run=. pkgs="./siatest/renter"
 
 siatest-renter-sub-tests-nightly:
   <<: *default_nightly_params
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-vlong run=. pkgs=$siatest_renter_sub_pkgs
+    - make test-vlong run=. pkgs="./siatest/renter/contractor ./siatest/renter/hostdb ./siatest/renterhost"
