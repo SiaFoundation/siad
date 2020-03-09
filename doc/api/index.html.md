@@ -1981,7 +1981,7 @@ Maximum size in bytes of a single batch of file contract revisions. Larger batch
 sizes allow for higher throughput as there is significant communication overhead
 associated with performing a batch upload.  
 
-**netaddress** | sting  
+**netaddress** | string  
 Remote address of the host. It can be an IPv4, IPv6, or hostname, along with the
 port. IPv6 addresses are enclosed in square brackets.  
 
