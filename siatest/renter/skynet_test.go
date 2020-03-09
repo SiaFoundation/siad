@@ -1257,9 +1257,13 @@ func TestSkynetHeadRequest(t *testing.T) {
 
 	// Perform the same HEAD request but now expect it to timeout and thus
 	// return a 404.
-	status, _, err = r.SkynetSkylinkHead(skylink, 1)
+	status, header, err = r.SkynetSkylinkHead(skylink, 1)
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+	hTimeout := header.Get("Skynet-Request-Timeout")
+	if hTimeout != "true" {
+		t.Fatalf("Expected Skynet-Request-Timeout to be set and equal to \"true\", instead it was '%v'", hTimeout)
 	}
 }
 

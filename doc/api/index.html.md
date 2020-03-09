@@ -4237,6 +4237,11 @@ The header field "Skynet-FileMetadata" will be set such that it has an encoded
 json object which matches the modules.SkyfileMetadata struct. If a path was
 supplied, this metadata will be relative to the given path.
 
+**Skynet-Request-Timeout** | bool
+
+The header field "Skynet-Request-Timeout" will be set if the request timed out 
+after a user configured timeout period. The value will always be "true".
+
 > Skynet-File-Metadata Response Header Example 
 ```go
 {
