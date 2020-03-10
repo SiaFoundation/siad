@@ -250,7 +250,7 @@ func NewSkykeyManager(persistDir string) (*SkykeyManager, error) {
 	}
 
 	// create the persist dir if it doesn't already exist.
-	err := os.MkdirAll(persistDir, modules.DefaultFilePerm)
+	err := os.MkdirAll(persistDir, modules.DefaultDirPerm)
 	if err != nil {
 		return nil, err
 	}
