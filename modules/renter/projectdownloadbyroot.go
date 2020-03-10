@@ -72,12 +72,10 @@ type projectDownloadByRoot struct {
 
 	// Project output. Once the project has been completed, completeChan will be
 	// closed. The data and error fields contain the final output for the
-	// project. If the project is run using a timeout, the cancelChan will be
-	// closed when the timeout expires before the root could be found.
+	// project.
 	data         []byte
 	err          error
 	completeChan chan struct{}
-	cancelChan   chan struct{}
 
 	tg *threadgroup.ThreadGroup
 	mu sync.Mutex
@@ -118,9 +116,9 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 		w.renter.log.Critical("one worker appeared in the standby list multiple times")
 	}
 
-	// Check whether the pdbr is already finished. If so, nothing else needs to
+	// Check whether the pdbr is already completed. If so, nothing else needs to
 	// be done.
-	if pdbr.staticFinished() {
+	if pdbr.staticCompleted() {
 		return
 	}
 
@@ -164,8 +162,8 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 // data by merkle root for a worker. The first stage consists of determining
 // whether or not the worker's host has the merkle root in question.
 func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
-	// Check if the project is already finished, do no more work if so.
-	if pdbr.staticFinished() {
+	// Check if the project is already completed, do no more work if so.
+	if pdbr.staticCompleted() {
 		pdbr.managedRemoveWorker(w)
 		return
 	}
@@ -245,21 +243,24 @@ func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) 
 	// whichever comes first
 	select {
 	case <-pdbr.completeChan:
+		return
 	case <-time.After(timeout):
-		pdbr.mu.Lock()
-		pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after: %vs", timeout.Seconds())))
-		close(pdbr.cancelChan)
-		pdbr.mu.Unlock()
 	}
+
+	pdbr.mu.Lock()
+	defer pdbr.mu.Unlock()
+	if pdbr.staticCompleted() {
+		return
+	}
+	close(pdbr.completeChan)
+	pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", timeout.Seconds())))
 }
 
-// staticFinished is a helper function to check if the project has already
-// finished. Workers use this method to determine whether to abort early.
-func (pdbr *projectDownloadByRoot) staticFinished() bool {
+// staticCompleted is a helper function to check if the project has already
+// completed. Workers use this method to determine whether to abort early.
+func (pdbr *projectDownloadByRoot) staticCompleted() bool {
 	select {
 	case <-pdbr.completeChan:
-		return true
-	case <-pdbr.cancelChan:
 		return true
 	default:
 		return false
@@ -278,7 +279,6 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		workersRegistered: make(map[string]struct{}),
 
 		completeChan: make(chan struct{}),
-		cancelChan:   make(chan struct{}),
 
 		tg: &r.tg,
 	}
@@ -310,10 +310,9 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 	go pdbr.threadedHandleTimeout(timeout)
 
-	// Block until the project has either completed, or got canceled.
+	// Block until the project is completed.
 	select {
 	case <-pdbr.completeChan:
-	case <-pdbr.cancelChan:
 	}
 
 	pdbr.mu.Lock()
