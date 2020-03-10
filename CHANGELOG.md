@@ -46,23 +46,18 @@ Latest:
  - Extend `siac renter -v` to show breakdown of file health.
  -
  -
- -
- -
 
 **Bugs Fixed**
  - Fixed bug in startup where an error being returned by the renter's blocking
    startup process was being missed
  -
  -
-<<<<<<< 356ccb41699d2457000d162b508d9a45de4907f8
  -
  - Fix repair bug where unused hosts were not being properly updated for a
    siafile
-=======
  - Fix threadgroup violation in the watchdog that allowed writing to the log
    file after a shutdown
  -
->>>>>>> fix thread group violation in watchdog that allowed writing to the log file after the contractor had shut down
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
