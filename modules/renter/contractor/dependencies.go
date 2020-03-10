@@ -83,7 +83,9 @@ func (ws *WalletBridge) PrimarySeed() (modules.Seed, uint64, error) { return ws.
 
 // StartTransaction creates a new transactionBuilder that can be used to create
 // and sign a transaction.
-func (ws *WalletBridge) StartTransaction() (transactionBuilder, error) { return ws.W.StartTransaction() }
+func (ws *WalletBridge) StartTransaction() (transactionBuilder, error) {
+	return ws.W.StartTransaction()
+}
 
 // RegisterTransaction creates a new transactionBuilder from a transaction and parent transactions.
 func (ws *WalletBridge) RegisterTransaction(t types.Transaction, parents []types.Transaction) (transactionBuilder, error) {
