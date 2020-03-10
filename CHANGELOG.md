@@ -31,6 +31,7 @@ Latest:
  -
  -
  -
+ - Add `go get` command to `make dependencies`
  -
  - Add flags for tag and targz for skyfile streaming
  -
