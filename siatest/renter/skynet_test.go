@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 	}
 
 	// Run tests
@@ -1453,5 +1455,91 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetHeadRequest verifies the functionality of sending a HEAD request to
+// the skylink GET route.
+func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a skyfile
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	uploadSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink, _, err := r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "TestSkynetHeadRequest",
+			Mode:     0640,
+		},
+		Reader: reader,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Perform a GET and HEAD request and compare the response headers and
+	// content length.
+	data, metadata, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, header, err := r.SkynetSkylinkHead(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify Skynet-File-Metadata
+	strMetadata := header.Get("Skynet-File-Metadata")
+	if strMetadata == "" {
+		t.Fatal("Expected 'Skynet-File-Metadata' response header to be present")
+	}
+	var sm modules.SkyfileMetadata
+	err = json.Unmarshal([]byte(strMetadata), &sm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata, sm) {
+		t.Log(metadata)
+		t.Log(sm)
+		t.Fatal("Expected metadatas to be identical")
+	}
+
+	// Verify Content-Length
+	strContentLength := header.Get("Content-Length")
+	if strContentLength == "" {
+		t.Fatal("Expected 'Content-Length' response header to be present")
+	}
+	cl, err := strconv.Atoi(strContentLength)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cl != len(data) {
+		t.Fatalf("Content-Length header did not match actual content length of response body, %v vs %v", cl, len(data))
+	}
+
+	// Verify Content-Type
+	strContentType := header.Get("Content-Type")
+	if strContentType == "" {
+		t.Fatal("Expected 'Content-Type' response header to be present")
+	}
+
+	// Verify Content-Disposition
+	strContentDisposition := header.Get("Content-Disposition")
+	if strContentDisposition == "" {
+		t.Fatal("Expected 'Content-Disposition' response header to be present")
+	}
+	if strContentDisposition != "inline; filename=\"TestSkynetHeadRequest\"" {
+		t.Fatal("Unexpected 'Content-Disposition' header")
+	}
+
+	// Perform a HEAD request for a skylink that does not exist
+	status, header, err := r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
 }
