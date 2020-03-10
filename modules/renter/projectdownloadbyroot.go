@@ -310,11 +310,8 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 	go pdbr.threadedHandleTimeout(timeout)
 
-	// Block until the project is completed.
-	select {
-	case <-pdbr.completeChan:
-	}
-
+	// Block until the project has completed.
+	<-pdbr.completeChan
 	pdbr.mu.Lock()
 	err := pdbr.err
 	data := pdbr.data
