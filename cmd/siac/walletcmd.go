@@ -477,7 +477,7 @@ Unlock the wallet to view balance
 %s, Unlocked
 Height:              %v
 Confirmed Balance:   %v
-Unconfirmed Delta:  %v
+Unconfirmed Delta:   %v
 Exact:               %v H
 Siafunds:            %v SF
 Siafund Claims:      %v H
