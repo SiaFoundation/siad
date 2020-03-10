@@ -118,7 +118,7 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 
 	// Check whether the pdbr is already completed. If so, nothing else needs to
 	// be done.
-	if pdbr.staticCompleted() {
+	if pdbr.staticComplete() {
 		return
 	}
 
@@ -163,7 +163,7 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 // whether or not the worker's host has the merkle root in question.
 func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 	// Check if the project is already completed, do no more work if so.
-	if pdbr.staticCompleted() {
+	if pdbr.staticComplete() {
 		pdbr.managedRemoveWorker(w)
 		return
 	}
@@ -249,16 +249,16 @@ func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) 
 
 	pdbr.mu.Lock()
 	defer pdbr.mu.Unlock()
-	if pdbr.staticCompleted() {
+	if pdbr.staticComplete() {
 		return
 	}
 	close(pdbr.completeChan)
 	pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", timeout.Seconds())))
 }
 
-// staticCompleted is a helper function to check if the project has already
+// staticComplete is a helper function to check if the project has already
 // completed. Workers use this method to determine whether to abort early.
-func (pdbr *projectDownloadByRoot) staticCompleted() bool {
+func (pdbr *projectDownloadByRoot) staticComplete() bool {
 	select {
 	case <-pdbr.completeChan:
 		return true
