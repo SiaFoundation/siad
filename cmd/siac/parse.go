@@ -17,6 +17,24 @@ import (
 )
 
 var (
+	// errUnableToParseCurrencyAmount is returned when the input is unable to be
+	// parsed into a currency unit due to a malformed amount.
+	errUnableToParseCurrencyAmount = errors.New("malformed amount")
+	// errUnableToParseCurrencyInteger is returned when the input is unable to
+	// be parsed into a currency unit due to a non-integer value.
+	errUnableToParseCurrencyInteger = errors.New("non-integer number of hastings")
+	// errUnableToParseCurrencyUnits is returned when the input is unable to be
+	// parsed into a currency unit due to missing units.
+	errUnableToParseCurrencyUnits = errors.New("amount is missing units; run 'wallet --help' for a list of units")
+
+	// errUnableToParsePeriod is returned when the input is unable to be parsed
+	// into a period unit.
+	errUnableToParsePeriod = errors.New("unable to parse period")
+
+	// errUnableToParseRateLimit is returned when the input is unable to be
+	// parsed into a rate limit unit
+	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
+
 	// errUnableToParseSize is returned when the input is unable to be parsed
 	// into a file size unit
 	errUnableToParseSize = errors.New("unable to parse size")
@@ -24,14 +42,10 @@ var (
 	// errUnableToParseTimeout is returned when the input is unable to be parsed
 	// into a timeout unit
 	errUnableToParseTimeout = errors.New("unable to parse timeout")
-
-	// errUnableToParseRateLimit is returned when the input is unable to be
-	// parsed into a rate limit unit
-	errUnableToParseRateLimit = errors.New("unable to parse ratelimit")
 )
 
-// parseFilesize converts strings of form 10GB to a size in bytes. Fractional
-// sizes are truncated at the byte size.
+// parseFilesize converts strings of form '10GB' or '10 gb' to a size in bytes.
+// Fractional sizes are truncated at the byte size.
 func parseFilesize(strSize string) (string, error) {
 	units := []struct {
 		suffix     string
@@ -48,10 +62,13 @@ func parseFilesize(strSize string) (string, error) {
 		{"b", 1}, // must be after others else it'll match on them all
 	}
 
-	strSize = strings.ToLower(strSize)
+	strSize = strings.ToLower(strings.TrimSpace(strSize))
 	for _, unit := range units {
 		if strings.HasSuffix(strSize, unit.suffix) {
-			r, ok := new(big.Rat).SetString(strings.TrimSuffix(strSize, unit.suffix))
+			// Trim spaces after removing the suffix to allow spaces between the
+			// value and the unit.
+			value := strings.TrimSpace(strings.TrimSuffix(strSize, unit.suffix))
+			r, ok := new(big.Rat).SetString(value)
 			if !ok {
 				return "", errUnableToParseSize
 			}
@@ -93,20 +110,20 @@ func parsePeriod(period string) (string, error) {
 		{"weeks", 1008}, // weeks
 	}
 
-	period = strings.ToLower(period)
+	period = strings.ToLower(strings.TrimSpace(period))
 	for _, unit := range units {
 		if strings.HasSuffix(period, unit.suffix) {
 			var base float64
 			_, err := fmt.Sscan(strings.TrimSuffix(period, unit.suffix), &base)
 			if err != nil {
-				return "", errUnableToParseSize
+				return "", errUnableToParsePeriod
 			}
 			blocks := int(base * unit.multiplier)
 			return fmt.Sprint(blocks), nil
 		}
 	}
 
-	return "", errUnableToParseSize
+	return "", errUnableToParsePeriod
 }
 
 // parseTimeout converts a duration specified in seconds, hours, days or weeks
@@ -130,11 +147,12 @@ func parseTimeout(duration string) (string, error) {
 		{"weeks", 604800}, // weeks
 	}
 
-	duration = strings.ToLower(duration)
+	duration = strings.ToLower(strings.TrimSpace(duration))
 	for _, unit := range units {
 		if strings.HasSuffix(duration, unit.suffix) {
+			value := strings.TrimSpace(strings.TrimSuffix(duration, unit.suffix))
 			var base float64
-			_, err := fmt.Sscan(strings.TrimSuffix(duration, unit.suffix), &base)
+			_, err := fmt.Sscan(value, &base)
 			if err != nil {
 				return "", errUnableToParseTimeout
 			}
@@ -178,12 +196,16 @@ func currencyUnits(c types.Currency) string {
 // parseCurrency converts a siacoin amount to base units.
 func parseCurrency(amount string) (string, error) {
 	units := []string{"pS", "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS"}
+	amount = strings.TrimSpace(amount)
 	for i, unit := range units {
 		if strings.HasSuffix(amount, unit) {
+			// Trim spaces after removing the suffix to allow spaces between the
+			// value and the unit.
+			value := strings.TrimSpace(strings.TrimSuffix(amount, unit))
 			// scan into big.Rat
-			r, ok := new(big.Rat).SetString(strings.TrimSuffix(amount, unit))
+			r, ok := new(big.Rat).SetString(value)
 			if !ok {
-				return "", errors.New("malformed amount")
+				return "", errUnableToParseCurrencyAmount
 			}
 			// convert units
 			exp := 24 + 3*(int64(i)-4)
@@ -191,7 +213,7 @@ func parseCurrency(amount string) (string, error) {
 			r.Mul(r, new(big.Rat).SetInt(mag))
 			// r must be an integer at this point
 			if !r.IsInt() {
-				return "", errors.New("non-integer number of hastings")
+				return "", errUnableToParseCurrencyInteger
 			}
 			return r.RatString(), nil
 		}
@@ -201,7 +223,7 @@ func parseCurrency(amount string) (string, error) {
 		return strings.TrimSuffix(amount, "H"), nil
 	}
 
-	return "", errors.New("amount is missing units; run 'wallet --help' for a list of units")
+	return "", errUnableToParseCurrencyUnits
 }
 
 // parseRatelimit converts a ratelimit input string of to an int64 representing
@@ -228,6 +250,7 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 		{"Kbps", 1e3 / 8},
 		{"Bps", 1e0 / 8},
 	}
+	rateLimitStr = strings.TrimSpace(rateLimitStr)
 	for _, rate := range rates {
 		if !strings.HasSuffix(rateLimitStr, rate.unit) {
 			continue
