@@ -179,8 +179,8 @@ func (a *GenericAlerter) Alerts() (crit, err, warn []Alert) {
 		case SeverityWarning:
 			warn = append(warn, alert)
 		default:
+			build.Critical("Alerts: invalid severity", alert.Severity)
 		}
-		build.Critical("Alerts: invalid severity", alert.Severity)
 	}
 	return
 }
