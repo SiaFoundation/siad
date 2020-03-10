@@ -1144,8 +1144,8 @@ for upload bandwidth, it will not impact the total cost to the user very much.
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedUpload*uint64(period)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(period)))
+	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)))
+	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(modules.DefaultAllowance.Period)))
 
 	var expectedUpload uint64
 	if allowance.ExpectedUpload == 0 {
@@ -1182,8 +1182,8 @@ for downloads, it will not impact the total cost to the user very much.
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedDownload*uint64(period)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(period)))
+	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)))
+	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(modules.DefaultAllowance.Period)))
 
 	var expectedDownload uint64
 	if allowance.ExpectedDownload == 0 {
