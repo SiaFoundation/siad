@@ -12,11 +12,13 @@ Latest:
 
 ### v1.4.4
 **Key Updates**
- - Add a delay when modifying large contracts on hosts to prevent hosts from becoming unresponsive due to massive disk i/o.
+ - Add a delay when modifying large contracts on hosts to prevent hosts
+   from becoming unresponsive due to massive disk i/o.
  - Add `--root` parameter to `siac renter delete` that allows passing absolute.
  - Add ability to blacklist skylinks by merkleroot.
  - Uploading resumes more quickly after restart.
- - `siac skynet upload` now supports uploading directories. All files are uploaded individually and result in separate skylinks.
+ - `siac skynet upload` now supports uploading directories.
+   All files are uploaded individually and result in separate skylinks.
  - No user-agent needed for Skylink downloads.
  - Add XChaCha20 CipherKey.
  - Add Skykey Manager.
@@ -25,13 +27,14 @@ Latest:
 **Bugs Fixed**
  - Fixed bug in startup where an error being returned by the renter's blocking
    startup process was being missed
- - Fixed `siac skynet ls` not working when files were passed as input. It is now
-   able to access specific files in the Skynet folder.
+ - Fixed `siac skynet ls` not working when files were passed as input.
+   It is now able to access specific files in the Skynet folder.
 **Other**
  - Split out renter siatests into 2 groups for faster pipelines.
- - Fix bug where `siac renter -v` wasn't working due to the wrong flag being used.
- - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
-   to safely acquire the host pubkey.
+ - Fix bug where `siac renter -v` wasn't working due to the wrong flag
+   being used.
+ - Fixed bug in siafile snapshot code where the `hostKey()` method
+   was not used to safely acquire the host pubkey.
 
 ### v1.4.3
 **Key Updates**
