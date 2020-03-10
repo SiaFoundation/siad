@@ -86,6 +86,7 @@ util-pkgs = ./cmd/sia-node-scanner
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.
 dependencies:
+	go get -d ./...
 	./install-dependencies.sh
 
 # fmt calls go fmt on all packages.
