@@ -255,11 +255,6 @@ func newMDMStorageObligation(so storageObligation, h *Host) mdm.StorageObligatio
 	return &MDMStorageObligation{so: so, h: h}
 }
 
-// Locked satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) Locked() bool {
-	return mso.h.managedIsLockedStorageObligation(mso.so.id())
-}
-
 // Update satisfies the mdm.StorageObligation interface.
 func (mso *MDMStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
 	mso.h.mu.Lock()
@@ -582,6 +577,7 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 	_, exists := h.lockedStorageObligations[soid]
 	if !exists {
 		h.log.Critical("modifyStorageObligation called with an obligation that is not locked")
+		return errObligationUnlocked
 	}
 	// Sanity check - there needs to be enough time to submit the file contract
 	// revision to the blockchain.

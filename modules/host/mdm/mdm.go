@@ -10,8 +10,6 @@ import (
 // StorageObligation defines the minimal interface a StorageObligation needs to
 // implement to be used by the mdm.
 type StorageObligation interface {
-	// Locked returns whether or not the storage obligation is locked.
-	Locked() bool
 	// Update updates the storage obligation.
 	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error
 }

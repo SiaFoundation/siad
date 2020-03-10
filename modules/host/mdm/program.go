@@ -178,12 +178,6 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
 func (p *Program) managedFinalize(so StorageObligation) error {
-	// Make sure that the contract is locked unless the program we're executing
-	// is a readonly program.
-	if !p.readOnly() && !so.Locked() {
-		return errors.New("contract needs to be locked for a program with one or more write instructions")
-	}
-
 	// Compute the memory cost of finalizing the program.
 	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * TimeCommit)
 	err := p.addCost(memoryCost)
