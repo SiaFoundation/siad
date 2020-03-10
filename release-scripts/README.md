@@ -32,6 +32,9 @@ improved to allow reproducibility on more systems.
 process. After this step is complete, the checksum file must be signed and the
 releases are ready.
 
+`./generate-changelog.sh` collects all changelog items for each release version
+from `./changelog` directory and generates a single `CHANGELOG.md` file
+
 
 ## Example
 The following list of commands shows how one could use the scripts in this directory to build Sia.
