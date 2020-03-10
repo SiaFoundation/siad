@@ -315,7 +315,7 @@ func main() {
 	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
 
 	root.AddCommand(gatewayCmd)
-	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
+	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayBandwidthCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
 	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
 
 	root.AddCommand(consensusCmd)
