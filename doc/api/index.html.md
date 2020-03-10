@@ -4328,7 +4328,7 @@ version, an offset and a length in a heavily compressed and optimized format.
 curl -A "Sia-Agent" "localhost:9980/skynet/stats"
 ```
 
-returns statistical information about the skynet, e.g. number of files uploaded
+returns statistical information about Skynet, e.g. number of files uploaded
 
 ### JSON Response
 ```json
