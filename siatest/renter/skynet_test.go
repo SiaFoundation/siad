@@ -1582,10 +1582,6 @@ func TestSkynetHeadRequest(t *testing.T) {
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
-	hTimeout := header.Get("Skynet-Request-Timeout")
-	if hTimeout != "1s" {
-		t.Fatalf("Expected Skynet-Request-Timeout to be set and equal to \"1s\", instead it was '%v'", hTimeout)
-	}
 }
 
 // TestSkynetBlacklist tests the skynet blacklist module

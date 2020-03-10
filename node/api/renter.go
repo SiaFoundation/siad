@@ -1944,9 +1944,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		if errors.Contains(err, renter.ErrRootNotFound) {
 			status = http.StatusNotFound
 		}
-		if errors.Contains(err, renter.ErrProjectTimedOut) {
-			w.Header().Set("Skynet-Request-Timeout", fmt.Sprintf("%vs", timeout.Seconds()))
-		}
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, status)
 		return
 	}

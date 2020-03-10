@@ -4200,7 +4200,9 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
-received.
+received. There is a 30s default timeout applied to downloading a skylink. If
+the data can not be found within this 30s time constraint, a 404 will be
+returned. This timeout is configurable through the query string parameters.
 
 ### Path Parameters 
 ### Required
@@ -4237,12 +4239,6 @@ which is a 30 second timeout.
 The header field "Skynet-FileMetadata" will be set such that it has an encoded
 json object which matches the modules.SkyfileMetadata struct. If a path was
 supplied, this metadata will be relative to the given path.
-
-**Skynet-Request-Timeout** | string
-
-The header field "Skynet-Request-Timeout" will be set if the request timed out 
-after a user configured timeout period. The value will be a string
-representation of the timeout, e.g. 30s.
 
 > Skynet-File-Metadata Response Header Example 
 ```go

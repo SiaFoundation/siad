@@ -72,7 +72,6 @@ Latest:
  - 
  -
  - Add HEAD request support for Skylink route
- - 
  -
  - Add timeout parameter to Skylink route
  - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
