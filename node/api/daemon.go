@@ -301,38 +301,38 @@ func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _
 	if api.gateway != nil {
 		c, e, w := api.gateway.Alerts()
 		crit = append(crit, c...)
-		err = append(crit, e...)
-		warn = append(crit, w...)
+		err = append(err, e...)
+		warn = append(warn, w...)
 	}
 	if api.cs != nil {
 		c, e, w := api.cs.Alerts()
 		crit = append(crit, c...)
-		err = append(crit, e...)
-		warn = append(crit, w...)
+		err = append(err, e...)
+		warn = append(warn, w...)
 	}
 	if api.tpool != nil {
 		c, e, w := api.tpool.Alerts()
 		crit = append(crit, c...)
-		err = append(crit, e...)
-		warn = append(crit, w...)
+		err = append(err, e...)
+		warn = append(warn, w...)
 	}
 	if api.wallet != nil {
 		c, e, w := api.wallet.Alerts()
 		crit = append(crit, c...)
-		err = append(crit, e...)
-		warn = append(crit, w...)
+		err = append(err, e...)
+		warn = append(warn, w...)
 	}
 	if api.renter != nil {
 		c, e, w := api.renter.Alerts()
 		crit = append(crit, c...)
-		err = append(crit, e...)
-		warn = append(crit, w...)
+		err = append(err, e...)
+		warn = append(warn, w...)
 	}
 	if api.host != nil {
 		c, e, w := api.host.Alerts()
 		crit = append(crit, c...)
-		err = append(crit, e...)
-		warn = append(crit, w...)
+		err = append(err, e...)
+		warn = append(warn, w...)
 	}
 	// Sort alerts by severity. Critical first, then Error and finally Warning.
 	alerts := append(crit, append(err, warn...)...)

@@ -15,7 +15,7 @@ Latest:
    becoming unresponsive due to massive disk i/o
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
- - 
+ - Alerts returned by /daemon/alerts route are sorted by severity
  - 
  - 
  - Add ability to blacklist skylinks by merkleroot
