@@ -13,10 +13,13 @@ To simplify generating Changelog.
 - It takes all version folders named `Sia/changelog/vX.Y.Z` (eg. `v1.4.4`) in reverse order (latest release first)
   - it renders version header (e.g. `v1.4.4.`) into `CHANGELOG.md`
   - it collects all "Key Updates" `*.md` files from `Sia/changelog/vX.Y.Z/key-updates` directory in alphabetic order
-  - it collects all "Bug Fixes" `*.md` files from `Sia/changelog/vX.Y.Z/key-updates` directory in alphabetic order
+  - it collects all "Bug Fixes" `*.md` files from `Sia/changelog/vX.Y.Z/bug-fixes` directory in alphabetic order
   - it collects all "Others" `*.md` files from `Sia/changelog/vX.Y.Z/others` directory in alphabetic order
 - Finally it appends `Sia/changelog/changelog-tail.md` to `CHANGELOG.md`
 
 ## Dos and don't dos
 
-- for changelog item filenames do not use apostroph (`'`) or spaces
+- Add your changelog item into `./changelog` under the current version (e.g. `v1.4.4`) under a specific item type (`key-updates` / `bug-fixes` / `others`) into `*.md` file
+- See existing changelog items for reference
+- Use filename (e.g. a numeric prefix) for your item to appear at a specific position
+- For changelog item filenames do not use apostroph (`'`) or spaces
