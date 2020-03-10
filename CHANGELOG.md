@@ -67,6 +67,7 @@ Latest:
  - 
  - 
  - 
+ - Bump golangci-lint version to v1.23.8
  - 
  -
  - Add HEAD request support for Skylink route
