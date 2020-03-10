@@ -30,6 +30,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+const (
+	fileSizeUnits = "    B, KB, MB, GB, TB, PB, EB, ZB, YB"
+)
+
 var (
 	renterAllowanceCancelCmd = &cobra.Command{
 		Use:   "cancel",
@@ -909,9 +913,9 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 	}
 
 	fmt.Println("Interactive tool for setting the 8 allowance options.")
-	fmt.Println()
 
 	// funds
+	fmt.Println()
 	fmt.Println(`1/8: Funds
 Funds determines the number of siacoins that the renter will spend when forming
 contracts with hosts. The renter will not allocate more than this amount of
@@ -932,6 +936,7 @@ contracts later in the billing cycle will be reported as 'unspent unallocated'.
 The command 'siac renter allowance' can be used to see a breakdown of spending.
 
 The following units can be used to set the allowance:
+
     H  (10^24 H per siacoin)
     SC (1 siacoin per SC)
     KS (1000 siacoins per KS)`)
@@ -965,6 +970,7 @@ The following units can be used to set the allowance:
 	req = req.WithFunds(funds)
 
 	// period
+	fmt.Println()
 	fmt.Println(`2/8: Period
 The period is equivalent to the billing cycle length. The renter will not spend
 more than the full balance of its funds every billing period. When the billing
@@ -1005,6 +1011,7 @@ The following units can be used to set the period:
 	req = req.WithPeriod(period)
 
 	// hosts
+	fmt.Println()
 	fmt.Println(`3/8: Hosts
 Hosts sets the number of hosts that will be used to form the allowance. Sia
 gains most of its resiliancy from having a large number of hosts. More hosts
@@ -1039,6 +1046,7 @@ double the default number of default hosts be treated as a maximum.`)
 	req = req.WithHosts(uint64(hosts))
 
 	// renewWindow
+	fmt.Println()
 	fmt.Println(`4/8: Renew Window
 The renew window is how long the user has to renew their contracts. At the end
 of the period, all of the contracts expire. The contracts need to be renewed
@@ -1090,6 +1098,7 @@ The following units can be used to set the renew window:
 	req = req.WithRenewWindow(renewWindow)
 
 	// expectedStorage
+	fmt.Println()
 	fmt.Println(`5/8: Expected Storage
 Expected storage is the amount of storage that the user expects to keep on the
 Sia network. This value is important to calibrate the spending habits of siad.
@@ -1106,7 +1115,11 @@ uptime and age.
 
 Even when the user has a large allowance and a low amount of expected storage,
 siad will try to optimize for saving money; siad tries to meet the users storage
-and bandwidth needs while spending significantly less than the overall allowance.`)
+and bandwidth needs while spending significantly less than the overall allowance.
+
+The following units can be used to set the expected storage:`)
+	fmt.Println()
+	fmt.Println(fileSizeUnits)
 	fmt.Println()
 	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedStorage))
@@ -1134,6 +1147,7 @@ and bandwidth needs while spending significantly less than the overall allowance
 	req = req.WithExpectedStorage(expectedStorage)
 
 	// expectedUpload
+	fmt.Println()
 	fmt.Println(`6/8: Expected Upload
 Expected upload tells siad how much uploading the user expects to do each
 period. If this value is high, siad will more strongly prefer hosts that have a
@@ -1142,7 +1156,11 @@ metrics than upload bandwidth pricing, because even if the host charges a lot
 for upload bandwidth, it will not impact the total cost to the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
-consider repair bandwidth separately.`)
+consider repair bandwidth separately.
+
+The following units can be used to set the expected upload:`)
+	fmt.Println()
+	fmt.Println(fileSizeUnits)
 	fmt.Println()
 	euCurrentPeriod := allowance.ExpectedUpload * uint64(allowance.Period)
 	euDefaultPeriod := modules.DefaultAllowance.ExpectedUpload * uint64(modules.DefaultAllowance.Period)
@@ -1180,6 +1198,7 @@ consider repair bandwidth separately.`)
 	req = req.WithExpectedUpload(expectedUpload)
 
 	// expectedDownload
+	fmt.Println()
 	fmt.Println(`7/8: Expected Download
 Expected download tells siad how much downloading the user expects to do each
 period. If this value is high, siad will more strongly prefer hosts that have a
@@ -1188,7 +1207,11 @@ metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
 
 The user should not consider download bandwidth used during repairs, siad will
-consider repair bandwidth separately.`)
+consider repair bandwidth separately.
+
+The following units can be used to set the expected download:`)
+	fmt.Println()
+	fmt.Println(fileSizeUnits)
 	fmt.Println()
 	edCurrentPeriod := allowance.ExpectedDownload * uint64(allowance.Period)
 	edDefaultPeriod := modules.DefaultAllowance.ExpectedDownload * uint64(modules.DefaultAllowance.Period)
@@ -1226,6 +1249,7 @@ consider repair bandwidth separately.`)
 	req = req.WithExpectedDownload(expectedDownload)
 
 	// expectedRedundancy
+	fmt.Println()
 	fmt.Println(`8/8: Expected Redundancy
 Expected redundancy is used in conjunction with expected storage to determine
 the total amount of raw storage that will be stored on hosts. If the expected
