@@ -32,9 +32,10 @@ Latest:
  -
  -
  -
- - Add new endpoint `/skynet/stats` that provides statistical information about 
- skynet - how many files were uploaded and the combined size of said files for
- each hour.
+ - Add flags for tar and targz for skyfile streaming
+ - Add new endpoint `/skynet/stats` that provides statistical information about
+   skynet - how many files were uploaded and the combined size of said files for
+   each hour.
  -
  -
  -
@@ -55,7 +56,8 @@ Latest:
  -
  -
  -
- -
+ - Fix repair bug where unused hosts were not being properly updated for a
+   siafile
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
@@ -69,8 +71,10 @@ Latest:
  - 
  - 
  - 
+ - Bump golangci-lint version to v1.23.8
  - 
  -
+ - Add HEAD request support for Skylink route
  -
  - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
    used.
