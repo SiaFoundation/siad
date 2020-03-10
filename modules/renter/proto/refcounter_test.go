@@ -26,7 +26,7 @@ func TestRefCounter(t *testing.T) {
 	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
 	testSectorsCount := uint64(17)
 	testDir := build.TempDir(t.Name())
-	if err := os.MkdirAll(testDir, 0700); err != nil {
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
 		t.Fatal("Failed to create test directory:", err)
 	}
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
@@ -39,6 +39,11 @@ func TestRefCounter(t *testing.T) {
 	stats, err := os.Stat(rcFilePath)
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
+	}
+
+	// testCounterVal generates a specific count value based on the given `n`
+	testCounterVal := func(n uint16) uint16 {
+		return n*10 + 1
 	}
 
 	// set specific counts, so we can track drift
@@ -84,6 +89,9 @@ func TestRefCounter(t *testing.T) {
 			t.Fatal(fmt.Sprintf("Error while decrementing (current count: %d):", count), err)
 		}
 	}
+	// swap and truncate
+	rc.callSwap(1, uint64(len(rc.sectorCounts)-1))
+	rc.callTruncate(1)
 	// we expect the file size to have shrunk with 2 bytes
 	newStats, err := os.Stat(rcFilePath)
 	if err != nil {
@@ -113,6 +121,12 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// individually test Load
+	err = testLoad(rcFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// delete the ref counter
 	err = rc.DeleteRefCounter()
 	if err != nil {
@@ -130,7 +144,7 @@ func testCallSwap(rc *RefCounter, filepath string) error {
 	// these hold the values we expect to find at positions 2 and 4 after the swap
 	expectedCount2 := rc.sectorCounts[4]
 	expectedCount4 := rc.sectorCounts[2]
-	if err := callSwap(rc, 2, 4); err != nil {
+	if err := rc.callSwap(2, 4); err != nil {
 		return err
 	}
 	// check if we properly swapped in memory
@@ -168,7 +182,7 @@ func testCallTruncate(rc *RefCounter, filepath string, n uint64) error {
 	}
 	numSectorsDisk := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
 	numSectorsMem := uint64(len(rc.sectorCounts))
-	if err := callTruncate(rc, n); err != nil {
+	if err := rc.callTruncate(n); err != nil {
 		return err
 	}
 	if numSectorsMem-n != uint64(len(rc.sectorCounts)) {
@@ -185,7 +199,39 @@ func testCallTruncate(rc *RefCounter, filepath string, n uint64) error {
 	return nil
 }
 
-// testCounterVal generates a specific count value based on the given `n`
-func testCounterVal(n uint16) uint16 {
-	return n*10 + 1
+// testLoad specifically tests LoadRefCounter and its various failure modes
+func testLoad(validFilePath string) error {
+	// happy case
+	_, err := LoadRefCounter(validFilePath)
+	if err != nil {
+		return err
+	}
+
+	// fails with os.ErrNotExist for a non-existent file
+	_, err = LoadRefCounter("there-is-no-such-file.rc")
+	if !errors.IsOSNotExist(err) {
+		return errors.AddContext(err, "expected os.ErrNotExist, got something else")
+	}
+
+	// fails with ErrInvalidVersion when trying to load a file with a different
+	// version
+	badVerFilePath := validFilePath + "badver"
+	f, err := os.Create(badVerFilePath)
+	if err != nil {
+		return errors.AddContext(err, "failed to create test file")
+	}
+	badVerHeader := RefCounterHeader{Version: [8]byte{9, 9, 9, 9, 9, 9, 9, 9}}
+	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
+	_, err = f.Write(badVerFileContents)
+	f.Close() // close regadless of the success of the write
+	if err != nil {
+		return errors.AddContext(err, "failed to write to test file")
+	}
+	_, err = LoadRefCounter(badVerFilePath)
+	if !errors.Contains(err, ErrInvalidVersion) {
+		return errors.AddContext(err, fmt.Sprintf("should not be able to read file with wrong version, expected `%s` error", ErrInvalidVersion.Error()))
+	}
+
+	return nil
 }
