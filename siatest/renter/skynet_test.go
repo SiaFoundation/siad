@@ -21,7 +21,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -1275,25 +1274,13 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	// Skynet-Disable-Force to true, which should prevent us from uploading.
 	// Because we have to pass in a custom header, we have to setup the request
 	// ourselves and can not use the client.
-	req, err := skynetSkyfilePostRequestWithHeaders(r, sup)
-	if err != nil {
-		t.Fatal(err)
+	_, _, err = r.SkynetSkyfilePostDisableForce(sup, true)
+	if err == nil {
+		t.Fatal("Unexpected response")
 	}
-	req.Header.Set("Skynet-Disable-Force", "true")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	res, err := http.DefaultClient.Do(req)
-	if res.StatusCode != 400 {
-		t.Log(res)
-		t.Fatal("Expected HTTP Bad Request")
-	}
-	var apiErr api.Error
-	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(apiErr.Error(), "'force' has been disabled") {
-		t.Log(res)
-		t.Fatal(apiErr)
+	if !strings.Contains(err.Error(), "'force' has been disabled") {
+		t.Log(err)
+		t.Fatalf("Unexpected response, expected error to contain a mention of the force flag but instaed received: %v", err.Error())
 	}
 }
 
