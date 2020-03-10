@@ -653,7 +653,7 @@ func TestWalletSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	sentAmount = originalBalance2
-	_, err = renter1.WalletSiacoinsPost(sentAmount, uc.Address, false)
+	_, err = renter2.WalletSiacoinsPost(sentAmount, uc.Address, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +668,7 @@ func TestWalletSend(t *testing.T) {
 			t.Fatal(err)
 		}
 		newBalance1 := wg.ConfirmedSiacoinBalance
-		if newBalance1.Cmp(originalBalance2) > 0 {
+		if newBalance1.Cmp(originalBalance1) > 0 {
 			return nil
 		}
 
