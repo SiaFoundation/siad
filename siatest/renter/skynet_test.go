@@ -846,16 +846,16 @@ func testStats(t *testing.T, r *siatest.TestNode) {
 	}
 
 	var statsBefore api.SkynetStats
-	for _, st := range statsBeforeArr {
+	for _, st := range statsBeforeArr.UploadStats {
 		if st.Hour == currentHour {
-			statsBefore = st
+			statsBefore = *st
 			break
 		}
 	}
 	var statsAfter api.SkynetStats
-	for _, st := range statsAfterArr {
+	for _, st := range statsAfterArr.UploadStats {
 		if st.Hour == currentHour {
-			statsAfter = st
+			statsAfter = *st
 			break
 		}
 	}

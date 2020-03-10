@@ -275,7 +275,9 @@ type (
 
 	// SkynetStatsGET contains the information queried for the
 	// /skynet/stats GET endpoint
-	SkynetStatsGET []SkynetStats
+	SkynetStatsGET struct {
+		UploadStats []*SkynetStats `json:"uploadstats"`
+	}
 
 	// SkynetStats contains per-hour statistical data about skynet
 	SkynetStats struct {
@@ -2324,7 +2326,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	for _, v := range statsMap {
 		stats = append(stats, v)
 	}
-	WriteJSON(w, stats)
+	WriteJSON(w, SkynetStatsGET{UploadStats: stats})
 }
 
 // skyfileParseMultiPartRequest parses the given request and returns the
