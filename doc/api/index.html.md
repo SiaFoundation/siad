@@ -4958,7 +4958,8 @@ JSON array of outputs. The structure of each output is: {"unlockhash":
 "<destination>", "value": "<amount>"}
 
 ### OPTIONAL
-**feeIncluded** | boolean      "siacoinoutputs": []        // []SiacoinOutput
+**feeIncluded** | boolean
+Take the transaction fee out of the balance being submitted instead of the fee being additional.
 
 ### JSON Response
 > JSON Response Example
