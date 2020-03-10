@@ -796,25 +796,30 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	}
 }
 
-// testStats tests the validity of the response of /skynet/stats endpoint
+// testStats tests the validity of the response of /skynet/stats endpoint by
+// uploading some test files and verifying that the reported statistics change
+// proportionalyy
 func testStats(t *testing.T, r *siatest.TestNode) {
+	// get the stats before the test files are uploaded
 	statsBeforeArr, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	files := make(map[string]int)
-	files["statfile1"] = 1024
-	files["statfile2"] = 2048
+	// create two test files with sizes below and above the sector size
+	files := make(map[string]uint64)
+	files["statfile1"] = 2033
+	files["statfile2"] = modules.SectorSize + 123
 
-	uploadedFilesSize := 0
-	uploadedFilesCount := 0
+	// upload the files and keep track of their expected impact on the stats
+	uploadedFilesSize := uint64(0)
+	uploadedFilesCount := uint64(0)
 	for name, size := range files {
 		uploadSiaPath, err := modules.NewSiaPath(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		data := fastrand.Bytes(size)
+		data := fastrand.Bytes(int(size))
 		sup := modules.SkyfileUploadParameters{
 			SiaPath:             uploadSiaPath,
 			Force:               false,
@@ -830,16 +835,23 @@ func testStats(t *testing.T, r *siatest.TestNode) {
 		if _, _, err = r.SkynetSkyfilePost(sup); err != nil {
 			t.Fatal(err)
 		}
-		// round the upload size up to the next 4KB
-		if size%4096 == 0 {
-			uploadedFilesSize += size
+
+		// a file always takes at least one sector, even if it's smaller than that
+		if size < modules.SectorSize {
+			uploadedFilesSize += modules.SectorSize
 		} else {
-			uploadedFilesSize += 4096 * (1 + size/4096)
+			uploadedFilesSize += size
 		}
 		uploadedFilesCount++
 	}
 
+	// get the hour during which the files were created. should be called before
+	// we get the stats again becuse getting the stats takes some time and that
+	// increases the probability for the test to happen to run exactly when we go
+	// from one hour to the next
 	currentHour := time.Now().Truncate(time.Hour)
+
+	// get the stats after the upload of the test files
 	statsAfterArr, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
@@ -860,11 +872,12 @@ func testStats(t *testing.T, r *siatest.TestNode) {
 		}
 	}
 
-	if statsBefore.NumFiles+uploadedFilesCount != statsAfter.NumFiles {
-		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", statsBefore.NumFiles+uploadedFilesCount, statsAfter.NumFiles))
+	// make sure the stats changed by exactly the expected amounts
+	if uint64(statsBefore.NumFiles)+uploadedFilesCount != uint64(statsAfter.NumFiles) {
+		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles)+uploadedFilesCount, statsAfter.NumFiles))
 	}
-	if statsBefore.TotalSize+uint64(uploadedFilesSize) != statsAfter.TotalSize {
-		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.TotalSize+uint64(uploadedFilesSize), statsAfter.TotalSize))
+	if statsBefore.TotalSize+uploadedFilesSize != statsAfter.TotalSize {
+		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.TotalSize+uploadedFilesSize, statsAfter.TotalSize))
 	}
 }
 

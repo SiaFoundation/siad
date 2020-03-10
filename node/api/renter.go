@@ -2319,8 +2319,17 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		if _, ok := statsMap[hour]; !ok {
 			statsMap[hour] = &SkynetStats{Hour: hour}
 		}
-		statsMap[hour].NumFiles++
-		statsMap[hour].TotalSize += f.Filesize
+		// If a file has the ExtendedSuffix then it's the second file representing
+		// an upload. We shouldn't count it as a separate file and we should also
+		// discount its size by SectorSize because we've already counted one sector
+		// towards this file when counting the header, a sector that holds the
+		// file's metadata.
+		if !strings.HasSuffix(f.Name(), renter.ExtendedSuffix) {
+			statsMap[hour].NumFiles++
+			statsMap[hour].TotalSize += f.Filesize
+		} else {
+			statsMap[hour].TotalSize += f.Filesize - modules.SectorSize
+		}
 	}
 	stats := make([]*SkynetStats, 0, len(statsMap))
 	for _, v := range statsMap {
