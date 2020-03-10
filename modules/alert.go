@@ -160,10 +160,12 @@ type (
 
 // NewAlerter creates a new alerter for the renter.
 func NewAlerter(module string) *GenericAlerter {
-	return &GenericAlerter{
+	a := &GenericAlerter{
 		alerts: make(map[AlertID]Alert),
 		module: module,
 	}
+	a.registerTestAlerts()
+	return a
 }
 
 // Alerts returns the current alerts tracked by the alerter.
@@ -202,4 +204,14 @@ func (a *GenericAlerter) UnregisterAlert(id AlertID) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.alerts, id)
+}
+
+// registerTestAlerts registers one alert of every severity for testing.
+func (a *GenericAlerter) registerTestAlerts() {
+	if build.Release != "tesitng" {
+		return
+	}
+	a.RegisterAlert(AlertID(a.module+" - Dummy1"), "msg1", "cause1", SeverityWarning)
+	a.RegisterAlert(AlertID(a.module+" - Dummy2"), "msg2", "cause2", SeverityError)
+	a.RegisterAlert(AlertID(a.module+" - Dummy3"), "msg3", "cause3", SeverityCritical)
 }
