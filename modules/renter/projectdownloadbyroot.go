@@ -231,7 +231,7 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 // before the timeout expires, the project is finished. A zero timeout is
 // ignored.
 func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) {
-	if timeout == 0 {
+	if timeout <= 0 {
 		return
 	}
 	if err := pdbr.tg.Add(); err != nil {
@@ -242,6 +242,8 @@ func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) 
 	// Block until the timeout has expired or the project has completed,
 	// whichever comes first
 	select {
+	case <-pdbr.tg.StopChan():
+		return
 	case <-pdbr.completeChan:
 		return
 	case <-time.After(timeout):
@@ -311,7 +313,11 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	go pdbr.threadedHandleTimeout(timeout)
 
 	// Block until the project has completed.
-	<-pdbr.completeChan
+	select {
+	case <-pdbr.tg.StopChan():
+	case <-pdbr.completeChan:
+	}
+
 	pdbr.mu.Lock()
 	err := pdbr.err
 	data := pdbr.data
