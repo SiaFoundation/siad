@@ -210,10 +210,28 @@ var (
 	// sectors significantly reduce the tracking overhead experienced by the
 	// renter and the host.
 	SectorSize = build.Select(build.Var{
-		Dev:      uint64(1 << 18), // 256 KiB
-		Standard: uint64(1 << 22), // 4 MiB
-		Testing:  uint64(1 << 12), // 4 KiB
+		Dev:      SectorSizeDev,
+		Standard: SectorSizeStandard,
+		Testing:  SectorSizeTesting,
 	}).(uint64)
+
+	// SectorSizeDev defines how large a sector should be in Dev builds.
+	SectorSizeDev = uint64(1 << SectorSizeScalingDev)
+	// SectorSizeStandard defines how large a sector should be in Standard
+	// builds.
+	SectorSizeStandard = uint64(1 << SectorSizeScalingStandard)
+	// SectorSizeTesting defines how large a sector should be in Testing builds.
+	SectorSizeTesting = uint64(1 << SectorSizeScalingTesting)
+
+	// SectorSizeScalingDev defines the power of 2 to which we scale sector
+	// sizes in Dev builds.
+	SectorSizeScalingDev = 18 // 256 KiB
+	// SectorSizeScalingStandard defines the power of 2 to which we scale sector
+	// sizes in Standard builds.
+	SectorSizeScalingStandard = 22 // 4 MiB
+	// SectorSizeScalingTesting defines the power of 2 to which we scale sector
+	// sizes in Testing builds.
+	SectorSizeScalingTesting = 12 // 4 KiB
 )
 
 type (

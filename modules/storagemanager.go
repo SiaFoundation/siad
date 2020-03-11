@@ -58,6 +58,10 @@ type (
 		// is expected to only store the data once.
 		AddSector(sectorRoot crypto.Hash, sectorData []byte) error
 
+		// HasSector indicates whether the contract manager stores a sector with
+		// a given root or not.
+		HasSector(crypto.Hash) bool
+
 		// AddSectorBatch is a performance optimization over AddSector when
 		// adding a bunch of virtual sectors. It is necessary because otherwise
 		// potentially thousands or even tens-of-thousands of fsync calls would
