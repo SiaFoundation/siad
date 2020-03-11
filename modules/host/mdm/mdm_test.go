@@ -49,9 +49,9 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 
 // HasSector indicates whether the host stores a sector with a given root or
 // not.
-func (h *TestHost) HasSector(sectorRoot crypto.Hash) (bool, error) {
+func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 	_, exists := h.sectors[sectorRoot]
-	return exists, nil
+	return exists
 }
 
 // ReadSector implements the Host interface by returning a random sector for

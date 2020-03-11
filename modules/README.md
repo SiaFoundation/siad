@@ -99,7 +99,7 @@ The Alert System provides the `Alerter` interface and an implementation of the i
 
 The following levels of severity are currently available:
 
-- **Unknown**: This should never be used and is a safeguard against developer errors	
+- **Unknown**: This should never be used and is a safeguard against developer errors
 - **Warning**: Warns the user about potential issues which might require preventive actions
 - **Error**: Alerts the user of an issue that requires immediate action to prevent further issues like loss of data
 - **Critical**: Indicates that a critical error is imminent. e.g. lack of funds causing contracts to get lost
@@ -125,6 +125,14 @@ The following levels of severity are currently available:
 *TODO* 
   - fill out subsystem explanation
 
+### Packing
+**Key Files**
+- [packing.go](./packing.go)
+
+The smallest amount of data that can be uploaded to the Sia network is 4 MiB. This limitation can be overcome by packing multiple files together. The upload batching commands can pack a bunch of small files into the same sector, producing a unique skylink for each file.
+
+Batch uploads work much the same as uploads, except that a JSON manifest is provided which pairs a list of source files to their destination siapaths. Every file in the manifest must be smaller than 4 MiB. The packing algorithm attempts to optimally pack the list of files into as few chunks as possible, where each chunk is 4 MiB in size.
+
 ### Siad Configuration
 **Key Files**
 - [siadconfig.go](./siadconfig.go)
@@ -146,7 +154,7 @@ All told, there are 32 bytes in a skylink for encoding the Merkle root of the
 sector being linked, and 2 bytes encoding a link version, the offset, and the
 length of the sector being fetched.
 
-For more information, checkout the documentation in the [skylink.go](./skylink.go) file.
+For more information, check out the documentation in the [skylink.go](./skylink.go) file.
 
 ### SiaPath
 **Key Files**

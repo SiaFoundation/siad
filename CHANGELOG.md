@@ -20,7 +20,8 @@ Latest:
  - 
  - Add ability to blacklist skylinks by merkleroot
  - Uploading resumes more quickly after restart
- -
+ - Add ability to pack many files into the same or adjacent sectors while
+   producing unique skylinks for each file
  -
  -
  - `siac skynet upload` now supports uploading directories. All files are
@@ -55,6 +56,9 @@ Latest:
  -
  - Fix repair bug where unused hosts were not being properly updated for a
    siafile
+ - Fix threadgroup violation in the watchdog that allowed writing to the log
+   file after a shutdown
+ -
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
