@@ -952,20 +952,28 @@ The following units can be used to set the allowance:
 		funds = allowance.Funds
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Funds: ")
-	allowanceFunds := readString()
-	if allowanceFunds != "" {
+	for {
+		fmt.Print("Funds: ")
+		allowanceFunds := readString()
+		if allowanceFunds == "" {
+			break
+		}
+
 		hastings, err := parseCurrency(allowanceFunds)
 		if err != nil {
-			die("Could not parse amount:", err)
+			fmt.Println("Could not parse amount:", err)
+			continue
 		}
 		_, err = fmt.Sscan(hastings, &funds)
 		if err != nil {
-			die("Could not parse amount:", err)
+			fmt.Println("Could not parse amount:", err)
+			continue
 		}
-	}
-	if funds.IsZero() {
-		die("Allowance cannot be 0")
+		if funds.IsZero() {
+			fmt.Println("Allowance funds cannot be 0")
+			continue
+		}
+		break
 	}
 	req = req.WithFunds(funds)
 
@@ -993,20 +1001,28 @@ The following units can be used to set the period:
 		period = allowance.Period
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Period: ")
-	allowancePeriod := readString()
-	if allowancePeriod != "" {
+	for {
+		fmt.Print("Period: ")
+		allowancePeriod := readString()
+		if allowancePeriod == "" {
+			break
+		}
+
 		blocks, err := parsePeriod(allowancePeriod)
 		if err != nil {
-			die("Could not parse period:", err)
+			fmt.Println("Could not parse period:", err)
+			continue
 		}
 		_, err = fmt.Sscan(blocks, &period)
 		if err != nil {
-			die("Could not parse period:", err)
+			fmt.Println("Could not parse period:", err)
+			continue
 		}
-	}
-	if period == 0 {
-		die("Period cannot be 0")
+		if period == 0 {
+			fmt.Println("Period cannot be 0")
+			continue
+		}
+		break
 	}
 	req = req.WithPeriod(period)
 
@@ -1031,19 +1047,26 @@ double the default number of default hosts be treated as a maximum.`)
 		hosts = allowance.Hosts
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Hosts: ")
-	allowanceHosts := readString()
-	if allowanceHosts != "" {
+	for {
+		fmt.Print("Hosts: ")
+		allowanceHosts := readString()
+		if allowanceHosts == "" {
+			break
+		}
+
 		hostsInt, err := strconv.Atoi(allowanceHosts)
 		if err != nil {
-			die("Could not parse host count")
+			fmt.Println("Could not parse host count")
+			continue
 		}
 		hosts = uint64(hostsInt)
+		if hosts == 0 {
+			fmt.Println("Must have at least 1 host")
+			continue
+		}
+		break
 	}
-	if hosts == 0 {
-		die("Must have at least 1 host")
-	}
-	req = req.WithHosts(uint64(hosts))
+	req = req.WithHosts(hosts)
 
 	// renewWindow
 	fmt.Println()
@@ -1080,20 +1103,28 @@ The following units can be used to set the renew window:
 		renewWindow = allowance.RenewWindow
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Renew Window: ")
-	allowanceRenewWindow := readString()
-	if allowanceRenewWindow != "" {
+	for {
+		fmt.Print("Renew Window: ")
+		allowanceRenewWindow := readString()
+		if allowanceRenewWindow == "" {
+			break
+		}
+
 		rw, err := parsePeriod(allowanceRenewWindow)
 		if err != nil {
-			die("Could not parse renew window")
+			fmt.Println("Could not parse renew window")
+			continue
 		}
 		_, err = fmt.Sscan(rw, &renewWindow)
 		if err != nil {
-			die("Could not parse renew window:", err)
+			fmt.Println("Could not parse renew window:", err)
+			continue
 		}
-	}
-	if renewWindow == 0 {
-		die("Cannot set renew window to zero")
+		if renewWindow == 0 {
+			fmt.Println("Cannot set renew window to zero")
+			continue
+		}
+		break
 	}
 	req = req.WithRenewWindow(renewWindow)
 
@@ -1132,17 +1163,24 @@ The following units can be used to set the expected storage:`)
 		expectedStorage = allowance.ExpectedStorage
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Storage: ")
-	allowanceExpectedStorage := readString()
-	if allowanceExpectedStorage != "" {
+	for {
+		fmt.Print("Expected Storage: ")
+		allowanceExpectedStorage := readString()
+		if allowanceExpectedStorage == "" {
+			break
+		}
+
 		es, err := parseFilesize(allowanceExpectedStorage)
 		if err != nil {
-			die("Could not parse expected storage")
+			fmt.Println("Could not parse expected storage")
+			continue
 		}
 		_, err = fmt.Sscan(es, &expectedStorage)
 		if err != nil {
-			die("Could not parse expected storage")
+			fmt.Println("Could not parse expected storage")
+			continue
 		}
+		break
 	}
 	req = req.WithExpectedStorage(expectedStorage)
 
@@ -1172,26 +1210,32 @@ The following units can be used to set the expected upload:`)
 	} else {
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Upload: ")
 	var expectedUpload uint64
-	allowanceExpectedUpload := readString()
-	if allowanceExpectedUpload != "" {
+	for {
+		fmt.Print("Expected Upload: ")
+		allowanceExpectedUpload := readString()
+		if allowanceExpectedUpload == "" {
+			// The user did not enter a value so use either the default or the
+			// current value, as appropriate.
+			if allowance.ExpectedUpload == 0 {
+				expectedUpload = euDefaultPeriod
+			} else {
+				expectedUpload = euCurrentPeriod
+			}
+			break
+		}
+
 		eu, err := parseFilesize(allowanceExpectedUpload)
 		if err != nil {
-			die("Could not parse expected upload")
+			fmt.Println("Could not parse expected upload")
+			continue
 		}
 		_, err = fmt.Sscan(eu, &expectedUpload)
 		if err != nil {
-			die("Could not parse expected upload")
+			fmt.Println("Could not parse expected upload")
+			continue
 		}
-	} else {
-		// The user did not enter a value so use either the default or the
-		// current value, as appropriate.
-		if allowance.ExpectedUpload == 0 {
-			expectedUpload = euDefaultPeriod
-		} else {
-			expectedUpload = euCurrentPeriod
-		}
+		break
 	}
 	// User set field in terms of period, need to normalize to per-block.
 	expectedUpload /= uint64(period)
@@ -1223,26 +1267,32 @@ The following units can be used to set the expected download:`)
 	} else {
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Download: ")
 	var expectedDownload uint64
-	allowanceExpectedDownload := readString()
-	if allowanceExpectedDownload != "" {
+	for {
+		fmt.Print("Expected Download: ")
+		allowanceExpectedDownload := readString()
+		if allowanceExpectedDownload == "" {
+			// The user did not enter a value so use either the default or the
+			// current value, as appropriate.
+			if allowance.ExpectedDownload == 0 {
+				expectedDownload = edDefaultPeriod
+			} else {
+				expectedDownload = edCurrentPeriod
+			}
+			break
+		}
+
 		ed, err := parseFilesize(allowanceExpectedDownload)
 		if err != nil {
-			die("Could not parse expected download")
+			fmt.Println("Could not parse expected download")
+			continue
 		}
 		_, err = fmt.Sscan(ed, &expectedDownload)
 		if err != nil {
-			die("Could not parse expected download")
+			fmt.Println("Could not parse expected download")
+			continue
 		}
-	} else {
-		// The user did not enter a value so use either the default or the
-		// current value, as appropriate.
-		if allowance.ExpectedDownload == 0 {
-			expectedDownload = edDefaultPeriod
-		} else {
-			expectedDownload = edCurrentPeriod
-		}
+		break
 	}
 	// User set field in terms of period, need to normalize to per-block.
 	expectedDownload /= uint64(period)
@@ -1274,16 +1324,23 @@ how large the files are.`)
 		expectedRedundancy = allowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Redundancy: ")
-	allowanceExpectedRedundancy := readString()
-	if allowanceExpectedRedundancy != "" {
+	for {
+		fmt.Print("Expected Redundancy: ")
+		allowanceExpectedRedundancy := readString()
+		if allowanceExpectedRedundancy == "" {
+			break
+		}
+
 		expectedRedundancy, err = strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
-			die("Could not parse expected redundancy")
+			fmt.Println("Could not parse expected redundancy")
+			continue
 		}
-	}
-	if expectedRedundancy < 1 {
-		die("Expected redundancy must be at least 1")
+		if expectedRedundancy < 1 {
+			fmt.Println("Expected redundancy must be at least 1")
+			continue
+		}
+		break
 	}
 	req = req.WithExpectedRedundancy(expectedRedundancy)
 	fmt.Println()
