@@ -1576,8 +1576,9 @@ func TestSkynetHeadRequest(t *testing.T) {
 	}
 	r = nodes[0]
 
-	// Perform the same HEAD request but now expect it to timeout and thus
-	// return a 404.
+	// Perform a HEAD request for a skylink that exists, however on a renter
+	// with the DependencyTimeoutProjectDownloadByRoot dependency. We expect it
+	// to timeout and thus return a 404.
 	status, header, err = r.SkynetSkylinkHead(skylink, 1)
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)

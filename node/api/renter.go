@@ -32,6 +32,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// DefaultRequestTimeout is the default request timeout for routes that have a
+// timeout query string parameter. If the request can not be resolved within the
+// given amount of time, it times out. This is used for Skynet routes where a
+// request times out if the DownloadByRoot project does not finish in due time.
+const DefaultRequestTimeout = 30 * time.Second
+
 var (
 	// requiredHosts specifies the minimum number of hosts that must be set in
 	// the renter settings for the renter settings to be valid. This minimum is
@@ -1926,7 +1932,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Parse the timeout.
-	timeout := time.Duration(30 * time.Second) // default
+	timeout := DefaultRequestTimeout
 	timeoutStr := queryForm.Get("timeout")
 	if timeoutStr != "" {
 		timeoutInt, err := strconv.Atoi(timeoutStr)
@@ -1939,12 +1945,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
-	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Contains(err, renter.ErrRootNotFound) {
-			status = http.StatusNotFound
-		}
-		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, status)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
+		return
+	} else if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 	defer streamer.Close()
@@ -2113,12 +2118,11 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	err = api.renter.PinSkylink(skylink, lup)
-	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Contains(err, renter.ErrRootNotFound) {
-			status = http.StatusNotFound
-		}
-		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, status)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
+		return
+	} else if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
