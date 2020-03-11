@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -321,4 +322,15 @@ func parseTxn(s string) (types.Transaction, error) {
 		}
 	}
 	return txn, nil
+}
+
+// fmtDuration converts a time.Duration into a days,hours,minutes string
+func fmtDuration(dur time.Duration) string {
+	dur = dur.Round(time.Minute)
+	d := dur / time.Hour / 24
+	dur -= d * time.Hour * 24
+	h := dur / time.Hour
+	dur -= h * time.Hour
+	m := dur / time.Minute
+	return fmt.Sprintf("%02d days %02d hours %02d minutes", d, h, m)
 }
