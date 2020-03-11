@@ -136,6 +136,14 @@ func (sl *Skylink) LoadString(s string) error {
 	// long as the second arg is not-nil (in this case, '?'), SplitN cannot
 	// return an empty slice.
 	base := splits[0]
+
+	// The base can still contain a path to a nested file within the siafile.
+	// This is however not part of the skylink and gets trimmed.
+	splits = strings.Split(base, "/")
+	if len(splits) > 1 {
+		base = splits[0]
+	}
+
 	// Input check, ensure that this string is the expected size.
 	if len(base) != encodedSkylinkSize {
 		return errors.New("not a skylink, skylinks are always 46 bytes")

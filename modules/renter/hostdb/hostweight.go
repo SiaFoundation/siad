@@ -365,13 +365,19 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	// we give the current version a very tiny penalty is so that the test suite
 	// complains if we forget to update this file when we bump the version next
 	// time. The value compared against must be higher than the current version.
-	if build.VersionCmp(entry.Version, "1.4.3.1") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.5") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
 
 	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
-	if build.VersionCmp(entry.Version, "1.4.3") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.4") < 0 {
 		base = base * 0.95 // Slight penalty against slightly out of date hosts.
+	}
+	if build.VersionCmp(entry.Version, "1.4.3.1") < 0 {
+		base = base * 0.94 // Slight penalty against slightly out of date hosts.
+	}
+	if build.VersionCmp(entry.Version, "1.4.3") < 0 {
+		base = base * 0.93 // Slight penalty against slightly out of date hosts.
 	}
 	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
 		base = base * 0.9 // Slight penalty against slightly out of date hosts.

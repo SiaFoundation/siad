@@ -39,6 +39,7 @@ func parseModules(config Config) node.NodeParams {
 	params.Bootstrap = !config.Siad.NoBootstrap
 	params.HostAddress = config.Siad.HostAddr
 	params.RPCAddress = config.Siad.RPCaddr
+	params.SiaMuxAddress = config.Siad.SiaMuxAddr
 	params.Dir = config.Siad.SiaDir
 	return params
 }

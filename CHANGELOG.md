@@ -11,21 +11,95 @@ Version History
 Latest:
 ### v1.4.4
 **Key Updates**
+ - Add a delay when modifying large contracts on hosts to prevent hosts from
+   becoming unresponsive due to massive disk i/o
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
+ - 
+ - 
+ - 
+ - Add ability to blacklist skylinks by merkleroot
+ - Uploading resumes more quickly after restart
+ - Add ability to pack many files into the same or adjacent sectors while
+   producing unique skylinks for each file
+ -
+ -
+ - `siac skynet upload` now supports uploading directories. All files are
+   uploaded individually and result in separate skylinks.
+ -
+ -
+ - No user-agent needed for Skylink downloads
+ -
+ -
+ -
+ - Add `go get` command to `make dependencies`
+ -
+ - Add flags for tag and targz for skyfile streaming
+ -
+ -
+ -
+ - 
+ - 
+ - Add XChaCha20 CipherKey.
+ - Add Skykey Manager.
+ - Add `siac skynet unpin` subcommand.
+ -
+ -
+ - Extend `siac renter -v` to show breakdown of file health.
+ -
+ -
 
 **Bugs Fixed**
+ - Fixed bug in startup where an error being returned by the renter's blocking
+   startup process was being missed
+ -
+ -
+ -
+ - Fix repair bug where unused hosts were not being properly updated for a
+   siafile
+ - Fix threadgroup violation in the watchdog that allowed writing to the log
+   file after a shutdown
+ -
+ -
+ - Fixed `siac skynet ls` not working when files were passed as input. It is now
+   able to access specific files in the Skynet folder.
+ - 
+ - 
+ - 
+ - 
 
 **Other**
+ - Split out renter siatests into 2 groups for faster pipelines 
+ - 
+ - Add README to the `siatest` package 
+ - 
+ - Bump golangci-lint version to v1.23.8
+ - 
+ -
+ - Add HEAD request support for Skylink route
+ -
+ - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
+   used.
+ -
+ -
+ - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
+   to safely acquire the host pubkey.
+ -
+ -
 
 ### v1.4.3
 **Key Updates**
+ - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
+   skylinks, uploads, downloads, and pinning
  - Add `data-pieces` and `parity-pieces` flags to `siac renter upload`
  - Integrate SiaMux
  - Initialize defaults for the host's ephemeral account settings
  - Add SIA_DATA_DIR environment variable for setting the data directory for
    siad/siac
  - Made build process deterministic. Moved related scripts into `release-scripts`
+ - Add directory support to Skylinks.
+ - Enabled Lockcheck code anaylzer
+ - Added Bandwidth monitoring to the host module
  
 **Bugs Fixed**
  - HostDB Data race fixed and documentation updated to explain the data race
@@ -39,6 +113,9 @@ Latest:
 
 **Other**
  - Upgrade host metadata to v1.4.3
+ - Removed stubs from testing
+ - Add Skynet-Disable-Force header to allow disabling the force update feature
+   on Skynet uploads
 
 ### v1.4.2.1
 **Key Updates**

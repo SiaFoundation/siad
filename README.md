@@ -96,7 +96,7 @@ on the system. Clone the repo and run `make`:
 
 ```
 git clone https://gitlab.com/NebulousLabs/Sia
-cd Sia && make
+cd Sia && make dependencies && make
 ```
 
 This will install the `siad` and `siac` binaries in your `$GOPATH/bin` folder.

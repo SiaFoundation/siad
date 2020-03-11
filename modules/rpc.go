@@ -1,6 +1,9 @@
 package modules
 
 import (
+	"io"
+
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -34,6 +37,7 @@ type RPCPriceTable struct {
 	// Cost values specific to the Write instruction.
 	WriteBaseCost   types.Currency `json:"writebasecost"`
 	WriteLengthCost types.Currency `json:"writelengthcost"`
+	WriteStoreCost  types.Currency `json:"writestorecost"`
 }
 
 var (
@@ -46,4 +50,32 @@ type (
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
 	}
+
+	// rpcResponse is a helper type for encoding and decoding RPC response
+	// messages.
+	rpcResponse struct {
+		err  *RPCError
+		data interface{}
+	}
 )
+
+// MarshalSia implements the encoding.SiaMarshaler interface.
+func (resp *rpcResponse) MarshalSia(w io.Writer) error {
+	if resp.data == nil {
+		resp.data = struct{}{}
+	}
+	return encoding.NewEncoder(w).EncodeAll(resp.err, resp.data)
+}
+
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
+	// NOTE: no allocation limit is required because this method is always
+	// called via encoding.Unmarshal, which already imposes an allocation limit.
+	d := encoding.NewDecoder(r, 0)
+	if err := d.Decode(&resp.err); err != nil {
+		return err
+	} else if resp.err != nil {
+		return resp.err
+	}
+	return d.Decode(resp.data)
+}

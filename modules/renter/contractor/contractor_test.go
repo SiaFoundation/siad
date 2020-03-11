@@ -116,7 +116,8 @@ func TestIntegrationSetAllowance(t *testing.T) {
 
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
