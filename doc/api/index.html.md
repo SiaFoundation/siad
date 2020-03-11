@@ -4358,7 +4358,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ```json
 {
   "uploadstats": {
-    "numfiles": 2,         // total number of uploaded files
+    "numfiles": 2,         // int
     "totalsize": 44527895  // int
   }
 }
