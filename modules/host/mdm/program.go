@@ -136,6 +136,18 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 	return p.managedFinalize, p.outputChan, nil
 }
 
+// addCost increases the cost of the program by 'cost'. If as a result the cost
+// becomes larger than the budget of the program, ErrInsufficientBudget is
+// returned.
+func (p *Program) addCost(cost types.Currency) error {
+	newExecutionCost := p.executionCost.Add(cost)
+	if p.staticBudget.Cmp(newExecutionCost) < 0 {
+		return modules.ErrMDMInsufficientBudget
+	}
+	p.executionCost = newExecutionCost
+	return nil
+}
+
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
 func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) {
@@ -210,16 +222,4 @@ func (p *Program) readOnly() bool {
 		}
 	}
 	return true
-}
-
-// addCost increases the cost of the program by 'cost'. If as a result the cost
-// becomes larger than the budget of the program, ErrInsufficientBudget is
-// returned.
-func (p *Program) addCost(cost types.Currency) error {
-	newExecutionCost := p.executionCost.Add(cost)
-	if p.staticBudget.Cmp(newExecutionCost) < 0 {
-		return modules.ErrMDMInsufficientBudget
-	}
-	p.executionCost = newExecutionCost
-	return nil
 }

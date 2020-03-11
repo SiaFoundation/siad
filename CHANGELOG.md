@@ -20,7 +20,8 @@ Latest:
  - 
  - Add ability to blacklist skylinks by merkleroot
  - Uploading resumes more quickly after restart
- -
+ - Add ability to pack many files into the same or adjacent sectors while
+   producing unique skylinks for each file
  -
  -
  - `siac skynet upload` now supports uploading directories. All files are
@@ -31,8 +32,9 @@ Latest:
  -
  -
  -
+ - Add `go get` command to `make dependencies`
  -
- -
+ - Add flags for tag and targz for skyfile streaming
  -
  -
  -
@@ -53,6 +55,10 @@ Latest:
  -
  -
  -
+ - Fix repair bug where unused hosts were not being properly updated for a
+   siafile
+ - Fix threadgroup violation in the watchdog that allowed writing to the log
+   file after a shutdown
  -
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
@@ -65,8 +71,9 @@ Latest:
 **Other**
  - Split out renter siatests into 2 groups for faster pipelines 
  - 
+ - Add README to the `siatest` package 
  - 
- - 
+ - Bump golangci-lint version to v1.23.8
  - 
  -
  - Add HEAD request support for Skylink route

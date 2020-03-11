@@ -26,11 +26,11 @@ variables:
     ./modules/renter
     ./modules/renter/contractor
     ./modules/renter/filesystem
+    ./modules/renter/filesystem/siafile
+    ./modules/renter/filesystem/siadir
     ./modules/renter/hostdb
     ./modules/renter/hostdb/hosttree
     ./modules/renter/proto
-    ./modules/renter/siadir
-    ./modules/renter/siafile
     ./modules/renter/skynetblacklist
     ./modules/miner
     ./modules/wallet
@@ -100,10 +100,10 @@ lint:
     key: lint-cache
     paths:
       - .cache
-  script: 
+  script:
     ## This is the recommended way to install golang-ci lint.
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.20.1
+    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.23.8
     - apt-get update
     - apt-get -y install python3-pip
     - pip3 install codespell
@@ -140,7 +140,6 @@ package-tests:
       - .cache
   script: 
     - make test-long run=. pkgs="$package_pkgs"    
-
 siatest-tests:
   <<: *default_test_params
   cache:
