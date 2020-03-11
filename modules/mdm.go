@@ -130,7 +130,7 @@ func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
-// DropSectorsCost is the cost of executing a 'DropSectors' instruction for a
+// MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction for a
 // certain number of dropped sectors.
 func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
 	cost := pt.DropSectorsLengthCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
