@@ -208,7 +208,7 @@ func (a *GenericAlerter) UnregisterAlert(id AlertID) {
 
 // registerTestAlerts registers one alert of every severity for testing.
 func (a *GenericAlerter) registerTestAlerts() {
-	if build.Release != "tesitng" {
+	if build.Release != "testing" {
 		return
 	}
 	a.RegisterAlert(AlertID(a.module+" - Dummy1"), "msg1", "cause1", SeverityWarning)

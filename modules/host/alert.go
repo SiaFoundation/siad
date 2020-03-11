@@ -5,7 +5,7 @@ import "gitlab.com/NebulousLabs/Sia/modules"
 // Alerts implements the modules.Alerter interface for the host.
 func (h *Host) Alerts() (crit, err, warn []modules.Alert) {
 	hostCrit, hostErr, hostWarn := h.staticAlerter.Alerts()
-	smCrit, smErr, smWarn := h.staticAlerter.Alerts()
+	smCrit, smErr, smWarn := h.StorageManager.Alerts()
 	crit = append(hostCrit, smCrit...)
 	err = append(hostErr, smErr...)
 	warn = append(hostWarn, smWarn...)
