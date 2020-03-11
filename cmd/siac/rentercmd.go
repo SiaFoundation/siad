@@ -905,6 +905,8 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("Allowance updated. %v setting(s) changed.\n", changedFields)
 }
 
+// rentersetallowancecmdInteractive is the interactive handler for `siac renter
+// setallowance`.
 func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowance modules.Allowance) *client.AllowanceRequestPost {
 	br := bufio.NewReader(os.Stdin)
 	readString := func() string {

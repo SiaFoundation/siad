@@ -41,7 +41,7 @@ Latest:
    skynet - how many files were uploaded and the combined size of said files.
  -
  -
- -
+ - The `siac renter setallowance` UX is considerably improved.
  - 
  - 
  - Add XChaCha20 CipherKey.
