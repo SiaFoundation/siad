@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -762,6 +763,14 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 		}
 	}
 	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
+// are returned if the skyfile were to be requested using the SkynetSkylinkGet
+// method.
+func (c *Client) SkynetSkylinkHead(skylink string) (int, http.Header, error) {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	return c.head(getQuery)
 }
 
 // SkynetSkylinkConcatGet uses the /skynet/skylink endpoint to download a

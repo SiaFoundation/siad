@@ -177,6 +177,22 @@ func (c *Client) get(resource string, obj interface{}) error {
 	return nil
 }
 
+// head makes a HEAD request to the resource at `resource`. The headers that are
+// returned are the headers that would be returned if requesting the same
+// `resource` using a GET request.
+func (c *Client) head(resource string) (int, http.Header, error) {
+	req, err := c.NewRequest("HEAD", resource, nil)
+	if err != nil {
+		return 0, nil, errors.AddContext(err, "failed to construct HEAD request")
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, nil, errors.AddContext(err, "HEAD request failed")
+	}
+
+	return res.StatusCode, res.Header, nil
+}
+
 // postRawResponse requests the specified resource. The response, if provided,
 // will be returned in a byte slice
 func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, []byte, error) {

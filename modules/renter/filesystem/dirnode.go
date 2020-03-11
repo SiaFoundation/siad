@@ -259,7 +259,10 @@ func (n *DirNode) managedRecursiveList(recursive, cached bool, fileLoadChan chan
 		if recursive {
 			err = dir.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
 		}
-		dir.Close()
+		if err != nil {
+			return err
+		}
+		err = dir.Close()
 		if err != nil {
 			return err
 		}
