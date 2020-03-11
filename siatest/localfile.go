@@ -15,39 +15,14 @@ import (
 )
 
 type (
-	// LocalFile is a helper struct that represents a file uploaded to the Sia
-	// network.
+	// LocalFile is a helper struct that represents a file on disk that was
+	// uploaded to the Sia network.
 	LocalFile struct {
 		path     string
 		size     int
 		checksum crypto.Hash
 	}
 )
-
-// checkIntegrity compares the in-memory checksum to the checksum of the data
-// on disk
-func (lf *LocalFile) checkIntegrity() error {
-	data, err := ioutil.ReadFile(lf.path)
-	if lf.size == 0 {
-		data = fastrand.Bytes(lf.size)
-	}
-	if err != nil {
-		return errors.AddContext(err, "failed to read file from disk")
-	}
-	if crypto.HashBytes(data) != lf.checksum {
-		return errors.New("checksums don't match")
-	}
-	return nil
-}
-
-// partialChecksum returns the checksum of a part of the file.
-func (lf *LocalFile) partialChecksum(from, to uint64) (crypto.Hash, error) {
-	data, err := ioutil.ReadFile(lf.path)
-	if err != nil {
-		return crypto.Hash{}, errors.AddContext(err, "failed to read file from disk")
-	}
-	return crypto.HashBytes(data[from:to]), nil
-}
 
 // Data will return the data of the file, so that it can be compared against
 // output such as download output after it has been deleted locally.
@@ -111,4 +86,29 @@ func (lf *LocalFile) Size() int {
 // Stat is a wrapper for os.Stat.
 func (lf *LocalFile) Stat() (os.FileInfo, error) {
 	return os.Stat(lf.path)
+}
+
+// checkIntegrity compares the in-memory checksum to the checksum of the data
+// on disk
+func (lf *LocalFile) checkIntegrity() error {
+	data, err := ioutil.ReadFile(lf.path)
+	if lf.size == 0 {
+		data = fastrand.Bytes(lf.size)
+	}
+	if err != nil {
+		return errors.AddContext(err, "failed to read file from disk")
+	}
+	if crypto.HashBytes(data) != lf.checksum {
+		return errors.New("checksums don't match")
+	}
+	return nil
+}
+
+// partialChecksum returns the checksum of a part of the file.
+func (lf *LocalFile) partialChecksum(from, to uint64) (crypto.Hash, error) {
+	data, err := ioutil.ReadFile(lf.path)
+	if err != nil {
+		return crypto.Hash{}, errors.AddContext(err, "failed to read file from disk")
+	}
+	return crypto.HashBytes(data[from:to]), nil
 }
