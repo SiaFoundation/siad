@@ -4346,6 +4346,33 @@ This is the hash that is encoded into the skylink.
 This is the bitfield that gets encoded into the skylink. The bitfield contains a
 version, an offset and a length in a heavily compressed and optimized format.
 
+## /skynet/stats [GET]
+> curl example
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/stats"
+```
+
+returns statistical information about Skynet, e.g. number of files uploaded
+
+### JSON Response
+```json
+{
+  "uploadstats": {
+    "numfiles": 2,         // int
+    "totalsize": 44527895  // int
+  }
+}
+```
+
+**uploadstats** | object
+Uploadstats is an object with statistics about the data uploaded to Skynet.
+
+**numfiles** | int  
+Numfiles is the total number of files uploaded to Skynet.
+
+**totalsize** | int  
+Totalsize is the total amount of data in bytes uploaded to Skynet.
+
 # Transaction Pool
 
 ## /tpool/confirmed/:id [GET]

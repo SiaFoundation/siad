@@ -74,6 +74,12 @@ type (
 	DependencyPostponeWritePiecesRecovery struct {
 		modules.ProductionDependencies
 	}
+
+	// DependencyRenewWithoutClear will force contracts to be renewed without
+	// clearing their contents.
+	DependencyRenewWithoutClear struct {
+		modules.ProductionDependencies
+	}
 )
 
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
@@ -162,6 +168,11 @@ func (d *DependencyLowFundsRenewalFail) Disrupt(s string) bool {
 // Disrupt causes contract renewal to fail due to low allowance funds.
 func (d *DependencyLowFundsRefreshFail) Disrupt(s string) bool {
 	return s == "LowFundsRefresh"
+}
+
+// Disrupt causes contract renewal to not clear the contents of a contract.
+func (d *DependencyRenewWithoutClear) Disrupt(s string) bool {
+	return s == "RenewWithoutClear"
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was
