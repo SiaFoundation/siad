@@ -13,27 +13,14 @@ import (
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
 func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
-	pt := &modules.RPCPriceTable{}
+	// copy the host's price table
+	h.mu.Lock()
+	pt := h.priceTable
+	h.mu.Unlock()
 
-	// deep copy the current price table and track it using its UUID
-	if err := func() error {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-
-		ptBytes, err := json.Marshal(h.priceTable)
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(ptBytes, &pt)
-		if err != nil {
-			return err
-		}
-		pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
-		h.priceTableMap[pt.UUID] = pt
-		return nil
-	}(); err != nil {
-		return errors.AddContext(err, "Failed to copy the host price table")
-	}
+	// update the epxiry ensire prices are guaranteed for the
+	// 'rpcPriceGuaranteePeriod'
+	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
 
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
@@ -54,18 +41,13 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// just received. This essentially means the host is optimistically sending
 	// over the price table, which is ok.
 
-	// TODO: enable when the PaymentProcessor gets introduced
-	// process payment
-	// pp := h.NewPaymentProcessor()
-	// amountPaid, err := pp.ProcessPaymentForRPC(stream)
-	// if err != nil {
-	// 	return errors.AddContext(err, "Failed to process payment")
-	// }
-	// verify payment
-	// expected := pt.UpdatePriceTableCost
-	// if amountPaid.Cmp(expected) < 0 {
-	// 	return errors.AddContext(modules.ErrInsufficientPaymentForRPC, fmt.Sprintf("The renter did not supply sufficient payment to cover the cost of the  UpdatePriceTableRPC. Expected: %v Actual: %v", expected.HumanString(), amountPaid.HumanString()))
-	// }
+	// TODO process payment
+
+	// after payment has been received, track the price table in the host's list
+	// of price tables
+	h.mu.Lock()
+	h.priceTableMap[pt.UUID] = &pt
+	h.mu.Unlock()
 
 	return nil
 }

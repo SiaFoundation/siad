@@ -384,8 +384,6 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 			atomic.AddUint64(&h.atomicErroredCalls, 1)
 			return
 		}
-		// TODO verify if a price table exists
-		// TODO verify it has not yet expired
 	}
 
 	switch rpcID {
