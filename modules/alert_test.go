@@ -76,7 +76,8 @@ func TestAlertsSorted(t *testing.T) {
 	alerter.RegisterAlert(AlertID("9"), "msg9", "cause3", SeverityCritical)
 
 	crit, err, warn := alerter.Alerts()
-	if len(crit) != 3 || len(err) != 3 || len(warn) != 3 {
+	// 4 due to the already registered test alerts.
+	if len(crit) != 4 || len(err) != 4 || len(warn) != 4 {
 		t.Fatalf("returned slices have wrong lengths %v %v %v", len(crit), len(err), len(warn))
 	}
 	for _, alert := range crit {
