@@ -801,7 +801,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 // proportionalyy
 func testStats(t *testing.T, r *siatest.TestNode) {
 	// get the stats before the test files are uploaded
-	statsBeforeArr, err := r.SkynetStatsGet()
+	statsBefore, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,48 +836,28 @@ func testStats(t *testing.T, r *siatest.TestNode) {
 			t.Fatal(err)
 		}
 
-		// a file always takes at least one sector, even if it's smaller than that
 		if size < modules.SectorSize {
+			// small files get padded up to a full sector
 			uploadedFilesSize += modules.SectorSize
 		} else {
-			uploadedFilesSize += size
+			// large files have an extra sector with header data
+			uploadedFilesSize += size + modules.SectorSize
 		}
 		uploadedFilesCount++
 	}
 
-	// get the hour during which the files were created. should be called before
-	// we get the stats again becuse getting the stats takes some time and that
-	// increases the probability for the test to happen to run exactly when we go
-	// from one hour to the next
-	currentHour := time.Now().Truncate(time.Hour)
-
 	// get the stats after the upload of the test files
-	statsAfterArr, err := r.SkynetStatsGet()
+	statsAfter, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var statsBefore api.SkynetStats
-	for _, st := range statsBeforeArr.UploadStats {
-		if st.Hour == currentHour {
-			statsBefore = *st
-			break
-		}
-	}
-	var statsAfter api.SkynetStats
-	for _, st := range statsAfterArr.UploadStats {
-		if st.Hour == currentHour {
-			statsAfter = *st
-			break
-		}
-	}
-
 	// make sure the stats changed by exactly the expected amounts
-	if uint64(statsBefore.NumFiles)+uploadedFilesCount != uint64(statsAfter.NumFiles) {
-		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles)+uploadedFilesCount, statsAfter.NumFiles))
+	if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
+		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles))
 	}
-	if statsBefore.TotalSize+uploadedFilesSize != statsAfter.TotalSize {
-		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.TotalSize+uploadedFilesSize, statsAfter.TotalSize))
+	if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
+		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize))
 	}
 }
 

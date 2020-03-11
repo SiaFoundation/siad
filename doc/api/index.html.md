@@ -4357,42 +4357,21 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
-    "uploadstats": [
-        {
-            // RFC3339 time string
-            "hour": "2020-03-05T18:00:00+01:00",
-            // total number of files uploaded during the time period
-            "numfiles": 2,
-            // total combined size of the files uploaded during the time period
-            "totalsize": 44527895
-        },
-        {
-            "hour": "2020-03-05T19:00:00+01:00",
-            "numfiles": 4,
-            "totalsize": 52916503
-        },
-        {
-            "hour": "2020-03-03T11:00:00+01:00",
-            "numfiles": 1,
-            "totalsize": 4194304
-        }
-    ]
+  "uploadstats": {
+    "numfiles": 2,         // total number of uploaded files
+    "totalsize": 44527895  // total combined size of the files
+  }
 }
 ```
 
-**uploadstats** | array
-Uploadstats is an array with hourly statistics about the data uploaded to Skynet.
-
-**hour** | string  
-Hour defines the time period covered by the record. This means that the data in 
-the record inclusively covers the time frame from the start of the hour 
-(e.g. 18:00:00) to its end (e.g. 18:59:59).
+**uploadstats** | object
+Uploadstats is an object with statistics about the data uploaded to Skynet.
 
 **numfiles** | int  
-Numfiles is the total number of files uploaded to Skynet during the time period.
+Numfiles is the total number of files uploaded to Skynet.
 
 **totalsize** | int  
-Totalsize is the total amount of data uploaded to Skynet during the time period.
+Totalsize is the total amount of data uploaded to Skynet.
 
 # Transaction Pool
 

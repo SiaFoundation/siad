@@ -273,17 +273,16 @@ type (
 		Remove []string `json:"remove"`
 	}
 
-	// SkynetStatsGET contains the information queried for the
-	// /skynet/stats GET endpoint
+	// SkynetStatsGET contains the information queried for the /skynet/stats
+	// GET endpoint
 	SkynetStatsGET struct {
-		UploadStats []*SkynetStats `json:"uploadstats"`
+		UploadStats SkynetStats `json:"uploadstats"`
 	}
 
-	// SkynetStats contains per-hour statistical data about skynet
+	// SkynetStats contains statistical data about skynet
 	SkynetStats struct {
-		Hour      time.Time `json:"hour"`
-		NumFiles  int       `json:"numfiles"`
-		TotalSize uint64    `json:"totalsize"`
+		NumFiles  int    `json:"numfiles"`
+		TotalSize uint64 `json:"totalsize"`
 	}
 )
 
@@ -2305,35 +2304,22 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	})
 }
 
-// skynetStatsHandlerGET responds with a JSONArray with per-hour statistical
-// data about skynet, e.g. number of files uploaded, total size, etc.
+// skynetStatsHandlerGET responds with a JSON with statistical data about
+// skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	files, err := api.renter.FileList(modules.SkynetFolder, true, true)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	statsMap := make(map[time.Time]*SkynetStats)
+	stats := SkynetStats{}
 	for _, f := range files {
-		hour := f.CreateTime.Truncate(time.Hour)
-		if _, ok := statsMap[hour]; !ok {
-			statsMap[hour] = &SkynetStats{Hour: hour}
-		}
-		// If a file has the ExtendedSuffix then it's the second file representing
-		// an upload. We shouldn't count it as a separate file and we should also
-		// discount its size by SectorSize because we've already counted one sector
-		// towards this file when counting the header, a sector that holds the
-		// file's metadata.
+		// do not double-count large files by counting both the header file and
+		// the extended file
 		if !strings.HasSuffix(f.Name(), renter.ExtendedSuffix) {
-			statsMap[hour].NumFiles++
-			statsMap[hour].TotalSize += f.Filesize
-		} else {
-			statsMap[hour].TotalSize += f.Filesize - modules.SectorSize
+			stats.NumFiles++
 		}
-	}
-	stats := make([]*SkynetStats, 0, len(statsMap))
-	for _, v := range statsMap {
-		stats = append(stats, v)
+		stats.TotalSize += f.Filesize
 	}
 	WriteJSON(w, SkynetStatsGET{UploadStats: stats})
 }
