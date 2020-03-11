@@ -4371,7 +4371,7 @@ Uploadstats is an object with statistics about the data uploaded to Skynet.
 Numfiles is the total number of files uploaded to Skynet.
 
 **totalsize** | int  
-Totalsize is the total amount of data uploaded to Skynet.
+Totalsize is the total amount of data in bytes uploaded to Skynet.
 
 # Transaction Pool
 
