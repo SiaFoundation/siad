@@ -12,8 +12,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -259,7 +259,10 @@ func (n *DirNode) managedRecursiveList(recursive, cached bool, fileLoadChan chan
 		if recursive {
 			err = dir.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
 		}
-		dir.Close()
+		if err != nil {
+			return err
+		}
+		err = dir.Close()
 		if err != nil {
 			return err
 		}
