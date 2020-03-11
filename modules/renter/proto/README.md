@@ -40,7 +40,7 @@ swapping the zero ref sector with the last sector in the contract and dropping
 it from the reference counter list. This marks the sector as garbage and it's up
 for reuse/drop.
 
-The refrence counter is created and deleted together with the contract. The
+The reference counter is created and deleted together with the contract. The
 counts it holds should be updated on backup creation/deletion and on file
 deletion.
 
