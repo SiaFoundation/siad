@@ -83,10 +83,9 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	instruction5, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, pt)
 	cost5, refund5, memory5 := updateRunningCosts(pt, cost4, refund4, memory4, cost, refund, memory, time)
 
+	// Drop two remaining sectors.
 	instruction6, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
 	cost6, refund6, memory6 := updateRunningCosts(pt, cost5, refund5, memory5, cost, refund, memory, time)
-
-	// Drop two remaining sectors.
 
 	cost = cost6.Add(MemoryCost(pt, memory6, TimeCommit))
 
@@ -158,7 +157,6 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Execute the program.
-
 	so := newTestStorageObligation(true)
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
