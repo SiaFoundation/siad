@@ -48,32 +48,6 @@ func CheckBalanceVsSpending(r *TestNode, initialBalance types.Currency) error {
 	return nil
 }
 
-// CheckRenewedContractIDs confirms that contracts are renewed as expected with
-// hosts and no duplicate IDs
-func CheckRenewedContractIDs(oldContracts, renewedContracts []api.RenterContract) error {
-	// Create Maps for comparison
-	initialContractIDMap := make(map[types.FileContractID]struct{})
-	initialContractKeyMap := make(map[crypto.Hash]struct{})
-	for _, c := range oldContracts {
-		initialContractIDMap[c.ID] = struct{}{}
-		initialContractKeyMap[crypto.HashBytes(c.HostPublicKey.Key)] = struct{}{}
-	}
-
-	for _, c := range renewedContracts {
-		// Verify that all the contracts marked as GoodForRenew
-		// were renewed
-		if _, ok := initialContractIDMap[c.ID]; ok {
-			return errors.New("ID from renewedContracts found in oldContracts")
-		}
-		// Verifying that Renewed Contracts have the same HostPublicKey
-		// as an initial contract
-		if _, ok := initialContractKeyMap[crypto.HashBytes(c.HostPublicKey.Key)]; !ok {
-			return errors.New("Host Public Key from renewedContracts not found in oldContracts")
-		}
-	}
-	return nil
-}
-
 // CheckContractVsReportedSpending confirms that the spending recorded in the
 // renter's contracts matches the reported spending for the renter. Renewed
 // contracts should be the renter's active contracts and oldContracts should be
@@ -234,6 +208,32 @@ func CheckExpectedNumberOfContracts(r *TestNode, numActive, numPassive, numRefre
 		combinedError = errors.Compose(combinedError, fmt.Errorf("Expected %v expired refreshed contracts, got %v", numExpiredRefreshed, len(rc.ExpiredRefreshedContracts)))
 	}
 	return combinedError
+}
+
+// CheckRenewedContractIDs confirms that contracts are renewed as expected with
+// hosts and no duplicate IDs
+func CheckRenewedContractIDs(oldContracts, renewedContracts []api.RenterContract) error {
+	// Create Maps for comparison
+	initialContractIDMap := make(map[types.FileContractID]struct{})
+	initialContractKeyMap := make(map[crypto.Hash]struct{})
+	for _, c := range oldContracts {
+		initialContractIDMap[c.ID] = struct{}{}
+		initialContractKeyMap[crypto.HashBytes(c.HostPublicKey.Key)] = struct{}{}
+	}
+
+	for _, c := range renewedContracts {
+		// Verify that all the contracts marked as GoodForRenew
+		// were renewed
+		if _, ok := initialContractIDMap[c.ID]; ok {
+			return errors.New("ID from renewedContracts found in oldContracts")
+		}
+		// Verifying that Renewed Contracts have the same HostPublicKey
+		// as an initial contract
+		if _, ok := initialContractKeyMap[crypto.HashBytes(c.HostPublicKey.Key)]; !ok {
+			return errors.New("Host Public Key from renewedContracts not found in oldContracts")
+		}
+	}
+	return nil
 }
 
 // CheckRenewedContractsSpending confirms that renewed contracts have zero

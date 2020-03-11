@@ -15,6 +15,9 @@ const (
 	// contractExtension is the extension given to contract files.
 	contractExtension = ".contract"
 
+	// refCounterExtension is the extension given to reference counter files.
+	refCounterExtension = ".rc"
+
 	// rootsDiskLoadBulkSize is the max number of roots we read from disk at
 	// once to avoid using up all the ram.
 	rootsDiskLoadBulkSize = 1024 * crypto.HashSize // 32 kib

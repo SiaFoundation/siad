@@ -85,6 +85,154 @@ func (ac *addressCounter) managedNextNodeAddress() (string, error) {
 	return ac.address.String(), nil
 }
 
+// NewNode creates a new funded TestNode
+func NewNode(nodeParams node.NodeParams) (*TestNode, error) {
+	// We can't create a funded node without a miner
+	if !nodeParams.CreateMiner && nodeParams.Miner == nil {
+		return nil, errors.New("Can't create funded node without miner")
+	}
+	// Create clean node
+	tn, err := NewCleanNode(nodeParams)
+	if err != nil {
+		return nil, err
+	}
+	// Fund the node
+	for i := types.BlockHeight(0); i <= types.MaturityDelay+types.TaxHardforkHeight; i++ {
+		if err := tn.MineBlock(); err != nil {
+			return nil, err
+		}
+	}
+	// Return TestNode
+	return tn, nil
+}
+
+// NewCleanNode creates a new TestNode that's not yet funded
+func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
+	return newCleanNode(nodeParams, false)
+}
+
+// NewCleanNodeAsync creates a new TestNode that's not yet funded
+func NewCleanNodeAsync(nodeParams node.NodeParams) (*TestNode, error) {
+	return newCleanNode(nodeParams, true)
+}
+
+// newCleanNode creates a new TestNode that's not yet funded
+func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error) {
+	userAgent := "Sia-Agent"
+	password := "password"
+
+	// Check if an RPC address is set
+	if nodeParams.RPCAddress == "" {
+		addr, err := testNodeAddressCounter.managedNextNodeAddress()
+		if err != nil {
+			return nil, errors.AddContext(err, "error getting next node address")
+		}
+		nodeParams.RPCAddress = addr + ":0"
+	}
+
+	// Check if the SiaMuxAddress is set, if not we want to set it to use a
+	// random port in testing
+	if nodeParams.SiaMuxAddress == "" {
+		nodeParams.SiaMuxAddress = "localhost:0"
+	}
+
+	// Create server
+	var s *server.Server
+	var err error
+	if asyncSync {
+		var errChan <-chan error
+		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams, time.Now())
+		err = modules.PeekErr(errChan)
+	} else {
+		s, err = server.New(":0", userAgent, password, nodeParams, time.Now())
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Create client
+	c := client.New(s.APIAddress())
+	c.UserAgent = userAgent
+	c.Password = password
+
+	// Create TestNode
+	tn := &TestNode{
+		Server:      s,
+		Client:      *c,
+		params:      nodeParams,
+		primarySeed: "",
+	}
+	if err = tn.initRootDirs(); err != nil {
+		return nil, errors.AddContext(err, "failed to create root directories")
+	}
+
+	// If there is no wallet we are done.
+	if !nodeParams.CreateWallet && nodeParams.Wallet == nil {
+		return tn, nil
+	}
+
+	// If the SkipWalletInit flag is set then we are done
+	if nodeParams.SkipWalletInit {
+		return tn, nil
+	}
+
+	// Init wallet
+	if nodeParams.PrimarySeed != "" {
+		err := tn.WalletInitSeedPost(nodeParams.PrimarySeed, "", false)
+		if err != nil {
+			return nil, err
+		}
+		tn.primarySeed = nodeParams.PrimarySeed
+	} else {
+		wip, err := tn.WalletInitPost("", false)
+		if err != nil {
+			return nil, err
+		}
+		tn.primarySeed = wip.PrimarySeed
+	}
+
+	// Unlock wallet
+	if err := tn.WalletUnlockPost(tn.primarySeed); err != nil {
+		return nil, err
+	}
+
+	// Return TestNode
+	return tn, nil
+}
+
+// IsAlertRegistered returns an error if the given alert is not found
+func (tn *TestNode) IsAlertRegistered(a modules.Alert) error {
+	return build.Retry(10, 100*time.Millisecond, func() error {
+		dag, err := tn.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.Equals(a) {
+				return nil
+			}
+		}
+		return errors.New("alert is not registered")
+	})
+}
+
+// IsAlertUnregistered returns an error if the given alert is still found
+func (tn *TestNode) IsAlertUnregistered(a modules.Alert) error {
+	return build.Retry(10, 100*time.Millisecond, func() error {
+		dag, err := tn.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+
+		for _, alert := range dag.Alerts {
+			if alert.Equals(a) {
+				return errors.New("alert is registered")
+			}
+		}
+		return nil
+	})
+}
+
 // PrintDebugInfo prints out helpful debug information when debug tests and ndfs, the
 // boolean arguments dictate what is printed
 func (tn *TestNode) PrintDebugInfo(t *testing.T, contractInfo, hostInfo, renterInfo bool) {
@@ -209,6 +357,17 @@ func (tn *TestNode) RestartNode() error {
 	return nil
 }
 
+// SiaPath returns the siapath of a local file or directory to be used for
+// uploading
+func (tn *TestNode) SiaPath(path string) modules.SiaPath {
+	s := strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
+	sp, err := modules.NewSiaPath(s)
+	if err != nil {
+		build.Critical("This shouldn't happen", err)
+	}
+	return sp
+}
+
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
 	// Create server
@@ -227,130 +386,21 @@ func (tn *TestNode) StartNode() error {
 // StartNodeCleanDeps restarts a node from an active group without its
 // previously assigned dependencies.
 func (tn *TestNode) StartNodeCleanDeps() error {
-	tn.params.ContractSetDeps = nil
+	tn.params.ConsensusSetDeps = nil
 	tn.params.ContractorDeps = nil
+	tn.params.ContractSetDeps = nil
+	tn.params.GatewayDeps = nil
+	tn.params.HostDeps = nil
+	tn.params.HostDBDeps = nil
 	tn.params.RenterDeps = nil
+	tn.params.TPoolDeps = nil
+	tn.params.WalletDeps = nil
 	return tn.StartNode()
 }
 
 // StopNode stops a TestNode
 func (tn *TestNode) StopNode() error {
 	return errors.AddContext(tn.Close(), "failed to stop node")
-}
-
-// NewNode creates a new funded TestNode
-func NewNode(nodeParams node.NodeParams) (*TestNode, error) {
-	// We can't create a funded node without a miner
-	if !nodeParams.CreateMiner && nodeParams.Miner == nil {
-		return nil, errors.New("Can't create funded node without miner")
-	}
-	// Create clean node
-	tn, err := NewCleanNode(nodeParams)
-	if err != nil {
-		return nil, err
-	}
-	// Fund the node
-	for i := types.BlockHeight(0); i <= types.MaturityDelay+types.TaxHardforkHeight; i++ {
-		if err := tn.MineBlock(); err != nil {
-			return nil, err
-		}
-	}
-	// Return TestNode
-	return tn, nil
-}
-
-// NewCleanNode creates a new TestNode that's not yet funded
-func NewCleanNode(nodeParams node.NodeParams) (*TestNode, error) {
-	return newCleanNode(nodeParams, false)
-}
-
-// NewCleanNodeAsync creates a new TestNode that's not yet funded
-func NewCleanNodeAsync(nodeParams node.NodeParams) (*TestNode, error) {
-	return newCleanNode(nodeParams, true)
-}
-
-// newCleanNode creates a new TestNode that's not yet funded
-func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error) {
-	userAgent := "Sia-Agent"
-	password := "password"
-
-	// Check if an RPC address is set
-	if nodeParams.RPCAddress == "" {
-		addr, err := testNodeAddressCounter.managedNextNodeAddress()
-		if err != nil {
-			return nil, errors.AddContext(err, "error getting next node address")
-		}
-		nodeParams.RPCAddress = addr + ":0"
-	}
-
-	// Check if the SiaMuxAddress is set, if not we want to set it to use a
-	// random port in testing
-	if nodeParams.SiaMuxAddress == "" {
-		nodeParams.SiaMuxAddress = "localhost:0"
-	}
-
-	// Create server
-	var s *server.Server
-	var err error
-	if asyncSync {
-		var errChan <-chan error
-		s, errChan = server.NewAsync(":0", userAgent, password, nodeParams, time.Now())
-		err = modules.PeekErr(errChan)
-	} else {
-		s, err = server.New(":0", userAgent, password, nodeParams, time.Now())
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	// Create client
-	c := client.New(s.APIAddress())
-	c.UserAgent = userAgent
-	c.Password = password
-
-	// Create TestNode
-	tn := &TestNode{
-		Server:      s,
-		Client:      *c,
-		params:      nodeParams,
-		primarySeed: "",
-	}
-	if err = tn.initRootDirs(); err != nil {
-		return nil, errors.AddContext(err, "failed to create root directories")
-	}
-
-	// If there is no wallet we are done.
-	if !nodeParams.CreateWallet && nodeParams.Wallet == nil {
-		return tn, nil
-	}
-
-	// If the SkipWalletInit flag is set then we are done
-	if nodeParams.SkipWalletInit {
-		return tn, nil
-	}
-
-	// Init wallet
-	if nodeParams.PrimarySeed != "" {
-		err := tn.WalletInitSeedPost(nodeParams.PrimarySeed, "", false)
-		if err != nil {
-			return nil, err
-		}
-		tn.primarySeed = nodeParams.PrimarySeed
-	} else {
-		wip, err := tn.WalletInitPost("", false)
-		if err != nil {
-			return nil, err
-		}
-		tn.primarySeed = wip.PrimarySeed
-	}
-
-	// Unlock wallet
-	if err := tn.WalletUnlockPost(tn.primarySeed); err != nil {
-		return nil, err
-	}
-
-	// Return TestNode
-	return tn, nil
 }
 
 // initRootDirs creates the download and upload directories for the TestNode
@@ -368,48 +418,4 @@ func (tn *TestNode) initRootDirs() error {
 		return err
 	}
 	return nil
-}
-
-// SiaPath returns the siapath of a local file or directory to be used for
-// uploading
-func (tn *TestNode) SiaPath(path string) modules.SiaPath {
-	s := strings.TrimPrefix(path, tn.filesDir.path+string(filepath.Separator))
-	sp, err := modules.NewSiaPath(s)
-	if err != nil {
-		build.Critical("This shouldn't happen", err)
-	}
-	return sp
-}
-
-// IsAlertRegistered returns an error if the given alert is not found
-func (tn *TestNode) IsAlertRegistered(a modules.Alert) error {
-	return build.Retry(10, 100*time.Millisecond, func() error {
-		dag, err := tn.DaemonAlertsGet()
-		if err != nil {
-			return err
-		}
-		for _, alert := range dag.Alerts {
-			if alert.Equals(a) {
-				return nil
-			}
-		}
-		return errors.New("alert is not registered")
-	})
-}
-
-// IsAlertUnregistered returns an error if the given alert is still found
-func (tn *TestNode) IsAlertUnregistered(a modules.Alert) error {
-	return build.Retry(10, 100*time.Millisecond, func() error {
-		dag, err := tn.DaemonAlertsGet()
-		if err != nil {
-			return err
-		}
-
-		for _, alert := range dag.Alerts {
-			if alert.Equals(a) {
-				return errors.New("alert is registered")
-			}
-		}
-		return nil
-	})
 }

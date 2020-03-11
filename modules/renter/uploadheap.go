@@ -690,11 +690,6 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
-		//
-		// NOTE: we only want to remember each siaPath once which is why we use
-		// a map. We Don't check if the siaPath is already in the map because
-		// another thread could have added the directory back to the heap after
-		// we just popped it off. This is the case for new uploads.
 		err = siaPaths.callAdd(dirSiaPath)
 		if err != nil {
 			r.repairLog.Println("WARN: error adding siapath to tracked paths to bubble:", err)
