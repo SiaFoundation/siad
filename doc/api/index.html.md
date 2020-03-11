@@ -4359,7 +4359,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
 {
   "uploadstats": {
     "numfiles": 2,         // total number of uploaded files
-    "totalsize": 44527895  // total combined size of the files
+    "totalsize": 44527895  // int
   }
 }
 ```
