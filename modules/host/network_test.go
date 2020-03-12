@@ -163,7 +163,7 @@ func TestHostSiaMuxSubscriber(t *testing.T) {
 	defer ht.Close()
 
 	hes := ht.host.ExternalSettings()
-	muxAddress := fmt.Sprintf("%s:%d", hes.NetAddress.Host(), hes.SiaMuxPort)
+	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
 	mux := ht.host.staticMux
 
 	// fetch a stream from the mux

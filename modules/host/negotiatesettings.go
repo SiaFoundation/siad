@@ -2,7 +2,6 @@ package host
 
 import (
 	"net"
-	"strconv"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -67,13 +66,9 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 	}
 
 	// Extract the port from the SiaMux's address
-	_, portStr, err := net.SplitHostPort(h.staticMux.Address().String())
+	_, port, err := net.SplitHostPort(h.staticMux.Address().String())
 	if err != nil {
 		build.Critical("Could not split the SiaMux address in a host and port")
-	}
-	port, err := strconv.ParseUint(portStr, 10, 64)
-	if err != nil {
-		build.Critical("Could not parse SiaMux port")
 	}
 
 	return modules.HostExternalSettings{

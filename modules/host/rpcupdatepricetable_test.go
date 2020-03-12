@@ -86,10 +86,12 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	}
 
 	// get its uuid
+	ht.host.mu.Lock()
 	var uuid types.Specifier
 	for uuid = range ht.host.priceTableMap {
 		break
 	}
+	ht.host.mu.Unlock()
 
 	// sleep for the duration of the price guarantee + the epxiry frequency,
 	// this is the worst case of how long it can take before the price table
@@ -222,7 +224,7 @@ func createTestingMuxs() (clientMux, serverMux *mux.Mux) {
 	go func() {
 		defer wg.Done()
 		var err error
-		clientMux, err = mux.NewClientMux(clientConn, serverPubKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {})
+		clientMux, err = mux.NewClientMux(clientConn, serverPubKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {}, func(*mux.Mux) {})
 		if err != nil {
 			panic(err)
 		}
@@ -231,7 +233,7 @@ func createTestingMuxs() (clientMux, serverMux *mux.Mux) {
 	go func() {
 		defer wg.Done()
 		var err error
-		serverMux, err = mux.NewServerMux(serverConn, serverPubKey, serverPrivKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {})
+		serverMux, err = mux.NewServerMux(serverConn, serverPubKey, serverPrivKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {}, func(*mux.Mux) {})
 		if err != nil {
 			panic(err)
 		}
@@ -258,7 +260,7 @@ func createTestingConns() (clientConn, serverConn net.Conn) {
 // createTestStream is a helper method to create a stream
 func createTestStream(h *Host) (siamux.Stream, error) {
 	hes := h.ExternalSettings()
-	muxAddress := fmt.Sprintf("%s:%d", hes.NetAddress.Host(), hes.SiaMuxPort)
+	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
 	mux := h.staticMux
 
 	// fetch a stream from the mux
