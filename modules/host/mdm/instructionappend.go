@@ -89,14 +89,14 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 
 // Cost returns the Cost of this append instruction.
 func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
-	cost, refund := AppendCost(i.staticState.priceTable)
+	cost, refund := modules.MDMAppendCost(i.staticState.priceTable)
 	return cost, refund, nil
 }
 
 // Memory returns the memory allocated by the 'Append' instruction beyond the
 // lifetime of the instruction.
 func (i *instructionAppend) Memory() uint64 {
-	return AppendMemory()
+	return modules.MDMAppendMemory()
 }
 
 // ReadOnly for the 'Append' instruction is 'false'.
@@ -106,5 +106,5 @@ func (i *instructionAppend) ReadOnly() bool {
 
 // Time returns the execution time of an 'Append' instruction.
 func (i *instructionAppend) Time() uint64 {
-	return TimeAppend
+	return modules.MDMTimeAppend
 }

@@ -210,10 +210,28 @@ var (
 	// sectors significantly reduce the tracking overhead experienced by the
 	// renter and the host.
 	SectorSize = build.Select(build.Var{
-		Dev:      uint64(1 << 18), // 256 KiB
-		Standard: uint64(1 << 22), // 4 MiB
-		Testing:  uint64(1 << 12), // 4 KiB
+		Dev:      SectorSizeDev,
+		Standard: SectorSizeStandard,
+		Testing:  SectorSizeTesting,
 	}).(uint64)
+
+	// SectorSizeDev defines how large a sector should be in Dev builds.
+	SectorSizeDev = uint64(1 << SectorSizeScalingDev)
+	// SectorSizeStandard defines how large a sector should be in Standard
+	// builds.
+	SectorSizeStandard = uint64(1 << SectorSizeScalingStandard)
+	// SectorSizeTesting defines how large a sector should be in Testing builds.
+	SectorSizeTesting = uint64(1 << SectorSizeScalingTesting)
+
+	// SectorSizeScalingDev defines the power of 2 to which we scale sector
+	// sizes in Dev builds.
+	SectorSizeScalingDev = 18 // 256 KiB
+	// SectorSizeScalingStandard defines the power of 2 to which we scale sector
+	// sizes in Standard builds.
+	SectorSizeScalingStandard = 22 // 4 MiB
+	// SectorSizeScalingTesting defines the power of 2 to which we scale sector
+	// sizes in Testing builds.
+	SectorSizeScalingTesting = 12 // 4 KiB
 )
 
 type (
@@ -357,16 +375,17 @@ type (
 
 // New RPC IDs
 var (
-	RPCLoopEnter         = types.NewSpecifier("LoopEnter")
-	RPCLoopExit          = types.NewSpecifier("LoopExit")
-	RPCLoopFormContract  = types.NewSpecifier("LoopFormContract")
-	RPCLoopLock          = types.NewSpecifier("LoopLock")
-	RPCLoopRead          = types.NewSpecifier("LoopRead")
-	RPCLoopRenewContract = types.NewSpecifier("LoopRenew")
-	RPCLoopSectorRoots   = types.NewSpecifier("LoopSectorRoots")
-	RPCLoopSettings      = types.NewSpecifier("LoopSettings")
-	RPCLoopUnlock        = types.NewSpecifier("LoopUnlock")
-	RPCLoopWrite         = types.NewSpecifier("LoopWrite")
+	RPCLoopEnter              = types.NewSpecifier("LoopEnter")
+	RPCLoopExit               = types.NewSpecifier("LoopExit")
+	RPCLoopFormContract       = types.NewSpecifier("LoopFormContract")
+	RPCLoopLock               = types.NewSpecifier("LoopLock")
+	RPCLoopRead               = types.NewSpecifier("LoopRead")
+	RPCLoopRenewContract      = types.NewSpecifier("LoopRenew")
+	RPCLoopRenewClearContract = types.NewSpecifier("LoopRenewClear")
+	RPCLoopSectorRoots        = types.NewSpecifier("LoopSectorRoots")
+	RPCLoopSettings           = types.NewSpecifier("LoopSettings")
+	RPCLoopUnlock             = types.NewSpecifier("LoopUnlock")
+	RPCLoopWrite              = types.NewSpecifier("LoopWrite")
 )
 
 // RPC ciphers
@@ -528,6 +547,26 @@ type (
 	LoopRenewContractRequest struct {
 		Transactions []types.Transaction
 		RenterKey    types.SiaPublicKey
+	}
+
+	// LoopRenewAndClearContractSignatures contains the signatures for a contract
+	// transaction, initial revision and final revision of the old contract. These
+	// signatures are sent by the renter during contract renewal.
+	LoopRenewAndClearContractSignatures struct {
+		ContractSignatures []types.TransactionSignature
+		RevisionSignature  types.TransactionSignature
+
+		FinalRevisionSignature []byte
+	}
+
+	// LoopRenewAndClearContractRequest contains the request parameters for
+	// RPCLoopRenewClearContract.
+	LoopRenewAndClearContractRequest struct {
+		Transactions []types.Transaction
+		RenterKey    types.SiaPublicKey
+
+		FinalValidProofValues  []types.Currency
+		FinalMissedProofValues []types.Currency
 	}
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.

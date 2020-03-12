@@ -19,10 +19,10 @@ func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTa
 	}
 
 	// Compute cost and used memory.
-	cost, refund := AppendCost(pt)
-	usedMemory := AppendMemory()
-	memoryCost := MemoryCost(pt, usedMemory, TimeAppend+TimeCommit)
-	initCost := InitCost(pt, uint64(len(sectorData)))
+	cost, refund := modules.MDMAppendCost(pt)
+	usedMemory := modules.MDMAppendMemory()
+	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeAppend+modules.MDMTimeCommit)
+	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
 	cost = cost.Add(memoryCost).Add(initCost)
 	return instructions, sectorData, cost, refund, usedMemory
 }
@@ -64,7 +64,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
@@ -128,7 +128,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
