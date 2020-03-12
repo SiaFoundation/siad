@@ -49,14 +49,15 @@ func (h *Host) managedTryLockStorageObligation(soid types.FileContractID, timeou
 	h.mu.Unlock()
 
 	if lo.tl.TryLockTimed(timeout) {
-		h.mu.Lock()
-		lo.n--
-		if lo.n == 0 {
-			delete(h.lockedStorageObligations, soid)
-		}
-		h.mu.Unlock()
 		return nil
 	}
+	// Locking failed. Decrement the counter again.
+	h.mu.Lock()
+	lo.n--
+	if lo.n == 0 {
+		delete(h.lockedStorageObligations, soid)
+	}
+	h.mu.Unlock()
 	return errObligationLocked
 }
 
