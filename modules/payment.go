@@ -49,10 +49,9 @@ var (
 	ErrWithdrawalInvalidSignature = errors.New("ephemeral account withdrawal message signature is invalid")
 )
 
-// PaymentProvider is the interface implemented when payment has to be made
-// for an RPC call to a host.
+// PaymentProvider contains the methods required to provide payment for an rpc.
 type PaymentProvider interface {
-	ProvidePayment(rpcID types.Specifier, amount types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error)
+	ProvidePayment(rpc types.Specifier, amount types.Currency, stream siamux.Stream, height types.BlockHeight) (types.Currency, error)
 }
 
 // PaymentProcessor is the interface implemented when receiving payment for an
