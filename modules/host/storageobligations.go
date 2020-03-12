@@ -591,20 +591,20 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 	// proofs)
 	var added []crypto.Hash
 	var err error
-	for root, data := range sectorsGained {
-		err = h.AddSector(root, data)
+	for sectorRoot, data := range sectorsGained {
+		err = h.AddSector(sectorRoot, data)
 		if err != nil {
 			break
 		}
-		added = append(added, root)
+		added = append(added, sectorRoot)
 	}
 	if err != nil {
 		// Because there was an error, all of the sectors that got added need
 		// to be reverted.
-		for _, root := range added {
+		for _, sectorRoot := range added {
 			// Error is not checked because there's nothing useful that can be
 			// done about an error.
-			_ = h.RemoveSector(root)
+			_ = h.RemoveSector(sectorRoot)
 		}
 		return err
 	}
