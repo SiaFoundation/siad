@@ -99,7 +99,7 @@ func TestRefCounter(t *testing.T) {
 	if err = testCallSwap(&rc); err != nil {
 		t.Fatal(err)
 	}
-	if err = testCallTruncate(&rc, 4); err != nil {
+	if err = testCallDropSectors(&rc, 4); err != nil {
 		t.Fatal(err)
 	}
 	callsToTruncate += 4
@@ -128,6 +128,9 @@ func TestRefCounter(t *testing.T) {
 	}
 	if newStats.Size() != stats.Size()-int64(2*callsToTruncate) {
 		t.Fatal(fmt.Sprintf("File size did not shrink as expected, expected size: %d, actual size: %d", stats.Size()-int64(2*callsToTruncate), newStats.Size()))
+	}
+	if testSectorsCount-callsToTruncate != rc.numSectors {
+		t.Fatal("Desync between rc.numSectors and the real number of sectors")
 	}
 
 	// individually test LoadRefCounter
@@ -209,9 +212,9 @@ func testCallSwap(rc *RefCounter) error {
 	return nil
 }
 
-// testCallTruncate specifically tests the callDropSectors method available outside
+// testCallDropSectors specifically tests the callDropSectors method available outside
 // the subsystem
-func testCallTruncate(rc *RefCounter, numSecs uint64) error {
+func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 	fiBefore, err := os.Stat(rc.filepath)
 	if err != nil {
 		return errors.AddContext(err, "failed to read from disk")

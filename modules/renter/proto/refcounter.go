@@ -45,8 +45,9 @@ type (
 	RefCounter struct {
 		RefCounterHeader
 
-		filepath string // where the refcounter is persisted on disk
-		mu       sync.Mutex
+		filepath   string // where the refcounter is persisted on disk
+		numSectors uint64 // used for sanity checks before we attempt mutation operations
+		mu         sync.Mutex
 	}
 
 	// RefCounterHeader contains metadata about the reference counter file
@@ -74,9 +75,15 @@ func LoadRefCounter(path string) (RefCounter, error) {
 	if header.Version != RefCounterVersion {
 		return RefCounter{}, errors.AddContext(ErrInvalidVersion, fmt.Sprintf("expected version %d, got version %d", RefCounterVersion, header.Version))
 	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return RefCounter{}, errors.AddContext(err, "failed to read file stats")
+	}
+	numSectors := uint64((fi.Size() - RefCounterHeaderSize) / 2)
 	return RefCounter{
 		RefCounterHeader: header,
 		filepath:         path,
+		numSectors:       numSectors,
 	}, nil
 }
 
@@ -109,11 +116,15 @@ func NewRefCounter(path string, numSectors uint64) (RefCounter, error) {
 	return RefCounter{
 		RefCounterHeader: h,
 		filepath:         path,
+		numSectors:       numSectors,
 	}, nil
 }
 
 // Count returns the number of references to the given sector
 func (rc *RefCounter) Count(secNum uint64) (uint16, error) {
+	if secNum > rc.numSectors-1 {
+		return 0, ErrInvalidSectorNumber
+	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	return rc.readCount(secNum)
@@ -123,6 +134,9 @@ func (rc *RefCounter) Count(secNum uint64) (uint16, error) {
 // is specified by its sequential number (`secNum`).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Decrement(secNum uint64) (uint16, error) {
+	if secNum > rc.numSectors-1 {
+		return 0, ErrInvalidSectorNumber
+	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	count, err := rc.readCount(secNum)
@@ -147,6 +161,9 @@ func (rc *RefCounter) DeleteRefCounter() (err error) {
 // is specified by its sequential number (`secNum`).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Increment(secNum uint64) (uint16, error) {
+	if secNum > rc.numSectors-1 {
+		return 0, ErrInvalidSectorNumber
+	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	count, err := rc.readCount(secNum)
@@ -172,14 +189,9 @@ func (rc *RefCounter) callSwap(i, j uint64) error {
 
 // managedDropSectors removes the last `n` sector counts from the refcounter file
 func (rc *RefCounter) managedDropSectors(n uint64) error {
-	fi, err := os.Stat(rc.filepath)
-	if err != nil {
-		return err
+	if n > rc.numSectors {
+		return ErrInvalidSectorNumber
 	}
-	if n > (uint64(fi.Size())-RefCounterHeaderSize)/2 {
-		return fmt.Errorf("cannot truncate more than the total number of counts. number of sectors: %d, sectors to truncate: %d", (uint64(fi.Size())-RefCounterHeaderSize)/2, n)
-	}
-
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	// truncate the file on disk
@@ -189,11 +201,20 @@ func (rc *RefCounter) managedDropSectors(n uint64) error {
 	}
 	defer f.Close()
 
-	return f.Truncate(fi.Size() - int64(n*2))
+	err = f.Truncate(RefCounterHeaderSize + int64(rc.numSectors-n)*2)
+	if err != nil {
+		return err
+	}
+	// decrement only after a successful truncate
+	rc.numSectors -= n
+	return nil
 }
 
 // managedSwap swaps the counts of the two sectors
 func (rc *RefCounter) managedSwap(firstSector, secondSector uint64) error {
+	if firstSector > rc.numSectors-1 || secondSector > rc.numSectors-1 {
+		return ErrInvalidSectorNumber
+	}
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
@@ -224,6 +245,9 @@ func (rc *RefCounter) managedSwap(firstSector, secondSector uint64) error {
 
 // readCount reads the given sector count from disk
 func (rc *RefCounter) readCount(secNum uint64) (uint16, error) {
+	if secNum > rc.numSectors-1 {
+		return 0, ErrInvalidSectorNumber
+	}
 	f, err := os.Open(rc.filepath)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to open the refcounter file")
@@ -231,10 +255,7 @@ func (rc *RefCounter) readCount(secNum uint64) (uint16, error) {
 	defer f.Close()
 
 	b := make([]byte, 2)
-	_, err = f.ReadAt(b, int64(offset(secNum)))
-	if err == io.EOF {
-		return 0, ErrInvalidSectorNumber
-	} else if err != nil {
+	if _, err = f.ReadAt(b, int64(offset(secNum))); err != nil {
 		return 0, errors.AddContext(err, "failed to read from the refcounter file")
 	}
 	return binary.LittleEndian.Uint16(b), nil
@@ -242,6 +263,9 @@ func (rc *RefCounter) readCount(secNum uint64) (uint16, error) {
 
 // writeCount stores the given sector count on disk
 func (rc *RefCounter) writeCount(secNum uint64, c uint16) error {
+	if secNum > rc.numSectors-1 {
+		return ErrInvalidSectorNumber
+	}
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
