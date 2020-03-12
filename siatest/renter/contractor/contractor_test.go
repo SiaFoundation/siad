@@ -2168,13 +2168,14 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 	r := nodes[0]
 
-	// The renter shouldn't have any alerts.
+	// The daemon shouldn't have any alerts besides the 3 testing alerts per
+	// module.
 	dag, err := r.DaemonAlertsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dag.Alerts) != 0 {
-		t.Fatal("number of alerts is not 0")
+	if len(dag.Alerts) != 12 {
+		t.Fatal("number of alerts is not 0", len(dag.Alerts))
 	}
 
 	// Mine blocks to force contract renewal
