@@ -30,7 +30,7 @@ func (h *Host) managedLockStorageObligation(soid types.FileContractID) {
 	lo.n++
 	h.mu.Unlock()
 
-	lo.tl.Lock()
+	lo.mu.Lock()
 }
 
 // managedTryLockStorageObligation attempts to put a storage obligation under
@@ -48,7 +48,7 @@ func (h *Host) managedTryLockStorageObligation(soid types.FileContractID, timeou
 	lo.n++
 	h.mu.Unlock()
 
-	if lo.tl.TryLockTimed(timeout) {
+	if lo.mu.TryLockTimed(timeout) {
 		return nil
 	}
 	// Locking failed. Decrement the counter again.
@@ -79,5 +79,5 @@ func (h *Host) managedUnlockStorageObligation(soid types.FileContractID) {
 	}
 	h.mu.Unlock()
 
-	lo.tl.Unlock()
+	lo.mu.Unlock()
 }

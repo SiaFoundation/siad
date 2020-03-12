@@ -193,7 +193,7 @@ type Host struct {
 // indicate how many times the locked obligation has been fetched from the
 // lockedStorageObligations map already.
 type lockedObligation struct {
-	tl siasync.TryMutex
+	mu siasync.TryMutex
 	n  uint
 }
 
