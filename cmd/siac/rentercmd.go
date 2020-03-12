@@ -1058,7 +1058,7 @@ double the default number of default hosts be treated as a maximum.`)
 
 		hostsInt, err := strconv.Atoi(allowanceHosts)
 		if err != nil {
-			fmt.Println("Could not parse host count")
+			fmt.Println("Could not parse host count:", err)
 			continue
 		}
 		hosts = uint64(hostsInt)
@@ -1114,7 +1114,7 @@ The following units can be used to set the renew window:
 
 		rw, err := parsePeriod(allowanceRenewWindow)
 		if err != nil {
-			fmt.Println("Could not parse renew window")
+			fmt.Println("Could not parse renew window:", err)
 			continue
 		}
 		_, err = fmt.Sscan(rw, &renewWindow)
@@ -1174,12 +1174,12 @@ The following units can be used to set the expected storage:`)
 
 		es, err := parseFilesize(allowanceExpectedStorage)
 		if err != nil {
-			fmt.Println("Could not parse expected storage")
+			fmt.Println("Could not parse expected storage:", err)
 			continue
 		}
 		_, err = fmt.Sscan(es, &expectedStorage)
 		if err != nil {
-			fmt.Println("Could not parse expected storage")
+			fmt.Println("Could not parse expected storage:", err)
 			continue
 		}
 		break
@@ -1229,12 +1229,12 @@ The following units can be used to set the expected upload:`)
 
 		eu, err := parseFilesize(allowanceExpectedUpload)
 		if err != nil {
-			fmt.Println("Could not parse expected upload")
+			fmt.Println("Could not parse expected upload:", err)
 			continue
 		}
 		_, err = fmt.Sscan(eu, &expectedUpload)
 		if err != nil {
-			fmt.Println("Could not parse expected upload")
+			fmt.Println("Could not parse expected upload:", err)
 			continue
 		}
 		break
@@ -1286,12 +1286,12 @@ The following units can be used to set the expected download:`)
 
 		ed, err := parseFilesize(allowanceExpectedDownload)
 		if err != nil {
-			fmt.Println("Could not parse expected download")
+			fmt.Println("Could not parse expected download:", err)
 			continue
 		}
 		_, err = fmt.Sscan(ed, &expectedDownload)
 		if err != nil {
-			fmt.Println("Could not parse expected download")
+			fmt.Println("Could not parse expected download:", err)
 			continue
 		}
 		break
@@ -1335,7 +1335,7 @@ how large the files are.`)
 
 		expectedRedundancy, err = strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
-			fmt.Println("Could not parse expected redundancy")
+			fmt.Println("Could not parse expected redundancy:", err)
 			continue
 		}
 		if expectedRedundancy < 1 {

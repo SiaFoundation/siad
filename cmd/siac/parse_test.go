@@ -17,11 +17,13 @@ func TestParseFilesize(t *testing.T) {
 		{"1b", "1", nil},
 		{"1 b", "1", nil},
 		{"1KB", "1000", nil},
-		{"1 KB", "1000", nil},
+		{"1   kb", "1000", nil},
+		{"1 kB", "1000", nil},
+		{" 1Kb ", "1000", nil},
 		{"1MB", "1000000", nil},
 		{"1 MB", "1000000", nil},
-		{" 1GB ", "1000000000", nil},
-		{"1 GB ", "1000000000", nil},
+		{"   1GB ", "1000000000", nil},
+		{"1 GB   ", "1000000000", nil},
 		{"1TB", "1000000000000", nil},
 		{"1 TB", "1000000000000", nil},
 		{"1KiB", "1024", nil},
@@ -32,16 +34,16 @@ func TestParseFilesize(t *testing.T) {
 		{"1 GiB", "1073741824", nil},
 		{"1TiB", "1099511627776", nil},
 		{"1 TiB", "1099511627776", nil},
-		{"", "", errUnableToParseSize},
-		{"123", "", errUnableToParseSize},
+		{"", "", errParseSizeUnits},
+		{"123", "", errParseSizeUnits},
 		{"123b", "123", nil},
 		{"123 TB", "123000000000000", nil},
 		{"123GiB", "132070244352", nil},
-		{"123BiB", "", errUnableToParseSize},
-		{"GB", "", errUnableToParseSize},
-		{"123G", "", errUnableToParseSize},
-		{"123B99", "", errUnableToParseSize},
-		{"12A3456", "", errUnableToParseSize},
+		{"123BiB", "", errParseSizeAmount},
+		{"GB", "", errParseSizeAmount},
+		{"123G", "", errParseSizeUnits},
+		{"123B99", "", errParseSizeUnits},
+		{"12A3456", "", errParseSizeUnits},
 		{"1.23KB", "1230", nil},
 		{"1.234 KB", "1234", nil},
 		{"1.2345KB", "1234", nil},
@@ -60,9 +62,9 @@ func TestParsePeriod(t *testing.T) {
 		in, out string
 		err     error
 	}{
-		{"x", "", errUnableToParsePeriod},
-		{"1", "", errUnableToParsePeriod},
-		{"b", "", errUnableToParsePeriod},
+		{"x", "", errParsePeriodUnits},
+		{"1", "", errParsePeriodUnits},
+		{"b", "", errParsePeriodAmount},
 		{"1b", "1", nil},
 		{"1 b", "1", nil},
 		{"1block", "1", nil},
@@ -93,8 +95,8 @@ func TestParsePeriod(t *testing.T) {
 		{"10 week", "10080", nil},
 		{"10weeks", "10080", nil},
 		{"10 weeks", "10080", nil},
-		{"1 fortnight", "", errUnableToParsePeriod},
-		{"three h", "", errUnableToParsePeriod},
+		{"1 fortnight", "", errParsePeriodUnits},
+		{"three h", "", errParsePeriodAmount},
 	}
 	for _, test := range tests {
 		res, err := parsePeriod(test.in)
@@ -110,9 +112,9 @@ func TestParseCurrency(t *testing.T) {
 		in, out string
 		err     error
 	}{
-		{"x", "", errUnableToParseCurrencyUnits},
-		{"1", "", errUnableToParseCurrencyUnits},
-		{"pS", "", errUnableToParseCurrencyAmount},
+		{"x", "", errParseCurrencyUnits},
+		{"1", "", errParseCurrencyUnits},
+		{"pS", "", errParseCurrencyAmount},
 		{"1pS", "1000000000000", nil},
 		{"1 pS", "1000000000000", nil},
 		{"2nS ", "2000000000000000", nil},
@@ -133,7 +135,7 @@ func TestParseCurrency(t *testing.T) {
 		{"1 TS", "1000000000000000000000000000000000000", nil},
 		{"0.5TS", "500000000000000000000000000000000000", nil},
 		{"0.5 TS", "500000000000000000000000000000000000", nil},
-		{"x SC", "", errUnableToParseCurrencyAmount},
+		{"x SC", "", errParseCurrencyAmount},
 	}
 	for _, test := range tests {
 		res, err := parseCurrency(test.in)
@@ -203,11 +205,11 @@ func TestParseRatelimit(t *testing.T) {
 		out int64
 		err error
 	}{
-		{"x", 0, errUnableToParseRateLimit},
-		{"1", 0, errUnableToParseRateLimit},
-		{"B/s", 0, errUnableToParseRateLimit},
-		{"Bps", 0, errUnableToParseRateLimit},
-		{"1Bps", 0, errUnableToParseRateLimit},
+		{"x", 0, errParseRateLimitUnits},
+		{"1", 0, errParseRateLimitUnits},
+		{"B/s", 0, errParseRateLimitNoAmount},
+		{"Bps", 0, errParseRateLimitNoAmount},
+		{"1Bps", 0, errParseRateLimitAmount},
 		{" 1B/s ", 1, nil},
 		{"1 B/s", 1, nil},
 		{"8Bps", 1, nil},
