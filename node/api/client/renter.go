@@ -1017,3 +1017,9 @@ func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
 	err = c.post("/skynet/blacklist", string(data), nil)
 	return
 }
+
+// SkynetStatsGet requests the /skynet/stats Get endpoint
+func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
+	err = c.get("/skynet/stats", &stats)
+	return
+}

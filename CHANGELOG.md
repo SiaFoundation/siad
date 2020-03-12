@@ -34,7 +34,9 @@ Latest:
  -
  - Add `go get` command to `make dependencies`
  -
- - Add flags for tag and targz for skyfile streaming
+ - Add flags for tar and targz for skyfile streaming
+ - Add new endpoint `/skynet/stats` that provides statistical information about
+   skynet - how many files were uploaded and the combined size of said files.
  -
  -
  -

@@ -272,6 +272,18 @@ type (
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
 	}
+
+	// SkynetStatsGET contains the information queried for the /skynet/stats
+	// GET endpoint
+	SkynetStatsGET struct {
+		UploadStats SkynetStats `json:"uploadstats"`
+	}
+
+	// SkynetStats contains statistical data about skynet
+	SkynetStats struct {
+		NumFiles  int    `json:"numfiles"`
+		TotalSize uint64 `json:"totalsize"`
+	}
 )
 
 // Returns the boolean value of the 'root' parameter of req or an error if
@@ -2290,6 +2302,26 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		MerkleRoot: skylink.MerkleRoot(),
 		Bitfield:   skylink.Bitfield(),
 	})
+}
+
+// skynetStatsHandlerGET responds with a JSON with statistical data about
+// skynet, e.g. number of files uploaded, total size, etc.
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	files, err := api.renter.FileList(modules.SkynetFolder, true, true)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	stats := SkynetStats{}
+	for _, f := range files {
+		// do not double-count large files by counting both the header file and
+		// the extended file
+		if !strings.HasSuffix(f.Name(), renter.ExtendedSuffix) {
+			stats.NumFiles++
+		}
+		stats.TotalSize += f.Filesize
+	}
+	WriteJSON(w, SkynetStatsGET{UploadStats: stats})
 }
 
 // skyfileParseMultiPartRequest parses the given request and returns the
