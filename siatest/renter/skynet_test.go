@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -52,6 +54,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 	}
 
 	// Run tests
@@ -1596,5 +1599,31 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	status, header, err := r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
 	if status != http.StatusInternalServerError {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+}
+
+// testSkynetNoWorkers verifies that SkynetSkylinkGet returns an error and does
+// not deadlock if there are no workers.
+func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
+	// Create renter, skip setting the allowance so that we can ensure there are
+	// no contracts created and therefore no workers in the worker pool
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Since the renter doesn't have an allowance, we know the renter doesn't
+	// have any contracts and therefore the worker pool will be empty. Confirm
+	// that attempting to download a skylink will return an error and not dead
+	// lock.
+	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
+	if err == nil {
+		t.Fatal("Error is nil, expected error due to no worker")
+	} else if !strings.Contains(err.Error(), "no workers") {
+		t.Errorf("Expected error containing 'no workers' but got %v", err)
 	}
 }
