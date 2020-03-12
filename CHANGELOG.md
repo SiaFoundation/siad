@@ -56,7 +56,7 @@ Latest:
    startup process was being missed
  -
  -
- -
+ - Fix a parsing bug for malformed skylinks
  - Fix repair bug where unused hosts were not being properly updated for a
    siafile
  - Fix threadgroup violation in the watchdog that allowed writing to the log
