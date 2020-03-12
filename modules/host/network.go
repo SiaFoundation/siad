@@ -348,14 +348,13 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	}
 	defer h.tg.Done()
 
-	// TODO: enable this when stream.SetDeadline is implemented on SiaMux
 	// set an initial duration that is generous, but finite. RPCs can extend
 	// this if desired
-	// err = stream.SetDeadline(time.Now().Add(5 * time.Minute))
-	// if err != nil {
-	// 	h.log.Println("WARN: could not set deadline on connection:", err)
-	// 	return
-	// }
+	err = stream.SetDeadline(time.Now().Add(5 * time.Minute))
+	if err != nil {
+		h.log.Println("WARN: could not set deadline on connection:", err)
+		return
+	}
 
 	// read the RPC id
 	var rpcID types.Specifier
