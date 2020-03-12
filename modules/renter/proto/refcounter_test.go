@@ -175,6 +175,7 @@ func testCallAppend(rc *RefCounter, numSecs uint64) error {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
+	inMemSecCountBefore := rc.numSectors
 	if err := rc.callAppend(numSecs); err != nil {
 		return err
 	}
@@ -183,8 +184,12 @@ func testCallAppend(rc *RefCounter, numSecs uint64) error {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
+	inMemSecCountAfter := rc.numSectors
 	if numSectorsDiskBefore+numSecs != numSectorsDiskAfter {
 		return fmt.Errorf("failed to append data on disk by %d sectors. Sectors before: %d, sectors after: %d", numSecs, numSectorsDiskBefore, numSectorsDiskAfter)
+	}
+	if inMemSecCountBefore+numSecs != inMemSecCountAfter {
+		return fmt.Errorf("failed to update the in-memory cache of the number of secotrs")
 	}
 	return nil
 }
@@ -248,6 +253,7 @@ func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
+	inMemSecCountBefore := rc.numSectors
 	if err := rc.callDropSectors(numSecs); err != nil {
 		return err
 	}
@@ -256,8 +262,12 @@ func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
+	inMemSecCountAfter := rc.numSectors
 	if numSectorsDiskBefore-numSecs != numSectorsDiskAfter {
 		return fmt.Errorf("failed to truncate data on disk by %d sectors. Sectors before: %d, sectors after: %d", numSecs, numSectorsDiskBefore, numSectorsDiskAfter)
+	}
+	if inMemSecCountBefore-numSecs != inMemSecCountAfter {
+		return fmt.Errorf("failed to update the in-memory cache of the number of secotrs")
 	}
 	return nil
 }
