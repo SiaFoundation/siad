@@ -65,6 +65,7 @@ func (h *Host) managedUnlockStorageObligation(soid types.FileContractID) {
 		h.log.Critical(errObligationUnlocked)
 		return
 	}
+	delete(h.lockedStorageObligations, soid)
 	h.mu.Unlock()
 
 	tl.Unlock()

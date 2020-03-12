@@ -392,7 +392,7 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 		_, exists := h.lockedStorageObligations[soid]
 		if !exists {
 			err := errors.New("addStorageObligation called with an obligation that is not locked")
-			h.log.Critical(err)
+			h.log.Print(err)
 			return err
 		}
 		// Sanity check - There needs to be enough time left on the file contract
@@ -505,7 +505,7 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	_, exists := h.lockedStorageObligations[soid]
 	if !exists {
 		err := errors.New("modifyStorageObligation called with an obligation that is not locked")
-		h.log.Critical(err)
+		h.log.Print(err)
 		return err
 	}
 	// TODO: remove this once the host was optimized for disk i/o
