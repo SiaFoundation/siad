@@ -326,6 +326,30 @@ func (so storageObligation) value() types.Currency {
 	return so.ContractCost.Add(so.PotentialDownloadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialUploadRevenue).Add(so.RiskedCollateral)
 }
 
+// recentRevision returns the most recent file contract revision in this storage
+// obligation.
+func (so storageObligation) recentRevision() types.FileContractRevision {
+	numRevisions := len(so.RevisionTransactionSet)
+	if numRevisions > 0 {
+		revisionTxn := so.RevisionTransactionSet[numRevisions-1]
+		return revisionTxn.FileContractRevisions[0]
+	}
+	revisionTxn := so.OriginTransactionSet[len(so.OriginTransactionSet)-1]
+	return revisionTxn.FileContractRevisions[0]
+}
+
+// managedGetStorageObligation fetches a storage obligation from the database.
+func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = getStorageObligation(tx, fcid)
+		return err
+	})
+	return
+}
+
 // deleteStorageObligations deletes obligations from the database.
 // It is assumed the deleted obligations don't belong in the database in the first place,
 // so no financial metrics are updated.

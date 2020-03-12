@@ -52,13 +52,13 @@ var (
 // PaymentProvider is the interface implemented when payment has to be made
 // for an RPC call to a host.
 type PaymentProvider interface {
-	ProvidePaymentForRPC(rpcID types.Specifier, payment types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error)
+	ProvidePayment(rpcID types.Specifier, amount types.Currency, stream siamux.Stream, blockHeight types.BlockHeight) (types.Currency, error)
 }
 
 // PaymentProcessor is the interface implemented when receiving payment for an
 // RPC.
 type PaymentProcessor interface {
-	ProcessPaymentForRPC(stream siamux.Stream) (types.Currency, error)
+	ProcessPayment(stream siamux.Stream) (types.Currency, error)
 }
 
 // PaymentProviderFunc is an adapter for the interface. This allows wrapping
