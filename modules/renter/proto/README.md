@@ -36,9 +36,9 @@ the user deletes backups or deletes the file itself. Once the counter reaches
 zero, there is no way for the user to use the data stored in the sector. At this
 moment we are free to either reuse the sector in order to store newly uploaded
 data or to drop the sector when renewing the contract. The way we do that is by
-swapping the zero ref sector with the last sector in the contract and dropping
-it from the reference counter list. This marks the sector as garbage and it's up
-for reuse/drop.
+swapping the zero references sector with the last sector in the contract and
+dropping it from the reference counter list. This marks the sector as garbage
+and it's up for reuse/drop.
 
 The reference counter is created and deleted together with the contract. The
 counts it holds should be updated on backup creation/deletion and on file
