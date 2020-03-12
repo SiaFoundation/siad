@@ -131,7 +131,7 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 }
 
 // Decrement decrements the reference counter of a given sector. The sector
-// is specified by its sequential number (`secNum`).
+// is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Decrement(secIdx uint64) (uint16, error) {
 	if secIdx > rc.numSectors-1 {
@@ -158,7 +158,7 @@ func (rc *RefCounter) DeleteRefCounter() (err error) {
 }
 
 // Increment increments the reference counter of a given sector. The sector
-// is specified by its sequential number (`secNum`).
+// is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Increment(secIdx uint64) (uint16, error) {
 	if secIdx > rc.numSectors-1 {

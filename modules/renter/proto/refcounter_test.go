@@ -167,7 +167,7 @@ func TestRefCounter(t *testing.T) {
 	}
 }
 
-// testCallDropSectors specifically tests the callDropSectors method available outside
+// testCallAppend specifically tests the testCallAppend method available outside
 // the subsystem
 func testCallAppend(rc *RefCounter, numSecs uint64) error {
 	fiBefore, err := os.Stat(rc.filepath)
