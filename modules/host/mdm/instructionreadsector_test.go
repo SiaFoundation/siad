@@ -26,10 +26,10 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modu
 	copy(data[16:], merkleRoot[:])
 
 	// Compute cost and used memory.
-	cost, refund := ReadCost(pt, length)
-	usedMemory := ReadMemory()
-	memoryCost := MemoryCost(pt, usedMemory, TimeReadSector+TimeCommit)
-	initCost := InitCost(pt, uint64(len(data)))
+	cost, refund := modules.MDMReadCost(pt, length)
+	usedMemory := modules.MDMReadMemory()
+	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeReadSector+modules.MDMTimeCommit)
+	initCost := modules.MDMInitCost(pt, uint64(len(data)))
 	cost = cost.Add(memoryCost).Add(initCost)
 	return instructions, bytes.NewReader(data), uint64(len(data)), cost, refund, usedMemory
 }
@@ -74,7 +74,7 @@ func TestInstructionReadSector(t *testing.T) {
 		if uint64(len(output.Output)) != modules.SectorSize {
 			t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
@@ -120,7 +120,7 @@ func TestInstructionReadSector(t *testing.T) {
 		if !bytes.Equal(output.Output, sectorData[modules.SectorSize/2:]) {
 			t.Fatal("output should match the second half of the sector data")
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {

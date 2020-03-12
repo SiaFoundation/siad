@@ -53,14 +53,14 @@ func (p *Program) staticDecodeHasSectorInstruction(instruction modules.Instructi
 
 // Cost returns the cost of executing this instruction.
 func (i *instructionHasSector) Cost() (types.Currency, types.Currency, error) {
-	cost, refund := HasSectorCost(i.staticState.priceTable)
+	cost, refund := modules.MDMHasSectorCost(i.staticState.priceTable)
 	return cost, refund, nil
 }
 
 // Memory returns the memory allocated by this instruction beyond the end of its
 // lifetime.
 func (i *instructionHasSector) Memory() uint64 {
-	return HasSectorMemory()
+	return modules.MDMHasSectorMemory()
 }
 
 // Execute executes the 'HasSector' instruction.
@@ -94,5 +94,5 @@ func (i *instructionHasSector) ReadOnly() bool {
 
 // Time returns the execution time of an 'HasSector' instruction.
 func (i *instructionHasSector) Time() uint64 {
-	return TimeHasSector
+	return modules.MDMTimeHasSector
 }

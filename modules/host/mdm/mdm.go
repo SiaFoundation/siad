@@ -28,7 +28,7 @@ type StorageObligationSnapshot interface {
 // implement to be used by the mdm.
 type Host interface {
 	BlockHeight() types.BlockHeight
-	HasSector(crypto.Hash) (bool, error)
+	HasSector(crypto.Hash) bool
 	ReadSector(sectorRoot crypto.Hash) ([]byte, error)
 }
 

@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -379,8 +380,10 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 	if revTxn.FileContractRevisions[0].ParentID != contract.ID {
 		t.Fatal("watchdog revision sent for wrong contract ID")
 	}
-	if revTxn.FileContractRevisions[0].NewRevisionNumber != uint64(numRevisions) {
-		t.Fatal("watchdog sent wrong revision number")
+	// The last revision will be cleared and refreshed so it has a special
+	// revision number.
+	if revTxn.FileContractRevisions[0].NewRevisionNumber != math.MaxUint64 {
+		t.Fatalf("watchdog sent wrong revision number %v != %v", revTxn.FileContractRevisions[0].NewRevisionNumber, uint64(math.MaxUint64))
 	}
 	gatedTpool.mu.Unlock()
 
@@ -403,10 +406,10 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 		t.Fatal("expected watchdog to have found a revision")
 	}
 
-	// LastRevisionTxn was saved when creating all the new revisions.
-	lastRevisionNumber := lastRevisionTxn.FileContractRevisions[0].NewRevisionNumber
+	// LastRevisionTxn is the max revision number.
+	lastRevisionNumber := uint64(math.MaxUint64)
 	if revFound != lastRevisionNumber {
-		t.Fatal("Expected watchdog to have found the most recent revision, that it posted")
+		t.Fatalf("Expected watchdog to have found the most recent revision, that it posted %v != %v", revFound, lastRevisionNumber)
 	}
 
 	// Create a fake reorg and remove the file contract revision.

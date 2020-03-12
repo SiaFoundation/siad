@@ -10,7 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
@@ -204,8 +204,8 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(directories) != 4 {
-		t.Fatal("Expected 4 DirectoryInfos but got", len(directories))
+	if len(directories) != 5 {
+		t.Fatal("Expected 5 DirectoryInfos but got", len(directories))
 	}
 	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
 	if len(files) != 1 {

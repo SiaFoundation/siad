@@ -123,11 +123,7 @@ func TestStorageObligationSnapshot(t *testing.T) {
 
 	// Insert the SO
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
 
 	// Get a snapshot & verify its fields
 	snapshot, err := ht.host.managedGetStorageObligationSnapshot(so.id())
@@ -171,5 +167,53 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	err = so.Update([]crypto.Hash{sectorRoot, sectorRoot2, sectorRoot3}, nil, map[crypto.Hash][]byte{sectorRoot3: sectorData})
 	if err == nil {
 		t.Fatal("Expected Update to fail on unlocked SO")
+	}
+}
+
+// TestManagedModifyUnlockedStorageObligation checks that the storage obligation
+// cannot be modified when unlocked.
+func TestManagedModifyUnlockedStorageObligation(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// add a storage obligation for testing.
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Modify the obligation. This should fail.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, nil); err == nil {
+		t.Fatal("shouldn't be able to modify unlocked so")
+	}
+
+	// Lock obligation.
+	ht.host.managedLockStorageObligation(so.id())
+
+	// Modify the obligation. This should work.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unlock obligation.
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Modify the obligation. This should fail again.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, nil); err == nil {
+		t.Fatal("shouldn't be able to modify unlocked so")
 	}
 }

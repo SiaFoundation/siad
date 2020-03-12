@@ -11,28 +11,39 @@ Version History
 Latest:
 ### v1.4.4
 **Key Updates**
- - Add ability to blacklist skylinks by merkleroot
+ - Add a delay when modifying large contracts on hosts to prevent hosts from
+   becoming unresponsive due to massive disk i/o
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
+ - 
+ - 
+ - 
+ - Add ability to blacklist skylinks by merkleroot
  - Uploading resumes more quickly after restart
+ - Add ability to pack many files into the same or adjacent sectors while
+   producing unique skylinks for each file
  -
  -
- -
- -
+ - `siac skynet upload` now supports uploading directories. All files are
+   uploaded individually and result in separate skylinks.
  -
  -
  - No user-agent needed for Skylink downloads
  -
  -
  -
+ - Add `go get` command to `make dependencies`
  -
- -
+ - Add flags for tar and targz for skyfile streaming
+ - Add new endpoint `/skynet/stats` that provides statistical information about
+   skynet - how many files were uploaded and the combined size of said files.
  -
  -
  -
  - 
  - 
  - Add XChaCha20 CipherKey.
+ - Add Skykey Manager.
  - Add `siac skynet unpin` subcommand.
  -
  -
@@ -46,11 +57,28 @@ Latest:
  -
  -
  -
+ - Fix repair bug where unused hosts were not being properly updated for a
+   siafile
+ - Fix threadgroup violation in the watchdog that allowed writing to the log
+   file after a shutdown
  -
  -
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
+ - 
+ - 
+ - 
+ - 
+
+**Other**
+ - Split out renter siatests into 2 groups for faster pipelines 
+ - 
+ - Add README to the `siatest` package 
+ - 
+ - Bump golangci-lint version to v1.23.8
+ - 
  -
+ - Add HEAD request support for Skylink route
  -
  - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
    used.
@@ -60,16 +88,6 @@ Latest:
    to safely acquire the host pubkey.
  -
  -
-
-**Other**
- - Split out renter siatests into 2 groups for faster pipelines
- -
- -
- -
- -
- -
- -
-
 
 ### v1.4.3
 **Key Updates**

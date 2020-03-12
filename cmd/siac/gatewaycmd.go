@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,14 @@ var (
 		Short: "Print the gateway address",
 		Long:  "Print the network address of the gateway.",
 		Run:   wrap(gatewayaddresscmd),
+	}
+
+	gatewayBandwidthCmd = &cobra.Command{
+		Use:   "bandwidth",
+		Short: "returns the total upload and download bandwidth usage for the gateway",
+		Long: `returns the total upload and download bandwidth usage for the gateway
+and the duration of the bandwidth tracking.`,
+		Run: wrap(gatewaybandwidthcmd),
 	}
 
 	gatewayCmd = &cobra.Command{
@@ -133,6 +142,20 @@ func gatewayaddresscmd() {
 		die("Could not get gateway address:", err)
 	}
 	fmt.Println("Address:", info.NetAddress)
+}
+
+//gatewaybandwidthcmd is the handler for the command `siac gateway bandwidth`.
+//returns the total upload and download bandwidth usage for the gateway
+func gatewaybandwidthcmd() {
+	bandwidth, err := httpClient.GatewayBandwidthGet()
+	if err != nil {
+		die("Could not get bandwidth monitor", err)
+	}
+
+	fmt.Printf(`Download: %v 
+Upload:   %v 
+Duration: %v 
+`, modules.FilesizeUnits(bandwidth.Download), modules.FilesizeUnits(bandwidth.Upload), fmtDuration(time.Since(bandwidth.StartTime)))
 }
 
 // gatewaycmd is the handler for the command `siac gateway`.

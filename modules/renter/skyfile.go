@@ -40,7 +40,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -565,6 +565,9 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
 		return ErrSkylinkBlacklisted
 	}
+
+	// Set sane defaults for unspecified values.
+	skyfileEstablishDefaults(&lup)
 
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize)
