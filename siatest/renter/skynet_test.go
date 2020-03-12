@@ -13,6 +13,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
@@ -1817,5 +1819,52 @@ func TestSkynetBlacklist(t *testing.T) {
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSkynetNoWorkers verifies that SkynetSkylinkGet returns an error and does
+// not deadlock if there are no workers.
+func TestSkynetNoWorkers(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup without a renter.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create renter, skip setting the allowance so that we can ensure there are
+	// no contracts created and therefore no workers in the worker pool
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Since the renter doesn't have an allowance, we know the renter doesn't
+	// have any contracts and therefore the worker pool will be empty. Confirm
+	// that attempting to download a skylink will return an error and not dead
+	// lock.
+	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
+	if err == nil {
+		t.Fatal("Error is nil, expected error due to no worker")
+	} else if !strings.Contains(err.Error(), "no workers") {
+		t.Errorf("Expected error containing 'no workers' but got %v", err)
 	}
 }
