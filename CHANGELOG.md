@@ -71,7 +71,8 @@ Latest:
  - 
 
 **Other**
- - Split out renter siatests into 2 groups for faster pipelines 
+ - Split out renter siatests into 2 groups for faster pipelines
+ - Add SiaMux stream handler to the host
  - 
  - Add README to the `siatest` package 
  - 

@@ -14,6 +14,10 @@ const (
 
 	// HostSettingsFile is the name of the host's persistence file.
 	HostSettingsFile = "host.json"
+
+	// HostSiaMuxSubscriberName is the name used by the host to register a
+	// listener on the SiaMux.
+	HostSiaMuxSubscriberName = "host"
 )
 
 var (
