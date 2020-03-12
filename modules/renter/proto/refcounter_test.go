@@ -104,6 +104,12 @@ func TestRefCounter(t *testing.T) {
 	}
 	callsToTruncate += 4
 
+	// test append
+	if err = testCallAppend(&rc, 3); err != nil {
+		t.Fatal(err)
+	}
+	callsToTruncate -= 3
+
 	// decrement to zero
 	count = 1
 	for count > 0 {
@@ -159,6 +165,28 @@ func TestRefCounter(t *testing.T) {
 	if err == nil {
 		t.Fatal("RefCounter deletion finished successfully but the file is still on disk", err)
 	}
+}
+
+// testCallDropSectors specifically tests the callDropSectors method available outside
+// the subsystem
+func testCallAppend(rc *RefCounter, numSecs uint64) error {
+	fiBefore, err := os.Stat(rc.filepath)
+	if err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
+	if err := rc.callAppend(numSecs); err != nil {
+		return err
+	}
+	fiAfter, err := os.Stat(rc.filepath)
+	if err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
+	if numSectorsDiskBefore+numSecs != numSectorsDiskAfter {
+		return fmt.Errorf("failed to append data on disk by %d sectors. Sectors before: %d, sectors after: %d", numSecs, numSectorsDiskBefore, numSectorsDiskAfter)
+	}
+	return nil
 }
 
 // testCallSwap specifically tests the callSwap method available outside
@@ -219,7 +247,7 @@ func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to read from disk")
 	}
-	numSectorsDisk := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
+	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
 	if err := rc.callDropSectors(numSecs); err != nil {
 		return err
 	}
@@ -228,8 +256,8 @@ func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
-	if numSectorsDisk-numSecs != numSectorsDiskAfter {
-		return fmt.Errorf("failed to truncate data on disk by %d sectors. Sectors before: %d, sectors after: %d", numSecs, numSectorsDisk, numSectorsDiskAfter)
+	if numSectorsDiskBefore-numSecs != numSectorsDiskAfter {
+		return fmt.Errorf("failed to truncate data on disk by %d sectors. Sectors before: %d, sectors after: %d", numSecs, numSectorsDiskBefore, numSectorsDiskAfter)
 	}
 	return nil
 }
