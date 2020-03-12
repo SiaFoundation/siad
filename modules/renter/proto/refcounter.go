@@ -8,6 +8,11 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/encoding"
+
+	"gitlab.com/NebulousLabs/writeaheadlog"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -32,6 +37,14 @@ var (
 const (
 	// RefCounterHeaderSize is the size of the header in bytes
 	RefCounterHeaderSize = 8
+
+	// walUpdateName is the name of a WAL update that changes the data starting
+	// at a specified index
+	walUpdateName = "WALUpdate"
+
+	// walResizeName is the name of a WAL update that changes the size of the
+	// file on disk from a specified size to a specified size
+	walResizeName = "WALResize"
 )
 
 type (
@@ -47,6 +60,7 @@ type (
 
 		filepath     string   // where the refcounter is persisted on disk
 		sectorCounts []uint16 // number of references per sector
+		wal          *writeaheadlog.WAL
 		mu           sync.Mutex
 	}
 
@@ -184,6 +198,36 @@ func (rc *RefCounter) callSwap(i, j uint64) error {
 // both in memory and on disk
 func (rc *RefCounter) callTruncate(n uint64) error {
 	return rc.managedTruncate(n)
+}
+
+// createWALUpdate is a helper method which creates a writeaheadlog update for
+// writing the specified data to the provided index, overwriting the data
+// existing in the updated region.
+func (rc *RefCounter) createWALUpdate(index int64, data []byte) writeaheadlog.Update {
+	if index < 0 {
+		index = 0
+		data = []byte{}
+		build.Critical("index passed to createWALUpdate should never be negative")
+	}
+	// Create update
+	return writeaheadlog.Update{
+		Name:         walUpdateName,
+		Instructions: encoding.MarshalAll(index, data),
+	}
+}
+
+// createWALResize is a helper method which creates a writeaheadlog update for
+// resizing the file on disk from the specified old size to the new size.
+func (rc *RefCounter) createWALResize(oldSize, newSize uint64) writeaheadlog.Update {
+	if oldSize < 0 || newSize < 0 {
+		oldSize, newSize = 0, 0
+		build.Critical("size passed to createWALResize should never be negative")
+	}
+	// Create update
+	return writeaheadlog.Update{
+		Name:         walUpdateName,
+		Instructions: encoding.MarshalAll(rc.filepath, oldSize, newSize),
+	}
 }
 
 // managedSwap swaps two sectors. This affects both the contract file and reference counters in memory and on disk.
