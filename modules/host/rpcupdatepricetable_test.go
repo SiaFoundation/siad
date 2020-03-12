@@ -222,7 +222,7 @@ func createTestingMuxs() (clientMux, serverMux *mux.Mux) {
 	go func() {
 		defer wg.Done()
 		var err error
-		clientMux, err = mux.NewClientMux(clientConn, serverPubKey, persist.NewLogger(ioutil.Discard), func() {})
+		clientMux, err = mux.NewClientMux(clientConn, serverPubKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {})
 		if err != nil {
 			panic(err)
 		}
@@ -231,7 +231,7 @@ func createTestingMuxs() (clientMux, serverMux *mux.Mux) {
 	go func() {
 		defer wg.Done()
 		var err error
-		serverMux, err = mux.NewServerMux(serverConn, serverPubKey, serverPrivKey, persist.NewLogger(ioutil.Discard), func() {})
+		serverMux, err = mux.NewServerMux(serverConn, serverPubKey, serverPrivKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {})
 		if err != nil {
 			panic(err)
 		}
