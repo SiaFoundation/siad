@@ -76,7 +76,7 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// increment
-	count, err = rc.IncrementCount(3)
+	count, err = rc.Increment(3)
 	if err != nil {
 		t.Fatal("Failed to increment the count:", err)
 	}
@@ -86,7 +86,7 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// decrement
-	count, err = rc.DecrementCount(5)
+	count, err = rc.Decrement(5)
 	if err != nil {
 		t.Fatal("Failed to decrement the count:", err)
 	}
@@ -95,7 +95,7 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(emsg)
 	}
 
-	// individually test callSwap and callTruncate
+	// individually test callSwap and callDropSectors
 	if err = testCallSwap(&rc); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestRefCounter(t *testing.T) {
 	// decrement to zero
 	count = 1
 	for count > 0 {
-		count, err = rc.DecrementCount(1)
+		count, err = rc.Decrement(1)
 		if err != nil {
 			t.Fatal(fmt.Sprintf("Error while decrementing (current count: %d):", count), err)
 		}
@@ -117,7 +117,7 @@ func TestRefCounter(t *testing.T) {
 	if err = rc.callSwap(1, testSectorsCount-callsToTruncate-1); err != nil {
 		t.Fatal("Failed to swap:", err)
 	}
-	if err = rc.callTruncate(1); err != nil {
+	if err = rc.callDropSectors(1); err != nil {
 		t.Fatal("Failed to truncate:", err)
 	}
 	callsToTruncate++
@@ -209,7 +209,7 @@ func testCallSwap(rc *RefCounter) error {
 	return nil
 }
 
-// testCallTruncate specifically tests the callTruncate method available outside
+// testCallTruncate specifically tests the callDropSectors method available outside
 // the subsystem
 func testCallTruncate(rc *RefCounter, numSecs uint64) error {
 	fiBefore, err := os.Stat(rc.filepath)
@@ -217,7 +217,7 @@ func testCallTruncate(rc *RefCounter, numSecs uint64) error {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDisk := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
-	if err := rc.callTruncate(numSecs); err != nil {
+	if err := rc.callDropSectors(numSecs); err != nil {
 		return err
 	}
 	fiAfter, err := os.Stat(rc.filepath)

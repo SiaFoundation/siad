@@ -114,13 +114,17 @@ func NewRefCounter(path string, numSectors uint64) (RefCounter, error) {
 
 // Count returns the number of references to the given sector
 func (rc *RefCounter) Count(secNum uint64) (uint16, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	return rc.readCount(secNum)
 }
 
-// DecrementCount decrements the reference counter of a given sector. The sector
+// Decrement decrements the reference counter of a given sector. The sector
 // is specified by its sequential number (`secNum`).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
+func (rc *RefCounter) Decrement(secNum uint64) (uint16, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	count, err := rc.readCount(secNum)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to read count")
@@ -134,13 +138,17 @@ func (rc *RefCounter) DecrementCount(secNum uint64) (uint16, error) {
 
 // DeleteRefCounter deletes the counter's file from disk
 func (rc *RefCounter) DeleteRefCounter() (err error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	return os.Remove(rc.filepath)
 }
 
-// IncrementCount increments the reference counter of a given sector. The sector
+// Increment increments the reference counter of a given sector. The sector
 // is specified by its sequential number (`secNum`).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) IncrementCount(secNum uint64) (uint16, error) {
+func (rc *RefCounter) Increment(secNum uint64) (uint16, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	count, err := rc.readCount(secNum)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to read count")
@@ -152,14 +160,36 @@ func (rc *RefCounter) IncrementCount(secNum uint64) (uint16, error) {
 	return count, rc.writeCount(secNum, count)
 }
 
+// callDropSectors removes the last `n` sector counts from the refcounter file
+func (rc *RefCounter) callDropSectors(n uint64) error {
+	return rc.managedDropSectors(n)
+}
+
 // callSwap swaps the two sectors at the given indices
 func (rc *RefCounter) callSwap(i, j uint64) error {
 	return rc.managedSwap(i, j)
 }
 
-// callTruncate removes the last `n` sector counts from the refcounter file
-func (rc *RefCounter) callTruncate(n uint64) error {
-	return rc.managedTruncate(n)
+// managedDropSectors removes the last `n` sector counts from the refcounter file
+func (rc *RefCounter) managedDropSectors(n uint64) error {
+	fi, err := os.Stat(rc.filepath)
+	if err != nil {
+		return err
+	}
+	if n > (uint64(fi.Size())-RefCounterHeaderSize)/2 {
+		return fmt.Errorf("cannot truncate more than the total number of counts. number of sectors: %d, sectors to truncate: %d", (uint64(fi.Size())-RefCounterHeaderSize)/2, n)
+	}
+
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	// truncate the file on disk
+	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return f.Truncate(fi.Size() - int64(n*2))
 }
 
 // managedSwap swaps the counts of the two sectors
@@ -190,28 +220,6 @@ func (rc *RefCounter) managedSwap(firstSector, secondSector uint64) error {
 		return err
 	}
 	return f.Sync()
-}
-
-// managedTruncate removes the last `n` sector counts from the refcounter file
-func (rc *RefCounter) managedTruncate(n uint64) error {
-	fi, err := os.Stat(rc.filepath)
-	if err != nil {
-		return err
-	}
-	if n > (uint64(fi.Size())-RefCounterHeaderSize)/2 {
-		return fmt.Errorf("cannot truncate more than the total number of counts. number of sectors: %d, sectors to truncate: %d", (uint64(fi.Size())-RefCounterHeaderSize)/2, n)
-	}
-
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	// truncate the file on disk
-	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	return f.Truncate(fi.Size() - int64(n*2))
 }
 
 // readCount reads the given sector count from disk
