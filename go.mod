@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da
+	github.com/cheggaaa/pb v2.0.7+incompatible
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
 	github.com/hanwen/go-fuse/v2 v2.0.2
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
@@ -11,6 +12,7 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/klauspost/reedsolomon v1.9.3
+	github.com/mattn/go-colorable v0.1.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/cobra v0.0.5
 	github.com/xtaci/smux v1.3.3
@@ -29,6 +31,12 @@ require (
 	golang.org/x/crypto v0.0.0-20200117160349-530e935923ad
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/tools v0.0.0-20200130002326-2f3ba24bd6e7
+	gopkg.in/VividCortex/ewma.v1 v1.1.1 // indirect
+	gopkg.in/cheggaaa/pb.v2 v2.0.7 // indirect
+	gopkg.in/fatih/color.v1 v1.7.0 // indirect
+	gopkg.in/mattn/go-colorable.v0 v0.1.0 // indirect
+	gopkg.in/mattn/go-isatty.v0 v0.0.4 // indirect
+	gopkg.in/mattn/go-runewidth.v0 v0.0.4 // indirect
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux

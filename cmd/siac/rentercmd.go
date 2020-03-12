@@ -20,6 +20,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/cheggaaa/pb"
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
 
@@ -2567,7 +2568,6 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 	// Collect all filenames under this directory with their relative paths.
 	counterUploaded := 0
-	var wg sync.WaitGroup
 	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			die(fmt.Sprintf("Failed to process path %s: ", path), err)
@@ -2575,18 +2575,13 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		if info.IsDir() {
 			return nil
 		}
-		wg.Add(1)
-		go func(filename string) {
-			defer wg.Done()
-			// get only the filename and path, relative to the original destSiaPath
-			// in order to figure out where to put the file
-			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-			skynetuploadfile(filename, newDestSiaPath)
-			counterUploaded++
-		}(path)
+		// get only the filename and path, relative to the original destSiaPath
+		// in order to figure out where to put the file
+		newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(path, sourcePath))
+		skynetuploadfile(path, newDestSiaPath)
+		counterUploaded++
 		return nil
 	})
-	wg.Wait()
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", counterUploaded)
 }
 
@@ -2614,6 +2609,10 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 		return
 	}
 
+	bar := pb.New64(fi.Size())
+	bar.SetTemplate(pb.Simple)
+	barReader := bar.NewProxyReader(file)
+
 	_, sourceName := filepath.Split(sourcePath)
 	// Perform the upload and print the result.
 	sup := modules.SkyfileUploadParameters{
@@ -2625,11 +2624,7 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 			Mode:     fi.Mode(),
 		},
 
-		Reader: file,
-	}
-	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
-	if err != nil {
-		die("could not upload file to Skynet:", err)
+		Reader: barReader,
 	}
 
 	// Calculate the siapath that was used for the upload.
@@ -2642,7 +2637,14 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 			die("could not fetch skypath:", err)
 		}
 	}
-	fmt.Printf("%v\n -> Skylink: sia://%v\n", skypath, skylink)
+	fmt.Printf("Uploading %v\n", skypath)
+	bar.Start()
+	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
+	if err != nil {
+		die("could not upload file to Skynet:", err)
+	}
+	bar.Finish()
+	fmt.Printf(" -> Skylink: sia://%v\n", skylink)
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
