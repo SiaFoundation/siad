@@ -963,12 +963,12 @@ The following units can be used to set the allowance:
 
 		hastings, err := parseCurrency(allowanceFunds)
 		if err != nil {
-			fmt.Println("Could not parse amount:", err)
+			fmt.Printf("Could not parse currency in '%v': %v\n", allowanceFunds, err)
 			continue
 		}
 		_, err = fmt.Sscan(hastings, &funds)
 		if err != nil {
-			fmt.Println("Could not parse amount:", err)
+			fmt.Printf("Could not parse currency in '%v': %v\n", allowanceFunds, err)
 			continue
 		}
 		if funds.IsZero() {
@@ -1012,12 +1012,12 @@ The following units can be used to set the period:
 
 		blocks, err := parsePeriod(allowancePeriod)
 		if err != nil {
-			fmt.Println("Could not parse period:", err)
+			fmt.Printf("Could not parse period in '%v': %v\n", allowancePeriod, err)
 			continue
 		}
 		_, err = fmt.Sscan(blocks, &period)
 		if err != nil {
-			fmt.Println("Could not parse period:", err)
+			fmt.Printf("Could not parse period in '%v': %v\n", allowancePeriod, err)
 			continue
 		}
 		if period == 0 {
@@ -1058,7 +1058,7 @@ double the default number of default hosts be treated as a maximum.`)
 
 		hostsInt, err := strconv.Atoi(allowanceHosts)
 		if err != nil {
-			fmt.Println("Could not parse host count:", err)
+			fmt.Printf("Could not parse host count in '%v': %v\n", allowanceHosts, err)
 			continue
 		}
 		hosts = uint64(hostsInt)
@@ -1114,12 +1114,12 @@ The following units can be used to set the renew window:
 
 		rw, err := parsePeriod(allowanceRenewWindow)
 		if err != nil {
-			fmt.Println("Could not parse renew window:", err)
+			fmt.Printf("Could not parse renew window in '%v': %v\n", allowanceRenewWindow, err)
 			continue
 		}
 		_, err = fmt.Sscan(rw, &renewWindow)
 		if err != nil {
-			fmt.Println("Could not parse renew window:", err)
+			fmt.Printf("Could not parse renew window in '%v': %v\n", allowanceRenewWindow, err)
 			continue
 		}
 		if renewWindow == 0 {
@@ -1174,12 +1174,12 @@ The following units can be used to set the expected storage:`)
 
 		es, err := parseFilesize(allowanceExpectedStorage)
 		if err != nil {
-			fmt.Println("Could not parse expected storage:", err)
+			fmt.Printf("Could not parse expected storage in '%v': %v\n", allowanceExpectedStorage, err)
 			continue
 		}
 		_, err = fmt.Sscan(es, &expectedStorage)
 		if err != nil {
-			fmt.Println("Could not parse expected storage:", err)
+			fmt.Printf("Could not parse expected storage in '%v': %v\n", allowanceExpectedStorage, err)
 			continue
 		}
 		break
@@ -1229,12 +1229,12 @@ The following units can be used to set the expected upload:`)
 
 		eu, err := parseFilesize(allowanceExpectedUpload)
 		if err != nil {
-			fmt.Println("Could not parse expected upload:", err)
+			fmt.Printf("Could not parse expected upload in '%v': %v\n", allowanceExpectedUpload, err)
 			continue
 		}
 		_, err = fmt.Sscan(eu, &expectedUpload)
 		if err != nil {
-			fmt.Println("Could not parse expected upload:", err)
+			fmt.Printf("Could not parse expected upload in '%v': %v\n", allowanceExpectedUpload, err)
 			continue
 		}
 		break
@@ -1286,12 +1286,12 @@ The following units can be used to set the expected download:`)
 
 		ed, err := parseFilesize(allowanceExpectedDownload)
 		if err != nil {
-			fmt.Println("Could not parse expected download:", err)
+			fmt.Printf("Could not parse expected download in '%v': %v\n", allowanceExpectedDownload, err)
 			continue
 		}
 		_, err = fmt.Sscan(ed, &expectedDownload)
 		if err != nil {
-			fmt.Println("Could not parse expected download:", err)
+			fmt.Printf("Could not parse expected download in '%v': %v\n", allowanceExpectedDownload, err)
 			continue
 		}
 		break
@@ -1335,7 +1335,7 @@ how large the files are.`)
 
 		expectedRedundancy, err = strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
-			fmt.Println("Could not parse expected redundancy:", err)
+			fmt.Printf("Could not parse expected redundancy in '%v': %v\n", allowanceExpectedRedundancy, err)
 			continue
 		}
 		if expectedRedundancy < 1 {
