@@ -67,7 +67,7 @@ Latest:
    able to access specific files in the Skynet folder.
  - 
  - 
- - 
+ - Fixed a deadlock when performing a Skynet download with no workers
  - 
 
 **Other**
