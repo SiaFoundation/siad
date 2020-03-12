@@ -219,5 +219,9 @@ func (r *Renter) managedInitPersist() error {
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
+	err = fs.NewSiaDir(modules.SkynetFolder, modules.DefaultDirPerm)
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
 	return nil
 }

@@ -375,16 +375,17 @@ type (
 
 // New RPC IDs
 var (
-	RPCLoopEnter         = types.NewSpecifier("LoopEnter")
-	RPCLoopExit          = types.NewSpecifier("LoopExit")
-	RPCLoopFormContract  = types.NewSpecifier("LoopFormContract")
-	RPCLoopLock          = types.NewSpecifier("LoopLock")
-	RPCLoopRead          = types.NewSpecifier("LoopRead")
-	RPCLoopRenewContract = types.NewSpecifier("LoopRenew")
-	RPCLoopSectorRoots   = types.NewSpecifier("LoopSectorRoots")
-	RPCLoopSettings      = types.NewSpecifier("LoopSettings")
-	RPCLoopUnlock        = types.NewSpecifier("LoopUnlock")
-	RPCLoopWrite         = types.NewSpecifier("LoopWrite")
+	RPCLoopEnter              = types.NewSpecifier("LoopEnter")
+	RPCLoopExit               = types.NewSpecifier("LoopExit")
+	RPCLoopFormContract       = types.NewSpecifier("LoopFormContract")
+	RPCLoopLock               = types.NewSpecifier("LoopLock")
+	RPCLoopRead               = types.NewSpecifier("LoopRead")
+	RPCLoopRenewContract      = types.NewSpecifier("LoopRenew")
+	RPCLoopRenewClearContract = types.NewSpecifier("LoopRenewClear")
+	RPCLoopSectorRoots        = types.NewSpecifier("LoopSectorRoots")
+	RPCLoopSettings           = types.NewSpecifier("LoopSettings")
+	RPCLoopUnlock             = types.NewSpecifier("LoopUnlock")
+	RPCLoopWrite              = types.NewSpecifier("LoopWrite")
 )
 
 // RPC ciphers
@@ -546,6 +547,26 @@ type (
 	LoopRenewContractRequest struct {
 		Transactions []types.Transaction
 		RenterKey    types.SiaPublicKey
+	}
+
+	// LoopRenewAndClearContractSignatures contains the signatures for a contract
+	// transaction, initial revision and final revision of the old contract. These
+	// signatures are sent by the renter during contract renewal.
+	LoopRenewAndClearContractSignatures struct {
+		ContractSignatures []types.TransactionSignature
+		RevisionSignature  types.TransactionSignature
+
+		FinalRevisionSignature []byte
+	}
+
+	// LoopRenewAndClearContractRequest contains the request parameters for
+	// RPCLoopRenewClearContract.
+	LoopRenewAndClearContractRequest struct {
+		Transactions []types.Transaction
+		RenterKey    types.SiaPublicKey
+
+		FinalValidProofValues  []types.Currency
+		FinalMissedProofValues []types.Currency
 	}
 
 	// LoopSettingsResponse contains the response data for RPCLoopSettingsResponse.

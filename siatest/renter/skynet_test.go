@@ -13,6 +13,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
@@ -557,10 +559,9 @@ func TestSkynet(t *testing.T) {
 	// easier way.
 }
 
-// TestSkynetMultipartUpload provides end-to-end testing for uploading multiple
-// files as a single skyfile using multipart file upload. The uploaded subfiles
-// are then retrievable by skylink and their filename.
-func TestSkynetMultipartUpload(t *testing.T) {
+// TestSkynetUpload holds a comprehensive test suite that covers Skynet's
+// upload and upload-dependent features
+func TestSkynetUpload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -585,6 +586,14 @@ func TestSkynetMultipartUpload(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
+	testMultipartUpload(t, r)
+	testStats(t, r)
+}
+
+// testMultipartUpload provides end-to-end testing for uploading multiple
+// files as a single skyfile using multipart file upload. The uploaded subfiles
+// are then retrievable by skylink and their filename.
+func testMultipartUpload(t *testing.T, r *siatest.TestNode) {
 	testMultipartUploadEmpty(t, r)
 	testMultipartUploadSmall(t, r)
 	testMultipartUploadLarge(t, r)
@@ -786,6 +795,71 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 
 	if !bytes.Equal(largeFetchedData, largeData) {
 		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(largeFetchedData), len(largeData))
+	}
+}
+
+// testStats tests the validity of the response of /skynet/stats endpoint by
+// uploading some test files and verifying that the reported statistics change
+// proportionalyy
+func testStats(t *testing.T, r *siatest.TestNode) {
+	// get the stats before the test files are uploaded
+	statsBefore, err := r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create two test files with sizes below and above the sector size
+	files := make(map[string]uint64)
+	files["statfile1"] = 2033
+	files["statfile2"] = modules.SectorSize + 123
+
+	// upload the files and keep track of their expected impact on the stats
+	uploadedFilesSize := uint64(0)
+	uploadedFilesCount := uint64(0)
+	for name, size := range files {
+		uploadSiaPath, err := modules.NewSiaPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data := fastrand.Bytes(int(size))
+		sup := modules.SkyfileUploadParameters{
+			SiaPath:             uploadSiaPath,
+			Force:               false,
+			Root:                false,
+			BaseChunkRedundancy: 2,
+			FileMetadata: modules.SkyfileMetadata{
+				Filename: name,
+				Mode:     modules.DefaultFilePerm,
+			},
+
+			Reader: bytes.NewReader(data),
+		}
+		if _, _, err = r.SkynetSkyfilePost(sup); err != nil {
+			t.Fatal(err)
+		}
+
+		if size < modules.SectorSize {
+			// small files get padded up to a full sector
+			uploadedFilesSize += modules.SectorSize
+		} else {
+			// large files have an extra sector with header data
+			uploadedFilesSize += size + modules.SectorSize
+		}
+		uploadedFilesCount++
+	}
+
+	// get the stats after the upload of the test files
+	statsAfter, err := r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// make sure the stats changed by exactly the expected amounts
+	if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
+		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles))
+	}
+	if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
+		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize))
 	}
 }
 
@@ -1745,5 +1819,52 @@ func TestSkynetBlacklist(t *testing.T) {
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSkynetNoWorkers verifies that SkynetSkylinkGet returns an error and does
+// not deadlock if there are no workers.
+func TestSkynetNoWorkers(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup without a renter.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create renter, skip setting the allowance so that we can ensure there are
+	// no contracts created and therefore no workers in the worker pool
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Since the renter doesn't have an allowance, we know the renter doesn't
+	// have any contracts and therefore the worker pool will be empty. Confirm
+	// that attempting to download a skylink will return an error and not dead
+	// lock.
+	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
+	if err == nil {
+		t.Fatal("Error is nil, expected error due to no worker")
+	} else if !strings.Contains(err.Error(), "no workers") {
+		t.Errorf("Expected error containing 'no workers' but got %v", err)
 	}
 }
