@@ -121,8 +121,19 @@ func TestStorageObligationSnapshot(t *testing.T) {
 		}},
 	}}
 
-	// Take a snapshot & verify its fields
-	snapshot := so.snapshot()
+	// Insert the SO
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Get a snapshot & verify its fields
+	snapshot, err := ht.host.managedGetStorageObligationSnapshot(so.id())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if snapshot.ContractSize() != uint64(len(sectorData)) {
 		t.Fatalf("Unexpected contract size, expected %v but received %v", uint64(len(sectorData)), snapshot.ContractSize())
 	}
@@ -134,5 +145,31 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	}
 	if snapshot.SectorRoots()[0] != sectorRoot {
 		t.Fatalf("Unexpected sector root, expected %v but received %v", sectorRoot, snapshot.SectorRoots()[0])
+	}
+
+	// Update the SO
+	sectorRoot2, sectorData := randSector()
+	ht.host.managedLockStorageObligation(so.id())
+	err = so.Update([]crypto.Hash{sectorRoot, sectorRoot2}, nil, map[crypto.Hash][]byte{sectorRoot2: sectorData})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Note that we purposefully do not unlock the SO before retrieving a
+	// snapshot here.
+	snapshot, err = ht.host.managedGetStorageObligationSnapshot(so.id())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.SectorRoots()) != 2 {
+		t.Fatal("Unexpected number of sector roots")
+	}
+
+	// Verify we can not update the SO if it is not locked
+	ht.host.managedUnlockStorageObligation(so.id())
+	sectorRoot3, sectorData := randSector()
+	err = so.Update([]crypto.Hash{sectorRoot, sectorRoot2, sectorRoot3}, nil, map[crypto.Hash][]byte{sectorRoot3: sectorData})
+	if err == nil {
+		t.Fatal("Expected Update to fail on unlocked SO")
 	}
 }

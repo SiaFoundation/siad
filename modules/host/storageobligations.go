@@ -42,7 +42,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -155,6 +154,8 @@ type storageObligation struct {
 	ProofConstructed    bool
 	RevisionConfirmed   bool
 	RevisionConstructed bool
+
+	h *Host
 }
 
 // storageObligationStatus indicates the current status of a storage obligation
@@ -177,20 +178,31 @@ func (i storageObligationStatus) String() string {
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 
-// managedGetStorageObligation fetches a storage obligation from the database.
-func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
+// managedGetStorageObligationSnapshot fetches a storage obligation from the
+// database and returns a snapshot.
+func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, fcid)
+	var err error
+	var so storageObligation
+	if err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, id)
 		return err
-	})
-	return
+	}); err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+
+	rev := so.recentRevision()
+	return StorageObligationSnapshot{
+		staticContractSize: rev.NewFileSize,
+		staticMerkleRoot:   rev.NewFileMerkleRoot,
+		staticSectorRoots:  so.SectorRoots,
+	}, nil
 }
 
 // getStorageObligation fetches a storage obligation from the database tx.
-func getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
+func (h *Host) getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
 	soBytes := tx.Bucket(bucketStorageObligations).Get(soid[:])
 	if soBytes == nil {
 		return storageObligation{}, errNoStorageObligation
@@ -199,6 +211,7 @@ func getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObl
 	if err != nil {
 		return storageObligation{}, err
 	}
+	so.h = h
 	return so, nil
 }
 
@@ -242,35 +255,13 @@ func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 	return sos.staticSectorRoots
 }
 
-// MDMStorageObligation wraps a host and storage obligation to satisfy the
-// mdm.StorageObligation interface.
-type MDMStorageObligation struct {
-	so storageObligation
-	h  *Host
-}
-
-// newMDMStorageObligation returns a new MDMStorageObligation which wraps the
-// given storage obligation.
-func newMDMStorageObligation(so storageObligation, h *Host) mdm.StorageObligation {
-	return &MDMStorageObligation{so: so, h: h}
-}
-
-// Update satisfies the mdm.StorageObligation interface.
-func (mso *MDMStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
-	mso.h.mu.Lock()
-	defer mso.h.mu.Unlock()
-	return mso.h.modifyStorageObligation(mso.so, sectorsRemoved, sectorsGained)
-}
-
-// snapshot returns a snapshot of the StorageObligation, note that the
-// StorageObligation must be locked when calling this function.
-func (so storageObligation) snapshot() StorageObligationSnapshot {
-	rev := so.recentRevision()
-	return StorageObligationSnapshot{
-		staticContractSize: rev.NewFileSize,
-		staticMerkleRoot:   rev.NewFileMerkleRoot,
-		staticSectorRoots:  so.SectorRoots,
-	}
+// Update will take a list of sector changes and update the database to account
+// for all of it.
+func (so storageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
+	so.h.mu.Lock()
+	defer so.h.mu.Unlock()
+	so.SectorRoots = sectorRoots
+	return so.h.modifyStorageObligation(so, sectorsRemoved, sectorsGained)
 }
 
 // expiration returns the height at which the storage obligation expires.
@@ -576,7 +567,6 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 	soid := so.id()
 	_, exists := h.lockedStorageObligations[soid]
 	if !exists {
-		h.log.Critical("modifyStorageObligation called with an obligation that is not locked")
 		return errObligationUnlocked
 	}
 	// Sanity check - there needs to be enough time to submit the file contract
@@ -623,7 +613,7 @@ func (h *Host) modifyStorageObligation(so storageObligation, sectorsRemoved []cr
 	err = h.db.Update(func(tx *bolt.Tx) error {
 		// Get the old storage obligation as a reference to know how to upate
 		// the host financial stats.
-		oldSO, err = getStorageObligation(tx, soid)
+		oldSO, err = h.getStorageObligation(tx, soid)
 		if err != nil {
 			return err
 		}
@@ -870,7 +860,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 	h.mu.RLock()
 	blockHeight := h.blockHeight
 	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, soid)
+		so, err = h.getStorageObligation(tx, soid)
 		return err
 	})
 	h.mu.RUnlock()

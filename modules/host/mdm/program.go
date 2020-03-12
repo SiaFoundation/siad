@@ -71,8 +71,8 @@ func outputFromError(err error, cost, refund types.Currency) Output {
 	}
 }
 
-// ExecuteProgram initializes a new program from a set of instructions and a reader
-// which can be used to fetch the program's data and executes it.
+// ExecuteProgram initializes a new program from a set of instructions and a
+// reader which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),

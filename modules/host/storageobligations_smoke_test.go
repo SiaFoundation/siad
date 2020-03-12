@@ -108,8 +108,9 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 	// Assemble and return the storage obligation.
 	so := storageObligation{
 		OriginTransactionSet: tSet,
-
 		// TODO: There are no tracking values, because no fees were added.
+
+		h: ht.host,
 	}
 	return so, nil
 }
@@ -169,7 +170,7 @@ func TestBlankStorageObligation(t *testing.T) {
 	// Load the storage obligation from the database, see if it updated
 	// correctly.
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -197,7 +198,7 @@ func TestBlankStorageObligation(t *testing.T) {
 		}
 	}
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -618,7 +619,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		ht.host.mu.Lock()
 		err := ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
+			so, err = ht.host.getStorageObligation(tx, so.id())
 			if err != nil {
 				return err
 			}
@@ -671,7 +672,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	// Grab the storage proof and inspect the contents.
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -701,7 +702,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	}
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -770,7 +771,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	// correctly.
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -888,7 +889,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		ht.host.mu.Lock()
 		err := ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
+			so, err = ht.host.getStorageObligation(tx, so.id())
 			if err != nil {
 				return err
 			}
@@ -940,7 +941,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	}
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -970,7 +971,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	}
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -1080,7 +1081,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 		}
 		count++
 		err = ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
+			so, err = ht.host.getStorageObligation(tx, so.id())
 			if err != nil {
 				return err
 			}
@@ -1117,7 +1118,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 		}
 	}
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}

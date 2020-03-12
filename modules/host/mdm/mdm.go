@@ -7,8 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
-// StorageObligation defines the minimal interface a StorageObligation needs to
-// implement to be used by the mdm.
+// StorageObligation defines an interface the storage obligation must adhere to.
 type StorageObligation interface {
 	// Update updates the storage obligation.
 	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error

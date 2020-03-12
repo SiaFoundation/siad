@@ -24,7 +24,6 @@ type (
 	TestStorageObligation struct {
 		sectorMap   map[crypto.Hash][]byte
 		sectorRoots []crypto.Hash
-		locked      bool
 	}
 )
 
@@ -36,7 +35,6 @@ func newTestHost() *TestHost {
 
 func newTestStorageObligation(locked bool) *TestStorageObligation {
 	return &TestStorageObligation{
-		locked:    locked,
 		sectorMap: make(map[crypto.Hash][]byte),
 	}
 }
@@ -71,11 +69,6 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 // ContractSize implements the StorageObligation interface.
 func (so *TestStorageObligation) ContractSize() uint64 {
 	return uint64(len(so.sectorRoots)) * modules.SectorSize
-}
-
-// Locked implements the StorageObligation interface.
-func (so *TestStorageObligation) Locked() bool {
-	return so.locked
 }
 
 // MerkleRoot implements the StorageObligation interface.

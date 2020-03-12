@@ -66,7 +66,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	h.mu.RLock()
 	err := h.db.View(func(tx *bolt.Tx) error {
 		var err error
-		newSO, err = getStorageObligation(tx, req.ContractID)
+		newSO, err = h.getStorageObligation(tx, req.ContractID)
 		return err
 	})
 	h.mu.RUnlock()
