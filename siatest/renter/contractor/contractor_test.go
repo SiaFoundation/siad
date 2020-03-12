@@ -131,14 +131,15 @@ func testContractFunding(t *testing.T, tg *siatest.TestGroup) {
 // testContractorIncompleteMaintenanceAlert tests that having the wallet locked
 // during maintenance results in an alert.
 func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGroup) {
-	// The renter shouldn't have any alerts.
+	// The renter shouldn't have any alerts apart from the pre-registered
+	// testing alerts.
 	r := tg.Renters()[0]
 	dag, err := r.DaemonAlertsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dag.Alerts) != 0 {
-		t.Fatal("number of alerts is not 0")
+	if len(dag.Alerts) != 12 {
+		t.Fatal("number of alerts is not 12")
 	}
 	// Save the seed for later.
 	wsg, err := r.WalletSeedsGet()
