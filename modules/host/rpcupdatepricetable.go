@@ -14,9 +14,9 @@ import (
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
 func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table
-	h.mu.Lock()
-	pt := h.priceTable
-	h.mu.Unlock()
+	h.staticPriceTables.mu.RLock()
+	pt := h.staticPriceTables.current
+	h.staticPriceTables.mu.RUnlock()
 
 	// update the epxiry ensire prices are guaranteed for the
 	// 'rpcPriceGuaranteePeriod'
@@ -45,9 +45,9 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 
 	// after payment has been received, track the price table in the host's list
 	// of price tables
-	h.mu.Lock()
-	h.priceTableMap[pt.UUID] = &pt
-	h.mu.Unlock()
+	h.staticPriceTables.mu.Lock()
+	h.staticPriceTables.guaranteed[pt.UUID] = &pt
+	h.staticPriceTables.mu.Unlock()
 
 	return nil
 }

@@ -179,13 +179,13 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
 
-	// The price table contains a set of RPC costs, along with an expiry that
-	// dictates up until what time the host guarantees the prices that are
-	// listed. These host's RPC prices are dynamic, and are subject to various
-	// conditions specific to the RPC in question. Examples of such conditions
-	// are congestion, load, liquidity, etc.
-	priceTable    modules.RPCPriceTable
-	priceTableMap map[types.Specifier]*modules.RPCPriceTable
+	// A set of rpc price tables that are covered by its own RW mutex. It
+	// contains the host's price table and the set of price tables the host has
+	// communicated to all renters, thus guaranteeing a set of prices for a
+	// fixed period of time. The host's RPC prices are dynamic, and are subject
+	// to various conditions specific to the RPC in question. Examples of such
+	// conditions are congestion, load, liquidity, etc.
+	staticPriceTables hostPrices
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -196,6 +196,15 @@ type Host struct {
 	persistDir    string
 	port          string
 	tg            siasync.ThreadGroup
+}
+
+// hostPrices is a helper struct that wraps both the host's RPC price table and
+// the set of price tables containing prices it has guaranteed to all renters,
+// covered by a read write mutex to help lock contention.
+type hostPrices struct {
+	current    modules.RPCPriceTable
+	guaranteed map[types.Specifier]*modules.RPCPriceTable
+	mu         sync.RWMutex
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -258,9 +267,9 @@ func (h *Host) managedUpdatePriceTable() {
 	}
 
 	// update the pricetable
-	h.mu.Lock()
-	h.priceTable = priceTable
-	h.mu.Unlock()
+	h.staticPriceTables.mu.Lock()
+	h.staticPriceTables.current = priceTable
+	h.staticPriceTables.mu.Unlock()
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
@@ -276,14 +285,25 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 			}
 			defer h.tg.Done()
 
+			// collect expired price tables
 			now := time.Now().Unix()
-			h.mu.Lock()
-			for uuid, pt := range h.priceTableMap {
+			var expired []types.Specifier
+			h.staticPriceTables.mu.RLock()
+			for uuid, pt := range h.staticPriceTables.guaranteed {
 				if now >= pt.Expiry {
-					delete(h.priceTableMap, uuid)
+					expired = append(expired, uuid)
 				}
 			}
-			h.mu.Unlock()
+			h.staticPriceTables.mu.RUnlock()
+
+			// prune them from the map
+			if len(expired) > 0 {
+				h.staticPriceTables.mu.Lock()
+				for _, uuid := range expired {
+					delete(h.staticPriceTables.guaranteed, uuid)
+				}
+				h.staticPriceTables.mu.Unlock()
+			}
 		}()
 
 		// Block until next cycle.
@@ -326,7 +346,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
-		priceTableMap:            make(map[types.Specifier]*modules.RPCPriceTable),
+		staticPriceTables:        hostPrices{guaranteed: make(map[types.Specifier]*modules.RPCPriceTable)},
 		persistDir:               persistDir,
 	}
 

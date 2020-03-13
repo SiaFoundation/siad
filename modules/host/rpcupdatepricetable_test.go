@@ -77,21 +77,21 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	}
 
 	// verify there's at least one price table
-	ht.host.mu.Lock()
-	numPTs := len(ht.host.priceTableMap)
-	ht.host.mu.Unlock()
+	ht.host.staticPriceTables.mu.RLock()
+	numPTs := len(ht.host.staticPriceTables.guaranteed)
+	ht.host.staticPriceTables.mu.RUnlock()
 
 	if numPTs == 0 {
 		t.Fatal("Expected at least one price table to be set in the host's price table map")
 	}
 
 	// get its uuid
-	ht.host.mu.Lock()
+	ht.host.staticPriceTables.mu.RLock()
 	var uuid types.Specifier
-	for uuid = range ht.host.priceTableMap {
+	for uuid = range ht.host.staticPriceTables.guaranteed {
 		break
 	}
-	ht.host.mu.Unlock()
+	ht.host.staticPriceTables.mu.RUnlock()
 
 	// sleep for the duration of the price guarantee + the epxiry frequency,
 	// this is the worst case of how long it can take before the price table
@@ -99,9 +99,9 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	time.Sleep(pruneExpiredRPCPriceTableFrequency + rpcPriceGuaranteePeriod)
 
 	// verify it was expired
-	ht.host.mu.Lock()
-	_, exists := ht.host.priceTableMap[uuid]
-	ht.host.mu.Unlock()
+	ht.host.staticPriceTables.mu.RLock()
+	_, exists := ht.host.staticPriceTables.guaranteed[uuid]
+	ht.host.staticPriceTables.mu.RUnlock()
 	if exists {
 		t.Fatal("Expected RPC price table to be pruned because it should have expired")
 	}
