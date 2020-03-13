@@ -1144,18 +1144,18 @@ for upload bandwidth, it will not impact the total cost to the user very much.
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedUpload*uint64(allowance.Period)))
+	euCurrentPeriod := allowance.ExpectedUpload * uint64(allowance.Period)
+	euDefaultPeriod := modules.DefaultAllowance.ExpectedUpload * uint64(modules.DefaultAllowance.Period)
+	fmt.Println("Current value:", modules.FilesizeUnits(euCurrentPeriod))
+	fmt.Println("Default value:", modules.FilesizeUnits(euDefaultPeriod))
 
-	var expectedUpload uint64
 	if allowance.ExpectedUpload == 0 {
-		expectedUpload = modules.DefaultAllowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedUpload = allowance.ExpectedUpload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Upload: ")
+	var expectedUpload uint64
 	allowanceExpectedUpload := readString()
 	if allowanceExpectedUpload != "" {
 		eu, err := parseFilesize(allowanceExpectedUpload)
@@ -1166,9 +1166,17 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected upload")
 		}
-		// User set field in terms of period, need to normalize to per-block.
-		expectedUpload /= uint64(period)
+	} else {
+		// The user did not enter a value so use either the default or the
+		// current value, as appropriate.
+		if allowance.ExpectedUpload == 0 {
+			expectedUpload = euDefaultPeriod
+		} else {
+			expectedUpload = euCurrentPeriod
+		}
 	}
+	// User set field in terms of period, need to normalize to per-block.
+	expectedUpload /= uint64(period)
 	req = req.WithExpectedUpload(expectedUpload)
 
 	// expectedDownload
@@ -1182,18 +1190,18 @@ for downloads, it will not impact the total cost to the user very much.
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.`)
 	fmt.Println()
-	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)))
-	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedDownload*uint64(allowance.Period)))
+	edCurrentPeriod := allowance.ExpectedDownload * uint64(allowance.Period)
+	edDefaultPeriod := modules.DefaultAllowance.ExpectedDownload * uint64(modules.DefaultAllowance.Period)
+	fmt.Println("Current value:", modules.FilesizeUnits(edCurrentPeriod))
+	fmt.Println("Default value:", modules.FilesizeUnits(edDefaultPeriod))
 
-	var expectedDownload uint64
 	if allowance.ExpectedDownload == 0 {
-		expectedDownload = modules.DefaultAllowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use default value")
 	} else {
-		expectedDownload = allowance.ExpectedDownload
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
 	fmt.Print("Expected Download: ")
+	var expectedDownload uint64
 	allowanceExpectedDownload := readString()
 	if allowanceExpectedDownload != "" {
 		ed, err := parseFilesize(allowanceExpectedDownload)
@@ -1204,9 +1212,17 @@ consider repair bandwidth separately.`)
 		if err != nil {
 			die("Could not parse expected download")
 		}
-		// User set field in terms of period, need to normalize to per-block.
-		expectedDownload /= uint64(period)
+	} else {
+		// The user did not enter a value so use either the default or the
+		// current value, as appropriate.
+		if allowance.ExpectedDownload == 0 {
+			expectedDownload = edDefaultPeriod
+		} else {
+			expectedDownload = edCurrentPeriod
+		}
 	}
+	// User set field in terms of period, need to normalize to per-block.
+	expectedDownload /= uint64(period)
 	req = req.WithExpectedDownload(expectedDownload)
 
 	// expectedRedundancy
