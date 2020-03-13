@@ -248,6 +248,10 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 	// worker has begun work.
 	wp := r.staticWorkerPool
 	wp.mu.RLock()
+	if len(wp.workers) == 0 {
+		wp.mu.RUnlock()
+		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
+	}
 	workers := make([]*worker, 0, len(wp.workers))
 	for _, w := range wp.workers {
 		workers = append(workers, w)
