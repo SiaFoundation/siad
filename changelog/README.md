@@ -1,6 +1,5 @@
 # Changelog Generator
 
-## Why?
 
 To avoid merge conflicts on each Changelog update.  
 To simplify generating Changelog.
