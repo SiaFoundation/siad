@@ -502,6 +502,13 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 // parseSkyfileMetadata will pull the metadata (including layout and fanout) out
 // of a skyfile.
 func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []byte, sm modules.SkyfileMetadata, baseSectorPayload []byte, err error) {
+	// Sanity check - baseSector should not be more than modules.SectorSize.
+	// Note that the base sector may be smaller in the event of a packed
+	// skyfile.
+	if uint64(len(baseSector)) > modules.SectorSize {
+		build.Critical("parseSkyfileMetadata given a baseSector that is too large")
+	}
+
 	// Parse the layout.
 	var offset uint64
 	sl.decode(baseSector)
@@ -514,7 +521,7 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 
 	// Currently there is no support for skyfiles with fanout + metadata that
 	// exceeds the base sector.
-	if offset+sl.fanoutSize+sl.metadataSize > uint64(len(baseSector)) {
+	if offset+sl.fanoutSize+sl.metadataSize > uint64(len(baseSector)) || sl.fanoutSize > modules.SectorSize || sl.metadataSize > modules.SectorSize {
 		return skyfileLayout{}, nil, modules.SkyfileMetadata{}, nil, errors.New("this version of siad does not support skyfiles with large fanouts and metadata")
 	}
 
