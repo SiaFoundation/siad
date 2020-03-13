@@ -52,7 +52,7 @@ func TestScanLargeIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash(), false)
+	_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestScanLoop(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash(), false)
+		_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash())
 		if err != nil {
 			t.Fatal(err)
 		}

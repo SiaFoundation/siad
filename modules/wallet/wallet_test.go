@@ -587,7 +587,7 @@ func TestDistantWallets(t *testing.T) {
 
 	// Use the first wallet.
 	for i := uint64(0); i < lookaheadBuffer/2; i++ {
-		_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, types.UnlockHash{}, false)
+		_, err = wt.wallet.SendSiacoins(types.SiacoinPrecision, types.UnlockHash{})
 		if err != nil {
 			t.Fatal(err)
 		}

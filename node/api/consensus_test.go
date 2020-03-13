@@ -60,7 +60,7 @@ func TestConsensusValidateTransactionSet(t *testing.T) {
 	defer st.server.panicClose()
 
 	// Get a transaction to validate.
-	txnSet, err := st.wallet.SendSiacoins(types.SiacoinPrecision, types.UnlockHash{}, false)
+	txnSet, err := st.wallet.SendSiacoins(types.SiacoinPrecision, types.UnlockHash{})
 	if err != nil {
 		t.Fatal(err)
 	}

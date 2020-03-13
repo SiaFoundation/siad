@@ -32,7 +32,7 @@ func TestIntegrationTransactions(t *testing.T) {
 		t.Error("unexpected transaction history length")
 	}
 	sentValue := types.NewCurrency64(5000)
-	_, err = wt.wallet.SendSiacoins(sentValue, types.UnlockHash{}, false)
+	_, err = wt.wallet.SendSiacoins(sentValue, types.UnlockHash{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestIntegrationTransaction(t *testing.T) {
 
 	// test sending siacoins
 	sentValue := types.NewCurrency64(5000)
-	sendTxns, err := wt.wallet.SendSiacoins(sentValue, types.UnlockHash{}, false)
+	sendTxns, err := wt.wallet.SendSiacoins(sentValue, types.UnlockHash{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestIntegrationAddressTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.wallet.SendSiacoins(types.NewCurrency64(5005), addr, false)
+	_, err = wt.wallet.SendSiacoins(types.NewCurrency64(5005), addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func TestAddressTransactionRevertedBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.wallet.SendSiacoins(types.NewCurrency64(5005), addr, false)
+	_, err = wt.wallet.SendSiacoins(types.NewCurrency64(5005), addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestTransactionInputOutputIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.wallet.SendSiacoins(types.NewCurrency64(5005), addr, false)
+	_, err = wt.wallet.SendSiacoins(types.NewCurrency64(5005), addr)
 	if err != nil {
 		t.Fatal(err)
 	}

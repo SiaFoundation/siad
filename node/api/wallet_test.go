@@ -440,7 +440,7 @@ func TestIntegrationWalletSweepSeedPOST(t *testing.T) {
 		t.Fatal(err)
 	}
 	addr, _ := w.NextAddress()
-	st.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(100), addr.UnlockHash(), false)
+	st.wallet.SendSiacoins(types.SiacoinPrecision.Mul64(100), addr.UnlockHash())
 	_, err = st.miner.AddBlock()
 	if err != nil {
 		t.Fatal(err)
@@ -620,7 +620,7 @@ func TestWalletTransactionGETid(t *testing.T) {
 	// NOTE: We call the SendSiacoins method directly to get convenient access
 	// to the txid.
 	sentValue := types.SiacoinPrecision.Mul64(3)
-	txns, err := st.wallet.SendSiacoins(sentValue, types.UnlockHash{}, false)
+	txns, err := st.wallet.SendSiacoins(sentValue, types.UnlockHash{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1673,7 +1673,7 @@ func TestWalletManyTransactions(t *testing.T) {
 	// Send SC to each address.
 	minedBlocks := 0
 	for i, uc := range ucs {
-		st.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash(), false)
+		st.wallet.SendSiacoins(types.SiacoinPrecision, uc.UnlockHash())
 		if i%100 == 0 {
 			if _, err := st.miner.AddBlock(); err != nil {
 				t.Fatal(err)
@@ -1744,7 +1744,7 @@ func TestWalletTransactionsGetAddr(t *testing.T) {
 
 	// Sent some money to the address
 	sentValue := types.SiacoinPrecision.Mul64(3)
-	_, err = st.wallet.SendSiacoins(sentValue, addr, false)
+	_, err = st.wallet.SendSiacoins(sentValue, addr)
 	if err != nil {
 		t.Fatal(err)
 	}

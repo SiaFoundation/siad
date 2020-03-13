@@ -529,7 +529,7 @@ func TestUnconfirmedParents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tSet, err := wt.wallet.SendSiacoins(siacoins.Sub(types.SiacoinPrecision), uc.UnlockHash(), false)
+	tSet, err := wt.wallet.SendSiacoins(siacoins.Sub(types.SiacoinPrecision), uc.UnlockHash())
 	if err != nil {
 		t.Fatal("Failed to send coins", err)
 	}

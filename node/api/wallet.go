@@ -530,7 +530,11 @@ func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, 
 			return
 		}
 
-		txns, err = api.wallet.SendSiacoins(amount, dest, feeIncluded)
+		if feeIncluded {
+			txns, err = api.wallet.SendSiacoinsFeeIncluded(amount, dest)
+		} else {
+			txns, err = api.wallet.SendSiacoins(amount, dest)
+		}
 		if err != nil {
 			WriteError(w, Error{"error when calling /wallet/siacoins: " + err.Error()}, http.StatusInternalServerError)
 			return
