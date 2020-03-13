@@ -123,8 +123,3 @@ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v2 v2.2.2 h1:ZCJp+EgiOT7lHqUV2J862kp8Qj64Jo6az82+3Td9dZw=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
-lukechampine.com/frand v1.0.1 h1:awSripFy7kz8l2rV9fCgqNhbdJ6D/LHJwC4NCmJXGMg=
-lukechampine.com/frand v1.0.1/go.mod h1:4S/TM2ZgrKejMcKMbeLjISpJMO+/eZ1zu3vYX9dtj3s=
-lukechampine.com/us v1.13.0 h1:5qvUtrPHpSX5dBoGdG+wKSqJvMnsfhTFlfHmeR+0ZWg=
-lukechampine.com/us v1.13.0/go.mod h1:4zaGktg6JkuSmMVZe7F2ljzHTM3YlqVjOOPpRfXJgC8=
-lukechampine.com/walrus v0.6.0/go.mod h1:1+7BZNViJzbU9PMZ6+mYP7bPs7URfPxfAtJGQCgzEuw=
