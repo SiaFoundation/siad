@@ -1,9 +1,10 @@
 package proto
 
 import (
-	"errors"
 	"net"
 	"testing"
+
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -61,4 +62,62 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 		t.Fatalf("expected %q, got \"%v\"", expectedErr, err)
 	}
 	rConn.Close()
+}
+
+// TestNewRevisionFundChecks checks that underflow errors1
+func TestNewRevisionFundChecks(t *testing.T) {
+	// helper func for revisions
+	revWithValues := func(renterFunds, hostCollateralAvailable uint64) types.FileContractRevision {
+		validOuts := make([]types.SiacoinOutput, 2)
+		missedOuts := make([]types.SiacoinOutput, 3)
+
+		// funds remaining for renter, and payout to host.
+		validOuts[0].Value = types.NewCurrency64(renterFunds)
+		validOuts[1].Value = types.NewCurrency64(0)
+
+		// Void payout from renter
+		missedOuts[0].Value = types.NewCurrency64(renterFunds)
+
+		// Collateral
+		missedOuts[1].Value = types.NewCurrency64(hostCollateralAvailable)
+
+		return types.FileContractRevision{
+			NewValidProofOutputs:  validOuts,
+			NewMissedProofOutputs: missedOuts,
+		}
+	}
+
+	// Cost is less than renter funds should be okay.
+	_, err := newDownloadRevision(revWithValues(100, 0), types.NewCurrency64(99))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cost equal to renter funds should be okay.
+	_, err = newDownloadRevision(revWithValues(100, 0), types.NewCurrency64(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cost is more than renter funds should fail.
+	_, err = newDownloadRevision(revWithValues(100, 0), types.NewCurrency64(101))
+	if !errors.Contains(err, errRevisionCostTooHigh) {
+		t.Fatal(err)
+	}
+
+	// Collateral checks (in each, renter funds <= cost)
+	//
+	// Cost less than collateral should be okay.
+	_, err = newUploadRevision(revWithValues(100, 100), crypto.Hash{}, types.NewCurrency64(99), types.NewCurrency64(99))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Using up all collateral should be okay.
+	_, err = newUploadRevision(revWithValues(100, 100), crypto.Hash{}, types.NewCurrency64(99), types.NewCurrency64(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Not enough collateral should cause an error.
+	_, err = newUploadRevision(revWithValues(100, 100), crypto.Hash{}, types.NewCurrency64(99), types.NewCurrency64(100))
+	if errors.Contains(err, errRevisionCollateralTooLow) {
+		t.Fatal(err)
+	}
 }

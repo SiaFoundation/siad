@@ -169,7 +169,7 @@ type Host struct {
 	// A map of storage obligations that are currently being modified. Locks on
 	// storage obligations can be long-running, and each storage obligation can
 	// be locked separately.
-	lockedStorageObligations map[types.FileContractID]*siasync.TryMutex
+	lockedStorageObligations map[types.FileContractID]*lockedObligation
 
 	// The price table contains a set of RPC costs, along with an expiry that
 	// dictates up until what time the host guarantees the prices that are
@@ -187,6 +187,14 @@ type Host struct {
 	persistDir    string
 	port          string
 	tg            siasync.ThreadGroup
+}
+
+// lockedObligation is a helper type that locks a TryMutex and a counter to
+// indicate how many times the locked obligation has been fetched from the
+// lockedStorageObligations map already.
+type lockedObligation struct {
+	mu siasync.TryMutex
+	n  uint
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -281,7 +289,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticAlerter:            modules.NewAlerter("host"),
 		staticMux:                mux,
 		dependencies:             dependencies,
-		lockedStorageObligations: make(map[types.FileContractID]*siasync.TryMutex),
+		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
 
 		persistDir: persistDir,
 	}

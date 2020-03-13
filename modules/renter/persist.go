@@ -9,8 +9,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -216,6 +216,10 @@ func (r *Renter) managedInitPersist() error {
 		return err
 	}
 	err = fs.NewSiaDir(modules.SnapshotsSiaPath(), modules.DefaultDirPerm)
+	if err != nil && err != filesystem.ErrExists {
+		return err
+	}
+	err = fs.NewSiaDir(modules.SkynetFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
