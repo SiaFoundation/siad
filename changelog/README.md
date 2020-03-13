@@ -60,7 +60,7 @@ These issues then appear in corresponding section
 - Do not use spaces or apostrophes in the filename
 - Inside the .md file use markdown description of the issue
   that will appear in `CHANGELOG.md`
-- Use numeric prefix if you want to postion the issue
+- Use numeric prefix if you want to position the issue
 
 ## Sort/position the changelog issues
 
