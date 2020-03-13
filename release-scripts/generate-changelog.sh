@@ -33,7 +33,6 @@ function add_items {
     done
 }
 
-# main
 
 # get script location
 pushd $(dirname "$0")
