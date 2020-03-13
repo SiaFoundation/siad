@@ -14,6 +14,24 @@ import (
 )
 
 // BenchmarkBubbleMetadata runs a benchmark on the bubble metadata method
+/*
+Results:
+  goos: linux
+  goarch: amd64
+  pkg: gitlab.com/NebulousLabs/Sia/modules/renter
+  BenchmarkBubbleMetadata-8   	       6	 180163684 ns/op	  249937 B/op	    1606 allocs/op
+  PASS
+  ok  	gitlab.com/NebulousLabs/Sia/modules/renter	2.734s
+  Success: Benchmarks passed
+
+Machine:
+  Architecture:          x86_64
+  CPU op-mode(s):        32-bit, 64-bit
+  CPU(s):                8
+  Vendor ID:             GenuineIntel
+  Model name:            Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz
+
+*/
 func BenchmarkBubbleMetadata(b *testing.B) {
 	r, err := newBenchmarkRenterWithDependency(b.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
