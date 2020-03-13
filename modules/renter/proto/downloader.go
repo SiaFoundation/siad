@@ -58,7 +58,10 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modul
 	sectorPrice = sectorPrice.MulFloat(1 + hostPriceLeeway)
 
 	// create the download revision
-	rev := newDownloadRevision(contract.LastRevision(), sectorPrice)
+	rev, err := newDownloadRevision(contract.LastRevision(), sectorPrice)
+	if err != nil {
+		return modules.RenterContract{}, nil, errors.AddContext(err, "Error creating new download revision")
+	}
 
 	// initiate download by confirming host settings
 	extendDeadline(hd.conn, modules.NegotiateSettingsTime)

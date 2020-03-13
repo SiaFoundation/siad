@@ -203,7 +203,7 @@ func negotiateRevision(conn net.Conn, rev types.FileContractRevision, secretKey 
 
 // newRevision creates a copy of current with its revision number incremented,
 // and with cost transferred from the renter to the host.
-func newRevision(current types.FileContractRevision, cost types.Currency) types.FileContractRevision {
+func newRevision(current types.FileContractRevision, cost types.Currency) (types.FileContractRevision, error) {
 	rev := current
 
 	// need to manually copy slice memory
@@ -211,6 +211,14 @@ func newRevision(current types.FileContractRevision, cost types.Currency) types.
 	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, 3)
 	copy(rev.NewValidProofOutputs, current.NewValidProofOutputs)
 	copy(rev.NewMissedProofOutputs, current.NewMissedProofOutputs)
+
+	// Check that there are enough funds to pay this cost.
+	if current.NewValidProofOutputs[0].Value.Cmp(cost) < 0 {
+		return types.FileContractRevision{}, errors.AddContext(errRevisionCostTooHigh, "valid proof output smaller than cost")
+	}
+	if current.NewMissedProofOutputs[0].Value.Cmp(cost) < 0 {
+		return types.FileContractRevision{}, errors.AddContext(errRevisionCostTooHigh, "missed proof output smaller than cost")
+	}
 
 	// move valid payout from renter to host
 	rev.NewValidProofOutputs[0].Value = current.NewValidProofOutputs[0].Value.Sub(cost)
@@ -223,19 +231,27 @@ func newRevision(current types.FileContractRevision, cost types.Currency) types.
 	// increment revision number
 	rev.NewRevisionNumber++
 
-	return rev
+	return rev, nil
 }
 
 // newDownloadRevision revises the current revision to cover the cost of
 // downloading data.
-func newDownloadRevision(current types.FileContractRevision, downloadCost types.Currency) types.FileContractRevision {
+func newDownloadRevision(current types.FileContractRevision, downloadCost types.Currency) (types.FileContractRevision, error) {
 	return newRevision(current, downloadCost)
 }
 
 // newUploadRevision revises the current revision to cover the cost of
 // uploading a sector.
-func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Hash, price, collateral types.Currency) types.FileContractRevision {
-	rev := newRevision(current, price)
+func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Hash, price, collateral types.Currency) (types.FileContractRevision, error) {
+	rev, err := newRevision(current, price)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// Check that there is enough collateral to cover the cost.
+	if rev.NewMissedProofOutputs[1].Value.Cmp(collateral) < 0 {
+		return types.FileContractRevision{}, errRevisionCollateralTooLow
+	}
 
 	// move collateral from host to void
 	rev.NewMissedProofOutputs[1].Value = rev.NewMissedProofOutputs[1].Value.Sub(collateral)
@@ -244,7 +260,7 @@ func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Has
 	// set new filesize and Merkle root
 	rev.NewFileSize += modules.SectorSize
 	rev.NewFileMerkleRoot = merkleRoot
-	return rev
+	return rev, nil
 }
 
 // performSessionHandshake conducts the initial handshake exchange of the
