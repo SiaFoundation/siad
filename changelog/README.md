@@ -51,7 +51,7 @@ To add an item to changelog, create an `.md` file at the proper location.
 - Bug fixes from the previous releases should be logged
   under `bugs-fixed` directory.
 - Other notable changes that users and developers should know about
-  should be loged under `other` directory.
+  should be logged under `other` directory.
 
 These issues then appear in corresponding section
 **Key Updates**, **Bugs Fixed**, resp. **Other** in the generated changelog.
