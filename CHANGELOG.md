@@ -74,6 +74,8 @@ Latest:
 
 **Other**
  - Split out renter siatests into 2 groups for faster pipelines 
+ - Update repair loop to use `uniqueRefreshPaths` to reduce unnecessary bubble
+   calls
  - 
  - Add README to the `siatest` package 
  - 
