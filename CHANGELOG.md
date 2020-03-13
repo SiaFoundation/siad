@@ -36,7 +36,7 @@ Latest:
  - Extend `siac renter -v` to show breakdown of file health.
  - Add Skynet-Disable-Force header to allow disabling the force update feature
    on Skynet uploads - Add bandwidth usage to `siac gateway`
-   
+
  **Bugs Fixed**
  - Fixed bug in startup where an error being returned by the renter's blocking
    startup process was being missed
@@ -52,21 +52,20 @@ Latest:
    able to access specific files in the Skynet folder.
  - Fixed a deadlock when performing a Skynet download with no workers
  - Fix a parsing bug for malformed skylinks - fix siac update for new release
-   verification - Fix parameter delimiter for skylinks
- 
- **Other**
+   verification - Fix parameter delimiter for skylinks- Fixed a bug which caused
+   a call to `build.Critical` in the case that a contract in the renew set was
+   marked `!GoodForRenew` while the contractor lock was not held
+
+**Other**
  - Split out renter siatests into 2 groups for faster pipelines.
  - Add README to the `siatest` package 
  - Bump golangci-lint version to v1.23.8
- - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
-   used.
- - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
-   to safely acquire the host pubkey.
  - Add `go get` command to `make dependencies`.
  - Update repair loop to use `uniqueRefreshPaths` to reduce unnecessary bubble
-   calls - Add Skynet-Disable-Force header to allow disabling the force update
-   feature on Skynet uploads - Create generator for Changelog to improve
-   changelog update process
+   calls 
+ - Add Skynet-Disable-Force header to allow disabling the force update feature
+   on Skynet uploads 
+ - Create generator for Changelog to improve changelog update process
 
 ### v1.4.3
 **Key Updates**
