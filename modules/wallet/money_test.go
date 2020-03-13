@@ -169,6 +169,30 @@ func TestSendSiacoinsFeeIncluded(t *testing.T) {
 	if !unconfirmedIn3.IsZero() {
 		t.Error("unconfirmed balance should be 0")
 	}
+
+	// Try to send less than the transaction fee and ensure we get an error.
+	_, tpoolFee = wt.wallet.tpool.FeeEstimation()
+	sendValue = tpoolFee.Mul64(750).Sub64(1)
+	_, err = wt.wallet.SendSiacoins(sendValue, types.UnlockHash{}, true)
+	if err != modules.ErrLowBalance {
+		t.Fatal("Sending less than the fee with fees included should fail.")
+	}
+
+	// Try to send exactly the transaction fee -- it should fail.
+	_, tpoolFee = wt.wallet.tpool.FeeEstimation()
+	sendValue = tpoolFee.Mul64(750)
+	_, err = wt.wallet.SendSiacoins(sendValue, types.UnlockHash{}, true)
+	if err == nil {
+		t.Fatal(err)
+	}
+
+	// Try to send slightly more than the transaction fee -- it should NOT fail.
+	_, tpoolFee = wt.wallet.tpool.FeeEstimation()
+	sendValue = tpoolFee.Mul64(750).Add64(1)
+	_, err = wt.wallet.SendSiacoins(sendValue, types.UnlockHash{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestIntegrationSendOverUnder sends too many siacoins, resulting in an error,

@@ -131,6 +131,12 @@ func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash, feeI
 	tpoolFee = tpoolFee.Mul64(750) // Estimated transaction size in bytes
 	// If the fee is to be included then subtract it now.
 	if feeIncluded {
+		// Don't allow sending an amount equal to the fee, as zero spending is
+		// not allowed and would error out later.
+		if amount.Cmp(tpoolFee) <= 0 {
+			w.log.Println("Attempt to send coins has failed - not enough to cover fee")
+			return nil, modules.ErrLowBalance
+		}
 		amount = amount.Sub(tpoolFee)
 	}
 	output := types.SiacoinOutput{
