@@ -57,6 +57,7 @@ do
 done
 echo ---  end  ---
 
+# Write versions and add changelog items to the changelog
 echo writing versions to changelog...
 for version in $version_list
 do
