@@ -40,13 +40,23 @@ Latest:
 **Bugs Fixed**
  - Fixed bug in startup where an error being returned by the renter's blocking
    startup process was being missed
- - Fix repair bug where unused hosts were not being properly updated
-   for a siafile
- - Fix threadgroup violation in the watchdog that allowed writing
-   to the log file after a shutdown
- - Fixed `siac skynet ls` not working when files were passed as input.
-   It is now able to access specific files in the Skynet folder.
+ -
+ -
+ - Fix a parsing bug for malformed skylinks
+ - Fix repair bug where unused hosts were not being properly updated for a
+   siafile
+ - Fix threadgroup violation in the watchdog that allowed writing to the log
+   file after a shutdown
+ -
+ -
+ - Fixed `siac skynet ls` not working when files were passed as input. It is now
+   able to access specific files in the Skynet folder.
+ - 
+ - 
+ - 
+ - 
  - Fixed a deadlock when performing a Skynet download with no workers
+
 **Other**
  - Split out renter siatests into 2 groups for faster pipelines.
  - Add README to the `siatest` package 
