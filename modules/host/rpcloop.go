@@ -115,6 +115,7 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	defer func() {
 		if len(s.so.OriginTransactionSet) != 0 {
 			h.managedUnlockStorageObligation(s.so.id())
+			s.so = storageObligation{}
 		}
 	}()
 
