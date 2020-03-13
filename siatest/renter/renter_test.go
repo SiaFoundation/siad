@@ -34,34 +34,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// test is a helper struct for running subtests when tests can use the same test
-// group
-type test struct {
-	name string
-	test func(*testing.T, *siatest.TestGroup)
-}
-
-// runRenterTests is a helper function to run the subtests when tests can use
-// the same test group
-func runRenterTests(t *testing.T, gp siatest.GroupParams, tests []test) error {
-	tg, err := siatest.NewGroupFromTemplate(renterTestDir(t.Name()), gp)
-	if err != nil {
-		return errors.AddContext(err, "failed to create group")
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	// Run subtests
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			test.test(t, tg)
-		})
-	}
-	return nil
-}
-
 // TestRenterOne executes a number of subtests using the same TestGroup to save
 // time on initialization
 func TestRenterOne(t *testing.T) {
@@ -76,18 +48,19 @@ func TestRenterOne(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify subtests to run
-	subTests := []test{
-		{"TestDownloadMultipleLargeSectors", testDownloadMultipleLargeSectors},
-		{"TestLocalRepair", testLocalRepair},
-		{"TestClearDownloadHistory", testClearDownloadHistory},
-		{"TestDownloadAfterRenew", testDownloadAfterRenew},
-		{"TestDirectories", testDirectories},
+	subTests := []siatest.SubTest{
+		{Name: "TestDownloadMultipleLargeSectors", Test: testDownloadMultipleLargeSectors},
+		{Name: "TestLocalRepair", Test: testLocalRepair},
+		{Name: "TestClearDownloadHistory", Test: testClearDownloadHistory},
+		{Name: "TestDownloadAfterRenew", Test: testDownloadAfterRenew},
+		{Name: "TestDirectories", Test: testDirectories},
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -106,19 +79,20 @@ func TestRenterTwo(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify subtests to run
-	subTests := []test{
-		{"TestReceivedFieldEqualsFileSize", testReceivedFieldEqualsFileSize},
-		{"TestRemoteRepair", testRemoteRepair},
-		{"TestSingleFileGet", testSingleFileGet},
-		{"TestSiaFileTimestamps", testSiafileTimestamps},
-		{"TestZeroByteFile", testZeroByteFile},
-		{"TestUploadWithAndWithoutForceParameter", testUploadWithAndWithoutForceParameter},
+	subTests := []siatest.SubTest{
+		{Name: "TestReceivedFieldEqualsFileSize", Test: testReceivedFieldEqualsFileSize},
+		{Name: "TestRemoteRepair", Test: testRemoteRepair},
+		{Name: "TestSingleFileGet", Test: testSingleFileGet},
+		{Name: "TestSiaFileTimestamps", Test: testSiafileTimestamps},
+		{Name: "TestZeroByteFile", Test: testZeroByteFile},
+		{Name: "TestUploadWithAndWithoutForceParameter", Test: testUploadWithAndWithoutForceParameter},
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -262,18 +236,19 @@ func TestRenterThree(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify subtests to run
-	subTests := []test{
-		{"TestAllowanceDefaultSet", testAllowanceDefaultSet},
-		{"TestFileAvailableAndRecoverable", testFileAvailableAndRecoverable},
-		{"TestSetFileStuck", testSetFileStuck},
-		{"TestCancelAsyncDownload", testCancelAsyncDownload},
-		{"TestUploadDownload", testUploadDownload}, // Needs to be last as it impacts hosts
+	subTests := []siatest.SubTest{
+		{Name: "TestAllowanceDefaultSet", Test: testAllowanceDefaultSet},
+		{Name: "TestFileAvailableAndRecoverable", Test: testFileAvailableAndRecoverable},
+		{Name: "TestSetFileStuck", Test: testSetFileStuck},
+		{Name: "TestCancelAsyncDownload", Test: testCancelAsyncDownload},
+		{Name: "TestUploadDownload", Test: testUploadDownload}, // Needs to be last as it impacts hosts
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -292,19 +267,20 @@ func TestRenterFour(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify subtests to run
-	subTests := []test{
-		{"TestValidateSiaPath", testValidateSiaPath},
-		{"TestNextPeriod", testNextPeriod},
-		{"TestPauseAndResumeRepairAndUploads", testPauseAndResumeRepairAndUploads},
-		{"TestDownloadServedFromDisk", testDownloadServedFromDisk},
-		{"TestDirMode", testDirMode},
-		{"TestEscapeSiaPath", testEscapeSiaPath}, // Runs last because it uploads many files
+	subTests := []siatest.SubTest{
+		{Name: "TestValidateSiaPath", Test: testValidateSiaPath},
+		{Name: "TestNextPeriod", Test: testNextPeriod},
+		{Name: "TestPauseAndResumeRepairAndUploads", Test: testPauseAndResumeRepairAndUploads},
+		{Name: "TestDownloadServedFromDisk", Test: testDownloadServedFromDisk},
+		{Name: "TestDirMode", Test: testDirMode},
+		{Name: "TestEscapeSiaPath", Test: testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1399,18 +1375,19 @@ func TestRenterInterrupt(t *testing.T) {
 		Hosts:  5,
 		Miners: 1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify sub tests
-	subTests := []test{
-		{"TestContractInterruptedSaveToDiskAfterDeletion", testContractInterruptedSaveToDiskAfterDeletion},
-		{"TestDownloadInterruptedAfterSendingRevision", testDownloadInterruptedAfterSendingRevision},
-		{"TestDownloadInterruptedBeforeSendingRevision", testDownloadInterruptedBeforeSendingRevision},
-		{"TestUploadInterruptedAfterSendingRevision", testUploadInterruptedAfterSendingRevision},
-		{"TestUploadInterruptedBeforeSendingRevision", testUploadInterruptedBeforeSendingRevision},
+	subTests := []siatest.SubTest{
+		{Name: "TestContractInterruptedSaveToDiskAfterDeletion", Test: testContractInterruptedSaveToDiskAfterDeletion},
+		{Name: "TestDownloadInterruptedAfterSendingRevision", Test: testDownloadInterruptedAfterSendingRevision},
+		{Name: "TestDownloadInterruptedBeforeSendingRevision", Test: testDownloadInterruptedBeforeSendingRevision},
+		{Name: "TestUploadInterruptedAfterSendingRevision", Test: testUploadInterruptedAfterSendingRevision},
+		{Name: "TestUploadInterruptedBeforeSendingRevision", Test: testUploadInterruptedBeforeSendingRevision},
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1693,17 +1670,18 @@ func TestRenterAddNodes(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify subtests to run
-	subTests := []test{
-		{"TestRedundancyReporting", testRedundancyReporting}, // Put first because it pulls the original tg renter
-		{"TestUploadReady", testUploadReady},
-		{"TestOverspendAllowance", testOverspendAllowance},
-		{"TestRenterAllowanceCancel", testRenterAllowanceCancel},
+	subTests := []siatest.SubTest{
+		{Name: "TestRedundancyReporting", Test: testRedundancyReporting}, // Put first because it pulls the original tg renter
+		{Name: "TestUploadReady", Test: testUploadReady},
+		{Name: "TestOverspendAllowance", Test: testOverspendAllowance},
+		{Name: "TestRenterAllowanceCancel", Test: testRenterAllowanceCancel},
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1723,14 +1701,15 @@ func TestRenterAddNodes2(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify subtests to run
-	subTests := []test{
-		{"TestRenterPostCancelAllowance", testRenterPostCancelAllowance},
+	subTests := []siatest.SubTest{
+		{Name: "TestRenterPostCancelAllowance", Test: testRenterPostCancelAllowance},
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }

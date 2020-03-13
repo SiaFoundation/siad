@@ -170,6 +170,14 @@ your saved list.
 * `siac renter queue` shows the download queue. This is only relevant
 if you have multiple downloads happening simultaneously.
 
+* `siac renter setallowance` sets the amount of money that can be spent over a
+  given period. If no flags are set you will be walked through the interactive
+  allowance setting. To update only certain fields, pass in those values with
+  the corresponding field flag, for example '--amount 500SC'.
+
+* `siac renter allowance` views the current allowance, which controls how much
+  money is spent on file contracts.
+
 #### Skynet tasks
 * `siac skynet upload [source filepath] [destination siapath]` uploads a file or
   directory to Skynet. A skylink will be produced for each file. The link can be

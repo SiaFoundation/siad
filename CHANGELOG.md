@@ -22,6 +22,8 @@ Latest:
  - Uploading resumes more quickly after restart
  - Add ability to pack many files into the same or adjacent sectors while
    producing unique skylinks for each file
+ - Fix default expected upload/download values displaying 0 when setting an
+   initial allowance
  -
  -
  - `siac skynet upload` now supports uploading directories. All files are
@@ -39,7 +41,7 @@ Latest:
    skynet - how many files were uploaded and the combined size of said files.
  -
  -
- -
+ - The `siac renter setallowance` UX is considerably improved.
  - 
  - 
  - Add XChaCha20 CipherKey.
@@ -67,7 +69,7 @@ Latest:
    able to access specific files in the Skynet folder.
  - 
  - 
- - 
+ - Fixed a deadlock when performing a Skynet download with no workers
  - 
 
 **Other**
