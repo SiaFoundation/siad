@@ -45,8 +45,7 @@ echo 'writing head of changelog.md'
 cp "$head_filename" "$changelog_md"
 
 
-# versions, item headers, items
-
+# Get versions to be added to the changelog
 echo "getting versions in reverse order"
 version_list=$(find * -maxdepth 1 -name "v*" | sort -r --version-sort)
 
