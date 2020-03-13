@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+# Generate CHANGELOG.md from changelog directory
+
 # config
 
 changelog_md=../CHANGELOG.md
@@ -9,8 +11,17 @@ head_filename=changelog-head.md
 tail_filename=changelog-tail.md
 IFS=$'\n' # fix for loop filenames with spaces 
 
-# functions
-
+######################################
+# Add changelog item to changelog file
+# Globals:
+#   version
+# Arguments:
+#   item section header
+#   item section folder
+# Outputs:
+#   Writes section header to changelog file
+#   Writes item to changelog file
+######################################
 function add_items {
     items_header="$1"
     items_folder="$2"
@@ -33,7 +44,6 @@ function add_items {
     done
 }
 
-
 # get script location
 pushd $(dirname "$0")
 
@@ -43,7 +53,6 @@ pushd "$changelog_files_dir"
 # Write the head of the changelog
 echo 'writing head of changelog.md'
 cp "$head_filename" "$changelog_md"
-
 
 # Get versions to be added to the changelog
 echo "getting versions in reverse order"
@@ -70,8 +79,6 @@ do
     add_items "Other" "other"
 done
 echo writing versions to changelog: done
-
-
 
 # Write the tail of the changelog
 echo 'writing tail of changelog.md'
