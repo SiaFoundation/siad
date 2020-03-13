@@ -12,7 +12,7 @@ Latest:
 
 ### v1.4.4
 - Please log your changelog items to `Sia/changelog/v1.4.4` folder.
-- For howto see [Sia/changelog/README.md][./changelog/README.md].
+- For howto see [Sia/changelog/README.md](changelog/README.md).
 - Changelog items here will be generated just before release
   to avoid merge conflicts.
 
