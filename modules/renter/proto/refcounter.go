@@ -54,6 +54,9 @@ type (
 	RefCounterHeader struct {
 		Version [8]byte
 	}
+
+	// u16 is a utility type for ser/des of uint16 values
+	u16 [2]byte
 )
 
 // LoadRefCounter loads a refcounter from disk
@@ -122,11 +125,11 @@ func NewRefCounter(path string, numSec uint64) (RefCounter, error) {
 
 // Count returns the number of references to the given sector
 func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if secIdx > rc.numSectors-1 {
 		return 0, ErrInvalidSectorNumber
 	}
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
 	return rc.readCount(secIdx)
 }
 
@@ -134,11 +137,11 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Decrement(secIdx uint64) (uint16, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if secIdx > rc.numSectors-1 {
 		return 0, ErrInvalidSectorNumber
 	}
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
 	count, err := rc.readCount(secIdx)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to read count")
@@ -205,10 +208,10 @@ func (rc *RefCounter) managedAppend() error {
 	}
 	defer f.Close()
 
-	b := make([]byte, 2)
-	binary.LittleEndian.PutUint16(b, 1)
+	var b u16
+	binary.LittleEndian.PutUint16(b[:], 1)
 	offset := int64(offset(rc.numSectors))
-	if _, err = f.WriteAt(b, offset); err != nil {
+	if _, err = f.WriteAt(b[:], offset); err != nil {
 		return errors.AddContext(err, "failed to write new counter to disk")
 	}
 	if err := f.Sync(); err != nil {
@@ -222,11 +225,11 @@ func (rc *RefCounter) managedAppend() error {
 // managedDropSectors removes the last numSec sector counts from the refcounter
 // file
 func (rc *RefCounter) managedDropSectors(numSec uint64) error {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if numSec > rc.numSectors {
 		return ErrInvalidSectorNumber
 	}
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
 	// truncate the file on disk
 	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
@@ -245,6 +248,8 @@ func (rc *RefCounter) managedDropSectors(numSec uint64) error {
 
 // managedSwap swaps the counts of the two sectors
 func (rc *RefCounter) managedSwap(firstSector, secondSector uint64) error {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if firstSector > rc.numSectors-1 || secondSector > rc.numSectors-1 {
 		return ErrInvalidSectorNumber
 	}
@@ -254,23 +259,21 @@ func (rc *RefCounter) managedSwap(firstSector, secondSector uint64) error {
 	}
 	defer f.Close()
 
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
 	// swap the values on disk
 	firstOffset := int64(offset(firstSector))
 	secondOffset := int64(offset(secondSector))
-	firstCount := make([]byte, 2)
-	secondCount := make([]byte, 2)
-	if _, err = f.ReadAt(firstCount, firstOffset); err != nil {
+	var firstCount u16
+	var secondCount u16
+	if _, err = f.ReadAt(firstCount[:], firstOffset); err != nil {
 		return err
 	}
-	if _, err = f.ReadAt(secondCount, secondOffset); err != nil {
+	if _, err = f.ReadAt(secondCount[:], secondOffset); err != nil {
 		return err
 	}
-	if _, err = f.WriteAt(firstCount, secondOffset); err != nil {
+	if _, err = f.WriteAt(firstCount[:], secondOffset); err != nil {
 		return err
 	}
-	if _, err = f.WriteAt(secondCount, firstOffset); err != nil {
+	if _, err = f.WriteAt(secondCount[:], firstOffset); err != nil {
 		return err
 	}
 	return f.Sync()
@@ -287,11 +290,11 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 	}
 	defer f.Close()
 
-	b := make([]byte, 2)
-	if _, err = f.ReadAt(b, int64(offset(secIdx))); err != nil {
+	var b u16
+	if _, err = f.ReadAt(b[:], int64(offset(secIdx))); err != nil {
 		return 0, errors.AddContext(err, "failed to read from the refcounter file")
 	}
-	return binary.LittleEndian.Uint16(b), nil
+	return binary.LittleEndian.Uint16(b[:]), nil
 }
 
 // writeCount stores the given sector count on disk
@@ -305,9 +308,9 @@ func (rc *RefCounter) writeCount(secIdx uint64, c uint16) error {
 	}
 	defer f.Close()
 
-	bytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(bytes, c)
-	if _, err = f.WriteAt(bytes, int64(offset(secIdx))); err != nil {
+	var bytes u16
+	binary.LittleEndian.PutUint16(bytes[:], c)
+	if _, err = f.WriteAt(bytes[:], int64(offset(secIdx))); err != nil {
 		return err
 	}
 	return f.Sync()
