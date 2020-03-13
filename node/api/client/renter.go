@@ -895,6 +895,44 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 	return rshp.Skylink, rshp, err
 }
 
+// SkynetSkyfilePostDisableForce uses the /skynet/skyfile endpoint to upload a
+// skyfile. This method allows to set the Disable-Force header. The resulting
+// skylink is returned along with an error.
+func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParameters, disableForce bool) (string, api.SkynetSkyfileHandlerPOST, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("filename", params.FileMetadata.Filename)
+	forceStr := fmt.Sprintf("%t", params.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
+	values.Set("basechunkredundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", params.Root)
+	values.Set("root", rootStr)
+
+	// Set the headers
+	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	if disableForce {
+		headers["Skynet-Disable-Force"] = strconv.FormatBool(disableForce)
+	}
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
+	_, resp, err := c.postRawResponseWithHeaders(query, params.Reader, headers)
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
+	}
+
+	// Parse the response to get the skylink.
+	var rshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(resp, &rshp)
+	if err != nil {
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to parse the skylink upload response")
+	}
+	return rshp.Skylink, rshp, err
+}
+
 // SkynetSkyfileMultiPartPost uses the /skynet/skyfile endpoint to upload a
 // skyfile using multipart form data.  The resulting skylink is returned along
 // with an error.
@@ -977,5 +1015,11 @@ func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
 		return err
 	}
 	err = c.post("/skynet/blacklist", string(data), nil)
+	return
+}
+
+// SkynetStatsGet requests the /skynet/stats Get endpoint
+func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
+	err = c.get("/skynet/stats", &stats)
 	return
 }

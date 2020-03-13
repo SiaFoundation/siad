@@ -671,7 +671,14 @@ func (w *watchdog) callCheckContracts() {
 			// maintenance which can cause a deadlock because this function Acquires a
 			// lock using the contractset.
 			w.contractor.log.Debugln("Checking revision for monitored contract: ", fcID)
-			go w.managedCheckMonitoredRevision(fcID, w.blockHeight)
+			go func(fcid types.FileContractID, bh types.BlockHeight) {
+				err := w.contractor.tg.Add()
+				if err != nil {
+					return
+				}
+				defer w.contractor.tg.Done()
+				w.managedCheckMonitoredRevision(fcid, bh)
+			}(fcID, w.blockHeight)
 		}
 
 		if w.blockHeight >= contractData.windowEnd {

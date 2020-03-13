@@ -115,19 +115,21 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 	defer func() {
 		if len(s.so.OriginTransactionSet) != 0 {
 			h.managedUnlockStorageObligation(s.so.id())
+			s.so = storageObligation{}
 		}
 	}()
 
 	// enter RPC loop
 	rpcs := map[types.Specifier]func(*rpcSession) error{
-		modules.RPCLoopLock:          h.managedRPCLoopLock,
-		modules.RPCLoopUnlock:        h.managedRPCLoopUnlock,
-		modules.RPCLoopSettings:      h.managedRPCLoopSettings,
-		modules.RPCLoopFormContract:  h.managedRPCLoopFormContract,
-		modules.RPCLoopRenewContract: h.managedRPCLoopRenewContract,
-		modules.RPCLoopWrite:         h.managedRPCLoopWrite,
-		modules.RPCLoopRead:          h.managedRPCLoopRead,
-		modules.RPCLoopSectorRoots:   h.managedRPCLoopSectorRoots,
+		modules.RPCLoopLock:               h.managedRPCLoopLock,
+		modules.RPCLoopUnlock:             h.managedRPCLoopUnlock,
+		modules.RPCLoopSettings:           h.managedRPCLoopSettings,
+		modules.RPCLoopFormContract:       h.managedRPCLoopFormContract,
+		modules.RPCLoopRenewContract:      h.managedRPCLoopRenewContract,
+		modules.RPCLoopRenewClearContract: h.managedRPCLoopRenewAndClearContract,
+		modules.RPCLoopWrite:              h.managedRPCLoopWrite,
+		modules.RPCLoopRead:               h.managedRPCLoopRead,
+		modules.RPCLoopSectorRoots:        h.managedRPCLoopSectorRoots,
 	}
 	for {
 		conn.SetDeadline(time.Now().Add(rpcRequestInterval))
