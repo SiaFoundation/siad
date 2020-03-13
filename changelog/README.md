@@ -61,7 +61,7 @@ To simplify generating Changelog.
 
 - `changelog-head.md` is the beginning, `changelog-tail.md` is the end of the generated `CHANGELOG.md`.
 - Changelog generator will generate changelog issues between these two parts.
-- They can be edited and commited to git
+- They can be edited and committed to git
 
 ## How to update changelog-tail.md with old versions
 
