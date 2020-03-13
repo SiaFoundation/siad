@@ -1,4 +1,4 @@
-# Changelog Generator
+# Changelog
 
 
 To avoid merge conflicts on each Changelog update.  
