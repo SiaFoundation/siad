@@ -177,10 +177,10 @@ func (rc *RefCounter) Increment(secIdx uint64) (uint16, error) {
 	return count, rc.writeCount(secIdx, count)
 }
 
-// callAppend appends numSec counters to the end of the refcounter file and
-// initializes them with the value `1`
-func (rc *RefCounter) callAppend(numSec uint64) error {
-	return rc.managedAppend(numSec)
+// callAppend appends one counter to the end of the refcounter file and
+// initializes it with `1`
+func (rc *RefCounter) callAppend() error {
+	return rc.managedAppend()
 }
 
 // callDropSectors removes the last numSec sector counts from the refcounter file
@@ -193,9 +193,9 @@ func (rc *RefCounter) callSwap(i, j uint64) error {
 	return rc.managedSwap(i, j)
 }
 
-// managedAppend appends numSec counters to the end of the refcounter file and
-// initializes them with the value `1`
-func (rc *RefCounter) managedAppend(numSec uint64) error {
+// managedAppend appends one counter to the end of the refcounter file and
+// initializes it with `1``
+func (rc *RefCounter) managedAppend() error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	// resize the file on disk
@@ -205,17 +205,17 @@ func (rc *RefCounter) managedAppend(numSec uint64) error {
 	}
 	defer f.Close()
 
-	f.Seek(0, io.SeekEnd)
-	for i := uint64(0); i < numSec; i++ {
-		if err = binary.Write(f, binary.LittleEndian, uint16(1)); err != nil {
-			return errors.AddContext(err, "failed to write new counters to disk")
-		}
+	b := make([]byte, 2)
+	binary.LittleEndian.PutUint16(b, 1)
+	offset := int64(offset(rc.numSectors))
+	if _, err = f.WriteAt(b, offset); err != nil {
+		return errors.AddContext(err, "failed to write new counter to disk")
 	}
 	if err := f.Sync(); err != nil {
 		return err
 	}
 	// increment only after a successful append
-	rc.numSectors += numSec
+	rc.numSectors++
 	return nil
 }
 

@@ -105,10 +105,10 @@ func TestRefCounter(t *testing.T) {
 	callsToTruncate += 4
 
 	// test append
-	if err = testCallAppend(&rc, 3); err != nil {
+	if err = testCallAppend(&rc); err != nil {
 		t.Fatal(err)
 	}
-	callsToTruncate -= 3
+	callsToTruncate--
 
 	// decrement to zero
 	count = 1
@@ -169,14 +169,14 @@ func TestRefCounter(t *testing.T) {
 
 // testCallAppend specifically tests the testCallAppend method available outside
 // the subsystem
-func testCallAppend(rc *RefCounter, numSecs uint64) error {
+func testCallAppend(rc *RefCounter) error {
 	fiBefore, err := os.Stat(rc.filepath)
 	if err != nil {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
 	inMemSecCountBefore := rc.numSectors
-	if err := rc.callAppend(numSecs); err != nil {
+	if err := rc.callAppend(); err != nil {
 		return err
 	}
 	fiAfter, err := os.Stat(rc.filepath)
@@ -185,10 +185,10 @@ func testCallAppend(rc *RefCounter, numSecs uint64) error {
 	}
 	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
 	inMemSecCountAfter := rc.numSectors
-	if numSectorsDiskBefore+numSecs != numSectorsDiskAfter {
-		return fmt.Errorf("failed to append data on disk by %d sectors. Sectors before: %d, sectors after: %d", numSecs, numSectorsDiskBefore, numSectorsDiskAfter)
+	if numSectorsDiskBefore+1 != numSectorsDiskAfter {
+		return fmt.Errorf("failed to append data on disk by one sector")
 	}
-	if inMemSecCountBefore+numSecs != inMemSecCountAfter {
+	if inMemSecCountBefore+1 != inMemSecCountAfter {
 		return fmt.Errorf("failed to update the in-memory cache of the number of secotrs")
 	}
 	return nil
@@ -297,7 +297,7 @@ func testLoad(validFilePath string) error {
 	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
 	_, err = f.Write(badVerFileContents)
-	f.Close() // close regardless of the success of the write
+	_ = f.Close() // close regardless of the success of the write
 	if err != nil {
 		return errors.AddContext(err, "failed to write to test file")
 	}
