@@ -17,9 +17,8 @@ import (
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
 func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, io.Reader, uint64, types.Currency, types.Currency, uint64) {
-	instructions := []modules.Instruction{
-		NewReadSectorInstruction(0, 8, 16, true),
-	}
+	i := NewReadSectorInstruction(0, 8, 16, true)
+	instructions := []modules.Instruction{i}
 	data := make([]byte, 8+8+crypto.HashSize)
 	binary.LittleEndian.PutUint64(data[:8], length)
 	binary.LittleEndian.PutUint64(data[8:16], offset)
