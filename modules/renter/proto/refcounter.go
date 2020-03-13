@@ -8,6 +8,10 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+
+	"gitlab.com/NebulousLabs/Sia/encoding"
+
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -39,16 +43,16 @@ const (
 	// RefCounterHeaderSize is the size of the header in bytes
 	RefCounterHeaderSize = 8
 
-	// walValueName is the name of a WAL update that deletes the file from disk
-	walDeleteName = "WALDelete"
+	// updateNameSetValue is the name of a WAL update that deletes the file from disk
+	updateNameDelete = "WALDelete"
 
-	// walValueName is the name of a WAL update that changes the data starting
+	// updateNameSetValue is the name of a WAL update that changes the data starting
 	// at a specified index
-	walValueName = "WALUpdate"
+	updateNameSetValue = "WALSetValue"
 
-	// walResizeName is the name of a WAL update that changes the size of the
+	// updateNameResize is the name of a WAL update that changes the size of the
 	// file on disk from a specified size to a specified size
-	walResizeName = "WALResize"
+	updateNameResize = "WALResize"
 )
 
 type (
@@ -71,6 +75,26 @@ type (
 	// RefCounterHeader contains metadata about the reference counter file
 	RefCounterHeader struct {
 		Version [8]byte
+	}
+
+	// updateDelete represents a WAL update for deleting the refcounter file
+	updateDelete struct {
+		filepath string
+	}
+	// updateResize represents a WAL update for resizing the refcounter file
+	// from an old number of sectors to a new one. This update can be used to
+	// both shrink and grow the file
+	updateResize struct {
+		filepath  string
+		oldSecNum uint64
+		newSecNum uint64
+	}
+	// updateSetValue represents a WAL update for setting a given value to the
+	// given sector
+	updateSetValue struct {
+		filepath string
+		secNum   uint64
+		value    uint16
 	}
 )
 
@@ -209,6 +233,50 @@ func (rc *RefCounter) callDropSectors(numSec uint64) error {
 // callSwap swaps the two sectors at the given indices
 func (rc *RefCounter) callSwap(i, j uint64) error {
 	return rc.managedSwap(i, j)
+}
+
+// makeUpdateSetValue creates a WAL update for setting a given value to the
+// given sector
+func (rc *RefCounter) makeUpdateSetValue(secNum uint64, value uint16) writeaheadlog.Update {
+	if secNum < 0 {
+		secNum = 0
+		value = 0
+		build.Critical("secNum passed to makeUpdateSetValue should never be negative")
+	}
+	return writeaheadlog.Update{
+		Name: updateNameSetValue,
+		Instructions: encoding.MarshalAll(updateSetValue{
+			filepath: rc.filepath,
+			secNum:   secNum,
+			value:    value,
+		}),
+	}
+}
+
+// makeUpdateResize creates a WAL update for resizing the refcounter file from
+// an old number of sectors to a new one. This update can be used to both shrink
+// and grow the file
+func (rc *RefCounter) makeUpdateResize(oldSecNum, newSecNum uint64) writeaheadlog.Update {
+	if oldSecNum < 0 || newSecNum < 0 {
+		oldSecNum, newSecNum = 0, 0
+		build.Critical("size passed to createResizeUpdate should never be negative")
+	}
+	return writeaheadlog.Update{
+		Name: updateNameResize,
+		Instructions: encoding.MarshalAll(updateResize{
+			filepath:  rc.filepath,
+			oldSecNum: oldSecNum,
+			newSecNum: newSecNum,
+		}),
+	}
+}
+
+// makeUpdateDelete creates a WAL update for deleting the refcounter file
+func (rc *RefCounter) makeUpdateDelete() writeaheadlog.Update {
+	return writeaheadlog.Update{
+		Name:         updateNameDelete,
+		Instructions: encoding.Marshal(updateDelete{filepath: rc.filepath}),
+	}
 }
 
 // managedAppend appends one counter to the end of the refcounter file and

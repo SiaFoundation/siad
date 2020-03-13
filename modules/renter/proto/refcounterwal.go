@@ -27,9 +27,9 @@ func applyUpdates(updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
 			switch u.Name {
-			case walValueName:
+			case updateNameSetValue:
 				return readAndApplyResizeUpdate(u)
-			case walResizeName:
+			case updateNameResize:
 				return readAndApplyResizeUpdate(u)
 			default:
 				return errUnknownRefCounterUpdate
@@ -52,7 +52,7 @@ func createResizeUpdate(path string, oldSecNum, newSecNum uint64) writeaheadlog.
 	}
 	// Create update
 	return writeaheadlog.Update{
-		Name:         walResizeName,
+		Name:         updateNameResize,
 		Instructions: encoding.MarshalAll(path, oldSecNum, newSecNum),
 	}
 }
@@ -117,7 +117,7 @@ func (rc *RefCounter) applyUpdates(updates ...writeaheadlog.Update) error {
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
 		switch u.Name {
-		case walDeleteName:
+		case updateNameDelete:
 			if err := readAndApplyDeleteUpdate(u); err != nil {
 				return err
 			}
@@ -135,11 +135,11 @@ func (rc *RefCounter) applyUpdates(updates ...writeaheadlog.Update) error {
 	for _, u := range updates {
 		err := func() error {
 			switch u.Name {
-			case walDeleteName:
+			case updateNameDelete:
 				return rc.readAndApplyDeleteUpdate(u)
-			case walResizeName:
+			case updateNameResize:
 				return rc.readAndApplyResizeUpdate(u)
-			case walValueName:
+			case updateNameSetValue:
 				return rc.readAndApplyValueUpdate(u)
 			default:
 				return errUnknownRefCounterUpdate
@@ -169,7 +169,7 @@ func (rc *RefCounter) createValueUpdate(secNum int64, value []byte) writeaheadlo
 	}
 	// Create update
 	return writeaheadlog.Update{
-		Name:         walValueName,
+		Name:         updateNameSetValue,
 		Instructions: encoding.MarshalAll(secNum, value),
 	}
 }
