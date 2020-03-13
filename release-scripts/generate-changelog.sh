@@ -73,8 +73,7 @@ echo writing versions to changelog: done
 
 
 
-# tail
-
+# Write the tail of the changelog
 echo 'writing tail (end) of changelog.md'
 tail_content=$(<"$tail_filename")
 echo "" >> "$changelog_md"
