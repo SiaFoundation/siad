@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -23,14 +22,15 @@ func (h *Host) managedLockStorageObligation(soid types.FileContractID) {
 	// create one. The map must be accessed under lock, but the request for the
 	// storage lock must not be made under lock.
 	h.mu.Lock()
-	tl, exists := h.lockedStorageObligations[soid]
+	lo, exists := h.lockedStorageObligations[soid]
 	if !exists {
-		tl = new(sync.TryMutex)
-		h.lockedStorageObligations[soid] = tl
+		lo = &lockedObligation{}
+		h.lockedStorageObligations[soid] = lo
 	}
+	lo.n++
 	h.mu.Unlock()
 
-	tl.Lock()
+	lo.mu.Lock()
 }
 
 // managedTryLockStorageObligation attempts to put a storage obligation under
@@ -40,16 +40,24 @@ func (h *Host) managedTryLockStorageObligation(soid types.FileContractID, timeou
 	// create one. The map must be accessed under lock, but the request for the
 	// storage lock must not be made under lock.
 	h.mu.Lock()
-	tl, exists := h.lockedStorageObligations[soid]
+	lo, exists := h.lockedStorageObligations[soid]
 	if !exists {
-		tl = new(sync.TryMutex)
-		h.lockedStorageObligations[soid] = tl
+		lo = &lockedObligation{}
+		h.lockedStorageObligations[soid] = lo
 	}
+	lo.n++
 	h.mu.Unlock()
 
-	if tl.TryLockTimed(timeout) {
+	if lo.mu.TryLockTimed(timeout) {
 		return nil
 	}
+	// Locking failed. Decrement the counter again.
+	h.mu.Lock()
+	lo.n--
+	if lo.n == 0 {
+		delete(h.lockedStorageObligations, soid)
+	}
+	h.mu.Unlock()
 	return errObligationLocked
 }
 
@@ -60,12 +68,16 @@ func (h *Host) managedUnlockStorageObligation(soid types.FileContractID) {
 	// must be accessed under lock, but the request for the unlock must not
 	// be made under lock.
 	h.mu.Lock()
-	tl, exists := h.lockedStorageObligations[soid]
+	lo, exists := h.lockedStorageObligations[soid]
 	if !exists {
 		h.log.Critical(errObligationUnlocked)
 		return
 	}
+	lo.n--
+	if lo.n == 0 {
+		delete(h.lockedStorageObligations, soid)
+	}
 	h.mu.Unlock()
 
-	tl.Unlock()
+	lo.mu.Unlock()
 }

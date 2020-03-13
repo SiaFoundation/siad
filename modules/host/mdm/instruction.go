@@ -23,7 +23,7 @@ type instruction interface {
 	// and can therefore be executed parallel to other readonly instructions.
 	ReadOnly() bool
 	// Time returns the amount of time the execution of the instruction takes.
-	Time() uint64
+	Time() (uint64, error)
 }
 
 // Output is the type of the outputs returned by a program run on the MDM.

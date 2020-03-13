@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -163,7 +164,11 @@ func TestHostAndRentVanilla(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	st, err := createServerTester(t.Name())
+	// Inject a dependency that forces legacy contract renewal without clearing
+	// the contract.
+	pd := modules.ProdDependencies
+	csDeps := &dependencies.DependencyRenewWithoutClear{}
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, csDeps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1038,7 +1043,7 @@ func TestRenterRenew(t *testing.T) {
 	// Set an allowance for the renter, allowing a contract to be formed.
 	allowanceValues := url.Values{}
 	testFunds := "10000000000000000000000000000" // 10k SC
-	testPeriod := 10
+	testPeriod := 20
 	allowanceValues.Set("funds", testFunds)
 	allowanceValues.Set("period", strconv.Itoa(testPeriod))
 	allowanceValues.Set("renewwindow", strconv.Itoa(testPeriod/2))
@@ -1096,6 +1101,11 @@ func TestRenterRenew(t *testing.T) {
 	}
 	contractID := rc.Contracts[0].ID
 
+	// Contract size should be == 0 since contract was cleared.
+	if rc.Contracts[0].Size == 0 {
+		t.Fatalf("contract size should be 0 but was %v", rc.Contracts[0].Size)
+	}
+
 	// Mine enough blocks to enter the renewal window.
 	testWindow := testPeriod / 2
 	for i := 0; i < testWindow+1; i++ {
@@ -1106,11 +1116,14 @@ func TestRenterRenew(t *testing.T) {
 	}
 	// Wait for the contract to be renewed.
 	for i := 0; i < 200 && (len(rc.Contracts) != 1 || rc.Contracts[0].ID == contractID); i++ {
-		st.getAPI("/renter/contracts", &rc)
+		st.getAPI("/renter/contracts?expired=true", &rc)
 		time.Sleep(100 * time.Millisecond)
 	}
 	if rc.Contracts[0].ID == contractID {
 		t.Fatal("contract was not renewed:", rc.Contracts[0])
+	}
+	if rc.ExpiredContracts[0].Size != 0 {
+		t.Fatalf("contract size after renewal should be 0 but was %v", rc.Contracts[0].Size)
 	}
 
 	// Try downloading the file.

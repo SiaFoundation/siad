@@ -381,7 +381,7 @@ func (h *Host) queueActionItem(height types.BlockHeight, id types.FileContractID
 // which means that addStorageObligation should be exclusively called when
 // creating a new, empty file contract or when renewing an existing file
 // contract.
-func (h *Host) managedAddStorageObligation(so storageObligation) error {
+func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) error {
 	var soid types.FileContractID
 	err := func() error {
 		h.mu.Lock()
@@ -391,7 +391,9 @@ func (h *Host) managedAddStorageObligation(so storageObligation) error {
 		soid = so.id()
 		_, exists := h.lockedStorageObligations[soid]
 		if !exists {
-			h.log.Critical("addStorageObligation called with an obligation that is not locked")
+			err := errors.New("addStorageObligation called with an obligation that is not locked")
+			h.log.Print(err)
+			return err
 		}
 		// Sanity check - There needs to be enough time left on the file contract
 		// for the host to safely submit the file contract revision.
@@ -421,7 +423,7 @@ func (h *Host) managedAddStorageObligation(so storageObligation) error {
 			// file contract is being renewed, and that the sector should be
 			// re-added with a new expiration height. If there is an error at any
 			// point, all of the sectors should be removed.
-			if len(so.SectorRoots) != 0 {
+			if len(so.SectorRoots) != 0 && !renewal {
 				err := h.AddSectorBatch(so.SectorRoots)
 				if err != nil {
 					return err
@@ -502,7 +504,9 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	soid := so.id()
 	_, exists := h.lockedStorageObligations[soid]
 	if !exists {
-		h.log.Critical("modifyStorageObligation called with an obligation that is not locked")
+		err := errors.New("modifyStorageObligation called with an obligation that is not locked")
+		h.log.Print(err)
+		return err
 	}
 	// TODO: remove this once the host was optimized for disk i/o
 	// If the contract is too large we delay for a bit to prevent rapid updates
