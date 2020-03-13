@@ -40,8 +40,7 @@ pushd $(dirname "$0")
 # work from "changelog" folder
 pushd "$changelog_files_dir"
 
-# head
-
+# Write the head of the changelog
 echo 'writing head (begining) of changelog.md'
 cp "$head_filename" "$changelog_md"
 
