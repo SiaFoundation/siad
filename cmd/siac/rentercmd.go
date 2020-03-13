@@ -30,6 +30,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+const (
+	fileSizeUnits = "    B, KB, MB, GB, TB, PB, EB, ZB, YB"
+)
+
 var (
 	renterAllowanceCancelCmd = &cobra.Command{
 		Use:   "cancel",
@@ -901,6 +905,8 @@ func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("Allowance updated. %v setting(s) changed.\n", changedFields)
 }
 
+// rentersetallowancecmdInteractive is the interactive handler for `siac renter
+// setallowance`.
 func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowance modules.Allowance) *client.AllowanceRequestPost {
 	br := bufio.NewReader(os.Stdin)
 	readString := func() string {
@@ -909,9 +915,9 @@ func rentersetallowancecmdInteractive(req *client.AllowanceRequestPost, allowanc
 	}
 
 	fmt.Println("Interactive tool for setting the 8 allowance options.")
-	fmt.Println()
 
 	// funds
+	fmt.Println()
 	fmt.Println(`1/8: Funds
 Funds determines the number of siacoins that the renter will spend when forming
 contracts with hosts. The renter will not allocate more than this amount of
@@ -932,6 +938,7 @@ contracts later in the billing cycle will be reported as 'unspent unallocated'.
 The command 'siac renter allowance' can be used to see a breakdown of spending.
 
 The following units can be used to set the allowance:
+
     H  (10^24 H per siacoin)
     SC (1 siacoin per SC)
     KS (1000 siacoins per KS)`)
@@ -947,24 +954,33 @@ The following units can be used to set the allowance:
 		funds = allowance.Funds
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Funds: ")
-	allowanceFunds := readString()
-	if allowanceFunds != "" {
+	for {
+		fmt.Print("Funds: ")
+		allowanceFunds := readString()
+		if allowanceFunds == "" {
+			break
+		}
+
 		hastings, err := parseCurrency(allowanceFunds)
 		if err != nil {
-			die("Could not parse amount:", err)
+			fmt.Printf("Could not parse currency in '%v': %v\n", allowanceFunds, err)
+			continue
 		}
 		_, err = fmt.Sscan(hastings, &funds)
 		if err != nil {
-			die("Could not parse amount:", err)
+			fmt.Printf("Could not parse currency in '%v': %v\n", allowanceFunds, err)
+			continue
 		}
-	}
-	if funds.IsZero() {
-		die("Allowance cannot be 0")
+		if funds.IsZero() {
+			fmt.Println("Allowance funds cannot be 0")
+			continue
+		}
+		break
 	}
 	req = req.WithFunds(funds)
 
 	// period
+	fmt.Println()
 	fmt.Println(`2/8: Period
 The period is equivalent to the billing cycle length. The renter will not spend
 more than the full balance of its funds every billing period. When the billing
@@ -987,24 +1003,33 @@ The following units can be used to set the period:
 		period = allowance.Period
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Period: ")
-	allowancePeriod := readString()
-	if allowancePeriod != "" {
+	for {
+		fmt.Print("Period: ")
+		allowancePeriod := readString()
+		if allowancePeriod == "" {
+			break
+		}
+
 		blocks, err := parsePeriod(allowancePeriod)
 		if err != nil {
-			die("Could not parse period:", err)
+			fmt.Printf("Could not parse period in '%v': %v\n", allowancePeriod, err)
+			continue
 		}
 		_, err = fmt.Sscan(blocks, &period)
 		if err != nil {
-			die("Could not parse period:", err)
+			fmt.Printf("Could not parse period in '%v': %v\n", allowancePeriod, err)
+			continue
 		}
-	}
-	if period == 0 {
-		die("Period cannot be 0")
+		if period == 0 {
+			fmt.Println("Period cannot be 0")
+			continue
+		}
+		break
 	}
 	req = req.WithPeriod(period)
 
 	// hosts
+	fmt.Println()
 	fmt.Println(`3/8: Hosts
 Hosts sets the number of hosts that will be used to form the allowance. Sia
 gains most of its resiliancy from having a large number of hosts. More hosts
@@ -1024,21 +1049,29 @@ double the default number of default hosts be treated as a maximum.`)
 		hosts = allowance.Hosts
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Hosts: ")
-	allowanceHosts := readString()
-	if allowanceHosts != "" {
+	for {
+		fmt.Print("Hosts: ")
+		allowanceHosts := readString()
+		if allowanceHosts == "" {
+			break
+		}
+
 		hostsInt, err := strconv.Atoi(allowanceHosts)
 		if err != nil {
-			die("Could not parse host count")
+			fmt.Printf("Could not parse host count in '%v': %v\n", allowanceHosts, err)
+			continue
 		}
 		hosts = uint64(hostsInt)
+		if hosts == 0 {
+			fmt.Println("Must have at least 1 host")
+			continue
+		}
+		break
 	}
-	if hosts == 0 {
-		die("Must have at least 1 host")
-	}
-	req = req.WithHosts(uint64(hosts))
+	req = req.WithHosts(hosts)
 
 	// renewWindow
+	fmt.Println()
 	fmt.Println(`4/8: Renew Window
 The renew window is how long the user has to renew their contracts. At the end
 of the period, all of the contracts expire. The contracts need to be renewed
@@ -1072,24 +1105,33 @@ The following units can be used to set the renew window:
 		renewWindow = allowance.RenewWindow
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Renew Window: ")
-	allowanceRenewWindow := readString()
-	if allowanceRenewWindow != "" {
+	for {
+		fmt.Print("Renew Window: ")
+		allowanceRenewWindow := readString()
+		if allowanceRenewWindow == "" {
+			break
+		}
+
 		rw, err := parsePeriod(allowanceRenewWindow)
 		if err != nil {
-			die("Could not parse renew window")
+			fmt.Printf("Could not parse renew window in '%v': %v\n", allowanceRenewWindow, err)
+			continue
 		}
 		_, err = fmt.Sscan(rw, &renewWindow)
 		if err != nil {
-			die("Could not parse renew window:", err)
+			fmt.Printf("Could not parse renew window in '%v': %v\n", allowanceRenewWindow, err)
+			continue
 		}
-	}
-	if renewWindow == 0 {
-		die("Cannot set renew window to zero")
+		if renewWindow == 0 {
+			fmt.Println("Cannot set renew window to zero")
+			continue
+		}
+		break
 	}
 	req = req.WithRenewWindow(renewWindow)
 
 	// expectedStorage
+	fmt.Println()
 	fmt.Println(`5/8: Expected Storage
 Expected storage is the amount of storage that the user expects to keep on the
 Sia network. This value is important to calibrate the spending habits of siad.
@@ -1106,7 +1148,11 @@ uptime and age.
 
 Even when the user has a large allowance and a low amount of expected storage,
 siad will try to optimize for saving money; siad tries to meet the users storage
-and bandwidth needs while spending significantly less than the overall allowance.`)
+and bandwidth needs while spending significantly less than the overall allowance.
+
+The following units can be used to set the expected storage:`)
+	fmt.Println()
+	fmt.Println(fileSizeUnits)
 	fmt.Println()
 	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedStorage))
@@ -1119,21 +1165,29 @@ and bandwidth needs while spending significantly less than the overall allowance
 		expectedStorage = allowance.ExpectedStorage
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Storage: ")
-	allowanceExpectedStorage := readString()
-	if allowanceExpectedStorage != "" {
+	for {
+		fmt.Print("Expected Storage: ")
+		allowanceExpectedStorage := readString()
+		if allowanceExpectedStorage == "" {
+			break
+		}
+
 		es, err := parseFilesize(allowanceExpectedStorage)
 		if err != nil {
-			die("Could not parse expected storage")
+			fmt.Printf("Could not parse expected storage in '%v': %v\n", allowanceExpectedStorage, err)
+			continue
 		}
 		_, err = fmt.Sscan(es, &expectedStorage)
 		if err != nil {
-			die("Could not parse expected storage")
+			fmt.Printf("Could not parse expected storage in '%v': %v\n", allowanceExpectedStorage, err)
+			continue
 		}
+		break
 	}
 	req = req.WithExpectedStorage(expectedStorage)
 
 	// expectedUpload
+	fmt.Println()
 	fmt.Println(`6/8: Expected Upload
 Expected upload tells siad how much uploading the user expects to do each
 period. If this value is high, siad will more strongly prefer hosts that have a
@@ -1142,7 +1196,11 @@ metrics than upload bandwidth pricing, because even if the host charges a lot
 for upload bandwidth, it will not impact the total cost to the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
-consider repair bandwidth separately.`)
+consider repair bandwidth separately.
+
+The following units can be used to set the expected upload:`)
+	fmt.Println()
+	fmt.Println(fileSizeUnits)
 	fmt.Println()
 	euCurrentPeriod := allowance.ExpectedUpload * uint64(allowance.Period)
 	euDefaultPeriod := modules.DefaultAllowance.ExpectedUpload * uint64(modules.DefaultAllowance.Period)
@@ -1154,32 +1212,39 @@ consider repair bandwidth separately.`)
 	} else {
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Upload: ")
 	var expectedUpload uint64
-	allowanceExpectedUpload := readString()
-	if allowanceExpectedUpload != "" {
+	for {
+		fmt.Print("Expected Upload: ")
+		allowanceExpectedUpload := readString()
+		if allowanceExpectedUpload == "" {
+			// The user did not enter a value so use either the default or the
+			// current value, as appropriate.
+			if allowance.ExpectedUpload == 0 {
+				expectedUpload = euDefaultPeriod
+			} else {
+				expectedUpload = euCurrentPeriod
+			}
+			break
+		}
+
 		eu, err := parseFilesize(allowanceExpectedUpload)
 		if err != nil {
-			die("Could not parse expected upload")
+			fmt.Printf("Could not parse expected upload in '%v': %v\n", allowanceExpectedUpload, err)
+			continue
 		}
 		_, err = fmt.Sscan(eu, &expectedUpload)
 		if err != nil {
-			die("Could not parse expected upload")
+			fmt.Printf("Could not parse expected upload in '%v': %v\n", allowanceExpectedUpload, err)
+			continue
 		}
-	} else {
-		// The user did not enter a value so use either the default or the
-		// current value, as appropriate.
-		if allowance.ExpectedUpload == 0 {
-			expectedUpload = euDefaultPeriod
-		} else {
-			expectedUpload = euCurrentPeriod
-		}
+		break
 	}
 	// User set field in terms of period, need to normalize to per-block.
 	expectedUpload /= uint64(period)
 	req = req.WithExpectedUpload(expectedUpload)
 
 	// expectedDownload
+	fmt.Println()
 	fmt.Println(`7/8: Expected Download
 Expected download tells siad how much downloading the user expects to do each
 period. If this value is high, siad will more strongly prefer hosts that have a
@@ -1188,7 +1253,11 @@ metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
 
 The user should not consider download bandwidth used during repairs, siad will
-consider repair bandwidth separately.`)
+consider repair bandwidth separately.
+
+The following units can be used to set the expected download:`)
+	fmt.Println()
+	fmt.Println(fileSizeUnits)
 	fmt.Println()
 	edCurrentPeriod := allowance.ExpectedDownload * uint64(allowance.Period)
 	edDefaultPeriod := modules.DefaultAllowance.ExpectedDownload * uint64(modules.DefaultAllowance.Period)
@@ -1200,32 +1269,39 @@ consider repair bandwidth separately.`)
 	} else {
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Download: ")
 	var expectedDownload uint64
-	allowanceExpectedDownload := readString()
-	if allowanceExpectedDownload != "" {
+	for {
+		fmt.Print("Expected Download: ")
+		allowanceExpectedDownload := readString()
+		if allowanceExpectedDownload == "" {
+			// The user did not enter a value so use either the default or the
+			// current value, as appropriate.
+			if allowance.ExpectedDownload == 0 {
+				expectedDownload = edDefaultPeriod
+			} else {
+				expectedDownload = edCurrentPeriod
+			}
+			break
+		}
+
 		ed, err := parseFilesize(allowanceExpectedDownload)
 		if err != nil {
-			die("Could not parse expected download")
+			fmt.Printf("Could not parse expected download in '%v': %v\n", allowanceExpectedDownload, err)
+			continue
 		}
 		_, err = fmt.Sscan(ed, &expectedDownload)
 		if err != nil {
-			die("Could not parse expected download")
+			fmt.Printf("Could not parse expected download in '%v': %v\n", allowanceExpectedDownload, err)
+			continue
 		}
-	} else {
-		// The user did not enter a value so use either the default or the
-		// current value, as appropriate.
-		if allowance.ExpectedDownload == 0 {
-			expectedDownload = edDefaultPeriod
-		} else {
-			expectedDownload = edCurrentPeriod
-		}
+		break
 	}
 	// User set field in terms of period, need to normalize to per-block.
 	expectedDownload /= uint64(period)
 	req = req.WithExpectedDownload(expectedDownload)
 
 	// expectedRedundancy
+	fmt.Println()
 	fmt.Println(`8/8: Expected Redundancy
 Expected redundancy is used in conjunction with expected storage to determine
 the total amount of raw storage that will be stored on hosts. If the expected
@@ -1250,16 +1326,23 @@ how large the files are.`)
 		expectedRedundancy = allowance.ExpectedRedundancy
 		fmt.Println("Enter desired value below, or leave blank to use current value")
 	}
-	fmt.Print("Expected Redundancy: ")
-	allowanceExpectedRedundancy := readString()
-	if allowanceExpectedRedundancy != "" {
+	for {
+		fmt.Print("Expected Redundancy: ")
+		allowanceExpectedRedundancy := readString()
+		if allowanceExpectedRedundancy == "" {
+			break
+		}
+
 		expectedRedundancy, err = strconv.ParseFloat(allowanceExpectedRedundancy, 64)
 		if err != nil {
-			die("Could not parse expected redundancy")
+			fmt.Printf("Could not parse expected redundancy in '%v': %v\n", allowanceExpectedRedundancy, err)
+			continue
 		}
-	}
-	if expectedRedundancy < 1 {
-		die("Expected redundancy must be at least 1")
+		if expectedRedundancy < 1 {
+			fmt.Println("Expected redundancy must be at least 1")
+			continue
+		}
+		break
 	}
 	req = req.WithExpectedRedundancy(expectedRedundancy)
 	fmt.Println()
