@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSendSiacoins probes the SendSiacoins method of the wallet.
@@ -174,7 +175,7 @@ func TestSendSiacoinsFeeIncluded(t *testing.T) {
 	_, tpoolFee = wt.wallet.tpool.FeeEstimation()
 	sendValue = tpoolFee.Mul64(750).Sub64(1)
 	_, err = wt.wallet.SendSiacoinsFeeIncluded(sendValue, types.UnlockHash{})
-	if err != modules.ErrLowBalance {
+	if !errors.Contains(err, modules.ErrLowBalance) {
 		t.Fatal("Sending less than the fee with fees included should fail.")
 	}
 

@@ -493,11 +493,19 @@ func (api *API) walletSeedsHandler(w http.ResponseWriter, req *http.Request, _ h
 
 // walletSiacoinsHandler handles API calls to /wallet/siacoins.
 func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	quit := false
 	var txns []types.Transaction
 	if req.FormValue("outputs") != "" {
 		// multiple amounts + destinations
-		if req.FormValue("amount") != "" || req.FormValue("destination") != "" || req.FormValue("feeIncluded") != "" {
+		if req.FormValue("amount") != "" || req.FormValue("destination") != "" {
 			WriteError(w, Error{"cannot supply both 'outputs' and single amount+destination pair"}, http.StatusInternalServerError)
+			quit = true
+		}
+		if req.FormValue("feeIncluded") != "" {
+			WriteError(w, Error{"cannot supply both 'outputs' and 'feeIncluded'"}, http.StatusInternalServerError)
+			quit = true
+		}
+		if quit {
 			return
 		}
 
@@ -517,16 +525,19 @@ func (api *API) walletSiacoinsHandler(w http.ResponseWriter, req *http.Request, 
 		amount, ok := scanAmount(req.FormValue("amount"))
 		if !ok {
 			WriteError(w, Error{"could not read amount from POST call to /wallet/siacoins"}, http.StatusBadRequest)
-			return
+			quit = true
 		}
 		dest, err := scanAddress(req.FormValue("destination"))
 		if err != nil {
 			WriteError(w, Error{"could not read address from POST call to /wallet/siacoins"}, http.StatusBadRequest)
-			return
+			quit = true
 		}
 		feeIncluded, err := scanBool(req.FormValue("feeIncluded"))
 		if err != nil {
 			WriteError(w, Error{"could not read feeIncluded from POST call to /wallet/siacoins"}, http.StatusBadRequest)
+			quit = true
+		}
+		if quit {
 			return
 		}
 

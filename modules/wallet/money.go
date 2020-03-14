@@ -1,11 +1,10 @@
 package wallet
 
 import (
-	"errors"
-
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // sortedOutputs is a struct containing a slice of siacoin outputs and their
@@ -109,19 +108,19 @@ func (w *Wallet) UnconfirmedBalance() (outgoingSiacoins types.Currency, incoming
 // transaction is submitted to the transaction pool and is also returned. Fees
 // are added to the amount sent.
 func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error) {
-	return w.sendSiacoinsReal(amount, dest, false)
+	return w.sendSiacoins(amount, dest, false)
 }
 
 // SendSiacoinsFeeIncluded creates a transaction sending 'amount' to 'dest'. The
 // transaction is submitted to the transaction pool and is also returned. Fees
 // are subtracted from the amount sent.
 func (w *Wallet) SendSiacoinsFeeIncluded(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error) {
-	return w.sendSiacoinsReal(amount, dest, true)
+	return w.sendSiacoins(amount, dest, true)
 }
 
-// SendSiacoinsReal creates a transaction sending 'amount' to 'dest'. The
+// sendSiacoins creates a transaction sending 'amount' to 'dest'. The
 // transaction is submitted to the transaction pool and is also returned.
-func (w *Wallet) sendSiacoinsReal(amount types.Currency, dest types.UnlockHash, feeIncluded bool) (txns []types.Transaction, err error) {
+func (w *Wallet) sendSiacoins(amount types.Currency, dest types.UnlockHash, feeIncluded bool) (txns []types.Transaction, err error) {
 	if err := w.tg.Add(); err != nil {
 		err = modules.ErrWalletShutdown
 		return nil, err
@@ -149,7 +148,7 @@ func (w *Wallet) sendSiacoinsReal(amount types.Currency, dest types.UnlockHash, 
 		// not allowed and would error out later.
 		if amount.Cmp(tpoolFee) <= 0 {
 			w.log.Println("Attempt to send coins has failed - not enough to cover fee")
-			return nil, modules.ErrLowBalance
+			return nil, errors.AddContext(modules.ErrLowBalance, "not enough coins to cover fee")
 		}
 		amount = amount.Sub(tpoolFee)
 	}
