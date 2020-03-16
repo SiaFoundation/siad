@@ -245,6 +245,10 @@ func (h *Host) initNetworking(address string) (err error) {
 	if err != nil {
 		return errors.AddContext(err, "Failed to subscribe to the SiaMux")
 	}
+	// Close the listener when h.tg.OnStop is called.
+	h.tg.OnStop(func() {
+		h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
+	})
 
 	return nil
 }
