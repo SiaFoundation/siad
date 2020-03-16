@@ -4200,7 +4200,9 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
-received.
+received. There is a 30s default timeout applied to downloading a skylink. If
+the data can not be found within this 30s time constraint, a 404 will be
+returned. This timeout is configurable through the query string parameters.
 
 ### Path Parameters 
 ### Required
@@ -4222,6 +4224,13 @@ If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
 returned. Currently we only support 'concat', which will return the concatenated
 data of all subfiles in that directory.
+
+**timeout** | int  
+If 'timeout' is set, the download will fail if the Skyfile can not be retrieved 
+before it expires. Note that this timeout does not cover the actual download 
+time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
+value of 0 will be ignored. If no timeout is given, the default will be used,
+which is a 30 second timeout.
 
 ### Response Header
 
