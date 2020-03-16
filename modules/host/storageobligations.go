@@ -328,6 +328,7 @@ func (so storageObligation) value() types.Currency {
 
 // recentRevision returns the most recent file contract revision in this storage
 // obligation.
+// TODO: verify correctness
 func (so storageObligation) recentRevision() types.FileContractRevision {
 	numRevisions := len(so.RevisionTransactionSet)
 	if numRevisions > 0 {

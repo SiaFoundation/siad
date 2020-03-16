@@ -77,8 +77,7 @@ func (h *Host) payByContract(stream siamux.Stream) (types.Currency, error) {
 	renterSignature := signatureFromRequest(recentRevision, pbcr)
 
 	// sign the revision
-	blockHeight := h.BlockHeight()
-	txn, err := createRevisionSignature(renterRevision, renterSignature, h.secretKey, blockHeight)
+	txn, err := createRevisionSignature(renterRevision, renterSignature, h.secretKey, h.blockHeight)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
 	}
