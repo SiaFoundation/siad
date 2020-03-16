@@ -181,12 +181,12 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*lockedObligation
 
-	// A set of rpc price tables that are covered by its own RW mutex. It
-	// contains the host's price table and the set of price tables the host has
-	// communicated to all renters, thus guaranteeing a set of prices for a
-	// fixed period of time. The host's RPC prices are dynamic, and are subject
-	// to various conditions specific to the RPC in question. Examples of such
-	// conditions are congestion, load, liquidity, etc.
+	// A collection of rpc price tables, covered by its own RW mutex. It
+	// contains the host's current price table and the set of price tables the
+	// host has communicated to all renters, thus guaranteeing a set of prices
+	// for a fixed period of time. The host's RPC prices are dynamic, and are
+	// subject to various conditions specific to the RPC in question. Examples
+	// of such conditions are congestion, load, liquidity, etc.
 	staticPriceTables hostPrices
 
 	// Misc state.
@@ -202,7 +202,9 @@ type Host struct {
 
 // hostPrices is a helper type that wraps both the host's RPC price table and
 // the set of price tables containing prices it has guaranteed to all renters,
-// covered by a read write mutex to help lock contention.
+// covered by a read write mutex to help lock contention. It contains a separate
+// minheap that enables efficiently purging expired price tables from the
+// 'guaranteed' map.
 type hostPrices struct {
 	current       modules.RPCPriceTable
 	guaranteed    map[types.Specifier]*modules.RPCPriceTable
@@ -255,12 +257,9 @@ func (pth *priceTableHeap) managedPeekExpiry() int64 {
 func (pth *priceTableHeap) managedExpired(threshold int64) (expired []types.Specifier) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
-
-	// If the heap is empty return empty slice
 	if pth.heap.Len() == 0 {
 		return
 	}
-
 	for pth.heap.Len() > 0 {
 		pt := heap.Pop(&pth.heap)
 		if pt.(*modules.RPCPriceTable).Expiry > threshold {
