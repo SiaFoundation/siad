@@ -14,7 +14,6 @@ import (
 // of payment it will either update the file contract or call upon the ephemeral
 // account manager to process the payment.
 func (h *Host) ProcessPayment(stream siamux.Stream) (types.Currency, error) {
-	fmt.Println("processin gpaymne")
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := modules.RPCRead(stream, &pr); err != nil {
@@ -25,7 +24,7 @@ func (h *Host) ProcessPayment(stream siamux.Stream) (types.Currency, error) {
 	case modules.PayByEphemeralAccount:
 		return h.payByEphemeralAccount(stream)
 	case modules.PayByContract:
-		return h.payByContract(stream)
+		return h.managedPayByContract(stream)
 	default:
 		return types.ZeroCurrency, errors.Compose(fmt.Errorf("Could not handle payment method %v", pr.Type), modules.ErrUnknownPaymentMethod)
 	}
@@ -51,9 +50,9 @@ func (h *Host) payByEphemeralAccount(stream siamux.Stream) (types.Currency, erro
 	return pbear.Message.Amount, nil
 }
 
-// payByContract processese a PayByContractRequest coming in over the given
-// stream.
-func (h *Host) payByContract(stream siamux.Stream) (types.Currency, error) {
+// managedPayByContract processese a PayByContractRequest coming in over the
+// given stream.
+func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error) {
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
 	if err := modules.RPCRead(stream, &pbcr); err != nil {
