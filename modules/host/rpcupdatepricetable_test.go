@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"math"
 	"net"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,36 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
-
-// TestMarshalUnmarshalRPCPriceTable tests we can properly marshal and unmarshal
-// the RPC price table.
-func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
-	pt := modules.RPCPriceTable{
-		Expiry:               time.Now().Add(1).Unix(),
-		UpdatePriceTableCost: types.SiacoinPrecision,
-		InitBaseCost:         types.SiacoinPrecision,
-		MemoryTimeCost:       types.SiacoinPrecision,
-		ReadBaseCost:         types.SiacoinPrecision,
-		ReadLengthCost:       types.SiacoinPrecision,
-	}
-
-	// marshal & unmarshal it
-	ptMar, err := json.Marshal(pt)
-	if err != nil {
-		t.Fatal("Failed to marshal RPC price table", err)
-	}
-	var ptUmar modules.RPCPriceTable
-	err = json.Unmarshal(ptMar, &ptUmar)
-	if err != nil {
-		t.Fatal("Failed to unmarshal RPC price table", err)
-	}
-
-	if !reflect.DeepEqual(pt, ptUmar) {
-		t.Log("expected:", pt)
-		t.Log("actual:", ptUmar)
-		t.Fatal("Unmarshaled table doesn't match expected one")
-	}
-}
 
 // TestPriceTableMinHeap verifies the working of the min heap
 func TestPriceTableMinHeap(t *testing.T) {
