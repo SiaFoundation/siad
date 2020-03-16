@@ -144,6 +144,8 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// TODO: add tests for unfinished WAL updates, failing to load the WAL from disk, etc.
+
 	// load from disk
 	rcLoaded, err := LoadRefCounter(rcFilePath)
 	if err != nil {
@@ -177,7 +179,7 @@ func testCallAppend(rc *RefCounter) error {
 	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
 	inMemSecCountBefore := rc.numSectors
 	if err := rc.Append(); err != nil {
-		return err
+		return errors.AddContext(err, "failed to execute the append operation")
 	}
 	fiAfter, err := os.Stat(rc.filepath)
 	if err != nil {
@@ -186,7 +188,7 @@ func testCallAppend(rc *RefCounter) error {
 	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
 	inMemSecCountAfter := rc.numSectors
 	if numSectorsDiskBefore+1 != numSectorsDiskAfter {
-		return fmt.Errorf("failed to append data on disk by one sector")
+		return fmt.Errorf(fmt.Sprintf("failed to append data on disk by one sector. sectors before %d, sectors after %d", numSectorsDiskBefore, numSectorsDiskAfter))
 	}
 	if inMemSecCountBefore+1 != inMemSecCountAfter {
 		return fmt.Errorf("failed to update the in-memory cache of the number of secotrs")
@@ -229,17 +231,17 @@ func testCallSwap(rc *RefCounter) error {
 		return err
 	}
 	defer f.Close()
-	buf := make([]byte, 2)
-	if _, err := f.ReadAt(buf, int64(offset(4))); err != nil {
+	var buf u16
+	if _, err := f.ReadAt(buf[:], int64(offset(4))); err != nil {
 		return errors.AddContext(err, "failed to read from disk")
 	}
-	if expectedCount4 != binary.LittleEndian.Uint16(buf) {
+	if expectedCount4 != binary.LittleEndian.Uint16(buf[:]) {
 		return errors.New("failed to swap counts on disk")
 	}
-	if _, err := f.ReadAt(buf, int64(offset(2))); err != nil {
+	if _, err := f.ReadAt(buf[:], int64(offset(2))); err != nil {
 		return errors.AddContext(err, "failed to read from disk")
 	}
-	if expectedCount2 != binary.LittleEndian.Uint16(buf) {
+	if expectedCount2 != binary.LittleEndian.Uint16(buf[:]) {
 		return errors.New("failed to swap counts on disk")
 	}
 	return nil
