@@ -24,7 +24,23 @@ func TestObligationLocks(t *testing.T) {
 	// Simple lock and unlock.
 	ob1 := types.FileContractID{1}
 	ht.host.managedLockStorageObligation(ob1)
+
+	// The obligation should be in the lockedStorageObligationMap.
+	ht.host.mu.Lock()
+	_, locked := ht.host.lockedStorageObligations[ob1]
+	ht.host.mu.Unlock()
+	if !locked {
+		t.Fatal("obligation should be locked but wasn't")
+	}
 	ht.host.managedUnlockStorageObligation(ob1)
+
+	// The obligation shouldn't be in the lockedStorageObligationMap.
+	ht.host.mu.Lock()
+	_, locked = ht.host.lockedStorageObligations[ob1]
+	ht.host.mu.Unlock()
+	if locked {
+		t.Fatal("obligation should be unlocked but wasn't")
+	}
 
 	// Simple lock and unlock, with trylock.
 	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)

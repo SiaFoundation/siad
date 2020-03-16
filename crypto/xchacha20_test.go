@@ -75,8 +75,11 @@ func TestXChaCha20DecryptInPlace(t *testing.T) {
 	}
 
 	// Partially decrypt the ciphertext in place.
-	// Choose a random block index in the first half of the plaintext.
-	blockIndex := fastrand.Uint64n(2048 / 64)
+	// Choose a random, non-zero block index in the first half of the plaintext.
+	var blockIndex uint64
+	for blockIndex == 0 {
+		blockIndex = fastrand.Uint64n(2048 / 64)
+	}
 	partiallyDecryptedCiphertext, err := key.DecryptBytesInPlace(ciphertext, blockIndex)
 	if err != nil {
 		t.Fatal(err)

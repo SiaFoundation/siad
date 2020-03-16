@@ -11,6 +11,18 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// emptyBlockForWork creates an empty block without any transactions.
+func emptyBlockForWork(currentBlockHeight types.BlockHeight, address types.UnlockHash, parentID types.BlockID) types.Block {
+	var b types.Block
+	b.ParentID = parentID
+	b.Timestamp = types.CurrentTimestamp()
+	b.MinerPayouts = []types.SiacoinOutput{{
+		Value:      b.CalculateSubsidy(currentBlockHeight + 1),
+		UnlockHash: address,
+	}}
+	return b
+}
+
 // solveHeader solves the header by finding a nonce for the target
 func solveHeader(target types.Target, bh types.BlockHeader) (types.BlockHeader, error) {
 	header := encoding.Marshal(bh)
@@ -79,16 +91,4 @@ func (tn *TestNode) MineEmptyBlock() error {
 	b.Nonce = header.Nonce
 	// Submit block.
 	return errors.AddContext(tn.MinerBlockPost(b), "failed to submit block")
-}
-
-// emptyBlockForWork creates an empty block without any transactions.
-func emptyBlockForWork(currentBlockHeight types.BlockHeight, address types.UnlockHash, parentID types.BlockID) types.Block {
-	var b types.Block
-	b.ParentID = parentID
-	b.Timestamp = types.CurrentTimestamp()
-	b.MinerPayouts = []types.SiacoinOutput{{
-		Value:      b.CalculateSubsidy(currentBlockHeight + 1),
-		UnlockHash: address,
-	}}
-	return b
 }

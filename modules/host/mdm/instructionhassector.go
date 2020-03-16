@@ -93,6 +93,6 @@ func (i *instructionHasSector) ReadOnly() bool {
 }
 
 // Time returns the execution time of an 'HasSector' instruction.
-func (i *instructionHasSector) Time() uint64 {
-	return modules.MDMTimeHasSector
+func (i *instructionHasSector) Time() (uint64, error) {
+	return modules.MDMTimeHasSector, nil
 }

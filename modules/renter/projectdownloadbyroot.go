@@ -4,7 +4,6 @@ package renter
 // underlying sector root.
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -248,14 +247,19 @@ func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) 
 		return
 	case <-time.After(timeout):
 	}
+	pdbr.managedTimeout()
+}
 
+// managedTimeout handles a timeout. It will close out the completeChan and set
+// the appropriate error.
+func (pdbr *projectDownloadByRoot) managedTimeout() {
 	pdbr.mu.Lock()
 	defer pdbr.mu.Unlock()
 	if pdbr.staticComplete() {
 		return
 	}
 	close(pdbr.completeChan)
-	pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", timeout.Seconds())))
+	pdbr.err = errors.Compose(ErrRootNotFound, ErrProjectTimedOut)
 }
 
 // staticComplete is a helper function to check if the project has already
@@ -285,12 +289,23 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		tg: &r.tg,
 	}
 
+	// Apply the timeout to the project. A timeout of 0 will be ignored.
+	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
+		pdbr.managedTimeout()
+		return nil, pdbr.err
+	}
+	go pdbr.threadedHandleTimeout(timeout)
+
 	// Give the project to every worker. The list of workers needs to be fetched
 	// first, and then the job can be queued because cleanup of the project
 	// assumes that no more workers will be added to the project once the first
 	// worker has begun work.
 	wp := r.staticWorkerPool
 	wp.mu.RLock()
+	if len(wp.workers) == 0 {
+		wp.mu.RUnlock()
+		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
+	}
 	workers := make([]*worker, 0, len(wp.workers))
 	for _, w := range wp.workers {
 		workers = append(workers, w)
@@ -305,12 +320,6 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	for _, w := range workers {
 		w.callQueueJobDownloadByRoot(jdbr)
 	}
-
-	// Apply the timeout to the project. A timeout of 0 will be ignored.
-	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
-		timeout = time.Duration(1) // instant timeout
-	}
-	go pdbr.threadedHandleTimeout(timeout)
 
 	// Block until the project has completed.
 	select {

@@ -174,17 +174,18 @@ func TestRenterStream(t *testing.T) {
 		Renters: 1,
 		Miners:  1,
 	}
+	groupDir := renterTestDir(t.Name())
 
 	// Specify subtests to run
-	subTests := []test{
-		{"TestStreamLargeFile", testStreamLargeFile},
-		{"TestStreamRepair", testStreamRepair},
-		{"TestUploadStreaming", testUploadStreaming},
-		{"TestUploadStreamingWithBadDeps", testUploadStreamingWithBadDeps},
+	subTests := []siatest.SubTest{
+		{Name: "TestStreamLargeFile", Test: testStreamLargeFile},
+		{Name: "TestStreamRepair", Test: testStreamRepair},
+		{Name: "TestUploadStreaming", Test: testUploadStreaming},
+		{Name: "TestUploadStreamingWithBadDeps", Test: testUploadStreamingWithBadDeps},
 	}
 
 	// Run tests
-	if err := runRenterTests(t, groupParams, subTests); err != nil {
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }
