@@ -70,7 +70,10 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 	// i.staticState.potentialUploadRevenue = i.staticState.potentialUploadRevenue.Add(types.ZeroCurrency)
 
 	ps := i.staticState
-	newMerkleRoot := ps.sectors.appendSector(sectorData)
+	newMerkleRoot, err := ps.sectors.appendSector(sectorData)
+	if err != nil {
+		return errOutput(err)
+	}
 
 	// TODO: Construct proof if necessary.
 	var proof []crypto.Hash
@@ -105,6 +108,6 @@ func (i *instructionAppend) ReadOnly() bool {
 }
 
 // Time returns the execution time of an 'Append' instruction.
-func (i *instructionAppend) Time() uint64 {
-	return modules.MDMTimeAppend
+func (i *instructionAppend) Time() (uint64, error) {
+	return modules.MDMTimeAppend, nil
 }

@@ -24,6 +24,10 @@ var (
 	// than the amount necessary to store at least one sector
 	ErrInsufficientAllowance = errors.New("allowance is not large enough to cover fees of contract creation")
 	errTooExpensive          = errors.New("host price was too high")
+
+	// errContractNotGFR is used to indicate that a contract renewal failed
+	// because the contract was marked !GFR.
+	errContractNotGFR = errors.New("contract is not GoodForRenew")
 )
 
 type (
@@ -689,6 +693,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		return types.ZeroCurrency, errors.New("contract utility could not be found")
 	}
 
+	// The contract could have been marked !GFR while the contractor lock was not
+	// held.
+	if !oldUtility.GoodForRenew {
+		return types.ZeroCurrency, errContractNotGFR
+	}
+
 	// Perform the actual renew. If the renew fails, return the
 	// contract. If the renew fails we check how often it has failed
 	// before. Once it has failed for a certain number of blocks in a
@@ -1102,7 +1112,10 @@ func (c *Contractor) threadedContractMaintenance() {
 		// already will have logged the error, and in the event of an error,
 		// 'fundsSpent' will return '0'.
 		fundsSpent, err := c.managedRenewContract(renewal, currentPeriod, allowance, blockHeight, endHeight)
-		if err != nil {
+		if errors.Contains(err, errContractNotGFR) {
+			// Do not add a renewal error.
+			c.log.Debugln("Contract skipped because it is not good for renew", renewal.id)
+		} else if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
 		} else {

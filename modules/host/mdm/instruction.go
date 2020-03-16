@@ -9,7 +9,7 @@ import (
 // a program.
 type instruction interface {
 	// Cost returns the cost of executing the instruction and the potential
-	// refund should the program not be commmitted.
+	// refund should the program not be committed.
 	Cost() (cost types.Currency, refund types.Currency, _ error)
 	// Execute executes the instruction without committing the changes to the
 	// storage obligation.
@@ -23,7 +23,7 @@ type instruction interface {
 	// and can therefore be executed parallel to other readonly instructions.
 	ReadOnly() bool
 	// Time returns the amount of time the execution of the instruction takes.
-	Time() uint64
+	Time() (uint64, error)
 }
 
 // Output is the type of the outputs returned by a program run on the MDM.

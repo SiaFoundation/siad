@@ -14,16 +14,15 @@ import (
 // and the program data for a program that executes a single
 // HasSectorInstruction.
 func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	instructions := []modules.Instruction{
-		NewHasSectorInstruction(0),
-	}
+	i := NewHasSectorInstruction(0)
+	instructions := []modules.Instruction{i}
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
 
 	// Compute cost and used memory.
 	cost, refund := modules.MDMHasSectorCost(pt)
 	usedMemory := modules.MDMHasSectorMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeAppend+modules.MDMTimeCommit)
+	memoryCost := modules.MDMMemoryCost(pt, usedMemory, TimeHasSector+TimeCommit)
 	initCost := modules.MDMInitCost(pt, uint64(len(data)))
 	cost = cost.Add(memoryCost).Add(initCost)
 	return instructions, data, cost, refund, usedMemory

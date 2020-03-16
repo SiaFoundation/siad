@@ -139,6 +139,6 @@ func (i *instructionReadSector) ReadOnly() bool {
 }
 
 // Time returns the execution time of a 'ReadSector' instruction.
-func (i *instructionReadSector) Time() uint64 {
-	return modules.MDMTimeReadSector
+func (i *instructionReadSector) Time() (uint64, error) {
+	return modules.MDMTimeReadSector, nil
 }
