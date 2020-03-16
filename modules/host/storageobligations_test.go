@@ -95,13 +95,11 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	}
 	defer ht.Close()
 
-	// Add a storage obligation to the host
+	// Create a storage obligation & add a revision
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Add a file contract revision
 	sectorRoot, sectorData := randSector()
 	so.SectorRoots = []crypto.Hash{sectorRoot}
 	validPayouts, missedPayouts := so.payouts()
@@ -124,8 +122,9 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	// Insert the SO
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedAddStorageObligation(so, false)
+	ht.host.managedUnlockStorageObligation(so.id())
 
-	// Get a snapshot & verify its fields
+	// Fetch a snapshot & verify its fields
 	snapshot, err := ht.host.managedGetStorageObligationSnapshot(so.id())
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +142,7 @@ func TestStorageObligationSnapshot(t *testing.T) {
 		t.Fatalf("Unexpected sector root, expected %v but received %v", sectorRoot, snapshot.SectorRoots()[0])
 	}
 
-	// Update the SO
+	// Update the SO with new data
 	sectorRoot2, sectorData := randSector()
 	ht.host.managedLockStorageObligation(so.id())
 	err = so.Update([]crypto.Hash{sectorRoot, sectorRoot2}, nil, map[crypto.Hash][]byte{sectorRoot2: sectorData})
@@ -151,8 +150,9 @@ func TestStorageObligationSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Note that we purposefully do not unlock the SO before retrieving a
-	// snapshot here.
+	// Verify the SO has been updated with the new sector root. Note that we
+	// purposefully have not yet unlocked the SO here. Clarifying the snapshot
+	// is retrieved from the database.
 	snapshot, err = ht.host.managedGetStorageObligationSnapshot(so.id())
 	if err != nil {
 		t.Fatal(err)
