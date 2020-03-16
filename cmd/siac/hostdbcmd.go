@@ -66,6 +66,7 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 	fmt.Fprintf(w, "\t\tStorage:\t %.3f\n", info.ScoreBreakdown.StorageRemainingAdjustment)
 	fmt.Fprintf(w, "\t\tUptime:\t %.3f\n", info.ScoreBreakdown.UptimeAdjustment)
 	fmt.Fprintf(w, "\t\tVersion:\t %.3f\n", info.ScoreBreakdown.VersionAdjustment)
+	fmt.Fprintf(w, "\t\tConversion Rate:\t %.3f\n", info.ScoreBreakdown.ConversionRate)
 	w.Flush()
 }
 
@@ -367,24 +368,37 @@ func hostdbviewcmd(pubkey string) {
 
 	fmt.Println("Host information:")
 
-	fmt.Println("  Public Key:      ", info.Entry.PublicKeyString)
-	fmt.Println("  Version:         ", info.Entry.Version)
-	fmt.Println("  Block First Seen:", info.Entry.FirstSeen)
-	fmt.Println("  Absolute Score:  ", info.ScoreBreakdown.Score)
-	fmt.Println("  Filtered:        ", info.Entry.Filtered)
+	fmt.Println("  Public Key:               ", info.Entry.PublicKeyString)
+	fmt.Println("  Version:                  ", info.Entry.Version)
+	fmt.Println("  Block First Seen:         ", info.Entry.FirstSeen)
+	fmt.Println("  Absolute Score:           ", info.ScoreBreakdown.Score)
+	fmt.Println("  Filtered:                 ", info.Entry.Filtered)
+	fmt.Println("  NetAddress:               ", info.Entry.NetAddress)
+	fmt.Println("  Last IP Net Change:       ", info.Entry.LastIPNetChange)
+	fmt.Println("  Number of IP Net Changes: ", len(info.Entry.IPNets))
 
 	fmt.Println("\n  Host Settings:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
 	fmt.Fprintln(w, "\t\tAccepting Contracts:\t", info.Entry.AcceptingContracts)
-	fmt.Fprintln(w, "\t\tTotal Storage:\t", info.Entry.TotalStorage/1e9, "GB")
-	fmt.Fprintln(w, "\t\tRemaining Storage:\t", info.Entry.RemainingStorage/1e9, "GB")
-	fmt.Fprintln(w, "\t\tOffered Collateral (TB / Mo):\t", currencyUnits(info.Entry.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)))
+	fmt.Fprintln(w, "\t\tMax Duration:\t", info.Entry.MaxDuration)
+	fmt.Fprintln(w, "\t\tWindow Size:\t", info.Entry.WindowSize)
+	fmt.Fprintln(w, "\t\tTotal Storage:\t", modules.FilesizeUnits(info.Entry.TotalStorage))
+	fmt.Fprintln(w, "\t\tRemaining Storage:\t", modules.FilesizeUnits(info.Entry.RemainingStorage))
+	fmt.Fprintln(w, "\t\tMax Download Batch Size:\t", modules.FilesizeUnits(info.Entry.MaxDownloadBatchSize))
+	fmt.Fprintln(w, "\t\tMax Revision Batch Size:\t", modules.FilesizeUnits(info.Entry.MaxReviseBatchSize))
+	fmt.Fprintln(w, "\t\tSector Size:\t", modules.FilesizeUnits(info.Entry.SectorSize))
+	fmt.Fprintln(w, "\n\t\tOffered Collateral (TB / Mo):\t", currencyUnits(info.Entry.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)))
 	fmt.Fprintln(w, "\t\tMax Collateral:\t", currencyUnits(info.Entry.MaxCollateral))
-	fmt.Fprintln(w, "\n\t\tContract Price:\t", currencyUnits(info.Entry.ContractPrice))
+	fmt.Fprintln(w, "\t\tContract Price:\t", currencyUnits(info.Entry.ContractPrice))
+	fmt.Fprintln(w, "\t\tBase RPC Price:\t", currencyUnits(info.Entry.BaseRPCPrice))
+	fmt.Fprintln(w, "\t\tSector Access Price:\t", currencyUnits(info.Entry.SectorAccessPrice))
 	fmt.Fprintln(w, "\t\tStorage Price (TB / Mo):\t", currencyUnits(info.Entry.StoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)))
 	fmt.Fprintln(w, "\t\tDownload Price (1 TB):\t", currencyUnits(info.Entry.DownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)))
 	fmt.Fprintln(w, "\t\tUpload Price (1 TB):\t", currencyUnits(info.Entry.UploadBandwidthPrice.Mul(modules.BytesPerTerabyte)))
-	fmt.Fprintln(w, "\t\tVersion:\t", info.Entry.Version)
+	fmt.Fprintln(w, "\t\tUnlock Hash:\t", info.Entry.UnlockHash)
+	fmt.Fprintln(w, "\n\t\tVersion:\t", info.Entry.Version)
+	fmt.Fprintln(w, "\t\tRevision Number:\t", info.Entry.RevisionNumber)
 	w.Flush()
 
 	printScoreBreakdown(&info)
@@ -411,8 +425,14 @@ func hostdbviewcmd(pubkey string) {
 
 	// Compute the uptime ratio, but shift by 0.02 to acknowledge fully that
 	// 98% uptime and 100% uptime is valued the same.
-	fmt.Println("\n  Scan History Length:", len(info.Entry.ScanHistory))
-	fmt.Printf("  Overall Uptime:      %.3f\n", uptimeRatio)
+	fmt.Println("\n  Scan History Length:              ", len(info.Entry.ScanHistory))
+	fmt.Println("  Historic Downtime:                ", info.Entry.HistoricDowntime)
+	fmt.Println("  Historic Uptime:                  ", info.Entry.HistoricUptime)
+	fmt.Printf("  Historic Failed Interactions:      %.3f\n", info.Entry.HistoricFailedInteractions)
+	fmt.Printf("  Historic Successful Interactions:  %.3f\n", info.Entry.HistoricSuccessfulInteractions)
+	fmt.Println("  Recent Failed Interactions:       ", info.Entry.RecentFailedInteractions)
+	fmt.Println("  Recent Successful Interactions:   ", info.Entry.RecentSuccessfulInteractions)
+	fmt.Printf("  Overall Uptime:                    %.3f\n", uptimeRatio)
 
 	fmt.Println()
 }
