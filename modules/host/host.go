@@ -64,8 +64,10 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"path/filepath"
 	"sync"
@@ -202,9 +204,10 @@ type Host struct {
 // the set of price tables containing prices it has guaranteed to all renters,
 // covered by a read write mutex to help lock contention.
 type hostPrices struct {
-	current    modules.RPCPriceTable
-	guaranteed map[types.Specifier]*modules.RPCPriceTable
-	mu         sync.RWMutex
+	current       modules.RPCPriceTable
+	guaranteed    map[types.Specifier]*modules.RPCPriceTable
+	staticMinHeap priceTableHeap
+	mu            sync.RWMutex
 }
 
 // lockedObligation is a helper type that locks a TryMutex and a counter to
@@ -213,6 +216,97 @@ type hostPrices struct {
 type lockedObligation struct {
 	mu siasync.TryMutex
 	n  uint
+}
+
+// priceTableHeap is a helper type that contains a min heap of rpc price tables,
+// sorted on their expiry. The heap is guarded by its own mutex and allows for
+// peeking at the min expiry.
+type priceTableHeap struct {
+	heap rpcPriceTableHeap
+	mu   sync.Mutex
+}
+
+// managedLen returns the length of the heap
+func (pth *priceTableHeap) managedLen() int {
+	pth.mu.Lock()
+	defer pth.mu.Unlock()
+	return pth.heap.Len()
+}
+
+// managedPeekExpiry returns the current lowest expiry of the heap
+func (pth *priceTableHeap) managedPeekExpiry() int64 {
+	pth.mu.Lock()
+	defer pth.mu.Unlock()
+
+	// If the heap is empty return max value
+	if pth.heap.Len() == 0 {
+		return math.MaxInt64
+	}
+
+	var expiry int64
+	pt := heap.Pop(&pth.heap).(*modules.RPCPriceTable)
+	expiry = pt.Expiry
+	heap.Push(&pth.heap, pt)
+	return expiry
+}
+
+// managedExpired returns the expired UUIDs for all rpc price tables with an
+// expiry lower than the given threshold.
+func (pth *priceTableHeap) managedExpired(threshold int64) (expired []types.Specifier) {
+	pth.mu.Lock()
+	defer pth.mu.Unlock()
+
+	// If the heap is empty return empty slice
+	if pth.heap.Len() == 0 {
+		return
+	}
+
+	for pth.heap.Len() > 0 {
+		pt := heap.Pop(&pth.heap)
+		if pt.(*modules.RPCPriceTable).Expiry > threshold {
+			heap.Push(&pth.heap, pt)
+			break
+		}
+		expired = append(expired, pt.(*modules.RPCPriceTable).UUID)
+	}
+	return
+}
+
+// managedPush will add a price table to the heap.
+func (pth *priceTableHeap) managedPush(pt *modules.RPCPriceTable) {
+	pth.mu.Lock()
+	defer pth.mu.Unlock()
+	heap.Push(&pth.heap, pt)
+}
+
+// managedPop returns the price table with the lowest expiry.
+func (pth *priceTableHeap) managedPop() (pt *modules.RPCPriceTable) {
+	pth.mu.Lock()
+	defer pth.mu.Unlock()
+	if pth.heap.Len() == 0 {
+		return
+	}
+	pt = heap.Pop(&pth.heap).(*modules.RPCPriceTable)
+	return
+}
+
+// rpcPriceTableHeap is a min heap of rpc price tables
+type rpcPriceTableHeap []*modules.RPCPriceTable
+
+// Implementation of heap.Interface for rpcPriceTableHeap.
+func (pth rpcPriceTableHeap) Len() int           { return len(pth) }
+func (pth rpcPriceTableHeap) Less(i, j int) bool { return pth[i].Expiry < pth[j].Expiry }
+func (pth rpcPriceTableHeap) Swap(i, j int)      { pth[i], pth[j] = pth[j], pth[i] }
+func (pth *rpcPriceTableHeap) Push(x interface{}) {
+	pt := x.(*modules.RPCPriceTable)
+	*pth = append(*pth, pt)
+}
+func (pth *rpcPriceTableHeap) Pop() interface{} {
+	old := *pth
+	n := len(old)
+	pt := old[n-1]
+	*pth = old[0 : n-1]
+	return pt
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -293,18 +387,16 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 			}
 			defer h.tg.Done()
 
-			// collect expired price tables
+			// peek at the min expiry to allow escaping early
 			now := time.Now().Unix()
-			var expired []types.Specifier
-			h.staticPriceTables.mu.RLock()
-			for uuid, pt := range h.staticPriceTables.guaranteed {
-				if now >= pt.Expiry {
-					expired = append(expired, uuid)
-				}
+			minExpiry := h.staticPriceTables.staticMinHeap.managedPeekExpiry()
+			if minExpiry > now {
+				return
 			}
-			h.staticPriceTables.mu.RUnlock()
 
-			// prune them from the map
+			// collect expired uuids using our min heap and prune the expired
+			// price tables
+			expired := h.staticPriceTables.staticMinHeap.managedExpired(now)
 			if len(expired) > 0 {
 				h.staticPriceTables.mu.Lock()
 				for _, uuid := range expired {
@@ -354,8 +446,13 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
-		staticPriceTables:        hostPrices{guaranteed: make(map[types.Specifier]*modules.RPCPriceTable)},
-		persistDir:               persistDir,
+		staticPriceTables: hostPrices{
+			guaranteed: make(map[types.Specifier]*modules.RPCPriceTable),
+			staticMinHeap: priceTableHeap{
+				heap: make([]*modules.RPCPriceTable, 0),
+			},
+		},
+		persistDir: persistDir,
 	}
 
 	// Call stop in the event of a partial startup.

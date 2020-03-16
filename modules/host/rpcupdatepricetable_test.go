@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net"
 	"reflect"
 	"sync"
@@ -45,6 +46,45 @@ func TestMarshalUnmarshalJSONRPCPriceTable(t *testing.T) {
 		t.Log("expected:", pt)
 		t.Log("actual:", ptUmar)
 		t.Fatal("Unmarshaled table doesn't match expected one")
+	}
+}
+
+// TestPriceTableMinHeap verifies the working of the min heap
+func TestPriceTableMinHeap(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	now := time.Now()
+	pth := priceTableHeap{heap: make([]*modules.RPCPriceTable, 0)}
+	expiry := pth.managedPeekExpiry()
+	if expiry != math.MaxInt64 {
+		t.Fatalf("Expected expiry to be equal to math.MaxInt64, yet it was %v", expiry)
+	}
+
+	pt1 := modules.RPCPriceTable{Expiry: now.Add(9 * time.Minute).Unix()}
+	pt2 := modules.RPCPriceTable{Expiry: now.Add(3 * time.Minute).Unix()}
+	pt3 := modules.RPCPriceTable{Expiry: now.Add(6 * time.Minute).Unix()}
+	pt4 := modules.RPCPriceTable{Expiry: now.Add(1 * time.Minute).Unix()}
+	pth.managedPush(&pt1)
+	pth.managedPush(&pt2)
+	pth.managedPush(&pt3)
+	pth.managedPush(&pt4)
+
+	numPTs := pth.managedLen()
+	if numPTs != 4 {
+		t.Fatalf("Expected heap to contain 4 price tables, yet managedLen returned %d", numPTs)
+	}
+
+	expired := pth.managedExpired(now.Add(7 * time.Minute).Unix())
+	if len(expired) != 3 {
+		t.Fatalf("Expected 3 price tables to be expired, yet managedExpired returned %d price tables", len(expired))
+	}
+
+	expectedPt1 := pth.managedPop()
+	if expectedPt1 != &pt1 {
+		t.Fatal("Expected the last price table to be equal to pt1, which is the price table with the highest expiry")
 	}
 }
 

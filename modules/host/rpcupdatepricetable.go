@@ -18,8 +18,8 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	pt := h.staticPriceTables.current
 	h.staticPriceTables.mu.RUnlock()
 
-	// update the epxiry ensire prices are guaranteed for the
-	// 'rpcPriceGuaranteePeriod'
+	// update the epxiry to ensure prices are guaranteed for the duration of the
+	// rpcPriceGuaranteePeriod
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
 
 	// json encode the price table
@@ -34,12 +34,11 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to write response")
 	}
 
-	// Note: we have sent the price table before processing payment for this
+	// Note that we have sent the price table before processing payment for this
 	// RPC. This allows the renter to check for price gouging and close out the
-	// stream if it does not agree with pricing. After this the host processes
-	// payment, and the renter will pay for the RPC according to the price it
-	// just received. This essentially means the host is optimistically sending
-	// over the price table, which is ok.
+	// stream if it does not agree with pricing. The price table has not yet
+	// been added to the map, which means that the renter has to pay for it in
+	// order for it to became active and accepted by the host.
 
 	// TODO process payment
 
@@ -48,6 +47,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	h.staticPriceTables.mu.Lock()
 	h.staticPriceTables.guaranteed[pt.UUID] = &pt
 	h.staticPriceTables.mu.Unlock()
+	h.staticPriceTables.staticMinHeap.managedPush(&pt)
 
 	return nil
 }
