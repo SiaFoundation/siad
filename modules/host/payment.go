@@ -14,12 +14,12 @@ import (
 // of payment it will either update the file contract or call upon the ephemeral
 // account manager to process the payment.
 func (h *Host) ProcessPayment(stream siamux.Stream) (types.Currency, error) {
+	fmt.Println("processin gpaymne")
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := modules.RPCRead(stream, &pr); err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not read payment request")
 	}
-
 	// process payment depending on the payment method
 	switch pr.Type {
 	case modules.PayByEphemeralAccount:

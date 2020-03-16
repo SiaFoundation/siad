@@ -63,6 +63,36 @@ func (s testStream) SetWriteDeadline(t time.Time) error {
 	panic("not implemented yet")
 }
 
+func TestStreams(t *testing.T) {
+	renter, host := NewTestStreams()
+
+	var pr modules.PaymentRequest
+	var wg sync.WaitGroup
+	wg.Add(1)
+	func() {
+		defer wg.Done()
+		req := modules.PaymentRequest{Type: modules.PayByContract}
+		err := modules.RPCWrite(renter, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	wg.Add(1)
+	func() {
+		defer wg.Done()
+		err := modules.RPCRead(host, &pr)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	wg.Wait()
+
+	if pr.Type != modules.PayByContract {
+		t.Fatal("Unexpected request received")
+	}
+}
+
 // TestProcessPayment verifies the payment processing methods on the host.
 func TestProcessPayment(t *testing.T) {
 	if testing.Short() {
@@ -98,26 +128,6 @@ func TestProcessPayment(t *testing.T) {
 	payment := types.NewCurrency64(1)
 	rev := newPaymentRevision(so, payment)
 
-	// create a stream (note we don't want to create a stream using a subscriber
-	// the host's listening to, if we were to do that we would end up in the
-	// host's stream handler while for this test we want to pass a stream
-	// directory)
-	stream, err := newTestStream(ht.host)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	errorChan := make(chan error, 0)
-	ht.host.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
-	ht.host.staticMux.NewListener(modules.HostSiaMuxSubscriberName, func(stream siamux.Stream) {
-		_, err := ht.host.ProcessPayment(stream)
-		if err != nil {
-			errorChan <- err
-		}
-	})
-
-	var payByResponse modules.PayByContractResponse
-
 	// random renter sk
 	var sk crypto.SecretKey
 	copy(sk[:], fastrand.Bytes(64))
@@ -127,18 +137,48 @@ func TestProcessPayment(t *testing.T) {
 	hash := signedTxn.SigHash(0, ht.host.blockHeight)
 	sig := crypto.SignHash(hash, sk)
 
-	// send PaymentRequest & PayByContractRequest
-	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(rev, sig)
-	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
-	if err != nil {
-		t.Fatal(err)
+	// create two streams
+	rStream, hStream := NewTestStreams()
+	defer rStream.Close()
+	defer hStream.Close()
+
+	var wg sync.WaitGroup
+	var payByResponse modules.PayByContractResponse
+
+	renterFunc := func() {
+		// send PaymentRequest & PayByContractRequest
+		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+		pbcRequest := newPayByContractRequest(rev, sig)
+		err = modules.RPCWriteAll(rStream, pRequest, pbcRequest)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// receive PayByContractResponse
+		err := modules.RPCRead(rStream, &payByResponse)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	hostFunc := func() {
+		// process payment request
+		_, err := ht.host.ProcessPayment(hStream)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	// receive PayByContractResponse
-	if err := modules.RPCRead(stream, &payByResponse); err != nil {
-		t.Fatal(err)
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		renterFunc()
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		hostFunc()
+	}()
+	wg.Wait()
 
 	// verify the host's signature
 	hash = crypto.HashAll(rev)
