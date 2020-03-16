@@ -32,6 +32,7 @@ func TestPriceTableMinHeap(t *testing.T) {
 		t.Fatalf("Expected expiry to be equal to math.MaxInt64, yet it was %v", expiry)
 	}
 
+	// add 4 price tables (out of order) that expire somewhere in the future
 	pt1 := modules.RPCPriceTable{Expiry: now.Add(9 * time.Minute).Unix()}
 	pt2 := modules.RPCPriceTable{Expiry: now.Add(3 * time.Minute).Unix()}
 	pt3 := modules.RPCPriceTable{Expiry: now.Add(6 * time.Minute).Unix()}
@@ -41,16 +42,19 @@ func TestPriceTableMinHeap(t *testing.T) {
 	pth.managedPush(&pt3)
 	pth.managedPush(&pt4)
 
+	// verify the heap holds 4 price tables
 	numPTs := pth.managedLen()
 	if numPTs != 4 {
 		t.Fatalf("Expected heap to contain 4 price tables, yet managedLen returned %d", numPTs)
 	}
 
+	// verify it considers 3 to be expired if we pass it a threshold 7' from now
 	expired := pth.managedExpired(now.Add(7 * time.Minute).Unix())
 	if len(expired) != 3 {
 		t.Fatalf("Expected 3 price tables to be expired, yet managedExpired returned %d price tables", len(expired))
 	}
 
+	// verify 'pop' returns the last remaining price table
 	expectedPt1 := pth.managedPop()
 	if expectedPt1 != &pt1 {
 		t.Fatal("Expected the last price table to be equal to pt1, which is the price table with the highest expiry")
@@ -89,7 +93,6 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	ht.host.staticPriceTables.mu.RLock()
 	numPTs := len(ht.host.staticPriceTables.guaranteed)
 	ht.host.staticPriceTables.mu.RUnlock()
-
 	if numPTs == 0 {
 		t.Fatal("Expected at least one price table to be set in the host's price table map")
 	}
