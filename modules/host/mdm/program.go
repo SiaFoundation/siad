@@ -71,6 +71,23 @@ func outputFromError(err error, cost, refund types.Currency) Output {
 	}
 }
 
+// decodeInstruction creates a specific instance of an instruction from a
+// specified generic instruction.
+func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
+	switch i.Specifier {
+	case modules.SpecifierAppend:
+		return p.staticDecodeAppendInstruction(i)
+	case modules.SpecifierDropSectors:
+		return p.staticDecodeDropSectorsInstruction(i)
+	case modules.SpecifierHasSector:
+		return p.staticDecodeHasSectorInstruction(i)
+	case modules.SpecifierReadSector:
+		return p.staticDecodeReadSectorInstruction(i)
+	default:
+		return nil, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
+	}
+}
+
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
@@ -89,18 +106,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 
 	// Convert the instructions.
 	var err error
-	var instruction instruction
 	for _, i := range instructions {
-		switch i.Specifier {
-		case modules.SpecifierAppend:
-			instruction, err = p.staticDecodeAppendInstruction(i)
-		case modules.SpecifierHasSector:
-			instruction, err = p.staticDecodeHasSectorInstruction(i)
-		case modules.SpecifierReadSector:
-			instruction, err = p.staticDecodeReadSectorInstruction(i)
-		default:
-			err = fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
-		}
+		instruction, err := decodeInstruction(p, i)
 		if err != nil {
 			return nil, nil, errors.Compose(err, p.staticData.Close())
 		}
@@ -157,7 +164,11 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		// Add the memory the next instruction is going to allocate to the
 		// total.
 		p.usedMemory += i.Memory()
-		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, i.Time())
+		time, err := i.Time()
+		if err != nil {
+			p.outputChan <- outputFromError(err, p.executionCost, p.potentialRefund)
+		}
+		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
 		// Get the instruction cost and refund.
 		instructionCost, refund, err := i.Cost()
 		if err != nil {
