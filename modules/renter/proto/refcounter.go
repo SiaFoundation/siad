@@ -123,6 +123,12 @@ func NewRefCounter(path string, numSec uint64) (RefCounter, error) {
 	}, nil
 }
 
+// Append appends one counter to the end of the refcounter file and
+// initializes it with `1`
+func (rc *RefCounter) Append() error {
+	return rc.managedAppend()
+}
+
 // Count returns the number of references to the given sector
 func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 	rc.mu.Lock()
@@ -160,15 +166,20 @@ func (rc *RefCounter) DeleteRefCounter() (err error) {
 	return os.Remove(rc.filepath)
 }
 
+// DropSectors removes the last numSec sector counts from the refcounter file
+func (rc *RefCounter) DropSectors(numSec uint64) error {
+	return rc.managedDropSectors(numSec)
+}
+
 // Increment increments the reference counter of a given sector. The sector
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Increment(secIdx uint64) (uint16, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if secIdx > rc.numSectors-1 {
 		return 0, ErrInvalidSectorNumber
 	}
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
 	count, err := rc.readCount(secIdx)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to read count")
@@ -180,19 +191,8 @@ func (rc *RefCounter) Increment(secIdx uint64) (uint16, error) {
 	return count, rc.writeCount(secIdx, count)
 }
 
-// callAppend appends one counter to the end of the refcounter file and
-// initializes it with `1`
-func (rc *RefCounter) callAppend() error {
-	return rc.managedAppend()
-}
-
-// callDropSectors removes the last numSec sector counts from the refcounter file
-func (rc *RefCounter) callDropSectors(numSec uint64) error {
-	return rc.managedDropSectors(numSec)
-}
-
-// callSwap swaps the two sectors at the given indices
-func (rc *RefCounter) callSwap(i, j uint64) error {
+// Swap swaps the two sectors at the given indices
+func (rc *RefCounter) Swap(i, j uint64) error {
 	return rc.managedSwap(i, j)
 }
 
