@@ -108,19 +108,33 @@ func (w *Wallet) UnconfirmedBalance() (outgoingSiacoins types.Currency, incoming
 // transaction is submitted to the transaction pool and is also returned. Fees
 // are added to the amount sent.
 func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error) {
-	return w.sendSiacoins(amount, dest, false)
+	fee := w.getFee()
+	return w.managedSendSiacoins(amount, fee, dest)
 }
 
 // SendSiacoinsFeeIncluded creates a transaction sending 'amount' to 'dest'. The
 // transaction is submitted to the transaction pool and is also returned. Fees
 // are subtracted from the amount sent.
 func (w *Wallet) SendSiacoinsFeeIncluded(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error) {
-	return w.sendSiacoins(amount, dest, true)
+	fee := w.getFee()
+	// Don't allow sending an amount equal to the fee, as zero spending is not
+	// allowed and would error out later.
+	if amount.Cmp(fee) <= 0 {
+		w.log.Println("Attempt to send coins has failed - not enough to cover fee")
+		return nil, errors.AddContext(modules.ErrLowBalance, "not enough coins to cover fee")
+	}
+	return w.managedSendSiacoins(amount.Sub(fee), fee, dest)
 }
 
-// sendSiacoins creates a transaction sending 'amount' to 'dest'. The
+func (w *Wallet) getFee() types.Currency {
+	_, tpoolFee := w.tpool.FeeEstimation()
+	tpoolFee = tpoolFee.Mul64(750) // Estimated transaction size in bytes
+	return tpoolFee
+}
+
+// managedSendSiacoins creates a transaction sending 'amount' to 'dest'. The
 // transaction is submitted to the transaction pool and is also returned.
-func (w *Wallet) sendSiacoins(amount types.Currency, dest types.UnlockHash, feeIncluded bool) (txns []types.Transaction, err error) {
+func (w *Wallet) managedSendSiacoins(amount, fee types.Currency, dest types.UnlockHash) (txns []types.Transaction, err error) {
 	if err := w.tg.Add(); err != nil {
 		err = modules.ErrWalletShutdown
 		return nil, err
@@ -140,18 +154,6 @@ func (w *Wallet) sendSiacoins(amount types.Currency, dest types.UnlockHash, feeI
 		return nil, modules.ErrLockedWallet
 	}
 
-	_, tpoolFee := w.tpool.FeeEstimation()
-	tpoolFee = tpoolFee.Mul64(750) // Estimated transaction size in bytes
-	// If the fee is to be included then subtract it now.
-	if feeIncluded {
-		// Don't allow sending an amount equal to the fee, as zero spending is
-		// not allowed and would error out later.
-		if amount.Cmp(tpoolFee) <= 0 {
-			w.log.Println("Attempt to send coins has failed - not enough to cover fee")
-			return nil, errors.AddContext(modules.ErrLowBalance, "not enough coins to cover fee")
-		}
-		amount = amount.Sub(tpoolFee)
-	}
 	output := types.SiacoinOutput{
 		Value:      amount,
 		UnlockHash: dest,
@@ -166,12 +168,12 @@ func (w *Wallet) sendSiacoins(amount types.Currency, dest types.UnlockHash, feeI
 			txnBuilder.Drop()
 		}
 	}()
-	err = txnBuilder.FundSiacoins(amount.Add(tpoolFee))
+	err = txnBuilder.FundSiacoins(amount.Add(fee))
 	if err != nil {
 		w.log.Println("Attempt to send coins has failed - failed to fund transaction:", err)
 		return nil, build.ExtendErr("unable to fund transaction", err)
 	}
-	txnBuilder.AddMinerFee(tpoolFee)
+	txnBuilder.AddMinerFee(fee)
 	txnBuilder.AddSiacoinOutput(output)
 	txnSet, err := txnBuilder.Sign(true)
 	if err != nil {
@@ -186,7 +188,7 @@ func (w *Wallet) sendSiacoins(amount types.Currency, dest types.UnlockHash, feeI
 		w.log.Println("Attempt to send coins has failed - transaction pool rejected transaction:", err)
 		return nil, build.ExtendErr("unable to get transaction accepted", err)
 	}
-	w.log.Println("Submitted a siacoin transfer transaction set for value", amount.HumanString(), "with fees", tpoolFee.HumanString(), "IDs:")
+	w.log.Println("Submitted a siacoin transfer transaction set for value", amount.HumanString(), "with fees", fee.HumanString(), "IDs:")
 	for _, txn := range txnSet {
 		w.log.Println("\t", txn.ID())
 	}
