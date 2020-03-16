@@ -243,7 +243,10 @@ func (h *Host) initNetworking(address string) (err error) {
 
 	// Close the listener when h.tg.OnStop is called.
 	h.tg.OnStop(func() {
-		h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
+		err := h.staticMux.Close()
+		if err != nil {
+			h.log.Println("WARN: closing the SiaMux failed:", err)
+		}
 	})
 
 	return nil
