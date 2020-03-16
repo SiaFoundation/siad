@@ -128,7 +128,7 @@ func (pd *programData) managedBytes(offset, length uint64) ([]byte, error) {
 	// Check if data is available already.
 	if uint64(len(pd.data)) >= offset+length {
 		defer pd.mu.Unlock()
-		return pd.data[offset:], nil
+		return pd.data[offset:][:length], nil
 	}
 	// Check for previous error.
 	if pd.readErr != nil {
