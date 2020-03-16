@@ -95,7 +95,7 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(emsg)
 	}
 
-	// individually test callSwap and callDropSectors
+	// individually test Swap and DropSectors
 	if err = testCallSwap(&rc); err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +120,10 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// swap and truncate
-	if err = rc.callSwap(1, testSectorsCount-callsToTruncate-1); err != nil {
+	if err = rc.Swap(1, testSectorsCount-callsToTruncate-1); err != nil {
 		t.Fatal("Failed to swap:", err)
 	}
-	if err = rc.callDropSectors(1); err != nil {
+	if err = rc.DropSectors(1); err != nil {
 		t.Fatal("Failed to truncate:", err)
 	}
 	callsToTruncate++
@@ -176,7 +176,7 @@ func testCallAppend(rc *RefCounter) error {
 	}
 	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
 	inMemSecCountBefore := rc.numSectors
-	if err := rc.callAppend(); err != nil {
+	if err := rc.Append(); err != nil {
 		return err
 	}
 	fiAfter, err := os.Stat(rc.filepath)
@@ -194,7 +194,7 @@ func testCallAppend(rc *RefCounter) error {
 	return nil
 }
 
-// testCallSwap specifically tests the callSwap method available outside
+// testCallSwap specifically tests the Swap method available outside
 // the subsystem
 func testCallSwap(rc *RefCounter) error {
 	// these hold the values we expect to find at positions 2 and 4 after the swap
@@ -206,7 +206,7 @@ func testCallSwap(rc *RefCounter) error {
 	if err != nil {
 		return err
 	}
-	if err = rc.callSwap(2, 4); err != nil {
+	if err = rc.Swap(2, 4); err != nil {
 		return err
 	}
 
@@ -245,7 +245,7 @@ func testCallSwap(rc *RefCounter) error {
 	return nil
 }
 
-// testCallDropSectors specifically tests the callDropSectors method available outside
+// testCallDropSectors specifically tests the DropSectors method available outside
 // the subsystem
 func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 	fiBefore, err := os.Stat(rc.filepath)
@@ -254,7 +254,7 @@ func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 	}
 	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
 	inMemSecCountBefore := rc.numSectors
-	if err := rc.callDropSectors(numSecs); err != nil {
+	if err := rc.DropSectors(numSecs); err != nil {
 		return err
 	}
 	fiAfter, err := os.Stat(rc.filepath)
