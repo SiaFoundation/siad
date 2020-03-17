@@ -172,7 +172,7 @@ type storageObligation struct {
 // storageObligationStatus indicates the current status of a storage obligation
 type storageObligationStatus uint64
 
-// String converts a storageObligationStatus to a String.
+// String converts a storageObligationStatus to a string.
 func (i storageObligationStatus) String() string {
 	if i == 0 {
 		return "obligationUnresolved"
@@ -254,14 +254,14 @@ func (sos StorageObligationSnapshot) ContractSize() uint64 {
 	return sos.staticContractSize
 }
 
-// MerkleRoot returns the merkleroot, which is static and is the value of the
+// MerkleRoot returns the merkle root, which is static and is the value of the
 // merkle root at the time the snapshot was taken.
 func (sos StorageObligationSnapshot) MerkleRoot() crypto.Hash {
 	return sos.staticMerkleRoot
 }
 
-// SectorRoots returns the sector roots, which is static and are the sector
-// roots present at the time the snapshot was taken.
+// SectorRoots returns a static list of the sector roots present at the time the
+// snapshot was taken.
 func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 	return sos.staticSectorRoots
 }
@@ -571,7 +571,7 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 // they will not be used to modify the storage obligation (most importantly,
 // this means that sectorRoots needs to be updated by the calling function).
 // Virtual sectors will be removed the number of times that they are listed, to
-// remove multiple instances of the same virtual sector, the virtural sector
+// remove multiple instances of the same virtual sector, the virtual sector
 // will need to appear in 'sectorsRemoved' multiple times. Same with
 // 'sectorsGained'.
 func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
