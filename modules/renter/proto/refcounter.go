@@ -3,7 +3,6 @@ package proto
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"sync"
@@ -50,10 +49,6 @@ var (
 const (
 	// RefCounterHeaderSize is the size of the header in bytes
 	RefCounterHeaderSize = 8
-
-	// walFileExtension is the extension of the file which holds the WAL data on
-	// disk
-	walFileExtension = ".wal"
 )
 
 type (
@@ -61,9 +56,9 @@ type (
 	//
 	// Once the number of references drops to zero we consider the sector as
 	// garbage. We move the sector to end of the data and set the
-	// GarbageCollectionOffset to point to it. We can either reuse it to store new
-	// data or drop it from the contract at the end of the current period and
-	// before the contract renewal.
+	// GarbageCollectionOffset to point to it. We can either reuse it to store
+	// new data or drop it from the contract at the end of the current period
+	// and before the contract renewal.
 	RefCounter struct {
 		RefCounterHeader
 
@@ -83,23 +78,13 @@ type (
 )
 
 // LoadRefCounter loads a refcounter from disk
-func LoadRefCounter(path string) (RefCounter, error) {
+func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
 		return RefCounter{}, err
 	}
 	defer f.Close()
-
-	// Load the WAL and execute all outstanding transactions before doing
-	// anything else. We need this to happen before reading the file because it
-	// might affect the number of sectors. We also do it after we've checked
-	// that the refcounter file exists, so we don't need to specifically clean
-	// up the created .wal file.
-	wal, err := openWAL(path + walFileExtension)
-	if err != nil {
-		return RefCounter{}, err
-	}
 
 	var header RefCounterHeader
 	headerBytes := make([]byte, RefCounterHeaderSize)
@@ -127,48 +112,31 @@ func LoadRefCounter(path string) (RefCounter, error) {
 
 // NewRefCounter creates a new sector reference counter file to accompany
 // a contract file
-func NewRefCounter(path string, numSec uint64) (RefCounter, error) {
+func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCounter, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return RefCounter{}, errors.AddContext(err, "Failed to create a file on disk")
 	}
 	defer f.Close()
+
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
+	updateHeader := writeaheadlog.WriteAtUpdate(path, 0, serializeHeader(h))
 
-	// Open the WAL.
-	recoveredTxns, wal, err := writeaheadlog.New(path + walFileExtension)
-	if err != nil {
-		return RefCounter{}, err
-	}
-	// Ignore the recovered transactions - they are leftovers from a previous
-	// file with the same name (unlikely as it is).
-	for _, txn := range recoveredTxns {
-		_ = txn.SignalUpdatesApplied
-	}
-
-	if _, err := f.WriteAt(serializeHeader(h), 0); err != nil {
-		return RefCounter{}, err
-	}
-
-	if _, err = f.Seek(RefCounterHeaderSize, io.SeekStart); err != nil {
-		return RefCounter{}, err
-	}
+	b := make([]byte, numSec*2)
 	for i := uint64(0); i < numSec; i++ {
-		if err = binary.Write(f, binary.LittleEndian, uint16(1)); err != nil {
-			return RefCounter{}, errors.AddContext(err, "failed to initialize file on disk")
-		}
+		binary.LittleEndian.PutUint16(b[numSec*2:numSec*2+2], 1)
 	}
-	if err := f.Sync(); err != nil {
-		return RefCounter{}, err
-	}
+	updateCounters := writeaheadlog.WriteAtUpdate(path, RefCounterHeaderSize, b)
+
+	err = wal.CreateAndApplyTransaction(applyUpdates, updateHeader, updateCounters)
 	return RefCounter{
 		RefCounterHeader: h,
 		filepath:         path,
 		numSectors:       numSec,
 		wal:              wal,
-	}, nil
+	}, err
 }
 
 // Append appends one counter to the end of the refcounter file and
@@ -422,33 +390,6 @@ func makeAppendUpdate(path string, oldNumSectors uint64) writeaheadlog.Update {
 // offset calculates the byte offset of the sector counter in the file on disk
 func offset(secIdx uint64) uint64 {
 	return RefCounterHeaderSize + secIdx*2
-}
-
-// openWAL loads a WAL from a file on disk
-func openWAL(walPath string) (*writeaheadlog.WAL, error) {
-	// Open the WAL.
-	recoveredTxns, wal, err := writeaheadlog.New(walPath)
-	if err != nil {
-		return &writeaheadlog.WAL{}, err
-	}
-
-	if len(recoveredTxns) != 0 {
-		// Apparently the system crashed. Handle the unfinished updates
-		// accordingly.
-		//
-		// After the recovery is complete we can signal the WAL that we are
-		// done and that the updates were applied.
-		// NOTE: This is optional. If for some reason an update cannot be
-		// applied right away it may be skipped and applied later
-		for _, txn := range recoveredTxns {
-			if err := applyUpdates(txn.Updates...); err != nil {
-				return wal, err
-			}
-			// this is optional, so we can ignore the error
-			_ = txn.SignalUpdatesApplied()
-		}
-	}
-	return wal, nil
 }
 
 // serializeHeader serializes a header to []byte
