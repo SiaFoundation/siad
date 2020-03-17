@@ -13,19 +13,22 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// TestProcessPayment verifies the host's ProcessPayment method.
+// TestProcessPayment verifies the host's ProcessPayment method. It covers both
+// the PayByContract and PayByEphemeralAccount payment methods.
 func TestProcessPayment(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
+	// setup host
 	ht, err := newHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ht.Close()
 
+	// setup storage obligationn (emulating a renter creating a contract)
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
 		t.Fatal(err)
@@ -34,8 +37,6 @@ func TestProcessPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// add the SO to emulate a renter creating a contract
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedAddStorageObligation(so, false)
 	if err != nil {
@@ -196,6 +197,7 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 		t.Fatal("Unexpected payment amount")
 	}
 
+	// verify the payment got withdrawn from the ephemeral account
 	balance := getAccountBalance(host.staticAccountManager, account)
 	if !balance.IsZero() {
 		t.Log("Expected: 0")
