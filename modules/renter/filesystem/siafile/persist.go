@@ -331,7 +331,7 @@ func readAndApplyDeleteUpdate(deps modules.Dependencies, update writeaheadlog.Up
 	return err
 }
 
-// readAndApplyInsertupdate reads the insert update and applies it. This helper
+// readAndApplyInsertUpdate reads the insert update and applies it. This helper
 // assumes that the file is not open and so should only be called on start up
 // before any siafiles are loaded from disk
 func readAndApplyInsertUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {

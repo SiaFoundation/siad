@@ -3,9 +3,9 @@ The siatest package is designed to handle the integration tests for the Sia
 codebase.
 
 ## Methodology
-When writing siatests, developer should structure the tests to mimic production
-use.  All interactions with Sia should be performed through the API and client
-methods.
+When writing siatests, the developer should structure the tests to mimic
+production use. All interactions with Sia should be performed through the API
+and client methods.
 
 Test group creation is a time and resource intensive operation. Whenever
 possible tests should be grouped together and share the same test group.
