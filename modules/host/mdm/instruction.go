@@ -9,7 +9,7 @@ import (
 // a program.
 type instruction interface {
 	// Cost returns the cost of executing the instruction and the potential
-	// refund should the program not be commmitted.
+	// refund should the program not be committed.
 	Cost() (cost types.Currency, refund types.Currency, _ error)
 	// Execute executes the instruction without committing the changes to the
 	// storage obligation.
