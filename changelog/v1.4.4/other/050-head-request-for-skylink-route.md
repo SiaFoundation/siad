@@ -1,0 +1,1 @@
+- Add HEAD request support for Skylink route

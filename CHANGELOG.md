@@ -60,17 +60,6 @@ Latest:
  - Split out renter siatests into 2 groups for faster pipelines.
  - Add README to the `siatest` package 
  - Bump golangci-lint version to v1.23.8
- - 
- -
- - Add HEAD request support for Skylink route
- -
- - Add timeout parameter to Skylink route
- - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
-   used.
- -
- -
- - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
-   to safely acquire the host pubkey.
  - Add `go get` command to `make dependencies`.
  - Update repair loop to use `uniqueRefreshPaths` to reduce unnecessary bubble
    calls 

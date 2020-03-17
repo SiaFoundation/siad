@@ -1547,9 +1547,12 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, header, err := r.SkynetSkylinkHead(skylink, 0)
+	status, header, err := r.SkynetSkylinkHead(skylink, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
 	}
 
 	// Verify Skynet-File-Metadata
@@ -1596,8 +1599,14 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected 'Content-Disposition' header")
 	}
 
+	// Perform a HEAD request with a timeout that exceeds the max timeout
+	status, _, _ = r.SkynetSkylinkHead(skylink, 901)
+	if status != http.StatusBadRequest {
+		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
+	}
+
 	// Perform a HEAD request for a skylink that does not exist
-	status, header, err := r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
+	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}

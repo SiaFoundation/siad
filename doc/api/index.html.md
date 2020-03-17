@@ -4230,7 +4230,7 @@ If 'timeout' is set, the download will fail if the Skyfile can not be retrieved
 before it expires. Note that this timeout does not cover the actual download 
 time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
 value of 0 will be ignored. If no timeout is given, the default will be used,
-which is a 30 second timeout.
+which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
 
 ### Response Header
 
