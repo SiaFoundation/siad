@@ -9,8 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -113,12 +111,6 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 // NewRefCounter creates a new sector reference counter file to accompany
 // a contract file
 func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCounter, error) {
-	f, err := os.Create(path)
-	if err != nil {
-		return RefCounter{}, errors.AddContext(err, "Failed to create a file on disk")
-	}
-	defer f.Close()
-
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
@@ -126,11 +118,11 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 
 	b := make([]byte, numSec*2)
 	for i := uint64(0); i < numSec; i++ {
-		binary.LittleEndian.PutUint16(b[numSec*2:numSec*2+2], 1)
+		binary.LittleEndian.PutUint16(b[i*2:i*2+2], 1)
 	}
 	updateCounters := writeaheadlog.WriteAtUpdate(path, RefCounterHeaderSize, b)
 
-	err = wal.CreateAndApplyTransaction(applyUpdates, updateHeader, updateCounters)
+	err := wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, updateHeader, updateCounters)
 	return RefCounter{
 		RefCounterHeader: h,
 		filepath:         path,
@@ -145,8 +137,11 @@ func (rc *RefCounter) Append() error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
-	update := makeAppendUpdate(rc.filepath, rc.numSectors)
-	err := rc.wal.CreateAndApplyTransaction(applyUpdates, update)
+	updateResize := writeaheadlog.TruncateUpdate(rc.filepath, RefCounterHeaderSize+int64(rc.numSectors+1)*2)
+	var b u16
+	binary.LittleEndian.PutUint16(b[:], 1)
+	updateWriteValue := writeaheadlog.WriteAtUpdate(rc.filepath, int64(offset(rc.numSectors)), b[:])
+	err := rc.wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, updateResize, updateWriteValue)
 	if err != nil {
 		return err
 	}
@@ -187,7 +182,7 @@ func (rc *RefCounter) Decrement(secIdx uint64) (uint16, error) {
 	var b u16
 	binary.LittleEndian.PutUint16(b[:], count)
 	update := writeaheadlog.WriteAtUpdate(rc.filepath, int64(offset(secIdx)), b[:])
-	err = rc.wal.CreateAndApplyTransaction(applyUpdates, update)
+	err = rc.wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, update)
 	return count, err
 }
 
@@ -196,7 +191,7 @@ func (rc *RefCounter) DeleteRefCounter() error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	u := writeaheadlog.DeleteUpdate(rc.filepath)
-	return rc.wal.CreateAndApplyTransaction(applyUpdates, u)
+	return rc.wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, u)
 }
 
 // DropSectors removes the last numSec sector counts from the refcounter file
@@ -208,7 +203,7 @@ func (rc *RefCounter) DropSectors(numSec uint64) error {
 	}
 
 	update := writeaheadlog.TruncateUpdate(rc.filepath, RefCounterHeaderSize+int64(rc.numSectors-numSec)*2)
-	err := rc.wal.CreateAndApplyTransaction(applyUpdates, update)
+	err := rc.wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, update)
 	if err != nil {
 		return err
 	}
@@ -239,7 +234,7 @@ func (rc *RefCounter) Increment(secIdx uint64) (uint16, error) {
 	var b u16
 	binary.LittleEndian.PutUint16(b[:], count)
 	update := writeaheadlog.WriteAtUpdate(rc.filepath, int64(offset(secIdx)), b[:])
-	err = rc.wal.CreateAndApplyTransaction(applyUpdates, update)
+	err = rc.wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, update)
 	return count, err
 }
 
@@ -270,7 +265,7 @@ func (rc *RefCounter) Swap(firstSector, secondSector uint64) error {
 	// swap the values on disk
 	updateFirst := writeaheadlog.WriteAtUpdate(rc.filepath, firstOffset, secondValue[:])
 	updateSecond := writeaheadlog.WriteAtUpdate(rc.filepath, secondOffset, firstValue[:])
-	return rc.wal.CreateAndApplyTransaction(applyUpdates, updateFirst, updateSecond)
+	return rc.wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, updateFirst, updateSecond)
 }
 
 // readCount reads the given sector count from disk
@@ -291,80 +286,6 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 	return binary.LittleEndian.Uint16(b[:]), nil
 }
 
-// writeCount stores the given sector count on disk
-func (rc *RefCounter) writeCount(secIdx uint64, c uint16) error {
-	if secIdx > rc.numSectors-1 {
-		return ErrInvalidSectorNumber
-	}
-	f, err := os.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	var b u16
-	binary.LittleEndian.PutUint16(b[:], c)
-	if _, err = f.WriteAt(b[:], int64(offset(secIdx))); err != nil {
-		return err
-	}
-	return f.Sync()
-}
-
-// applyAppendUpdate executes an `updateNameAppend` WAL update
-func applyAppendUpdate(u writeaheadlog.Update) error {
-	if u.Name != updateNameAppend {
-		return fmt.Errorf("applyAppendUpdate called on update of type %v", u.Name)
-	}
-
-	// Decode update.
-	if len(u.Instructions) < 8 {
-		return errors.New("instructions slice of update is too short to contain the numSectors and path")
-	}
-	numSectors := binary.LittleEndian.Uint64(u.Instructions[:8])
-	path := string(u.Instructions[8:])
-
-	// Resize the file on disk.
-	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	var b u16
-	binary.LittleEndian.PutUint16(b[:], 1)
-	offset := int64(offset(numSectors))
-	if _, err = f.WriteAt(b[:], offset); err != nil {
-		return errors.AddContext(err, "failed to write new counter to disk")
-	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// applyUpdates executes a list of WAL updates
-func applyUpdates(updates ...writeaheadlog.Update) error {
-	for _, update := range updates {
-		var err error
-		switch update.Name {
-		case updateNameAppend:
-			err = applyAppendUpdate(update)
-		case updateNameDelete:
-			err = writeaheadlog.ApplyDeleteUpdate(update)
-		case updateNameTruncate:
-			err = writeaheadlog.ApplyTruncateUpdate(update)
-		case updateNameWriteAt:
-			err = writeaheadlog.ApplyWriteAtUpdate(update)
-		default:
-			err = fmt.Errorf("unknown update type: %v", update.Name)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // deserializeHeader deserializes a header from []byte
 func deserializeHeader(b []byte, h *RefCounterHeader) error {
 	if uint64(len(b)) < RefCounterHeaderSize {
@@ -372,19 +293,6 @@ func deserializeHeader(b []byte, h *RefCounterHeader) error {
 	}
 	copy(h.Version[:], b[:8])
 	return nil
-}
-
-// makeAppendUpdate creates a writeaheadlog update for appending the specified
-// file. The `oldNumSectors` value is the value before the append operation.
-func makeAppendUpdate(path string, oldNumSectors uint64) writeaheadlog.Update {
-	// Create update
-	i := make([]byte, 8+len(path))
-	binary.LittleEndian.PutUint64(i[:8], oldNumSectors)
-	copy(i[8:], path)
-	return writeaheadlog.Update{
-		Name:         updateNameAppend,
-		Instructions: i,
-	}
 }
 
 // offset calculates the byte offset of the sector counter in the file on disk

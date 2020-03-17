@@ -2,10 +2,15 @@ package proto
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gitlab.com/NebulousLabs/fastrand"
+
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 
@@ -27,13 +32,14 @@ func TestRefCounter(t *testing.T) {
 	testSectorsCount := uint64(17)
 	callsToTruncate := uint64(0)
 	testDir := build.TempDir(t.Name())
+	testWAL, _ := newTestWAL()
 	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
 		t.Fatal("Failed to create test directory:", err)
 	}
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
 
 	// create a ref counter
-	rc, err := NewRefCounter(rcFilePath, testSectorsCount)
+	rc, err := NewRefCounter(rcFilePath, testSectorsCount, testWAL)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
 	}
@@ -48,10 +54,13 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// set specific counts, so we can track drift
+	b := make([]byte, testSectorsCount*2)
 	for i := uint64(0); i < testSectorsCount; i++ {
-		if err = rc.writeCount(i, testCounterVal(uint16(i))); err != nil {
-			t.Fatal("Failed to write count to disk")
-		}
+		binary.LittleEndian.PutUint16(b[i*2:i*2+2], testCounterVal(uint16(i)))
+	}
+	updateCounters := writeaheadlog.WriteAtUpdate(rc.filepath, RefCounterHeaderSize, b)
+	if err = rc.wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, updateCounters); err != nil {
+		t.Fatal("Failed to write count to disk")
 	}
 
 	// verify the counts we wrote
@@ -140,14 +149,14 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// individually test LoadRefCounter
-	if err = testLoad(rcFilePath); err != nil {
+	if err = testLoad(rcFilePath, testWAL); err != nil {
 		t.Fatal(err)
 	}
 
 	// TODO: add tests for unfinished WAL updates, failing to load the WAL from disk, etc.
 
 	// load from disk
-	rcLoaded, err := LoadRefCounter(rcFilePath)
+	rcLoaded, err := LoadRefCounter(rcFilePath, testWAL)
 	if err != nil {
 		t.Fatal("Failed to load RefCounter from disk:", err)
 	}
@@ -275,15 +284,15 @@ func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
 }
 
 // testLoad specifically tests LoadRefCounter and its various failure modes
-func testLoad(validFilePath string) error {
+func testLoad(validFilePath string, wal *writeaheadlog.WAL) error {
 	// happy case
-	_, err := LoadRefCounter(validFilePath)
+	_, err := LoadRefCounter(validFilePath, wal)
 	if err != nil {
 		return err
 	}
 
 	// fails with os.ErrNotExist for a non-existent file
-	_, err = LoadRefCounter("there-is-no-such-file.rc")
+	_, err = LoadRefCounter("there-is-no-such-file.rc", wal)
 	if !errors.IsOSNotExist(err) {
 		return errors.AddContext(err, "expected os.ErrNotExist, got something else")
 	}
@@ -303,10 +312,25 @@ func testLoad(validFilePath string) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to write to test file")
 	}
-	_, err = LoadRefCounter(badVerFilePath)
+	_, err = LoadRefCounter(badVerFilePath, wal)
 	if !errors.Contains(err, ErrInvalidVersion) {
 		return errors.AddContext(err, fmt.Sprintf("should not be able to read file with wrong version, expected `%s` error", ErrInvalidVersion.Error()))
 	}
 
 	return nil
+}
+
+// newTestWal is a helper method to create a WAL for testing.
+func newTestWAL() (*writeaheadlog.WAL, string) {
+	// Create the wal.
+	walsDir := filepath.Join(os.TempDir(), "rc-wals")
+	if err := os.MkdirAll(walsDir, modules.DefaultDirPerm); err != nil {
+		panic(err)
+	}
+	walFilePath := filepath.Join(walsDir, hex.EncodeToString(fastrand.Bytes(8)))
+	_, wal, err := writeaheadlog.New(walFilePath)
+	if err != nil {
+		panic(err)
+	}
+	return wal, walFilePath
 }
