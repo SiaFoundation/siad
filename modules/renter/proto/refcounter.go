@@ -26,22 +26,6 @@ var (
 
 	// RefCounterVersion defines the latest version of the RefCounter
 	RefCounterVersion = [8]byte{1}
-
-	// updateNameAppend is the name of a WAL update that appends a single
-	// counter to the refcounter file
-	updateNameAppend = "APPEND"
-
-	// updateNameWriteAt is the name of a WAL update that deletes the file
-	// from disk
-	updateNameDelete = writeaheadlog.NameDeleteUpdate
-
-	// updateNameWriteAt is the name of a WAL update that changes the data
-	// starting at a specified index
-	updateNameWriteAt = writeaheadlog.NameWriteAtUpdate
-
-	// updateNameTruncate is the name of a WAL update that truncates the
-	// file on disk from a specified size to a specified size
-	updateNameTruncate = writeaheadlog.NameTruncateUpdate
 )
 
 const (

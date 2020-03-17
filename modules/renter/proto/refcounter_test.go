@@ -153,8 +153,6 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// TODO: add tests for unfinished WAL updates, failing to load the WAL from disk, etc.
-
 	// load from disk
 	rcLoaded, err := LoadRefCounter(rcFilePath, testWAL)
 	if err != nil {
