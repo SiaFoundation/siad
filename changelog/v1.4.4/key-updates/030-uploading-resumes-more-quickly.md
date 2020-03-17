@@ -1,1 +1,1 @@
- - Uploading resumes more quickly after restart.
+- Uploading resumes more quickly after restart.

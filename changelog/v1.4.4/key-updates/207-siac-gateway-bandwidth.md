@@ -1,1 +1,1 @@
- - Add bandwidth usage to `siac gateway`
+- Add bandwidth usage to `siac gateway`

@@ -1,1 +1,1 @@
- - The `siac renter setallowance` UX is considerably improved.
+- The `siac renter setallowance` UX is considerably improved.

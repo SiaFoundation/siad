@@ -1,1 +1,1 @@
- - Fix parameter delimiter for skylinks
+- Fix parameter delimiter for skylinks

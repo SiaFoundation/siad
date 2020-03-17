@@ -1,1 +1,1 @@
- - Add ability to blacklist skylinks by merkleroot.
+- Add ability to blacklist skylinks by merkleroot.

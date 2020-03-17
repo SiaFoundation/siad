@@ -1,1 +1,1 @@
- - Add `go get` command to `make dependencies`.
+- Add `go get` command to `make dependencies`.

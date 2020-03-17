@@ -1,1 +1,1 @@
- - fix siac update for new release verification
+- fix siac update for new release verification

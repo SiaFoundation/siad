@@ -1,1 +1,1 @@
- - Add `siac skynet unpin` subcommand.
+- Add `siac skynet unpin` subcommand.

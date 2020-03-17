@@ -74,6 +74,25 @@ default: &default_params
   except:
     - schedules
 
+default: &windows-default_params
+  ## Run tests with most recent golang version to take advantage of any perf
+  ## improvements.
+  tags:
+    - xxx
+  before_script:
+    - mkdir -p .cache/gocache
+    - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
+    - export GOPATH="$CI_PROJECT_DIR/.cache"
+
+## Define the default test parameters.
+.default_test: &windows-default_test_params
+  ## Merge the contents of the 'default_params' alias
+  <<: *windows-default_params
+  stage: test
+
+  ## disable default tests for scheduled pipelines (nightlies)
+  except:
+    - schedules
 
 ## Define the default nightly test parameters.
 .default_nightly_test: &default_nightly_params
@@ -199,3 +218,12 @@ siatest-renter-sub-tests-nightly:
     - apt-get update
     - apt-get install -y fuse
     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+
+windows-siatest-tests:
+  <<: *default_test_params
+  cache:
+    key: windows-siatest-cache
+    paths:
+      - .cache
+  script:
+    - make test-long run=. pkgs="./siatest"
