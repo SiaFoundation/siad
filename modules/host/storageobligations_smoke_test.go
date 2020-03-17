@@ -108,8 +108,9 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 	// Assemble and return the storage obligation.
 	so := storageObligation{
 		OriginTransactionSet: tSet,
-
 		// TODO: There are no tracking values, because no fees were added.
+
+		h: ht.host,
 	}
 	return so, nil
 }
@@ -169,7 +170,7 @@ func TestBlankStorageObligation(t *testing.T) {
 	// Load the storage obligation from the database, see if it updated
 	// correctly.
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -197,7 +198,7 @@ func TestBlankStorageObligation(t *testing.T) {
 		}
 	}
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -594,7 +595,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 		}},
 	}}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
+	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -616,7 +617,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		ht.host.mu.Lock()
 		err := ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
+			so, err = ht.host.getStorageObligation(tx, so.id())
 			if err != nil {
 				return err
 			}
@@ -669,7 +670,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	// Grab the storage proof and inspect the contents.
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -699,7 +700,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	}
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -768,7 +769,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	// correctly.
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -812,7 +813,8 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		}},
 	}}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
+
+	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -860,7 +862,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		}},
 	}}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot2}, [][]byte{sectorData2})
+	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot2: sectorData2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -882,7 +884,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		ht.host.mu.Lock()
 		err := ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
+			so, err = ht.host.getStorageObligation(tx, so.id())
 			if err != nil {
 				return err
 			}
@@ -934,7 +936,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	}
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -964,7 +966,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	}
 	ht.host.mu.Lock()
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -1046,7 +1048,8 @@ func TestAutoRevisionSubmission(t *testing.T) {
 	}}
 	so.RevisionTransactionSet = revisionSet
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedModifyStorageObligation(so, nil, []crypto.Hash{sectorRoot}, [][]byte{sectorData})
+
+	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1074,7 +1077,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 		}
 		count++
 		err = ht.host.db.View(func(tx *bolt.Tx) error {
-			so, err = getStorageObligation(tx, so.id())
+			so, err = ht.host.getStorageObligation(tx, so.id())
 			if err != nil {
 				return err
 			}
@@ -1111,7 +1114,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 		}
 	}
 	err = ht.host.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, so.id())
+		so, err = ht.host.getStorageObligation(tx, so.id())
 		if err != nil {
 			return err
 		}
@@ -1191,7 +1194,7 @@ func TestLargeContractBlock(t *testing.T) {
 	}}
 	so1.RevisionTransactionSet = revisionSet
 	ht.host.managedLockStorageObligation(so1.id())
-	err = ht.host.managedModifyStorageObligation(so1, nil, []crypto.Hash{}, [][]byte{})
+	err = ht.host.managedModifyStorageObligation(so1, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1211,7 +1214,7 @@ func TestLargeContractBlock(t *testing.T) {
 		// largeContractUpdateDelay seconds.
 		defer close(done)
 		start := time.Now()
-		err := ht.host.managedModifyStorageObligation(so1, nil, []crypto.Hash{}, [][]byte{})
+		err := ht.host.managedModifyStorageObligation(so1, nil, nil)
 		delay := time.Since(start)
 		if err != nil {
 			t.Error(err)
@@ -1233,7 +1236,7 @@ LOOP:
 		numMods++
 		ht.host.managedLockStorageObligation(so2.id())
 		start := time.Now()
-		err := ht.host.managedModifyStorageObligation(so2, nil, []crypto.Hash{}, [][]byte{})
+		err := ht.host.managedModifyStorageObligation(so2, nil, nil)
 		delay := time.Since(start)
 		ht.host.managedUnlockStorageObligation(so2.id())
 		if err != nil {
