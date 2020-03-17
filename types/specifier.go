@@ -51,7 +51,7 @@ func (t Specifier) MarshalText() (text []byte, err error) {
 }
 
 // UnmarshalText implements the TextUnmarshaler interface
-func (t Specifier) UnmarshalText(text []byte) error {
+func (t *Specifier) UnmarshalText(text []byte) error {
 	if err := validateSpecifier(string(text)); err != nil {
 		return err
 	}

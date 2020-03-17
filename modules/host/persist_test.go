@@ -24,7 +24,7 @@ func TestHostContractCountPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so)
+	err = ht.host.managedAddStorageObligation(so, false)
 	if err != nil {
 		t.Fatal(err)
 	}

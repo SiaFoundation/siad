@@ -246,7 +246,11 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	}
 
 	// create the revision; we will update the Merkle root later
-	rev := newRevision(contract.LastRevision(), cost)
+	rev, err := newRevision(contract.LastRevision(), cost)
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "Error creating new write revision")
+	}
+
 	rev.NewMissedProofOutputs[1].Value = rev.NewMissedProofOutputs[1].Value.Sub(collateral)
 	rev.NewMissedProofOutputs[2].Value = rev.NewMissedProofOutputs[2].Value.Add(collateral)
 	rev.NewFileSize = newFileSize
@@ -435,7 +439,11 @@ func (s *Session) Read(w io.Writer, req modules.LoopReadRequest, cancel <-chan s
 	price = price.MulFloat(1 + hostPriceLeeway)
 
 	// create the download revision and sign it
-	rev := newDownloadRevision(contract.LastRevision(), price)
+	rev, err := newDownloadRevision(contract.LastRevision(), price)
+	if err != nil {
+		return modules.RenterContract{}, errors.AddContext(err, "Error creating new download revision")
+	}
+
 	txn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{rev},
 		TransactionSignatures: []types.TransactionSignature{
@@ -614,7 +622,11 @@ func (s *Session) SectorRoots(req modules.LoopSectorRootsRequest) (_ modules.Ren
 	price = price.MulFloat(1 + hostPriceLeeway)
 
 	// create the download revision and sign it
-	rev := newDownloadRevision(contract.LastRevision(), price)
+	rev, err := newDownloadRevision(contract.LastRevision(), price)
+	if err != nil {
+		return modules.RenterContract{}, nil, errors.AddContext(err, "Error creating new download revision")
+	}
+
 	txn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{rev},
 		TransactionSignatures: []types.TransactionSignature{
@@ -723,7 +735,11 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	price = price.MulFloat(1 + hostPriceLeeway)
 
 	// create the download revision and sign it
-	rev := newDownloadRevision(lastRev, price)
+	rev, err := newDownloadRevision(lastRev, price)
+	if err != nil {
+		return types.Transaction{}, nil, errors.AddContext(err, "Error creating new download revision")
+	}
+
 	txn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{rev},
 		TransactionSignatures: []types.TransactionSignature{

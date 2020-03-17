@@ -21,6 +21,8 @@ var (
 	TypeTwofish = CipherType{0, 0, 0, 0, 0, 0, 0, 2}
 	// TypeThreefish is the type for the Threefish encryption.
 	TypeThreefish = CipherType{0, 0, 0, 0, 0, 0, 0, 3}
+	// TypeXChaCha20 is the type for the XChaCha20 encryption.
+	TypeXChaCha20 = CipherType{0, 0, 0, 0, 0, 0, 0, 4}
 )
 
 var (
@@ -77,6 +79,8 @@ func (ct CipherType) String() string {
 		return "twofish-gcm"
 	case TypeThreefish:
 		return "threefish512"
+	case TypeXChaCha20:
+		return "XChaCha20"
 	default:
 		panic(ErrInvalidCipherType)
 	}
@@ -91,6 +95,8 @@ func (ct *CipherType) FromString(s string) error {
 		*ct = TypeTwofish
 	case "threefish512":
 		*ct = TypeThreefish
+	case "XChaCha20":
+		*ct = TypeXChaCha20
 	default:
 		return ErrInvalidCipherType
 	}
@@ -100,7 +106,7 @@ func (ct *CipherType) FromString(s string) error {
 // Overhead reports the overhead produced by a CipherType in bytes.
 func (ct CipherType) Overhead() uint64 {
 	switch ct {
-	case TypePlain, TypeThreefish:
+	case TypePlain, TypeThreefish, TypeXChaCha20:
 		return 0
 	case TypeTwofish:
 		return twofishOverhead
@@ -130,6 +136,8 @@ func NewSiaKey(ct CipherType, entropy []byte) (CipherKey, error) {
 		return newTwofishKey(entropy)
 	case TypeThreefish:
 		return newThreefishKey(entropy)
+	case TypeXChaCha20:
+		return newXChaCha20CipherKey(entropy)
 	default:
 		return nil, ErrInvalidCipherType
 	}
@@ -145,6 +153,8 @@ func GenerateSiaKey(ct CipherType) CipherKey {
 		return generateTwofishKey()
 	case TypeThreefish:
 		return generateThreefishKey()
+	case TypeXChaCha20:
+		return generateXChaCha20CipherKey()
 	default:
 		panic(ErrInvalidCipherType)
 	}
@@ -154,7 +164,7 @@ func GenerateSiaKey(ct CipherType) CipherKey {
 // otherwise.
 func IsValidCipherType(ct CipherType) bool {
 	switch ct {
-	case TypePlain, TypeTwofish, TypeThreefish:
+	case TypePlain, TypeTwofish, TypeThreefish, TypeXChaCha20:
 		return true
 	default:
 		return false

@@ -65,6 +65,57 @@ var (
 	testGroupBuffer = NewGroupBuffer(NumberOfParallelGroups)
 )
 
+// FundNodes uses the funds of a miner node to fund all the nodes of the group
+func FundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
+	// Get the miner's balance
+	wg, err := miner.WalletGet()
+	if err != nil {
+		return errors.AddContext(err, "failed to get miner's balance")
+	}
+	// Send txnsPerNode outputs to each node
+	txnsPerNode := uint64(25)
+	scos := make([]types.SiacoinOutput, 0, uint64(len(nodes))*txnsPerNode)
+	funding := wg.ConfirmedSiacoinBalance.Div64(uint64(len(nodes))).Div64(txnsPerNode + 1)
+	for node := range nodes {
+		wag, err := node.WalletAddressGet()
+		if err != nil {
+			return errors.AddContext(err, "failed to get wallet address")
+		}
+		for i := uint64(0); i < txnsPerNode; i++ {
+			scos = append(scos, types.SiacoinOutput{
+				Value:      funding,
+				UnlockHash: wag.Address,
+			})
+		}
+	}
+	// Send the transaction
+	_, err = miner.WalletSiacoinsMultiPost(scos)
+	if err != nil {
+		return errors.AddContext(err, "failed to send funding txn")
+	}
+	// Mine the transactions
+	if err := miner.MineBlock(); err != nil {
+		return errors.AddContext(err, "failed to mine funding txn")
+	}
+	// Make sure every node has at least one confirmed transaction
+	for node := range nodes {
+		err := Retry(100, 100*time.Millisecond, func() error {
+			wtg, err := node.WalletTransactionsGet(0, math.MaxInt32)
+			if err != nil {
+				return err
+			}
+			if len(wtg.ConfirmedTransactions) == 0 {
+				return errors.New("confirmed transactions should be greater than 0")
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NewGroup creates a group of TestNodes from node params. All the nodes will
 // be connected, synced and funded. Hosts nodes are also announced.
 func NewGroup(groupDir string, nodeParams ...node.NodeParams) (*TestGroup, error) {
@@ -224,57 +275,6 @@ func fullyConnectNodes(nodes []*TestNode) error {
 			if err != nil {
 				return err
 			}
-		}
-	}
-	return nil
-}
-
-// FundNodes uses the funds of a miner node to fund all the nodes of the group
-func FundNodes(miner *TestNode, nodes map[*TestNode]struct{}) error {
-	// Get the miner's balance
-	wg, err := miner.WalletGet()
-	if err != nil {
-		return errors.AddContext(err, "failed to get miner's balance")
-	}
-	// Send txnsPerNode outputs to each node
-	txnsPerNode := uint64(25)
-	scos := make([]types.SiacoinOutput, 0, uint64(len(nodes))*txnsPerNode)
-	funding := wg.ConfirmedSiacoinBalance.Div64(uint64(len(nodes))).Div64(txnsPerNode + 1)
-	for node := range nodes {
-		wag, err := node.WalletAddressGet()
-		if err != nil {
-			return errors.AddContext(err, "failed to get wallet address")
-		}
-		for i := uint64(0); i < txnsPerNode; i++ {
-			scos = append(scos, types.SiacoinOutput{
-				Value:      funding,
-				UnlockHash: wag.Address,
-			})
-		}
-	}
-	// Send the transaction
-	_, err = miner.WalletSiacoinsMultiPost(scos)
-	if err != nil {
-		return errors.AddContext(err, "failed to send funding txn")
-	}
-	// Mine the transactions
-	if err := miner.MineBlock(); err != nil {
-		return errors.AddContext(err, "failed to mine funding txn")
-	}
-	// Make sure every node has at least one confirmed transaction
-	for node := range nodes {
-		err := Retry(100, 100*time.Millisecond, func() error {
-			wtg, err := node.WalletTransactionsGet(0, math.MaxInt32)
-			if err != nil {
-				return err
-			}
-			if len(wtg.ConfirmedTransactions) == 0 {
-				return errors.New("confirmed transactions should be greater than 0")
-			}
-			return nil
-		})
-		if err != nil {
-			return err
 		}
 	}
 	return nil
@@ -549,6 +549,148 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 	return mapToSlice(newNodes), tg.setupNodes(newHosts, newNodes, newRenters)
 }
 
+// Close closes the group and all its nodes. Closing a node is usually a slow
+// process, but we can speed it up a lot by closing each node in a separate
+// goroutine.
+func (tg *TestGroup) Close() error {
+	wg := new(sync.WaitGroup)
+	errs := make([]error, len(tg.nodes))
+	i := 0
+	for n := range tg.nodes {
+		_, ok := tg.stopped[n]
+		if ok {
+			// If the node is stopped, it's been closed already. Skipping here
+			// avoids errors that occur when calling Close() twice on testnodes.
+			continue
+		}
+
+		wg.Add(1)
+		go func(i int, n *TestNode) {
+			errs[i] = n.Close()
+			wg.Done()
+		}(i, n)
+		i++
+	}
+	wg.Wait()
+	return errors.Compose(errs...)
+}
+
+// Hosts returns all the hosts of the group. Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
+func (tg *TestGroup) Hosts() []*TestNode {
+	return mapToSlice(tg.hosts)
+}
+
+// Miners returns all the miners of the group.  Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
+func (tg *TestGroup) Miners() []*TestNode {
+	return mapToSlice(tg.miners)
+}
+
+// Nodes returns all the nodes of the group. Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
+func (tg *TestGroup) Nodes() []*TestNode {
+	return mapToSlice(tg.nodes)
+}
+
+// RemoveNode removes a node from the group and shuts it down.
+func (tg *TestGroup) RemoveNode(tn *TestNode) error {
+	// Remote node from all data structures.
+	delete(tg.nodes, tn)
+	delete(tg.hosts, tn)
+	delete(tg.renters, tn)
+	delete(tg.miners, tn)
+
+	// Close node.
+	return tn.StopNode()
+}
+
+// Renters returns all the renters of the group. Note that the ordering of nodes in
+// the slice returned is not the same across multiple calls this function.
+func (tg *TestGroup) Renters() []*TestNode {
+	return mapToSlice(tg.renters)
+}
+
+// RestartNode stops a node and then starts it again while conducting a few
+// checks and guaranteeing that the node is connected to the group afterwards.
+func (tg *TestGroup) RestartNode(tn *TestNode) error {
+	if err := tg.StopNode(tn); err != nil {
+		return err
+	}
+	return tg.StartNode(tn)
+}
+
+// SetRenterAllowance finished the setup for the renter test node
+func (tg *TestGroup) SetRenterAllowance(renter *TestNode, allowance modules.Allowance) error {
+	if _, ok := tg.renters[renter]; !ok {
+		return errors.New("Can not set allowance for renter not in test group")
+	}
+	miner := mapToSlice(tg.miners)[0]
+	r := make(map[*TestNode]struct{})
+	r[renter] = struct{}{}
+	// Set renter allowances
+	renter.params.SkipSetAllowance = false
+	if err := setRenterAllowances(r); err != nil {
+		return build.ExtendErr("failed to set renter allowance", err)
+	}
+	// Wait for all the renters to form contracts if the haven't got enough
+	// contracts already.
+	if err := waitForContracts(miner, r, tg.hosts); err != nil {
+		return build.ExtendErr("renters failed to form contracts", err)
+	}
+	// Make sure all nodes are synced
+	if err := synchronizationCheck(tg.nodes); err != nil {
+		return build.ExtendErr("synchronization check 2 failed", err)
+	}
+	return nil
+}
+
+// StartNode starts a node from the group that has previously been stopped.
+func (tg *TestGroup) StartNode(tn *TestNode) error {
+	if _, exists := tg.nodes[tn]; !exists {
+		return errors.New("cannot start node that's not part of the group")
+	}
+	err := tn.StartNode()
+	if err != nil {
+		return err
+	}
+	delete(tg.stopped, tn)
+	if err := fullyConnectNodes(tg.Nodes()); err != nil {
+		return err
+	}
+	return synchronizationCheck(tg.nodes)
+}
+
+// StartNodeCleanDeps starts a node from the group that has previously been
+// stopped without its previously assigned dependencies.
+func (tg *TestGroup) StartNodeCleanDeps(tn *TestNode) error {
+	if _, exists := tg.nodes[tn]; !exists {
+		return errors.New("cannot start node that's not part of the group")
+	}
+	err := tn.StartNodeCleanDeps()
+	if err != nil {
+		return err
+	}
+	if err := fullyConnectNodes(tg.Nodes()); err != nil {
+		return err
+	}
+	return synchronizationCheck(tg.nodes)
+}
+
+// StopNode stops a node of a group.
+func (tg *TestGroup) StopNode(tn *TestNode) error {
+	if _, exists := tg.nodes[tn]; !exists {
+		return errors.New("cannot stop node that's not part of the group")
+	}
+	tg.stopped[tn] = struct{}{}
+	return tn.StopNode()
+}
+
+// Sync makes sure that the test group's nodes are synchronized
+func (tg *TestGroup) Sync() error {
+	return synchronizationCheck(tg.nodes)
+}
+
 // setupNodes does the set up required for creating a test group
 // and add nodes to a group
 func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]struct{}) error {
@@ -608,146 +750,4 @@ func (tg *TestGroup) setupNodes(setHosts, setNodes, setRenters map[*TestNode]str
 		return build.ExtendErr("synchronization check 2 failed", err)
 	}
 	return nil
-}
-
-// SetRenterAllowance finished the setup for the renter test node
-func (tg *TestGroup) SetRenterAllowance(renter *TestNode, allowance modules.Allowance) error {
-	if _, ok := tg.renters[renter]; !ok {
-		return errors.New("Can not set allowance for renter not in test group")
-	}
-	miner := mapToSlice(tg.miners)[0]
-	r := make(map[*TestNode]struct{})
-	r[renter] = struct{}{}
-	// Set renter allowances
-	renter.params.SkipSetAllowance = false
-	if err := setRenterAllowances(r); err != nil {
-		return build.ExtendErr("failed to set renter allowance", err)
-	}
-	// Wait for all the renters to form contracts if the haven't got enough
-	// contracts already.
-	if err := waitForContracts(miner, r, tg.hosts); err != nil {
-		return build.ExtendErr("renters failed to form contracts", err)
-	}
-	// Make sure all nodes are synced
-	if err := synchronizationCheck(tg.nodes); err != nil {
-		return build.ExtendErr("synchronization check 2 failed", err)
-	}
-	return nil
-}
-
-// Close closes the group and all its nodes. Closing a node is usually a slow
-// process, but we can speed it up a lot by closing each node in a separate
-// goroutine.
-func (tg *TestGroup) Close() error {
-	wg := new(sync.WaitGroup)
-	errs := make([]error, len(tg.nodes))
-	i := 0
-	for n := range tg.nodes {
-		_, ok := tg.stopped[n]
-		if ok {
-			// If the node is stopped, it's been closed already. Skipping here
-			// avoids errors that occur when calling Close() twice on testnodes.
-			continue
-		}
-
-		wg.Add(1)
-		go func(i int, n *TestNode) {
-			errs[i] = n.Close()
-			wg.Done()
-		}(i, n)
-		i++
-	}
-	wg.Wait()
-	return errors.Compose(errs...)
-}
-
-// RemoveNode removes a node from the group and shuts it down.
-func (tg *TestGroup) RemoveNode(tn *TestNode) error {
-	// Remote node from all data structures.
-	delete(tg.nodes, tn)
-	delete(tg.hosts, tn)
-	delete(tg.renters, tn)
-	delete(tg.miners, tn)
-
-	// Close node.
-	return tn.StopNode()
-}
-
-// RestartNode stops a node and then starts it again while conducting a few
-// checks and guaranteeing that the node is connected to the group afterwards.
-func (tg *TestGroup) RestartNode(tn *TestNode) error {
-	if err := tg.StopNode(tn); err != nil {
-		return err
-	}
-	return tg.StartNode(tn)
-}
-
-// StartNode starts a node from the group that has previously been stopped.
-func (tg *TestGroup) StartNode(tn *TestNode) error {
-	if _, exists := tg.nodes[tn]; !exists {
-		return errors.New("cannot start node that's not part of the group")
-	}
-	err := tn.StartNode()
-	if err != nil {
-		return err
-	}
-	delete(tg.stopped, tn)
-	if err := fullyConnectNodes(tg.Nodes()); err != nil {
-		return err
-	}
-	return synchronizationCheck(tg.nodes)
-}
-
-// StartNodeCleanDeps starts a node from the group that has previously been
-// stopped without its previously assigned dependencies.
-func (tg *TestGroup) StartNodeCleanDeps(tn *TestNode) error {
-	if _, exists := tg.nodes[tn]; !exists {
-		return errors.New("cannot start node that's not part of the group")
-	}
-	err := tn.StartNodeCleanDeps()
-	if err != nil {
-		return err
-	}
-	if err := fullyConnectNodes(tg.Nodes()); err != nil {
-		return err
-	}
-	return synchronizationCheck(tg.nodes)
-}
-
-// StopNode stops a node of a group.
-func (tg *TestGroup) StopNode(tn *TestNode) error {
-	if _, exists := tg.nodes[tn]; !exists {
-		return errors.New("cannot stop node that's not part of the group")
-	}
-	tg.stopped[tn] = struct{}{}
-	return tn.StopNode()
-}
-
-// Sync syncs the node of the test group
-func (tg *TestGroup) Sync() error {
-	return synchronizationCheck(tg.nodes)
-}
-
-// Nodes returns all the nodes of the group. Note that the ordering of nodes in
-// the slice returned is not the same across multiple calls this function.
-func (tg *TestGroup) Nodes() []*TestNode {
-	return mapToSlice(tg.nodes)
-}
-
-// Hosts returns all the hosts of the group. Note that the ordering of nodes in
-// the slice returned is not the same across multiple calls this function.
-func (tg *TestGroup) Hosts() []*TestNode {
-	return mapToSlice(tg.hosts)
-}
-
-// Renters returns all the renters of the group. Note that the ordering of nodes in
-// the slice returned is not the same across multiple calls this function.
-func (tg *TestGroup) Renters() []*TestNode {
-	return mapToSlice(tg.renters)
-}
-
-// Miners returns all the miners of the group.  Note that the ordering of nodes in
-// the slice returned is not the same across multiple calls this function.
-func (tg *TestGroup) Miners() []*TestNode {
-	return mapToSlice(tg.miners)
 }

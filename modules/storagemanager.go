@@ -58,6 +58,10 @@ type (
 		// is expected to only store the data once.
 		AddSector(sectorRoot crypto.Hash, sectorData []byte) error
 
+		// HasSector indicates whether the contract manager stores a sector with
+		// a given root or not.
+		HasSector(crypto.Hash) bool
+
 		// AddSectorBatch is a performance optimization over AddSector when
 		// adding a bunch of virtual sectors. It is necessary because otherwise
 		// potentially thousands or even tens-of-thousands of fsync calls would
@@ -85,6 +89,10 @@ type (
 		// ReadSector will read a sector from the storage manager, returning the
 		// bytes that match the input sector root.
 		ReadSector(sectorRoot crypto.Hash) ([]byte, error)
+
+		// ReadPartialSector will read a sector from the storage manager,
+		// returning the bytes that match the input sector root.
+		ReadPartialSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error)
 
 		// RemoveSector will remove a sector from the storage manager. The
 		// height at which the sector expires should be provided, so that the

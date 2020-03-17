@@ -3,6 +3,7 @@ package host
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -78,5 +79,52 @@ func TestStorageObligationID(t *testing.T) {
 	}
 	if so2.id() != so2.OriginTransactionSet[1].FileContractID(0) {
 		t.Error("id function of storage obligation incorrect for file contracts with dependencies")
+	}
+}
+
+// TestManagedModifyUnlockedStorageObligation checks that the storage obligation
+// cannot be modified when unlocked.
+func TestManagedModifyUnlockedStorageObligation(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// add a storage obligation for testing.
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Modify the obligation. This should fail.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, []crypto.Hash{}, [][]byte{}); err == nil {
+		t.Fatal("shouldn't be able to modify unlocked so")
+	}
+
+	// Lock obligation.
+	ht.host.managedLockStorageObligation(so.id())
+
+	// Modify the obligation. This should work.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, []crypto.Hash{}, [][]byte{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unlock obligation.
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Modify the obligation. This should fail again.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, []crypto.Hash{}, [][]byte{}); err == nil {
+		t.Fatal("shouldn't be able to modify unlocked so")
 	}
 }

@@ -22,8 +22,9 @@ const (
 	// portion of a contract can consume.
 	contractHeaderSize = writeaheadlog.MaxPayloadSize // TODO: test this
 
-	updateNameSetHeader = "setHeader"
-	updateNameSetRoot   = "setRoot"
+	updateNameClearContract = "clearContract"
+	updateNameSetHeader     = "setHeader"
+	updateNameSetRoot       = "setRoot"
 )
 
 type updateSetHeader struct {
@@ -315,6 +316,54 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
 	newHeader.DownloadSpending = newHeader.DownloadSpending.Add(bandwidthCost)
+
+	if err := c.applySetHeader(newHeader); err != nil {
+		return err
+	}
+	if err := c.headerFile.Sync(); err != nil {
+		return err
+	}
+	if err := t.SignalUpdatesApplied(); err != nil {
+		return err
+	}
+	c.unappliedTxns = nil
+	return nil
+}
+
+// managedRecordClearContractIntent records the changes we are about to make to
+// the revision in the WAL of the contract.
+func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// construct new header
+	// NOTE: this header will not include the host signature
+	newHeader := c.header
+	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
+	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
+
+	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+		c.makeUpdateSetHeader(newHeader),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := <-t.SignalSetupComplete(); err != nil {
+		return nil, err
+	}
+	c.unappliedTxns = append(c.unappliedTxns, t)
+	return t, nil
+}
+
+// managedCommitClearContract commits the changes we made to the revision when
+// clearing a contract to the WAL of the contract.
+func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// construct new header
+	newHeader := c.header
+	newHeader.Transaction = signedTxn
+	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err

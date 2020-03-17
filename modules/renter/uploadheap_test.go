@@ -8,7 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/siafile"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
@@ -384,8 +384,9 @@ func TestAddChunksToHeap(t *testing.T) {
 
 	// Confirm that all chunks from all the directories were added since there
 	// are not enough chunks in only one directory to fill the heap
-	if len(siaPaths) != 3 {
-		t.Fatal("Expected 3 siaPaths to be returned, got", siaPaths)
+	totalDirs := len(siaPaths.childDirs) + len(siaPaths.parentDirs)
+	if totalDirs != 3 {
+		t.Fatal("Expected 3 siaPaths to be returned, got", totalDirs)
 	}
 	if rt.renter.uploadHeap.managedLen() != int(numChunks) {
 		t.Fatalf("Expected uploadHeap to have %v chunks but it has %v chunks", numChunks, rt.renter.uploadHeap.managedLen())
