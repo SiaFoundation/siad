@@ -55,44 +55,6 @@ func randSector() (crypto.Hash, []byte) {
 	return sectorRoot, sectorData
 }
 
-func (ht *hostTester) addNoOpRevision(so storageObligation) (storageObligation, error) {
-	builder, err := ht.wallet.StartTransaction()
-	if err != nil {
-		return storageObligation{}, err
-	}
-
-	txnSet := so.OriginTransactionSet
-	contractTxn := txnSet[len(txnSet)-1]
-	fc := contractTxn.FileContracts[0]
-
-	noOpRevision := types.FileContractRevision{
-		ParentID: contractTxn.FileContractID(0),
-		UnlockConditions: types.UnlockConditions{
-			PublicKeys: []types.SiaPublicKey{
-				types.SiaPublicKey{},
-				ht.host.publicKey,
-			},
-			SignaturesRequired: 2,
-		},
-		NewRevisionNumber:     fc.RevisionNumber + 1,
-		NewFileSize:           fc.FileSize,
-		NewFileMerkleRoot:     fc.FileMerkleRoot,
-		NewWindowStart:        fc.WindowStart,
-		NewWindowEnd:          fc.WindowEnd,
-		NewValidProofOutputs:  fc.ValidProofOutputs,
-		NewMissedProofOutputs: fc.MissedProofOutputs,
-		NewUnlockHash:         fc.UnlockHash,
-	}
-
-	builder.AddFileContractRevision(noOpRevision)
-	tSet, err := builder.Sign(true)
-	if err != nil {
-		return so, err
-	}
-	so.RevisionTransactionSet = tSet
-	return so, nil
-}
-
 // newTesterStorageObligation uses the wallet to create and fund a file
 // contract that will form the foundation of a storage obligation.
 func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {

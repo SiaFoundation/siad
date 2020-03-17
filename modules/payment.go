@@ -52,6 +52,9 @@ var (
 // PaymentProcessor is the interface implemented when receiving payment for an
 // RPC.
 type PaymentProcessor interface {
+	// ProcessPayment takes a stream and handles the payment request objects
+	// sent by the caller. Returns the amount paid, or an error in case of
+	// failure.
 	ProcessPayment(stream siamux.Stream) (types.Currency, error)
 }
 

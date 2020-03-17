@@ -249,6 +249,53 @@ func newPayByEphemeralAccountRequest(account string, expiry types.BlockHeight, a
 	}
 }
 
+// addNoOpRevision is a helper method that adds a revision to the given
+// obligation. In production this 'noOpRevision' is always added, however the
+// obligation returned by `newTesterStorageObligation` does not add it.
+func (ht *hostTester) addNoOpRevision(so storageObligation) (storageObligation, error) {
+	builder, err := ht.wallet.StartTransaction()
+	if err != nil {
+		return storageObligation{}, err
+	}
+
+	txnSet := so.OriginTransactionSet
+	contractTxn := txnSet[len(txnSet)-1]
+	fc := contractTxn.FileContracts[0]
+
+	_, pk := crypto.GenerateKeyPair()
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	noOpRevision := types.FileContractRevision{
+		ParentID: contractTxn.FileContractID(0),
+		UnlockConditions: types.UnlockConditions{
+			PublicKeys: []types.SiaPublicKey{
+				spk,
+				ht.host.publicKey,
+			},
+			SignaturesRequired: 2,
+		},
+		NewRevisionNumber:     fc.RevisionNumber + 1,
+		NewFileSize:           fc.FileSize,
+		NewFileMerkleRoot:     fc.FileMerkleRoot,
+		NewWindowStart:        fc.WindowStart,
+		NewWindowEnd:          fc.WindowEnd,
+		NewValidProofOutputs:  fc.ValidProofOutputs,
+		NewMissedProofOutputs: fc.MissedProofOutputs,
+		NewUnlockHash:         fc.UnlockHash,
+	}
+
+	builder.AddFileContractRevision(noOpRevision)
+	tSet, err := builder.Sign(true)
+	if err != nil {
+		return so, err
+	}
+	so.RevisionTransactionSet = tSet
+	return so, nil
+}
+
 // testStream is a helper struct that wraps a net.Conn and implements the
 // siamux.Stream interface.
 type testStream struct {
