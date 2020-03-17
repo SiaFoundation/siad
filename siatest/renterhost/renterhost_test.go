@@ -204,17 +204,62 @@ func TestHostLockTimeout(t *testing.T) {
 
 	// Try again, but this time, unlock the contract during the timeout period.
 	// The new session should successfully acquire the lock.
-	go func() {
-		time.Sleep(3 * time.Second)
+	time.AfterFunc(3*time.Second, func() {
 		if err := s1.Close(); err != nil {
 			panic(err) // can't call t.Fatal from goroutine
 		}
-	}()
+	})
 	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s2.Close()
+	defer s2.Close()
+
+	// Attempt to begin a separate RPC session. This will block while waiting to
+	// acquire the contract lock. In the meantime, modify the contract, then
+	// unlock, allowing the other session to acquire the lock. When it does, it
+	// should see the modified contract.
+	errCh := make(chan error)
+	var lockedContract modules.RenterContract
+	go func() {
+		// NOTE: the ContractSet uses a local mutex to serialize RPCs, so this
+		// test requires a separate ContractSet.
+		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer cs2.Close()
+		s1, err = cs2.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		s1.Close()
+		lockedContract, _ = cs2.View(contract.ID)
+		errCh <- nil
+	}()
+	time.Sleep(3 * time.Second) // wait for goroutine to start acquiring lock
+	contract, _, err = s2.Append(make([]byte, modules.SectorSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Unlock, allowing goroutine to proceed
+	if err := s2.Unlock(); err != nil {
+		t.Fatal(err)
+	}
+	// check goroutine error
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	// goroutine should acquire same contract
+	rev := contract.Transaction.FileContractRevisions[0]
+	lockedRev := lockedContract.Transaction.FileContractRevisions[0]
+	if rev.NewRevisionNumber != lockedRev.NewRevisionNumber ||
+		rev.NewFileMerkleRoot != lockedRev.NewFileMerkleRoot ||
+		!rev.RenterFunds().Equals(lockedRev.RenterFunds()) {
+		t.Fatal("acquired wrong contract after lock:", rev.NewRevisionNumber, lockedRev.NewRevisionNumber)
+	}
 }
 
 // TestHostBaseRPCPrice tests that the host rejects RPCs when its base RPC price

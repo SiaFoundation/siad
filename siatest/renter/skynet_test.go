@@ -768,7 +768,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 // testSkynetStats tests the validity of the response of /skynet/stats endpoint
 // by uploading some test files and verifying that the reported statistics
-// change proportionalyy
+// change proportionally
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 

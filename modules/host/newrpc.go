@@ -40,6 +40,11 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateRecentRevisionTime)
 
+	// Challenges can only be used once, so generate a new one immediately,
+	// regardless of the outcome of this RPC.
+	challenge := s.challenge
+	fastrand.Read(s.challenge[:])
+
 	// Read the request.
 	var req modules.LoopLockRequest
 	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
@@ -63,36 +68,27 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 		return err
 	}
 
-	var newSO storageObligation
+	// look up the renter's public key
+	var so storageObligation
 	h.mu.RLock()
 	err := h.db.View(func(tx *bolt.Tx) error {
 		var err error
-		newSO, err = getStorageObligation(tx, req.ContractID)
+		so, err = getStorageObligation(tx, req.ContractID)
 		return err
 	})
 	h.mu.RUnlock()
 	if err != nil || h.dependencies.Disrupt("loopLockNoRecordOfThatContract") {
 		s.writeError(errors.New(modules.V1420ContractNotRecognizedErrString))
-		return extendErr("could get storage obligation "+req.ContractID.String()+": ", err)
+		return extendErr("could not get storage obligation "+req.ContractID.String()+": ", err)
 	}
-
-	// get the revision and signatures
-	txn := newSO.RevisionTransactionSet[len(newSO.RevisionTransactionSet)-1]
+	txn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
 	rev := txn.FileContractRevisions[0]
-	var sigs []types.TransactionSignature
-	for _, sig := range txn.TransactionSignatures {
-		// The transaction may have additional signatures that are only
-		// relevant to the host.
-		if sig.ParentID == crypto.Hash(rev.ParentID) {
-			sigs = append(sigs, sig)
-		}
-	}
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
 
 	// verify the challenge response
-	hash := crypto.HashAll(modules.RPCChallengePrefix, s.challenge)
-	var renterPK crypto.PublicKey
+	hash := crypto.HashAll(modules.RPCChallengePrefix, challenge)
 	var renterSig crypto.Signature
-	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
 	copy(renterSig[:], req.Signature)
 	if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
 		err := errors.New("challenge signature is invalid")
@@ -103,11 +99,35 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	// attempt to lock the storage obligation
 	lockErr := h.managedTryLockStorageObligation(req.ContractID, lockTimeout)
 	if lockErr == nil {
-		s.so = newSO
+		// locking succeeded; set the session storage obligation
+		//
+		// NOTE: we have to get the obligation again because it may have changed
+		// while we waited to acquire the lock
+		h.mu.RLock()
+		err = h.db.View(func(tx *bolt.Tx) error {
+			var err error
+			so, err = getStorageObligation(tx, req.ContractID)
+			return err
+		})
+		h.mu.RUnlock()
+		if err != nil {
+			s.writeError(errors.New(modules.V1420ContractNotRecognizedErrString))
+			return extendErr("could not get storage obligation "+req.ContractID.String()+": ", err)
+		}
+		s.so = so
 	}
 
-	// Generate a new challenge.
-	fastrand.Read(s.challenge[:])
+	// get the revision and signatures
+	txn = so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
+	rev = txn.FileContractRevisions[0]
+	var sigs []types.TransactionSignature
+	for _, sig := range txn.TransactionSignatures {
+		// The transaction may have additional signatures that are only
+		// relevant to the host.
+		if sig.ParentID == crypto.Hash(rev.ParentID) {
+			sigs = append(sigs, sig)
+		}
+	}
 
 	// Write the response.
 	resp := modules.LoopLockResponse{

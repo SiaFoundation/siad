@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	fileSizeUnits = "    B, KB, MB, GB, TB, PB, EB, ZB, YB"
+	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
 )
 
 var (
@@ -1152,7 +1152,7 @@ and bandwidth needs while spending significantly less than the overall allowance
 
 The following units can be used to set the expected storage:`)
 	fmt.Println()
-	fmt.Println(fileSizeUnits)
+	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedStorage))
@@ -1200,7 +1200,7 @@ consider repair bandwidth separately.
 
 The following units can be used to set the expected upload:`)
 	fmt.Println()
-	fmt.Println(fileSizeUnits)
+	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	euCurrentPeriod := allowance.ExpectedUpload * uint64(allowance.Period)
 	euDefaultPeriod := modules.DefaultAllowance.ExpectedUpload * uint64(modules.DefaultAllowance.Period)
@@ -1257,7 +1257,7 @@ consider repair bandwidth separately.
 
 The following units can be used to set the expected download:`)
 	fmt.Println()
-	fmt.Println(fileSizeUnits)
+	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	edCurrentPeriod := allowance.ExpectedDownload * uint64(allowance.Period)
 	edDefaultPeriod := modules.DefaultAllowance.ExpectedDownload * uint64(modules.DefaultAllowance.Period)
