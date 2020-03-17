@@ -7,6 +7,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const estimatedTransactionSize = 750
+
 // sortedOutputs is a struct containing a slice of siacoin outputs and their
 // corresponding ids. sortedOutputs can be sorted using the sort package.
 type sortedOutputs struct {
@@ -108,7 +110,14 @@ func (w *Wallet) UnconfirmedBalance() (outgoingSiacoins types.Currency, incoming
 // transaction is submitted to the transaction pool and is also returned. Fees
 // are added to the amount sent.
 func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error) {
-	fee := w.getFee()
+	if err := w.tg.Add(); err != nil {
+		err = modules.ErrWalletShutdown
+		return nil, err
+	}
+	defer w.tg.Done()
+
+	_, fee := w.tpool.FeeEstimation()
+	fee = fee.Mul64(estimatedTransactionSize)
 	return w.managedSendSiacoins(amount, fee, dest)
 }
 
@@ -116,7 +125,14 @@ func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) ([]t
 // transaction is submitted to the transaction pool and is also returned. Fees
 // are subtracted from the amount sent.
 func (w *Wallet) SendSiacoinsFeeIncluded(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error) {
-	fee := w.getFee()
+	if err := w.tg.Add(); err != nil {
+		err = modules.ErrWalletShutdown
+		return nil, err
+	}
+	defer w.tg.Done()
+
+	_, fee := w.tpool.FeeEstimation()
+	fee = fee.Mul64(estimatedTransactionSize)
 	// Don't allow sending an amount equal to the fee, as zero spending is not
 	// allowed and would error out later.
 	if amount.Cmp(fee) <= 0 {
@@ -126,21 +142,9 @@ func (w *Wallet) SendSiacoinsFeeIncluded(amount types.Currency, dest types.Unloc
 	return w.managedSendSiacoins(amount.Sub(fee), fee, dest)
 }
 
-func (w *Wallet) getFee() types.Currency {
-	_, tpoolFee := w.tpool.FeeEstimation()
-	tpoolFee = tpoolFee.Mul64(750) // Estimated transaction size in bytes
-	return tpoolFee
-}
-
 // managedSendSiacoins creates a transaction sending 'amount' to 'dest'. The
 // transaction is submitted to the transaction pool and is also returned.
 func (w *Wallet) managedSendSiacoins(amount, fee types.Currency, dest types.UnlockHash) (txns []types.Transaction, err error) {
-	if err := w.tg.Add(); err != nil {
-		err = modules.ErrWalletShutdown
-		return nil, err
-	}
-	defer w.tg.Done()
-
 	// Check if consensus is synced
 	if !w.cs.Synced() || w.deps.Disrupt("UnsyncedConsensus") {
 		return nil, errors.New("cannot send siacoin until fully synced")
