@@ -7,6 +7,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// estimatedTransactionSize is the estimated size of a transaction used to send
+// siacoins.
 const estimatedTransactionSize = 750
 
 // sortedOutputs is a struct containing a slice of siacoin outputs and their
