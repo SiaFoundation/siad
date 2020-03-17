@@ -227,7 +227,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// If requested, serve the content as a tar archive or compressed tar archive.
+	// If requested, serve the content as a tar archive or compressed tar
+	// archive.
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("content-type", "application/x-tar")
 		err = serveTar(w, metadata, streamer)
@@ -315,6 +316,18 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// Parse the timeout.
+	timeout := DefaultRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
 	// Check whether force upload is allowed. Skynet portals might disallow
 	// passing the force flag, if they want to they can set overrule the force
 	// flag by passing in the 'Skynet-Disable-Force' header
@@ -363,7 +376,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		BaseChunkRedundancy: redundancy,
 	}
 
-	err = api.renter.PinSkylink(skylink, lup)
+	err = api.renter.PinSkylink(skylink, lup, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
 		return
