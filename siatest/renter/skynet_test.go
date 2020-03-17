@@ -56,6 +56,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
+		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
 	}
 
 	// Run tests
@@ -1610,24 +1611,6 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
-
-	// Create a renter with a timeout dependency injected
-	testDir := renterTestDir(t.Name())
-	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencies.DependencyTimeoutProjectDownloadByRoot{}
-	nodes, err := tg.AddNodes(renterParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r = nodes[0]
-
-	// Perform a HEAD request for a skylink that exists, however on a renter
-	// with the DependencyTimeoutProjectDownloadByRoot dependency. We expect it
-	// to timeout and thus return a 404.
-	status, header, err = r.SkynetSkylinkHead(skylink, 1)
-	if status != http.StatusNotFound {
-		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
-	}
 }
 
 // testSkynetNoWorkers verifies that SkynetSkylinkGet returns an error and does
@@ -1653,5 +1636,97 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Error is nil, expected error due to no worker")
 	} else if !strings.Contains(err.Error(), "no workers") {
 		t.Errorf("Expected error containing 'no workers' but got %v", err)
+	}
+}
+
+// testSkynetRequestTimeout verifies that the Skylink routes timeout when a
+// timeout query string parameter has been passed.
+func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	uploadSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetRequestTimeout",
+			Mode:     0640,
+		},
+		Reader: reader,
+		Force:  true,
+	}
+	// Upload a skyfile
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it was uploaded properly
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify we can pin it
+	pinSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinLUP := modules.SkyfilePinParameters{
+		SiaPath:             pinSiaPath,
+		Force:               true,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+	}
+	err = r.SkynetSkylinkPinPost(skylink, pinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a renter with a timeout dependency injected
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyTimeoutProjectDownloadByRoot{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Upload a skyfile
+	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
+	skylink, _, err = r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify timeout on head request
+	status, _, err := r.SkynetSkylinkHead(skylink, 1)
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+
+	// Verify timeout on download request
+	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
+	if errors.Contains(err, renter.ErrProjectTimedOut) {
+		t.Fatal("Expected download request to time out")
+	}
+	if !strings.Contains(err.Error(), "timed out after 1s") {
+		t.Log(err)
+		t.Fatal("Expected error to specify the timeout")
+	}
+
+	// Verify timeout on pin request
+	err = r.SkynetSkylinkPinPostWithTimeout(skylink, pinLUP, 2)
+	if errors.Contains(err, renter.ErrProjectTimedOut) {
+		t.Fatal("Expected pin request to time out")
+	}
+	if !strings.Contains(err.Error(), "timed out after 2s") {
+		t.Log(err)
+		t.Fatal("Expected error to specify the timeout")
 	}
 }

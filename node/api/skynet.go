@@ -23,17 +23,20 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// DefaultSkynetRequestTimeout is the default request timeout for routes that
-// have a timeout query string parameter. If the request can not be resolved
-// within the given amount of time, it times out. This is used for Skynet routes
-// where a request times out if the DownloadByRoot project does not finish in
-// due time.
-const DefaultSkynetRequestTimeout = 30 * time.Second
+const (
+	// DefaultSkynetRequestTimeout is the default request timeout for routes
+	// that have a timeout query string parameter. If the request can not be
+	// resolved within the given amount of time, it times out. This is used for
+	// Skynet routes where a request times out if the DownloadByRoot project
+	// does not finish in due time.
+	DefaultSkynetRequestTimeout = 30 * time.Second
 
-// MaxSkynetRequestTimeout is the maximum a user is allowed to set as request
-// timeout. This to prevent an attack vector where the attacker could cause a
-// go-routine leak by creating a bunch of requests with very high timeouts.
-const MaxSkynetRequestTimeout = 15 * 60 // in seconds
+	// MaxSkynetRequestTimeout is the maximum a user is allowed to set as
+	// request timeout. This to prevent an attack vector where the attacker
+	// could cause a go-routine leak by creating a bunch of requests with very
+	// high timeouts.
+	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+)
 
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
@@ -328,15 +331,10 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Parse the timeout.
-	timeout := DefaultRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether force upload is allowed. Skynet portals might disallow
@@ -657,6 +655,24 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		}
 	}
 	return tw.Close()
+}
+
+// parseTimeout tries to parse the timeout from the query string and validate
+// it. If not present, it will default to DefaultSkynetRequestTimeout.
+func parseTimeout(queryForm url.Values) (time.Duration, error) {
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr == "" {
+		return DefaultSkynetRequestTimeout, nil
+	}
+
+	timeoutInt, err := strconv.Atoi(timeoutStr)
+	if err != nil {
+		return 0, errors.AddContext(err, "unable to parse 'timeout'")
+	}
+	if timeoutInt > MaxSkynetRequestTimeout {
+		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	}
+	return time.Duration(timeoutInt) * time.Second, nil
 }
 
 // skyfileParseMultiPartRequest parses the given request and returns the
