@@ -18,8 +18,9 @@ Latest:
    instead of relative file paths.
  - Add ability to blacklist skylinks by merkleroot.
  - Uploading resumes more quickly after restart.
- - Add ability to pack many files into the same or adjacent sectors while
-   producing unique skylinks for each file.
+ - Add `HEAD` request for skylink
+  - Add ability to pack many files into the same or adjacent sectors while
+    producing unique skylinks for each file.
  - Fix default expected upload/download values displaying 0 when setting an
    initial allowance.
  - `siac skynet upload` now supports uploading directories. All files are
@@ -35,9 +36,10 @@ Latest:
  - Add `siac skynet unpin` subcommand.
  - Extend `siac renter -v` to show breakdown of file health.
  - Add Skynet-Disable-Force header to allow disabling the force update feature
-   on Skynet uploads - Add bandwidth usage to `siac gateway`
+   on Skynet uploads
+ - Add bandwidth usage to `siac gateway`
 
- **Bugs Fixed**
+**Bugs Fixed**
  - Fixed bug in startup where an error being returned by the renter's blocking
    startup process was being missed
  - Fix repair bug where unused hosts were not being properly updated for a
@@ -51,24 +53,24 @@ Latest:
  - Fixed `siac skynet ls` not working when files were passed as input. It is now
    able to access specific files in the Skynet folder.
  - Fixed a deadlock when performing a Skynet download with no workers
- - Fix a parsing bug for malformed skylinks - fix siac update for new release
-   verification - Fix parameter delimiter for skylinks- Fixed a bug which caused
-   a call to `build.Critical` in the case that a contract in the renew set was
-   marked `!GoodForRenew` while the contractor lock was not held
+ - Fix a parsing bug for malformed skylinks
+ - fix siac update for new release verification
+  - Fix parameter delimiter for skylinks
+ - Fixed a bug which caused a call to `build.Critical` in the case that a
+   contract in the renew set was marked `!GoodForRenew` while the contractor
+   lock was not held
 
 **Other**
- - Split out renter siatests into 2 groups for faster pipelines
- - Add SiaMux stream handler to the host
- - 
+ - Split out renter siatests into 2 groups for faster pipelines.
  - Add README to the `siatest` package 
  - Bump golangci-lint version to v1.23.8
  - Add `go get` command to `make dependencies`.
  - Update repair loop to use `uniqueRefreshPaths` to reduce unnecessary bubble
-   calls 
+   calls
  - Add Skynet-Disable-Force header to allow disabling the force update feature
-   on Skynet uploads 
+   on Skynet uploads
  - Create generator for Changelog to improve changelog update process
-
+ 
 ### v1.4.3
 **Key Updates**
  - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
