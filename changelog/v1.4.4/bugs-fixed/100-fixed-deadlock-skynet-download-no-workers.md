@@ -1,1 +1,0 @@
- - Fixed a deadlock when performing a Skynet download with no workers

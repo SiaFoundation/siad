@@ -1,1 +1,0 @@
- - No user-agent needed for Skylink downloads.
