@@ -1,1 +1,0 @@
-- Add timeout parameter to Skylink pin route
