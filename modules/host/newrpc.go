@@ -40,6 +40,11 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	s.extendDeadline(modules.NegotiateRecentRevisionTime)
 
+	// Challenges can only be used once, so generate a new one immediately,
+	// regardless of the outcome of this RPC.
+	challenge := s.challenge
+	fastrand.Read(s.challenge[:])
+
 	// Read the request.
 	var req modules.LoopLockRequest
 	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
@@ -63,36 +68,27 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 		return err
 	}
 
-	var newSO storageObligation
+	// look up the renter's public key
+	var so storageObligation
 	h.mu.RLock()
 	err := h.db.View(func(tx *bolt.Tx) error {
 		var err error
-		newSO, err = getStorageObligation(tx, req.ContractID)
+		so, err = h.getStorageObligation(tx, req.ContractID)
 		return err
 	})
 	h.mu.RUnlock()
 	if err != nil || h.dependencies.Disrupt("loopLockNoRecordOfThatContract") {
 		s.writeError(errors.New(modules.V1420ContractNotRecognizedErrString))
-		return extendErr("could get storage obligation "+req.ContractID.String()+": ", err)
+		return extendErr("could not get storage obligation "+req.ContractID.String()+": ", err)
 	}
-
-	// get the revision and signatures
-	txn := newSO.RevisionTransactionSet[len(newSO.RevisionTransactionSet)-1]
+	txn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
 	rev := txn.FileContractRevisions[0]
-	var sigs []types.TransactionSignature
-	for _, sig := range txn.TransactionSignatures {
-		// The transaction may have additional signatures that are only
-		// relevant to the host.
-		if sig.ParentID == crypto.Hash(rev.ParentID) {
-			sigs = append(sigs, sig)
-		}
-	}
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
 
 	// verify the challenge response
-	hash := crypto.HashAll(modules.RPCChallengePrefix, s.challenge)
-	var renterPK crypto.PublicKey
+	hash := crypto.HashAll(modules.RPCChallengePrefix, challenge)
 	var renterSig crypto.Signature
-	copy(renterPK[:], rev.UnlockConditions.PublicKeys[0].Key)
 	copy(renterSig[:], req.Signature)
 	if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
 		err := errors.New("challenge signature is invalid")
@@ -103,11 +99,35 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	// attempt to lock the storage obligation
 	lockErr := h.managedTryLockStorageObligation(req.ContractID, lockTimeout)
 	if lockErr == nil {
-		s.so = newSO
+		// locking succeeded; set the session storage obligation
+		//
+		// NOTE: we have to get the obligation again because it may have changed
+		// while we waited to acquire the lock
+		h.mu.RLock()
+		err = h.db.View(func(tx *bolt.Tx) error {
+			var err error
+			so, err = h.getStorageObligation(tx, req.ContractID)
+			return err
+		})
+		h.mu.RUnlock()
+		if err != nil {
+			s.writeError(errors.New(modules.V1420ContractNotRecognizedErrString))
+			return extendErr("could not get storage obligation "+req.ContractID.String()+": ", err)
+		}
+		s.so = so
 	}
 
-	// Generate a new challenge.
-	fastrand.Read(s.challenge[:])
+	// get the revision and signatures
+	txn = so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
+	rev = txn.FileContractRevisions[0]
+	var sigs []types.TransactionSignature
+	for _, sig := range txn.TransactionSignatures {
+		// The transaction may have additional signatures that are only
+		// relevant to the host.
+		if sig.ParentID == crypto.Hash(rev.ParentID) {
+			sigs = append(sigs, sig)
+		}
+	}
 
 	// Write the response.
 	resp := modules.LoopLockResponse{
@@ -173,8 +193,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	sectorsChanged := make(map[uint64]struct{}) // for construct Merkle proof
 	var bandwidthRevenue types.Currency
 	var sectorsRemoved []crypto.Hash
-	var sectorsGained []crypto.Hash
-	var gainedSectorData [][]byte
+	sectorsGained := make(map[crypto.Hash][]byte)
 	for _, action := range req.Actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
@@ -185,8 +204,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			// Update sector roots.
 			newRoot := crypto.MerkleRoot(action.Data)
 			newRoots = append(newRoots, newRoot)
-			sectorsGained = append(sectorsGained, newRoot)
-			gainedSectorData = append(gainedSectorData, action.Data)
+			sectorsGained[newRoot] = action.Data
 
 			sectorsChanged[uint64(len(newRoots))-1] = struct{}{}
 
@@ -238,8 +256,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			copy(sector[offset:], action.Data)
 			newRoot := crypto.MerkleRoot(sector)
 			sectorsRemoved = append(sectorsRemoved, newRoots[sectorIndex])
-			sectorsGained = append(sectorsGained, newRoot)
-			gainedSectorData = append(gainedSectorData, sector)
+			sectorsGained[newRoot] = sector
 			newRoots[sectorIndex] = newRoot
 
 			// Update finances.
@@ -363,7 +380,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	s.so.RiskedCollateral = s.so.RiskedCollateral.Add(newCollateral)
 	s.so.PotentialUploadRevenue = s.so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	err = h.managedModifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData)
+	err = h.managedModifyStorageObligation(s.so, sectorsRemoved, sectorsGained)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -504,7 +521,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	err = h.managedModifyStorageObligation(s.so, nil, nil, nil)
+	err = h.managedModifyStorageObligation(s.so, nil, nil)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -842,7 +859,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	err = h.managedModifyStorageObligation(s.so, nil, nil, nil)
+	err = h.managedModifyStorageObligation(s.so, nil, nil)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to modify storage obligation: ", err)
@@ -1001,7 +1018,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// we don't count the sectors as being removed since we prevented
 	// managedFinalizeContract from incrementing the counters on virtual sectors
 	// before
-	h.managedModifyStorageObligation(s.so, nil, nil, nil)
+	h.managedModifyStorageObligation(s.so, nil, nil)
 
 	// Send our signatures for the contract transaction and initial revision.
 	hostSigs := modules.LoopRenewAndClearContractSignatures{
