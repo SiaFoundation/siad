@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -181,7 +182,7 @@ func fileUploadParamsFromLUP(lup modules.SkyfileUploadParameters) (modules.FileU
 	// Create parameters to upload the file with 1-of-N erasure coding and no
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
-	// also resiliant to host failures.
+	// also resilient to host failures.
 	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
 		return modules.FileUploadParams{}, errors.AddContext(err, "unable to create erasure coder")
@@ -547,7 +548,7 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
+func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	// Check if link is blacklisted
 	if r.staticSkynetBlacklist.IsBlacklisted(link) {
 		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
@@ -560,7 +561,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink) (modules.SkyfileMetadata,
 	}
 
 	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize)
+	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
@@ -601,7 +602,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	skyfileEstablishDefaults(&lup)
 
 	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize)
+	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, 0)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch base sector of skylink")
 	}

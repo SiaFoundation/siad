@@ -203,7 +203,7 @@ func (h *Host) initNetworking(address string) (err error) {
 	// thread.
 	go func() {
 		// Add this function to the threadgroup, so that the logger will not
-		// disappear before port closing can be registered to the threadgrourp
+		// disappear before port closing can be registered to the threadgroup
 		// OnStop functions.
 		err := h.tg.Add()
 		if err != nil {

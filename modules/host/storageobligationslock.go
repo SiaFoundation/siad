@@ -61,8 +61,8 @@ func (h *Host) managedTryLockStorageObligation(soid types.FileContractID, timeou
 	return errObligationLocked
 }
 
-// managedUnlockStorageObligation takes a storage obligation out from under lock in
-// the host.
+// managedUnlockStorageObligation takes a storage obligation out from under lock
+// in the host.
 func (h *Host) managedUnlockStorageObligation(soid types.FileContractID) {
 	// Check if a lock has been created for this storage obligation. The map
 	// must be accessed under lock, but the request for the unlock must not

@@ -27,7 +27,7 @@ type RPCPriceTable struct {
 	// InitBaseCost is the amount of cost that is incurred when an MDM program
 	// starts to run. This doesn't include the memory used by the program data.
 	// The total cost to initialize a program is calculated as
-	// InitCost = InitiBaseCost + MemoryTimeCost * Time
+	// InitCost = InitBaseCost + MemoryTimeCost * Time
 	InitBaseCost types.Currency `json:"initbasecost"`
 
 	// MemoryTimeCost is the amount of cost per byte per time that is incurred
