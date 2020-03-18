@@ -4957,8 +4957,8 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&destination=c134a837
 ```
 
 Sends siacoins to an address or set of addresses. The outputs are arbitrarily
-selected from addresses in the wallet. If 'outputs' is supplied, 'amount' and
-'destination' must be empty.  
+selected from addresses in the wallet. If 'outputs' is supplied, 'amount',
+'destination' and 'feeIncluded' must be empty.
 
 ### Query String Parameters
 ### REQUIRED
@@ -4975,7 +4975,11 @@ Address that is receiving the coins.
 
 **outputs**  
 JSON array of outputs. The structure of each output is: {"unlockhash":
-"<destination>", "value": "<amount>"}  
+"<destination>", "value": "<amount>"}
+
+### OPTIONAL
+**feeIncluded** | boolean  
+Take the transaction fee out of the balance being submitted instead of the fee being additional.
 
 ### JSON Response
 > JSON Response Example
@@ -5395,7 +5399,7 @@ The id of the output being spent.
 Type of fund represented by the input. Possible values are 'siacoin input' and
 'siafund input'.  
 
-**walletaddress** | Boolean  
+**walletaddress** | boolean  
 true if the address is owned by the wallet.  
 
 **relatedaddress**  
