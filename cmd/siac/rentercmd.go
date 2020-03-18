@@ -2454,7 +2454,7 @@ func renterfilesuploadpausecmd(dur string) {
 	if err != nil {
 		die("Could not pause renter uploads:", err)
 	}
-	fmt.Println("Renter uploads have been paused for ", dur, " minutes.")
+	fmt.Println("Renter uploads have been paused for", dur, "minutes.")
 }
 
 // renterfilesuploadresumecmd is the handler for the command `siac renter upload
