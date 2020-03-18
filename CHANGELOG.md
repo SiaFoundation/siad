@@ -19,7 +19,7 @@ Latest:
  - Add ability to blacklist skylinks by merkleroot.
  - Uploading resumes more quickly after restart.
  - Add `HEAD` request for skylink
-  - Add ability to pack many files into the same or adjacent sectors while
+ - Add ability to pack many files into the same or adjacent sectors while
     producing unique skylinks for each file.
  - Fix default expected upload/download values displaying 0 when setting an
    initial allowance.
@@ -29,7 +29,7 @@ Latest:
  - Add `go get` command to `make dependencies`.
  - Add flags for tag and targz for skyfile streaming.
  - Add new endpoint `/skynet/stats` that provides statistical information about
-   skynet - how many files were uploaded and the combined size of said files.
+   skynet, how many files were uploaded and the combined size of said files.
  - The `siac renter setallowance` UX is considerably improved.
  - Add XChaCha20 CipherKey.
  - Add Skykey Manager.
@@ -55,7 +55,8 @@ Latest:
  - Fixed a deadlock when performing a Skynet download with no workers
  - Fix a parsing bug for malformed skylinks
  - fix siac update for new release verification
-  - Fix parameter delimiter for skylinks
+ - Fix parameter delimiter for skylinks
+ - Fixed race condition in host's `RPCLoopLock`
  - Fixed a bug which caused a call to `build.Critical` in the case that a
    contract in the renew set was marked `!GoodForRenew` while the contractor
    lock was not held
@@ -64,7 +65,8 @@ Latest:
  - Split out renter siatests into 2 groups for faster pipelines.
  - Add README to the `siatest` package 
  - Bump golangci-lint version to v1.23.8
- - Add `go get` command to `make dependencies`.
+ - Add timeout parameter to Skylink route - Add `go get` command to `make
+   dependencies`.
  - Update repair loop to use `uniqueRefreshPaths` to reduce unnecessary bubble
    calls
  - Add Skynet-Disable-Force header to allow disabling the force update feature

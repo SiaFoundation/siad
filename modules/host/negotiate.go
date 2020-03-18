@@ -241,6 +241,8 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 
 		OriginTransactionSet:   fullTxnSet,
 		RevisionTransactionSet: []types.Transaction{revisionTransaction},
+
+		h: h,
 	}
 
 	// Get a lock on the storage obligation.

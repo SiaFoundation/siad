@@ -92,7 +92,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error
 	}}
 
 	// update the storage obligation
-	err = h.managedModifyStorageObligation(so, nil, nil, nil)
+	err = h.managedModifyStorageObligation(so, nil, nil)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not modify storage obligation")
 	}

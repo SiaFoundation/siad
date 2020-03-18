@@ -125,8 +125,6 @@ var (
 	errObligationUnlocked = errors.New("storage obligation is unlocked, and should not be getting unlocked")
 )
 
-type storageObligationStatus uint64
-
 // storageObligation contains all of the metadata related to a file contract
 // and the storage contained by the file contract.
 type storageObligation struct {
@@ -167,8 +165,14 @@ type storageObligation struct {
 	ProofConstructed    bool
 	RevisionConfirmed   bool
 	RevisionConstructed bool
+
+	h *Host
 }
 
+// storageObligationStatus indicates the current status of a storage obligation
+type storageObligationStatus uint64
+
+// String converts a storageObligationStatus to a string.
 func (i storageObligationStatus) String() string {
 	if i == 0 {
 		return "obligationUnresolved"
@@ -185,8 +189,31 @@ func (i storageObligationStatus) String() string {
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 
+// managedGetStorageObligationSnapshot fetches a storage obligation from the
+// database and returns a snapshot.
+func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var err error
+	var so storageObligation
+	if err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, id)
+		return err
+	}); err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+
+	rev := so.recentRevision()
+	return StorageObligationSnapshot{
+		staticContractSize: rev.NewFileSize,
+		staticMerkleRoot:   rev.NewFileMerkleRoot,
+		staticSectorRoots:  so.SectorRoots,
+	}, nil
+}
+
 // getStorageObligation fetches a storage obligation from the database tx.
-func getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
+func (h *Host) getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
 	soBytes := tx.Bucket(bucketStorageObligations).Get(soid[:])
 	if soBytes == nil {
 		return storageObligation{}, errNoStorageObligation
@@ -195,6 +222,7 @@ func getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObl
 	if err != nil {
 		return storageObligation{}, err
 	}
+	so.h = h
 	return so, nil
 }
 
@@ -207,6 +235,42 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 	}
 	soid := so.id()
 	return tx.Bucket(bucketStorageObligations).Put(soid[:], soBytes)
+}
+
+// StorageObligationSnapshot is a snapshot of a StorageObligation. A snapshot is
+// a deep-copy and can be accessed without locking at the cost of being a frozen
+// readonly representation of an SO which only exists in memory. Note that this
+// snapshot only contains the properties required by the MDM to execute a
+// program. This can be extended in the future to support other use cases.
+type StorageObligationSnapshot struct {
+	staticContractSize uint64
+	staticMerkleRoot   crypto.Hash
+	staticSectorRoots  []crypto.Hash
+}
+
+// ContractSize returns the size of the underlying contract, which is static and
+// is the value of the contract size at the time the snapshot was taken.
+func (sos StorageObligationSnapshot) ContractSize() uint64 {
+	return sos.staticContractSize
+}
+
+// MerkleRoot returns the merkle root, which is static and is the value of the
+// merkle root at the time the snapshot was taken.
+func (sos StorageObligationSnapshot) MerkleRoot() crypto.Hash {
+	return sos.staticMerkleRoot
+}
+
+// SectorRoots returns a static list of the sector roots present at the time the
+// snapshot was taken.
+func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
+	return sos.staticSectorRoots
+}
+
+// Update will take a list of sector changes and update the database to account
+// for all of it.
+func (so storageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
+	so.SectorRoots = sectorRoots
+	return so.h.managedModifyStorageObligation(so, sectorsRemoved, sectorsGained)
 }
 
 // expiration returns the height at which the storage obligation expires.
@@ -344,7 +408,7 @@ func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storag
 	defer h.mu.RUnlock()
 
 	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, fcid)
+		so, err = h.getStorageObligation(tx, fcid)
 		return err
 	})
 	return
@@ -513,15 +577,16 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 	return nil
 }
 
-// managedModifyStorageObligation will take an updated storage obligation along with a
-// list of sector changes and update the database to account for all of it. The
-// sector modifications are only used to update the sector database, they will
-// not be used to modify the storage obligation (most importantly, this means
-// that sectorRoots needs to be updated by the calling function). Virtual
-// sectors will be removed the number of times that they are listed, to remove
-// multiple instances of the same virtual sector, the virtural sector will need
-// to appear in 'sectorsRemoved' multiple times. Same with 'sectorsGained'.
-func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemoved []crypto.Hash, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+// managedModifyStorageObligation will take an updated storage obligation along
+// with a list of sector changes and update the database to account for all of
+// it. The sector modifications are only used to update the sector database,
+// they will not be used to modify the storage obligation (most importantly,
+// this means that sectorRoots needs to be updated by the calling function).
+// Virtual sectors will be removed the number of times that they are listed, to
+// remove multiple instances of the same virtual sector, the virtual sector
+// will need to appear in 'sectorsRemoved' multiple times. Same with
+// 'sectorsGained'.
+func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	// Sanity check - obligation should be under lock while being modified.
@@ -545,13 +610,8 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	if so.expiration()-revisionSubmissionBuffer <= h.blockHeight {
 		return errNoBuffer
 	}
-	// Sanity check - sectorsGained and gainedSectorData need to have the same length.
-	if len(sectorsGained) != len(gainedSectorData) {
-		h.log.Critical("modifying a revision with garbage sector data", len(sectorsGained), len(gainedSectorData))
-		return errInsaneStorageObligationRevision
-	}
 	// Sanity check - all of the sector data should be modules.SectorSize
-	for _, data := range gainedSectorData {
+	for _, data := range sectorsGained {
 		if uint64(len(data)) != modules.SectorSize {
 			h.log.Critical("modifying a revision with garbase sector sizes", len(data))
 			return errInsaneStorageObligationRevision
@@ -565,21 +625,22 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	// and left to consistency checks and user actions to fix (will reduce host
 	// capacity, but will not inhibit the host's ability to submit storage
 	// proofs)
-	var i int
+	var added []crypto.Hash
 	var err error
-	for i = range sectorsGained {
-		err = h.AddSector(sectorsGained[i], gainedSectorData[i])
+	for sectorRoot, data := range sectorsGained {
+		err = h.AddSector(sectorRoot, data)
 		if err != nil {
 			break
 		}
+		added = append(added, sectorRoot)
 	}
 	if err != nil {
 		// Because there was an error, all of the sectors that got added need
 		// to be reverted.
-		for j := 0; j < i; j++ {
+		for _, sectorRoot := range added {
 			// Error is not checked because there's nothing useful that can be
 			// done about an error.
-			_ = h.RemoveSector(sectorsGained[j])
+			_ = h.RemoveSector(sectorRoot)
 		}
 		return err
 	}
@@ -588,7 +649,7 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	err = h.db.Update(func(tx *bolt.Tx) error {
 		// Get the old storage obligation as a reference to know how to upate
 		// the host financial stats.
-		oldSO, err = getStorageObligation(tx, soid)
+		oldSO, err = h.getStorageObligation(tx, soid)
 		if err != nil {
 			return err
 		}
@@ -599,10 +660,10 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	if err != nil {
 		// Because there was an error, all of the sectors that got added need
 		// to be reverted.
-		for i := range sectorsGained {
+		for sectorRoot := range sectorsGained {
 			// Error is not checked because there's nothing useful that can be
 			// done about an error.
-			_ = h.RemoveSector(sectorsGained[i])
+			_ = h.RemoveSector(sectorRoot)
 		}
 		return err
 	}
@@ -835,7 +896,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 	h.mu.RLock()
 	blockHeight := h.blockHeight
 	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, soid)
+		so, err = h.getStorageObligation(tx, soid)
 		return err
 	})
 	h.mu.RUnlock()
