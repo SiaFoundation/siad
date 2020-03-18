@@ -64,7 +64,9 @@ Example Body
   was not held
 
 ```
-To ensure consistent spacing please have a newline at the end of the file.
+To ensure consistent spacing please remove leading spaces from the first line,
+the file content should start with `- ` and please remove new lines and spaces
+at the end of the file.
 
 ## Change Types
 ### Key Updates
