@@ -4,7 +4,6 @@ avoid merge conflicts on each Changelog update and to simplify generating
 Changelog.
 
 ## Changelog Files
-
 Instead of creating new entries directly in `CHANGELOG.MD`, a new file is
 created in this directory that documents the change.
 
