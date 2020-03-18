@@ -28,12 +28,19 @@ func TestProcessPayment(t *testing.T) {
 	}
 	defer ht.Close()
 
+	// create a renter key pair
+	sk, pk := crypto.GenerateKeyPair()
+	renterPK := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
 	// setup storage obligationn (emulating a renter creating a contract)
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
 		t.Fatal(err)
 	}
-	so, err = ht.addNoOpRevision(so)
+	so, err = ht.addNoOpRevision(so, renterPK)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,13 +52,13 @@ func TestProcessPayment(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// test both payment methods
-	testPayByContract(t, ht.host, so)
+	testPayByContract(t, ht.host, so, sk)
 	testPayByEphemeralAccount(t, ht.host, so)
 }
 
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
-func testPayByContract(t *testing.T, host *Host, so storageObligation) {
+func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK crypto.SecretKey) {
 	// prepare an updated revision that pays the host
 	rev := so.recentRevision()
 	payment := types.NewCurrency64(1)
@@ -64,14 +71,10 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation) {
 	rev.NewMissedProofOutputs = missedPayouts
 	rev.NewRevisionNumber = rev.NewRevisionNumber + 1
 
-	// random renter sk
-	var sk crypto.SecretKey
-	copy(sk[:], fastrand.Bytes(64))
-
 	// create transaction containing the revision
 	signedTxn := types.NewTransaction(rev, 0)
 	hash := signedTxn.SigHash(0, host.blockHeight)
-	sig := crypto.SignHash(hash, sk)
+	sig := crypto.SignHash(hash, renterSK)
 
 	// create two streams
 	rStream, hStream := NewTestStreams()
@@ -108,7 +111,7 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation) {
 		// process payment request
 		_, err := host.ProcessPayment(hStream)
 		if err != nil {
-			t.Log(err)
+			modules.RPCWriteError(hStream, err)
 			return
 		}
 	}()
@@ -252,7 +255,7 @@ func newPayByEphemeralAccountRequest(account string, expiry types.BlockHeight, a
 // addNoOpRevision is a helper method that adds a revision to the given
 // obligation. In production this 'noOpRevision' is always added, however the
 // obligation returned by `newTesterStorageObligation` does not add it.
-func (ht *hostTester) addNoOpRevision(so storageObligation) (storageObligation, error) {
+func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPublicKey) (storageObligation, error) {
 	builder, err := ht.wallet.StartTransaction()
 	if err != nil {
 		return storageObligation{}, err
@@ -262,17 +265,11 @@ func (ht *hostTester) addNoOpRevision(so storageObligation) (storageObligation, 
 	contractTxn := txnSet[len(txnSet)-1]
 	fc := contractTxn.FileContracts[0]
 
-	_, pk := crypto.GenerateKeyPair()
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-
 	noOpRevision := types.FileContractRevision{
 		ParentID: contractTxn.FileContractID(0),
 		UnlockConditions: types.UnlockConditions{
 			PublicKeys: []types.SiaPublicKey{
-				spk,
+				renterPK,
 				ht.host.publicKey,
 			},
 			SignaturesRequired: 2,
