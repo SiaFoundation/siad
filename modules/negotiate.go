@@ -327,6 +327,8 @@ type (
 		// which is the most recent.
 		RevisionNumber uint64 `json:"revisionnumber"`
 		Version        string `json:"version"`
+
+		SiaMuxPort string `json:"siamuxport"`
 	}
 
 	// HostOldExternalSettings are the pre-v1.4.0 host settings.

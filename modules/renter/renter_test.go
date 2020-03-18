@@ -51,7 +51,15 @@ func (rt *renterTester) Close() error {
 // addHost adds a host to the test group so that it appears in the host db
 func (rt *renterTester) addHost(name string) (modules.Host, error) {
 	testdir := build.TempDir("renter", name)
-	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, rt.mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+
+	// create a siamux for this particular host
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
+	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
