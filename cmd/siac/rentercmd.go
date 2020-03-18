@@ -192,9 +192,11 @@ flags can be used to set a custom redundancy for the file.`,
 
 	renterFilesUploadPauseCmd = &cobra.Command{
 		Use:   "pause [duration]",
-		Short: "Pause renter uploads for a duration in minutes",
-		Long:  "Temporarily pause renter uploads for the duration (in minutes) specified",
-		Run:   wrap(renterfilesuploadpausecmd),
+		Short: "Pause renter uploads for a duration",
+		Long: `Temporarily pause renter uploads for the duration specified.
+Available durations include "s" for seconds, "m" for minutes, and "h" for hours.
+For Example: 'siac renter upload pause 3h' would pause uploads for 3 hours.`,
+		Run: wrap(renterfilesuploadpausecmd),
 	}
 
 	renterFilesUploadResumeCmd = &cobra.Command{
@@ -2446,15 +2448,15 @@ func renterfilesuploadcmd(source, path string) {
 // pause`.  It pauses all renter uploads for the duration (in minutes)
 // passed in.
 func renterfilesuploadpausecmd(dur string) {
-	pauseDuration, err := strconv.Atoi(dur)
+	pauseDuration, err := time.ParseDuration(dur)
 	if err != nil {
 		die("Couldn't parse duration:", err)
 	}
-	err = httpClient.RenterUploadsPausePost(time.Duration(pauseDuration) * time.Second * 60) // convert to minutes
+	err = httpClient.RenterUploadsPausePost(pauseDuration)
 	if err != nil {
 		die("Could not pause renter uploads:", err)
 	}
-	fmt.Println("Renter uploads have been paused for", dur, "minutes.")
+	fmt.Println("Renter uploads have been paused for", dur)
 }
 
 // renterfilesuploadresumecmd is the handler for the command `siac renter upload
