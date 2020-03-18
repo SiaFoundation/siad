@@ -73,7 +73,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	h.mu.RLock()
 	err := h.db.View(func(tx *bolt.Tx) error {
 		var err error
-		so, err = getStorageObligation(tx, req.ContractID)
+		so, err = h.getStorageObligation(tx, req.ContractID)
 		return err
 	})
 	h.mu.RUnlock()
@@ -106,7 +106,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 		h.mu.RLock()
 		err = h.db.View(func(tx *bolt.Tx) error {
 			var err error
-			so, err = getStorageObligation(tx, req.ContractID)
+			so, err = h.getStorageObligation(tx, req.ContractID)
 			return err
 		})
 		h.mu.RUnlock()
@@ -193,8 +193,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	sectorsChanged := make(map[uint64]struct{}) // for construct Merkle proof
 	var bandwidthRevenue types.Currency
 	var sectorsRemoved []crypto.Hash
-	var sectorsGained []crypto.Hash
-	var gainedSectorData [][]byte
+	sectorsGained := make(map[crypto.Hash][]byte)
 	for _, action := range req.Actions {
 		switch action.Type {
 		case modules.WriteActionAppend:
@@ -205,8 +204,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			// Update sector roots.
 			newRoot := crypto.MerkleRoot(action.Data)
 			newRoots = append(newRoots, newRoot)
-			sectorsGained = append(sectorsGained, newRoot)
-			gainedSectorData = append(gainedSectorData, action.Data)
+			sectorsGained[newRoot] = action.Data
 
 			sectorsChanged[uint64(len(newRoots))-1] = struct{}{}
 
@@ -258,8 +256,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			copy(sector[offset:], action.Data)
 			newRoot := crypto.MerkleRoot(sector)
 			sectorsRemoved = append(sectorsRemoved, newRoots[sectorIndex])
-			sectorsGained = append(sectorsGained, newRoot)
-			gainedSectorData = append(gainedSectorData, sector)
+			sectorsGained[newRoot] = sector
 			newRoots[sectorIndex] = newRoot
 
 			// Update finances.
@@ -383,7 +380,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	s.so.RiskedCollateral = s.so.RiskedCollateral.Add(newCollateral)
 	s.so.PotentialUploadRevenue = s.so.PotentialUploadRevenue.Add(bandwidthRevenue)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	err = h.managedModifyStorageObligation(s.so, sectorsRemoved, sectorsGained, gainedSectorData)
+	err = h.managedModifyStorageObligation(s.so, sectorsRemoved, sectorsGained)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -524,7 +521,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	err = h.managedModifyStorageObligation(s.so, nil, nil, nil)
+	err = h.managedModifyStorageObligation(s.so, nil, nil)
 	if err != nil {
 		s.writeError(err)
 		return err
@@ -862,7 +859,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
-	err = h.managedModifyStorageObligation(s.so, nil, nil, nil)
+	err = h.managedModifyStorageObligation(s.so, nil, nil)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to modify storage obligation: ", err)
@@ -1021,7 +1018,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// we don't count the sectors as being removed since we prevented
 	// managedFinalizeContract from incrementing the counters on virtual sectors
 	// before
-	h.managedModifyStorageObligation(s.so, nil, nil, nil)
+	h.managedModifyStorageObligation(s.so, nil, nil)
 
 	// Send our signatures for the contract transaction and initial revision.
 	hostSigs := modules.LoopRenewAndClearContractSignatures{

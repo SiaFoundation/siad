@@ -116,8 +116,8 @@ var (
 		Use:     "delete [path]",
 		Aliases: []string{"rm"},
 		Short:   "Delete a file or folder",
-		Long:    "Delete a file or folder. Does not delete the file/folder on disk.",
-		Run:     wrap(renterfilesdeletecmd),
+		Long:    "Delete a file or folder. Does not delete the file/folder on disk.  Multiple files may be deleted with space separation.",
+		Run:     renterfilesdeletecmd,
 	}
 
 	renterFilesDownloadCmd = &cobra.Command{
@@ -1726,40 +1726,43 @@ func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
 // Removes the specified path from the Sia network.
-func renterfilesdeletecmd(path string) {
-	// Parse SiaPath.
-	siaPath, err := modules.NewSiaPath(path)
-	if err != nil {
-		die("Couldn't parse SiaPath:", err)
+func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
+	for _, path := range paths {
+		// Parse SiaPath.
+		siaPath, err := modules.NewSiaPath(path)
+		if err != nil {
+			die("Couldn't parse SiaPath:", err)
+		}
+		// Try to delete file.
+		var errFile error
+		if renterDeleteRoot {
+			errFile = httpClient.RenterFileDeleteRootPost(siaPath)
+		} else {
+			errFile = httpClient.RenterFileDeletePost(siaPath)
+		}
+		if errFile == nil {
+			fmt.Printf("Deleted file '%v'\n", path)
+			continue
+		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
+			die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
+		}
+		// Try to delete folder.
+		var errDir error
+		if renterDeleteRoot {
+			errDir = httpClient.RenterDirDeleteRootPost(siaPath)
+		} else {
+			errDir = httpClient.RenterDirDeletePost(siaPath)
+		}
+		if errDir == nil {
+			fmt.Printf("Deleted directory '%v'\n", path)
+			continue
+		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
+			die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
+		}
+		// Unknown file/folder.
+		die(fmt.Sprintf("Unknown path '%v'", path))
 	}
-	// Try to delete file.
-	var errFile error
-	if renterDeleteRoot {
-		errFile = httpClient.RenterFileDeleteRootPost(siaPath)
-	} else {
-		errFile = httpClient.RenterFileDeletePost(siaPath)
-	}
-	if errFile == nil {
-		fmt.Printf("Deleted file '%v'\n", path)
-		return
-	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
-		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
-	}
-	// Try to delete folder.
-	var errDir error
-	if renterDeleteRoot {
-		errDir = httpClient.RenterDirDeleteRootPost(siaPath)
-	} else {
-		errDir = httpClient.RenterDirDeletePost(siaPath)
-	}
-	if errDir == nil {
-		fmt.Printf("Deleted directory '%v'\n", path)
-		return
-	} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
-		die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
-	}
-	// Unknown file/folder.
-	die(fmt.Sprintf("Unknown path '%v'", path))
+	return
 }
 
 // renterfilesdownload is the handler for the comand `siac renter download [path] [destination]`.

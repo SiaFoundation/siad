@@ -23,6 +23,18 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// DefaultSkynetRequestTimeout is the default request timeout for routes that
+// have a timeout query string parameter. If the request can not be resolved
+// within the given amount of time, it times out. This is used for Skynet routes
+// where a request times out if the DownloadByRoot project does not finish in
+// due time.
+const DefaultSkynetRequestTimeout = 30 * time.Second
+
+// MaxSkynetRequestTimeout is the maximum a user is allowed to set as request
+// timeout. This to prevent an attack vector where the attacker could cause a
+// go-routine leak by creating a bunch of requests with very high timeouts.
+const MaxSkynetRequestTimeout = 15 * 60 // in seconds
+
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
@@ -171,9 +183,29 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// Parse the timeout.
+	timeout := DefaultSkynetRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if timeoutInt > MaxSkynetRequestTimeout {
+			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink)
-	if err != nil {
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
+		return
+	} else if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
@@ -343,8 +375,11 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	err = api.renter.PinSkylink(skylink, lup)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusBadRequest)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
+		return
+	} else if err != nil {
+		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
