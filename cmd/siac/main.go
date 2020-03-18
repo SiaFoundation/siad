@@ -256,8 +256,9 @@ func main() {
 		renterFuseCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
 		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd)
 
-	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
+	renterContractsCmd.AddCommand(renterContractsViewCmd)
+	renterFilesUploadCmd.AddCommand(renterFilesUploadPauseCmd, renterFilesUploadResumeCmd)
 
 	renterCmd.Flags().BoolVarP(&renterVerbose, "verbose", "v", false, "Show additional renter info such as allowance details")
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
