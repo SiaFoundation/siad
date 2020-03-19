@@ -26,6 +26,17 @@ func TestCurrencyAdd(t *testing.T) {
 	}
 }
 
+// TestCurrencyAdd64 probes the Add64 function of the currency type.
+func TestCurrencyAdd64(t *testing.T) {
+	c7 := NewCurrency64(7)
+	u12 := uint64(12)
+	c19 := NewCurrency64(19)
+
+	if c7.Add64(u12).Cmp(c19) != 0 {
+		t.Error("Add doesn't seem to work right")
+	}
+}
+
 // TestCurrencyToBig tests the Big method for the currency type
 func TestCurrencyToBig(t *testing.T) {
 	c := NewCurrency64(125)
@@ -315,6 +326,16 @@ func TestCurrencySub(t *testing.T) {
 	c13 := NewCurrency64(13)
 	c16 := NewCurrency64(16)
 	if c16.Sub(c3).Cmp(c13) != 0 {
+		t.Error("16 minus 3 should equal 13")
+	}
+}
+
+// TestCurrencySub64 probes the Sub64 function of the currency type.
+func TestCurrencySub64(t *testing.T) {
+	u3 := uint64(3)
+	c13 := NewCurrency64(13)
+	c16 := NewCurrency64(16)
+	if c16.Sub64(u3).Cmp(c13) != 0 {
 		t.Error("16 minus 3 should equal 13")
 	}
 }

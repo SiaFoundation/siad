@@ -1,0 +1,1 @@
+- Add additional format instructions to the API docs and fix format errors
