@@ -1,1 +1,1 @@
-- Add siad version to the stats endpoint
+- Add version information to the stats endpoint
