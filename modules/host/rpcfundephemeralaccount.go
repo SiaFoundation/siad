@@ -5,7 +5,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -58,12 +57,4 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt *modules.
 	}
 
 	return nil
-}
-
-// managedCalculateFundEphemeralAccountCost calculates the price for the
-// FundEphemeralAccountRPC. The price can be dependant on numerous factors.
-// Note: for now this is a fixed cost equaling the base RPC price.
-func (h *Host) managedCalculateFundEphemeralAccountCost() types.Currency {
-	hIS := h.InternalSettings()
-	return hIS.MinBaseRPCPrice
 }
