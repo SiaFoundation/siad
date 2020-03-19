@@ -1,0 +1,1 @@
+- Add siad version to the stats endpoint
