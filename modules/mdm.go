@@ -14,6 +14,8 @@ type (
 		Specifier InstructionSpecifier
 		Args      []byte
 	}
+	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
+	Program []Instruction
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
 )
@@ -168,4 +170,17 @@ func MDMReadMemory() uint64 {
 // MDMMemoryCost computes the memory cost given a price table, memory and time.
 func MDMMemoryCost(pt RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
+}
+
+// ReadOnly returns true if the program consists of no write instructions.
+func (p *Program) ReadOnly() bool {
+	for _, instruction := range p {
+		switch instruction.Specifier {
+		case SpecifierAppend:
+			return false
+		case SpecifierDropSectors:
+			return false
+		}
+	}
+	return true
 }

@@ -90,9 +90,14 @@ func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, program modules.Program, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+	// Sanity check program length.
+	if len(program) == 0 {
+		return nil, nil, errors.New("can#t execute program without instructions")
+	}
+	// Build program.
 	p := &Program{
-		outputChan: make(chan Output, len(instructions)),
+		outputChan: make(chan Output, len(program)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
@@ -106,7 +111,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 
 	// Convert the instructions.
 	var err error
-	for _, i := range instructions {
+	for _, i := range program {
 		instruction, err := decodeInstruction(p, i)
 		if err != nil {
 			return nil, nil, errors.Compose(err, p.staticData.Close())
@@ -129,7 +134,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		p.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
 	}()
 	// If the program is readonly there is no need to finalize it.
-	if p.readOnly() {
+	if program.ReadOnly() {
 		return nil, p.outputChan, nil
 	}
 	return p.managedFinalize, p.outputChan, nil
@@ -214,15 +219,4 @@ func (p *Program) managedFinalize(so StorageObligation) error {
 		return err
 	}
 	return nil
-}
-
-// readOnly returns 'true' if all of the instructions executed by a program are
-// readonly.
-func (p *Program) readOnly() bool {
-	for _, i := range p.instructions {
-		if !i.ReadOnly() {
-			return false
-		}
-	}
-	return true
 }

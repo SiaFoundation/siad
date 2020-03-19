@@ -3,6 +3,7 @@ package modules
 import (
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/siamux"
@@ -51,9 +52,35 @@ type RPCPriceTable struct {
 var (
 	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
+
+	// RPCExecuteProgram specifier
+	RPCExecuteProgram = types.NewSpecifier("ExecuteProgram")
 )
 
 type (
+	// RPCExecuteProgramRequest is the request sent by the renter to execute a
+	// program on the host's MDM.
+	RPCExecuteProgramRequest struct {
+		// FileContractID is the id of the filecontract we would like to modify.
+		FileContractID types.FileContractID
+		// Instructions to be executed as a program.
+		Program Program
+		// PriceTableID is the id of the price table to use for this request.
+		PriceTableID types.Specifier
+		// ProgramDataLength is the length of the programData following this
+		// request.
+		ProgramDataLength uint64
+	}
+
+	// RPCExecuteProgramResponse todo missing docstring
+	RPCExecuteProgramResponse struct {
+		Output        []byte
+		NewMerkleRoot crypto.Hash
+		NewSize       uint64
+		Proof         []crypto.Hash
+		Error         error
+	}
+
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
@@ -68,12 +95,12 @@ type (
 )
 
 // RPCRead tries to read the given object from the stream.
-func RPCRead(stream siamux.Stream, obj interface{}) error {
+func RPCRead(stream io.Reader, obj interface{}) error {
 	return encoding.ReadObject(stream, &rpcResponse{nil, obj}, uint64(RPCMinLen))
 }
 
 // RPCWrite writes the given object to the stream.
-func RPCWrite(stream siamux.Stream, obj interface{}) error {
+func RPCWrite(stream io.Writer, obj interface{}) error {
 	return encoding.WriteObject(stream, &rpcResponse{nil, obj})
 }
 

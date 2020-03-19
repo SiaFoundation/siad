@@ -212,6 +212,17 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 	}, nil
 }
 
+// managedGetStorageObligation fetches a storage obligation from the database.
+func (h *Host) managedGetStorageObligation(soid types.FileContractID) (so storageObligation, err error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, soid)
+		return err
+	})
+	return
+}
+
 // getStorageObligation fetches a storage obligation from the database tx.
 func (h *Host) getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
 	soBytes := tx.Bucket(bucketStorageObligations).Get(soid[:])

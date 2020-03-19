@@ -75,6 +75,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -147,6 +148,7 @@ type Host struct {
 
 	// Subsystems
 	staticAccountManager *accountManager
+	staticMDM            *mdm.MDM
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -293,6 +295,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 
 		persistDir: persistDir,
 	}
+
+	// Create MDM.
+	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
 	var err error

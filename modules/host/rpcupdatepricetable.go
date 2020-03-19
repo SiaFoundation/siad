@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -28,7 +27,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) error {
 	// allows the renter to close the stream if it decides the host is gouging
 	// the price
 	uptResponse := modules.RPCUpdatePriceTableResponse{PriceTableJSON: ptBytes}
-	if err = encoding.WriteObject(stream, uptResponse); err != nil {
+	if err = modules.RPCWrite(stream, uptResponse); err != nil {
 		return errors.AddContext(err, "Failed to write response")
 	}
 

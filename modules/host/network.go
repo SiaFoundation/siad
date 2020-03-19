@@ -383,6 +383,8 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	}
 
 	switch rpcID {
+	case modules.RPCExecuteProgram:
+		err = h.managedRPCExecuteProgram(stream)
 	default:
 		// TODO log stream.RemoteAddr().String() when it is implemented on the
 		// SiaMux

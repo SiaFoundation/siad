@@ -102,11 +102,6 @@ func (i *instructionAppend) Memory() uint64 {
 	return modules.MDMAppendMemory()
 }
 
-// ReadOnly for the 'Append' instruction is 'false'.
-func (i *instructionAppend) ReadOnly() bool {
-	return false
-}
-
 // Time returns the execution time of an 'Append' instruction.
 func (i *instructionAppend) Time() (uint64, error) {
 	return modules.MDMTimeAppend, nil
