@@ -408,7 +408,10 @@ func applyWriteAtUpdate(f *os.File, u writeaheadlog.Update) error {
 // createDeleteUpdate is a helper function which creates a writeaheadlog update
 // for deleting a given refcounter file.
 func createDeleteUpdate(path string) writeaheadlog.Update {
-	return writeaheadlog.DeleteUpdate(path)
+	return writeaheadlog.Update{
+		Name:         UpdateNameDelete,
+		Instructions: []byte(path),
+	}
 }
 
 // createTruncateUpdate is a helper function which creates a writeaheadlog
