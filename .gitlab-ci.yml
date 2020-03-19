@@ -19,6 +19,7 @@ variables:
     ./modules
     ./modules/consensus
     ./modules/explorer
+    ./modules/feemanager
     ./modules/gateway
     ./modules/host
     ./modules/host/contractmanager
@@ -43,6 +44,7 @@ variables:
     ./siatest
     ./siatest/consensus
     ./siatest/daemon
+    ./siatest/feemanager
     ./siatest/gateway
     ./siatest/host
     ./siatest/miner
