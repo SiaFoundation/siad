@@ -1,1 +1,0 @@
-- Fix a parsing bug for malformed skylinks

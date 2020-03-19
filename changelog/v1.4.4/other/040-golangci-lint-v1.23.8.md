@@ -1,1 +1,0 @@
-- Bump golangci-lint version to v1.23.8
