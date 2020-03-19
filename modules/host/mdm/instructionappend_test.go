@@ -11,11 +11,11 @@ import (
 )
 
 // newAppendInstruction is a convenience method for creating a single
-// Append instruction.
+// 'Append' instruction.
 func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
 	i := NewAppendInstruction(dataOffset, merkleProof)
 	cost, refund := modules.MDMAppendCost(pt)
-	return i, cost, refund, AppendMemory(), TimeAppend
+	return i, cost, refund, modules.MDMAppendMemory(), modules.MDMTimeAppend
 }
 
 // newAppendProgram is a convenience method which prepares the instructions
@@ -24,9 +24,9 @@ func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPri
 func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
 	i, cost, refund, memory, time := newAppendInstruction(merkleProof, 0, pt)
-	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, InitMemory(), cost, refund, memory, time)
+	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
 	instructions := []modules.Instruction{i}
-	cost = cost.Add(modules.MDMMemoryCost(pt, memory, TimeCommit))
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
 	return instructions, sectorData, cost, refund, memory
 }
 

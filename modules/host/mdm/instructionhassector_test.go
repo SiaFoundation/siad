@@ -10,22 +10,26 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// newHasSectorInstruction is a convenience method for creating a single
+// 'HasSector' instruction.
+func newHasSectorInstruction(dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+	i := NewHasSectorInstruction(dataOffset)
+	cost, refund := modules.MDMHasSectorCost(pt)
+	return i, cost, refund, modules.MDMHasSectorMemory(), modules.MDMTimeHasSector
+}
+
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
 func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	i := NewHasSectorInstruction(0)
-	instructions := []modules.Instruction{i}
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
-
-	// Compute cost and used memory.
-	cost, refund := modules.MDMHasSectorCost(pt)
-	usedMemory := InitMemory() + modules.MDMHasSectorMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, TimeHasSector+TimeCommit)
 	initCost := modules.MDMInitCost(pt, uint64(len(data)))
-	cost = cost.Add(memoryCost).Add(initCost)
-	return instructions, data, cost, refund, usedMemory
+	i, cost, refund, memory, time := newHasSectorInstruction(0, pt)
+	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
+	instructions := []modules.Instruction{i}
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
+	return instructions, data, cost, refund, memory
 }
 
 // TestInstructionHasSector tests executing a program with a single

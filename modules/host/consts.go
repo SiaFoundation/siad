@@ -96,7 +96,7 @@ var (
 	// defaultContractPrice defines the default price of creating a contract
 	// with the host. The current default is 0.1. This was chosen since it is
 	// the minimum fee estimation of the transactionpool for a filecontract
-	// transaction..
+	// transaction.
 	defaultContractPrice = types.SiacoinPrecision.Div64(100).Div64(1e3).Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
 
 	// defaultDownloadBandwidthPrice defines the default price of upload

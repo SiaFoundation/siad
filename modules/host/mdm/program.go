@@ -100,7 +100,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			sectors:     newSectors(sos.SectorRoots()),
 		},
 		staticBudget: budget,
-		usedMemory:   InitMemory(),
+		usedMemory:   modules.MDMInitMemory(),
 		staticData:   openProgramData(data, programDataLen),
 		tg:           &mdm.tg,
 	}

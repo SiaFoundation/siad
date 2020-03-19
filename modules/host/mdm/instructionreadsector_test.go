@@ -13,24 +13,28 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// newReadSectorInstruction is a convenience method for creating a single
+// 'ReadSector' instruction.
+func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+	i := NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
+	cost, refund := modules.MDMReadCost(pt, length)
+	return i, cost, refund, modules.MDMReadMemory(), modules.MDMTimeReadSector
+}
+
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
 func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, io.Reader, uint64, types.Currency, types.Currency, uint64) {
-	i := NewReadSectorInstruction(0, 8, 16, true)
-	instructions := []modules.Instruction{i}
 	data := make([]byte, 8+8+crypto.HashSize)
 	binary.LittleEndian.PutUint64(data[:8], length)
 	binary.LittleEndian.PutUint64(data[8:16], offset)
 	copy(data[16:], merkleRoot[:])
-
-	// Compute cost and used memory.
-	cost, refund := modules.MDMReadCost(pt, length)
-	usedMemory := InitMemory() + modules.MDMReadMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeReadSector+modules.MDMTimeCommit)
 	initCost := modules.MDMInitCost(pt, uint64(len(data)))
-	cost = cost.Add(memoryCost).Add(initCost)
-	return instructions, bytes.NewReader(data), uint64(len(data)), cost, refund, usedMemory
+	i, cost, refund, memory, time := newReadSectorInstruction(length, true, 0, pt)
+	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
+	instructions := []modules.Instruction{i}
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
+	return instructions, bytes.NewReader(data), uint64(len(data)), cost, refund, memory
 }
 
 // TestInstructionReadSector tests executing a program with a single

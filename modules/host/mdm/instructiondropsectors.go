@@ -122,7 +122,7 @@ func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) 
 // Memory returns the memory allocated by the 'DropSectors' instruction beyond
 // the lifetime of the instruction.
 func (i *instructionDropSectors) Memory() uint64 {
-	return DropSectorsMemory()
+	return modules.MDMDropSectorsMemory()
 }
 
 // ReadOnly for the 'DropSectors' instruction is 'false'.
@@ -136,5 +136,5 @@ func (i *instructionDropSectors) Time() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return TimeDropSingleSector * numDropped, nil
+	return modules.MDMTimeDropSingleSector * numDropped, nil
 }

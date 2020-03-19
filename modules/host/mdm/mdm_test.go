@@ -107,7 +107,6 @@ func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Has
 //
 // TODO: is 1 Hasting too low? An append costs 2*SectorSize
 func newTestPriceTable() modules.RPCPriceTable {
-	// defaultCost := types.SiacoinPrecision.Div64(modules.SectorSize)
 	return modules.RPCPriceTable{
 		Expiry:                time.Now().Add(time.Minute).Unix(),
 		UpdatePriceTableCost:  types.NewCurrency64(1),

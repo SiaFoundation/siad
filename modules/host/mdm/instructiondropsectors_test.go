@@ -38,9 +38,9 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 	i := NewDropSectorsInstruction(dataOffset, true)
 	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
 
-	time := TimeDropSingleSector * numSectorsDropped
+	time := modules.MDMTimeDropSingleSector * numSectorsDropped
 	cost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
-	return i, cost, refund, DropSectorsMemory(), time
+	return i, cost, refund, modules.MDMDropSectorsMemory(), time
 }
 
 // TestProgramWithDropSectors tests executing a program with multiple append and swap
@@ -58,7 +58,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	initCost := modules.MDMInitCost(pt, dataLen)
 
 	instruction1, cost, refund, memory, time := newAppendInstruction(false, 0, pt)
-	cost1, refund1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, 0, cost, refund, memory, time)
+	cost1, refund1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[:modules.SectorSize], sectorData1)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
@@ -87,7 +87,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	instruction6, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
 	cost6, refund6, memory6 := updateRunningCosts(pt, cost5, refund5, memory5, cost, refund, memory, time)
 
-	cost = cost6.Add(MemoryCost(pt, memory6, TimeCommit))
+	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, modules.MDMTimeCommit))
 
 	// Construct the inputs and expected outputs.
 	instructions := []modules.Instruction{

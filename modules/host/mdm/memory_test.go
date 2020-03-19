@@ -3,6 +3,7 @@ package mdm
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -12,14 +13,14 @@ func TestMemoryCost(t *testing.T) {
 	pt := newTestPriceTable()
 
 	// Base program memory cost
-	cost := MemoryCost(pt, InitMemory(), ProgramInitTime)
+	cost := modules.MDMMemoryCost(pt, modules.MDMInitMemory(), modules.MDMProgramInitTime)
 	expectedCost := types.NewCurrency64(10485760)
 	if !cost.Equals(expectedCost) {
 		t.Fatalf("expected append memory cost %v, got %v", expectedCost, cost)
 	}
 
 	// Append program
-	cost = MemoryCost(pt, InitMemory()+AppendMemory(), ProgramInitTime+TimeAppend+TimeCommit)
+	cost = modules.MDMMemoryCost(pt, modules.MDMInitMemory()+modules.MDMAppendMemory(), modules.MDMProgramInitTime+modules.MDMTimeAppend+modules.MDMTimeCommit)
 	expectedCost = types.NewCurrency64(63170846720)
 	if !cost.Equals(expectedCost) {
 		t.Fatalf("expected append memory cost %v, got %v", expectedCost, cost)

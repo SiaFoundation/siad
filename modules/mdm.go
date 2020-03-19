@@ -31,6 +31,9 @@ const (
 	// MDMTimeCommit is the time used for executing managedFinalize.
 	MDMTimeCommit = 50e3
 
+	// TimeDropSingleSector is the time for dropping a single sector.
+	MDMTimeDropSingleSector = 1
+
 	// MDMTimeHasSector is the time for executing a 'HasSector' instruction.
 	MDMTimeHasSector = 1
 
@@ -152,6 +155,18 @@ func MDMTruncateCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 // instruction.
 func MDMAppendMemory() uint64 {
 	return SectorSize // A full sector is added to the program's memory until the program is finalized.
+}
+
+// DropSectorsMemory returns the additional memory consumption of a
+// `DropSectors` instruction
+func MDMDropSectorsMemory() uint64 {
+	return 0 // 'DropSectors' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMInitMemory returns the memory consumed by a program before considering the
+// size of the program input.
+func MDMInitMemory() uint64 {
+	return 1 << 20 // 1 MiB
 }
 
 // MDMHasSectorMemory returns the additional memory consumption of a 'HasSector'
