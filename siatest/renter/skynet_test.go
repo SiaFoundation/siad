@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -767,7 +768,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 // testSkynetStats tests the validity of the response of /skynet/stats endpoint
 // by uploading some test files and verifying that the reported statistics
-// change proportionalyy
+// change proportionally
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
@@ -1546,9 +1547,12 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, header, err := r.SkynetSkylinkHead(skylink)
+	status, header, err := r.SkynetSkylinkHead(skylink, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
 	}
 
 	// Verify Skynet-File-Metadata
@@ -1595,9 +1599,33 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected 'Content-Disposition' header")
 	}
 
+	// Perform a HEAD request with a timeout that exceeds the max timeout
+	status, _, _ = r.SkynetSkylinkHead(skylink, 901)
+	if status != http.StatusBadRequest {
+		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
+	}
+
 	// Perform a HEAD request for a skylink that does not exist
-	status, header, err := r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
-	if status != http.StatusInternalServerError {
+	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+
+	// Create a renter with a timeout dependency injected
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyTimeoutProjectDownloadByRoot{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Perform a HEAD request for a skylink that exists, however on a renter
+	// with the DependencyTimeoutProjectDownloadByRoot dependency. We expect it
+	// to timeout and thus return a 404.
+	status, header, err = r.SkynetSkylinkHead(skylink, 1)
+	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
 }

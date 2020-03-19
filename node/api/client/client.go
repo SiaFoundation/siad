@@ -189,7 +189,6 @@ func (c *Client) head(resource string) (int, http.Header, error) {
 	if err != nil {
 		return 0, nil, errors.AddContext(err, "HEAD request failed")
 	}
-
 	return res.StatusCode, res.Header, nil
 }
 

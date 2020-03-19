@@ -52,7 +52,7 @@ func (h *Host) managedVerifyChallengeResponse(fcid types.FileContractID, challen
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = getStorageObligation(tx, fcid)
+		so, err = h.getStorageObligation(tx, fcid)
 		return err
 	})
 	if err != nil {

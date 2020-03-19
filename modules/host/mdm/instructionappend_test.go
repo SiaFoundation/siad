@@ -87,7 +87,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 0)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.
@@ -151,7 +151,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 1)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.
