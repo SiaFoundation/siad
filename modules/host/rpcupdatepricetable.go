@@ -13,6 +13,7 @@ import (
 // managedRPCUpdatePriceTable handles the RPC request from the renter to fetch
 // the host's latest RPC price table.
 func (h *Host) managedRPCUpdatePriceTable(stream net.Conn) error {
+	defer stream.Close()
 	h.mu.RLock()
 	pt := h.priceTable
 	h.mu.RUnlock()

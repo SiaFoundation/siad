@@ -74,11 +74,13 @@ type (
 
 	// RPCExecuteProgramResponse todo missing docstring
 	RPCExecuteProgramResponse struct {
-		Output        []byte
-		NewMerkleRoot crypto.Hash
-		NewSize       uint64
-		Proof         []crypto.Hash
-		Error         error
+		Output          []byte
+		NewMerkleRoot   crypto.Hash
+		NewSize         uint64
+		Proof           []crypto.Hash
+		Error           error
+		TotalCost       types.Currency
+		PotentialRefund types.Currency
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table

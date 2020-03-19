@@ -77,6 +77,16 @@ var (
 	ErrMDMInsufficientBudget = errors.New("remaining budget is insufficient")
 )
 
+// RPCHasSectorInstruction creates an Instruction from arguments.
+func RPCHasSectorInstruction(merkleRootOffset uint64) Instruction {
+	i := Instruction{
+		Specifier: SpecifierHasSector,
+		Args:      make([]byte, RPCIHasSectorLen),
+	}
+	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
+	return i
+}
+
 // RPCIReadSector is a convenience method to create an Instruction of type 'ReadSector'.
 func RPCIReadSector(rootOff, offsetOff, lengthOff uint64, merkleProof bool) Instruction {
 	args := make([]byte, RPCIReadSectorLen)
@@ -173,7 +183,7 @@ func MDMMemoryCost(pt RPCPriceTable, usedMemory, time uint64) types.Currency {
 }
 
 // ReadOnly returns true if the program consists of no write instructions.
-func (p *Program) ReadOnly() bool {
+func (p Program) ReadOnly() bool {
 	for _, instruction := range p {
 		switch instruction.Specifier {
 		case SpecifierAppend:

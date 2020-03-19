@@ -204,10 +204,9 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 		return StorageObligationSnapshot{}, err
 	}
 
-	rev := so.recentRevision()
 	return StorageObligationSnapshot{
-		staticContractSize: rev.NewFileSize,
-		staticMerkleRoot:   rev.NewFileMerkleRoot,
+		staticContractSize: so.fileSize(),
+		staticMerkleRoot:   so.merkleRoot(),
 		staticSectorRoots:  so.SectorRoots,
 	}, nil
 }
@@ -399,18 +398,6 @@ func (so storageObligation) transactionID() types.TransactionID {
 // value returns the value of fulfilling the storage obligation to the host.
 func (so storageObligation) value() types.Currency {
 	return so.ContractCost.Add(so.PotentialDownloadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialUploadRevenue).Add(so.RiskedCollateral)
-}
-
-// recentRevision returns the most recent file contract revision in this storage
-// obligation.
-func (so storageObligation) recentRevision() types.FileContractRevision {
-	numRevisions := len(so.RevisionTransactionSet)
-	if numRevisions > 0 {
-		revisionTxn := so.RevisionTransactionSet[numRevisions-1]
-		return revisionTxn.FileContractRevisions[0]
-	}
-	revisionTxn := so.OriginTransactionSet[len(so.OriginTransactionSet)-1]
-	return revisionTxn.FileContractRevisions[0]
 }
 
 // deleteStorageObligations deletes obligations from the database.

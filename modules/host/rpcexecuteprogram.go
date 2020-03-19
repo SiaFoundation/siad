@@ -12,6 +12,7 @@ import (
 
 // managedRPCExecute program handles incoming ExecuteProgram RPCs.
 func (h *Host) managedRPCExecuteProgram(stream net.Conn) error {
+	defer stream.Close()
 	// Process payment.
 	// TODO: change once payment MR is merged
 	amountPaid := types.ZeroCurrency
@@ -27,8 +28,10 @@ func (h *Host) managedRPCExecuteProgram(stream net.Conn) error {
 	fcid, program, _, dataLength := epr.FileContractID, epr.Program, epr.PriceTableID, epr.ProgramDataLength
 
 	// Get price table.
-	// TODO: change once price table MR is merged.
-	pt := modules.RPCPriceTable{}
+	// TODO: change once price table MR is merged to get the negotiated table.
+	h.mu.RLock()
+	pt := h.priceTable
+	h.mu.RUnlock()
 
 	// If the program isn't readonly we need to acquire the storage obligation.
 	readonly := program.ReadOnly()
@@ -88,11 +91,13 @@ func (h *Host) managedRPCExecuteProgram(stream net.Conn) error {
 		}
 		// Prepare the RPC response.
 		resp := modules.RPCExecuteProgramResponse{
-			Output:        output.Output,
-			NewMerkleRoot: output.NewMerkleRoot,
-			NewSize:       output.NewSize,
-			Proof:         output.Proof,
-			Error:         output.Error,
+			Error:           output.Error,
+			NewMerkleRoot:   output.NewMerkleRoot,
+			NewSize:         output.NewSize,
+			Output:          output.Output,
+			PotentialRefund: output.PotentialRefund,
+			Proof:           output.Proof,
+			TotalCost:       output.ExecutionCost,
 		}
 		// Update cost and refund.
 		cost = output.ExecutionCost
