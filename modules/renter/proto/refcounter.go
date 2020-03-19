@@ -31,7 +31,7 @@ var (
 
 	// UpdateNameDelete is the name of an idempotent update that deletes a file
 	// from the disk.
-	UpdateNameDelete = writeaheadlog.NameDeleteUpdate
+	UpdateNameDelete = "RC_DELETE"
 
 	// UpdateNameTruncate is the name of an idempotent update that truncates a
 	// refcounter file by a number of sectors.
@@ -188,7 +188,7 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if secIdx > rc.numSectors-1 {
-		return writeaheadlog.Update{}, ErrInvalidSectorNumber
+		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to decrement")
 	}
 	count, err := rc.readCount(secIdx)
 	if err != nil {
@@ -214,7 +214,7 @@ func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if numSec > rc.numSectors {
-		return writeaheadlog.Update{}, ErrInvalidSectorNumber
+		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to drop sectors")
 	}
 	rc.numSectors -= numSec
 	return createTruncateUpdate(rc.filepath, rc.numSectors), nil
@@ -227,7 +227,7 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if secIdx > rc.numSectors-1 {
-		return writeaheadlog.Update{}, ErrInvalidSectorNumber
+		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to increment")
 	}
 	count, err := rc.readCount(secIdx)
 	if err != nil {
@@ -252,7 +252,7 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if firstIdx > rc.numSectors-1 || secondIdx > rc.numSectors-1 {
-		return []writeaheadlog.Update{}, ErrInvalidSectorNumber
+		return []writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to swap sectors")
 	}
 	firstVal, err := rc.readCount(firstIdx)
 	if err != nil {
@@ -287,7 +287,7 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 	// check if the secIdx is a valid sector index based on the number of
 	// sectors in the file
 	if secIdx > rc.numSectors-1 {
-		return 0, ErrInvalidSectorNumber
+		return 0, errors.AddContext(ErrInvalidSectorNumber, "failed to read count")
 	}
 	// check if the value is being changed by a pending update
 	if count, ok := rc.newSectorCounts[secIdx]; ok {
@@ -309,7 +309,11 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 
 // applyDeleteUpdate parses and applies a Delete update.
 func applyDeleteUpdate(update writeaheadlog.Update) error {
-	return writeaheadlog.ApplyDeleteUpdate(update)
+	if update.Name != UpdateNameDelete {
+		return fmt.Errorf("applyDeleteUpdate called on update of type %v", update.Name)
+	}
+	// Remove file.
+	return os.Remove(string(update.Instructions))
 }
 
 // applyTruncateUpdate parses and applies a Truncate update.
@@ -330,7 +334,7 @@ func applyTruncateUpdate(f *os.File, u writeaheadlog.Update) error {
 }
 
 // applyUpdates takes a list of WAL updates and applies them.
-func applyUpdates(path string, updates ...writeaheadlog.Update) error {
+func applyUpdates(path string, updates ...writeaheadlog.Update) (err error) {
 	// If there is a Delete update in the list then all updates prior to that
 	// are moot. That's why we handle deletes separately.
 	lastDelPos := -1
@@ -345,7 +349,9 @@ func applyUpdates(path string, updates ...writeaheadlog.Update) error {
 		}
 		updates = updates[lastDelPos+1:]
 	}
-	// if the last update was a Delete then just return - we're done
+	// If the last update was a Delete then at this point we'd be left with no
+	// updates to apply. The same is valid if the method was called without
+	// parameters - we would have no updates to apply. Just return - we're done.
 	if len(updates) == 0 {
 		return nil
 	}
@@ -354,7 +360,16 @@ func applyUpdates(path string, updates ...writeaheadlog.Update) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
-	defer f.Close()
+	defer func() {
+		// Sync and close the file. Only overwrite the error if there is no
+		// other error being returned - we don't want to hide that error.
+		if e := f.Sync(); e != nil && err == nil {
+			err = e
+		}
+		if e := f.Close(); e != nil && err == nil {
+			err = e
+		}
+	}()
 	// Execute all non-Delete updates
 	for _, update := range updates {
 		var err error
@@ -370,7 +385,7 @@ func applyUpdates(path string, updates ...writeaheadlog.Update) error {
 			return err
 		}
 	}
-	return f.Sync()
+	return
 }
 
 // applyWriteAtUpdate parses and applies a WriteAt update.
