@@ -30,6 +30,11 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
+// defaultConnectionDeadline is the default read and write deadline which is set
+// on a connection or stream. This ensures it times out if I/O exceeds this
+// deadline.
+const defaultConnectionDeadline = 5 * time.Minute
+
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
 var rpcSettingsDeprecated = types.NewSpecifier("Settings")
 
@@ -271,7 +276,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 
 	// Set an initial duration that is generous, but finite. RPCs can extend
 	// this if desired.
-	err = conn.SetDeadline(time.Now().Add(5 * time.Minute))
+	err = conn.SetDeadline(time.Now().Add(defaultConnectionDeadline))
 	if err != nil {
 		h.log.Println("WARN: could not set deadline on connection:", err)
 		return
@@ -349,9 +354,9 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 
 	// set an initial duration that is generous, but finite. RPCs can extend
 	// this if desired
-	err = stream.SetDeadline(time.Now().Add(5 * time.Minute))
+	err = stream.SetDeadline(time.Now().Add(defaultConnectionDeadline))
 	if err != nil {
-		h.log.Println("WARN: could not set deadline on connection:", err)
+		h.log.Println("WARN: could not set deadline on stream:", err)
 		return
 	}
 
@@ -378,8 +383,6 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 			atomic.AddUint64(&h.atomicErroredCalls, 1)
 			return
 		}
-		// TODO verify if a price table exists
-		// TODO verify it has not yet expired
 	}
 
 	switch rpcID {
