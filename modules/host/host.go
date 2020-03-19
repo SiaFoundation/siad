@@ -700,3 +700,10 @@ func (h *Host) BlockHeight() types.BlockHeight {
 	defer h.mu.RUnlock()
 	return h.blockHeight
 }
+
+// PriceTable returns the host's current price table.
+func (h *Host) PriceTable() modules.RPCPriceTable {
+	h.staticPriceTables.mu.RLock()
+	defer h.staticPriceTables.mu.RUnlock()
+	return h.staticPriceTables.current
+}

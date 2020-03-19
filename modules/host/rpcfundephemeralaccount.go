@@ -11,7 +11,7 @@ import (
 
 // managedRPCFundEphemeralAccount handles the RPC request from the renter to
 // fund its ephemeral account.
-func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt *modules.RPCPriceTable) error {
+func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt modules.RPCPriceTable) error {
 	// read the FundAccountRequest
 	var far modules.FundAccountRequest
 	if err := modules.RPCRead(stream, &far); err != nil {
@@ -51,7 +51,7 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt *modules.
 	// send the FundAccountResponse
 	if err = modules.RPCWrite(stream, modules.FundAccountResponse{
 		Receipt:   receipt,
-		Signature: signature[:],
+		Signature: signature,
 	}); err != nil {
 		return errors.AddContext(err, "Failed to send FundAccountResponse")
 	}

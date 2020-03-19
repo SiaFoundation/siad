@@ -180,7 +180,7 @@ func (h *Host) managedFundByContract(stream siamux.Stream, request modules.FundA
 		return types.ZeroCurrency, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return amount, nil
+	return deposit, nil
 }
 
 // revisionFromRequest is a helper function that creates a copy of the recent

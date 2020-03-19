@@ -3,6 +3,7 @@ package modules
 import (
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/siamux"
@@ -67,7 +68,7 @@ type (
 	// signed receipt, and can be used as proof of funding.
 	FundAccountResponse struct {
 		Receipt   Receipt
-		Signature []byte
+		Signature crypto.Signature
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
