@@ -63,7 +63,7 @@ type (
 		wal        *writeaheadlog.WAL
 		mu         sync.Mutex
 
-		// While updating the reference counters on this we will also keep the
+		// While updating the reference counters on disk we will also keep the
 		// new values in memory, so we can work with them even before they are
 		// stored on disk.
 		newSectorCounts map[uint64]uint16 // holds the new value of a given counter
