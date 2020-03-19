@@ -31,7 +31,7 @@ var (
 
 	// UpdateNameDelete is the name of an idempotent update that deletes a file
 	// from the disk.
-	UpdateNameDelete = "RC_DELETE"
+	UpdateNameDelete = writeaheadlog.NameDeleteUpdate
 
 	// UpdateNameTruncate is the name of an idempotent update that truncates a
 	// refcounter file by a number of sectors.
@@ -111,6 +111,7 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 		filepath:         path,
 		numSectors:       numSectors,
 		wal:              wal,
+		newSectorCounts:  make(map[uint64]uint16),
 	}, nil
 }
 
@@ -134,6 +135,7 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 		filepath:         path,
 		numSectors:       numSec,
 		wal:              wal,
+		newSectorCounts:  make(map[uint64]uint16),
 	}, err
 }
 
@@ -195,6 +197,8 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	if count == 0 {
 		return writeaheadlog.Update{}, errors.New("sector count underflow")
 	}
+	count--
+	rc.newSectorCounts[secIdx] = count
 	return createWriteAtUpdate(rc.filepath, secIdx, count), nil
 }
 
@@ -213,7 +217,7 @@ func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
 		return writeaheadlog.Update{}, ErrInvalidSectorNumber
 	}
 	rc.numSectors -= numSec
-	return createTruncateUpdate(rc.filepath, numSec), nil
+	return createTruncateUpdate(rc.filepath, rc.numSectors), nil
 }
 
 // Increment increments the reference counter of a given sector. The sector
@@ -232,6 +236,8 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	if count == math.MaxUint16 {
 		return writeaheadlog.Update{}, errors.New("sector count overflow")
 	}
+	count++
+	rc.newSectorCounts[secIdx] = count
 	return createWriteAtUpdate(rc.filepath, secIdx, count), nil
 }
 
@@ -256,6 +262,8 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	if err != nil {
 		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
 	}
+	rc.newSectorCounts[firstIdx] = secondVal
+	rc.newSectorCounts[secondIdx] = firstVal
 	return []writeaheadlog.Update{
 		createWriteAtUpdate(rc.filepath, firstIdx, secondVal),
 		createWriteAtUpdate(rc.filepath, secondIdx, firstVal),
@@ -310,16 +318,12 @@ func applyTruncateUpdate(f *os.File, u writeaheadlog.Update) error {
 		return fmt.Errorf("applyAppendTruncate called on update of type %v", u.Name)
 	}
 	// Decode update.
-	_, numSecsToDrop, err := readTruncateUpdate(u)
-	if err != nil {
-		return err
-	}
-	fi, err := f.Stat()
+	_, newNumSec, err := readTruncateUpdate(u)
 	if err != nil {
 		return err
 	}
 	// Truncate the file to the needed size.
-	if err = f.Truncate(RefCounterHeaderSize + (fi.Size() - int64(numSecsToDrop)*2)); err != nil {
+	if err = f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2); err != nil {
 		return err
 	}
 	return f.Sync()
@@ -339,10 +343,14 @@ func applyUpdates(path string, updates ...writeaheadlog.Update) error {
 		if err := applyDeleteUpdate(updates[lastDelPos]); err != nil {
 			return err
 		}
-		updates = updates[lastDelPos:]
+		updates = updates[lastDelPos+1:]
+	}
+	// if the last update was a Delete then just return - we're done
+	if len(updates) == 0 {
+		return nil
 	}
 	// Now that the deletes are done, open the file
-	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
@@ -390,9 +398,9 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 
 // createTruncateUpdate is a helper function which creates a writeaheadlog
 // update for truncating a number of sectors from the end of the file.
-func createTruncateUpdate(path string, numSecsToDrop uint64) writeaheadlog.Update {
+func createTruncateUpdate(path string, newNumSec uint64) writeaheadlog.Update {
 	b := make([]byte, 8+4+len(path))
-	binary.LittleEndian.PutUint64(b[:8], numSecsToDrop)
+	binary.LittleEndian.PutUint64(b[:8], newNumSec)
 	binary.LittleEndian.PutUint32(b[8:12], uint32(len(path)))
 	copy(b[12:12+len(path)], path)
 	return writeaheadlog.Update{
@@ -430,13 +438,13 @@ func offset(secIdx uint64) uint64 {
 }
 
 // readTruncateUpdate decodes a Truncate update
-func readTruncateUpdate(u writeaheadlog.Update) (path string, numSecsToDrop uint64, err error) {
+func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, err error) {
 	if len(u.Instructions) < 20 {
 		err = errors.New("instructions slice of update is too short to contain the size and path")
 		return
 	}
-	numSecsToDrop = binary.LittleEndian.Uint64(u.Instructions[:8])
-	pathLen := int64(binary.LittleEndian.Uint64(u.Instructions[8:12]))
+	newNumSec = binary.LittleEndian.Uint64(u.Instructions[:8])
+	pathLen := int32(binary.LittleEndian.Uint32(u.Instructions[8:12]))
 	path = string(u.Instructions[12 : 12+pathLen])
 	return
 }
@@ -449,7 +457,7 @@ func readWriteAtUpdate(u writeaheadlog.Update) (path string, secIdx uint64, valu
 	}
 	secIdx = binary.LittleEndian.Uint64(u.Instructions[:8])
 	value = binary.LittleEndian.Uint16(u.Instructions[8:10])
-	pathLen := int64(binary.LittleEndian.Uint64(u.Instructions[10:14]))
+	pathLen := int64(binary.LittleEndian.Uint32(u.Instructions[10:14]))
 	path = string(u.Instructions[14 : 14+pathLen])
 	return
 }
