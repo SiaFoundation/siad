@@ -52,7 +52,7 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (types.Currency
 	return pbear.Message.Amount, nil
 }
 
-// managedPayByContract processese a PayByContractRequest coming in over the
+// managedPayByContract processes a PayByContractRequest coming in over the
 // given stream.
 func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error) {
 	// read the PayByContractRequest
