@@ -114,7 +114,8 @@ func blankMockHostTester(d modules.Dependencies, name string) (*hostTester, erro
 	testdir := build.TempDir(modules.HostDir, name)
 
 	// Create the siamux.
-	mux, err := modules.NewSiaMux(testdir, "localhost:0")
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, err
 	}

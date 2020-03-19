@@ -170,12 +170,20 @@ your saved list.
 * `siac renter queue` shows the download queue. This is only relevant
 if you have multiple downloads happening simultaneously.
 
+* `siac renter setallowance` sets the amount of money that can be spent over a
+  given period. If no flags are set you will be walked through the interactive
+  allowance setting. To update only certain fields, pass in those values with
+  the corresponding field flag, for example '--amount 500SC'.
+
+* `siac renter allowance` views the current allowance, which controls how much
+  money is spent on file contracts.
+
 #### Skynet tasks
-* `siac skynet upload [source filepath] [destination siapath]` uploads a file to
-  Skynet. A skylink will be produced which can be shared and used to retrieve
-  the file. The file that gets uploaded will be pinned to this Sia node, meaning
-  that this node will pay for storage and repairs until the file is manually
-  deleted.
+* `siac skynet upload [source filepath] [destination siapath]` uploads a file or
+  directory to Skynet. A skylink will be produced for each file. The link can be
+  shared and used to retrieve the file. The file(s) that get uploaded will be
+  pinned to this Sia node, meaning that this node will pay for storage and 
+  repairs until the file(s) are manually deleted.
 
 * `siac skynet ls` lists all skyfiles that the user has pinned along with the
   corresponding skylinks. By default, only files in var/skynet/ will be

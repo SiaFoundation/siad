@@ -4,50 +4,56 @@ stages:
   - deploy
 
 variables:
-  legacy_pkgs: "./node \
-  ./node/api \
-  ./node/api/server"
-  package_pkgs: "./build \
-  ./cmd/sia-node-scanner \
-  ./cmd/siac \
-  ./cmd/siad \
-  ./compatibility \
-  ./crypto \
-  ./encoding \
-  ./modules \
-  ./modules/consensus \
-  ./modules/explorer \
-  ./modules/gateway \
-  ./modules/host \
-  ./modules/host/contractmanager \
-  ./modules/host/mdm \
-  ./modules/renter \
-  ./modules/renter/contractor \
-  ./modules/renter/filesystem \
-  ./modules/renter/hostdb \
-  ./modules/renter/hostdb/hosttree \
-  ./modules/renter/proto \
-  ./modules/renter/siadir \
-  ./modules/renter/siafile \
-  ./modules/renter/skynetblacklist \
-  ./modules/miner \
-  ./modules/wallet \
-  ./modules/transactionpool \
-  ./persist \
-  ./sync \
-  ./types"
-  siatest_pkgs: "./siatest \
-  ./siatest/consensus \
-  ./siatest/daemon \
-  ./siatest/gateway \
-  ./siatest/host \
-  ./siatest/miner \
-  ./siatest/transactionpool \
-  ./siatest/wallet"
-  siatest_renter_pkgs: "./siatest/renter \
-  ./siatest/renter/contractor \
-  ./siatest/renter/hostdb \
-  ./siatest/renterhost"
+  legacy_pkgs: >-
+    ./node
+    ./node/api
+    ./node/api/server
+  package_pkgs: >-
+    ./build
+    ./cmd/sia-node-scanner
+    ./cmd/siac
+    ./cmd/siad
+    ./compatibility
+    ./crypto
+    ./encoding
+    ./modules
+    ./modules/consensus
+    ./modules/explorer
+    ./modules/gateway
+    ./modules/host
+    ./modules/host/contractmanager
+    ./modules/host/mdm
+    ./modules/renter
+    ./modules/renter/contractor
+    ./modules/renter/filesystem
+    ./modules/renter/filesystem/siafile
+    ./modules/renter/filesystem/siadir
+    ./modules/renter/hostdb
+    ./modules/renter/hostdb/hosttree
+    ./modules/renter/proto
+    ./modules/renter/skynetblacklist
+    ./modules/miner
+    ./modules/wallet
+    ./modules/transactionpool
+    ./persist
+    ./sync
+    ./skykey
+    ./types
+  siatest_pkgs: >-
+    ./siatest
+    ./siatest/consensus
+    ./siatest/daemon
+    ./siatest/gateway
+    ./siatest/host
+    ./siatest/miner
+    ./siatest/transactionpool
+    ./siatest/wallet
+  siatest_renter_pkgs: >-
+    ./siatest/renter
+  siatest_renter_sub_pkgs: >-
+    ./siatest/renter/contractor
+    ./siatest/renter/hostdb
+    ./siatest/renterhost
 
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
@@ -94,10 +100,10 @@ lint:
     key: lint-cache
     paths:
       - .cache
-  script: 
+  script:
     ## This is the recommended way to install golang-ci lint.
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.20.1
+    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.23.8
     - apt-get update
     - apt-get -y install python3-pip
     - pip3 install codespell
@@ -123,8 +129,8 @@ legacy-tests:
     key: legacy-cache
     paths:
       - .cache
-  script: 
-    - make test-long run=. pkgs=$legacy_pkgs
+  script:
+    - make test-long run=. pkgs="$legacy_pkgs"
 
 package-tests:
   <<: *default_test_params
@@ -133,16 +139,15 @@ package-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs=$package_pkgs
-    
+    - make test-long run=. pkgs="$package_pkgs"    
 siatest-tests:
   <<: *default_test_params
   cache:
-    key: integration-cache
+    key: siatest-cache
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs=$siatest_pkgs
+    - make test-long run=. pkgs="$siatest_pkgs"
 
 siatest-renter-tests:
   <<: *default_test_params
@@ -153,26 +158,44 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs=$siatest_renter_pkgs
+    - make test-long run=. pkgs="$siatest_renter_pkgs"
+
+siatest-renter-sub-tests:
+  <<: *default_test_params
+  cache:
+    key: siatest-renter-sub-tests-cache
+    paths:
+      - .cache
+  script:
+    - apt-get update
+    - apt-get install -y fuse
+    - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
 
 legacy-tests-nightly:
   <<: *default_nightly_params
-  script: 
-    - make test-vlong run=. pkgs=$legacy_pkgs
+  script:
+    - make test-vlong run=. pkgs="$legacy_pkgs"
 
 package-tests-nightly:
   <<: *default_nightly_params
-  script: 
-    - make test-vlong run=. pkgs=$package_pkgs
+  script:
+    - make test-vlong run=. pkgs="$package_pkgs"
 
 siatest-tests-nightly:
   <<: *default_nightly_params
   script:
-    - make test-vlong run=. pkgs=$siatest_pkgs
+    - make test-vlong run=. pkgs="$siatest_pkgs"
 
-siatest-renter--tests-nightly:
+siatest-renter-tests-nightly:
   <<: *default_nightly_params
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-vlong run=. pkgs=$siatest_renter_pkgs
+    - make test-vlong run=. pkgs="$siatest_renter_pkgs"
+
+siatest-renter-sub-tests-nightly:
+  <<: *default_nightly_params
+  script:
+    - apt-get update
+    - apt-get install -y fuse
+    - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"

@@ -16,7 +16,7 @@ func TestCosts(t *testing.T) {
 	//
 	// TODO: This cost is based on SectorSize, which is small in tests. Should
 	// we scale this so that we get an accurate picture of the actual cost?
-	cost, refund := AppendCost(pt)
+	cost, refund := modules.MDMAppendCost(pt)
 	expectedCost := types.NewCurrency64(8193)
 	if !cost.Equals(expectedCost) {
 		t.Fatalf("expected append cost %v, got %v", expectedCost, cost)
@@ -29,14 +29,14 @@ func TestCosts(t *testing.T) {
 	// Init
 	//
 	// TODO: Scale SectorSize?
-	cost = InitCost(pt, modules.SectorSize)
+	cost = modules.MDMInitCost(pt, modules.SectorSize)
 	expectedCost = types.NewCurrency64(40961)
 	if !cost.Equals(expectedCost) {
 		t.Fatalf("expected init cost %v, got %v", expectedCost, cost)
 	}
 
 	// HasSector
-	cost, refund = HasSectorCost(pt)
+	cost, refund = modules.MDMHasSectorCost(pt)
 	expectedCost = types.NewCurrency64(1048576)
 	if !cost.Equals(expectedCost) {
 		t.Fatalf("expected hassector cost %v, got %v", expectedCost, cost)

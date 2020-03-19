@@ -24,11 +24,10 @@ type (
 	TestStorageObligation struct {
 		sectorMap   map[crypto.Hash][]byte
 		sectorRoots []crypto.Hash
-		locked      bool
 	}
 )
 
-func newTestHost() Host {
+func newTestHost() *TestHost {
 	return &TestHost{
 		sectors: make(map[crypto.Hash][]byte),
 	}
@@ -36,7 +35,6 @@ func newTestHost() Host {
 
 func newTestStorageObligation(locked bool) *TestStorageObligation {
 	return &TestStorageObligation{
-		locked:    locked,
 		sectorMap: make(map[crypto.Hash][]byte),
 	}
 }
@@ -49,9 +47,9 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 
 // HasSector indicates whether the host stores a sector with a given root or
 // not.
-func (h *TestHost) HasSector(sectorRoot crypto.Hash) (bool, error) {
+func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 	_, exists := h.sectors[sectorRoot]
-	return exists, nil
+	return exists
 }
 
 // ReadSector implements the Host interface by returning a random sector for
@@ -73,11 +71,6 @@ func (so *TestStorageObligation) ContractSize() uint64 {
 	return uint64(len(so.sectorRoots)) * modules.SectorSize
 }
 
-// Locked implements the StorageObligation interface.
-func (so *TestStorageObligation) Locked() bool {
-	return so.locked
-}
-
 // MerkleRoot implements the StorageObligation interface.
 func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
 	if len(so.sectorRoots) == 0 {
@@ -91,19 +84,19 @@ func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
 	return so.sectorRoots
 }
 
-// Update implements the StorageObligation interface
-func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved, sectorsGained []crypto.Hash, gainedSectorData [][]byte) error {
+// Update implements the StorageObligation interface.
+func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
 	for _, removedSector := range sectorsRemoved {
 		if _, exists := so.sectorMap[removedSector]; !exists {
 			return errors.New("sector doesn't exist")
 		}
 		delete(so.sectorMap, removedSector)
 	}
-	for i, gainedSector := range sectorsGained {
+	for gainedSector, gainedSectorData := range sectorsGained {
 		if _, exists := so.sectorMap[gainedSector]; exists {
 			return errors.New("sector already exists")
 		}
-		so.sectorMap[gainedSector] = gainedSectorData[i]
+		so.sectorMap[gainedSector] = gainedSectorData
 	}
 	so.sectorRoots = sectorRoots
 	return nil
@@ -116,15 +109,16 @@ func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved, sectorsGain
 func newTestPriceTable() modules.RPCPriceTable {
 	// defaultCost := types.SiacoinPrecision.Div64(modules.SectorSize)
 	return modules.RPCPriceTable{
-		Expiry:               time.Now().Add(time.Minute).Unix(),
-		UpdatePriceTableCost: types.NewCurrency64(1),
-		InitBaseCost:         types.NewCurrency64(1),
-		MemoryTimeCost:       types.NewCurrency64(1),
-		ReadBaseCost:         types.NewCurrency64(1),
-		ReadLengthCost:       types.NewCurrency64(1),
-		WriteBaseCost:        types.NewCurrency64(1),
-		WriteLengthCost:      types.NewCurrency64(1),
-		WriteStoreCost:       types.NewCurrency64(1),
+		Expiry:                time.Now().Add(time.Minute).Unix(),
+		UpdatePriceTableCost:  types.NewCurrency64(1),
+		InitBaseCost:          types.NewCurrency64(1),
+		MemoryTimeCost:        types.NewCurrency64(1),
+		DropSectorsBaseCost:   types.NewCurrency64(1),
+		DropSectorsLengthCost: types.NewCurrency64(1),
+		ReadBaseCost:          types.NewCurrency64(1),
+		ReadLengthCost:        types.NewCurrency64(1),
+		WriteBaseCost:         types.NewCurrency64(1),
+		WriteLengthCost:       types.NewCurrency64(1),
 	}
 }
 

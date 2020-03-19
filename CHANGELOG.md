@@ -9,63 +9,70 @@ Version History
 ---------------
 
 Latest:
+
 ### v1.4.4
 **Key Updates**
- - Add ability to blacklist skylinks by merkleroot
+ - Add a delay when modifying large contracts on hosts to prevent hosts from
+   becoming unresponsive due to massive disk i/o.
  - Add `--root` parameter to `siac renter delete` that allows passing absolute
    instead of relative file paths.
- - Uploading resumes more quickly after restart
- -
- -
- -
- -
- -
- -
- - No user-agent needed for Skylink downloads
- -
- -
- -
- -
- -
- -
- -
- -
- - 
- - 
+ - Add ability to blacklist skylinks by merkleroot.
+ - Uploading resumes more quickly after restart.
+ - Add `HEAD` request for skylink
+ - Add ability to pack many files into the same or adjacent sectors while
+    producing unique skylinks for each file.
+ - Fix default expected upload/download values displaying 0 when setting an
+   initial allowance.
+ - `siac skynet upload` now supports uploading directories. All files are
+   uploaded individually and result in separate skylinks.
+ - No user-agent needed for Skylink downloads.
+ - Add `go get` command to `make dependencies`.
+ - Add flags for tag and targz for skyfile streaming.
+ - Add new endpoint `/skynet/stats` that provides statistical information about
+   skynet, how many files were uploaded and the combined size of said files.
+ - The `siac renter setallowance` UX is considerably improved.
  - Add XChaCha20 CipherKey.
+ - Add Skykey Manager.
  - Add `siac skynet unpin` subcommand.
- -
- -
  - Extend `siac renter -v` to show breakdown of file health.
- -
- -
+ - Add Skynet-Disable-Force header to allow disabling the force update feature
+   on Skynet uploads
+ - Add bandwidth usage to `siac gateway`
 
 **Bugs Fixed**
- - 
- -
- -
- -
- -
- -
- - Fixed `siac skynet ls` not working when files were passed as input. It is now
-   able to access specific files in the Skynet folder.
- -
- -
+ - Fixed bug in startup where an error being returned by the renter's blocking
+   startup process was being missed
+ - Fix repair bug where unused hosts were not being properly updated for a
+   siafile
+ - Fix threadgroup violation in the watchdog that allowed writing to the log
+   file after a shutdown
  - Fix bug where `siac renter -v` wasn't working due to the wrong flag being
    used.
- -
- -
+ - Fixed bug in siafile snapshot code where the `hostKey()` method was not used
+   to safely acquire the host pubkey.
+ - Fixed `siac skynet ls` not working when files were passed as input. It is now
+   able to access specific files in the Skynet folder.
+ - Fixed a deadlock when performing a Skynet download with no workers
+ - Fix a parsing bug for malformed skylinks
+ - fix siac update for new release verification
+ - Fix parameter delimiter for skylinks
+ - Fixed race condition in host's `RPCLoopLock`
+ - Fixed a bug which caused a call to `build.Critical` in the case that a
+   contract in the renew set was marked `!GoodForRenew` while the contractor
+   lock was not held
 
 **Other**
- - 
- -
- -
- -
- -
- -
- -
-
-
+ - Split out renter siatests into 2 groups for faster pipelines.
+ - Add README to the `siatest` package 
+ - Bump golangci-lint version to v1.23.8
+ - Add timeout parameter to Skylink route - Add `go get` command to `make
+   dependencies`.
+ - Update repair loop to use `uniqueRefreshPaths` to reduce unnecessary bubble
+   calls
+ - Add Skynet-Disable-Force header to allow disabling the force update feature
+   on Skynet uploads
+ - Create generator for Changelog to improve changelog update process
+ 
 ### v1.4.3
 **Key Updates**
  - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
@@ -93,8 +100,6 @@ Latest:
 **Other**
  - Upgrade host metadata to v1.4.3
  - Removed stubs from testing
- - Add Skynet-Disable-Force header to allow disabling the force update feature
-   on Skynet uploads
 
 ### v1.4.2.1
 **Key Updates**

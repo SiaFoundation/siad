@@ -144,7 +144,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 				if len(txn.FileContracts) > 0 {
 					for j := range txn.FileContracts {
 						fcid := txn.FileContractID(uint64(j))
-						so, err := getStorageObligation(tx, fcid)
+						so, err := h.getStorageObligation(tx, fcid)
 						if err != nil {
 							// The storage folder may not exist, or the disk
 							// may be having trouble. Either way, we ignore the
@@ -163,7 +163,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 				// Check for file contract revisions.
 				if len(txn.FileContractRevisions) > 0 {
 					for _, fcr := range txn.FileContractRevisions {
-						so, err := getStorageObligation(tx, fcr.ParentID)
+						so, err := h.getStorageObligation(tx, fcr.ParentID)
 						if err != nil {
 							// The storage folder may not exist, or the disk
 							// may be having trouble. Either way, we ignore the
@@ -183,7 +183,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 				if len(txn.StorageProofs) > 0 {
 					for _, sp := range txn.StorageProofs {
 						// Check database for relevant storage proofs.
-						so, err := getStorageObligation(tx, sp.ParentID)
+						so, err := h.getStorageObligation(tx, sp.ParentID)
 						if err != nil {
 							// The storage folder may not exist, or the disk
 							// may be having trouble. Either way, we ignore the
@@ -215,7 +215,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 				if len(txn.FileContracts) > 0 {
 					for i := range txn.FileContracts {
 						fcid := txn.FileContractID(uint64(i))
-						so, err := getStorageObligation(tx, fcid)
+						so, err := h.getStorageObligation(tx, fcid)
 						if err != nil {
 							// The storage folder may not exist, or the disk
 							// may be having trouble. Either way, we ignore the
@@ -234,7 +234,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 				// Check for file contract revisions.
 				if len(txn.FileContractRevisions) > 0 {
 					for _, fcr := range txn.FileContractRevisions {
-						so, err := getStorageObligation(tx, fcr.ParentID)
+						so, err := h.getStorageObligation(tx, fcr.ParentID)
 						if err != nil {
 							// The storage folder may not exist, or the disk
 							// may be having trouble. Either way, we ignore the
@@ -253,7 +253,7 @@ func (h *Host) ProcessConsensusChange(cc modules.ConsensusChange) {
 				// Check for storage proofs.
 				if len(txn.StorageProofs) > 0 {
 					for _, sp := range txn.StorageProofs {
-						so, err := getStorageObligation(tx, sp.ParentID)
+						so, err := h.getStorageObligation(tx, sp.ParentID)
 						if err != nil {
 							// The storage folder may not exist, or the disk
 							// may be having trouble. Either way, we ignore the

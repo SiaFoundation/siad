@@ -167,6 +167,20 @@ func (cm *ContractManager) ReadSector(root crypto.Hash) ([]byte, error) {
 	return cm.ReadPartialSector(root, 0, modules.SectorSize)
 }
 
+// HasSector indicates whether the contract manager stores a sector with
+// a given root or not.
+func (cm *ContractManager) HasSector(sectorRoot crypto.Hash) bool {
+	// Get the sector
+	id := cm.managedSectorID(sectorRoot)
+
+	// Check if it exists
+	cm.wal.mu.Lock()
+	_, exists := cm.sectorLocations[id]
+	cm.wal.mu.Unlock()
+
+	return exists
+}
+
 // managedLockSector grabs a sector lock.
 func (wal *writeAheadLog) managedLockSector(id sectorID) {
 	wal.mu.Lock()

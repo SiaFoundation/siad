@@ -15,6 +15,9 @@ const (
 	// TimeCommit is the time used for executing managedFinalize.
 	TimeCommit = 50e3
 
+	// TimeDropSingleSector is the time for dropping a single sector.
+	TimeDropSingleSector = 1
+
 	// TimeHasSector is the time for executing a 'HasSector' instruction.
 	TimeHasSector = 1
 

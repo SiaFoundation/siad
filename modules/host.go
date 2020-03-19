@@ -14,6 +14,10 @@ const (
 
 	// HostSettingsFile is the name of the host's persistence file.
 	HostSettingsFile = "host.json"
+
+	// HostSiaMuxSubscriberName is the name used by the host to register a
+	// listener on the SiaMux.
+	HostSiaMuxSubscriberName = "host"
 )
 
 var (
@@ -199,6 +203,10 @@ type (
 		// different expiry heights, and the host is expected to only store the
 		// data once.
 		AddSector(sectorRoot crypto.Hash, sectorData []byte) error
+
+		// HasSector indicates whether the host stores a sector with a given
+		// root or not.
+		HasSector(crypto.Hash) bool
 
 		// AddSectorBatch is a performance optimization over AddSector when
 		// adding a bunch of virtual sectors. It is necessary because otherwise

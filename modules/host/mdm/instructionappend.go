@@ -63,27 +63,24 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 		return errOutput(err)
 	}
 	newFileSize := prevOutput.NewSize + modules.SectorSize
-	newRoot := crypto.MerkleRoot(sectorData)
 
 	// TODO: How to update finances with EA?
 	// i.staticState.potentialStorageRevenue = i.staticState.potentialStorageRevenue.Add(types.ZeroCurrency)
 	// i.staticState.riskedCollateral = i.staticState.riskedCollateral.Add(types.ZeroCurrency)
 	// i.staticState.potentialUploadRevenue = i.staticState.potentialUploadRevenue.Add(types.ZeroCurrency)
 
-	// Update the storage obligation.
-	i.staticState.sectorsGained = append(i.staticState.sectorsGained, newRoot)
-	i.staticState.gainedSectorData = append(i.staticState.gainedSectorData, sectorData)
-
-	// Update the roots and compute the new merkle root of the contract.
-	i.staticState.merkleRoots = append(i.staticState.merkleRoots, newRoot)
-	newMerkleRoot := cachedMerkleRoot(i.staticState.merkleRoots)
+	ps := i.staticState
+	newMerkleRoot, err := ps.sectors.appendSector(sectorData)
+	if err != nil {
+		return errOutput(err)
+	}
 
 	// TODO: Construct proof if necessary.
 	var proof []crypto.Hash
 	if i.staticMerkleProof {
-		start := len(i.staticState.merkleRoots)
+		start := len(ps.sectors.merkleRoots)
 		end := start + 1
-		proof = crypto.MerkleSectorRangeProof(i.staticState.merkleRoots, start, end)
+		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, start, end)
 	}
 
 	return output{
@@ -95,14 +92,14 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 
 // Cost returns the Cost of this append instruction.
 func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
-	cost, refund := AppendCost(i.staticState.priceTable)
+	cost, refund := modules.MDMAppendCost(i.staticState.priceTable)
 	return cost, refund, nil
 }
 
 // Memory returns the memory allocated by the 'Append' instruction beyond the
 // lifetime of the instruction.
 func (i *instructionAppend) Memory() uint64 {
-	return AppendMemory()
+	return modules.MDMAppendMemory()
 }
 
 // ReadOnly for the 'Append' instruction is 'false'.
@@ -111,6 +108,6 @@ func (i *instructionAppend) ReadOnly() bool {
 }
 
 // Time returns the execution time of an 'Append' instruction.
-func (i *instructionAppend) Time() uint64 {
-	return TimeAppend
+func (i *instructionAppend) Time() (uint64, error) {
+	return modules.MDMTimeAppend, nil
 }

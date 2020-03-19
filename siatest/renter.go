@@ -24,47 +24,104 @@ var (
 	ErrFileNotTracked = errors.New("file is not tracked by renter")
 )
 
-// DownloadToDisk downloads a previously uploaded file. The file will be downloaded
-// to a random location and returned as a LocalFile object.
-func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (modules.DownloadID, *LocalFile, error) {
-	return tn.DownloadToDiskWithDiskFetch(rf, async, true)
+// Dirs returns the siapaths of all dirs of the TestNode's renter in no
+// deterministic order.
+func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
+	// dirs always contains the root dir.
+	dirs := []modules.SiaPath{modules.RootSiaPath()}
+	toVisit := []modules.SiaPath{modules.RootSiaPath()}
+
+	// As long as we find new dirs we add them to dirs.
+	for len(toVisit) > 0 {
+		// Pop of the first dir.
+		d := toVisit[0]
+		toVisit = toVisit[1:]
+
+		// Add the first dir to dirs.
+		dirs = append(dirs, d)
+
+		// Get the dir info.
+		rd, err := tn.RenterDirGet(d)
+		if err != nil {
+			return nil, err
+		}
+		// Append the subdirs to toVisit.
+		for _, di := range rd.Directories {
+			if di.SiaPath != d {
+				toVisit = append(toVisit, di.SiaPath)
+			}
+		}
+	}
+	return dirs, nil
 }
 
-// DownloadToDiskWithDiskFetch downloads a previously uploaded file. The file
-// will be downloaded to a random location and returned as a LocalFile object.
-func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disableLocalFetch bool) (modules.DownloadID, *LocalFile, error) {
+// DownloadByStream downloads a file and returns its contents as a slice of bytes.
+func (tn *TestNode) DownloadByStream(rf *RemoteFile) (uid modules.DownloadID, data []byte, err error) {
+	return tn.DownloadByStreamWithDiskFetch(rf, true)
+}
+
+// DownloadByStreamWithDiskFetch downloads a file and returns its contents as a
+// slice of bytes.
+func (tn *TestNode) DownloadByStreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (uid modules.DownloadID, data []byte, err error) {
 	fi, err := tn.File(rf)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
-	// Create a random destination for the download
-	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
-	dest := filepath.Join(tn.downloadDir.path, fileName)
-	uid, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async, disableLocalFetch)
+	uid, data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize, disableLocalFetch)
+	if err == nil && rf.Checksum() != crypto.HashBytes(data) {
+		err = fmt.Errorf("downloaded bytes don't match requested data (len %v)", len(data))
+	}
 	if err != nil {
-		return "", nil, errors.AddContext(err, "failed to download file")
+		return
 	}
 	// Make sure the download is in the history.
 	_, err = tn.RenterDownloadInfoGet(uid)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to fetch download info")
 	}
+	return
+}
 
-	// Create the TestFile
-	lf := &LocalFile{
-		path:     dest,
-		size:     int(fi.Filesize),
-		checksum: rf.Checksum(),
+// DownloadInfo returns the DownloadInfo struct of a file. If it returns nil,
+// the download has either finished, or was never started in the first place.
+// If the corresponding download info was found, DownloadInfo also performs a
+// few sanity checks on its fields.
+func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadInfo, error) {
+	rdq, err := tn.RenterDownloadsGet()
+	if err != nil {
+		return nil, err
 	}
-	// If we download the file asynchronously we are done
-	if async {
-		return uid, lf, nil
+	var di *api.DownloadInfo
+	for _, d := range rdq.Downloads {
+		if rf.siaPath == d.SiaPath && lf.path == d.Destination {
+			di = &d
+			break
+		}
 	}
-	// Verify checksum if we downloaded the file blocking
-	if err := lf.checkIntegrity(); err != nil {
-		return "", lf, errors.AddContext(err, "downloaded file's checksum doesn't match")
+	if di == nil {
+		// No download info found.
+		return nil, errors.New("download info not found")
 	}
-	return uid, lf, nil
+	// Check if length and filesize were set correctly
+	if di.Length != di.Filesize {
+		err = errors.AddContext(err, "filesize != length")
+	}
+	// Received data can't be larger than transferred data
+	if di.Received > di.TotalDataTransferred {
+		err = errors.AddContext(err, "received > TotalDataTransferred")
+	}
+	// If the download is completed, the amount of received data has to equal
+	// the amount of requested data.
+	if di.Completed && di.Received != di.Length {
+		err = errors.AddContext(err, "completed == true but received != length")
+	}
+	return di, err
+}
+
+// DownloadToDisk downloads a previously uploaded file. The file will be downloaded
+// to a random location and returned as a LocalFile object.
+func (tn *TestNode) DownloadToDisk(rf *RemoteFile, async bool) (modules.DownloadID, *LocalFile, error) {
+	return tn.DownloadToDiskWithDiskFetch(rf, async, true)
 }
 
 // DownloadToDiskPartial downloads a part of a previously uploaded file. The
@@ -116,31 +173,78 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 	return uid, destFile, nil
 }
 
-// DownloadByStream downloads a file and returns its contents as a slice of bytes.
-func (tn *TestNode) DownloadByStream(rf *RemoteFile) (uid modules.DownloadID, data []byte, err error) {
-	return tn.DownloadByStreamWithDiskFetch(rf, true)
-}
-
-// DownloadByStreamWithDiskFetch downloads a file and returns its contents as a
-// slice of bytes.
-func (tn *TestNode) DownloadByStreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (uid modules.DownloadID, data []byte, err error) {
+// DownloadToDiskWithDiskFetch downloads a previously uploaded file. The file
+// will be downloaded to a random location and returned as a LocalFile object.
+func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disableLocalFetch bool) (modules.DownloadID, *LocalFile, error) {
 	fi, err := tn.File(rf)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
-	uid, data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize, disableLocalFetch)
-	if err == nil && rf.Checksum() != crypto.HashBytes(data) {
-		err = fmt.Errorf("downloaded bytes don't match requested data (len %v)", len(data))
-	}
+	// Create a random destination for the download
+	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
+	dest := filepath.Join(tn.downloadDir.path, fileName)
+	uid, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async, disableLocalFetch)
 	if err != nil {
-		return
+		return "", nil, errors.AddContext(err, "failed to download file")
 	}
 	// Make sure the download is in the history.
 	_, err = tn.RenterDownloadInfoGet(uid)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to fetch download info")
 	}
-	return
+
+	// Create the TestFile
+	lf := &LocalFile{
+		path:     dest,
+		size:     int(fi.Filesize),
+		checksum: rf.Checksum(),
+	}
+	// If we download the file asynchronously we are done
+	if async {
+		return uid, lf, nil
+	}
+	// Verify checksum if we downloaded the file blocking
+	if err := lf.checkIntegrity(); err != nil {
+		return "", lf, errors.AddContext(err, "downloaded file's checksum doesn't match")
+	}
+	return uid, lf, nil
+}
+
+// File returns the file queried by the user
+func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
+	rfile, err := tn.RenterFileGet(rf.SiaPath())
+	if err != nil {
+		return rfile.File, err
+	}
+	return rfile.File, err
+}
+
+// Files lists the files tracked by the renter
+func (tn *TestNode) Files(cached bool) ([]modules.FileInfo, error) {
+	rf, err := tn.RenterFilesGet(cached)
+	if err != nil {
+		return nil, err
+	}
+	return rf.Files, err
+}
+
+// KnowsHost checks if tn has a certain host in its hostdb. This check is
+// performed using the host's public key.
+func (tn *TestNode) KnowsHost(host *TestNode) error {
+	hdag, err := tn.HostDbActiveGet()
+	if err != nil {
+		return err
+	}
+	for _, h := range hdag.Hosts {
+		pk, err := host.HostPublicKey()
+		if err != nil {
+			return err
+		}
+		if reflect.DeepEqual(h.PublicKey, pk) {
+			return nil
+		}
+	}
+	return errors.New("host ist unknown")
 }
 
 // Rename renames a remoteFile and returns the new file.
@@ -164,15 +268,6 @@ func (tn *TestNode) SetFileRepairPath(rf *RemoteFile, lf *LocalFile) error {
 // Stream uses the streaming endpoint to download a file.
 func (tn *TestNode) Stream(rf *RemoteFile) (data []byte, err error) {
 	return tn.StreamWithDiskFetch(rf, true)
-}
-
-// StreamWithDiskFetch uses the streaming endpoint to download a file.
-func (tn *TestNode) StreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (data []byte, err error) {
-	data, err = tn.RenterStreamGet(rf.siaPath, disableLocalFetch)
-	if err == nil && rf.checksum != crypto.HashBytes(data) {
-		err = errors.New("downloaded bytes don't match requested data")
-	}
-	return
 }
 
 // StreamPartial uses the streaming endpoint to download a partial file in
@@ -203,58 +298,13 @@ func (tn *TestNode) StreamPartial(rf *RemoteFile, lf *LocalFile, from, to uint64
 	return
 }
 
-// DownloadInfo returns the DownloadInfo struct of a file. If it returns nil,
-// the download has either finished, or was never started in the first place.
-// If the corresponding download info was found, DownloadInfo also performs a
-// few sanity checks on its fields.
-func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadInfo, error) {
-	rdq, err := tn.RenterDownloadsGet()
-	if err != nil {
-		return nil, err
+// StreamWithDiskFetch uses the streaming endpoint to download a file.
+func (tn *TestNode) StreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (data []byte, err error) {
+	data, err = tn.RenterStreamGet(rf.siaPath, disableLocalFetch)
+	if err == nil && rf.checksum != crypto.HashBytes(data) {
+		err = errors.New("downloaded bytes don't match requested data")
 	}
-	var di *api.DownloadInfo
-	for _, d := range rdq.Downloads {
-		if rf.siaPath == d.SiaPath && lf.path == d.Destination {
-			di = &d
-			break
-		}
-	}
-	if di == nil {
-		// No download info found.
-		return nil, errors.New("download info not found")
-	}
-	// Check if length and filesize were set correctly
-	if di.Length != di.Filesize {
-		err = errors.AddContext(err, "filesize != length")
-	}
-	// Received data can't be larger than transferred data
-	if di.Received > di.TotalDataTransferred {
-		err = errors.AddContext(err, "received > TotalDataTransferred")
-	}
-	// If the download is completed, the amount of received data has to equal
-	// the amount of requested data.
-	if di.Completed && di.Received != di.Length {
-		err = errors.AddContext(err, "completed == true but received != length")
-	}
-	return di, err
-}
-
-// File returns the file queried by the user
-func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
-	rfile, err := tn.RenterFileGet(rf.SiaPath())
-	if err != nil {
-		return rfile.File, err
-	}
-	return rfile.File, err
-}
-
-// Files lists the files tracked by the renter
-func (tn *TestNode) Files(cached bool) ([]modules.FileInfo, error) {
-	rf, err := tn.RenterFilesGet(cached)
-	if err != nil {
-		return nil, err
-	}
-	return rf.Files, err
+	return
 }
 
 // Upload uses the node to upload the file with the option to overwrite if exists.
@@ -351,37 +401,6 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	return localFile, remoteFile, tn.WaitForUploadHealth(remoteFile)
 }
 
-// Dirs returns the siapaths of all dirs of the TestNode's renter in no
-// deterministic order.
-func (tn *TestNode) Dirs() ([]modules.SiaPath, error) {
-	// dirs always contains the root dir.
-	dirs := []modules.SiaPath{modules.RootSiaPath()}
-	toVisit := []modules.SiaPath{modules.RootSiaPath()}
-
-	// As long as we find new dirs we add them to dirs.
-	for len(toVisit) > 0 {
-		// Pop of the first dir.
-		d := toVisit[0]
-		toVisit = toVisit[1:]
-
-		// Add the first dir to dirs.
-		dirs = append(dirs, d)
-
-		// Get the dir info.
-		rd, err := tn.RenterDirGet(d)
-		if err != nil {
-			return nil, err
-		}
-		// Append the subdirs to toVisit.
-		for _, di := range rd.Directories {
-			if di.SiaPath != d {
-				toVisit = append(toVisit, di.SiaPath)
-			}
-		}
-	}
-	return dirs, nil
-}
-
 // UploadBlocking attempts to upload an existing file with the option to overwrite if exists
 // and waits for the upload to reach 100% progress and redundancy.
 func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
@@ -399,6 +418,26 @@ func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, pari
 	// Wait until upload reaches a certain health
 	err = tn.WaitForUploadHealth(remoteFile)
 	return remoteFile, err
+}
+
+// WaitForDecreasingRedundancy waits until the redundancy decreases to a
+// certain point.
+func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float64) error {
+	// Check if file is tracked by renter at all
+	if _, err := tn.File(rf); err != nil {
+		return ErrFileNotTracked
+	}
+	// Wait until it reaches the redundancy
+	return Retry(1000, 100*time.Millisecond, func() error {
+		file, err := tn.File(rf)
+		if err != nil {
+			return ErrFileNotTracked
+		}
+		if file.Redundancy > redundancy {
+			return fmt.Errorf("redundancy should be %v but was %v", redundancy, file.Redundancy)
+		}
+		return nil
+	})
 }
 
 // WaitForDownload waits for the download of a file to finish. If a file wasn't
@@ -429,59 +468,6 @@ func (tn *TestNode) WaitForDownload(lf *LocalFile, rf *RemoteFile) error {
 	}
 	// Verify checksum
 	return lf.checkIntegrity()
-}
-
-// WaitForUploadProgress waits for a file to reach a certain upload progress.
-func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) error {
-	if _, err := tn.File(rf); err != nil {
-		return ErrFileNotTracked
-	}
-	// Wait until it reaches the progress
-	return Retry(1000, 100*time.Millisecond, func() error {
-		file, err := tn.File(rf)
-		if err != nil {
-			return ErrFileNotTracked
-		}
-		if file.UploadProgress < progress {
-			return fmt.Errorf("progress should be %v but was %v", progress, file.UploadProgress)
-		}
-		return nil
-	})
-
-}
-
-// WaitForUploadHealth waits for a file to reach a health better than the
-// RepairThreshold.
-func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
-	// Check if file is tracked by renter at all
-	if _, err := tn.File(rf); err != nil {
-		return ErrFileNotTracked
-	}
-	// Wait until the file is viewed as healthy by the renter
-	err := Retry(1000, 100*time.Millisecond, func() error {
-		file, err := tn.File(rf)
-		if err != nil {
-			return ErrFileNotTracked
-		}
-		if file.MaxHealth >= renter.RepairThreshold {
-			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", renter.RepairThreshold, file.MaxHealth)
-		}
-		return nil
-	})
-	if err != nil {
-		rc, err2 := tn.RenterContractsGet()
-		if err2 != nil {
-			return errors.Compose(err, err2)
-		}
-		goodHosts := 0
-		for _, contract := range rc.Contracts {
-			if contract.GoodForUpload {
-				goodHosts++
-			}
-		}
-		return errors.Compose(err, fmt.Errorf("%v available hosts", goodHosts))
-	}
-	return nil
 }
 
 // WaitForFileAvailable waits for a file to become available on the Sia network
@@ -518,26 +504,6 @@ func (tn *TestNode) WaitForFileAvailable(rf *RemoteFile) error {
 	return nil
 }
 
-// WaitForDecreasingRedundancy waits until the redundancy decreases to a
-// certain point.
-func (tn *TestNode) WaitForDecreasingRedundancy(rf *RemoteFile, redundancy float64) error {
-	// Check if file is tracked by renter at all
-	if _, err := tn.File(rf); err != nil {
-		return ErrFileNotTracked
-	}
-	// Wait until it reaches the redundancy
-	return Retry(1000, 100*time.Millisecond, func() error {
-		file, err := tn.File(rf)
-		if err != nil {
-			return ErrFileNotTracked
-		}
-		if file.Redundancy > redundancy {
-			return fmt.Errorf("redundancy should be %v but was %v", redundancy, file.Redundancy)
-		}
-		return nil
-	})
-}
-
 // WaitForStuckChunksToBubble waits until the stuck chunks have been bubbled to
 // the root directory metadata
 func (tn *TestNode) WaitForStuckChunksToBubble() error {
@@ -570,21 +536,55 @@ func (tn *TestNode) WaitForStuckChunksToRepair() error {
 	})
 }
 
-// KnowsHost checks if tn has a certain host in its hostdb. This check is
-// performed using the host's public key.
-func (tn *TestNode) KnowsHost(host *TestNode) error {
-	hdag, err := tn.HostDbActiveGet()
-	if err != nil {
-		return err
+// WaitForUploadHealth waits for a file to reach a health better than the
+// RepairThreshold.
+func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
+	// Check if file is tracked by renter at all
+	if _, err := tn.File(rf); err != nil {
+		return ErrFileNotTracked
 	}
-	for _, h := range hdag.Hosts {
-		pk, err := host.HostPublicKey()
+	// Wait until the file is viewed as healthy by the renter
+	err := Retry(1000, 100*time.Millisecond, func() error {
+		file, err := tn.File(rf)
 		if err != nil {
-			return err
+			return ErrFileNotTracked
 		}
-		if reflect.DeepEqual(h.PublicKey, pk) {
-			return nil
+		if file.MaxHealth >= renter.RepairThreshold {
+			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", renter.RepairThreshold, file.MaxHealth)
 		}
+		return nil
+	})
+	if err != nil {
+		rc, err2 := tn.RenterContractsGet()
+		if err2 != nil {
+			return errors.Compose(err, err2)
+		}
+		goodHosts := 0
+		for _, contract := range rc.Contracts {
+			if contract.GoodForUpload {
+				goodHosts++
+			}
+		}
+		return errors.Compose(err, fmt.Errorf("%v available hosts", goodHosts))
 	}
-	return errors.New("host ist unknown")
+	return nil
+}
+
+// WaitForUploadProgress waits for a file to reach a certain upload progress.
+func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) error {
+	if _, err := tn.File(rf); err != nil {
+		return ErrFileNotTracked
+	}
+	// Wait until it reaches the progress
+	return Retry(1000, 100*time.Millisecond, func() error {
+		file, err := tn.File(rf)
+		if err != nil {
+			return ErrFileNotTracked
+		}
+		if file.UploadProgress < progress {
+			return fmt.Errorf("progress should be %v but was %v", progress, file.UploadProgress)
+		}
+		return nil
+	})
+
 }

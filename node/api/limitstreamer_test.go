@@ -27,7 +27,10 @@ func TestLimitStreamer(t *testing.T) {
 	// test the limitreader where we wrap it, but at offset 0 and for the full
 	// length of the data
 	streamer = streamerFromSlice(data)
-	streamer = NewLimitStreamer(streamer, 0, uint64(len(data)))
+	streamer, err = NewLimitStreamer(streamer, 0, uint64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	allData, err = ioutil.ReadAll(streamer)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +41,10 @@ func TestLimitStreamer(t *testing.T) {
 
 	// test limit reader at offset
 	streamer = streamerFromSlice(data)
-	streamer = NewLimitStreamer(streamer, 20, uint64(len(data)))
+	streamer, err = NewLimitStreamer(streamer, 20, uint64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	allData, err = ioutil.ReadAll(streamer)
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +56,10 @@ func TestLimitStreamer(t *testing.T) {
 
 	// test limit reader at offset with length
 	streamer = streamerFromSlice(data)
-	streamer = NewLimitStreamer(streamer, 20, 13)
+	streamer, err = NewLimitStreamer(streamer, 20, 13)
+	if err != nil {
+		t.Fatal(err)
+	}
 	allData, err = ioutil.ReadAll(streamer)
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +71,10 @@ func TestLimitStreamer(t *testing.T) {
 
 	// try to force it outside of the bounds
 	streamer = streamerFromSlice(data)
-	streamer = NewLimitStreamer(streamer, 20, 13)
+	streamer, err = NewLimitStreamer(streamer, 20, 13)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = streamer.Seek(34, io.SeekCurrent)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +90,10 @@ func TestLimitStreamer(t *testing.T) {
 
 	// try to force it outside of the bounds
 	streamer = streamerFromSlice(data)
-	streamer = NewLimitStreamer(streamer, 20, 13)
+	streamer, err = NewLimitStreamer(streamer, 20, 13)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = streamer.Seek(0, io.SeekCurrent)
 	if err != nil {
 		t.Fatal(err)

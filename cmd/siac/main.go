@@ -44,6 +44,7 @@ var (
 	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
+	walletTxnFeeIncluded      bool   // include the fee in the balance being sent
 
 	dataPieces   string // the number of data pieces a files should be uploaded with
 	parityPieces string // the number of parity pieces a files should be uploaded with
@@ -222,17 +223,18 @@ func main() {
 		Run:   wrap(statuscmd),
 	}
 
+	// create command tree (alphabetized by root command)
 	rootCmd = root
 
-	// create command tree
-	root.AddCommand(versionCmd, stopCmd, globalRatelimitCmd, alertsCmd)
-	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
+	root.AddCommand(consensusCmd)
+	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
-	root.AddCommand(updateCmd)
-	updateCmd.AddCommand(updateCheckCmd)
+	root.AddCommand(gatewayCmd)
+	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlacklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)
+	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
 
 	root.AddCommand(hostCmd)
-	hostCmd.AddCommand(hostConfigCmd, hostAnnounceCmd, hostFolderCmd, hostContractCmd, hostSectorCmd)
+	hostCmd.AddCommand(hostAnnounceCmd, hostConfigCmd, hostContractCmd, hostFolderCmd, hostSectorCmd)
 	hostFolderCmd.AddCommand(hostFolderAddCmd, hostFolderRemoveCmd, hostFolderResizeCmd)
 	hostSectorCmd.AddCommand(hostSectorDeleteCmd)
 	hostCmd.Flags().BoolVarP(&hostVerbose, "verbose", "v", false, "Display detailed host info")
@@ -240,35 +242,20 @@ func main() {
 	hostFolderRemoveCmd.Flags().BoolVarP(&hostFolderRemoveForce, "force", "f", false, "Force the removal of the folder and its data")
 
 	root.AddCommand(hostdbCmd)
-	hostdbCmd.AddCommand(hostdbViewCmd, hostdbFiltermodeCmd, hostdbSetFiltermodeCmd)
+	hostdbCmd.AddCommand(hostdbFiltermodeCmd, hostdbSetFiltermodeCmd, hostdbViewCmd)
 	hostdbCmd.Flags().IntVarP(&hostdbNumHosts, "numhosts", "n", 0, "Number of hosts to display from the hostdb")
 	hostdbCmd.Flags().BoolVarP(&hostdbVerbose, "verbose", "v", false, "Display full hostdb information")
 
 	root.AddCommand(minerCmd)
 	minerCmd.AddCommand(minerStartCmd, minerStopCmd)
 
-	root.AddCommand(walletCmd)
-	walletCmd.AddCommand(walletAddressCmd, walletAddressesCmd, walletChangepasswordCmd, walletInitCmd, walletInitSeedCmd,
-		walletLoadCmd, walletLockCmd, walletSeedsCmd, walletSendCmd, walletSweepCmd, walletSignCmd,
-		walletBalanceCmd, walletBroadcastCmd, walletTransactionsCmd, walletUnlockCmd)
-	walletInitCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Prompt for a custom password")
-	walletInitCmd.Flags().BoolVarP(&initForce, "force", "", false, "destroy the existing wallet and re-encrypt")
-	walletInitSeedCmd.Flags().BoolVarP(&initForce, "force", "", false, "destroy the existing wallet")
-	walletLoadCmd.AddCommand(walletLoad033xCmd, walletLoadSeedCmd, walletLoadSiagCmd)
-	walletSendCmd.AddCommand(walletSendSiacoinsCmd, walletSendSiafundsCmd)
-	walletUnlockCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Display interactive password prompt even if SIA_WALLET_PASSWORD is set")
-	walletBroadcastCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Decode transaction as base64 instead of JSON")
-	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")
-
 	root.AddCommand(renterCmd)
-	renterCmd.AddCommand(renterFilesDeleteCmd, renterFilesDownloadCmd,
-		renterDownloadsCmd, renterAllowanceCmd, renterSetAllowanceCmd,
-		renterContractsCmd, renterFilesListCmd, renterFilesRenameCmd,
-		renterSetLocalPathCmd, renterFilesUploadCmd, renterUploadsCmd,
-		renterExportCmd, renterPricesCmd, renterBackupCreateCmd, renterBackupLoadCmd,
-		renterBackupListCmd, renterTriggerContractRecoveryScanCmd, renterFilesUnstuckCmd,
-		renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd, renterRatelimitCmd,
-		renterFuseCmd)
+	renterCmd.AddCommand(renterAllowanceCmd, renterBackupCreateCmd, renterBackupListCmd, renterBackupLoadCmd,
+		renterContractsCmd, renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd,
+		renterDownloadsCmd, renterExportCmd, renterFilesDeleteCmd, renterFilesDownloadCmd,
+		renterFilesListCmd, renterFilesRenameCmd, renterFilesUnstuckCmd, renterFilesUploadCmd,
+		renterFuseCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
+		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd)
 
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
@@ -306,7 +293,7 @@ func main() {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetLsCmd, skynetUploadCmd, skynetDownloadCmd, skynetConvertCmd, skynetBlacklistCmd, skynetPinCmd, skynetUnpinCmd)
+	skynetCmd.AddCommand(skynetBlacklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
@@ -314,21 +301,35 @@ func main() {
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
 
-	root.AddCommand(gatewayCmd)
-	gatewayCmd.AddCommand(gatewayConnectCmd, gatewayDisconnectCmd, gatewayAddressCmd, gatewayListCmd, gatewayRatelimitCmd, gatewayBlacklistCmd)
-	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
+	root.AddCommand(updateCmd)
+	updateCmd.AddCommand(updateCheckCmd)
 
-	root.AddCommand(consensusCmd)
-	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
+	root.AddCommand(utilsCmd)
+	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsBruteForceSeedCmd, utilsCheckSigCmd,
+		utilsDecodeRawTxnCmd, utilsDisplayAPIPasswordCmd, utilsEncodeRawTxnCmd, utilsHastingsCmd,
+		utilsSigHashCmd, utilsUploadedsizeCmd, utilsVerifySeedCmd)
 
-	utilsCmd.AddCommand(bashcomplCmd, mangenCmd, utilsHastingsCmd, utilsEncodeRawTxnCmd, utilsDecodeRawTxnCmd,
-		utilsSigHashCmd, utilsCheckSigCmd, utilsVerifySeedCmd, utilsDisplayAPIPasswordCmd, utilsBruteForceSeedCmd,
-		utilsUploadedsizeCmd)
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
 	utilsUploadedsizeCmd.Flags().BoolVarP(&uploadedsizeUtilVerbose, "verbose", "v", false, "Display more information")
-	root.AddCommand(utilsCmd)
+
+	root.AddCommand(alertsCmd, globalRatelimitCmd, stopCmd, versionCmd)
+
+	root.AddCommand(walletCmd)
+	walletCmd.AddCommand(walletAddressCmd, walletAddressesCmd, walletBalanceCmd, walletBroadcastCmd, walletChangepasswordCmd,
+		walletInitCmd, walletInitSeedCmd, walletLoadCmd, walletLockCmd, walletSeedsCmd, walletSendCmd,
+		walletSignCmd, walletSweepCmd, walletTransactionsCmd, walletUnlockCmd)
+	walletInitCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Prompt for a custom password")
+	walletInitCmd.Flags().BoolVarP(&initForce, "force", "", false, "destroy the existing wallet and re-encrypt")
+	walletInitSeedCmd.Flags().BoolVarP(&initForce, "force", "", false, "destroy the existing wallet")
+	walletLoadCmd.AddCommand(walletLoad033xCmd, walletLoadSeedCmd, walletLoadSiagCmd)
+	walletSendCmd.AddCommand(walletSendSiacoinsCmd, walletSendSiafundsCmd)
+	walletSendSiacoinsCmd.Flags().BoolVarP(&walletTxnFeeIncluded, "fee-included", "", false, "Take the transaction fee out of the balance being submitted instead of the fee being additional")
+	walletUnlockCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Display interactive password prompt even if SIA_WALLET_PASSWORD is set")
+	walletBroadcastCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Decode transaction as base64 instead of JSON")
+	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")
 
 	// initialize client
+	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
 	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
 	root.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
 	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")

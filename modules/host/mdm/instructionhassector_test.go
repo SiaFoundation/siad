@@ -8,24 +8,22 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
 func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	instructions := []modules.Instruction{
-		NewHasSectorInstruction(0),
-	}
+	i := NewHasSectorInstruction(0)
+	instructions := []modules.Instruction{i}
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
 
 	// Compute cost and used memory.
-	cost, refund := HasSectorCost(pt)
-	usedMemory := InitMemory() + HasSectorMemory()
-	memoryCost := MemoryCost(pt, usedMemory, TimeHasSector+TimeCommit)
-	initCost := InitCost(pt, uint64(len(data)))
+	cost, refund := modules.MDMHasSectorCost(pt)
+	usedMemory := InitMemory() + modules.MDMHasSectorMemory()
+	memoryCost := modules.MDMMemoryCost(pt, usedMemory, TimeHasSector+TimeCommit)
+	initCost := modules.MDMInitCost(pt, uint64(len(data)))
 	cost = cost.Add(memoryCost).Add(initCost)
 	return instructions, data, cost, refund, usedMemory
 }
@@ -38,21 +36,20 @@ func TestInstructionHasSector(t *testing.T) {
 	defer mdm.Stop()
 
 	// Add a random sector to the host.
-	var sectorRoot crypto.Hash
-	fastrand.Read(sectorRoot[:])
+	sectorRoot := randomSector()
 	_, err := host.ReadSector(sectorRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Create a program to check for a sector on the host.
+	so := newTestStorageObligation(true)
+	so.sectorRoots = randomSectorRoots(1)
+	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
 	instructions, programData, cost, refund, usedMemory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	so := newTestStorageObligation(true)
-	so.sectorRoots = make([]crypto.Hash, 1) // initial contract has 1 sector
-	fastrand.Read(so.sectorRoots[0][:])     // random initial merkle root
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,9 +70,9 @@ func TestInstructionHasSector(t *testing.T) {
 			t.Fatalf("expected proof to have len %v but was %v", 0, len(output.Proof))
 		}
 		if !bytes.Equal(output.Output, []byte{1}) {
-			t.Fatalf("expected returned value to be 1 for 'true' but was %v", output.Output)
+			t.Fatalf("expected returned value to be [1] for 'true' but was %v", output.Output)
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {

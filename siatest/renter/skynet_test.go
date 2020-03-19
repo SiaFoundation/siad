@@ -1,16 +1,19 @@
 package renter
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
-	"net/textproto"
-	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,14 +22,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSkynet provides basic end-to-end testing for uploading skyfiles and
-// downloading the resulting skylinks.
+// TestSkynet verifies the functionality of Skynet, a decentralized CDN and
+// sharing platform.
 func TestSkynet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -39,17 +43,30 @@ func TestSkynet(t *testing.T) {
 		Miners:  1,
 		Renters: 1,
 	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
+	groupDir := renterTestDir(t.Name())
+
+	// Specify subtests to run
+	subTests := []siatest.SubTest{
+		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
+		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
+		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
+		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
+		{Name: "TestSkynetStats", Test: testSkynetStats},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
+	}
+
+	// Run tests
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+}
+
+// testSkynetBasic provides basic end-to-end testing for uploading skyfiles and
+// downloading the resulting skylinks.
+func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload as a skyfile.
@@ -147,6 +164,111 @@ func TestSkynet(t *testing.T) {
 	}
 	if !bytes.Equal(readerData, data) {
 		t.Fatal("reader data doesn't match data")
+	}
+
+	// Try to download the file explicitly using the ReaderGet method with the
+	// no formatter.
+	skylinkReader, err = r.SkynetSkylinkReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readerData, err = ioutil.ReadAll(skylinkReader)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+
+	// Try to download the file using the ReaderGet method with the concat
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkConcatReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readerData, err = ioutil.ReadAll(skylinkReader)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file using the ReaderGet method with the tar
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkTarReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(skylinkReader)
+	header, err := tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filename {
+		t.Fatalf("expected filename in archive to be %v but was %v", filename, header.Name)
+	}
+	readerData, err = ioutil.ReadAll(tr)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected error to be EOF but was", err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file using the ReaderGet method with the targz
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err := gzip.NewReader(skylinkReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzr.Close()
+	tr = tar.NewReader(gzr)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filename {
+		t.Fatalf("expected filename in archive to be %v but was %v", filename, header.Name)
+	}
+	readerData, err = ioutil.ReadAll(tr)
+	if err != nil {
+		err = errors.Compose(err, skylinkReader.Close())
+		t.Fatal(err)
+	}
+	if !bytes.Equal(readerData, data) {
+		t.Fatal("reader data doesn't match data")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected error to be EOF but was", err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Get the list of files in the skynet directory and see if the file is
@@ -348,6 +470,21 @@ func TestSkynet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pin the file again but without specifying the BaseChunkRedundancy.
+	// Use a different Siapath to avoid path conflict.
+	largePinSiaPath, err = modules.NewSiaPath("testLargePinPath2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	largePinLUP = modules.SkyfilePinParameters{
+		SiaPath: largePinSiaPath,
+		Force:   force,
+		Root:    false,
+	}
+	err = r.SkynetSkylinkPinPost(largeSkylink, largePinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// See if the file is present.
 	fullLargePinSiaPath, err := modules.SkynetFolder.Join(largePinSiaPath.String())
 	if err != nil {
@@ -433,42 +570,13 @@ func TestSkynet(t *testing.T) {
 	// easier way.
 }
 
-// TestSkynetMultipartUpload provides end-to-end testing for uploading multiple
-// files as a single skyfile using multipart file upload. The uploaded subfiles
-// are then retrievable by skylink and their filename.
-func TestSkynetMultipartUpload(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+// testSkynetMultipartUpload tests you can perform a multipart upload. It will
+// verify the upload without any subfiles, with small subfiles and with large
+// subfiles. Small files are files which are smaller than one sector, and thus
+// don't need a fanout. Large files are files what span multiple sectors
+func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	testMultipartUploadEmpty(t, r)
-	testMultipartUploadSmall(t, r)
-	testMultipartUploadLarge(t, r)
-}
-
-// testMultipartUploadEmpty tests you can perform a multipart upload without
-// any subfiles.
-func testMultipartUploadEmpty(t *testing.T, r *siatest.TestNode) {
 	// create a multipart upload that without any files
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
@@ -496,16 +604,13 @@ func testMultipartUploadEmpty(t *testing.T, r *siatest.TestNode) {
 	if _, _, err = r.SkynetSkyfileMultiPartPost(sup); err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
 		t.Fatal("Expected upload to fail because no files are given, err:", err)
 	}
-}
 
-// testMultipartUploadSmall tests multipart upload for small files, small files
-// are files which are smaller than one sector, and thus don't need a fanout.
-func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
+	// TEST SMALL SUBFILE
 	var offset uint64
 
 	// create a multipart upload that uploads several files.
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
+	body = new(bytes.Buffer)
+	writer = multipart.NewWriter(body)
 	subfiles := make(modules.SkyfileSubfiles)
 
 	// add a file at root level
@@ -518,19 +623,19 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	subfile = addMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset)
 	subfiles[subfile.Filename] = subfile
 
-	err := writer.Close()
+	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader := bytes.NewReader(body.Bytes())
+	reader = bytes.NewReader(body.Bytes())
 
 	// Call the upload skyfile client call.
-	uploadSiaPath, err := modules.NewSiaPath("TestFolderUpload")
+	uploadSiaPath, err = modules.NewSiaPath("TestFolderUpload")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sup := modules.SkyfileMultipartUploadParameters{
+	sup = modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
 		Root:                false,
@@ -551,7 +656,7 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Try to download the file behind the skylink.
-	_, fileMetadata, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
+	_, fileMetadata, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,21 +676,17 @@ func testMultipartUploadSmall(t *testing.T, r *siatest.TestNode) {
 	if !bytes.Equal(nestedfile, data) {
 		t.Fatal("Expected only second file to be downloaded")
 	}
-}
 
-// testMultipartUploadLarge tests multipart upload for large files, large files
-// are files which are larger than one sector, and thus need a fanout streamer.
-func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
-	var offset uint64
+	// LARGE SUBFILES
 
 	// create a multipart upload that uploads several files.
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	subfiles := make(modules.SkyfileSubfiles)
+	body = new(bytes.Buffer)
+	writer = multipart.NewWriter(body)
+	subfiles = make(modules.SkyfileSubfiles)
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfile := addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	subfile = addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	// add a large nested file
@@ -593,20 +694,20 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	subfile = addMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
 	subfiles[subfile.Filename] = subfile
 
-	err := writer.Close()
+	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 	allData := body.Bytes()
-	reader := bytes.NewReader(allData)
+	reader = bytes.NewReader(allData)
 
 	// Call the upload skyfile client call.
-	uploadSiaPath, err := modules.NewSiaPath("TestFolderUploadLarge")
+	uploadSiaPath, err = modules.NewSiaPath("TestFolderUploadLarge")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sup := modules.SkyfileMultipartUploadParameters{
+	sup = modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
 		Root:                false,
@@ -621,7 +722,7 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	largeFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", largeSkylink))
+	largeFetchedData, _, err := r.SkynetSkylinkConcatGet(largeSkylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,79 +766,76 @@ func testMultipartUploadLarge(t *testing.T, r *siatest.TestNode) {
 	}
 }
 
-var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+// testSkynetStats tests the validity of the response of /skynet/stats endpoint
+// by uploading some test files and verifying that the reported statistics
+// change proportionally
+func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
 
-// escapeQuotes escapes the quotes in the given string.
-func escapeQuotes(s string) string {
-	return quoteEscaper.Replace(s)
-}
-
-// createFormFileHeaders builds a header from the given params. These headers are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename string, headers map[string]string) textproto.MIMEHeader {
-	fieldname = escapeQuotes(fieldname)
-	filename = escapeQuotes(filename)
-
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Type", "application/octet-stream")
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
-	for k, v := range headers {
-		h.Set(k, v)
-	}
-	return h
-}
-
-// addMultipartField is a helper function to add a file to the multipart form-
-// data. Note that the given data will be treated as binary data, and the multi
-// part 's ContentType header will be set accordingly.
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
-	h := map[string]string{"mode": fmt.Sprintf("%o", filemode)}
-	partHeader := createFormFileHeaders(filekey, filename, h)
-	part, err := w.CreatePart(partHeader)
+	// get the stats before the test files are uploaded
+	statsBefore, err := r.SkynetStatsGet()
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
-	_, err = part.Write(filedata)
-	metadata := modules.SkyfileSubfileMetadata{
-		Filename:    filename,
-		ContentType: "application/octet-stream",
-		Mode:        os.FileMode(filemode),
-		Len:         uint64(len(filedata)),
+	// create two test files with sizes below and above the sector size
+	files := make(map[string]uint64)
+	files["statfile1"] = 2033
+	files["statfile2"] = modules.SectorSize + 123
+
+	// upload the files and keep track of their expected impact on the stats
+	uploadedFilesSize := uint64(0)
+	uploadedFilesCount := uint64(0)
+	for name, size := range files {
+		uploadSiaPath, err := modules.NewSiaPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data := fastrand.Bytes(int(size))
+		sup := modules.SkyfileUploadParameters{
+			SiaPath:             uploadSiaPath,
+			Force:               false,
+			Root:                false,
+			BaseChunkRedundancy: 2,
+			FileMetadata: modules.SkyfileMetadata{
+				Filename: name,
+				Mode:     modules.DefaultFilePerm,
+			},
+
+			Reader: bytes.NewReader(data),
+		}
+		if _, _, err = r.SkynetSkyfilePost(sup); err != nil {
+			t.Fatal(err)
+		}
+
+		if size < modules.SectorSize {
+			// small files get padded up to a full sector
+			uploadedFilesSize += modules.SectorSize
+		} else {
+			// large files have an extra sector with header data
+			uploadedFilesSize += size + modules.SectorSize
+		}
+		uploadedFilesCount++
 	}
 
-	if offset != nil {
-		metadata.Offset = *offset
-		*offset += metadata.Len
+	// get the stats after the upload of the test files
+	statsAfter, err := r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	return metadata
+	// make sure the stats changed by exactly the expected amounts
+	if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
+		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles))
+	}
+	if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
+		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize))
+	}
 }
 
 // TestSkynetNoFilename verifies that posting a Skyfile without providing a
 // filename fails.
-func TestSkynetNoFilename(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload as a skyfile.
@@ -848,30 +946,8 @@ func TestSkynetNoFilename(t *testing.T) {
 	}
 }
 
-// TestSkynetSubDirDownload verifies downloading data from a skyfile using a path to download single subfiles or subdirectories
-func TestSkynetSubDirDownload(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+// testSkynetSubDirDownload verifies downloading data from a skyfile using a path to download single subfiles or subdirectories
+func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	body := new(bytes.Buffer)
@@ -880,11 +956,14 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	dataFile1 := []byte("file1.txt")
 	dataFile2 := []byte("file2.txt")
 	dataFile3 := []byte("file3.txt")
-	addMultipartFile(writer, dataFile1, "files[]", "/a/5.f4f8b583.chunk.js", 0600, nil)
-	addMultipartFile(writer, dataFile2, "files[]", "/a/5.f4f.chunk.js.map", 0600, nil)
-	addMultipartFile(writer, dataFile3, "files[]", "/b/file3.txt", 0640, nil)
+	filePath1 := "/a/5.f4f8b583.chunk.js"
+	filePath2 := "/a/5.f4f.chunk.js.map"
+	filePath3 := "/b/file3.txt"
+	addMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	addMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	addMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
 
-	if err = writer.Close(); err != nil {
+	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
 	reader := bytes.NewReader(body.Bytes())
@@ -916,8 +995,8 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
 	}
 
-	// now specify the correct format
-	allData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s?format=concat", skylink))
+	// now specify a correct format
+	allData, _, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -929,19 +1008,122 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal("Unexpected data for dir A")
 	}
 
-	// get all data for path "/" (equals all data)
-	allData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/?format=concat", skylink))
+	// now specify the tar format
+	skyfileReader, err := r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(expected, allData) {
-		t.Log("expected:", expected)
-		t.Log("actual:", allData)
-		t.Fatal("Unexpected data for dir A")
+	tr := tar.NewReader(skyfileReader)
+	header, err := tr.Next()
+	if err != nil {
+		t.Fatal(err)
 	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err := ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath3 {
+		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile3) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	skyfileReader.Close()
 
-	// get all data for path "a"
-	dataDirA, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/a?format=concat", skylink))
+	// now specify the targz format
+	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err := gzip.NewReader(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzr.Close()
+	tr = tar.NewReader(gzr)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath3 {
+		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile3) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	gzr.Close()
+	skyfileReader.Close()
+
+	// get all data for path "a" using the concat format
+	dataDirA, _, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -952,8 +1134,94 @@ func TestSkynetSubDirDownload(t *testing.T) {
 		t.Fatal("Unexpected data for dir A")
 	}
 
+	// now specify the tar format
+	skyfileReader, err = r.SkynetSkylinkTarReaderGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr = tar.NewReader(skyfileReader)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	skyfileReader.Close()
+
+	// now specify the targz format
+	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err = gzip.NewReader(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzr.Close()
+	tr = tar.NewReader(gzr)
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath1 {
+		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile1) {
+		t.Fatal("file doesn't match expected content")
+	}
+	header, err = tr.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Name != filePath2 {
+		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	}
+	data, err = ioutil.ReadAll(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, dataFile2) {
+		t.Fatal("file doesn't match expected content")
+	}
+	_, err = tr.Next()
+	if err != io.EOF {
+		t.Fatal("expected io.EOF got", err)
+	}
+	gzr.Close()
+	skyfileReader.Close()
+
 	// get all data for path "b"
-	dataDirB, metadataDirB, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=concat", skylink))
+	dataDirB, metadataDirB, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/b", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -973,7 +1241,7 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 
 	mdF3Expected := modules.SkyfileSubfileMetadata{
-		Mode:        os.FileMode(0640),
+		FileMode:    os.FileMode(0640),
 		Filename:    "/b/file3.txt",
 		ContentType: "application/octet-stream",
 		Offset:      0,
@@ -1009,31 +1277,9 @@ func TestSkynetSubDirDownload(t *testing.T) {
 	}
 }
 
-// TestSkynetDisableForce verifies the behavior of force and the header that
+// testSkynetDisableForce verifies the behavior of force and the header that
 // allows disabling forcefully uploading a Skyfile
-func TestSkynetDisableForce(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload.
@@ -1100,71 +1346,18 @@ func TestSkynetDisableForce(t *testing.T) {
 	// Skynet-Disable-Force to true, which should prevent us from uploading.
 	// Because we have to pass in a custom header, we have to setup the request
 	// ourselves and can not use the client.
-	req, err := skynetSkyfilePostRequestWithHeaders(r, sup)
-	if err != nil {
-		t.Fatal(err)
+	_, _, err = r.SkynetSkyfilePostDisableForce(sup, true)
+	if err == nil {
+		t.Fatal("Unexpected response")
 	}
-	req.Header.Set("Skynet-Disable-Force", "true")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	res, err := http.DefaultClient.Do(req)
-	if res.StatusCode != 400 {
-		t.Log(res)
-		t.Fatal("Expected HTTP Bad Request")
-	}
-	var apiErr api.Error
-	if err := json.NewDecoder(res.Body).Decode(&apiErr); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(apiErr.Error(), "'force' has been disabled") {
-		t.Log(res)
-		t.Fatal(apiErr)
+	if !strings.Contains(err.Error(), "'force' has been disabled") {
+		t.Log(err)
+		t.Fatalf("Unexpected response, expected error to contain a mention of the force flag but instaed received: %v", err.Error())
 	}
 }
 
-// skynetSkyfilePostRequestWithHeaders is a helper function that turns the given
-// SkyfileUploadParameters into a SkynetSkyfilePost request, allowing additional
-// headers to be set on the request object
-func skynetSkyfilePostRequestWithHeaders(r *siatest.TestNode, sup modules.SkyfileUploadParameters) (*http.Request, error) {
-	values := url.Values{}
-	values.Set("filename", sup.FileMetadata.Filename)
-	forceStr := fmt.Sprintf("%t", sup.Force)
-	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", sup.FileMetadata.Mode)
-	values.Set("mode", modeStr)
-	redundancyStr := fmt.Sprintf("%v", sup.BaseChunkRedundancy)
-	values.Set("basechunkredundancy", redundancyStr)
-	rootStr := fmt.Sprintf("%t", sup.Root)
-	values.Set("root", rootStr)
-
-	resource := fmt.Sprintf("/skynet/skyfile/%s?%s", sup.SiaPath.String(), values.Encode())
-	return r.NewRequest("POST", resource, sup.Reader)
-}
-
-// TestSkynetBlacklist tests the skynet blacklist module
-func TestSkynetBlacklist(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	testDir := renterTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := tg.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+// testSkynetBlacklist tests the skynet blacklist module
+func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create skyfile upload params, data should be larger than a sector size to
@@ -1188,7 +1381,7 @@ func TestSkynetBlacklist(t *testing.T) {
 	}
 
 	// Upload and create a skylink
-	skylink, _, err := r.SkynetSkyfilePost(lup)
+	skylink, sshp, err := r.SkynetSkyfilePost(lup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1218,6 +1411,19 @@ func TestSkynetBlacklist(t *testing.T) {
 	err = r.SkynetBlacklistPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Confirm that the Skylink is blacklisted by verifying the merkleroot is in
+	// the blacklist
+	sbg, err := r.SkynetBlacklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blacklist) != 1 {
+		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 1, len(sbg.Blacklist))
+	}
+	if sbg.Blacklist[0] != sshp.MerkleRoot {
+		t.Fatalf("Merkleroots don't match, expected %v got %v", sshp.MerkleRoot, sbg.Blacklist[0])
 	}
 
 	// Try to download the file behind the skylink, this should fail because of
@@ -1282,6 +1488,15 @@ func TestSkynetBlacklist(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify that the skylink is removed from the Blacklist
+	sbg, err = r.SkynetBlacklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blacklist) != 0 {
+		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 0, len(sbg.Blacklist))
+	}
+
 	// Try to download the file behind the skylink. Even though the file was
 	// removed from the renter node that uploaded it, it should still be
 	// downloadable.
@@ -1299,5 +1514,144 @@ func TestSkynetBlacklist(t *testing.T) {
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetHeadRequest verifies the functionality of sending a HEAD request to
+// the skylink GET route.
+func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a skyfile
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	uploadSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink, _, err := r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "TestSkynetHeadRequest",
+			Mode:     0640,
+		},
+		Reader: reader,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Perform a GET and HEAD request and compare the response headers and
+	// content length.
+	data, metadata, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, header, err := r.SkynetSkylinkHead(skylink, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
+	}
+
+	// Verify Skynet-File-Metadata
+	strMetadata := header.Get("Skynet-File-Metadata")
+	if strMetadata == "" {
+		t.Fatal("Expected 'Skynet-File-Metadata' response header to be present")
+	}
+	var sm modules.SkyfileMetadata
+	err = json.Unmarshal([]byte(strMetadata), &sm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata, sm) {
+		t.Log(metadata)
+		t.Log(sm)
+		t.Fatal("Expected metadatas to be identical")
+	}
+
+	// Verify Content-Length
+	strContentLength := header.Get("Content-Length")
+	if strContentLength == "" {
+		t.Fatal("Expected 'Content-Length' response header to be present")
+	}
+	cl, err := strconv.Atoi(strContentLength)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cl != len(data) {
+		t.Fatalf("Content-Length header did not match actual content length of response body, %v vs %v", cl, len(data))
+	}
+
+	// Verify Content-Type
+	strContentType := header.Get("Content-Type")
+	if strContentType == "" {
+		t.Fatal("Expected 'Content-Type' response header to be present")
+	}
+
+	// Verify Content-Disposition
+	strContentDisposition := header.Get("Content-Disposition")
+	if strContentDisposition == "" {
+		t.Fatal("Expected 'Content-Disposition' response header to be present")
+	}
+	if strContentDisposition != "inline; filename=\"TestSkynetHeadRequest\"" {
+		t.Fatal("Unexpected 'Content-Disposition' header")
+	}
+
+	// Perform a HEAD request with a timeout that exceeds the max timeout
+	status, _, _ = r.SkynetSkylinkHead(skylink, 901)
+	if status != http.StatusBadRequest {
+		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
+	}
+
+	// Perform a HEAD request for a skylink that does not exist
+	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+
+	// Create a renter with a timeout dependency injected
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyTimeoutProjectDownloadByRoot{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Perform a HEAD request for a skylink that exists, however on a renter
+	// with the DependencyTimeoutProjectDownloadByRoot dependency. We expect it
+	// to timeout and thus return a 404.
+	status, header, err = r.SkynetSkylinkHead(skylink, 1)
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+}
+
+// testSkynetNoWorkers verifies that SkynetSkylinkGet returns an error and does
+// not deadlock if there are no workers.
+func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
+	// Create renter, skip setting the allowance so that we can ensure there are
+	// no contracts created and therefore no workers in the worker pool
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Since the renter doesn't have an allowance, we know the renter doesn't
+	// have any contracts and therefore the worker pool will be empty. Confirm
+	// that attempting to download a skylink will return an error and not dead
+	// lock.
+	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
+	if err == nil {
+		t.Fatal("Error is nil, expected error due to no worker")
+	} else if !strings.Contains(err.Error(), "no workers") {
+		t.Errorf("Expected error containing 'no workers' but got %v", err)
 	}
 }

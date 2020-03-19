@@ -8,24 +8,26 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// newAppendInstruction is a convenience method for creating a single
+// Append instruction.
+func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+	i := NewAppendInstruction(dataOffset, merkleProof)
+	cost, refund := modules.MDMAppendCost(pt)
+	return i, cost, refund, AppendMemory(), TimeAppend
+}
 
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
 func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	instructions := []modules.Instruction{
-		NewAppendInstruction(0, merkleProof),
-	}
-
-	// Compute cost and used memory.
-	cost, refund := AppendCost(pt)
-	usedMemory := InitMemory() + AppendMemory()
-	memoryCost := MemoryCost(pt, usedMemory, TimeAppend+TimeCommit)
-	initCost := InitCost(pt, uint64(len(sectorData)))
-	cost = cost.Add(memoryCost).Add(initCost)
-	return instructions, sectorData, cost, refund, usedMemory
+	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
+	i, cost, refund, memory, time := newAppendInstruction(merkleProof, 0, pt)
+	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, InitMemory(), cost, refund, memory, time)
+	instructions := []modules.Instruction{i}
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, TimeCommit))
+	return instructions, sectorData, cost, refund, memory
 }
 
 // TestInstructionAppend tests executing a program with a single
@@ -36,7 +38,7 @@ func TestInstructionAppend(t *testing.T) {
 	defer mdm.Stop()
 
 	// Create a program to append a full sector to a storage obligation.
-	appendData1 := fastrand.Bytes(int(modules.SectorSize))
+	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
 	instructions, programData, cost, refund, usedMemory := newAppendProgram(appendData1, true, pt)
@@ -65,7 +67,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
@@ -85,7 +87,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 0)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.
@@ -102,7 +104,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatal("sectorRoots contains wrong root")
 	}
 	// Execute same program again to append another sector.
-	appendData2 := fastrand.Bytes(int(modules.SectorSize)) // new random data
+	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
 	instructions, programData, cost, refund, usedMemory = newAppendProgram(appendData2, true, pt)
 	dataLen = uint64(len(programData))
@@ -129,7 +131,7 @@ func TestInstructionAppend(t *testing.T) {
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(MemoryCost(pt, usedMemory, TimeCommit))) {
+		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
@@ -149,7 +151,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 1)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.

@@ -131,7 +131,7 @@ func (a *AlertSeverity) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// String converts an alertSeverity to a String
+// String converts an alertSeverity to a string
 func (a AlertSeverity) String() string {
 	switch a {
 	case SeverityWarning:
