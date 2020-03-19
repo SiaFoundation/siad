@@ -244,7 +244,9 @@ func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
 	his := h.managedInternalSettings()
 	priceTable := modules.RPCPriceTable{
-		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+
+		FundAccountCost:      h.managedCalculateFundEphemeralAccountCost(),
 		UpdatePriceTableCost: h.managedCalculateUpdatePriceTableRPCPrice(),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
