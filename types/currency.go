@@ -9,7 +9,6 @@ package types
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 
@@ -54,14 +53,6 @@ func NewCurrency(b *big.Int) (c Currency) {
 // NewCurrency64 creates a Currency value from a uint64.
 func NewCurrency64(x uint64) (c Currency) {
 	c.i.SetUint64(x)
-	return
-}
-
-// NewCurrencyS creates a Currency value from a string.
-func NewCurrencyS(s string) (c Currency, err error) {
-	i := new(big.Int)
-	_, err = fmt.Sscan(s, i)
-	c = NewCurrency(i)
 	return
 }
 

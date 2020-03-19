@@ -104,20 +104,24 @@ func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Has
 
 // newTestPriceTable returns a price table for testing that charges 1 Hasting
 // for every operation/rpc.
-//
-// TODO: is 1 Hasting too low? An append costs 2*SectorSize
 func newTestPriceTable() modules.RPCPriceTable {
+	// TODO: export constants from host/consts.go?
+	baseRPCPrice := types.SiacoinPrecision.Mul64(100).Div64(1e9)    // 100 nS
+	sectorAccessPrice := types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
+
 	return modules.RPCPriceTable{
-		Expiry:                time.Now().Add(time.Minute).Unix(),
-		UpdatePriceTableCost:  types.NewCurrency64(1),
-		InitBaseCost:          types.NewCurrency64(1),
-		MemoryTimeCost:        types.NewCurrency64(1),
-		DropSectorsBaseCost:   types.NewCurrency64(1),
-		DropSectorsLengthCost: types.NewCurrency64(1),
-		ReadBaseCost:          types.NewCurrency64(1),
-		ReadLengthCost:        types.NewCurrency64(1),
-		WriteBaseCost:         types.NewCurrency64(1),
-		WriteLengthCost:       types.NewCurrency64(1),
+		Expiry:               time.Now().Add(time.Minute).Unix(),
+		UpdatePriceTableCost: baseRPCPrice,
+		InitBaseCost:         baseRPCPrice,
+		MemoryTimeCost:       types.NewCurrency64(1),
+
+		DropSectorsBaseCost:   baseRPCPrice,
+		DropSectorsLengthCost: sectorAccessPrice,
+		ReadBaseCost:          baseRPCPrice,
+		ReadLengthCost:        types.SiacoinPrecision.Mul64(25).Div(modules.BytesPerTerabyte), // 25 SC / TB
+		WriteBaseCost:         baseRPCPrice,
+		WriteLengthCost:       types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte),            // 1 SC / TB
+		WriteStoreCost:        types.SiacoinPrecision.Mul64(50).Div(modules.BlockBytesPerMonthTerabyte), // 50 SC / TB / Month
 	}
 }
 
