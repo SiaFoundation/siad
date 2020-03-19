@@ -2094,7 +2094,7 @@ func TestWatchdogExtraDependencyRegression(t *testing.T) {
 		t.Fatal(err)
 	}
 	fee := feeGet.Maximum.Mul64(modules.EstimatedFileContractTransactionSetSize)
-	_, err = renter.WalletSiacoinsPost(balance.Sub(fee), addressGet.Address)
+	_, err = renter.WalletSiacoinsPost(balance.Sub(fee), addressGet.Address, false)
 	if err != nil {
 		t.Fatal(err)
 	}

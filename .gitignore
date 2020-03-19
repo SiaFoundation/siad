@@ -19,3 +19,6 @@ sia.iml
 
 # VSCode debug files
 debug.test
+
+# OSX auto-generated file
+**/.DS_Store

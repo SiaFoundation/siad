@@ -126,10 +126,11 @@ func (c *Client) WalletSiacoinsMultiPost(outputs []types.SiacoinOutput) (wsp api
 
 // WalletSiacoinsPost uses the /wallet/siacoins api endpoint to send money to a
 // single address
-func (c *Client) WalletSiacoinsPost(amount types.Currency, destination types.UnlockHash) (wsp api.WalletSiacoinsPOST, err error) {
+func (c *Client) WalletSiacoinsPost(amount types.Currency, destination types.UnlockHash, feeIncluded bool) (wsp api.WalletSiacoinsPOST, err error) {
 	values := url.Values{}
 	values.Set("amount", amount.String())
 	values.Set("destination", destination.String())
+	values.Set("feeIncluded", strconv.FormatBool(feeIncluded))
 	err = c.post("/wallet/siacoins", values.Encode(), &wsp)
 	return
 }

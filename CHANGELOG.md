@@ -62,9 +62,7 @@ Latest:
    lock was not held
 
 **Other**
- - Split out renter siatests into 2 groups for faster pipelines
- - Add SiaMux stream handler to the host
- - 
+ - Split out renter siatests into 2 groups for faster pipelines.
  - Add README to the `siatest` package 
  - Bump golangci-lint version to v1.23.8
  - Add timeout parameter to Skylink route - Add `go get` command to `make
