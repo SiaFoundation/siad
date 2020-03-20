@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -78,6 +79,16 @@ type (
 	SkynetVersion struct {
 		Version     string `json:"version"`
 		GitRevision string `json:"gitrevision"`
+	}
+
+	// SkykeyGET contains a base64 encoded Skykey.
+	SkykeyGET struct {
+		Skykey string `json:"skykey"` // base64 encoded Skykey
+	}
+
+	// SkykeyIDGET contains a base64 encoded SkykeyID.
+	SkykeyIDGET struct {
+		ID string `json:"id"` // base64 encoded SkykeyID
 	}
 )
 
@@ -768,4 +779,72 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		offset += uint64(fh.Size)
 	}
 	return subfiles, io.MultiReader(readers...), nil
+}
+
+// skykeyHandler handles the API call to get a Skykey using its
+// name or ID.
+func (api *API) skykeyHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse Skykey id and name.
+	name := req.FormValue("name")
+	idString := req.FormValue("id")
+
+	if idString == "" && name == "" {
+		WriteError(w, Error{"you must specify the name or ID of the Skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	var sk skykey.Skykey
+	var err error
+
+	if name != "" {
+		sk, err = api.renter.SkykeyByName(name)
+		if err != nil {
+			WriteError(w, Error{"failed to retrieve skykey" + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+	} else if idString != "" {
+		var id skykey.SkykeyID
+		err = id.FromString(idString)
+		if err != nil {
+			WriteError(w, Error{"failed to decode ID string"}, http.StatusInternalServerError)
+			return
+		}
+
+		sk, err = api.renter.SkykeyByID(id)
+		if err != nil {
+			WriteError(w, Error{"failed to retrieve skykey" + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	skString, err := sk.ToString()
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteJSON(w, SkykeyGET{
+		Skykey: skString,
+	})
+}
+
+// skykeyIDHandler handles the API call to get a SkykeyID using its
+// name.
+func (api *API) skykeyIDHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse Skykey name.
+	name := req.FormValue("name")
+
+	if name == "" {
+		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	id, err := api.renter.SkykeyIDByName(name)
+	if err != nil {
+		WriteError(w, Error{"failed to retrieve skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteJSON(w, SkykeyIDGET{
+		ID: id.ToString(),
+	})
 }
