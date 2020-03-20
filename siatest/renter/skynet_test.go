@@ -772,15 +772,6 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	hasField := func(obj interface{}, name string) bool {
-		val := reflect.ValueOf(obj)
-		if val.Type().Kind() != reflect.Ptr {
-			val = reflect.New(reflect.TypeOf(obj))
-		}
-		fld := val.Elem().FieldByName(name)
-		return fld.IsValid()
-	}
-
 	// get the stats
 	stats, err := r.SkynetStatsGet()
 
@@ -788,14 +779,15 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasField(stats.VersionInfo, "Version") {
-		t.Fatal("Expected 'Version' to be defined")
+	expected := build.Version
+	if build.ReleaseTag != "" {
+		expected += "-" + build.ReleaseTag
 	}
-	if stats.VersionInfo.Version == "" {
-		t.Fatal("Expected 'Version' to be defined and not empty")
+	if stats.VersionInfo.Version != expected {
+		t.Fatalf("Unexpected version return, expected '%v', actual '%v'", expected, stats.VersionInfo.Version)
 	}
-	if !hasField(stats.VersionInfo, "GitRevision") {
-		t.Fatal("Expected 'GitRevision' to be defined")
+	if stats.VersionInfo.GitRevision != build.GitRevision {
+		t.Fatalf("Unexpected git revision return, expected '%v', actual '%v'", build.GitRevision, stats.VersionInfo.GitRevision)
 	}
 
 	// create two test files with sizes below and above the sector size

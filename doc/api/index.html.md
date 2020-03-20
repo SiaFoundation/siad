@@ -4393,7 +4393,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
   "versioninfo": {
     "version":     "1.4.4-master", // string
     "gitrevision": "cd5a83712"     // string
-  },
+  }
 }
 ```
 
