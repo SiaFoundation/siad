@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -49,6 +50,7 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestSkynetSkykeys", Test: testSkynetSkykey},
 		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
@@ -1931,5 +1933,42 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err := r.SkynetSkyfilePost(sup)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
 		t.Fatal("Should fail due to ErrMetadataTooBig", err)
+	}
+}
+
+// testSkynetSkykey tests basic Skykey manager functionality.
+func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	sk, err := r.SkykeyCreateKeyPost("key1", crypto.TypeXChaCha20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Adding the same key should return an error.
+	err = r.SkykeyAddKeyPost(sk)
+	if err == nil {
+		t.Fatal("Expected error", err)
+	}
+
+	sk2, err := r.SkykeyGetByName("key1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk2.ID() != sk.ID() {
+		t.Fatal("Expected to get same key")
+	}
+
+	sk3, err := r.SkykeyGetByID(sk.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk3.ID() != sk.ID() {
+		t.Fatal("Expected to get same key")
+	}
+
+	id, err := r.SkykeyIDGet("key1")
+	if id != sk.ID() {
+		t.Fatal("expected to get same ID")
 	}
 }
