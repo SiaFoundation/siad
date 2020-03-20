@@ -772,10 +772,22 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// get the stats before the test files are uploaded
-	statsBefore, err := r.SkynetStatsGet()
+	// get the stats
+	stats, err := r.SkynetStatsGet()
+
+	// verify it contains the node's version information
 	if err != nil {
 		t.Fatal(err)
+	}
+	expected := build.Version
+	if build.ReleaseTag != "" {
+		expected += "-" + build.ReleaseTag
+	}
+	if stats.VersionInfo.Version != expected {
+		t.Fatalf("Unexpected version return, expected '%v', actual '%v'", expected, stats.VersionInfo.Version)
+	}
+	if stats.VersionInfo.GitRevision != build.GitRevision {
+		t.Fatalf("Unexpected git revision return, expected '%v', actual '%v'", build.GitRevision, stats.VersionInfo.GitRevision)
 	}
 
 	// create two test files with sizes below and above the sector size
@@ -825,6 +837,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// make sure the stats changed by exactly the expected amounts
+	statsBefore := stats
 	if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
 		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles))
 	}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
@@ -60,13 +61,20 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		UploadStats SkynetStats `json:"uploadstats"`
+		UploadStats SkynetStats   `json:"uploadstats"`
+		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
 
 	// SkynetStats contains statistical data about skynet
 	SkynetStats struct {
 		NumFiles  int    `json:"numfiles"`
 		TotalSize uint64 `json:"totalsize"`
+	}
+
+	// SkynetVersion contains version information
+	SkynetVersion struct {
+		Version     string `json:"version"`
+		GitRevision string `json:"gitrevision"`
 	}
 )
 
@@ -581,6 +589,8 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+
+	// calculate upload statistics
 	stats := SkynetStats{}
 	for _, f := range files {
 		// do not double-count large files by counting both the header file and
@@ -590,7 +600,14 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		}
 		stats.TotalSize += f.Filesize
 	}
-	WriteJSON(w, SkynetStatsGET{UploadStats: stats})
+
+	// get version
+	version := build.Version
+	if build.ReleaseTag != "" {
+		version += "-" + build.ReleaseTag
+	}
+
+	WriteJSON(w, SkynetStatsGET{UploadStats: stats, VersionInfo: SkynetVersion{Version: version, GitRevision: build.GitRevision}})
 }
 
 // serveTar serves skyfiles as a tar by reading them from r and writing the

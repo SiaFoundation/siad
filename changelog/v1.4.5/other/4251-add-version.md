@@ -1,0 +1,1 @@
+- Add version information to the stats endpoint

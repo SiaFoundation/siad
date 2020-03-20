@@ -4389,6 +4389,10 @@ returns statistical information about Skynet, e.g. number of files uploaded
   "uploadstats": {
     "numfiles": 2,         // int
     "totalsize": 44527895  // int
+  },
+  "versioninfo": {
+    "version":     "1.4.4-master", // string
+    "gitrevision": "cd5a83712"     // string
   }
 }
 ```
@@ -4401,6 +4405,15 @@ Numfiles is the total number of files uploaded to Skynet.
 
 **totalsize** | int  
 Totalsize is the total amount of data in bytes uploaded to Skynet.
+
+**versioninfo** | object  
+Versioninfo is an object that contains the node's version information.
+
+**version** | string  
+Version is the siad version the node is running.
+
+**gitrevision** | string  
+Gitrevision refers to the commit hash used to build said.
 
 # Transaction Pool
 
