@@ -813,6 +813,11 @@ func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
 	return r.staticSkykeyManager.KeyByName(name)
 }
 
+// CreateSkykey creates a new Skykey with the given name and ciphertype.
+func (r *Renter) CreateSkykey(name string, ct crypto.CipherType) (skykey.Skykey, error) {
+	return r.staticSkykeyManager.CreateKey(name, ct)
+}
+
 // SkykeyByID gets the Skykey with the given ID from the renter's skykey
 // manager if it exists.
 func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {

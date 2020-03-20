@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -340,7 +341,7 @@ func (c *Client) SkykeyGetByName(name string) (skykey.Skykey, error) {
 func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 	values := url.Values{}
 	values.Set("id", id.ToString())
-	getQuery := fmt.Sprintf("/skynet/skykey/%s", values.Encode())
+	getQuery := fmt.Sprintf("/skynet/skykey/?%s", values.Encode())
 
 	var skykeyGet api.SkykeyGET
 	err := c.get(getQuery, &skykeyGet)
@@ -361,7 +362,7 @@ func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 func (c *Client) SkykeyIDGet(name string) (skykey.SkykeyID, error) {
 	values := url.Values{}
 	values.Set("name", name)
-	getQuery := fmt.Sprintf("/skynet/skykeyid/%s", values.Encode())
+	getQuery := fmt.Sprintf("/skynet/skykeyid/?%s", values.Encode())
 
 	var skykeyIDGet api.SkykeyIDGET
 	err := c.get(getQuery, &skykeyIDGet)
@@ -376,4 +377,25 @@ func (c *Client) SkykeyIDGet(name string) (skykey.SkykeyID, error) {
 	}
 
 	return ID, nil
+}
+
+// SkykeyCreateKeyPost requests the /skyney/createskykey POST endpoint.
+func (c *Client) SkykeyCreateKeyPost(name string, ct crypto.CipherType) (skykey.Skykey, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("name", name)
+	values.Set("ciphertype", ct.String())
+
+	var skykeyGet api.SkykeyGET
+	err := c.post("/skynet/createskykey", values.Encode(), &skykeyGet)
+	if err != nil {
+		return skykey.Skykey{}, errors.AddContext(err, "createskykey POST request failed")
+	}
+
+	var sk skykey.Skykey
+	err = sk.FromString(skykeyGet.Skykey)
+	if err != nil {
+		return skykey.Skykey{}, errors.AddContext(err, "failed to decode Skykey string")
+	}
+	return sk, nil
 }

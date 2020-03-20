@@ -781,9 +781,9 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 	return subfiles, io.MultiReader(readers...), nil
 }
 
-// skykeyHandler handles the API call to get a Skykey using its
+// skykeyHandlerGET handles the API call to get a Skykey using its
 // name or ID.
-func (api *API) skykeyHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse Skykey id and name.
 	name := req.FormValue("name")
 	idString := req.FormValue("id")
@@ -827,9 +827,9 @@ func (api *API) skykeyHandler(w http.ResponseWriter, req *http.Request, ps httpr
 	})
 }
 
-// skykeyIDHandler handles the API call to get a SkykeyID using its
+// skykeyIDHandlerGET handles the API call to get a SkykeyID using its
 // name.
-func (api *API) skykeyIDHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyIDHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse Skykey name.
 	name := req.FormValue("name")
 
@@ -846,5 +846,39 @@ func (api *API) skykeyIDHandler(w http.ResponseWriter, req *http.Request, ps htt
 
 	WriteJSON(w, SkykeyIDGET{
 		ID: id.ToString(),
+	})
+}
+
+func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse Skykey name and ciphertype
+	name := req.FormValue("name")
+	ctString := req.FormValue("ciphertype")
+
+	if name == "" {
+		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	var ct crypto.CipherType
+	err := ct.FromString(ctString)
+	if err != nil {
+		WriteError(w, Error{"failed to decode ciphertype" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	sk, err := api.renter.CreateSkykey(name, ct)
+	if err != nil {
+		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	keyString, err := sk.ToString()
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteJSON(w, SkykeyGET{
+		Skykey: keyString,
 	})
 }
