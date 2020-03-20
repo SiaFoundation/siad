@@ -153,6 +153,24 @@ func (sk Skykey) ID() (keyID SkykeyID) {
 	return keyID
 }
 
+// ToString encodes the SkykeyID as a base64 string.
+func (id SkykeyID) ToString() string {
+	return base64.URLEncoding.EncodeToString(id[:])
+}
+
+// FromString decodes the base64 string into a Skykey.
+func (id *SkykeyID) FromString(s string) error {
+	idBytes, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	if len(idBytes) != SkykeyIDLen {
+		return errors.New("Skykey ID has invalid length")
+	}
+	copy(id[:], idBytes[:])
+	return nil
+}
+
 // equals returns true if and only if the two Skykeys are equal.
 func (sk *Skykey) equals(otherKey Skykey) bool {
 	return sk.Name == otherKey.Name && sk.ID() == otherKey.ID() && sk.CipherType.String() == otherKey.CipherType.String()
