@@ -803,8 +803,8 @@ func (r *Renter) Unmount(mountPoint string) error {
 
 // AddSkykey adds the skykey with the given name, cipher type, and entropy to
 // the renter's skykey manager.
-func (r *Renter) AddSkykey(name string, cipherType crypto.CipherType, entropy []byte) (skykey.Skykey, error) {
-	return r.staticSkykeyManager.AddKey(name, cipherType, entropy)
+func (r *Renter) AddSkykey(sk skykey.Skykey) error {
+	return r.staticSkykeyManager.AddKey(sk)
 }
 
 // SkykeyByName gets the Skykey with the given name from the renter's skykey

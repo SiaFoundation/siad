@@ -933,9 +933,8 @@ type Renter interface {
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
-	// AddSkykey adds the skykey with the given name, cipher type, and entropy to
-	// the renter's skykey manager.
-	AddSkykey(string, crypto.CipherType, []byte) (skykey.Skykey, error)
+	// AddSkykey adds the skykey to the renter's skykey manager.
+	AddSkykey(skykey.Skykey) error
 
 	// CreateSkykey creates a new Skykey with the given name and ciphertype.
 	CreateSkykey(string, crypto.CipherType) (skykey.Skykey, error)

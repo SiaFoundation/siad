@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aead/chacha20/chacha"
-
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -51,6 +49,7 @@ var (
 	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
 	errNoSkykeysWithThatID         = errors.New("No Skykey is assocated with that ID")
 	errSkykeyNameAlreadyExists     = errors.New("Skykey name already exists.")
+	errSkykeyWithIDAlreadyExists   = errors.New("Skykey ID already exists.")
 	errSkykeyNameToolong           = errors.New("Skykey name exceeds max length")
 
 	// SkykeyPersistFilename is the name of the skykey persistence file.
@@ -211,39 +210,20 @@ func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (S
 
 // AddKey creates a key with the given name, cipherType, and entropy and adds it
 // to the key file.
-func (sm *SkykeyManager) AddKey(name string, cipherType crypto.CipherType, entropy []byte) (Skykey, error) {
-	if len(name) > MaxKeyNameLen {
-		return Skykey{}, errSkykeyNameToolong
-	}
-	if !sm.SupportsCipherType(cipherType) {
-		return Skykey{}, errUnsupportedSkykeyCipherType
-	}
-
+func (sm *SkykeyManager) AddKey(sk Skykey) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	_, ok := sm.idsByName[name]
+	_, ok := sm.idsByName[sk.Name]
 	if ok {
-		return Skykey{}, errSkykeyNameAlreadyExists
+		return errSkykeyNameAlreadyExists
 	}
 
-	// Extend the entropy for a 0 nonce. XChaCha20Keys require a nonce in the
-	// entropy. We set it to 0 here because they nonces are stored in Skyfiles.
-	if cipherType == crypto.TypeXChaCha20 {
-		entropy = append(entropy, make([]byte, chacha.XNonceSize)...)
+	_, ok = sm.keysByID[sk.ID()]
+	if ok {
+		return errSkykeyWithIDAlreadyExists
 	}
 
-	// Generate the new key.
-	cipherKey, err := crypto.NewSiaKey(cipherType, entropy)
-	if err != nil {
-		return Skykey{}, errors.AddContext(err, "Error creating new cipher key")
-	}
-	skykey := Skykey{name, cipherType, cipherKey.Key()}
-
-	err = sm.saveKey(skykey)
-	if err != nil {
-		return Skykey{}, err
-	}
-	return skykey, nil
+	return sm.saveKey(sk)
 }
 
 // IDByName returns the ID associated with the given key name.
