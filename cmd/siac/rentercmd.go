@@ -190,6 +190,22 @@ flags can be used to set a custom redundancy for the file.`,
 		Run: wrap(renterfilesuploadcmd),
 	}
 
+	renterFilesUploadPauseCmd = &cobra.Command{
+		Use:   "pause [duration]",
+		Short: "Pause renter uploads for a duration",
+		Long: `Temporarily pause renter uploads for the duration specified.
+Available durations include "s" for seconds, "m" for minutes, and "h" for hours.
+For Example: 'siac renter upload pause 3h' would pause uploads for 3 hours.`,
+		Run: wrap(renterfilesuploadpausecmd),
+	}
+
+	renterFilesUploadResumeCmd = &cobra.Command{
+		Use:   "resume",
+		Short: "Resume renter uploads",
+		Long:  "Resume renter uploads that were previously paused.",
+		Run:   wrap(renterfilesuploadresumecmd),
+	}
+
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
@@ -204,7 +220,7 @@ allowance of 500SC, 12w period, 50 hosts, and 4w renew window will be used.`,
 
 	renterRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
-		Short: "set maxdownloadspeed and maxuploadspeed",
+		Short: "Set maxdownloadspeed and maxuploadspeed",
 		Long: `Set the maxdownloadspeed and maxuploadspeed in
 Bytes per second: B/s, KB/s, MB/s, GB/s, TB/s
 or
@@ -441,7 +457,7 @@ func renterFilesAndContractSummary() error {
 		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
 	}
 
-	rc, err := httpClient.RenterContractsGet()
+	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
 		return err
 	}
@@ -451,11 +467,13 @@ func renterFilesAndContractSummary() error {
 	}
 
 	fmt.Printf(`
-  Files:          %v
-  Total Stored:   %v
-  Min Redundancy: %v
-  Contracts:      %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts))
+  Files:              %v
+  Total Stored:       %v
+  Min Redundancy:     %v
+  Active Contracts:   %v
+  Passive Contracts:  %v
+  Disabled Contracts: %v
+`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts), len(rc.PassiveContracts), len(rc.DisabledContracts))
 
 	return nil
 }
@@ -2429,6 +2447,31 @@ func renterfilesuploadcmd(source, path string) {
 		}
 		fmt.Printf("Uploaded '%s' as '%s'.\n", abs(source), path)
 	}
+}
+
+// renterfilesuploadpausecmd is the handler for the command `siac renter upload
+// pause`.  It pauses all renter uploads for the duration (in minutes)
+// passed in.
+func renterfilesuploadpausecmd(dur string) {
+	pauseDuration, err := time.ParseDuration(dur)
+	if err != nil {
+		die("Couldn't parse duration:", err)
+	}
+	err = httpClient.RenterUploadsPausePost(pauseDuration)
+	if err != nil {
+		die("Could not pause renter uploads:", err)
+	}
+	fmt.Println("Renter uploads have been paused for", dur)
+}
+
+// renterfilesuploadresumecmd is the handler for the command `siac renter upload
+// resume`.  It resumes all renter uploads that have been paused.
+func renterfilesuploadresumecmd() {
+	err := httpClient.RenterUploadsResumePost()
+	if err != nil {
+		die("Could not resume renter uploads:", err)
+	}
+	fmt.Println("Renter uploads have been resumed")
 }
 
 // skynetcmd displays the usage info for the command.
