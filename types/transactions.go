@@ -132,6 +132,19 @@ type (
 	UnlockHash crypto.Hash
 )
 
+// NewTransaction returns a new transaction based off of the given file contract
+// revision and PublicKeyIndex
+func NewTransaction(rev FileContractRevision, pkIndex uint64) Transaction {
+	return Transaction{
+		FileContractRevisions: []FileContractRevision{rev},
+		TransactionSignatures: []TransactionSignature{{
+			ParentID:       crypto.Hash(rev.ParentID),
+			CoveredFields:  CoveredFields{FileContractRevisions: []uint64{0}},
+			PublicKeyIndex: pkIndex,
+		}},
+	}
+}
+
 // ID returns the id of a transaction, which is taken by marshalling all of the
 // fields except for the signatures and taking the hash of the result.
 func (t Transaction) ID() TransactionID {
@@ -208,6 +221,11 @@ func (t Transaction) SiacoinOutputSum() (sum Currency) {
 	}
 
 	return
+}
+
+// HostSignature returns the host's transaction signature
+func (t Transaction) HostSignature() TransactionSignature {
+	return t.TransactionSignatures[1]
 }
 
 // SiaClaimOutputID returns the ID of the SiacoinOutput that is created when

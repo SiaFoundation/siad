@@ -402,6 +402,18 @@ func (so storageObligation) recentRevision() types.FileContractRevision {
 	return revisionTxn.FileContractRevisions[0]
 }
 
+// managedGetStorageObligation fetches a storage obligation from the database.
+func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, fcid)
+		return err
+	})
+	return
+}
+
 // deleteStorageObligations deletes obligations from the database.
 // It is assumed the deleted obligations don't belong in the database in the first place,
 // so no financial metrics are updated.
