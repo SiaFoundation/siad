@@ -15,7 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -29,6 +28,11 @@ const (
 	// headerLen is the length of the skykey file header.
 	// It is the length of the magic, the version, and and the file length.
 	headerLen = types.SpecifierLen + types.SpecifierLen + 8
+
+	// Permissions match those in modules/renter.go
+	// Redefined here to avoid an import cycle.
+	defaultFilePerm = 0644
+	defaultDirPerm  = 0755
 )
 
 var (
@@ -250,7 +254,7 @@ func NewSkykeyManager(persistDir string) (*SkykeyManager, error) {
 	}
 
 	// create the persist dir if it doesn't already exist.
-	err := os.MkdirAll(persistDir, modules.DefaultDirPerm)
+	err := os.MkdirAll(persistDir, defaultDirPerm)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +327,7 @@ func (sm *SkykeyManager) saveHeader(file *os.File) error {
 // it exists. If it does not exist, it initializes that file with the default
 // header values.
 func (sm *SkykeyManager) load() error {
-	file, err := os.OpenFile(sm.persistFile, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	file, err := os.OpenFile(sm.persistFile, os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
@@ -388,7 +392,7 @@ func (sm *SkykeyManager) saveKey(skykey Skykey) error {
 	sm.idsByName[skykey.Name] = keyID
 	sm.keysByID[keyID] = skykey
 
-	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, modules.DefaultFilePerm)
+	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
