@@ -45,7 +45,7 @@ example there are 2 versions, v.1.4.5 being the latest version.
 To add a new changelog item, create an `.md` file at the proper location.
 
 ### File Format
-When naming changelog files, the following format should be user.
+When naming changelog files, the following format should be used.
 ```
 Format:
 <MR number>-description-string.md
@@ -64,7 +64,9 @@ Example Body
   was not held
 
 ```
-To ensure consistent spacing please have a newline at the end of the file.
+To ensure consistent spacing please remove leading spaces from the first line,
+the file content should start with `- ` and please remove new lines and spaces
+at the end of the file.
 
 ## Change Types
 ### Key Updates
