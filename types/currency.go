@@ -62,6 +62,12 @@ func (x Currency) Add(y Currency) (c Currency) {
 	return
 }
 
+// Add64 returns a new Currency value c = x + y
+func (x Currency) Add64(y uint64) (c Currency) {
+	c.i.Add(&x.i, new(big.Int).SetUint64(y))
+	return
+}
+
 // Big returns the value of c as a *big.Int. Importantly, it does not provide
 // access to the c's internal big.Int object, only a copy.
 func (x Currency) Big() *big.Int {
@@ -77,7 +83,7 @@ func (x Currency) Cmp(y Currency) int {
 // Cmp64 compares x to a uint64. The return value follows the convention of
 // math/big.
 func (x Currency) Cmp64(y uint64) int {
-	return x.Cmp(NewCurrency64(y))
+	return x.i.Cmp(new(big.Int).SetUint64(y))
 }
 
 // Div returns a new Currency value c = x / y.
@@ -184,6 +190,18 @@ func (x Currency) Sub(y Currency) (c Currency) {
 		build.Critical(ErrNegativeCurrency)
 	} else {
 		c.i.Sub(&x.i, &y.i)
+	}
+	return
+}
+
+// Sub64 returns a new Currency value c = x - y. Behavior is undefined when x <
+// y.
+func (x Currency) Sub64(y uint64) (c Currency) {
+	if x.Cmp64(y) < 0 {
+		c = ZeroCurrency
+		build.Critical(ErrNegativeCurrency)
+	} else {
+		c.i.Sub(&x.i, new(big.Int).SetUint64(y))
 	}
 	return
 }

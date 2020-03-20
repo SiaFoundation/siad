@@ -39,12 +39,21 @@ func TestTransactionReorg(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+	miner2, err := siatest.NewNode(node.Miner(filepath.Join(testdir, "miner2")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := miner2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// miner1 sends a txn to itself and mines it.
 	uc, err := miner1.WalletAddressGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	wsp, err := miner1.WalletSiacoinsPost(types.SiacoinPrecision, uc.Address)
+	wsp, err := miner1.WalletSiacoinsPost(types.SiacoinPrecision, uc.Address, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,16 +84,6 @@ func TestTransactionReorg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	miner2, err := siatest.NewNode(node.Miner(filepath.Join(testdir, "miner2")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := miner2.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
 	// miner2 mines 2 blocks now to create a longer chain than miner1.
 	for i := 0; i < blocks+1; i++ {
 		if err := miner2.MineBlock(); err != nil {
@@ -246,7 +245,7 @@ func TestWatchOnly(t *testing.T) {
 	}
 	addr := uc.UnlockHash()
 
-	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr)
+	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +357,7 @@ func TestUnspentOutputs(t *testing.T) {
 	// create a dummy address and send coins to it
 	addr := types.UnlockHash{1}
 
-	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr)
+	_, err = testNode.WalletSiacoinsPost(types.SiacoinPrecision.Mul64(77), addr, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -562,6 +561,134 @@ func TestWalletLastAddresses(t *testing.T) {
 	}
 }
 
+// TestWalletSend tests sending siacoins with and without fees included.
+func TestWalletSend(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Create a testgroup
+	groupParams := siatest.GroupParams{
+		Hosts:   0,
+		Renters: 2,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(walletTestDir(t.Name()), groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	renters := tg.Renters()
+	renter1, renter2 := renters[0], renters[1]
+	miner := tg.Miners()[0]
+
+	// Get the original balances.
+	wg, err := renter1.WalletGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalBalance1 := wg.ConfirmedSiacoinBalance
+	wg, err = renter2.WalletGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalBalance2 := wg.ConfirmedSiacoinBalance
+
+	// Send coins to renter2 without fees included, mine blocks.
+	uc, err := renter2.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentAmount := originalBalance1.Div64(2)
+	_, err = renter1.WalletSiacoinsPost(sentAmount, uc.Address, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		err = miner.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Check the balance of renter2.
+		wg, err = renter2.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		newBalance2 := wg.ConfirmedSiacoinBalance
+		if newBalance2.Cmp(originalBalance2) > 0 {
+			return nil
+		}
+
+		return errors.New("renter2 hasn't received transaction yet")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the wallet and confirm more than what was sent was spent.
+	wg, err = renter1.WalletGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBalance1 := wg.ConfirmedSiacoinBalance
+	if originalBalance1.Sub(newBalance1).Cmp(sentAmount) <= 0 {
+		t.Fatal("more than what was sent should have been spent")
+	}
+
+	originalBalance1 = newBalance1
+	wg, err = renter2.WalletGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalBalance2 = wg.ConfirmedSiacoinBalance
+
+	// Send entire balance to renter1 with fees included.
+	uc, err = renter1.WalletAddressGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentAmount = originalBalance2
+	_, err = renter2.WalletSiacoinsPost(sentAmount, uc.Address, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		err = miner.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Check the balance of renter1.
+		wg, err = renter1.WalletGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		newBalance1 := wg.ConfirmedSiacoinBalance
+		if newBalance1.Cmp(originalBalance1) > 0 {
+			return nil
+		}
+
+		return errors.New("renter1 hasn't received transaction yet")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the wallet and confirm renter2 has no balance remaining.
+	wg, err = renter2.WalletGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newBalance2 := wg.ConfirmedSiacoinBalance
+	if newBalance2.Cmp(types.ZeroCurrency) != 0 {
+		t.Fatal("an exact amount wasn't spend")
+	}
+}
+
 // TestWalletSendUnsynced confirms that the wallet will return an error when
 // trying to send siacoins or siafunds if the consensus is not fully synced
 func TestWalletSendUnsynced(t *testing.T) {
@@ -589,7 +716,7 @@ func TestWalletSendUnsynced(t *testing.T) {
 	}
 
 	// Check error returned from single siacoin post
-	_, err = wallet.WalletSiacoinsPost(types.ZeroCurrency, types.UnlockHash{})
+	_, err = wallet.WalletSiacoinsPost(types.ZeroCurrency, types.UnlockHash{}, false)
 	if err == nil {
 		t.Fatal("expected an error to be returned for not being synced")
 	}

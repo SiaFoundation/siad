@@ -414,7 +414,7 @@ func walletsendsiacoinscmd(amount, dest string) {
 	if _, err := fmt.Sscan(dest, &hash); err != nil {
 		die("Failed to parse destination address", err)
 	}
-	_, err = httpClient.WalletSiacoinsPost(value, hash)
+	_, err = httpClient.WalletSiacoinsPost(value, hash, walletTxnFeeIncluded)
 	if err != nil {
 		die("Could not send siacoins:", err)
 	}
@@ -477,7 +477,7 @@ Unlock the wallet to view balance
 %s, Unlocked
 Height:              %v
 Confirmed Balance:   %v
-Unconfirmed Delta:  %v
+Unconfirmed Delta:   %v
 Exact:               %v H
 Siafunds:            %v SF
 Siafund Claims:      %v H

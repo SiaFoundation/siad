@@ -60,12 +60,19 @@ The following details the documentation standards for the API endpoints.
     - Parameters
     - Response
  - Each endpoint should have a corresponding curl example
+   - For formatting there needs to be a newline between `> curl example` and the
+     example
  - All non-standard responses should have a JSON Response example with units
+   - For formatting there needs to be a newline between `> JSON Response
+     Example` and the example
  - There should be detailed descriptions of all JSON response fields
  - There should be detailed descriptions of all query string parameters
  - Query String Parameters should be separated into **REQUIRED** and
    **OPTIONAL** sections
  - Detailed descriptions should be structured as "**field** | units"
+   - For formatting there needs to be two spaces after the units so that the
+     description is on a new line
+ - All code blocks should specify `go` as the language for consistent formatting
 
 Contributors should follow these standards when submitting updates to the API
 documentation.  If you find API endpoints that do not adhere to these
@@ -792,6 +799,7 @@ responses](#standard-responses).
 
 ## /gateway/bandwidth [GET]
 > curl example
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/gateway/bandwidth"
 ```
@@ -799,6 +807,8 @@ curl -A "Sia-Agent" "localhost:9980/gateway/bandwidth"
 returns the total upload and download bandwidth usage for the gateway
 
 ### JSON Response
+> JSON Response Example
+
 ```go
 {
   "download":  12345                                  // bytes
@@ -880,14 +890,15 @@ fetches the list of blacklisted addresses.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
-"blacklist":
-[
-"123.123.123.123",  // string
-"123.123.123.123",  // string
-"123.123.123.123",  // string
-],
+  "blacklist":
+    [
+    "123.123.123.123",  // string
+    "123.123.123.123",  // string
+    "123.123.123.123",  // string
+    ],
 }
 ```
 **blacklist** | string  
@@ -1349,6 +1360,7 @@ Public key used to identify the host.
 
 ## /host/bandwidth [GET]
 > curl example
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/host/bandwidth"
 ```
@@ -2362,7 +2374,7 @@ responses](#standard-responses).
 ## /miner/block [POST]
 > curl example  
 
-```
+```go
 curl -A "Sia-Agent" -data "<byte-encoded-block>" -u "":<apipassword> "localhost:9980/miner/block"
 ```
 
@@ -4026,6 +4038,7 @@ The number of parity pieces to use when erasure coding the file.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
 "ready":false,            // bool
@@ -4115,6 +4128,7 @@ See [standard responses](#standard-responses).
 
 ## /skynet/blacklist [GET]
 > curl example
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
 ```
@@ -4122,6 +4136,8 @@ curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
 returns the list of merkleroots that are blacklisted.
 
 ### JSON Response
+> JSON Response Example
+
 ```go
 {
   "blacklist": {
@@ -4136,6 +4152,7 @@ The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
 
 ## /skynet/blacklist [POST]
 > curl example
+
 ```go
 curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
 
@@ -4201,7 +4218,9 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 ```  
 
 downloads a skylink using http streaming. This call blocks until the data is
-received.
+received. There is a 30s default timeout applied to downloading a skylink. If
+the data can not be found within this 30s time constraint, a 404 will be
+returned. This timeout is configurable through the query string parameters.
 
 ### Path Parameters 
 ### Required
@@ -4224,6 +4243,13 @@ data inside that directory. Format will decide the format in which it is
 returned. Currently we only support 'concat', which will return the concatenated
 data of all subfiles in that directory.
 
+**timeout** | int  
+If 'timeout' is set, the download will fail if the Skyfile can not be retrieved 
+before it expires. Note that this timeout does not cover the actual download 
+time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
+value of 0 will be ignored. If no timeout is given, the default will be used,
+which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
+
 ### Response Header
 
 **Skynet-File-Metadata** | SkyfileMetadata
@@ -4233,6 +4259,7 @@ json object which matches the modules.SkyfileMetadata struct. If a path was
 supplied, this metadata will be relative to the given path.
 
 > Skynet-File-Metadata Response Header Example 
+
 ```go
 {
 "mode":               // os.FileMode
@@ -4329,6 +4356,7 @@ force flag and disallow overwriting the file at the given siapath.
 
 ### JSON Response
 > JSON Response Example
+
 ```go
 {
 "skylink":    "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg" // string
@@ -4349,6 +4377,7 @@ version, an offset and a length in a heavily compressed and optimized format.
 
 ## /skynet/stats [GET]
 > curl example
+
 ```go
 curl -A "Sia-Agent" "localhost:9980/skynet/stats"
 ```
@@ -4929,8 +4958,8 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&destination=c134a837
 ```
 
 Sends siacoins to an address or set of addresses. The outputs are arbitrarily
-selected from addresses in the wallet. If 'outputs' is supplied, 'amount' and
-'destination' must be empty.  
+selected from addresses in the wallet. If 'outputs' is supplied, 'amount',
+'destination' and 'feeIncluded' must be empty.
 
 ### Query String Parameters
 ### REQUIRED
@@ -4947,7 +4976,11 @@ Address that is receiving the coins.
 
 **outputs**  
 JSON array of outputs. The structure of each output is: {"unlockhash":
-"<destination>", "value": "<amount>"}  
+"<destination>", "value": "<amount>"}
+
+### OPTIONAL
+**feeIncluded** | boolean  
+Take the transaction fee out of the balance being submitted instead of the fee being additional.
 
 ### JSON Response
 > JSON Response Example
@@ -5258,7 +5291,8 @@ Name of the dictionary that should be used when decoding the seed. 'english' is
 the most common choice when picking a dictionary.  
 
 ### JSON Response
- > JSON  Response Example
+> JSON  Response Example
+
 ```go
 {
 "coins": "123456", // hastings, big int
@@ -5366,7 +5400,7 @@ The id of the output being spent.
 Type of fund represented by the input. Possible values are 'siacoin input' and
 'siafund input'.  
 
-**walletaddress** | Boolean  
+**walletaddress** | boolean  
 true if the address is owned by the wallet.  
 
 **relatedaddress**  
@@ -5711,3 +5745,5 @@ addresses have never appeared in the blockchain.
 ### Response
 
 standard success or error response. See [standard responses](#standard-responses).
+
+# Versions

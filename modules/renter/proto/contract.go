@@ -330,7 +330,7 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	return nil
 }
 
-// mangagedRecordClearContractIntent records the changes we are about to make to
+// managedRecordClearContractIntent records the changes we are about to make to
 // the revision in the WAL of the contract.
 func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()

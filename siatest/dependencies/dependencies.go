@@ -26,8 +26,8 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencyDisableAsyncStartup prevents the async part of a module's creation
-	// from being executed.
+	// DependencyDisableAsyncStartup prevents the async part of a module's
+	// creation from being executed.
 	DependencyDisableAsyncStartup struct {
 		modules.ProductionDependencies
 	}
