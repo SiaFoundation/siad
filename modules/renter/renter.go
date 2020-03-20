@@ -36,6 +36,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -798,6 +799,30 @@ func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.Mount
 // Unmount unmounts the fuse filesystem currently mounted at mountPoint.
 func (r *Renter) Unmount(mountPoint string) error {
 	return r.staticFuseManager.Unmount(mountPoint)
+}
+
+// AddSkykey adds the skykey with the given name, cipher type, and entropy to
+// the renter's skykey manager.
+func (r *Renter) AddSkykey(name string, cipherType crypto.CipherType, entropy []byte) (skykey.Skykey, error) {
+	return r.staticSkykeyManager.AddKey(name, cipherType, entropy)
+}
+
+// SkykeyByName gets the Skykey with the given name from the renter's skykey
+// manager if it exists.
+func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
+	return r.staticSkykeyManager.KeyByName(name)
+}
+
+// SkykeyByID gets the Skykey with the given ID from the renter's skykey
+// manager if it exists.
+func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {
+	return r.staticSkykeyManager.KeyByID(id)
+}
+
+// SkykeyIDByName gets the SkykeyID of the key with the given name if it
+// exists.
+func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
+	return r.staticSkykeyManager.IDByName(name)
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.

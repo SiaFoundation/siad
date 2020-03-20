@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -931,6 +932,22 @@ type Renter interface {
 
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
+
+	// AddSkykey adds the skykey with the given name, cipher type, and entropy to
+	// the renter's skykey manager.
+	AddSkykey(string, crypto.CipherType, []byte) (skykey.Skykey, error)
+
+	// SkykeyByName gets the Skykey with the given name from the renter's skykey
+	// manager if it exists.
+	SkykeyByName(string) (skykey.Skykey, error)
+
+	// SkykeyByID gets the Skykey with the given ID from the renter's skykey
+	// manager if it exists.
+	SkykeyByID(skykey.SkykeyID) (skykey.Skykey, error)
+
+	// SkykeyIDByName gets the SkykeyID of the key with the given name if it
+	// exists.
+	SkykeyIDByName(string) (skykey.SkykeyID, error)
 
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded
