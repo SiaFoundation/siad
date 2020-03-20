@@ -47,7 +47,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	h.staticPriceTables.mu.Lock()
 	h.staticPriceTables.guaranteed[pt.UUID] = &pt
 	h.staticPriceTables.mu.Unlock()
-	h.staticPriceTables.staticMinHeap.managedPush(&pt)
+	h.staticPriceTables.staticMinHeap.Push(&pt)
 
 	return nil
 }

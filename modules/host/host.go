@@ -67,7 +67,6 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"path/filepath"
 	"sync"
@@ -116,9 +115,9 @@ var (
 	// pruneExpiredRPCPriceTableFrequency is the frequency at which the host
 	// checks if it can expire price tables that have an expiry in the past.
 	pruneExpiredRPCPriceTableFrequency = build.Select(build.Var{
-		Standard: 1 * time.Minute,
-		Dev:      1 * time.Minute,
-		Testing:  3 * time.Second,
+		Standard: 15 * time.Minute,
+		Dev:      5 * time.Minute,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 )
 
@@ -228,41 +227,19 @@ type priceTableHeap struct {
 	mu   sync.Mutex
 }
 
-// managedLen returns the length of the heap
-func (pth *priceTableHeap) managedLen() int {
-	pth.mu.Lock()
-	defer pth.mu.Unlock()
-	return pth.heap.Len()
-}
-
-// managedPeekExpiry returns the current lowest expiry of the heap
-func (pth *priceTableHeap) managedPeekExpiry() int64 {
+// PopExpired returns the UUIDs for all rpc price tables that have expired
+func (pth *priceTableHeap) PopExpired() (expired []types.Specifier) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
 
-	// If the heap is empty return max value
-	if pth.heap.Len() == 0 {
-		return math.MaxInt64
-	}
+	now := time.Now().Unix()
+	for {
+		if pth.heap.Len() == 0 {
+			return
+		}
 
-	var expiry int64
-	pt := heap.Pop(&pth.heap).(*modules.RPCPriceTable)
-	expiry = pt.Expiry
-	heap.Push(&pth.heap, pt)
-	return expiry
-}
-
-// managedExpired returns the expired UUIDs for all rpc price tables with an
-// expiry lower than the given threshold.
-func (pth *priceTableHeap) managedExpired(threshold int64) (expired []types.Specifier) {
-	pth.mu.Lock()
-	defer pth.mu.Unlock()
-	if pth.heap.Len() == 0 {
-		return
-	}
-	for pth.heap.Len() > 0 {
 		pt := heap.Pop(&pth.heap)
-		if pt.(*modules.RPCPriceTable).Expiry > threshold {
+		if now < pt.(*modules.RPCPriceTable).Expiry {
 			heap.Push(&pth.heap, pt)
 			break
 		}
@@ -271,22 +248,11 @@ func (pth *priceTableHeap) managedExpired(threshold int64) (expired []types.Spec
 	return
 }
 
-// managedPush will add a price table to the heap.
-func (pth *priceTableHeap) managedPush(pt *modules.RPCPriceTable) {
+// Push will add a price table to the heap.
+func (pth *priceTableHeap) Push(pt *modules.RPCPriceTable) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
 	heap.Push(&pth.heap, pt)
-}
-
-// managedPop returns the price table with the lowest expiry.
-func (pth *priceTableHeap) managedPop() (pt *modules.RPCPriceTable) {
-	pth.mu.Lock()
-	defer pth.mu.Unlock()
-	if pth.heap.Len() == 0 {
-		return
-	}
-	pt = heap.Pop(&pth.heap).(*modules.RPCPriceTable)
-	return
 }
 
 // rpcPriceTableHeap is a min heap of rpc price tables
@@ -387,16 +353,9 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 			}
 			defer h.tg.Done()
 
-			// peek at the min expiry to allow escaping early
-			now := time.Now().Unix()
-			minExpiry := h.staticPriceTables.staticMinHeap.managedPeekExpiry()
-			if minExpiry > now {
-				return
-			}
-
 			// collect expired uuids using our min heap and prune the expired
 			// price tables
-			expired := h.staticPriceTables.staticMinHeap.managedExpired(now)
+			expired := h.staticPriceTables.staticMinHeap.PopExpired()
 			if len(expired) > 0 {
 				h.staticPriceTables.mu.Lock()
 				for _, uuid := range expired {

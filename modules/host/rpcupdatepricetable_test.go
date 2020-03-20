@@ -1,10 +1,10 @@
 package host
 
 import (
+	"container/heap"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -27,35 +27,27 @@ func TestPriceTableMinHeap(t *testing.T) {
 
 	now := time.Now()
 	pth := priceTableHeap{heap: make([]*modules.RPCPriceTable, 0)}
-	expiry := pth.managedPeekExpiry()
-	if expiry != math.MaxInt64 {
-		t.Fatalf("Expected expiry to be equal to math.MaxInt64, yet it was %v", expiry)
-	}
 
 	// add 4 price tables (out of order) that expire somewhere in the future
 	pt1 := modules.RPCPriceTable{Expiry: now.Add(9 * time.Minute).Unix()}
-	pt2 := modules.RPCPriceTable{Expiry: now.Add(3 * time.Minute).Unix()}
-	pt3 := modules.RPCPriceTable{Expiry: now.Add(6 * time.Minute).Unix()}
-	pt4 := modules.RPCPriceTable{Expiry: now.Add(1 * time.Minute).Unix()}
-	pth.managedPush(&pt1)
-	pth.managedPush(&pt2)
-	pth.managedPush(&pt3)
-	pth.managedPush(&pt4)
-
-	// verify the heap holds 4 price tables
-	numPTs := pth.managedLen()
-	if numPTs != 4 {
-		t.Fatalf("Expected heap to contain 4 price tables, yet managedLen returned %d", numPTs)
-	}
+	pt2 := modules.RPCPriceTable{Expiry: now.Add(-3 * time.Minute).Unix()}
+	pt3 := modules.RPCPriceTable{Expiry: now.Add(-6 * time.Minute).Unix()}
+	pt4 := modules.RPCPriceTable{Expiry: now.Add(-1 * time.Minute).Unix()}
+	pth.Push(&pt1)
+	pth.Push(&pt2)
+	pth.Push(&pt3)
+	pth.Push(&pt4)
 
 	// verify it considers 3 to be expired if we pass it a threshold 7' from now
-	expired := pth.managedExpired(now.Add(7 * time.Minute).Unix())
+	expired := pth.PopExpired()
 	if len(expired) != 3 {
 		t.Fatalf("Expected 3 price tables to be expired, yet managedExpired returned %d price tables", len(expired))
 	}
 
 	// verify 'pop' returns the last remaining price table
-	expectedPt1 := pth.managedPop()
+	pth.mu.Lock()
+	expectedPt1 := heap.Pop(&pth.heap)
+	pth.mu.Unlock()
 	if expectedPt1 != &pt1 {
 		t.Fatal("Expected the last price table to be equal to pt1, which is the price table with the highest expiry")
 	}
@@ -105,10 +97,9 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	}
 	ht.host.staticPriceTables.mu.RUnlock()
 
-	// sleep for the duration of the price guarantee + the epxiry frequency,
-	// this is the worst case of how long it can take before the price table
-	// gets expired
-	time.Sleep(pruneExpiredRPCPriceTableFrequency + rpcPriceGuaranteePeriod)
+	// sleep for the duration of the epxiry frequency, seeing as that is greater
+	// than the price guarantee period, it is the worst case
+	time.Sleep(pruneExpiredRPCPriceTableFrequency)
 
 	// verify it was expired
 	ht.host.staticPriceTables.mu.RLock()
