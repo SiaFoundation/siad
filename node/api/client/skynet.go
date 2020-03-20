@@ -399,3 +399,20 @@ func (c *Client) SkykeyCreateKeyPost(name string, ct crypto.CipherType) (skykey.
 	}
 	return sk, nil
 }
+
+// SkykeyAddKeyPost requests the /skyney/addskykey POST endpoint.
+func (c *Client) SkykeyAddKeyPost(sk skykey.Skykey) error {
+	values := url.Values{}
+	skString, err := sk.ToString()
+	if err != nil {
+		return errors.AddContext(err, "failed to encode Skykey as string")
+	}
+	values.Set("skykey", skString)
+
+	err = c.post("/skynet/addskykey", values.Encode(), nil)
+	if err != nil {
+		return errors.AddContext(err, "addskykey POST request failed")
+	}
+
+	return nil
+}

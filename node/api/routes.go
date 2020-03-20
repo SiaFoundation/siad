@@ -133,7 +133,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))
 		router.GET("/skynet/skykeyid", RequirePassword(api.skykeyIDHandlerGET, requiredPassword))
 		router.GET("/skynet/createskykey", RequirePassword(api.skykeyCreateKeyHandlerPOST, requiredPassword))
-		//router.GET("/skynet/addskykey", RequirePassword(api.skykeyIDHandler, requiredPassword))    //TODO set handelr
+		router.GET("/skynet/addskykey", RequirePassword(api.skykeyAddKeyHandlerPOST, requiredPassword))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))
