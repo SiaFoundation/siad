@@ -2,6 +2,7 @@ package skykey
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
@@ -111,13 +112,38 @@ func (sk *Skykey) unmarshalSia(r io.Reader) error {
 	return d.Err()
 }
 
-// marshalSia encodess the Skykey into the writer.
+// marshalSia encodes the Skykey into the writer.
 func (sk Skykey) marshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
 	e.Encode(sk.Name)
 	e.Encode(sk.CipherType)
 	e.Encode(sk.Entropy)
 	return e.Err()
+}
+
+// ToString encodes the Skykey as a base64 string.
+func (sk Skykey) ToString() (string, error) {
+	var b bytes.Buffer
+	err := sk.marshalSia(&b)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.URLEncoding.EncodeToString(b.Bytes()), nil
+}
+
+// FromString decodes the base64 string into a Skykey.
+func (sk *Skykey) FromString(s string) error {
+	keyBytes, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+
+	err = sk.unmarshalSia(bytes.NewReader(keyBytes))
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // ID returns the ID for the Skykey.
