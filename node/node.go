@@ -102,11 +102,12 @@ type NodeParams struct {
 	SiaMuxAddress string
 
 	// Custom settings for modules
-	Allowance   modules.Allowance
-	Bootstrap   bool
-	HostAddress string
-	HostStorage uint64
-	RPCAddress  string
+	Allowance           modules.Allowance
+	Bootstrap           bool
+	FeeManagerServerStr string
+	HostAddress         string
+	HostStorage         uint64
+	RPCAddress          string
 
 	// Initialize node from existing seed.
 	PrimarySeed string
@@ -410,7 +411,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		// }
 		i++
 		printfRelease("(%d/%d) Loading feemanager...\n", i, numModules)
-		return feemanager.NewCustomFeeManager(cs, w, filepath.Join(dir, modules.FeeManagerDir), feeManagerDeps, "")
+		return feemanager.NewCustomFeeManager(cs, w, filepath.Join(dir, modules.FeeManagerDir), "", feeManagerDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create feemanager"))

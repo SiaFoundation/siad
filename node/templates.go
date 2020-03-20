@@ -26,7 +26,7 @@ var (
 		CreateFeeManager:      true,
 		CreateGateway:         true,
 		CreateHost:            false,
-		CreateMiner:           true, // Set to true for testing
+		CreateMiner:           false,
 		CreateRenter:          false,
 		CreateTransactionPool: true,
 		CreateWallet:          true,
@@ -111,7 +111,7 @@ func AllModules(dir string) NodeParams {
 func FeeManager(dir, serverStr string) NodeParams {
 	template := FeeManagerTemplate
 	template.Dir = dir
-	// template.FeeManagerServerStr = serverStr
+	template.FeeManagerServerStr = serverStr
 	return template
 }
 
