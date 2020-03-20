@@ -36,7 +36,7 @@ func BenchmarkBubbleMetadata(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	// Create add 5 files
+	// Create and add 5 files
 	rsc, _ := siafile.NewRSCode(1, 1)
 	for i := 0; i < 5; i++ {
 		fileSiaPath, err := dirSiaPath.Join(fmt.Sprintf("file%v", i))
