@@ -85,6 +85,32 @@ func TestAppendSector(t *testing.T) {
 	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
 		t.Fatalf("expected sector roots different than actual sector roots")
 	}
+
+	// Drop the last sector and append it again.
+	_, err = s.dropSectors(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newMerkleRoot, err = s.appendSector(newSectorData)
+
+	// Check the return value.
+	if merkleRoot != newMerkleRoot {
+		t.Fatalf("expected merkle root %v but was %v", merkleRoot, newMerkleRoot)
+	}
+
+	// Check that the program cache is correct.
+	if len(s.sectorsRemoved) > 0 {
+		t.Fatalf("expected sectors removed length to be %v but was %v", 0, len(s.sectorsRemoved))
+	}
+	if len(s.sectorsGained) != 1 {
+		t.Fatalf("expected sectors gained length to be %v but was %v", 1, len(s.sectorsGained))
+	}
+	if !bytes.Equal(s.sectorsGained[newSector], newSectorData) {
+		t.Fatalf("new sector not found in sectors gained")
+	}
+	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
+		t.Fatalf("expected sector roots different than actual sector roots")
+	}
 }
 
 // TestDropSectors tests dropping sectors from the cache.
