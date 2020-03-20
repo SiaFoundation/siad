@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -312,4 +313,67 @@ func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
 func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 	err = c.get("/skynet/stats", &stats)
 	return
+}
+
+// SkykeyGetByName requests the /skynet/skykey Get endpoint using the key name.
+func (c *Client) SkykeyGetByName(name string) (skykey.Skykey, error) {
+	values := url.Values{}
+	values.Set("name", name)
+	getQuery := fmt.Sprintf("/skynet/skykey/%s", values.Encode())
+
+	var skykeyGet api.SkykeyGET
+	err := c.get(getQuery, &skykeyGet)
+	if err != nil {
+		return skykey.Skykey{}, err
+	}
+
+	var sk skykey.Skykey
+	err = sk.FromString(skykeyGet.Skykey)
+	if err != nil {
+		return skykey.Skykey{}, err
+	}
+
+	return sk, nil
+}
+
+// SkykeyGetByID requests the /skynet/skykey Get endpoint using the key ID.
+func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
+	values := url.Values{}
+	values.Set("id", id.ToString())
+	getQuery := fmt.Sprintf("/skynet/skykey/%s", values.Encode())
+
+	var skykeyGet api.SkykeyGET
+	err := c.get(getQuery, &skykeyGet)
+	if err != nil {
+		return skykey.Skykey{}, err
+	}
+
+	var sk skykey.Skykey
+	err = sk.FromString(skykeyGet.Skykey)
+	if err != nil {
+		return skykey.Skykey{}, err
+	}
+
+	return sk, nil
+}
+
+// SkykeyIDGet requests the /skynet/skykeyid Get endpoint.
+func (c *Client) SkykeyIDGet(name string) (skykey.SkykeyID, error) {
+	values := url.Values{}
+	values.Set("name", name)
+	getQuery := fmt.Sprintf("/skynet/skykeyid/%s", values.Encode())
+
+	var skykeyIDGet api.SkykeyIDGET
+	err := c.get(getQuery, &skykeyIDGet)
+	if err != nil {
+		return skykey.SkykeyID{}, err
+	}
+
+	var ID skykey.SkykeyID
+	err = ID.FromString(skykeyIDGet.ID)
+	if err != nil {
+		return skykey.SkykeyID{}, err
+	}
+
+	return ID, nil
 }
