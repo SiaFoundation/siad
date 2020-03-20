@@ -13,43 +13,44 @@ import (
 // ProcessPayment reads a payment request from the stream, depending on the type
 // of payment it will either update the file contract or call upon the ephemeral
 // account manager to process the payment.
-func (h *Host) ProcessPayment(stream siamux.Stream) (types.Currency, error) {
+func (h *Host) ProcessPayment(stream siamux.Stream) (string, types.Currency, error) {
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := modules.RPCRead(stream, &pr); err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not read payment request")
+		return "", types.ZeroCurrency, errors.AddContext(err, "Could not read payment request")
 	}
 	// process payment depending on the payment method
 	switch pr.Type {
 	case modules.PayByEphemeralAccount:
 		return h.staticPayByEphemeralAccount(stream)
 	case modules.PayByContract:
-		return h.managedPayByContract(stream)
+		amountPaid, err := h.managedPayByContract(stream)
+		return "", amountPaid, err
 	default:
-		return types.ZeroCurrency, errors.Compose(fmt.Errorf("Could not handle payment method %v", pr.Type), modules.ErrUnknownPaymentMethod)
+		return "", types.ZeroCurrency, errors.Compose(fmt.Errorf("Could not handle payment method %v", pr.Type), modules.ErrUnknownPaymentMethod)
 	}
 }
 
 // staticPayByEphemeralAccount processes a PayByEphemeralAccountRequest coming
 // in over the given stream.
-func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (types.Currency, error) {
+func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (string, types.Currency, error) {
 	// read the PayByEphemeralAccountRequest
 	var pbear modules.PayByEphemeralAccountRequest
 	if err := modules.RPCRead(stream, &pbear); err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
+		return "", types.ZeroCurrency, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
 	}
 
 	// process the request
 	if err := h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority); err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Withdraw failed")
+		return "", types.ZeroCurrency, errors.AddContext(err, "Withdraw failed")
 	}
 
 	// send the response
 	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: pbear.Message.Amount}); err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
+		return "", types.ZeroCurrency, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
-	return pbear.Message.Amount, nil
+	return pbear.Message.Account, pbear.Message.Amount, nil
 }
 
 // managedPayByContract processes a PayByContractRequest coming in over the

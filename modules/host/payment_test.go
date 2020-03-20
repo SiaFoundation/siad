@@ -109,7 +109,7 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK 
 	go func() {
 		defer wg.Done()
 		// process payment request
-		_, err := host.ProcessPayment(hStream)
+		_, _, err := host.ProcessPayment(hStream)
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 			return
@@ -158,6 +158,7 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	defer hStream.Close()
 
 	var wg sync.WaitGroup
+	var payByAccount string
 	var payByResponse modules.PayByEphemeralAccountResponse
 
 	wg.Add(1)
@@ -185,7 +186,7 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	go func() {
 		defer wg.Done()
 		// process payment request
-		_, err := host.ProcessPayment(hStream)
+		payByAccount, _, err = host.ProcessPayment(hStream)
 		if err != nil {
 			t.Log(err)
 			return
@@ -193,19 +194,20 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	}()
 	wg.Wait()
 
+	// verify the account id that's returned equals the account
+	if payByAccount != account {
+		t.Fatalf("Unexpected account id, expected %s but received %s", account, payByAccount)
+	}
+
 	// verify the response contains the amount that got withdrawn
 	if !payByResponse.Amount.Equals(payment) {
-		t.Log("Expected: ", payment.HumanString())
-		t.Log("Actual: ", payByResponse.Amount.HumanString())
-		t.Fatal("Unexpected payment amount")
+		t.Fatalf("Unexpected payment amount, expected %s, but received %s", payment.HumanString(), payByResponse.Amount.HumanString())
 	}
 
 	// verify the payment got withdrawn from the ephemeral account
 	balance := getAccountBalance(host.staticAccountManager, account)
 	if !balance.IsZero() {
-		t.Log("Expected: 0")
-		t.Log("Actual: ", balance.HumanString())
-		t.Fatal("Unexpected account balance")
+		t.Fatalf("Unexpected account balance, expected 0 but received %s", balance.HumanString())
 	}
 }
 
