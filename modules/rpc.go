@@ -53,9 +53,10 @@ type RPCPriceTable struct {
 	WriteStoreCost  types.Currency `json:"writestorecost"`
 }
 
+// RPC specifiers
 var (
-	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
+	RPCFundAccount      = types.NewSpecifier("FundAccount")
 )
 
 type (

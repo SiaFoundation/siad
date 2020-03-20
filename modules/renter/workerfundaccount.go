@@ -3,8 +3,10 @@ package renter
 import (
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // fundAccountJobQueue is the primary structure for managing fund ephemeral
@@ -88,18 +90,23 @@ func (w *worker) managedPerformFundAcountJob() bool {
 	w.staticFundAccountJobQueue.queue = w.staticFundAccountJobQueue.queue[1:]
 	w.staticFundAccountJobQueue.mu.Unlock()
 
-	client, err := w.renter.managedRPCClient(w.staticHostPubKey)
+	// Fetch a stream
+	stream, err := w.newStream()
+	if err != nil {
+		return false
+	}
+	defer stream.Close()
+
+	err = w.staticRPCClient.FundAccount(nil, stream, modules.RPCPriceTable{}, w.staticAccount.staticID, job.amount)
 	if err != nil {
 		job.sendResult(types.ZeroCurrency, err)
 		return true
 	}
-
-	err = client.FundEphemeralAccount(w.staticAccount.staticID, job.amount)
-	if err != nil {
-		job.sendResult(types.ZeroCurrency, err)
-		return true
-	}
-
 	job.sendResult(job.amount, nil)
 	return true
+}
+
+// newStream returns a new stream to the host
+func (w *worker) newStream() (siamux.Stream, error) {
+	return w.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, modules.SiaPKToMuxPK(w.staticHostPubKey))
 }

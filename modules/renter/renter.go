@@ -204,6 +204,12 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
+	// blockHeight is cached on the renter, this is used to update the state of
+	// the workers every time consensus changes. We keep this as state on the
+	// renter to avoid that the worker has to fetch the block height from the
+	// renter for every RPC call that is paid from an ephemeral account.
+	blockHeight types.BlockHeight
+
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -425,13 +431,6 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
-}
-
-// managedRPCClient returns an RPC client for the host with given key
-func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
-	return &MockRPCClient{}, nil
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -775,7 +774,27 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
+
+	// Update the block height on the renter
+	for _, block := range cc.RevertedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight--
+		}
+	}
+	for _, block := range cc.AppliedBlocks {
+		if block.ID() != types.GenesisID {
+			r.blockHeight++
+		}
+	}
+	bh := r.blockHeight
 	r.mu.Unlock(id)
+
+	// Notify all rpc clients of the new block height
+	if cc.Synced {
+		for _, w := range r.staticWorkerPool.workers {
+			w.UpdateBlockHeight(bh)
+		}
+	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the

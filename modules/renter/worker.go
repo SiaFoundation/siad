@@ -25,6 +25,7 @@ package renter
 // up any queued jobs after a worker has been killed.
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -48,8 +49,9 @@ import (
 type worker struct {
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
-	staticHostPubKey    types.SiaPublicKey
-	staticHostPubKeyStr string
+	staticHostPubKey     types.SiaPublicKey
+	staticHostPubKeyStr  string
+	staticHostMuxAddress string
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -86,6 +88,10 @@ type worker struct {
 	// staticBalanceTarget.
 	staticAccount       *account
 	staticBalanceTarget types.Currency
+
+	// Every worker has an RPC client it uses to interact with the host. The RPC
+	// client is capable of performing all RPCs on the host.
+	staticRPCClient *rpcClient
 
 	// Utilities.
 	//
@@ -261,8 +267,8 @@ func (w *worker) scheduleRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	_, ok, err := r.hostDB.Host(hostPubKey)
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) (*worker, error) {
+	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -274,27 +280,32 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// balance target
 
 	// TODO: enable the account refiller by setting a balance target greater
-	// than the zero currency
-
-	// TODO: (TL;DR mock causes infinite loop if target is not set to zero) the
-	// target is set to zero because as long as FundEphemeralAccount is mocked,
-	// setting a target larger than zero would create an endless refill loop,
-	// just because there is nothing holding back consecutive refill jobs from
-	// being enqueued (which wakes the workerloop and so on). This is due to
-	// pendingFunds not increasing, which causes the AvailableBalance to remain
-	// the same, which causes a fund account job to be scheduled on every
-	// iteration.
+	// than the zero currency. It is important this remains zero for as long as
+	// the FundEphemeralAccountRPC is not merged. Before it is enabled we also
+	// need a cooldown in case the RPC fails, to ensure we don't keep enqueueing
+	// refill jobs.
 	balanceTarget := types.ZeroCurrency
 
+	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
+
 	return &worker{
-		staticHostPubKey:    hostPubKey,
-		staticHostPubKeyStr: hostPubKey.String(),
+		staticHostPubKey:     hostPubKey,
+		staticHostPubKeyStr:  hostPubKey.String(),
+		staticHostMuxAddress: hostMuxAddress,
 
 		staticAccount:       openAccount(hostPubKey, r.hostContractor),
 		staticBalanceTarget: balanceTarget,
+		staticRPCClient:     r.newRPCClient(host, bh),
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}, nil
+}
+
+// UpdateBlockHeight is called by the renter when it processes a consensus
+// change. The worker forwards this to the RPC client to ensure it has the
+// latest block height. This eliminates lock contention on the renter.
+func (w *worker) UpdateBlockHeight(blockHeight types.BlockHeight) {
+	w.staticRPCClient.UpdateBlockHeight(blockHeight)
 }
