@@ -2,16 +2,16 @@ package host
 
 import (
 	"context"
-	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
-// managedRPCExecute program handles incoming ExecuteProgram RPCs.
-func (h *Host) managedRPCExecuteProgram(stream net.Conn) error {
+// managedRPCExecuteProgram handles incoming ExecuteProgram RPCs.
+func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	defer stream.Close()
 	// Process payment.
 	// TODO: change once payment MR is merged
@@ -49,12 +49,11 @@ func (h *Host) managedRPCExecuteProgram(stream net.Conn) error {
 	// Get a context that can be used to interrupt the program.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	rpcDone := make(chan struct{})
 	go func() {
 		// TODO (followup): In the future we might want to wait for a signal
 		// from the renter and close the context here early.
 		select {
-		case <-rpcDone:
+		case <-ctx.Done():
 		}
 	}()
 
@@ -134,11 +133,12 @@ func (h *Host) managedRPCExecuteProgram(stream net.Conn) error {
 		if err != nil {
 			return errors.AddContext(err, "Failed to finalize the program")
 		}
-		// Set the refund to 0. The program was finalized and we don't want to
-		// refund the renter in the deferred statement anymore. This is a
-		// precaution in case we extend the code after this point.
-		refund = types.ZeroCurrency
+	} else {
+		// TODO: finalize spending for readonly programs once the MR is ready.
 	}
-	// TODO: finalize spending for readonly programs once the MR is ready.
+	// Set the refund to 0. The program was finalized and we don't want to
+	// refund the renter in the deferred statement anymore. This is a
+	// precaution in case we extend the code after this point.
+	refund = types.ZeroCurrency
 	return nil
 }
