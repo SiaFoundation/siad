@@ -4,6 +4,7 @@ package renter
 // underlying sector root.
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -247,19 +248,19 @@ func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) 
 		return
 	case <-time.After(timeout):
 	}
-	pdbr.managedTimeout()
+	pdbr.managedTriggerTimeout(timeout)
 }
 
-// managedTimeout handles a timeout. It will close out the completeChan and set
-// the appropriate error.
-func (pdbr *projectDownloadByRoot) managedTimeout() {
+// managedTriggerTimeout handles a timeout. It will close out the completeChan
+// and set the appropriate error.
+func (pdbr *projectDownloadByRoot) managedTriggerTimeout(t time.Duration) {
 	pdbr.mu.Lock()
 	defer pdbr.mu.Unlock()
 	if pdbr.staticComplete() {
 		return
 	}
 	close(pdbr.completeChan)
-	pdbr.err = errors.Compose(ErrRootNotFound, ErrProjectTimedOut)
+	pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", t.Seconds())))
 }
 
 // staticComplete is a helper function to check if the project has already
@@ -291,7 +292,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 	// Apply the timeout to the project. A timeout of 0 will be ignored.
 	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
-		pdbr.managedTimeout()
+		pdbr.managedTriggerTimeout(timeout)
 		return nil, pdbr.err
 	}
 	go pdbr.threadedHandleTimeout(timeout)

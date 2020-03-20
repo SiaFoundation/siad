@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -16,6 +17,9 @@ type fetchChunkState struct {
 	staticChunkSize  uint64
 	staticDataPieces uint64
 	staticMasterKey  crypto.CipherKey
+
+	// staticTimeout defines a timeout that is applied to every chunk download
+	staticTimeout time.Duration
 
 	pieces          [][]byte
 	piecesCompleted uint64
@@ -57,7 +61,7 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 	//
 	// TODO: Ideally would be able to insert 'doneChan' as a cancelChan on the
 	// DownloadByRoot call.
-	pieceData, err := fcs.staticRenter.DownloadByRoot(pieceRoot, 0, modules.SectorSize, 0)
+	pieceData, err := fcs.staticRenter.DownloadByRoot(pieceRoot, 0, modules.SectorSize, fcs.staticTimeout)
 	if err != nil {
 		fcs.managedFailPiece()
 		fcs.staticRenter.log.Debugf("fanout piece download failed for chunk %v, piece %v, root %v of a fanout download file: %v", fcs.staticChunkIndex, pieceIndex, pieceRoot, err)
@@ -109,6 +113,8 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 		staticChunkSize:  fs.staticChunkSize,
 		staticDataPieces: uint64(fs.staticLayout.fanoutDataPieces),
 		staticMasterKey:  fs.staticMasterKey,
+
+		staticTimeout: fs.staticTimeout,
 
 		pieces: make([][]byte, len(fs.staticChunks[chunkIndex])),
 
