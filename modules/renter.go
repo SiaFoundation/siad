@@ -939,7 +939,7 @@ type Renter interface {
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink) (SkyfileMetadata, Streamer, error)
+	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -959,7 +959,7 @@ type Renter interface {
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.
-	PinSkylink(Skylink, SkyfileUploadParameters) error
+	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

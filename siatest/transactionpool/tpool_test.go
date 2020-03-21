@@ -44,7 +44,7 @@ func TestTpoolTransactionsGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = miner.WalletSiacoinsPost(types.SiacoinPrecision, uc.Address)
+	_, err = miner.WalletSiacoinsPost(types.SiacoinPrecision, uc.Address, false)
 	if err != nil {
 		t.Fatal(err)
 	}

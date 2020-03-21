@@ -214,7 +214,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 

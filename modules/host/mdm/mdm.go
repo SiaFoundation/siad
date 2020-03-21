@@ -7,19 +7,21 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
-// StorageObligation defines the minimal interface a StorageObligation needs to
-// implement to be used by the mdm.
+// StorageObligation defines an interface the storage obligation must adhere to.
 type StorageObligation interface {
+	// Update updates the storage obligation.
+	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error
+}
+
+// StorageObligationSnapshot defines an interface the snapshot must adhere to in
+// order for the mdm to be able to execute a program.
+type StorageObligationSnapshot interface {
 	// ContractSize returns the current contract size of the storage obligation.
 	ContractSize() uint64
-	// Locked returns whether or not the storage obligation is locked.
-	Locked() bool
 	// MerkleRoot returns the filecontract's current root.
 	MerkleRoot() crypto.Hash
 	// SectorRoots returns the roots of the storage obligation.
 	SectorRoots() []crypto.Hash
-	// Update updates the storage obligation.
-	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error
 }
 
 // Host defines the minimal interface a Host needs to

@@ -74,7 +74,6 @@ default: &default_params
   except:
     - schedules
 
-
 ## Define the default nightly test parameters.
 .default_nightly_test: &default_nightly_params
   <<: *default_test_params
@@ -199,3 +198,4 @@ siatest-renter-sub-tests-nightly:
     - apt-get update
     - apt-get install -y fuse
     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+    

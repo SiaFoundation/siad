@@ -485,9 +485,12 @@ type (
 
 		// SendSiacoins is a tool for sending siacoins from the wallet to an
 		// address. Sending money usually results in multiple transactions. The
-		// transactions are automatically given to the transaction pool, and
-		// are also returned to the caller.
+		// transactions are automatically given to the transaction pool, and are
+		// also returned to the caller.
 		SendSiacoins(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error)
+
+		// SendSiacoinsFeeIncluded sends siacoins with fees included.
+		SendSiacoinsFeeIncluded(amount types.Currency, dest types.UnlockHash) ([]types.Transaction, error)
 
 		// SendSiacoinsMulti sends coins to multiple addresses.
 		SendSiacoinsMulti(outputs []types.SiacoinOutput) ([]types.Transaction, error)

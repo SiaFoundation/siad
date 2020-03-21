@@ -57,6 +57,7 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestClearDownloadHistory", Test: testClearDownloadHistory},
 		{Name: "TestDownloadAfterRenew", Test: testDownloadAfterRenew},
 		{Name: "TestDirectories", Test: testDirectories},
+		{Name: "TestAlertsSorted", Test: testAlertsSorted},
 	}
 
 	// Run tests
@@ -721,6 +722,27 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	_, err = os.Stat(rd2.SiaPath().SiaDirSysPath(r.RenterFilesDir()))
 	if !os.IsNotExist(err) {
 		t.Fatal("Expected IsNotExist err, but got err:", err)
+	}
+}
+
+// testAlertsSorted checks that the alerts returned by the /daemon/alerts
+// endpoint are sorted by severity.
+func testAlertsSorted(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+	dag, err := r.DaemonAlertsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dag.Alerts) < 3 {
+		t.Fatalf("renter should have at least %v alerts registered but was %v", 3, len(dag.Alerts))
+	}
+	sorted := sort.SliceIsSorted(dag.Alerts, func(i, j int) bool {
+		return dag.Alerts[i].Severity > dag.Alerts[j].Severity
+	})
+	if !sorted {
+		t.Log("alerts:", dag.Alerts)
+		t.Fatal("alerts are not sorted by severity")
 	}
 }
 

@@ -4,10 +4,22 @@ package renter
 // underlying sector root.
 
 import (
+	"fmt"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
+)
+
+var (
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
 )
 
 // jobDownloadByRoot contains all of the information necessary to execute a
@@ -65,6 +77,7 @@ type projectDownloadByRoot struct {
 	err          error
 	completeChan chan struct{}
 
+	tg *threadgroup.ThreadGroup
 	mu sync.Mutex
 }
 
@@ -105,10 +118,8 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 
 	// Check whether the pdbr is already completed. If so, nothing else needs to
 	// be done.
-	select {
-	case <-pdbr.completeChan:
+	if pdbr.staticComplete() {
 		return
-	default:
 	}
 
 	// Sector download is not yet complete. Check whether this is the last
@@ -123,7 +134,7 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 		if len(pdbr.workersStandby) != 0 {
 			w.renter.log.Critical("pdbr has standby workers but no registered workers:", len(pdbr.workersStandby))
 		}
-		pdbr.err = errors.New("workers were unable to recover the data by sector root - all workers failed")
+		pdbr.err = ErrRootNotFound
 		close(pdbr.completeChan)
 	}
 }
@@ -151,7 +162,7 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 // data by merkle root for a worker. The first stage consists of determining
 // whether or not the worker's host has the merkle root in question.
 func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
-	// Check if the project is already complete, do no more work if so.
+	// Check if the project is already completed, do no more work if so.
 	if pdbr.staticComplete() {
 		pdbr.managedRemoveWorker(w)
 		return
@@ -216,9 +227,44 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 	newWorker.callQueueJobDownloadByRoot(jdbr)
 }
 
+// threadedHandleTimeout sets a timeout on the project. If the root is not found
+// before the timeout expires, the project is finished. A zero timeout is
+// ignored.
+func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) {
+	if timeout <= 0 {
+		return
+	}
+	if err := pdbr.tg.Add(); err != nil {
+		return
+	}
+	defer pdbr.tg.Done()
+
+	// Block until the timeout has expired or the project has completed,
+	// whichever comes first
+	select {
+	case <-pdbr.tg.StopChan():
+		return
+	case <-pdbr.completeChan:
+		return
+	case <-time.After(timeout):
+	}
+	pdbr.managedTriggerTimeout(timeout)
+}
+
+// managedTriggerTimeout handles a timeout. It will close out the completeChan
+// and set the appropriate error.
+func (pdbr *projectDownloadByRoot) managedTriggerTimeout(t time.Duration) {
+	pdbr.mu.Lock()
+	defer pdbr.mu.Unlock()
+	if pdbr.staticComplete() {
+		return
+	}
+	close(pdbr.completeChan)
+	pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", t.Seconds())))
+}
+
 // staticComplete is a helper function to check if the project has already
-// completed successfully. Workers use this method to determine whether to
-// abort early.
+// completed. Workers use this method to determine whether to abort early.
 func (pdbr *projectDownloadByRoot) staticComplete() bool {
 	select {
 	case <-pdbr.completeChan:
@@ -230,7 +276,7 @@ func (pdbr *projectDownloadByRoot) staticComplete() bool {
 
 // DownloadByRoot will spin up a project to locate a root and then download that
 // root.
-func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte, error) {
+func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{
 		staticRoot:   root,
@@ -240,7 +286,16 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 		workersRegistered: make(map[string]struct{}),
 
 		completeChan: make(chan struct{}),
+
+		tg: &r.tg,
 	}
+
+	// Apply the timeout to the project. A timeout of 0 will be ignored.
+	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
+		pdbr.managedTriggerTimeout(timeout)
+		return nil, pdbr.err
+	}
+	go pdbr.threadedHandleTimeout(timeout)
 
 	// Give the project to every worker. The list of workers needs to be fetched
 	// first, and then the job can be queued because cleanup of the project
@@ -268,7 +323,11 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64) ([]byte
 	}
 
 	// Block until the project has completed.
-	<-pdbr.completeChan
+	select {
+	case <-pdbr.tg.StopChan():
+	case <-pdbr.completeChan:
+	}
+
 	pdbr.mu.Lock()
 	err := pdbr.err
 	data := pdbr.data

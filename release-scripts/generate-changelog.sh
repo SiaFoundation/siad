@@ -30,6 +30,7 @@ function add_items {
     
     items_header_written=false
     items_list=$(find ./"$version" -wholename "*/$items_folder/*.md" | sort)
+    new_line=false
     for item in $items_list
     do
         if [ "$items_header_written" == false ]
@@ -40,8 +41,20 @@ function add_items {
     		echo "    > writing $items_header"
     	fi
     	echo "      > $item"
-    	cat "$item" >> "$changelog_md"
+
+        # remove trailing new lines from items
+        # to fix markdown rendering
+        text=$(printf "%s" "$(< $item)")
+
+        # remove trailing spaces
+        # to fix markdown rendering
+        text=`echo $text | xargs -0`
+
+        echo "$text" >> "$changelog_md"
     done
+
+    # add new line to fix markdown rendering
+    echo "" >> "$changelog_md"
 }
 
 # get script location

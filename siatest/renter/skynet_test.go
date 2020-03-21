@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -55,6 +56,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
+		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
 	}
 
 	// Run tests
@@ -771,10 +773,22 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// get the stats before the test files are uploaded
-	statsBefore, err := r.SkynetStatsGet()
+	// get the stats
+	stats, err := r.SkynetStatsGet()
+
+	// verify it contains the node's version information
 	if err != nil {
 		t.Fatal(err)
+	}
+	expected := build.Version
+	if build.ReleaseTag != "" {
+		expected += "-" + build.ReleaseTag
+	}
+	if stats.VersionInfo.Version != expected {
+		t.Fatalf("Unexpected version return, expected '%v', actual '%v'", expected, stats.VersionInfo.Version)
+	}
+	if stats.VersionInfo.GitRevision != build.GitRevision {
+		t.Fatalf("Unexpected git revision return, expected '%v', actual '%v'", build.GitRevision, stats.VersionInfo.GitRevision)
 	}
 
 	// create two test files with sizes below and above the sector size
@@ -824,6 +838,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// make sure the stats changed by exactly the expected amounts
+	statsBefore := stats
 	if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
 		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles))
 	}
@@ -1546,9 +1561,12 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, header, err := r.SkynetSkylinkHead(skylink)
+	status, header, err := r.SkynetSkylinkHead(skylink, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
 	}
 
 	// Verify Skynet-File-Metadata
@@ -1595,9 +1613,15 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected 'Content-Disposition' header")
 	}
 
+	// Perform a HEAD request with a timeout that exceeds the max timeout
+	status, _, _ = r.SkynetSkylinkHead(skylink, 901)
+	if status != http.StatusBadRequest {
+		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
+	}
+
 	// Perform a HEAD request for a skylink that does not exist
-	status, header, err := r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
-	if status != http.StatusInternalServerError {
+	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
+	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
 }
@@ -1625,5 +1649,97 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Error is nil, expected error due to no worker")
 	} else if !strings.Contains(err.Error(), "no workers") {
 		t.Errorf("Expected error containing 'no workers' but got %v", err)
+	}
+}
+
+// testSkynetRequestTimeout verifies that the Skylink routes timeout when a
+// timeout query string parameter has been passed.
+func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	uploadSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetRequestTimeout",
+			Mode:     0640,
+		},
+		Reader: reader,
+		Force:  true,
+	}
+	// Upload a skyfile
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it was uploaded properly
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify we can pin it
+	pinSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinLUP := modules.SkyfilePinParameters{
+		SiaPath:             pinSiaPath,
+		Force:               true,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+	}
+	err = r.SkynetSkylinkPinPost(skylink, pinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a renter with a timeout dependency injected
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyTimeoutProjectDownloadByRoot{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Upload a skyfile
+	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
+	skylink, _, err = r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify timeout on head request
+	status, _, err := r.SkynetSkylinkHead(skylink, 1)
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+
+	// Verify timeout on download request
+	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
+	if errors.Contains(err, renter.ErrProjectTimedOut) {
+		t.Fatal("Expected download request to time out")
+	}
+	if !strings.Contains(err.Error(), "timed out after 1s") {
+		t.Log(err)
+		t.Fatal("Expected error to specify the timeout")
+	}
+
+	// Verify timeout on pin request
+	err = r.SkynetSkylinkPinPostWithTimeout(skylink, pinLUP, 2)
+	if errors.Contains(err, renter.ErrProjectTimedOut) {
+		t.Fatal("Expected pin request to time out")
+	}
+	if !strings.Contains(err.Error(), "timed out after 2s") {
+		t.Log(err)
+		t.Fatal("Expected error to specify the timeout")
 	}
 }

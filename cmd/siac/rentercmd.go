@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	fileSizeUnits = "    B, KB, MB, GB, TB, PB, EB, ZB, YB"
+	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
 )
 
 var (
@@ -116,8 +116,8 @@ var (
 		Use:     "delete [path]",
 		Aliases: []string{"rm"},
 		Short:   "Delete a file or folder",
-		Long:    "Delete a file or folder. Does not delete the file/folder on disk.",
-		Run:     wrap(renterfilesdeletecmd),
+		Long:    "Delete a file or folder. Does not delete the file/folder on disk.  Multiple files may be deleted with space separation.",
+		Run:     renterfilesdeletecmd,
 	}
 
 	renterFilesDownloadCmd = &cobra.Command{
@@ -190,6 +190,22 @@ flags can be used to set a custom redundancy for the file.`,
 		Run: wrap(renterfilesuploadcmd),
 	}
 
+	renterFilesUploadPauseCmd = &cobra.Command{
+		Use:   "pause [duration]",
+		Short: "Pause renter uploads for a duration",
+		Long: `Temporarily pause renter uploads for the duration specified.
+Available durations include "s" for seconds, "m" for minutes, and "h" for hours.
+For Example: 'siac renter upload pause 3h' would pause uploads for 3 hours.`,
+		Run: wrap(renterfilesuploadpausecmd),
+	}
+
+	renterFilesUploadResumeCmd = &cobra.Command{
+		Use:   "resume",
+		Short: "Resume renter uploads",
+		Long:  "Resume renter uploads that were previously paused.",
+		Run:   wrap(renterfilesuploadresumecmd),
+	}
+
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
@@ -204,7 +220,7 @@ allowance of 500SC, 12w period, 50 hosts, and 4w renew window will be used.`,
 
 	renterRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
-		Short: "set maxdownloadspeed and maxuploadspeed",
+		Short: "Set maxdownloadspeed and maxuploadspeed",
 		Long: `Set the maxdownloadspeed and maxuploadspeed in
 Bytes per second: B/s, KB/s, MB/s, GB/s, TB/s
 or
@@ -441,7 +457,7 @@ func renterFilesAndContractSummary() error {
 		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
 	}
 
-	rc, err := httpClient.RenterContractsGet()
+	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
 		return err
 	}
@@ -451,11 +467,13 @@ func renterFilesAndContractSummary() error {
 	}
 
 	fmt.Printf(`
-  Files:          %v
-  Total Stored:   %v
-  Min Redundancy: %v
-  Contracts:      %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts))
+  Files:              %v
+  Total Stored:       %v
+  Min Redundancy:     %v
+  Active Contracts:   %v
+  Passive Contracts:  %v
+  Disabled Contracts: %v
+`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts), len(rc.PassiveContracts), len(rc.DisabledContracts))
 
 	return nil
 }
@@ -1152,7 +1170,7 @@ and bandwidth needs while spending significantly less than the overall allowance
 
 The following units can be used to set the expected storage:`)
 	fmt.Println()
-	fmt.Println(fileSizeUnits)
+	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	fmt.Println("Current value:", modules.FilesizeUnits(allowance.ExpectedStorage))
 	fmt.Println("Default value:", modules.FilesizeUnits(modules.DefaultAllowance.ExpectedStorage))
@@ -1200,7 +1218,7 @@ consider repair bandwidth separately.
 
 The following units can be used to set the expected upload:`)
 	fmt.Println()
-	fmt.Println(fileSizeUnits)
+	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	euCurrentPeriod := allowance.ExpectedUpload * uint64(allowance.Period)
 	euDefaultPeriod := modules.DefaultAllowance.ExpectedUpload * uint64(modules.DefaultAllowance.Period)
@@ -1257,7 +1275,7 @@ consider repair bandwidth separately.
 
 The following units can be used to set the expected download:`)
 	fmt.Println()
-	fmt.Println(fileSizeUnits)
+	fmt.Printf("    %v\n", fileSizeUnits)
 	fmt.Println()
 	edCurrentPeriod := allowance.ExpectedDownload * uint64(allowance.Period)
 	edDefaultPeriod := modules.DefaultAllowance.ExpectedDownload * uint64(modules.DefaultAllowance.Period)
@@ -1726,40 +1744,43 @@ func renterdownloadcancelcmd(cancelID modules.DownloadID) {
 
 // renterfilesdeletecmd is the handler for the command `siac renter delete [path]`.
 // Removes the specified path from the Sia network.
-func renterfilesdeletecmd(path string) {
-	// Parse SiaPath.
-	siaPath, err := modules.NewSiaPath(path)
-	if err != nil {
-		die("Couldn't parse SiaPath:", err)
+func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
+	for _, path := range paths {
+		// Parse SiaPath.
+		siaPath, err := modules.NewSiaPath(path)
+		if err != nil {
+			die("Couldn't parse SiaPath:", err)
+		}
+		// Try to delete file.
+		var errFile error
+		if renterDeleteRoot {
+			errFile = httpClient.RenterFileDeleteRootPost(siaPath)
+		} else {
+			errFile = httpClient.RenterFileDeletePost(siaPath)
+		}
+		if errFile == nil {
+			fmt.Printf("Deleted file '%v'\n", path)
+			continue
+		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
+			die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
+		}
+		// Try to delete folder.
+		var errDir error
+		if renterDeleteRoot {
+			errDir = httpClient.RenterDirDeleteRootPost(siaPath)
+		} else {
+			errDir = httpClient.RenterDirDeletePost(siaPath)
+		}
+		if errDir == nil {
+			fmt.Printf("Deleted directory '%v'\n", path)
+			continue
+		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
+			die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
+		}
+		// Unknown file/folder.
+		die(fmt.Sprintf("Unknown path '%v'", path))
 	}
-	// Try to delete file.
-	var errFile error
-	if renterDeleteRoot {
-		errFile = httpClient.RenterFileDeleteRootPost(siaPath)
-	} else {
-		errFile = httpClient.RenterFileDeletePost(siaPath)
-	}
-	if errFile == nil {
-		fmt.Printf("Deleted file '%v'\n", path)
-		return
-	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
-		die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
-	}
-	// Try to delete folder.
-	var errDir error
-	if renterDeleteRoot {
-		errDir = httpClient.RenterDirDeleteRootPost(siaPath)
-	} else {
-		errDir = httpClient.RenterDirDeletePost(siaPath)
-	}
-	if errDir == nil {
-		fmt.Printf("Deleted directory '%v'\n", path)
-		return
-	} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
-		die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
-	}
-	// Unknown file/folder.
-	die(fmt.Sprintf("Unknown path '%v'", path))
+	return
 }
 
 // renterfilesdownload is the handler for the comand `siac renter download [path] [destination]`.
@@ -2426,6 +2447,31 @@ func renterfilesuploadcmd(source, path string) {
 		}
 		fmt.Printf("Uploaded '%s' as '%s'.\n", abs(source), path)
 	}
+}
+
+// renterfilesuploadpausecmd is the handler for the command `siac renter upload
+// pause`.  It pauses all renter uploads for the duration (in minutes)
+// passed in.
+func renterfilesuploadpausecmd(dur string) {
+	pauseDuration, err := time.ParseDuration(dur)
+	if err != nil {
+		die("Couldn't parse duration:", err)
+	}
+	err = httpClient.RenterUploadsPausePost(pauseDuration)
+	if err != nil {
+		die("Could not pause renter uploads:", err)
+	}
+	fmt.Println("Renter uploads have been paused for", dur)
+}
+
+// renterfilesuploadresumecmd is the handler for the command `siac renter upload
+// resume`.  It resumes all renter uploads that have been paused.
+func renterfilesuploadresumecmd() {
+	err := httpClient.RenterUploadsResumePost()
+	if err != nil {
+		die("Could not resume renter uploads:", err)
+	}
+	fmt.Println("Renter uploads have been resumed")
 }
 
 // skynetcmd displays the usage info for the command.
