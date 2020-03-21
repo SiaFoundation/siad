@@ -70,7 +70,7 @@ type (
 
 		filepath   string // where the refcounter is persisted on disk
 		numSectors uint64 // used for sanity checks before we attempt mutation operations
-		wal        *writeaheadlog.WAL
+		staticWal  *writeaheadlog.WAL
 		mu         sync.Mutex
 
 		refCounterUpdateControl
@@ -131,7 +131,7 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 		RefCounterHeader: header,
 		filepath:         path,
 		numSectors:       numSectors,
-		wal:              wal,
+		staticWal:        wal,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
@@ -157,7 +157,7 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 		RefCounterHeader: h,
 		filepath:         path,
 		numSectors:       numSec,
-		wal:              wal,
+		staticWal:        wal,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
@@ -196,7 +196,7 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 		return ErrUpdateWithoutUpdateSession
 	}
 	// Create the writeaheadlog transaction.
-	txn, err := rc.wal.NewTransaction(updates)
+	txn, err := rc.staticWal.NewTransaction(updates)
 	if err != nil {
 		return errors.AddContext(err, "failed to create wal txn")
 	}
@@ -385,8 +385,11 @@ func applyDeleteUpdate(update writeaheadlog.Update) error {
 	if update.Name != UpdateNameDelete {
 		return fmt.Errorf("applyDeleteUpdate called on update of type %v", update.Name)
 	}
-	// Remove file.
-	return os.Remove(string(update.Instructions))
+	// Remove the file and ignore the NotExist error
+	if err := os.Remove(string(update.Instructions)); !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // applyTruncateUpdate parses and applies a Truncate update.
@@ -408,45 +411,16 @@ func applyTruncateUpdate(f *os.File, u writeaheadlog.Update) error {
 
 // applyUpdates takes a list of WAL updates and applies them.
 func applyUpdates(path string, updates ...writeaheadlog.Update) (err error) {
-	// If there is a Delete update in the list then all updates prior to that
-	// are moot. That's why we handle deletes separately.
-	lastDelPos := -1
-	for i, u := range updates {
-		if u.Name == UpdateNameDelete {
-			lastDelPos = i
-		}
-	}
-	if lastDelPos > -1 {
-		if err := applyDeleteUpdate(updates[lastDelPos]); err != nil {
-			return err
-		}
-		updates = updates[lastDelPos+1:]
-	}
-	// If the last update was a Delete then at this point we'd be left with no
-	// updates to apply. The same is valid if the method was called without
-	// parameters - we would have no updates to apply. Just return - we're done.
-	if len(updates) == 0 {
-		return nil
-	}
-	// Now that the deletes are done, open the file
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
-	defer func() {
-		// Sync and close the file. Only overwrite the error if there is no
-		// other error being returned - we don't want to hide that error.
-		if e := f.Sync(); e != nil && err == nil {
-			err = e
-		}
-		if e := f.Close(); e != nil && err == nil {
-			err = e
-		}
-	}()
-	// Execute all non-Delete updates
+	defer f.Close()
 	for _, update := range updates {
 		var err error
 		switch update.Name {
+		case UpdateNameDelete:
+			err = applyDeleteUpdate(update)
 		case UpdateNameTruncate:
 			err = applyTruncateUpdate(f, update)
 		case UpdateNameWriteAt:
@@ -458,7 +432,7 @@ func applyUpdates(path string, updates ...writeaheadlog.Update) (err error) {
 			return err
 		}
 	}
-	return
+	return f.Sync()
 }
 
 // applyWriteAtUpdate parses and applies a WriteAt update.
@@ -490,10 +464,9 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 // createTruncateUpdate is a helper function which creates a writeaheadlog
 // update for truncating a number of sectors from the end of the file.
 func createTruncateUpdate(path string, newNumSec uint64) writeaheadlog.Update {
-	b := make([]byte, 8+4+len(path))
+	b := make([]byte, 8+len(path))
 	binary.LittleEndian.PutUint64(b[:8], newNumSec)
-	binary.LittleEndian.PutUint32(b[8:12], uint32(len(path)))
-	copy(b[12:12+len(path)], path)
+	copy(b[8:8+len(path)], path)
 	return writeaheadlog.Update{
 		Name:         UpdateNameTruncate,
 		Instructions: b,
@@ -503,11 +476,10 @@ func createTruncateUpdate(path string, newNumSec uint64) writeaheadlog.Update {
 // createWriteAtUpdate is a helper function which creates a writeaheadlog
 // update for swapping the values of two positions in the file.
 func createWriteAtUpdate(path string, secIdx uint64, value uint16) writeaheadlog.Update {
-	b := make([]byte, 8+2+4+len(path))
+	b := make([]byte, 8+2+len(path))
 	binary.LittleEndian.PutUint64(b[:8], secIdx)
 	binary.LittleEndian.PutUint16(b[8:10], value)
-	binary.LittleEndian.PutUint32(b[10:14], uint32(len(path)))
-	copy(b[14:14+len(path)], path)
+	copy(b[10:10+len(path)], path)
 	return writeaheadlog.Update{
 		Name:         UpdateNameWriteAt,
 		Instructions: b,
@@ -530,26 +502,24 @@ func offset(secIdx uint64) uint64 {
 
 // readTruncateUpdate decodes a Truncate update
 func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, err error) {
-	if len(u.Instructions) < 20 {
+	if len(u.Instructions) < 8 {
 		err = errors.New("instructions slice of update is too short to contain the size and path")
 		return
 	}
 	newNumSec = binary.LittleEndian.Uint64(u.Instructions[:8])
-	pathLen := int32(binary.LittleEndian.Uint32(u.Instructions[8:12]))
-	path = string(u.Instructions[12 : 12+pathLen])
+	path = string(u.Instructions[8:])
 	return
 }
 
 // readWriteAtUpdate decodes a WriteAt update
 func readWriteAtUpdate(u writeaheadlog.Update) (path string, secIdx uint64, value uint16, err error) {
-	if len(u.Instructions) < 20 {
+	if len(u.Instructions) < 10 {
 		err = errors.New("instructions slice of update is too short to contain the size and path")
 		return
 	}
 	secIdx = binary.LittleEndian.Uint64(u.Instructions[:8])
 	value = binary.LittleEndian.Uint16(u.Instructions[8:10])
-	pathLen := int64(binary.LittleEndian.Uint32(u.Instructions[10:14]))
-	path = string(u.Instructions[14 : 14+pathLen])
+	path = string(u.Instructions[10:])
 	return
 }
 
