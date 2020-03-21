@@ -26,6 +26,10 @@ var (
 	// read does not match the current RefCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
 
+	// ErrUpdateWithoutUpdateSession is returned when an update operation is
+	// called without an open update session
+	ErrUpdateWithoutUpdateSession = errors.New("an update operation was called without an open update session")
+
 	// RefCounterVersion defines the latest version of the RefCounter
 	RefCounterVersion = [8]byte{1}
 
@@ -68,6 +72,9 @@ type (
 		// stored on disk.
 		newSectorCounts map[uint64]uint16 // holds the new value of a given counter
 
+		// isUpdateInProgress marks when an update session is open and updates
+		// are allowed to be created and applied
+		isUpdateInProgress bool
 		// muUpdates controls who can create and apply updates
 		muUpdates sync.Mutex
 	}
@@ -141,12 +148,15 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 
 // Append appends one counter to the end of the refcounter file and
 // initializes it with `1`
-func (rc *RefCounter) Append() writeaheadlog.Update {
+func (rc *RefCounter) Append() (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	if !rc.isUpdateInProgress {
+		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
 	rc.numSectors++
 	rc.newSectorCounts[rc.numSectors-1] = 1
-	return createWriteAtUpdate(rc.filepath, rc.numSectors-1, 1)
+	return createWriteAtUpdate(rc.filepath, rc.numSectors-1, 1), nil
 }
 
 // Count returns the number of references to the given sector
@@ -161,6 +171,9 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	if !rc.isUpdateInProgress {
+		return ErrUpdateWithoutUpdateSession
+	}
 	// Create the writeaheadlog transaction.
 	txn, err := rc.wal.NewTransaction(updates)
 	if err != nil {
@@ -187,6 +200,9 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	if !rc.isUpdateInProgress {
+		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
 	if secIdx > rc.numSectors-1 {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to decrement")
 	}
@@ -203,16 +219,22 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 }
 
 // DeleteRefCounter deletes the counter's file from disk
-func (rc *RefCounter) DeleteRefCounter() writeaheadlog.Update {
+func (rc *RefCounter) DeleteRefCounter() (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	return createDeleteUpdate(rc.filepath)
+	if !rc.isUpdateInProgress {
+		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
+	return createDeleteUpdate(rc.filepath), nil
 }
 
 // DropSectors removes the last numSec sector counts from the refcounter file
 func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	if !rc.isUpdateInProgress {
+		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
 	if numSec > rc.numSectors {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to drop sectors")
 	}
@@ -226,6 +248,9 @@ func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
 func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	if !rc.isUpdateInProgress {
+		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
 	if secIdx > rc.numSectors-1 {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to increment")
 	}
@@ -245,12 +270,17 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 // allowed to perform updates on this refcounter file.
 func (rc *RefCounter) StartUpdate() {
 	rc.muUpdates.Lock()
+	// open an update session
+	rc.isUpdateInProgress = true
 }
 
 // Swap swaps the two sectors at the given indices
 func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	if !rc.isUpdateInProgress {
+		return []writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
 	if firstIdx > rc.numSectors-1 || secondIdx > rc.numSectors-1 {
 		return []writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to swap sectors")
 	}
@@ -277,6 +307,8 @@ func (rc *RefCounter) UpdateApplied() {
 	// clean up the temp counts
 	rc.newSectorCounts = make(map[uint64]uint16)
 	rc.mu.Unlock()
+	// close the update session
+	rc.isUpdateInProgress = false
 	// release the update lock
 	rc.muUpdates.Unlock()
 }

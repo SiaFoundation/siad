@@ -57,6 +57,30 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var u writeaheadlog.Update
+	// make sure we cannot create updates outside of an update session
+	if _, err = rc.Append(); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent an append update creation outside an update session", err)
+	}
+	if _, err = rc.Decrement(1); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a decrement update creation outside an update session", err)
+	}
+	if _, err = rc.DeleteRefCounter(); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a delete update creation outside an update session", err)
+	}
+	if _, err = rc.DropSectors(1); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a truncate update creation outside an update session", err)
+	}
+	if _, err = rc.Increment(1); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent an increment update creation outside an update session", err)
+	}
+	if _, err = rc.Swap(1, 2); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a swap update creation outside an update session", err)
+	}
+	if err = rc.CreateAndApplyTransaction(u); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a CreateAndApplyTransaction call outside an update session", err)
+	}
+
 	// testCounterVal generates a specific count value based on the given `n`
 	testCounterVal := func(n uint16) uint16 {
 		return n*10 + 1
@@ -88,9 +112,13 @@ func TestRefCounter(t *testing.T) {
 	updates = make([]writeaheadlog.Update, 0)
 	rc.StartUpdate()
 	// test Append
-	u := rc.Append()
+	if u, err = rc.Append(); err != nil {
+		t.Fatal("Failed to create an append update", err)
+	}
 	updates = append(updates, u)
-	u = rc.Append()
+	if u, err = rc.Append(); err != nil {
+		t.Fatal("Failed to create an append update", err)
+	}
 	updates = append(updates, u)
 	if rc.numSectors != numSectorsBefore+2 {
 		t.Fatal(fmt.Errorf("Append failed to properly increase the numSectors counter. Expected %d, got %d", numSectorsBefore+2, rc.numSectors))
@@ -98,7 +126,7 @@ func TestRefCounter(t *testing.T) {
 
 	// test Increment on the first appended counter
 	if u, err = rc.Increment(rc.numSectors - 2); err != nil {
-		t.Fatal("Failed to create increment update:", err)
+		t.Fatal("Failed to create an increment update:", err)
 	}
 	updates = append(updates, u)
 	// we expect the value to have increased from the base 1 to 2
@@ -212,9 +240,11 @@ func TestRefCounter(t *testing.T) {
 
 	// delete the ref counter
 	rc.StartUpdate()
-	u = rc.DeleteRefCounter()
+	if u, err = rc.DeleteRefCounter(); err != nil {
+		t.Fatal("Failed to create a delete update", err)
+	}
 	if err = rc.CreateAndApplyTransaction(u); err != nil {
-		t.Fatal("Failed to apply Delete update:", err)
+		t.Fatal("Failed to apply a delete update:", err)
 	}
 	rc.UpdateApplied()
 	_, err = os.Stat(rcFilePath)
