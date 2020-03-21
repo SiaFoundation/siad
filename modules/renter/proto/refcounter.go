@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -29,6 +31,10 @@ var (
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
 	// called without an open update session
 	ErrUpdateWithoutUpdateSession = errors.New("an update operation was called without an open update session")
+
+	// ErrUpdateAfterDelete is returned when an update operation is attempted to
+	// be created after a delete
+	ErrUpdateAfterDelete = errors.New("updates cannot be created after a deletion")
 
 	// RefCounterVersion defines the latest version of the RefCounter
 	RefCounterVersion = [8]byte{1}
@@ -67,21 +73,29 @@ type (
 		wal        *writeaheadlog.WAL
 		mu         sync.Mutex
 
-		// While updating the reference counters on disk we will also keep the
-		// new values in memory, so we can work with them even before they are
-		// stored on disk.
-		newSectorCounts map[uint64]uint16 // holds the new value of a given counter
-
-		// isUpdateInProgress marks when an update session is open and updates
-		// are allowed to be created and applied
-		isUpdateInProgress bool
-		// muUpdates controls who can create and apply updates
-		muUpdates sync.Mutex
+		refCounterUpdateControl
 	}
 
 	// RefCounterHeader contains metadata about the reference counter file
 	RefCounterHeader struct {
 		Version [8]byte
+	}
+
+	// refCounterUpdateControl is a helper struct that holds fields pertaining
+	// to the process of updating the refcounter
+	refCounterUpdateControl struct {
+		// isDeleted marks when a refcounter has been deleted and therefore
+		// cannot accept further updates
+		isDeleted bool
+		// isUpdateInProgress marks when an update session is open and updates
+		// are allowed to be created and applied
+		isUpdateInProgress bool
+		// While updating the reference counters on disk we will also keep the
+		// new values in memory, so we can work with them even before they are
+		// stored on disk.
+		newSectorCounts map[uint64]uint16 // holds the new value of a given counter
+		// muUpdates controls who can create and apply updates
+		muUpdate sync.Mutex
 	}
 
 	// u16 is a utility type for ser/des of uint16 values
@@ -118,7 +132,9 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 		filepath:         path,
 		numSectors:       numSectors,
 		wal:              wal,
-		newSectorCounts:  make(map[uint64]uint16),
+		refCounterUpdateControl: refCounterUpdateControl{
+			newSectorCounts: make(map[uint64]uint16),
+		},
 	}, nil
 }
 
@@ -142,7 +158,9 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 		filepath:         path,
 		numSectors:       numSec,
 		wal:              wal,
-		newSectorCounts:  make(map[uint64]uint16),
+		refCounterUpdateControl: refCounterUpdateControl{
+			newSectorCounts: make(map[uint64]uint16),
+		},
 	}, err
 }
 
@@ -153,6 +171,9 @@ func (rc *RefCounter) Append() (writeaheadlog.Update, error) {
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
+	if rc.isDeleted {
+		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
 	rc.numSectors++
 	rc.newSectorCounts[rc.numSectors-1] = 1
@@ -203,6 +224,9 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
+	if rc.isDeleted {
+		return writeaheadlog.Update{}, ErrUpdateAfterDelete
+	}
 	if secIdx > rc.numSectors-1 {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to decrement")
 	}
@@ -225,6 +249,11 @@ func (rc *RefCounter) DeleteRefCounter() (writeaheadlog.Update, error) {
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
+	if rc.isDeleted {
+		return writeaheadlog.Update{}, ErrUpdateAfterDelete
+	}
+	// mark the refcounter as deleted and don't allow any further updates to be created
+	rc.isDeleted = true
 	return createDeleteUpdate(rc.filepath), nil
 }
 
@@ -234,6 +263,9 @@ func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
+	if rc.isDeleted {
+		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
 	if numSec > rc.numSectors {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to drop sectors")
@@ -250,6 +282,9 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
+	if rc.isDeleted {
+		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
 	if secIdx > rc.numSectors-1 {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to increment")
@@ -269,7 +304,10 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 // StartUpdate acquires a lock, ensuring the caller is the only one currently
 // allowed to perform updates on this refcounter file.
 func (rc *RefCounter) StartUpdate() {
-	rc.muUpdates.Lock()
+	rc.muUpdate.Lock()
+	if rc.isDeleted {
+		build.Critical("Opening an update session on a deleted refcounter")
+	}
 	// open an update session
 	rc.isUpdateInProgress = true
 }
@@ -280,6 +318,9 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return []writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
+	if rc.isDeleted {
+		return []writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
 	if firstIdx > rc.numSectors-1 || secondIdx > rc.numSectors-1 {
 		return []writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to swap sectors")
@@ -310,7 +351,7 @@ func (rc *RefCounter) UpdateApplied() {
 	// close the update session
 	rc.isUpdateInProgress = false
 	// release the update lock
-	rc.muUpdates.Unlock()
+	rc.muUpdate.Unlock()
 }
 
 // readCount reads the given sector count either from disk (if there are no

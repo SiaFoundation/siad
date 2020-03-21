@@ -243,6 +243,27 @@ func TestRefCounter(t *testing.T) {
 	if u, err = rc.DeleteRefCounter(); err != nil {
 		t.Fatal("Failed to create a delete update", err)
 	}
+
+	// make sure we cannot create any updates after a deletion has been triggered
+	if _, err = rc.Append(); err != ErrUpdateAfterDelete {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
+	if _, err = rc.Decrement(1); err != ErrUpdateAfterDelete {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
+	if _, err = rc.DeleteRefCounter(); err != ErrUpdateAfterDelete {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
+	if _, err = rc.DropSectors(1); err != ErrUpdateAfterDelete {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
+	if _, err = rc.Increment(1); err != ErrUpdateAfterDelete {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
+	if _, err = rc.Swap(1, 2); err != ErrUpdateAfterDelete {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
+
 	if err = rc.CreateAndApplyTransaction(u); err != nil {
 		t.Fatal("Failed to apply a delete update:", err)
 	}
