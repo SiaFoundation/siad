@@ -2,10 +2,8 @@ package proto
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -29,27 +27,6 @@ type ContractSet struct {
 	mu        sync.Mutex
 	rl        *ratelimit.RateLimit
 	wal       *writeaheadlog.WAL
-}
-
-// compatV144AddVoidOutputToClearedContract adds an empty void output to a
-// contract that has only 2 missed proof outputs which match the valid proof
-// outputs and the maximum revision number.
-func compatV144AddVoidOutputToClearedContract(sf *SafeContract) {
-	lastRevision := sf.header.LastRevision()
-	if lastRevision.NewRevisionNumber != math.MaxUint64 {
-		return // not final revision
-	}
-	if len(lastRevision.NewMissedProofOutputs) != 2 {
-		return // not final revision
-	}
-	if !reflect.DeepEqual(lastRevision.NewValidProofOutputs, lastRevision.NewMissedProofOutputs) {
-		return // not a legacy cleared contract
-	}
-	rev := &sf.header.Transaction.FileContractRevisions[0]
-	rev.NewMissedProofOutputs = append(rev.NewMissedProofOutputs, types.SiacoinOutput{
-		Value:      types.ZeroCurrency,
-		UnlockHash: types.UnlockHash{},
-	})
 }
 
 // Acquire looks up the contract for the specified host key and locks it before

@@ -1,7 +1,6 @@
 package host
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -12,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // cachedMerkleRoot calculates the root of a set of sector roots.
@@ -252,14 +252,22 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 	oldFCR := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Host payout addresses shouldn't change
-	if revision.NewValidProofOutputs[1].UnlockHash != oldFCR.NewValidProofOutputs[1].UnlockHash {
+	if revision.ValidHostOutput().UnlockHash != oldFCR.ValidHostOutput().UnlockHash {
 		return errors.New("host payout address changed")
 	}
-	if revision.NewMissedProofOutputs[1].UnlockHash != oldFCR.NewMissedProofOutputs[1].UnlockHash {
+	if revision.MissedHostOutput().UnlockHash != oldFCR.MissedHostOutput().UnlockHash {
 		return errors.New("host payout address changed")
 	}
 	// Make sure the lost collateral still goes to the void
-	if revision.NewMissedProofOutputs[2].UnlockHash != oldFCR.NewMissedProofOutputs[2].UnlockHash {
+	revisionVoidOutput, err := revision.MissedVoidOutput()
+	if err != nil {
+		return errors.AddContext(err, "couldn't get void output of revision")
+	}
+	oldVoidOutput, err := oldFCR.MissedVoidOutput()
+	if err != nil {
+		return errors.AddContext(err, "couldn't get void output of old revision")
+	}
+	if revisionVoidOutput.UnlockHash != oldVoidOutput.UnlockHash {
 		return errors.New("lost collateral address was changed")
 	}
 
@@ -287,10 +295,10 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 	}
 
 	// Determine the amount that was transferred from the renter.
-	if revision.NewValidProofOutputs[0].Value.Cmp(oldFCR.NewValidProofOutputs[0].Value) > 0 {
+	if revision.ValidRenterPayout().Cmp(oldFCR.ValidRenterPayout()) > 0 {
 		return extendErr("renter increased its valid proof output: ", errHighRenterValidOutput)
 	}
-	fromRenter := oldFCR.NewValidProofOutputs[0].Value.Sub(revision.NewValidProofOutputs[0].Value)
+	fromRenter := oldFCR.ValidRenterPayout().Sub(revision.ValidRenterPayout())
 	// Verify that enough money was transferred.
 	if fromRenter.Cmp(expectedExchange) < 0 {
 		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedExchange, fromRenter)
@@ -298,10 +306,10 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 	}
 
 	// Determine the amount of money that was transferred to the host.
-	if oldFCR.NewValidProofOutputs[1].Value.Cmp(revision.NewValidProofOutputs[1].Value) > 0 {
+	if oldFCR.ValidHostPayout().Cmp(revision.ValidHostPayout()) > 0 {
 		return extendErr("host valid proof output was decreased: ", errLowHostValidOutput)
 	}
-	toHost := revision.NewValidProofOutputs[1].Value.Sub(oldFCR.NewValidProofOutputs[1].Value)
+	toHost := revision.ValidHostPayout().Sub(oldFCR.ValidHostPayout())
 	// Verify that enough money was transferred.
 	if !toHost.Equals(fromRenter) {
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
@@ -311,15 +319,15 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 	// If the renter's valid proof output is larger than the renter's missed
 	// proof output, the renter has incentive to see the host fail. Make sure
 	// that this incentive is not present.
-	if revision.NewValidProofOutputs[0].Value.Cmp(revision.NewMissedProofOutputs[0].Value) > 0 {
+	if revision.ValidRenterPayout().Cmp(revision.MissedRenterOutput().Value) > 0 {
 		return extendErr("renter has incentive to see host fail: ", errHighRenterMissedOutput)
 	}
 
 	// Check that the host is not going to be posting more collateral than is
 	// expected. If the new misesd output is greater than the old one, the host
 	// is actually posting negative collateral, which is fine.
-	if revision.NewMissedProofOutputs[1].Value.Cmp(oldFCR.NewMissedProofOutputs[1].Value) <= 0 {
-		collateral := oldFCR.NewMissedProofOutputs[1].Value.Sub(revision.NewMissedProofOutputs[1].Value)
+	if revision.MissedHostOutput().Value.Cmp(oldFCR.MissedHostOutput().Value) <= 0 {
+		collateral := oldFCR.MissedHostOutput().Value.Sub(revision.MissedHostOutput().Value)
 		if collateral.Cmp(expectedCollateral) > 0 {
 			s := fmt.Sprintf("host expected to post at most %v collateral, but contract has host posting %v: ", expectedCollateral, collateral)
 			return extendErr(s, errLowHostMissedOutput)
@@ -345,18 +353,11 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 func verifyClearingRevision(so storageObligation, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange, expectedCollateral types.Currency) error {
 	// Check that the revision is well-formed. For compat reasons we accept 2 or
 	// 3 missed proof outputs.
-	if len(revision.NewValidProofOutputs) != 2 || (len(revision.NewMissedProofOutputs) != 2 && len(revision.NewMissedProofOutputs) != 3) {
+	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 2 {
 		return errBadContractOutputCounts
 	}
-	if !reflect.DeepEqual(revision.NewValidProofOutputs[0], revision.NewMissedProofOutputs[0]) {
+	if !reflect.DeepEqual(revision.NewValidProofOutputs, revision.NewMissedProofOutputs) {
 		return errBadPayoutUnlockHashes
-	}
-	if !reflect.DeepEqual(revision.NewValidProofOutputs[1], revision.NewMissedProofOutputs[1]) {
-		return errBadPayoutUnlockHashes
-	}
-	// If there is a void output it should be empty.
-	if len(revision.NewMissedProofOutputs) == 3 && !revision.NewMissedProofOutputs[2].Value.Equals(types.ZeroCurrency) {
-		return errors.New("no money should be moved to the void")
 	}
 
 	// Check that the time to finalize and submit the file contract revision
@@ -371,7 +372,7 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 	oldFCR := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
 	// Host payout addresses shouldn't change
-	if revision.NewValidProofOutputs[1].UnlockHash != oldFCR.NewValidProofOutputs[1].UnlockHash {
+	if revision.ValidHostOutput().UnlockHash != oldFCR.ValidHostOutput().UnlockHash {
 		return errors.New("host payout address changed")
 	}
 
@@ -399,10 +400,10 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 	}
 
 	// Determine the amount that was transferred from the renter.
-	if revision.NewValidProofOutputs[0].Value.Cmp(oldFCR.NewValidProofOutputs[0].Value) > 0 {
+	if revision.ValidRenterPayout().Cmp(oldFCR.ValidRenterPayout()) > 0 {
 		return extendErr("renter increased its valid proof output: ", errHighRenterValidOutput)
 	}
-	fromRenter := oldFCR.NewValidProofOutputs[0].Value.Sub(revision.NewValidProofOutputs[0].Value)
+	fromRenter := oldFCR.ValidRenterPayout().Sub(revision.ValidRenterPayout())
 	// Verify that enough money was transferred.
 	if fromRenter.Cmp(expectedExchange) < 0 {
 		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedExchange, fromRenter)
@@ -410,10 +411,10 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 	}
 
 	// Determine the amount of money that was transferred to the host.
-	if oldFCR.NewValidProofOutputs[1].Value.Cmp(revision.NewValidProofOutputs[1].Value) > 0 {
+	if oldFCR.ValidHostPayout().Cmp(revision.ValidHostPayout()) > 0 {
 		return extendErr("host valid proof output was decreased: ", errLowHostValidOutput)
 	}
-	toHost := revision.NewValidProofOutputs[1].Value.Sub(oldFCR.NewValidProofOutputs[1].Value)
+	toHost := revision.ValidHostPayout().Sub(oldFCR.ValidHostPayout())
 	// Verify that enough money was transferred.
 	if !toHost.Equals(fromRenter) {
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)

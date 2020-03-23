@@ -213,20 +213,27 @@ func newRevision(current types.FileContractRevision, cost types.Currency) (types
 	copy(rev.NewMissedProofOutputs, current.NewMissedProofOutputs)
 
 	// Check that there are enough funds to pay this cost.
-	if current.NewValidProofOutputs[0].Value.Cmp(cost) < 0 {
+	if current.ValidRenterPayout().Cmp(cost) < 0 {
 		return types.FileContractRevision{}, errors.AddContext(errRevisionCostTooHigh, "valid proof output smaller than cost")
 	}
-	if current.NewMissedProofOutputs[0].Value.Cmp(cost) < 0 {
+	if current.MissedRenterOutput().Value.Cmp(cost) < 0 {
 		return types.FileContractRevision{}, errors.AddContext(errRevisionCostTooHigh, "missed proof output smaller than cost")
 	}
 
 	// move valid payout from renter to host
-	rev.NewValidProofOutputs[0].Value = current.NewValidProofOutputs[0].Value.Sub(cost)
-	rev.NewValidProofOutputs[1].Value = current.NewValidProofOutputs[1].Value.Add(cost)
+	rev.SetValidRenterPayout(current.ValidRenterPayout().Sub(cost))
+	rev.SetValidHostPayout(current.ValidHostPayout().Add(cost))
 
 	// move missed payout from renter to void
-	rev.NewMissedProofOutputs[0].Value = current.NewMissedProofOutputs[0].Value.Sub(cost)
-	rev.NewMissedProofOutputs[2].Value = current.NewMissedProofOutputs[2].Value.Add(cost)
+	rev.SetMissedRenterPayout(current.MissedRenterOutput().Value.Sub(cost))
+	voidOutput, err := current.MissedVoidOutput()
+	if err != nil {
+		return types.FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
+	}
+	err = rev.SetMissedVoidPayout(voidOutput.Value.Sub(cost))
+	if err != nil {
+		return types.FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
+	}
 
 	// increment revision number
 	rev.NewRevisionNumber++
@@ -249,13 +256,20 @@ func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Has
 	}
 
 	// Check that there is enough collateral to cover the cost.
-	if rev.NewMissedProofOutputs[1].Value.Cmp(collateral) < 0 {
+	if rev.MissedHostOutput().Value.Cmp(collateral) < 0 {
 		return types.FileContractRevision{}, errRevisionCollateralTooLow
 	}
 
 	// move collateral from host to void
-	rev.NewMissedProofOutputs[1].Value = rev.NewMissedProofOutputs[1].Value.Sub(collateral)
-	rev.NewMissedProofOutputs[2].Value = rev.NewMissedProofOutputs[2].Value.Add(collateral)
+	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
+	voidOutput, err := rev.MissedVoidOutput()
+	if err != nil {
+		return types.FileContractRevision{}, errors.AddContext(err, "failed to get void output")
+	}
+	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(collateral))
+	if err != nil {
+		return types.FileContractRevision{}, errors.AddContext(err, "failed to set void output")
+	}
 
 	// set new filesize and Merkle root
 	rev.NewFileSize += modules.SectorSize

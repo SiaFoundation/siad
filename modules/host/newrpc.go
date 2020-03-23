@@ -518,7 +518,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	hostSig := txn.TransactionSignatures[1].Signature
 
 	// Update the storage obligation.
-	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
+	paymentTransfer := currentRevision.ValidRenterPayout().Sub(newRevision.ValidRenterPayout())
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	err = h.managedModifyStorageObligation(s.so, nil, nil)
@@ -856,7 +856,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	}
 
 	// Update the storage obligation.
-	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
+	paymentTransfer := currentRevision.ValidRenterPayout().Sub(newRevision.ValidRenterPayout())
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	err = h.managedModifyStorageObligation(s.so, nil, nil)
@@ -926,13 +926,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	}
 	// The missed proof outputs become the valid ones since the host won't need
 	// to provide a storage proof.
-	newRevision.NewMissedProofOutputs[0] = newRevision.NewValidProofOutputs[0]
-	newRevision.NewMissedProofOutputs[1] = newRevision.NewValidProofOutputs[1]
-	newRevision.NewMissedProofOutputs[2].Value = types.ZeroCurrency
-	// Compat code for renters which only send 2 outputs.
-	if len(req.FinalMissedProofValues) == 2 {
-		newRevision.NewMissedProofOutputs = newRevision.NewMissedProofOutputs[:2]
-	}
+	newRevision.NewMissedProofOutputs = newRevision.NewValidProofOutputs
 
 	// Verifiy the final revision of the old contract.
 	newRevenue := settings.BaseRPCPrice

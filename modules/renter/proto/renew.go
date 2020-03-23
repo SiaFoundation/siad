@@ -23,7 +23,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
 	// Choose the appropriate protocol depending on the host version.
-	if build.VersionCmp(params.Host.Version, "1.4.4") >= 0 && !cs.deps.Disrupt("RenewWithoutClear") {
+	if build.VersionCmp(params.Host.Version, "1.4.4") >= 0 {
 		return cs.newRenewAndClear(oldContract, params, txnBuilder, tpool, hdb, cancel)
 	}
 	return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
@@ -445,14 +445,7 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 
 	// The missed proof outputs become the valid ones since the host won't need
 	// to provide a storage proof. We need to preserve the void output though.
-	finalRev.NewMissedProofOutputs[0] = finalRev.NewValidProofOutputs[0]
-	finalRev.NewMissedProofOutputs[1] = finalRev.NewValidProofOutputs[1]
-	finalRev.NewMissedProofOutputs[2].Value = types.ZeroCurrency
-	// Simulate legacy RenewAndClear behavior where the output was dropped on
-	// clear.
-	if cs.deps.Disrupt("DropVoidOutputOnClear") {
-		finalRev.NewMissedProofOutputs = finalRev.NewMissedProofOutputs[:2]
-	}
+	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
 
 	// Create the RenewContract request.
 	req := modules.LoopRenewAndClearContractRequest{
