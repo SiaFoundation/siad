@@ -49,9 +49,9 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencyDropVoidOutputOnClear prevents a third missed proof output from
-	// being added during a RenewAndClear.
-	DependencyDropVoidOutputOnClear struct {
+	// DependencySkipDeleteContractAfterRenewal prevents the old contract from
+	// being deleted after a renewal.
+	DependencySkipDeleteContractAfterRenewal struct {
 		modules.ProductionDependencies
 	}
 
@@ -162,8 +162,8 @@ func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
 }
 
 // Disrupt returns true if the correct string is provided.
-func (d *DependencyDropVoidOutputOnClear) Disrupt(s string) bool {
-	return s == "DropVoidOutputOnClear"
+func (d *DependencySkipDeleteContractAfterRenewal) Disrupt(s string) bool {
+	return s == "SkipContractDeleteAfterRenew"
 }
 
 // Disrupt causes contract formation to fail due to low allowance funds.

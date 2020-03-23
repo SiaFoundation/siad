@@ -772,6 +772,15 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.staticContracts.Return(oldContract)
 		return amount, errors.New("InterruptContractSaveToDiskAfterDeletion disrupt")
 	}
+	// Skip the deletion of the old contract if required.
+	if c.staticDeps.Disrupt("SkipContractDeleteAfterRenew") {
+		println("interrupt")
+		newSC, ok := c.staticContracts.Acquire(newContract.ID)
+		if ok {
+			c.staticContracts.Delete(newSC)
+		}
+		return amount, nil
+	}
 	// Lock the contractor as we update it to use the new contract
 	// instead of the old contract.
 	c.mu.Lock()

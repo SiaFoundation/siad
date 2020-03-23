@@ -230,7 +230,7 @@ func newRevision(current types.FileContractRevision, cost types.Currency) (types
 	if err != nil {
 		return types.FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
 	}
-	err = rev.SetMissedVoidPayout(voidOutput.Value.Sub(cost))
+	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(cost))
 	if err != nil {
 		return types.FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
 	}

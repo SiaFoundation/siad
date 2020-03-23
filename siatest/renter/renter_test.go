@@ -782,7 +782,7 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	// Create a node with the right dependency.
 	params := node.Renter(renterTestDir(t.Name()))
-	params.ContractSetDeps = &dependencies.DependencyDropVoidOutputOnClear{}
+	params.ContractorDeps = &dependencies.DependencySkipDeleteContractAfterRenewal{}
 
 	// Add the node and remove it at the end of the test.
 	nodes, err := tg.AddNodes(params)
@@ -806,6 +806,7 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal(err)
 		}
 	}
+	println("download")
 	// Download the file synchronously directly into memory.
 	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {
