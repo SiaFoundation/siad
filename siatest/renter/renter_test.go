@@ -806,7 +806,6 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal(err)
 		}
 	}
-	println("download")
 	// Download the file synchronously directly into memory.
 	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {

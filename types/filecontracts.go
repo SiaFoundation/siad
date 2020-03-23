@@ -183,7 +183,6 @@ func (fc FileContract) MissedVoidOutput() (SiacoinOutput, error) {
 	if len(fc.MissedProofOutputs) > 2 {
 		return fc.MissedProofOutputs[2], nil
 	}
-	panic("haha")
 	return SiacoinOutput{}, ErrMissingVoidOutput
 }
 
@@ -251,7 +250,6 @@ func (fcr FileContractRevision) MissedVoidOutput() (SiacoinOutput, error) {
 	if len(fcr.NewMissedProofOutputs) > 2 {
 		return fcr.NewMissedProofOutputs[2], nil
 	}
-	panic("haha2")
 	return SiacoinOutput{}, ErrMissingVoidOutput
 }
 

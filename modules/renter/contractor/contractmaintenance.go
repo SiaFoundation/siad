@@ -748,6 +748,18 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}
 	c.log.Printf("Renewed contract %v\n", id)
 
+	// Skip the deletion of the old contract if required and delete the new
+	// contract to make sure we keep using the old one even though it has been
+	// finalized.
+	if c.staticDeps.Disrupt("SkipContractDeleteAfterRenew") {
+		c.staticContracts.Return(oldContract)
+		newSC, ok := c.staticContracts.Acquire(newContract.ID)
+		if ok {
+			c.staticContracts.Delete(newSC)
+		}
+		return amount, nil
+	}
+
 	// Update the utility values for the new contract, and for the old
 	// contract.
 	newUtility := modules.ContractUtility{
@@ -771,15 +783,6 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	if c.staticDeps.Disrupt("InterruptContractSaveToDiskAfterDeletion") {
 		c.staticContracts.Return(oldContract)
 		return amount, errors.New("InterruptContractSaveToDiskAfterDeletion disrupt")
-	}
-	// Skip the deletion of the old contract if required.
-	if c.staticDeps.Disrupt("SkipContractDeleteAfterRenew") {
-		println("interrupt")
-		newSC, ok := c.staticContracts.Acquire(newContract.ID)
-		if ok {
-			c.staticContracts.Delete(newSC)
-		}
-		return amount, nil
 	}
 	// Lock the contractor as we update it to use the new contract
 	// instead of the old contract.
