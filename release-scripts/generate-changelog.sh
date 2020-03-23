@@ -122,7 +122,7 @@ then
         mkdir -p "$upcoming_version/$section"
 
         # create dummy files for git commit to catch empty section directories
-        touch "$upcoming_version/$section/.item"
+        touch "$upcoming_version/$section/.init"
     done
 fi
 
