@@ -927,7 +927,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// The missed proof outputs become the valid ones since the host won't need
 	// to provide a storage proof.
 	newRevision.NewMissedProofOutputs[0] = newRevision.NewValidProofOutputs[0]
-	newRevision.NewMissedProofOutputs[1] = newRevision.NewValidProofOutputs[0]
+	newRevision.NewMissedProofOutputs[1] = newRevision.NewValidProofOutputs[1]
 	newRevision.NewMissedProofOutputs[2].Value = types.ZeroCurrency
 
 	// Verifiy the final revision of the old contract.
