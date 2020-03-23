@@ -141,11 +141,11 @@ func (fc FileContract) SetMissedHostPayout(value Currency) {
 
 // SetMissedVoidPayout sets the value of the void's missed proof output.
 func (fc FileContract) SetMissedVoidPayout(value Currency) error {
-	if len(fc.MissedProofOutputs) > 2 {
-		fc.MissedProofOutputs[2].Value = value
-		return nil
+	if len(fc.MissedProofOutputs) <= 2 {
+		return ErrMissingVoidOutput
 	}
-	return ErrMissingVoidOutput
+	fc.MissedProofOutputs[2].Value = value
+	return nil
 }
 
 // ValidRenterOutput gets the renter's valid proof output.
@@ -180,10 +180,10 @@ func (fc FileContract) MissedHostOutput() SiacoinOutput {
 
 // MissedVoidOutput gets the void's missed proof output.
 func (fc FileContract) MissedVoidOutput() (SiacoinOutput, error) {
-	if len(fc.MissedProofOutputs) > 2 {
-		return fc.MissedProofOutputs[2], nil
+	if len(fc.MissedProofOutputs) <= 2 {
+		return SiacoinOutput{}, ErrMissingVoidOutput
 	}
-	return SiacoinOutput{}, ErrMissingVoidOutput
+	return fc.MissedProofOutputs[2], nil
 }
 
 // SetValidRenterPayout sets the renter's valid proof output.
@@ -208,11 +208,11 @@ func (fcr FileContractRevision) SetMissedHostPayout(value Currency) {
 
 // SetMissedVoidPayout sets the void's missed proof output.
 func (fcr FileContractRevision) SetMissedVoidPayout(value Currency) error {
-	if len(fcr.NewMissedProofOutputs) > 2 {
-		fcr.NewMissedProofOutputs[2].Value = value
-		return nil
+	if len(fcr.NewMissedProofOutputs) <= 2 {
+		return ErrMissingVoidOutput
 	}
-	return ErrMissingVoidOutput
+	fcr.NewMissedProofOutputs[2].Value = value
+	return nil
 }
 
 // ValidRenterOutput gets the renter's valid proof output.
@@ -247,10 +247,10 @@ func (fcr FileContractRevision) MissedHostOutput() SiacoinOutput {
 
 // MissedVoidOutput gets the void's missed proof output.
 func (fcr FileContractRevision) MissedVoidOutput() (SiacoinOutput, error) {
-	if len(fcr.NewMissedProofOutputs) > 2 {
-		return fcr.NewMissedProofOutputs[2], nil
+	if len(fcr.NewMissedProofOutputs) <= 2 {
+		return SiacoinOutput{}, ErrMissingVoidOutput
 	}
-	return SiacoinOutput{}, ErrMissingVoidOutput
+	return fcr.NewMissedProofOutputs[2], nil
 }
 
 // StorageProofOutputID returns the ID of an output created by a file
