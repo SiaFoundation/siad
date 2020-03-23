@@ -10,7 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// ProcessPayment reads a payment request from the stream, depending on the type
+// ProcessPayment reads a payment request from the stream. Depending on the type
 // of payment it will either update the file contract or call upon the ephemeral
 // account manager to process the payment. It will return the account id, the
 // amount paid and an error in case of failure. The account id will only be
