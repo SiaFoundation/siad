@@ -70,7 +70,7 @@ func processNetAddr(addr string) string {
 // invalid module character.
 func processModules(modules string) (string, error) {
 	modules = strings.ToLower(modules)
-	validModules := "cghmrtwe"
+	validModules := "cghmrtwef"
 	invalidModules := modules
 	for _, m := range validModules {
 		invalidModules = strings.Replace(invalidModules, string(m), "", 1)
@@ -310,6 +310,6 @@ func startDaemonCmd(cmd *cobra.Command, _ []string) {
 		die(err)
 	}
 
-	// Daemon seems to have closed cleanly. Print a 'closed' mesasge.
+	// Daemon seems to have closed cleanly. Print a 'closed' message.
 	fmt.Println("Shutdown complete.")
 }

@@ -17,23 +17,27 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// DefaultSkynetRequestTimeout is the default request timeout for routes that
-// have a timeout query string parameter. If the request can not be resolved
-// within the given amount of time, it times out. This is used for Skynet routes
-// where a request times out if the DownloadByRoot project does not finish in
-// due time.
-const DefaultSkynetRequestTimeout = 30 * time.Second
+const (
+	// DefaultSkynetRequestTimeout is the default request timeout for routes
+	// that have a timeout query string parameter. If the request can not be
+	// resolved within the given amount of time, it times out. This is used for
+	// Skynet routes where a request times out if the DownloadByRoot project
+	// does not finish in due time.
+	DefaultSkynetRequestTimeout = 30 * time.Second
 
-// MaxSkynetRequestTimeout is the maximum a user is allowed to set as request
-// timeout. This to prevent an attack vector where the attacker could cause a
-// go-routine leak by creating a bunch of requests with very high timeouts.
-const MaxSkynetRequestTimeout = 15 * 60 // in seconds
+	// MaxSkynetRequestTimeout is the maximum a user is allowed to set as
+	// request timeout. This to prevent an attack vector where the attacker
+	// could cause a go-routine leak by creating a bunch of requests with very
+	// high timeouts.
+	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+)
 
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
@@ -60,13 +64,20 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		UploadStats SkynetStats `json:"uploadstats"`
+		UploadStats SkynetStats   `json:"uploadstats"`
+		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
 
 	// SkynetStats contains statistical data about skynet
 	SkynetStats struct {
 		NumFiles  int    `json:"numfiles"`
 		TotalSize uint64 `json:"totalsize"`
+	}
+
+	// SkynetVersion contains version information
+	SkynetVersion struct {
+		Version     string `json:"version"`
+		GitRevision string `json:"gitrevision"`
 	}
 )
 
@@ -238,7 +249,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// If requested, serve the content as a tar archive or compressed tar archive.
+	// If requested, serve the content as a tar archive or compressed tar
+	// archive.
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("content-type", "application/x-tar")
 		err = serveTar(w, metadata, streamer)
@@ -326,6 +338,13 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// Parse the timeout.
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether force upload is allowed. Skynet portals might disallow
 	// passing the force flag, if they want to they can set overrule the force
 	// flag by passing in the 'Skynet-Disable-Force' header
@@ -374,7 +393,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		BaseChunkRedundancy: redundancy,
 	}
 
-	err = api.renter.PinSkylink(skylink, lup)
+	err = api.renter.PinSkylink(skylink, lup, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
 		return
@@ -581,6 +600,8 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+
+	// calculate upload statistics
 	stats := SkynetStats{}
 	for _, f := range files {
 		// do not double-count large files by counting both the header file and
@@ -590,7 +611,14 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		}
 		stats.TotalSize += f.Filesize
 	}
-	WriteJSON(w, SkynetStatsGET{UploadStats: stats})
+
+	// get version
+	version := build.Version
+	if build.ReleaseTag != "" {
+		version += "-" + build.ReleaseTag
+	}
+
+	WriteJSON(w, SkynetStatsGET{UploadStats: stats, VersionInfo: SkynetVersion{Version: version, GitRevision: build.GitRevision}})
 }
 
 // serveTar serves skyfiles as a tar by reading them from r and writing the
@@ -644,6 +672,24 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		}
 	}
 	return tw.Close()
+}
+
+// parseTimeout tries to parse the timeout from the query string and validate
+// it. If not present, it will default to DefaultSkynetRequestTimeout.
+func parseTimeout(queryForm url.Values) (time.Duration, error) {
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr == "" {
+		return DefaultSkynetRequestTimeout, nil
+	}
+
+	timeoutInt, err := strconv.Atoi(timeoutStr)
+	if err != nil {
+		return 0, errors.AddContext(err, "unable to parse 'timeout'")
+	}
+	if timeoutInt > MaxSkynetRequestTimeout {
+		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	}
+	return time.Duration(timeoutInt) * time.Second, nil
 }
 
 // skyfileParseMultiPartRequest parses the given request and returns the
