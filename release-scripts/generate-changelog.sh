@@ -5,7 +5,7 @@ set -e
 
 # config
 
-generate_till_version=v1.4.6
+generate_till_version=v1.4.4
 changelog_md=../CHANGELOG.md
 changelog_files_dir=../changelog
 head_filename=changelog-head.md
@@ -29,14 +29,14 @@ function add_items {
     
     echo "  > writing $items_header"
     
-    items_header_written=false
+    section_has_items=false
     items_list=$(find ./"$version" -wholename "*/$items_folder/*.md" | sort)
     new_line=false
     for item in $items_list
     do
-        if [ "$items_header_written" == false ]
+        if [ "$section_has_items" == false ]
     	then
-    	    items_header_written=true
+    	    section_has_items=true
     		echo "    > writing $items_header header"
     		echo "**$items_header**" >> "$changelog_md"
     		echo "    > writing $items_header"
@@ -55,7 +55,10 @@ function add_items {
     done
 
     # add new line to fix markdown rendering
-    echo "" >> "$changelog_md"
+    if [ "$section_has_items" == true ]
+    then
+        echo "" >> "$changelog_md"
+    fi
 }
 
 # get script location
