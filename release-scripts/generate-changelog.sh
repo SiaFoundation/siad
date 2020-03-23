@@ -97,6 +97,11 @@ $generate_till_version"
         echo "version $version WILL be included to changelog file"
         echo ">  writing version header: $version"
         echo "" >> "$changelog_md"
+        
+        # echo current month in English and year in format
+        # '## Mar 2020:'
+        echo "## $(LC_ALL=C date +%b) $(date +%Y):"
+        
         echo "### $version" >> "$changelog_md"
         
         add_items "Key Updates" "key-updates"
