@@ -33,7 +33,6 @@ package host
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"strconv"
 	"time"
 
@@ -45,6 +44,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -187,29 +187,6 @@ func (i storageObligationStatus) String() string {
 		return "obligationFailed"
 	}
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
-}
-
-// managedGetStorageObligationSnapshot fetches a storage obligation from the
-// database and returns a snapshot.
-func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	var err error
-	var so storageObligation
-	if err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = h.getStorageObligation(tx, id)
-		return err
-	}); err != nil {
-		return StorageObligationSnapshot{}, err
-	}
-
-	rev := so.recentRevision()
-	return StorageObligationSnapshot{
-		staticContractSize: rev.NewFileSize,
-		staticMerkleRoot:   rev.NewFileMerkleRoot,
-		staticSectorRoots:  so.SectorRoots,
-	}, nil
 }
 
 // getStorageObligation fetches a storage obligation from the database tx.
@@ -392,14 +369,25 @@ func (so storageObligation) value() types.Currency {
 
 // recentRevision returns the most recent file contract revision in this storage
 // obligation.
-func (so storageObligation) recentRevision() types.FileContractRevision {
+func (so storageObligation) recentRevision() (types.FileContractRevision, error) {
 	numRevisions := len(so.RevisionTransactionSet)
-	if numRevisions > 0 {
-		revisionTxn := so.RevisionTransactionSet[numRevisions-1]
-		return revisionTxn.FileContractRevisions[0]
+	if numRevisions == 0 {
+		return types.FileContractRevision{}, errors.New("Could not get recent revision, there are no revision in the txn set")
 	}
-	revisionTxn := so.OriginTransactionSet[len(so.OriginTransactionSet)-1]
-	return revisionTxn.FileContractRevisions[0]
+	revisionTxn := so.RevisionTransactionSet[numRevisions-1]
+	return revisionTxn.FileContractRevisions[0], nil
+}
+
+// managedGetStorageObligation fetches a storage obligation from the database.
+func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, fcid)
+		return err
+	})
+	return
 }
 
 // deleteStorageObligations deletes obligations from the database.
@@ -563,6 +551,33 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 		return composeErrors(err, h.removeStorageObligation(so, obligationRejected))
 	}
 	return nil
+}
+
+// managedGetStorageObligationSnapshot fetches a storage obligation from the
+// database and returns a snapshot.
+func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var err error
+	var so storageObligation
+	if err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, id)
+		return err
+	}); err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+
+	rev, err := so.recentRevision()
+	if err != nil {
+		return StorageObligationSnapshot{}, errors.AddContext(err, "Could not get storage obligation snapshot")
+	}
+
+	return StorageObligationSnapshot{
+		staticContractSize: rev.NewFileSize,
+		staticMerkleRoot:   rev.NewFileMerkleRoot,
+		staticSectorRoots:  so.SectorRoots,
+	}, nil
 }
 
 // managedModifyStorageObligation will take an updated storage obligation along
