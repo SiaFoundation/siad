@@ -85,6 +85,7 @@ echo ---  end  ---
 
 # Write versions and add changelog items to the changelog
 echo writing versions to changelog...
+upcoming_version_found=false
 for version in $version_list
 do
     versions_compare="$version
@@ -103,9 +104,22 @@ $generate_till_version"
         add_items "Other" "other"
     else
         echo "version $version WILL NOT be included to changelog file"
+        $upcoming_version_found=true
     fi
 done
 echo writing versions to changelog: done
+
+# Generate upcoming version file structure
+if [ "$upcoming_version_found" == false ]
+then
+    # Calculate new version from current version
+    upcoming_version=$(echo "$generate_till_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
+    echo "Generating file structure for upcoming version $upcoming_version ..."
+
+    mkdir -p "$upcoming_version/key-updates"
+    mkdir -p "$upcoming_version/bugs-fixed"
+    mkdir -p "$upcoming_version/other"
+fi
 
 # Write the tail of the changelog
 echo 'writing tail of changelog.md'
