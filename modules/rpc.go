@@ -5,11 +5,15 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
 // set its own prices for the individual MDM instructions and RPC costs.
 type RPCPriceTable struct {
+	// UUID is a specifier that uniquely identifies this price table
+	UUID types.Specifier
+
 	// Expiry is a unix timestamp that specifies the time until which the
 	// MDMCostTable is valid.
 	Expiry int64 `json:"expiry"`
@@ -23,12 +27,16 @@ type RPCPriceTable struct {
 	// InitBaseCost is the amount of cost that is incurred when an MDM program
 	// starts to run. This doesn't include the memory used by the program data.
 	// The total cost to initialize a program is calculated as
-	// InitCost = InitiBaseCost + MemoryTimeCost * Time
+	// InitCost = InitBaseCost + MemoryTimeCost * Time
 	InitBaseCost types.Currency `json:"initbasecost"`
 
 	// MemoryTimeCost is the amount of cost per byte per time that is incurred
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
+
+	// Cost values specific to the DropSectors instruction.
+	DropSectorsBaseCost   types.Currency `json:"dropsectorsbasecost"`
+	DropSectorsLengthCost types.Currency `json:"dropsectorslengthcost"`
 
 	// Cost values specific to the Read instruction.
 	ReadBaseCost   types.Currency `json:"readbasecost"`
@@ -58,6 +66,36 @@ type (
 		data interface{}
 	}
 )
+
+// RPCRead tries to read the given object from the stream.
+func RPCRead(stream siamux.Stream, obj interface{}) error {
+	return encoding.ReadObject(stream, &rpcResponse{nil, obj}, uint64(RPCMinLen))
+}
+
+// RPCWrite writes the given object to the stream.
+func RPCWrite(stream siamux.Stream, obj interface{}) error {
+	return encoding.WriteObject(stream, &rpcResponse{nil, obj})
+}
+
+// RPCWriteAll writes the given objects to the stream.
+func RPCWriteAll(stream siamux.Stream, objs ...interface{}) error {
+	for _, obj := range objs {
+		err := encoding.WriteObject(stream, &rpcResponse{nil, obj})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RPCWriteError writes the given error to the stream.
+func RPCWriteError(stream siamux.Stream, err error) error {
+	re, ok := err.(*RPCError)
+	if err != nil && !ok {
+		re = &RPCError{Description: err.Error()}
+	}
+	return encoding.WriteObject(stream, &rpcResponse{re, nil})
+}
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
 func (resp *rpcResponse) MarshalSia(w io.Writer) error {

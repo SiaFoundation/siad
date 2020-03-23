@@ -3,6 +3,7 @@ package host
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -78,5 +79,141 @@ func TestStorageObligationID(t *testing.T) {
 	}
 	if so2.id() != so2.OriginTransactionSet[1].FileContractID(0) {
 		t.Error("id function of storage obligation incorrect for file contracts with dependencies")
+	}
+}
+
+// TestStorageObligationSnapshot verifies the functionality of the snapshot
+// function.
+func TestStorageObligationSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// Create a storage obligation & add a revision
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sectorRoot, sectorData := randSector()
+	so.SectorRoots = []crypto.Hash{sectorRoot}
+	validPayouts, missedPayouts := so.payouts()
+	so.RevisionTransactionSet = []types.Transaction{{
+		FileContractRevisions: []types.FileContractRevision{{
+			ParentID:          so.id(),
+			UnlockConditions:  types.UnlockConditions{},
+			NewRevisionNumber: 1,
+
+			NewFileSize:           uint64(len(sectorData)),
+			NewFileMerkleRoot:     sectorRoot,
+			NewWindowStart:        so.expiration(),
+			NewWindowEnd:          so.proofDeadline(),
+			NewValidProofOutputs:  validPayouts,
+			NewMissedProofOutputs: missedPayouts,
+			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
+		}},
+	}}
+
+	// Insert the SO
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Fetch a snapshot & verify its fields
+	snapshot, err := ht.host.managedGetStorageObligationSnapshot(so.id())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.ContractSize() != uint64(len(sectorData)) {
+		t.Fatalf("Unexpected contract size, expected %v but received %v", uint64(len(sectorData)), snapshot.ContractSize())
+	}
+	if snapshot.MerkleRoot() != sectorRoot {
+		t.Fatalf("Unexpected merkle root, expected %v but received %v", sectorRoot, snapshot.MerkleRoot())
+	}
+	if len(snapshot.SectorRoots()) != 1 {
+		t.Fatal("Unexpected number of sector roots")
+	}
+	if snapshot.SectorRoots()[0] != sectorRoot {
+		t.Fatalf("Unexpected sector root, expected %v but received %v", sectorRoot, snapshot.SectorRoots()[0])
+	}
+
+	// Update the SO with new data
+	sectorRoot2, sectorData := randSector()
+	ht.host.managedLockStorageObligation(so.id())
+	err = so.Update([]crypto.Hash{sectorRoot, sectorRoot2}, nil, map[crypto.Hash][]byte{sectorRoot2: sectorData})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the SO has been updated with the new sector root. Note that we
+	// purposefully have not yet unlocked the SO here. Clarifying the snapshot
+	// is retrieved from the database.
+	snapshot, err = ht.host.managedGetStorageObligationSnapshot(so.id())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.SectorRoots()) != 2 {
+		t.Fatal("Unexpected number of sector roots")
+	}
+
+	// Verify we can not update the SO if it is not locked
+	ht.host.managedUnlockStorageObligation(so.id())
+	sectorRoot3, sectorData := randSector()
+	err = so.Update([]crypto.Hash{sectorRoot, sectorRoot2, sectorRoot3}, nil, map[crypto.Hash][]byte{sectorRoot3: sectorData})
+	if err == nil {
+		t.Fatal("Expected Update to fail on unlocked SO")
+	}
+}
+
+// TestManagedModifyUnlockedStorageObligation checks that the storage obligation
+// cannot be modified when unlocked.
+func TestManagedModifyUnlockedStorageObligation(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// add a storage obligation for testing.
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Modify the obligation. This should fail.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, nil); err == nil {
+		t.Fatal("shouldn't be able to modify unlocked so")
+	}
+
+	// Lock obligation.
+	ht.host.managedLockStorageObligation(so.id())
+
+	// Modify the obligation. This should work.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unlock obligation.
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Modify the obligation. This should fail again.
+	if err := ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, nil); err == nil {
+		t.Fatal("shouldn't be able to modify unlocked so")
 	}
 }

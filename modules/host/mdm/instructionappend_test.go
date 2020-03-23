@@ -10,21 +10,24 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// newAppendInstruction is a convenience method for creating a single
+// Append instruction.
+func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+	i := NewAppendInstruction(dataOffset, merkleProof)
+	cost, refund := modules.MDMAppendCost(pt)
+	return i, cost, refund, AppendMemory(), TimeAppend
+}
+
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
 func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	instructions := []modules.Instruction{
-		NewAppendInstruction(0, merkleProof),
-	}
-
-	// Compute cost and used memory.
-	cost, refund := modules.MDMAppendCost(pt)
-	usedMemory := modules.MDMAppendMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeAppend+modules.MDMTimeCommit)
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
-	cost = cost.Add(memoryCost).Add(initCost)
-	return instructions, sectorData, cost, refund, usedMemory
+	i, cost, refund, memory, time := newAppendInstruction(merkleProof, 0, pt)
+	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, 0, cost, refund, memory, time)
+	instructions := []modules.Instruction{i}
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, TimeCommit))
+	return instructions, sectorData, cost, refund, memory
 }
 
 // TestInstructionAppend tests executing a program with a single
@@ -84,7 +87,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 0)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.
@@ -148,7 +151,7 @@ func TestInstructionAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 1)
 	}
 	// Finalize the program.
-	if err := finalize(); err != nil {
+	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
 	// Check the storage obligation again.

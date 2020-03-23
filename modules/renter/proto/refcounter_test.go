@@ -25,6 +25,7 @@ func TestRefCounter(t *testing.T) {
 	// prepare for the tests
 	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
 	testSectorsCount := uint64(17)
+	callsToTruncate := uint64(0)
 	testDir := build.TempDir(t.Name())
 	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
 		t.Fatal("Failed to create test directory:", err)
@@ -47,8 +48,21 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// set specific counts, so we can track drift
-	for i := range rc.sectorCounts {
-		rc.sectorCounts[i] = testCounterVal(uint16(i))
+	for i := uint64(0); i < testSectorsCount; i++ {
+		if err = rc.writeCount(i, testCounterVal(uint16(i))); err != nil {
+			t.Fatal("Failed to write count to disk")
+		}
+	}
+
+	// verify the counts we wrote
+	for i := uint64(0); i < testSectorsCount; i++ {
+		c, err := rc.readCount(i)
+		if err != nil {
+			t.Fatal("Failed to read count from disk")
+		}
+		if c != testCounterVal(uint16(i)) {
+			t.Fatal(fmt.Sprintf("Read the wrong value form disk: expect %d, got %d", testCounterVal(uint16(i)), c))
+		}
 	}
 
 	// get count
@@ -62,7 +76,7 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// increment
-	count, err = rc.IncrementCount(3)
+	count, err = rc.Increment(3)
 	if err != nil {
 		t.Fatal("Failed to increment the count:", err)
 	}
@@ -72,7 +86,7 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// decrement
-	count, err = rc.DecrementCount(5)
+	count, err = rc.Decrement(5)
 	if err != nil {
 		t.Fatal("Failed to decrement the count:", err)
 	}
@@ -81,24 +95,53 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(emsg)
 	}
 
+	// individually test Swap and DropSectors
+	if err = testCallSwap(&rc); err != nil {
+		t.Fatal(err)
+	}
+	if err = testCallDropSectors(&rc, 4); err != nil {
+		t.Fatal(err)
+	}
+	callsToTruncate += 4
+
+	// test append
+	if err = testCallAppend(&rc); err != nil {
+		t.Fatal(err)
+	}
+	callsToTruncate--
+
 	// decrement to zero
 	count = 1
 	for count > 0 {
-		count, err = rc.DecrementCount(1)
+		count, err = rc.Decrement(1)
 		if err != nil {
 			t.Fatal(fmt.Sprintf("Error while decrementing (current count: %d):", count), err)
 		}
 	}
+
 	// swap and truncate
-	rc.callSwap(1, uint64(len(rc.sectorCounts)-1))
-	rc.callTruncate(1)
+	if err = rc.Swap(1, testSectorsCount-callsToTruncate-1); err != nil {
+		t.Fatal("Failed to swap:", err)
+	}
+	if err = rc.DropSectors(1); err != nil {
+		t.Fatal("Failed to truncate:", err)
+	}
+	callsToTruncate++
 	// we expect the file size to have shrunk with 2 bytes
 	newStats, err := os.Stat(rcFilePath)
 	if err != nil {
 		t.Fatal("Failed to get file stats:", err)
 	}
-	if newStats.Size() != stats.Size()-2 {
-		t.Fatal(fmt.Sprintf("File size did not shrink as expected, expected size: %d, actual size: %d", stats.Size()-2, newStats.Size()))
+	if newStats.Size() != stats.Size()-int64(2*callsToTruncate) {
+		t.Fatal(fmt.Sprintf("File size did not shrink as expected, expected size: %d, actual size: %d", stats.Size()-int64(2*callsToTruncate), newStats.Size()))
+	}
+	if testSectorsCount-callsToTruncate != rc.numSectors {
+		t.Fatal("Desync between rc.numSectors and the real number of sectors")
+	}
+
+	// individually test LoadRefCounter
+	if err = testLoad(rcFilePath); err != nil {
+		t.Fatal(err)
 	}
 
 	// load from disk
@@ -109,22 +152,8 @@ func TestRefCounter(t *testing.T) {
 
 	// make sure we have the right number of counts after the truncation
 	// (nothing was truncated away that we still needed)
-	if uint64(len(rcLoaded.sectorCounts)) != testSectorsCount-1 {
-		t.Fatal(fmt.Sprintf("Wrong sector count after trucate/load, expected: %d, actual: %d", testSectorsCount-1, len(rcLoaded.sectorCounts)))
-	}
-
-	// individually test callSwap and callTruncate
-	if err = testCallSwap(&rc, rcFilePath); err != nil {
-		t.Fatal(err)
-	}
-	if err = testCallTruncate(&rc, rcFilePath, 4); err != nil {
-		t.Fatal(err)
-	}
-
-	// individually test Load
-	err = testLoad(rcFilePath)
-	if err != nil {
-		t.Fatal(err)
+	if _, err = rcLoaded.readCount(testSectorsCount - callsToTruncate - 1); err != nil {
+		t.Fatal("Failed to read the last sector - wrong number of sectors truncated")
 	}
 
 	// delete the ref counter
@@ -138,21 +167,64 @@ func TestRefCounter(t *testing.T) {
 	}
 }
 
-// testCallSwap specifically tests the callSwap method available outside the
-// subsystem
-func testCallSwap(rc *RefCounter, filepath string) error {
-	// these hold the values we expect to find at positions 2 and 4 after the swap
-	expectedCount2 := rc.sectorCounts[4]
-	expectedCount4 := rc.sectorCounts[2]
-	if err := rc.callSwap(2, 4); err != nil {
+// testCallAppend specifically tests the testCallAppend method available outside
+// the subsystem
+func testCallAppend(rc *RefCounter) error {
+	fiBefore, err := os.Stat(rc.filepath)
+	if err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
+	inMemSecCountBefore := rc.numSectors
+	if err := rc.Append(); err != nil {
 		return err
 	}
-	// check if we properly swapped in memory
-	if expectedCount4 != rc.sectorCounts[4] || expectedCount2 != rc.sectorCounts[2] {
+	fiAfter, err := os.Stat(rc.filepath)
+	if err != nil {
+		return errors.AddContext(err, "failed to read from disk")
+	}
+	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
+	inMemSecCountAfter := rc.numSectors
+	if numSectorsDiskBefore+1 != numSectorsDiskAfter {
+		return fmt.Errorf("failed to append data on disk by one sector")
+	}
+	if inMemSecCountBefore+1 != inMemSecCountAfter {
+		return fmt.Errorf("failed to update the in-memory cache of the number of secotrs")
+	}
+	return nil
+}
+
+// testCallSwap specifically tests the Swap method available outside
+// the subsystem
+func testCallSwap(rc *RefCounter) error {
+	// these hold the values we expect to find at positions 2 and 4 after the swap
+	expectedCount2, err := rc.readCount(4)
+	if err != nil {
+		return err
+	}
+	expectedCount4, err := rc.readCount(2)
+	if err != nil {
+		return err
+	}
+	if err = rc.Swap(2, 4); err != nil {
+		return err
+	}
+
+	// check via the methods
+	newCount4, err := rc.readCount(4)
+	if err != nil {
+		return err
+	}
+	newCount2, err := rc.readCount(2)
+	if err != nil {
+		return err
+	}
+	if expectedCount4 != newCount4 || expectedCount2 != newCount2 {
 		return errors.New("failed to swap counts in memory")
 	}
-	// check if we properly swapped on disk
-	f, err := os.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
+
+	// check directly on disk
+	f, err := os.Open(rc.filepath)
 	if err != nil {
 		return err
 	}
@@ -173,28 +245,29 @@ func testCallSwap(rc *RefCounter, filepath string) error {
 	return nil
 }
 
-// testCallTruncate specifically tests the callSwap method available outside
+// testCallDropSectors specifically tests the DropSectors method available outside
 // the subsystem
-func testCallTruncate(rc *RefCounter, filepath string, n uint64) error {
-	fiBefore, err := os.Stat(filepath)
+func testCallDropSectors(rc *RefCounter, numSecs uint64) error {
+	fiBefore, err := os.Stat(rc.filepath)
 	if err != nil {
 		return errors.AddContext(err, "failed to read from disk")
 	}
-	numSectorsDisk := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
-	numSectorsMem := uint64(len(rc.sectorCounts))
-	if err := rc.callTruncate(n); err != nil {
+	numSectorsDiskBefore := uint64((fiBefore.Size() - RefCounterHeaderSize) / 2)
+	inMemSecCountBefore := rc.numSectors
+	if err := rc.DropSectors(numSecs); err != nil {
 		return err
 	}
-	if numSectorsMem-n != uint64(len(rc.sectorCounts)) {
-		return fmt.Errorf("failed to truncate data in memory by %d sectors. Sectors before: %d, sectors after: %d", n, numSectorsMem, len(rc.sectorCounts))
-	}
-	fiAfter, err := os.Stat(filepath)
+	fiAfter, err := os.Stat(rc.filepath)
 	if err != nil {
 		return errors.AddContext(err, "failed to read from disk")
 	}
 	numSectorsDiskAfter := uint64((fiAfter.Size() - RefCounterHeaderSize) / 2)
-	if numSectorsDisk-n != numSectorsDiskAfter {
-		return fmt.Errorf("failed to truncate data on disk by %d sectors. Sectors before: %d, sectors after: %d", n, numSectorsDisk, numSectorsDiskAfter)
+	inMemSecCountAfter := rc.numSectors
+	if numSectorsDiskBefore-numSecs != numSectorsDiskAfter {
+		return fmt.Errorf("failed to truncate data on disk by %d sectors. Sectors before: %d, sectors after: %d", numSecs, numSectorsDiskBefore, numSectorsDiskAfter)
+	}
+	if inMemSecCountBefore-numSecs != inMemSecCountAfter {
+		return fmt.Errorf("failed to update the in-memory cache of the number of secotrs")
 	}
 	return nil
 }
@@ -224,7 +297,7 @@ func testLoad(validFilePath string) error {
 	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
 	_, err = f.Write(badVerFileContents)
-	f.Close() // close regadless of the success of the write
+	_ = f.Close() // close regardless of the success of the write
 	if err != nil {
 		return errors.AddContext(err, "failed to write to test file")
 	}
