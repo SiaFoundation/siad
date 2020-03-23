@@ -66,17 +66,17 @@ func TestTransactionCorrectFileContracts(t *testing.T) {
 	}
 	txn.FileContracts[0].SetValidRenterPayout(NewCurrency64(70e3))
 
-	txn.FileContracts[0].SetMissedHostPayout(NewCurrency64(69e3))
+	txn.FileContracts[0].SetMissedRenterPayout(NewCurrency64(69e3))
 	err = txn.correctFileContracts(30)
 	if err != ErrFileContractOutputSumViolation {
 		t.Error(err)
 	}
-	txn.FileContracts[0].SetMissedHostPayout(NewCurrency64(71e3))
+	txn.FileContracts[0].SetMissedRenterPayout(NewCurrency64(71e3))
 	err = txn.correctFileContracts(30)
 	if err != ErrFileContractOutputSumViolation {
 		t.Error(err)
 	}
-	txn.FileContracts[0].SetMissedHostPayout(NewCurrency64(70e3))
+	txn.FileContracts[0].SetMissedRenterPayout(NewCurrency64(70e3))
 
 	// Try the payouts when the value of the contract is too low to incur a
 	// fee.
