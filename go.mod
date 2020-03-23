@@ -15,6 +15,8 @@ require (
 	github.com/mattn/go-colorable v0.1.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/cobra v0.0.5
+	github.com/vbauerster/mpb v3.4.0+incompatible
+	github.com/vbauerster/mpb/v5 v5.0.3
 	github.com/xtaci/smux v1.3.3
 	gitlab.com/NebulousLabs/bolt v1.4.0
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
@@ -28,15 +30,11 @@ require (
 	gitlab.com/NebulousLabs/siamux v0.0.0-20200217153321-94516948dae2
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
-	golang.org/x/crypto v0.0.0-20200117160349-530e935923ad
+	golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/tools v0.0.0-20200130002326-2f3ba24bd6e7
 	gopkg.in/VividCortex/ewma.v1 v1.1.1 // indirect
 	gopkg.in/cheggaaa/pb.v2 v2.0.7 // indirect
-	gopkg.in/fatih/color.v1 v1.7.0 // indirect
-	gopkg.in/mattn/go-colorable.v0 v0.1.0 // indirect
-	gopkg.in/mattn/go-isatty.v0 v0.0.4 // indirect
-	gopkg.in/mattn/go-runewidth.v0 v0.0.4 // indirect
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
