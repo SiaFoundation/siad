@@ -5,7 +5,7 @@ set -e
 
 # config
 
-generate_till_version=v1.4.4
+generate_till_version=v1.4.6
 changelog_md=../CHANGELOG.md
 changelog_files_dir=../changelog
 head_filename=changelog-head.md
@@ -85,8 +85,7 @@ echo writing versions to changelog...
 for version in $version_list
 do
     versions_compare="$version
-$generate_till_version
-"
+$generate_till_version"
     
     if [ "$versions_compare" == "$(sort --version-sort <<< "$versions_compare")" ]
     then
