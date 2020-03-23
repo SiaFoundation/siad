@@ -444,8 +444,10 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	finalRev.NewRevisionNumber = math.MaxUint64
 
 	// The missed proof outputs become the valid ones since the host won't need
-	// to provide a storage proof.
-	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
+	// to provide a storage proof. We need to preserve the void output though.
+	finalRev.NewMissedProofOutputs[0] = finalRev.NewValidProofOutputs[0]
+	finalRev.NewMissedProofOutputs[1] = finalRev.NewValidProofOutputs[1]
+	finalRev.NewMissedProofOutputs[2].Value = types.ZeroCurrency
 
 	// Create the RenewContract request.
 	req := modules.LoopRenewAndClearContractRequest{

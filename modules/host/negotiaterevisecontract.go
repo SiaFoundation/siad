@@ -343,12 +343,20 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 // correctly, and that the revision does not attempt any malicious or unexpected
 // changes.
 func verifyClearingRevision(so storageObligation, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange, expectedCollateral types.Currency) error {
-	// Check that the revision is well-formed.
-	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 2 {
+	// Check that the revision is well-formed. For compat reasons we accept 2 or
+	// 3 missed proof outputs.
+	if len(revision.NewValidProofOutputs) != 2 || (len(revision.NewMissedProofOutputs) != 2 && len(revision.NewMissedProofOutputs) != 3) {
 		return errBadContractOutputCounts
 	}
-	if !reflect.DeepEqual(revision.NewValidProofOutputs, revision.NewMissedProofOutputs) {
+	if !reflect.DeepEqual(revision.NewValidProofOutputs[0], revision.NewMissedProofOutputs[0]) {
 		return errBadPayoutUnlockHashes
+	}
+	if !reflect.DeepEqual(revision.NewValidProofOutputs[1], revision.NewMissedProofOutputs[1]) {
+		return errBadPayoutUnlockHashes
+	}
+	// If there is a void output it should be empty.
+	if len(revision.NewMissedProofOutputs) == 2 && !revision.NewMissedProofOutputs[2].Value.Equals(types.ZeroCurrency) {
+		return errors.New("no money should be moved to the void")
 	}
 
 	// Check that the time to finalize and submit the file contract revision

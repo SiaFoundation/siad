@@ -2,8 +2,10 @@ package proto
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -29,6 +31,27 @@ type ContractSet struct {
 	wal       *writeaheadlog.WAL
 }
 
+// compatV144AddVoidOutputToClearedContract adds an empty void output to a
+// contract that has only 2 missed proof outputs which match the valid proof
+// outputs and the maximum revision number.
+func compatV144AddVoidOutputToClearedContract(sf *SafeContract) {
+	lastRevision := sf.header.LastRevision()
+	if lastRevision.NewRevisionNumber != math.MaxUint64 {
+		return // not final revision
+	}
+	if len(lastRevision.NewMissedProofOutputs) != 2 {
+		return // not final revision
+	}
+	if !reflect.DeepEqual(lastRevision.NewValidProofOutputs, lastRevision.NewMissedProofOutputs) {
+		return // not a legacy cleared contract
+	}
+	rev := &sf.header.Transaction.FileContractRevisions[0]
+	rev.NewMissedProofOutputs = append(rev.NewMissedProofOutputs, types.SiacoinOutput{
+		Value:      types.ZeroCurrency,
+		UnlockHash: types.UnlockHash{},
+	})
+}
+
 // Acquire looks up the contract for the specified host key and locks it before
 // returning it. If the contract is not present in the set, Acquire returns
 // false and a zero-valued RenterContract.
@@ -40,6 +63,8 @@ func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
 		return nil, false
 	}
 	safeContract.revisionMu.Lock()
+	// Compatv144 fix missing void output.
+	compatV144AddVoidOutputToClearedContract(safeContract)
 	// We need to check if the contract is still in the map or if it has been
 	// deleted in the meantime.
 	cs.mu.Lock()
