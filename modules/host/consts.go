@@ -45,6 +45,35 @@ const (
 )
 
 var (
+	// DefaultBaseRPCPrice is the default price of talking to the host. It is
+	// roughly equal to the default bandwidth cost of exchanging a pair of
+	// 4096-byte messages.
+	DefaultBaseRPCPrice = types.SiacoinPrecision.Mul64(100).Div64(1e9) // 100 nS
+
+	// DefaultDownloadBandwidthPrice defines the default price of upload
+	// bandwidth. The default is set to 10 siacoins per gigabyte, because
+	// download bandwidth is expected to be plentiful but also in-demand.
+	DefaultDownloadBandwidthPrice = types.SiacoinPrecision.Mul64(25).Div(modules.BytesPerTerabyte) // 25 SC / TB
+
+	// DefaultSectorAccessPrice defines the default price of a sector access. It
+	// is roughly equal to the cost of downloading 64 KiB.
+	DefaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
+
+	// DefaultStoragePrice defines the starting price for hosts selling
+	// storage. We try to match a number that is both reasonably profitable and
+	// reasonably competitive.
+	DefaultStoragePrice = types.SiacoinPrecision.Mul64(50).Div(modules.BlockBytesPerMonthTerabyte) // 50 SC / TB / Month
+
+	// DefaultUploadBandwidthPrice defines the default price of upload
+	// bandwidth. The default is set to 1 siacoin per GB, because the host is
+	// presumed to have a large amount of downstream bandwidth. Furthermore,
+	// the host is typically only downloading data if it is planning to store
+	// the data, meaning that the host serves to profit from accepting the
+	// data.
+	DefaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
+)
+
+var (
 	// connectablityCheckFirstWait defines how often the host's connectability
 	// check is run.
 	connectabilityCheckFirstWait = build.Select(build.Var{
@@ -68,11 +97,6 @@ var (
 		Dev:      time.Minute * 5,
 		Testing:  time.Second * 90,
 	}).(time.Duration)
-
-	// defaultBaseRPCPrice is the default price of talking to the host. It is
-	// roughly equal to the default bandwidth cost of exchanging a pair of
-	// 4096-byte messages.
-	defaultBaseRPCPrice = types.SiacoinPrecision.Mul64(100).Div64(1e9) // 100 nS
 
 	// defaultCollateral defines the amount of money that the host puts up as
 	// collateral per-byte by default. The collateral should be considered as
@@ -98,11 +122,6 @@ var (
 	// the minimum fee estimation of the transactionpool for a filecontract
 	// transaction.
 	defaultContractPrice = types.SiacoinPrecision.Div64(100).Div64(1e3).Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
-
-	// defaultDownloadBandwidthPrice defines the default price of upload
-	// bandwidth. The default is set to 10 siacoins per gigabyte, because
-	// download bandwidth is expected to be plentiful but also in-demand.
-	defaultDownloadBandwidthPrice = types.SiacoinPrecision.Mul64(25).Div(modules.BytesPerTerabyte) // 25 SC / TB
 
 	// defaultMaxCollateral defines the maximum amount of collateral that the
 	// host is comfortable putting into a single file contract. 10e3 is a
@@ -130,23 +149,6 @@ var (
 	// 17 MiB is a conservative default, most hosts are likely to be just fine
 	// with a number like 65 MiB.
 	defaultMaxReviseBatchSize = 17 * (1 << 20)
-
-	// defaultSectorAccessPrice defines the default price of a sector access. It
-	// is roughly equal to the cost of downloading 64 KiB.
-	defaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
-
-	// defaultStoragePrice defines the starting price for hosts selling
-	// storage. We try to match a number that is both reasonably profitable and
-	// reasonably competitive.
-	defaultStoragePrice = types.SiacoinPrecision.Mul64(50).Div(modules.BlockBytesPerMonthTerabyte) // 50 SC / TB / Month
-
-	// defaultUploadBandwidthPrice defines the default price of upload
-	// bandwidth. The default is set to 1 siacoin per GB, because the host is
-	// presumed to have a large amount of downstream bandwidth. Furthermore,
-	// the host is typically only downloading data if it is planning to store
-	// the data, meaning that the host serves to profit from accepting the
-	// data.
-	defaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
 
 	// defaultEphemeralAccountExpiry defines the default maximum amount of
 	// time an ephemeral account can be inactive before it expires and gets

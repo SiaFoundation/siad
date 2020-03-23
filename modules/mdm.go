@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"encoding/binary"
 	"errors"
 
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -20,9 +19,10 @@ type (
 
 const (
 	// MDMProgramInitTime is the time it takes to execute a program. This is a
-	// hardcoded value which is meant to be replaced in the future. TODO: The
-	// time is hardcoded to 10 for now until we add time management in the
-	// future.
+	// hardcoded value which is meant to be replaced in the future.
+	//
+	// TODO: The time is hardcoded to 10 for now until we add time management in
+	// the future.
 	MDMProgramInitTime = 10
 
 	// MDMTimeAppend is the time for executing an 'Append' instruction.
@@ -31,7 +31,7 @@ const (
 	// MDMTimeCommit is the time used for executing managedFinalize.
 	MDMTimeCommit = 50e3
 
-	// TimeDropSingleSector is the time for dropping a single sector.
+	// MDMTimeDropSingleSector is the time for dropping a single sector.
 	MDMTimeDropSingleSector = 1
 
 	// MDMTimeHasSector is the time for executing a 'HasSector' instruction.
@@ -78,26 +78,24 @@ var (
 	ErrMDMInsufficientBudget = errors.New("remaining budget is insufficient")
 )
 
-// RPCIReadSector is a convenience method to create an Instruction of type 'ReadSector'.
-func RPCIReadSector(rootOff, offsetOff, lengthOff uint64, merkleProof bool) Instruction {
-	args := make([]byte, RPCIReadSectorLen)
-	binary.LittleEndian.PutUint64(args[:8], rootOff)
-	binary.LittleEndian.PutUint64(args[8:16], offsetOff)
-	binary.LittleEndian.PutUint64(args[16:24], lengthOff)
-	if merkleProof {
-		args[24] = 1
-	}
-	return Instruction{
-		Args:      args,
-		Specifier: SpecifierReadSector,
-	}
-}
-
 // MDMAppendCost is the cost of executing an 'Append' instruction.
 func MDMAppendCost(pt RPCPriceTable) (types.Currency, types.Currency) {
 	writeCost := pt.WriteLengthCost.Mul64(SectorSize).Add(pt.WriteBaseCost)
 	storeCost := pt.WriteStoreCost.Mul64(SectorSize) // potential refund
 	return writeCost.Add(storeCost), storeCost
+}
+
+// MDMCopyCost is the cost of executing a 'Copy' instruction.
+func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
+	return types.SiacoinPrecision // TODO: figure out good cost
+}
+
+// MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction for a
+// certain number of dropped sectors.
+func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
+	cost := pt.DropSectorsLengthCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
+	refund := types.ZeroCurrency
+	return cost, refund
 }
 
 // MDMInitCost is the cost of instantiatine the MDM. It is defined as:
@@ -128,19 +126,6 @@ func MDMWriteCost(pt RPCPriceTable, writeLength uint64) (types.Currency, types.C
 	return writeCost, storeCost
 }
 
-// MDMCopyCost is the cost of executing a 'Copy' instruction.
-func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
-	return types.SiacoinPrecision // TODO: figure out good cost
-}
-
-// MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction for a
-// certain number of dropped sectors.
-func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
-	cost := pt.DropSectorsLengthCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
-	refund := types.ZeroCurrency
-	return cost, refund
-}
-
 // MDMSwapCost is the cost of executing a 'Swap' instruction.
 func MDMSwapCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
@@ -157,7 +142,7 @@ func MDMAppendMemory() uint64 {
 	return SectorSize // A full sector is added to the program's memory until the program is finalized.
 }
 
-// DropSectorsMemory returns the additional memory consumption of a
+// MDMDropSectorsMemory returns the additional memory consumption of a
 // `DropSectors` instruction
 func MDMDropSectorsMemory() uint64 {
 	return 0 // 'DropSectors' doesn't hold on to any memory beyond the lifetime of the instruction.

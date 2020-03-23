@@ -43,8 +43,8 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 	return i, cost, refund, modules.MDMDropSectorsMemory(), time
 }
 
-// TestProgramWithDropSectors tests executing a program with multiple append and swap
-// instructions.
+// TestProgramWithDropSectors tests executing a program with multiple Append and
+// DropSectors instructions.
 func TestInstructionAppendAndDropSectors(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
