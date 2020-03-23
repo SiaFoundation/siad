@@ -115,7 +115,7 @@ the generated changelog. Since the filenames are prefixed with the merge request
 number, this means the changes in the changelog will roughly follow the order of
 development from oldest to newest.
 
-### Creation
+### Changelog Creation
 To create the updated `CHANGELOG.md` file, use the `generate-changelog.sh`
 script in the `/release-scripts` repo.
 
@@ -141,3 +141,16 @@ For any versions that have been moved into the `changelog-tail.md` file, the
 `changelog-tail.md` file can be edited directly. Version that have been
 officially released and tagged can have their `/changelog` directory removed and
 all changes added directly to `changelog-tail.md`.
+
+### Upcoming Versions
+The Changelog generator automatically creates directory structure
+for upcoming versions when there is no upcoming version directory.
+
+If in `release-scripts/generate-changelog.sh` is the following setting
+`generate_till_version=v1.4.4` and there is no upcoming version directory,
+then directory `v1.4.5` with sub-directories `key-updates`, `bugs-fixed` and
+`other` are created automatically.
+
+When the automatically generated upcoming version (e.g. `v1.4.6`) doesn't
+match what is wanted (e.g. `v1.5.0`) then the generated directory name can be
+manually updated.
