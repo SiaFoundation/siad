@@ -109,12 +109,12 @@ $generate_till_version"
 done
 echo writing versions to changelog: done
 
-# Generate upcoming version file structure
+# Generate upcoming version directory structure
 if [ "$upcoming_version_found" == false ]
 then
     # Calculate new version from current version
     upcoming_version=$(echo "$generate_till_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
-    echo "Generating file structure for upcoming version $upcoming_version ..."
+    echo "generating directory structure for upcoming version $upcoming_version ..."
 
     mkdir -p "$upcoming_version/key-updates"
     mkdir -p "$upcoming_version/bugs-fixed"
