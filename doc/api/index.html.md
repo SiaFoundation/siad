@@ -149,6 +149,15 @@ arbitrary-precision number (bignum), and it should be parsed with your
 language's corresponding bignum library. Currency values are the most common
 example where this is necessary.
 
+# Environment Variables
+There are three environment variables supported by siad.
+ - `SIA_API_PASSWORD` is the environment variable that sets a custom API
+   password if the default is not used
+ - `SIA_DATA_DIR` is the environment variable that tells siad where to put the
+   sia data
+ - `SIA_WALLET_PASSWORD` is the environment variable that can be set to enable
+   auto unlocking the wallet
+
 # Consensus
 
 The consensus set manages everything related to consensus and keeps the

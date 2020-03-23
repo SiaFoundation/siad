@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/cmd"
 )
 
 var (
@@ -180,7 +181,7 @@ func main() {
 
 	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
 	if globalConfig.Siad.SiaDir == "" {
-		globalConfig.Siad.SiaDir = os.Getenv("SIA_DATA_DIR")
+		globalConfig.Siad.SiaDir = os.Getenv(cmd.SiaDataDir)
 		if globalConfig.Siad.SiaDir != "" {
 			fmt.Println("Using SIA_DATA_DIR environment variable")
 		}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/cmd"
 )
 
 // TestUnitProcessNetAddr probes the 'processNetAddr' function.
@@ -181,8 +182,8 @@ func TestAPIPassword(t *testing.T) {
 		t.Fatal("loadAPIPassword should have used previously-generated password")
 	}
 	// If the environment variable is set, loadAPIPassword should use that
-	defer os.Setenv("SIA_API_PASSWORD", os.Getenv("SIA_API_PASSWORD"))
-	os.Setenv("SIA_API_PASSWORD", "foobar")
+	defer os.Setenv(cmd.SiaAPIPassword, os.Getenv(cmd.SiaAPIPassword))
+	os.Setenv(cmd.SiaAPIPassword, "foobar")
 	config4, err := loadAPIPassword(config, dir)
 	if err != nil {
 		t.Fatal(err)
