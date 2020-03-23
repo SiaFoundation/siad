@@ -12,7 +12,10 @@ import (
 
 // ProcessPayment reads a payment request from the stream, depending on the type
 // of payment it will either update the file contract or call upon the ephemeral
-// account manager to process the payment.
+// account manager to process the payment. It will return the account id, the
+// amount paid and an error in case of failure. The account id will only be
+// valid if the payment method is PayByEphemeralAccount, it will be an empty
+// string otherwise.
 func (h *Host) ProcessPayment(stream siamux.Stream) (string, types.Currency, error) {
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
@@ -35,22 +38,22 @@ func (h *Host) ProcessPayment(stream siamux.Stream) (string, types.Currency, err
 // in over the given stream.
 func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (string, types.Currency, error) {
 	// read the PayByEphemeralAccountRequest
-	var pbear modules.PayByEphemeralAccountRequest
-	if err := modules.RPCRead(stream, &pbear); err != nil {
+	var req modules.PayByEphemeralAccountRequest
+	if err := modules.RPCRead(stream, &req); err != nil {
 		return "", types.ZeroCurrency, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
 	}
 
 	// process the request
-	if err := h.staticAccountManager.callWithdraw(&pbear.Message, pbear.Signature, pbear.Priority); err != nil {
+	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority); err != nil {
 		return "", types.ZeroCurrency, errors.AddContext(err, "Withdraw failed")
 	}
 
 	// send the response
-	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: pbear.Message.Amount}); err != nil {
+	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: req.Message.Amount}); err != nil {
 		return "", types.ZeroCurrency, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
-	return pbear.Message.Account, pbear.Message.Amount, nil
+	return req.Message.Account, req.Message.Amount, nil
 }
 
 // managedPayByContract processes a PayByContractRequest coming in over the
@@ -101,9 +104,10 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error
 	// send the response
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
-	if err = modules.RPCWrite(stream, modules.PayByContractResponse{
+	err = modules.RPCWrite(stream, modules.PayByContractResponse{
 		Signature: sig,
-	}); err != nil {
+	})
+	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
@@ -140,7 +144,10 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 // revision and decorates it with the signature provided through the
 // PayByContractRequest object.
 func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByContractRequest) types.TransactionSignature {
-	txn := types.NewTransaction(recent, 0)
-	txn.TransactionSignatures[0].Signature = pbcr.Signature
-	return txn.TransactionSignatures[0]
+	return types.TransactionSignature{
+		ParentID:       crypto.Hash(recent.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      pbcr.Signature,
+	}
 }

@@ -189,29 +189,6 @@ func (i storageObligationStatus) String() string {
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 
-// managedGetStorageObligationSnapshot fetches a storage obligation from the
-// database and returns a snapshot.
-func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	var err error
-	var so storageObligation
-	if err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = h.getStorageObligation(tx, id)
-		return err
-	}); err != nil {
-		return StorageObligationSnapshot{}, err
-	}
-
-	rev := so.recentRevision()
-	return StorageObligationSnapshot{
-		staticContractSize: rev.NewFileSize,
-		staticMerkleRoot:   rev.NewFileMerkleRoot,
-		staticSectorRoots:  so.SectorRoots,
-	}, nil
-}
-
 // getStorageObligation fetches a storage obligation from the database tx.
 func (h *Host) getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
 	soBytes := tx.Bucket(bucketStorageObligations).Get(soid[:])
@@ -575,6 +552,29 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 		return composeErrors(err, h.removeStorageObligation(so, obligationRejected))
 	}
 	return nil
+}
+
+// managedGetStorageObligationSnapshot fetches a storage obligation from the
+// database and returns a snapshot.
+func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var err error
+	var so storageObligation
+	if err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, id)
+		return err
+	}); err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+
+	rev := so.recentRevision()
+	return StorageObligationSnapshot{
+		staticContractSize: rev.NewFileSize,
+		staticMerkleRoot:   rev.NewFileMerkleRoot,
+		staticSectorRoots:  so.SectorRoots,
+	}, nil
 }
 
 // managedModifyStorageObligation will take an updated storage obligation along

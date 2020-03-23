@@ -2,6 +2,7 @@ package host
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -60,74 +62,58 @@ func TestProcessPayment(t *testing.T) {
 // PayByContract payment method.
 func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK crypto.SecretKey) {
 	// prepare an updated revision that pays the host
-	rev := so.recentRevision()
 	payment := types.NewCurrency64(1)
-	validPayouts, missedPayouts := so.payouts()
-	validPayouts[0].Value = validPayouts[0].Value.Sub(payment)
-	validPayouts[1].Value = validPayouts[1].Value.Add(payment)
-	missedPayouts[0].Value = missedPayouts[0].Value.Sub(payment)
-	missedPayouts[1].Value = missedPayouts[1].Value.Add(payment)
-	rev.NewValidProofOutputs = validPayouts
-	rev.NewMissedProofOutputs = missedPayouts
-	rev.NewRevisionNumber = rev.NewRevisionNumber + 1
-
-	// create transaction containing the revision
-	signedTxn := types.NewTransaction(rev, 0)
-	hash := signedTxn.SigHash(0, host.blockHeight)
-	sig := crypto.SignHash(hash, renterSK)
+	rev := paymentRevision(so, payment)
+	sig := revisionSignature(rev, host.blockHeight, renterSK)
 
 	// create two streams
 	rStream, hStream := NewTestStreams()
 	defer rStream.Close()
 	defer hStream.Close()
 
-	var wg sync.WaitGroup
 	var payByResponse modules.PayByContractResponse
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	renterFunc := func() error {
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
 		pbcRequest := newPayByContractRequest(rev, sig)
 		err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 		if err != nil {
-			t.Log(err)
-			return
+			return err
 		}
 
 		// receive PayByContractResponse
 		err = modules.RPCRead(rStream, &payByResponse)
 		if err != nil {
-			t.Log(err)
-			return
+			return err
 		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+		return nil
+	}
+	hostFunc := func() error {
 		// process payment request
 		_, _, err := host.ProcessPayment(hStream)
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
-			return
 		}
-	}()
-	wg.Wait()
+		return nil
+	}
+
+	// run the payment code
+	err := run(renterFunc, hostFunc)
+	if err != nil {
+		t.Fatal("Unexpected error occurred", err.Error())
+	}
 
 	// verify the host's signature
-	hash = crypto.HashAll(rev)
+	hash := crypto.HashAll(rev)
 	var hpk crypto.PublicKey
 	copy(hpk[:], host.PublicKey().Key)
-	err := crypto.VerifyHash(hash, hpk, payByResponse.Signature)
+	err = crypto.VerifyHash(hash, hpk, payByResponse.Signature)
 	if err != nil {
 		t.Fatal("could not verify host's signature")
 	}
 
 	// verify the host updated the storage obligation
-	host.managedLockStorageObligation(so.id())
 	updated, err := host.managedGetStorageObligation(so.id())
 	if err != nil {
 		t.Fatal(err)
@@ -138,17 +124,36 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK 
 		t.Log("actual", rr.NewRevisionNumber)
 		t.Fatal("Unexpected revision number")
 	}
+
+	// prepare a set of payouts that do not deduct payment from the renter
+	validPayouts, missedPayouts := updated.payouts()
+	validPayouts[1].Value = validPayouts[1].Value.Add(payment)
+	missedPayouts[0].Value = missedPayouts[0].Value.Sub(payment)
+	missedPayouts[1].Value = missedPayouts[1].Value.Add(payment)
+
+	// overwrite the correct payouts with the faulty payouts
+	rev = paymentRevision(updated, payment)
+	rev.NewValidProofOutputs = validPayouts
+	rev.NewMissedProofOutputs = missedPayouts
+	sig = revisionSignature(rev, host.blockHeight, renterSK)
+
+	// verify err is not nil
+	err = run(renterFunc, hostFunc)
+	if err == nil || !strings.Contains(err.Error(), "invalid output sums") {
+		t.Fatalf("Expected error indicating the invalid output sums, instead error was: '%v'", err)
+	}
 }
 
 // testPayByEphemeralAccount verifies payment is processed correctly in the case
 // of the PayByEphemeralAccount payment method.
 func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
-	payment := types.NewCurrency64(1)
+	payment := types.NewCurrency64(5)
+	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
 	// prepare an ephmeral account and fund it
 	sk, spk := prepareAccount()
 	account := spk.String()
-	err := callDeposit(host.staticAccountManager, account, payment)
+	err := callDeposit(host.staticAccountManager, account, deposit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,42 +162,39 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	defer rStream.Close()
 	defer hStream.Close()
 
-	var wg sync.WaitGroup
 	var payByAccount string
 	var payByResponse modules.PayByEphemeralAccountResponse
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	renterFunc := func() error {
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
 		pbcRequest := newPayByEphemeralAccountRequest(account, host.blockHeight+6, payment, sk)
 		err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 		if err != nil {
-			t.Log(err)
-			return
+			return err
 		}
 
 		// receive PayByEphemeralAccountResponse
 		err = modules.RPCRead(rStream, &payByResponse)
 		if err != nil {
-			t.Log(err)
-			return
+			return err
 		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+		return nil
+	}
+	hostFunc := func() error {
 		// process payment request
 		payByAccount, _, err = host.ProcessPayment(hStream)
 		if err != nil {
-			t.Log(err)
-			return
+			modules.RPCWriteError(hStream, err)
 		}
-	}()
-	wg.Wait()
+		return nil
+	}
+
+	// verify err is nil
+	err = run(renterFunc, hostFunc)
+	if err != nil {
+		t.Fatal("Unexpected error occurred", err.Error())
+	}
 
 	// verify the account id that's returned equals the account
 	if payByAccount != account {
@@ -206,8 +208,16 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 
 	// verify the payment got withdrawn from the ephemeral account
 	balance := getAccountBalance(host.staticAccountManager, account)
-	if !balance.IsZero() {
-		t.Fatalf("Unexpected account balance, expected 0 but received %s", balance.HumanString())
+	if !balance.Equals(deposit.Sub(payment)) {
+		t.Fatalf("Unexpected account balance, expected %v but received %s", deposit.Sub(payment), balance.HumanString())
+	}
+
+	// try and perform the same request again, which should fail because the
+	// account balance is insufficient verify err is not nil and contains a
+	// mention of insufficient balance
+	err = run(renterFunc, hostFunc)
+	if err == nil || !strings.Contains(err.Error(), "balance was insufficient") {
+		t.Fatalf("Expected error to mention account balance was insuficient, instead error was: '%v'", err)
 	}
 }
 
@@ -293,6 +303,55 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	}
 	so.RevisionTransactionSet = tSet
 	return so, nil
+}
+
+// paymentRevision is a helper function that moves the given payment amount from
+// the renter to the host in a new revision
+func paymentRevision(so storageObligation, payment types.Currency) types.FileContractRevision {
+	rev := so.recentRevision()
+	validPayouts, missedPayouts := so.payouts()
+	validPayouts[0].Value = validPayouts[0].Value.Sub(payment)
+	validPayouts[1].Value = validPayouts[1].Value.Add(payment)
+	missedPayouts[0].Value = missedPayouts[0].Value.Sub(payment)
+	missedPayouts[1].Value = missedPayouts[1].Value.Add(payment)
+	rev.NewValidProofOutputs = validPayouts
+	rev.NewMissedProofOutputs = missedPayouts
+	rev.NewRevisionNumber = rev.NewRevisionNumber + 1
+	return rev
+}
+
+// revisionSignature is a helper function that signs the given revision with the
+// given key
+func revisionSignature(rev types.FileContractRevision, blockHeight types.BlockHeight, secretKey crypto.SecretKey) crypto.Signature {
+	signedTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{{
+			ParentID:       crypto.Hash(rev.ParentID),
+			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+			PublicKeyIndex: 0,
+		}},
+	}
+	hash := signedTxn.SigHash(0, blockHeight)
+	return crypto.SignHash(hash, secretKey)
+}
+
+// run is a helper function that runs the given functions in separate goroutines
+// and awaits them
+func run(f1, f2 func() error) error {
+	var errF1, errF2 error
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		errF1 = f1()
+		wg.Done()
+	}()
+	wg.Add(1)
+	go func() {
+		errF2 = f2()
+		wg.Done()
+	}()
+	wg.Wait()
+	return errors.Compose(errF1, errF2)
 }
 
 // testStream is a helper struct that wraps a net.Conn and implements the
