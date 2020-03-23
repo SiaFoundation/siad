@@ -9,7 +9,11 @@ Request Template.
 # MERGE REQUEST
 ## Overview
 
-## Example for Visual Changes (ie Screenshot, asciinema)
+## Example for Visual Changes
+<!--
+For changes to siac or other user facing features please provide proof that the format is as expected.  
+Screen shots and/or asciinema recordings are very helpful.
+-->
 
 ## Checklist
 Review and complete the checklist to ensure that the MR is complete before assigned to an approver.
@@ -22,7 +26,11 @@ Review and complete the checklist to ensure that the MR is complete before assig
  - [ ] Changelog File Created
 
 ## Issues Closed
-Closes 
+<!--
+Use the `Closes` keyword to automatically close the issue on merge.  
+Example: Closes #XXXX  
+-->
+
 ```
 The `Overview` section is used to provide reviewers with a clear understanding
 of the purpose of the merge request. Developers should always make sure that the
@@ -133,3 +141,17 @@ submitted, developers should merge with master to address conflicts and be
 pushing new commits for all changes. It is discouraged to continue to squash
 commits and rebase once the merge request is being reviewed to help reviewers
 keep track of changes.
+
+## WIP Merge Requests 
+Gitlab allows the use of the `WIP:` prefix in the title of the merge request.
+This `WIP:` prefix is blocking and will not allow the merge request to be merged
+until it is removed. Developers should use this prefix to informed reviewers
+that the merge request is still under development and should not be reviewed.
+The `WIP:` prefix is also automatically added when a merge request is created
+from an issue so as the case of follow ups from previous merge requests. This
+allows the developer to make the initial changes and have the follow up merge
+request staged until the initial merge request is merged.
+
+To keep the list of open merge request down, it is advised to use the `WIP:`
+prefix sparingly. The majority of development should be done locally and most
+merge requests should to created ready for review.
