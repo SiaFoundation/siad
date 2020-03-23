@@ -776,9 +776,9 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testDownloadAfterRenew makes sure that we can still download a file after the
-// contract period has ended and the contract has been renewed and cleared
-// including dropping the third missed output.
+// testDownloadAfterRenew makes sure that we can't download a file after
+// finalizing the contract and dropping the void output. This is also a
+// regression test for a index-out-of-bounds panic in siad.
 func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	// Create a node with the right dependency.
 	params := node.Renter(renterTestDir(t.Name()))
@@ -808,8 +808,8 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Download the file synchronously directly into memory.
 	_, _, err = renter.DownloadByStream(remoteFile)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("download should fail due to contract being finalized")
 	}
 }
 
