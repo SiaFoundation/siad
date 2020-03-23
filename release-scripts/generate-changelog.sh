@@ -90,8 +90,10 @@ do
     versions_compare="$version
 $generate_till_version"
     
+    # check if current version should be included
     if [ "$versions_compare" == "$(sort --version-sort <<< "$versions_compare")" ]
     then
+        echo "version $version WILL be included to changelog file"
         echo ">  writing version header: $version"
         echo "" >> "$changelog_md"
         echo "### $version" >> "$changelog_md"
@@ -100,7 +102,7 @@ $generate_till_version"
         add_items "Bugs Fixed" "bugs-fixed"
         add_items "Other" "other"
     else
-        echo "version $version will not be included to changelog file"
+        echo "version $version WILL NOT be included to changelog file"
     fi
 done
 echo writing versions to changelog: done
