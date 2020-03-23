@@ -33,7 +33,6 @@ package host
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"strconv"
 	"time"
 
@@ -45,6 +44,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -369,14 +369,13 @@ func (so storageObligation) value() types.Currency {
 
 // recentRevision returns the most recent file contract revision in this storage
 // obligation.
-func (so storageObligation) recentRevision() types.FileContractRevision {
+func (so storageObligation) recentRevision() (types.FileContractRevision, error) {
 	numRevisions := len(so.RevisionTransactionSet)
-	if numRevisions > 0 {
-		revisionTxn := so.RevisionTransactionSet[numRevisions-1]
-		return revisionTxn.FileContractRevisions[0]
+	if numRevisions == 0 {
+		return types.FileContractRevision{}, errors.New("Could not get recent revision, there are no revision in the txn set")
 	}
-	revisionTxn := so.OriginTransactionSet[len(so.OriginTransactionSet)-1]
-	return revisionTxn.FileContractRevisions[0]
+	revisionTxn := so.RevisionTransactionSet[numRevisions-1]
+	return revisionTxn.FileContractRevisions[0], nil
 }
 
 // managedGetStorageObligation fetches a storage obligation from the database.
@@ -569,7 +568,11 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 		return StorageObligationSnapshot{}, err
 	}
 
-	rev := so.recentRevision()
+	rev, err := so.recentRevision()
+	if err != nil {
+		return StorageObligationSnapshot{}, errors.AddContext(err, "Could not get storage obligation snapshot")
+	}
+
 	return StorageObligationSnapshot{
 		staticContractSize: rev.NewFileSize,
 		staticMerkleRoot:   rev.NewFileMerkleRoot,

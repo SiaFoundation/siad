@@ -77,7 +77,10 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error
 	}
 
 	// extract the proposed revision and the signature from the request
-	recentRevision := so.recentRevision()
+	recentRevision, err := so.recentRevision()
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not find the most recent revision")
+	}
 	renterRevision := revisionFromRequest(recentRevision, pbcr)
 	renterSignature := signatureFromRequest(recentRevision, pbcr)
 

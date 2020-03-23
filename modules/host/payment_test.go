@@ -118,7 +118,10 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK 
 	if err != nil {
 		t.Fatal(err)
 	}
-	rr := updated.recentRevision()
+	rr, err := updated.recentRevision()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if rev.NewRevisionNumber != rr.NewRevisionNumber {
 		t.Log("expected", rev.NewRevisionNumber)
 		t.Log("actual", rr.NewRevisionNumber)
@@ -308,7 +311,10 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 // paymentRevision is a helper function that moves the given payment amount from
 // the renter to the host in a new revision
 func paymentRevision(so storageObligation, payment types.Currency) types.FileContractRevision {
-	rev := so.recentRevision()
+	rev, err := so.recentRevision()
+	if err != nil {
+		panic(err)
+	}
 	validPayouts, missedPayouts := so.payouts()
 	validPayouts[0].Value = validPayouts[0].Value.Sub(payment)
 	validPayouts[1].Value = validPayouts[1].Value.Add(payment)
