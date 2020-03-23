@@ -5,6 +5,7 @@ set -e
 
 # config
 
+generate_till_version=v1.4.4
 changelog_md=../CHANGELOG.md
 changelog_files_dir=../changelog
 head_filename=changelog-head.md
@@ -83,13 +84,22 @@ echo ---  end  ---
 echo writing versions to changelog...
 for version in $version_list
 do
-    echo ">  writing version header: $version"
-    echo "" >> "$changelog_md"
-    echo "### $version" >> "$changelog_md"
+    versions_compare="$version
+$generate_till_version
+"
     
-    add_items "Key Updates" "key-updates"
-    add_items "Bugs Fixed" "bugs-fixed"
-    add_items "Other" "other"
+    if [ "$versions_compare" == "$(sort --version-sort <<< "$versions_compare")" ]
+    then
+        echo ">  writing version header: $version"
+        echo "" >> "$changelog_md"
+        echo "### $version" >> "$changelog_md"
+        
+        add_items "Key Updates" "key-updates"
+        add_items "Bugs Fixed" "bugs-fixed"
+        add_items "Other" "other"
+    else
+        echo "Version $version will not yet be included to changelog file"
+    fi
 done
 echo writing versions to changelog: done
 
