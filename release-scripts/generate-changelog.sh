@@ -109,7 +109,7 @@ $generate_till_version"
         add_items "Other" "other"
     else
         echo "version $version WILL NOT be included to changelog file"
-        $upcoming_version_found=true
+        upcoming_version_found=true
     fi
 done
 echo writing versions to changelog: done
