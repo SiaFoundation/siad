@@ -98,7 +98,7 @@ $generate_till_version
         add_items "Bugs Fixed" "bugs-fixed"
         add_items "Other" "other"
     else
-        echo "Version $version will not yet be included to changelog file"
+        echo "version $version will not be included to changelog file"
     fi
 done
 echo writing versions to changelog: done
