@@ -86,6 +86,26 @@ logged under `other` directory. Examples of these would be improves to the build
 process, new README files, changes to the CI etc.
 
 ## Changelog Generation
+### Versions to include
+In the `release-scripts/generate-changelog.sh` file is a configuration variable
+`generate_till_version`. It allows you to ignore upcoming versions.
+
+#### Example
+
+You have 3 version directories:
+- `v1.4.4` - old released version
+- `v1.4.5` - latest released version
+- `v1.4.6` - upcoming version in development
+
+You want to generate changelog file for the latest released version
+(`v1.4.5`) and all older versions (`v1.4.4`), but you want to ignore
+(not to include) the upcoming version (`v1.4.6`).
+
+In this case set:
+
+`generate_till_version=v1.4.5`
+
+
 ### Ordering
 Changelog versions are sorted in descending version order.
 
