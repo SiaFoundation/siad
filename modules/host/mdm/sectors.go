@@ -35,7 +35,7 @@ func (s *sectors) appendSector(sectorData []byte) (crypto.Hash, error) {
 
 	// Add the sector to the cache. If it has been marked as removed, unmark it.
 	s.sectorsGained[newRoot] = sectorData
-	if _, prs := s.sectorsRemoved[newRoot]; prs {
+	if _, removed := s.sectorsRemoved[newRoot]; removed {
 		delete(s.sectorsRemoved, newRoot)
 	}
 
@@ -61,8 +61,8 @@ func (s *sectors) dropSectors(numSectorsDropped uint64) (crypto.Hash, error) {
 
 	// Update the program cache.
 	for _, droppedRoot := range droppedRoots {
-		_, prs := s.sectorsGained[droppedRoot]
-		if prs {
+		_, gained := s.sectorsGained[droppedRoot]
+		if gained {
 			// Remove the sectors from the cache.
 			delete(s.sectorsGained, droppedRoot)
 		} else {

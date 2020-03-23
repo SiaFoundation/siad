@@ -92,6 +92,9 @@ func TestAppendSector(t *testing.T) {
 		t.Fatal(err)
 	}
 	newMerkleRoot, err = s.appendSector(newSectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Check the return value.
 	if merkleRoot != newMerkleRoot {
