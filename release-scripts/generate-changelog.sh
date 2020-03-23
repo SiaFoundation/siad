@@ -116,9 +116,14 @@ then
     upcoming_version=$(echo "$generate_till_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
     echo "generating directory structure for upcoming version $upcoming_version ..."
 
-    mkdir -p "$upcoming_version/key-updates"
-    mkdir -p "$upcoming_version/bugs-fixed"
-    mkdir -p "$upcoming_version/other"
+    for section in 'key-updates' 'bugs-fixed' 'other'
+    do
+        # create section directory
+        mkdir -p "$upcoming_version/$section"
+
+        # create dummy files for git commit to catch empty section directories
+        touch "$upcoming_version/$section/.item"
+    done
 fi
 
 # Write the tail of the changelog
