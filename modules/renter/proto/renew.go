@@ -448,6 +448,11 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	finalRev.NewMissedProofOutputs[0] = finalRev.NewValidProofOutputs[0]
 	finalRev.NewMissedProofOutputs[1] = finalRev.NewValidProofOutputs[1]
 	finalRev.NewMissedProofOutputs[2].Value = types.ZeroCurrency
+	// Simulate legacy RenewAndClear behavior where the output was dropped on
+	// clear.
+	if cs.deps.Disrupt("DropVoidOutputOnClear") {
+		finalRev.NewMissedProofOutputs = finalRev.NewMissedProofOutputs[:2]
+	}
 
 	// Create the RenewContract request.
 	req := modules.LoopRenewAndClearContractRequest{
@@ -456,7 +461,9 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	}
 	for _, vpo := range finalRev.NewValidProofOutputs {
 		req.FinalValidProofValues = append(req.FinalValidProofValues, vpo.Value)
-		req.FinalMissedProofValues = append(req.FinalMissedProofValues, vpo.Value)
+	}
+	for _, mpo := range finalRev.NewMissedProofOutputs {
+		req.FinalMissedProofValues = append(req.FinalMissedProofValues, mpo.Value)
 	}
 
 	// Send the request.

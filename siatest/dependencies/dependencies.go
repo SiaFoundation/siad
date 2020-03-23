@@ -49,6 +49,12 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyDropVoidOutputOnClear prevents a third missed proof output from
+	// being added during a RenewAndClear.
+	DependencyDropVoidOutputOnClear struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyInterruptOnceOnKeyword is a generic dependency that interrupts
 	// the flow of the program if the argument passed to Disrupt equals str and
 	// if f was set to true by calling Fail.
@@ -153,6 +159,11 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
 	return s == "BlockAsyncStartup"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDropVoidOutputOnClear) Disrupt(s string) bool {
+	return s == "DropVoidOutputOnClear"
 }
 
 // Disrupt causes contract formation to fail due to low allowance funds.

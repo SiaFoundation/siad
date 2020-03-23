@@ -63,8 +63,6 @@ func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
 		return nil, false
 	}
 	safeContract.revisionMu.Lock()
-	// Compatv144 fix missing void output.
-	compatV144AddVoidOutputToClearedContract(safeContract)
 	// We need to check if the contract is still in the map or if it has been
 	// deleted in the meantime.
 	cs.mu.Lock()

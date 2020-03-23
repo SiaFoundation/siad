@@ -539,6 +539,8 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 		headerFile:  headerSection,
 		wal:         cs.wal,
 	}
+	// Compatv144 fix missing void output.
+	compatV144AddVoidOutputToClearedContract(sc)
 	cs.mu.Lock()
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
@@ -637,6 +639,8 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 		headerFile:    headerSection,
 		wal:           cs.wal,
 	}
+	// Compatv144 fix missing void output.
+	compatV144AddVoidOutputToClearedContract(sc)
 
 	// apply the wal txns if necessary.
 	if applyTxns {

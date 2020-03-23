@@ -929,6 +929,10 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	newRevision.NewMissedProofOutputs[0] = newRevision.NewValidProofOutputs[0]
 	newRevision.NewMissedProofOutputs[1] = newRevision.NewValidProofOutputs[1]
 	newRevision.NewMissedProofOutputs[2].Value = types.ZeroCurrency
+	// Compat code for renters which only send 2 outputs.
+	if len(req.FinalMissedProofValues) == 2 {
+		newRevision.NewMissedProofOutputs = newRevision.NewMissedProofOutputs[:2]
+	}
 
 	// Verifiy the final revision of the old contract.
 	newRevenue := settings.BaseRPCPrice

@@ -355,7 +355,7 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 		return errBadPayoutUnlockHashes
 	}
 	// If there is a void output it should be empty.
-	if len(revision.NewMissedProofOutputs) == 2 && !revision.NewMissedProofOutputs[2].Value.Equals(types.ZeroCurrency) {
+	if len(revision.NewMissedProofOutputs) == 3 && !revision.NewMissedProofOutputs[2].Value.Equals(types.ZeroCurrency) {
 		return errors.New("no money should be moved to the void")
 	}
 
