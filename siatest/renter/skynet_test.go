@@ -1746,8 +1746,9 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetRequestTimeout verifies that the Skylink routes timeout when a
-// timeout query string parameter has been passed.
+// testRegressionTimeoutPanic is a regression test for a double channel close
+// which happened when a timeout was hit right before a download project was
+// resumed.
 func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	reader := bytes.NewReader(fastrand.Bytes(100))
 	uploadSiaPath, err := modules.NewSiaPath(t.Name())
@@ -1758,13 +1759,13 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 		SiaPath:             uploadSiaPath,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testSkynetRequestTimeout",
+			Filename: "testRegressionTimeoutPanic",
 			Mode:     0640,
 		},
 		Reader: reader,
 		Force:  true,
 	}
-	// Create a renter with a timeout dependency injected
+	// Create a renter with a BlockResumeJobDownloadUntilTimeout dependency.
 	testDir := renterTestDir(t.Name())
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.RenterDeps = dependencies.NewDependencyBlockResumeJobDownloadUntilTimeout()
@@ -1780,12 +1781,6 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	skylink, _, err := r.SkynetSkyfilePost(sup)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// Verify timeout on head request
-	status, _, err := r.SkynetSkylinkHead(skylink, 1)
-	if status != http.StatusNotFound {
-		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
 
 	// Verify timeout on download request doesn't panic.

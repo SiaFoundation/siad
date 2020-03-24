@@ -233,10 +233,8 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 // markComplete marks the project as done and assigns the provided error to
 // pdbr.err.
 func (pdbr *projectDownloadByRoot) markComplete(err error) {
-	select {
-	case <-pdbr.completeChan:
+	if pdbr.staticComplete() {
 		return
-	default:
 	}
 	pdbr.err = err
 	close(pdbr.completeChan)
