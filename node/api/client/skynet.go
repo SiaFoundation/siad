@@ -320,7 +320,7 @@ func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 func (c *Client) SkykeyGetByName(name string) (skykey.Skykey, error) {
 	values := url.Values{}
 	values.Set("name", name)
-	getQuery := fmt.Sprintf("/skynet/skykey/%s", values.Encode())
+	getQuery := fmt.Sprintf("/skynet/skykey/?%s", values.Encode())
 
 	var skykeyGet api.SkykeyGET
 	err := c.get(getQuery, &skykeyGet)

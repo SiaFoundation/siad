@@ -27,6 +27,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -1940,7 +1941,7 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	sk, err := r.SkykeyCreateKeyPost("key1", crypto.TypeXChaCha20)
+	sk, err := r.SkykeyCreateKeyPost("testkey1", crypto.TypeXChaCha20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1951,24 +1952,67 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected error", err)
 	}
 
-	sk2, err := r.SkykeyGetByName("key1")
+	// Create a testkey from a hard-coded skykey string.
+	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	var testSkykey skykey.Skykey
+	err = testSkykey.FromString(testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sk2.ID() != sk.ID() {
+
+	// Adding an unknown key should succeed.
+	err = r.SkykeyAddKeyPost(testSkykey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sk2, err := r.SkykeyGetByName("testkey1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skStr, err := sk.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk2Str, err := sk2.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk2Str {
+		t.Fatal("Expected same Skykey string")
+	}
+
+	// Check byte equality and string equality.
+	skID := sk.ID()
+	sk2ID := sk2.ID()
+	if !bytes.Equal(skID[:], sk2ID[:]) {
+		t.Fatal("Expected byte level equality in IDs")
+	}
+	if sk2.ID().ToString() != sk.ID().ToString() {
 		t.Fatal("Expected to get same key")
 	}
 
+	// Check the GetByID endpoint
 	sk3, err := r.SkykeyGetByID(sk.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sk3.ID() != sk.ID() {
-		t.Fatal("Expected to get same key")
+	sk3Str, err := sk3.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk3Str {
+		t.Fatal("Expected same Skykey string")
 	}
 
-	id, err := r.SkykeyIDGet("key1")
-	if id != sk.ID() {
+	// Check that the correct ID is matched to the known keyname
+	id, err := r.SkykeyIDGet("testkey1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if id.ToString() != sk.ID().ToString() {
 		t.Fatal("expected to get same ID")
 	}
 }

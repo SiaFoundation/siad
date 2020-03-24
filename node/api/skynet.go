@@ -799,27 +799,27 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 	if name != "" {
 		sk, err = api.renter.SkykeyByName(name)
 		if err != nil {
-			WriteError(w, Error{"failed to retrieve skykey" + err.Error()}, http.StatusInternalServerError)
+			WriteError(w, Error{"failed to retrieve skykey: " + err.Error()}, http.StatusInternalServerError)
 			return
 		}
 	} else if idString != "" {
 		var id skykey.SkykeyID
 		err = id.FromString(idString)
 		if err != nil {
-			WriteError(w, Error{"failed to decode ID string"}, http.StatusInternalServerError)
+			WriteError(w, Error{"failed to decode ID string: "}, http.StatusInternalServerError)
 			return
 		}
 
 		sk, err = api.renter.SkykeyByID(id)
 		if err != nil {
-			WriteError(w, Error{"failed to retrieve skykey" + err.Error()}, http.StatusInternalServerError)
+			WriteError(w, Error{"failed to retrieve skykey: " + err.Error()}, http.StatusInternalServerError)
 			return
 		}
 	}
 
 	skString, err := sk.ToString()
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteJSON(w, SkykeyGET{
