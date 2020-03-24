@@ -215,7 +215,7 @@ func TestAccountExpiry(t *testing.T) {
 		t.Fatal("Account balance was incorrect after deposit")
 	}
 
-	time.Sleep(pruneExpiredAccountsFrequency)
+	time.Sleep(pruneExpiredAccountsFrequency * 2)
 	balance = getAccountBalance(am, accountID)
 	if !balance.Equals(types.NewCurrency64(0)) {
 		t.Fatal("Account balance was incorrect after expiry")
