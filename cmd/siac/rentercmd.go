@@ -2720,7 +2720,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	var muUploaded sync.Mutex
 	var wg sync.WaitGroup
 	// make a channel that limits the parallel goroutines to X
-	limitGoroutinesCh := make(chan struct{}, SimultaneousSkynetUploads)
+	threadsChan := make(chan struct{}, SimultaneousSkynetUploads)
 	// Collect all filenames under this directory with their relative paths.
 	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -2730,10 +2730,10 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			return nil
 		}
 		wg.Add(1)
-		limitGoroutinesCh <- struct{}{} // use one goroutine slot
+		threadsChan <- struct{}{} // use one goroutine slot
 		go func(filename string) {
 			defer wg.Done()
-			defer func() { <-limitGoroutinesCh }() // release the goroutine slot
+			defer func() { <-threadsChan }() // release the goroutine slot
 			// get only the filename and path, relative to the original destSiaPath
 			// in order to figure out where to put the file
 			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
@@ -2776,20 +2776,16 @@ func skynetuploadfile(sourcePath, destSiaPath string, progress *mpb.Progress) (s
 		return
 	}
 	// Calculate the siapath that was used for the upload.
-	var skypath modules.SiaPath
-	if skynetUploadRoot {
-		skypath = siaPath
-	} else {
+	skypath := siaPath
+	if !skynetUploadRoot {
 		skypath, err = modules.SkynetFolder.Join(siaPath.String())
 		if err != nil {
 			die("could not fetch skypath:", err)
 		}
 	}
-	// start a progress bar for this file upload and bind it to the file reader
-	bar := makeProgressBar(progress, fi.Size(), skypath.Path)
-	proxyReader := bar.ProxyReader(file)
-	defer proxyReader.Close()
 
+	// start a progress bar for this file upload and bind it to the file reader
+	proxyReader := newProgressReader(progress, fi.Size(), skypath.Path, file)
 	_, sourceName := filepath.Split(sourcePath)
 	// Perform the upload and print the result.
 	sup := modules.SkyfileUploadParameters{
@@ -2811,21 +2807,22 @@ func skynetuploadfile(sourcePath, destSiaPath string, progress *mpb.Progress) (s
 	return skylink
 }
 
-// makeProgressBar is a helper method for adding a new progress bar to an
-// existing *mpb.Progress object. The caller still needs to bind a reader or
-// manually control the progress of the bar.
-func makeProgressBar(progress *mpb.Progress, size int64, name string) *mpb.Bar {
-	return progress.AddBar(
+// newProgressReader is a helper method for adding a new progress bar to an
+// existing *mpb.Progress object.
+func newProgressReader(progress *mpb.Progress, size int64, name string, file io.Reader) io.ReadCloser {
+	bar := progress.AddBar(
 		size,
-		// align the bars
-		mpb.BarWidth(120-len(name)),
+		mpb.BarWidth(120-len(name)), // align the bars
 		mpb.PrependDecorators(
 			decor.Name(name),
 		),
 		mpb.AppendDecorators(
-			decor.Percentage(decor.WCSyncSpace),
+			decor.Counters(decor.UnitKB, "%d / %d"),
+			decor.Name("\t| "),
+			decor.EwmaSpeed(decor.UnitKB, "% .1f", 60),
 		),
 	)
+	return bar.ProxyReader(file)
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
