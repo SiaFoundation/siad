@@ -57,6 +57,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetStats", Test: testSkynetStats},
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
 	}
 
 	// Run tests
@@ -1650,6 +1651,82 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	} else if !strings.Contains(err.Error(), "no workers") {
 		t.Errorf("Expected error containing 'no workers' but got %v", err)
 	}
+}
+
+// testSkynetDryRunUpload verifies the --dry-run flag when uploading a Skyfile.
+func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// verify you can't perform a dry-run using the force parameter
+	siaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRun",
+			Mode:     0640,
+		},
+		Force:  true,
+		DryRun: true,
+	})
+	if err == nil {
+		t.Fatal("Expected failure when both 'force' and 'dryrun' parameter are given")
+	}
+
+	verifyDryRun := func(sup modules.SkyfileUploadParameters, dataSize int) {
+		data := fastrand.Bytes(dataSize)
+
+		sup.DryRun = true
+		sup.Reader = bytes.NewReader(data)
+		skylinkDry, _, err := r.SkynetSkyfilePost(sup)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sup.DryRun = false
+		sup.Reader = bytes.NewReader(data)
+		skylink, _, err := r.SkynetSkyfilePost(sup)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if skylinkDry != skylink {
+			t.Log("Expected:", skylink)
+			t.Log("Actual:  ", skylinkDry)
+			t.Fatalf("VerifyDryRun failed for data size %db, skylink received during the dry-run is not identical to the skylink received when performing the actual upload.", dataSize)
+		}
+	}
+
+	// verify dry-run of small file
+	uploadSiaPath, err := modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "S"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyDryRun(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRunUploadSmall",
+			Mode:     0640,
+		},
+	}, 100)
+
+	// verify dry-run of large file
+	uploadSiaPath, err = modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "L"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyDryRun(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRunUploadLarge",
+			Mode:     0640,
+		},
+	}, int(modules.SectorSize*2)+siatest.Fuzz())
 }
 
 // testSkynetRequestTimeout verifies that the Skylink routes timeout when a

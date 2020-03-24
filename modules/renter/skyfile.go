@@ -191,6 +191,7 @@ func fileUploadParamsFromLUP(lup modules.SkyfileUploadParameters) (modules.FileU
 		SiaPath:             lup.SiaPath,
 		ErasureCode:         ec,
 		Force:               lup.Force,
+		DryRun:              lup.DryRun,
 		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
 		Repair:              false, // indicates whether this is a repair operation
 
@@ -302,17 +303,6 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	// Create the base sector.
 	baseSector, fetchSize := skyfileBuildBaseSector(ll.encode(), fanoutBytes, metadataBytes, nil)
 	baseSectorReader := bytes.NewReader(baseSector)
-	fileUploadParams, err := fileUploadParamsFromLUP(lup)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "unable to build the file upload parameters")
-	}
-
-	// Perform the full upload.
-	newFileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "skyfile base chunk upload failed")
-	}
-	defer newFileNode.Close()
 
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector)
@@ -328,9 +318,27 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	}
 
 	// Add the skylink to the siafiles.
-	err1 := fileNode.AddSkylink(skylink)
-	err2 := newFileNode.AddSkylink(skylink)
-	err = errors.Compose(err1, err2)
+	err = fileNode.AddSkylink(skylink)
+	if err != nil {
+		return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+	}
+	if lup.DryRun {
+		return skylink, nil
+	}
+
+	// Perform the full upload.
+	fileUploadParams, err := fileUploadParamsFromLUP(lup)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to build the file upload parameters")
+	}
+
+	newFileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "skyfile base chunk upload failed")
+	}
+	newFileNode.Close()
+
+	err = newFileNode.AddSkylink(skylink)
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
@@ -429,10 +437,10 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		SiaPath:             siaPath,
 		ErasureCode:         ec,
 		Force:               lup.Force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
-
-		CipherType: crypto.TypePlain,
+		DisablePartialChunk: true,       // must be set to true - partial chunks change, content addressed files must not change.
+		Repair:              false,      // indicates whether this is a repair operation
+		DryRun:              lup.DryRun, // indicate whether this is a dry-run
+		CipherType:          crypto.TypePlain,
 	}
 
 	// Upload the file using a streamer.
@@ -490,6 +498,9 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 	skylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
+	}
+	if lup.DryRun {
+		return skylink, nil
 	}
 
 	// Upload the base sector.
@@ -697,11 +708,26 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
+
+	var siapath modules.SiaPath
 	var skylink modules.Skylink
 	if largeFile {
 		skylink, err = r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
+		siapath, _ = modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
 	} else {
 		skylink, err = r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
+		siapath = lup.SiaPath
+	}
+
+	// Dry-run should always try to delete the siafile (even if err is not nil)
+	if lup.DryRun {
+		if deleteErr := r.DeleteFile(siapath); deleteErr != nil {
+			r.log.Printf("unable to cleanup siafile after performing a dry run of the Skyfile upload, err: %s", deleteErr.Error())
+		}
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "unable to generate skylink")
+		}
+		return skylink, nil
 	}
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
