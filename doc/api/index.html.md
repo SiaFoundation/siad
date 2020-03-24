@@ -4296,7 +4296,7 @@ The response body is the raw data for the file.
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png'. Users who download the file will see the name
 // 'image.png'.
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?name=image.png" --data-binary @myImage.png
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?filename=image.png" --data-binary @myImage.png
 ```
 
 uploads a file to the network using a stream. If the upload stream POST call
