@@ -116,6 +116,11 @@ func (h *Host) managedDownloadIteration(conn net.Conn, so *storageObligation) er
 	}
 	txn, err := createRevisionSignature(paymentRevision, renterSignature, secretKey, blockHeight)
 
+	// Existing revisions's renter payout can't be smaller than the payment
+	// revision's since that would cause an underflow.
+	if existingRevision.ValidRenterPayout().Cmp(paymentRevision.ValidRenterPayout()) < 0 {
+		return errors.New("existing revision's renter payout is smaller than the payment revision's")
+	}
 	// Update the storage obligation.
 	paymentTransfer := existingRevision.ValidRenterPayout().Sub(paymentRevision.ValidRenterPayout())
 	so.PotentialDownloadRevenue = so.PotentialDownloadRevenue.Add(paymentTransfer)
@@ -181,6 +186,11 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	// Determine the amount that was transferred from the renter.
 	if paymentRevision.ValidRenterPayout().Cmp(existingRevision.ValidRenterPayout()) > 0 {
 		return extendErr("renter increased its valid proof output: ", errHighRenterValidOutput)
+	}
+	// Existing revisions's renter payout can't be smaller than the payment
+	// revision's since that would cause an underflow.
+	if existingRevision.ValidRenterPayout().Cmp(paymentRevision.ValidRenterPayout()) < 0 {
+		return errors.New("existing revision's renter payout is smaller than the payment revision's")
 	}
 	fromRenter := existingRevision.ValidRenterPayout().Sub(paymentRevision.ValidRenterPayout())
 	// Verify that enough money was transferred.
