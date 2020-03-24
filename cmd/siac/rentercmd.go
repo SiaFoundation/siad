@@ -407,8 +407,7 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable uint64
-	total := dirs[0].dir.AggregateNumFiles
+	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
 	for _, dir := range dirs {
 		for _, file := range dir.files {
 			switch {
@@ -427,13 +426,17 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 			}
 		}
 	}
+	total := float64(dirs[0].dir.AggregateNumFiles)
 
-	percentFullHealth := 100 * fullHealth / total
-	percentAbove75 := 100 * greater75 / total
-	percentAbove50 := 100 * greater50 / total
-	percentAbove25 := 100 * greater25 / total
-	percentAbove0 := 100 * greater0 / total
-	percentUnrecoverable := 100 * unrecoverable / total
+	fullHealth = 100 * fullHealth / total
+	greater75 = 100 * greater75 / total
+	greater50 = 100 * greater50 / total
+	greater25 = 100 * greater25 / total
+	greater0 = 100 * greater0 / total
+	unrecoverable = 100 * unrecoverable / total
+
+	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
+	percentages = parsePercentages(percentages)
 
 	fmt.Printf(`File Health Summary:
   %% At 100%%:            %v%%
@@ -442,7 +445,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
   %% Between 25%% - 50%%:  %v%%
   %% Between 0%% - 25%%:   %v%%
   %% Unrecoverable:      %v%%
-`, percentFullHealth, percentAbove75, percentAbove50, percentAbove25, percentAbove0, percentUnrecoverable)
+`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
