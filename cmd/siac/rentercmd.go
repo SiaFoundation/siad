@@ -2711,7 +2711,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 	if !fi.IsDir() {
 		skylink := skynetuploadfile(sourcePath, destSiaPath, progress)
-		fmt.Printf("Successfully uploadedSkyfiles skyfile!\n")
+		fmt.Printf("Successfully uploaded skyfile!\n")
 		fmt.Printf("%v => %v\n", sourcePath, skylink)
 		return
 	}
