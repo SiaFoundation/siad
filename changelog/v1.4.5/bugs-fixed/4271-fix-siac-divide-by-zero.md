@@ -1,0 +1,1 @@
+- Fix divide by zero panic in `renterFileHealthSummary` for `siac renter -v`

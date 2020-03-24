@@ -407,6 +407,19 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
+	// Check for nil input
+	if len(dirs) == 0 {
+		fmt.Println("No Directories Found")
+		return
+	}
+
+	// Check for no files uploaded
+	total := float64(dirs[0].dir.AggregateNumFiles)
+	if total == 0 {
+		fmt.Println("No Files Uploaded")
+		return
+	}
+
 	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
 	for _, dir := range dirs {
 		for _, file := range dir.files {
@@ -426,7 +439,6 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 			}
 		}
 	}
-	total := float64(dirs[0].dir.AggregateNumFiles)
 
 	fullHealth = 100 * fullHealth / total
 	greater75 = 100 * greater75 / total
