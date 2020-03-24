@@ -86,7 +86,24 @@ type (
 	DependencyRenewWithoutClear struct {
 		modules.ProductionDependencies
 	}
+
+	// DependencyBlockResumeJobDownloadUntilTimeout blocks in
+	// managedResumeJobDownloadByRoot until the timeout for the download project
+	// is reached.
+	DependencyBlockResumeJobDownloadUntilTimeout struct {
+		DependencyTimeoutProjectDownloadByRoot
+		c chan struct{}
+	}
 )
+
+// NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
+// managedResumeJobDownloadByRoot until the timeout for the download project is
+// reached.
+func NewDependencyBlockResumeJobDownloadUntilTimeout() modules.Dependencies {
+	return &DependencyBlockResumeJobDownloadUntilTimeout{
+		c: make(chan struct{}),
+	}
+}
 
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
 // method which returns a custom resolver that uses the specified lookupIP
@@ -154,6 +171,18 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 		},
 		n: n,
 	}
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyBlockResumeJobDownloadUntilTimeout) Disrupt(s string) bool {
+	if s == "BlockUntilTimeout" {
+		<-d.c
+		return true
+	} else if s == "ResumeOnTimeout" {
+		close(d.c)
+		return true
+	}
+	return false
 }
 
 // Disrupt returns true if the correct string is provided.

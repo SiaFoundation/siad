@@ -57,6 +57,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetStats", Test: testSkynetStats},
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
 	}
 
 	// Run tests
@@ -1709,6 +1710,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r = nodes[0]
+	defer tg.RemoveNode(r)
 
 	// Upload a skyfile
 	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
@@ -1738,8 +1740,52 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected pin request to time out")
 	}
-	if !strings.Contains(err.Error(), "timed out after 2s") {
+	if err == nil || !strings.Contains(err.Error(), "timed out after 2s") {
 		t.Log(err)
 		t.Fatal("Expected error to specify the timeout")
+	}
+}
+
+// testRegressionTimeoutPanic is a regression test for a double channel close
+// which happened when a timeout was hit right before a download project was
+// resumed.
+func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	uploadSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testRegressionTimeoutPanic",
+			Mode:     0640,
+		},
+		Reader: reader,
+		Force:  true,
+	}
+	// Create a renter with a BlockResumeJobDownloadUntilTimeout dependency.
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = dependencies.NewDependencyBlockResumeJobDownloadUntilTimeout()
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+	defer tg.RemoveNode(r)
+
+	// Upload a skyfile
+	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify timeout on download request doesn't panic.
+	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
+	if errors.Contains(err, renter.ErrProjectTimedOut) {
+		t.Fatal("Expected download request to time out")
 	}
 }
