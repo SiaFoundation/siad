@@ -1,0 +1,1 @@
+- Extract environment variables to constants and add to API docs.
