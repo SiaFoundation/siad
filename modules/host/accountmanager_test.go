@@ -204,8 +204,9 @@ func TestAccountExpiry(t *testing.T) {
 	accountID := spk.String()
 
 	// Deposit some money into the account
-	err = callDeposit(am, accountID, types.NewCurrency64(10))
-	if err != nil {
+	if err = build.Retry(3, 100*time.Millisecond, func() error {
+		return callDeposit(am, accountID, types.NewCurrency64(10))
+	}); err != nil {
 		t.Fatal(err)
 	}
 
