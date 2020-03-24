@@ -33,10 +33,14 @@ func (s *sectors) appendSector(sectorData []byte) (crypto.Hash, error) {
 	}
 	newRoot := crypto.MerkleRoot(sectorData)
 
-	// Add the sector to the cache. If it has been marked as removed, unmark it.
-	s.sectorsGained[newRoot] = sectorData
-	if _, removed := s.sectorsRemoved[newRoot]; removed {
+	// Update the program cache.
+	_, removed := s.sectorsRemoved[newRoot]
+	if removed {
+		// If the sector has been marked as removed, unmark it.
 		delete(s.sectorsRemoved, newRoot)
+	} else {
+		// Add the sector to the cache.
+		s.sectorsGained[newRoot] = sectorData
 	}
 
 	// Update the roots.

@@ -114,6 +114,41 @@ func TestAppendSector(t *testing.T) {
 	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
 		t.Fatalf("expected sector roots different than actual sector roots")
 	}
+
+	// Append a sector and then drop it.
+	newSectorData = randomSectorData()
+	newSector = crypto.MerkleRoot(newSectorData)
+	newMerkleRoot, err = s.appendSector(newSectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Calculate expected roots.
+	sectorRoots = append(sectorRoots, newSector)
+	merkleRoot = cachedMerkleRoot(sectorRoots)
+
+	// Check the return value.
+	if merkleRoot != newMerkleRoot {
+		t.Fatalf("expected merkle root %v but was %v", merkleRoot, newMerkleRoot)
+	}
+
+	_, err = s.dropSectors(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sectorRoots = sectorRoots[:len(sectorRoots)-1]
+
+	// Check that the program cache hasn't changed.
+	if len(s.sectorsRemoved) > 0 {
+		t.Fatalf("expected sectors removed length to be %v but was %v", 0, len(s.sectorsRemoved))
+	}
+	if len(s.sectorsGained) != 1 {
+		t.Fatalf("expected sectors gained length to be %v but was %v", 1, len(s.sectorsGained))
+	}
+	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
+		t.Fatalf("expected sector roots different than actual sector roots")
+	}
 }
 
 // TestDropSectors tests dropping sectors from the cache.
