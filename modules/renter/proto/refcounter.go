@@ -7,8 +7,6 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -302,13 +300,16 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 
 // StartUpdate acquires a lock, ensuring the caller is the only one currently
 // allowed to perform updates on this refcounter file.
-func (rc *RefCounter) StartUpdate() {
-	rc.muUpdate.Lock()
+func (rc *RefCounter) StartUpdate() error {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if rc.isDeleted {
-		build.Critical("Opening an update session on a deleted refcounter")
+		return ErrUpdateAfterDelete
 	}
+	rc.muUpdate.Lock()
 	// open an update session
 	rc.isUpdateInProgress = true
+	return nil
 }
 
 // Swap swaps the two sectors at the given indices

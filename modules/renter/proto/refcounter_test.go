@@ -87,7 +87,9 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// set specific counts, so we can track drift
-	rc.StartUpdate()
+	if err = rc.StartUpdate(); err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 	updates := make([]writeaheadlog.Update, testSectorsCount)
 	for i := uint64(0); i < testSectorsCount; i++ {
 		updates[i] = createWriteAtUpdate(rc.filepath, i, testCounterVal(uint16(i)))
@@ -110,7 +112,9 @@ func TestRefCounter(t *testing.T) {
 
 	numSectorsBefore := rc.numSectors
 	updates = make([]writeaheadlog.Update, 0)
-	rc.StartUpdate()
+	if err = rc.StartUpdate(); err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 	// test Append
 	if u, err = rc.Append(); err != nil {
 		t.Fatal("Failed to create an append update", err)
@@ -199,7 +203,9 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(fmt.Sprintf("File size did not grow as expected, expected size: %d, actual size: %d", stats.Size()+4, midStats.Size()))
 	}
 
-	rc.StartUpdate()
+	if err = rc.StartUpdate(); err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 	// test DropSectors by dropping the two counters we added
 	if u, err = rc.DropSectors(2); err != nil {
 		t.Fatal("Failed to create Truncate update:", err)
@@ -239,7 +245,9 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// delete the ref counter
-	rc.StartUpdate()
+	if err = rc.StartUpdate(); err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 	if u, err = rc.DeleteRefCounter(); err != nil {
 		t.Fatal("Failed to create a delete update", err)
 	}
@@ -268,6 +276,12 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal("Failed to apply a delete update:", err)
 	}
 	rc.UpdateApplied()
+
+	// make sure we cannot start an update session on a deleted counter
+	if err = rc.StartUpdate(); err != ErrUpdateAfterDelete {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
+
 	_, err = os.Stat(rcFilePath)
 	if err == nil {
 		t.Fatal("RefCounter deletion finished successfully but the file is still on disk", err)
