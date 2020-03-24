@@ -499,6 +499,8 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
 	}
+
+	// If this is a dry-run, we do not need to upload the base sector
 	if lup.DryRun {
 		return skylink, nil
 	}
@@ -719,7 +721,8 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		siapath = lup.SiaPath
 	}
 
-	// Dry-run should always try to delete the siafile (even if err is not nil)
+	// In case of a dry-run, we always try to delete the siafile. Regardless of
+	// whether `managedUploadSkyfile` returned an error or not.
 	if lup.DryRun {
 		if deleteErr := r.DeleteFile(siapath); deleteErr != nil {
 			r.log.Printf("unable to cleanup siafile after performing a dry run of the Skyfile upload, err: %s", deleteErr.Error())
