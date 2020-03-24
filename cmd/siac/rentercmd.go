@@ -468,15 +468,22 @@ func renterFilesAndContractSummary() error {
 	if rf.Directories[0].AggregateMinRedundancy == -1 {
 		redundancyStr = "-"
 	}
+	// Active Contracts are all good data
+	activeSize, _, _, _ := contractStats(rc.ActiveContracts)
+	// Passive Contracts are all good data
+	passiveSize, _, _, _ := contractStats(rc.PassiveContracts)
 
 	fmt.Printf(`
-  Files:              %v
-  Total Stored:       %v
-  Min Redundancy:     %v
-  Active Contracts:   %v
-  Passive Contracts:  %v
-  Disabled Contracts: %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts), len(rc.PassiveContracts), len(rc.DisabledContracts))
+  Files:               %v
+  Total Stored:        %v
+  Total Contract Data: %v
+  Min Redundancy:      %v
+  Active Contracts:    %v
+  Passive Contracts:   %v
+  Disabled Contracts:  %v
+`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize),
+		modules.FilesizeUnits(activeSize+passiveSize), redundancyStr, len(rc.ActiveContracts),
+		len(rc.PassiveContracts), len(rc.DisabledContracts))
 
 	return nil
 }
