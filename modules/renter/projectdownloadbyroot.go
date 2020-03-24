@@ -134,8 +134,7 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 		if len(pdbr.workersStandby) != 0 {
 			w.renter.log.Critical("pdbr has standby workers but no registered workers:", len(pdbr.workersStandby))
 		}
-		pdbr.err = ErrRootNotFound
-		close(pdbr.completeChan)
+		pdbr.markComplete(ErrRootNotFound)
 	}
 }
 
@@ -154,8 +153,8 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 	// Set the data and perform cleanup.
 	pdbr.mu.Lock()
 	pdbr.data = data
+	pdbr.markComplete(nil)
 	pdbr.mu.Unlock()
-	close(pdbr.completeChan)
 }
 
 // managedStartJobDownloadByRoot will execute the first stage of downloading
@@ -227,6 +226,17 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 	newWorker.callQueueJobDownloadByRoot(jdbr)
 }
 
+// markComplete marks the project as done and assigns the provided error to
+// pdbr.err.
+func (pdbr *projectDownloadByRoot) markComplete(err error) {
+	select {
+	case <-pdbr.completeChan:
+	default:
+	}
+	pdbr.err = err
+	close(pdbr.completeChan)
+}
+
 // threadedHandleTimeout sets a timeout on the project. If the root is not found
 // before the timeout expires, the project is finished. A zero timeout is
 // ignored.
@@ -256,11 +266,8 @@ func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) 
 func (pdbr *projectDownloadByRoot) managedTriggerTimeout(t time.Duration) {
 	pdbr.mu.Lock()
 	defer pdbr.mu.Unlock()
-	if pdbr.staticComplete() {
-		return
-	}
-	close(pdbr.completeChan)
-	pdbr.err = errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", t.Seconds())))
+	err := errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", t.Seconds())))
+	pdbr.markComplete(err)
 }
 
 // staticComplete is a helper function to check if the project has already
