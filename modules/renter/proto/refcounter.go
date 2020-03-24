@@ -90,10 +90,9 @@ type (
 		// isUpdateInProgress marks when an update session is open and updates
 		// are allowed to be created and applied
 		isUpdateInProgress bool
-		// While updating the reference counters on disk we will also keep the
-		// new values in memory, so we can work with them even before they are
-		// stored on disk.
-		newSectorCounts map[uint64]uint16 // holds the new value of a given counter
+		// newSectorCounts holds the new values of sector counters during an
+		// update session, so we can use them even before they are store on disk
+		newSectorCounts map[uint64]uint16
 		// muUpdates controls who can create and apply updates
 		muUpdate sync.Mutex
 	}
