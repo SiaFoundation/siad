@@ -235,6 +235,7 @@ func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
 func (pdbr *projectDownloadByRoot) markComplete(err error) {
 	select {
 	case <-pdbr.completeChan:
+		return
 	default:
 	}
 	pdbr.err = err
