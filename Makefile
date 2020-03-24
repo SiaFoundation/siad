@@ -105,24 +105,17 @@ vet:
 markdown-spellcheck:
 	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
 
-# lint runs golint and custom analyzers.
-lint:
-	go get golang.org/x/lint/golint
-	golint -min_confidence=1.0 -set_exit_status $(pkgs)
+# lint-all runs golangci-lint (which includes golint, a spellcheck of the
+# codebase, and other linters), the custom analyzers, and also a markdown
+# spellchecker.
+lint: markdown-spellcheck
 	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
 	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
+	golangci-lint run -c .golangci.yml
 
 lint-analysis:
 	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
 	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
-
-
-# lint-all runs golangci-lint (which includes golint and other linters), the
-# custom analyzers, and also a markdown spellchecker.
-lint-all: markdown-spellcheck
-	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
-	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
-	golangci-lint run -c .golangci.yml
 
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck: markdown-spellcheck
