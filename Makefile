@@ -108,9 +108,7 @@ markdown-spellcheck:
 # lint-all runs golangci-lint (which includes golint, a spellcheck of the
 # codebase, and other linters), the custom analyzers, and also a markdown
 # spellchecker.
-lint: markdown-spellcheck
-	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
-	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
+lint: markdown-spellcheck lint-analysis
 	golangci-lint run -c .golangci.yml
 
 lint-analysis:
