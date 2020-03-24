@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -77,8 +78,9 @@ type projectDownloadByRoot struct {
 	err          error
 	completeChan chan struct{}
 
-	tg *threadgroup.ThreadGroup
-	mu sync.Mutex
+	staticDeps modules.Dependencies
+	tg         *threadgroup.ThreadGroup
+	mu         sync.Mutex
 }
 
 // callPerformJobDownloadByRoot will perform a download by root job.
@@ -149,6 +151,8 @@ func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
 		pdbr.managedRemoveWorker(w)
 		return
 	}
+	// Block if necessary.
+	pdbr.staticDeps.Disrupt("BlockUntilTimeout")
 
 	// Set the data and perform cleanup.
 	pdbr.mu.Lock()
@@ -258,6 +262,9 @@ func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) 
 		return
 	case <-time.After(timeout):
 	}
+	// Project timed out. Trigger waiting depenencies.
+	pdbr.staticDeps.Disrupt("ResumeOnTimeout")
+
 	pdbr.managedTriggerTimeout(timeout)
 }
 
@@ -294,7 +301,8 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 		completeChan: make(chan struct{}),
 
-		tg: &r.tg,
+		staticDeps: r.deps,
+		tg:         &r.tg,
 	}
 
 	// Apply the timeout to the project. A timeout of 0 will be ignored.
