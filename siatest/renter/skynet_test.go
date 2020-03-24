@@ -1740,7 +1740,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected pin request to time out")
 	}
-	if !strings.Contains(err.Error(), "timed out after 2s") {
+	if err == nil || !strings.Contains(err.Error(), "timed out after 2s") {
 		t.Log(err)
 		t.Fatal("Expected error to specify the timeout")
 	}
@@ -1788,13 +1788,9 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
 
-	// Verify timeout on download request
+	// Verify timeout on download request doesn't panic.
 	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected download request to time out")
-	}
-	if !strings.Contains(err.Error(), "timed out after 1s") {
-		t.Log(err)
-		t.Fatal("Expected error to specify the timeout")
 	}
 }
