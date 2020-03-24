@@ -284,10 +284,10 @@ func (cst *consensusSetTester) testValidStorageProofBlocks() {
 	if err != nil {
 		panic(err)
 	}
-	if dsco.UnlockHash != fc.ValidProofOutputs[0].UnlockHash {
+	if dsco.UnlockHash != fc.ValidRenterOutput().UnlockHash {
 		panic("wrong unlock hash in dsco")
 	}
-	if !dsco.Value.Equals(fc.ValidProofOutputs[0].Value) {
+	if !dsco.Value.Equals(fc.ValidRenterPayout()) {
 		panic("wrong sco value in dsco")
 	}
 }
@@ -392,10 +392,10 @@ func (cst *consensusSetTester) testMissedStorageProofBlocks() {
 	if err != nil {
 		panic(err)
 	}
-	if dsco.UnlockHash != fc.MissedProofOutputs[0].UnlockHash {
+	if dsco.UnlockHash != fc.MissedRenterOutput().UnlockHash {
 		panic("wrong unlock hash in dsco")
 	}
-	if !dsco.Value.Equals(fc.MissedProofOutputs[0].Value) {
+	if !dsco.Value.Equals(fc.MissedRenterOutput().Value) {
 		panic("wrong sco value in dsco")
 	}
 }
