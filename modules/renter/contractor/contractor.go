@@ -9,9 +9,11 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -24,6 +26,10 @@ var (
 	errNilHDB    = errors.New("cannot create contractor with nil HostDB")
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
+
+	errHostNotFound              = errors.New("host not found")
+	errContractNotFound          = errors.New("contract not found")
+	errContractInsufficientFunds = errors.New("contract has insufficient funds")
 
 	// COMPATv1.0.4-lts
 	// metricsContractID identifies a special contract that contains aggregate
@@ -188,6 +194,74 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.currentPeriod
+}
+
+// ProvidePayment fulfills the PaymentProvider interface. It uses the given
+// stream and necessary payment details to perform payment for an RPC call.
+func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error {
+	// find a contract for the given host
+	contract, exists := c.ContractByPublicKey(host)
+	if !exists {
+		return errContractNotFound
+	}
+
+	// acquire a safe contract
+	sc, exists := c.staticContracts.Acquire(contract.ID)
+	if !exists {
+		return errContractNotFound
+	}
+	defer c.staticContracts.Return(sc)
+
+	// verify the contract has enough funds
+	metadata := sc.Metadata()
+	if metadata.RenterFunds.Cmp(amount) < 0 {
+		return errContractInsufficientFunds
+	}
+
+	// create a new revision
+	current := metadata.Transaction.FileContractRevisions[0]
+	rev := newPaymentRevision(current, amount)
+
+	// create transaction containing the revision
+	signedTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{{
+			ParentID:       crypto.Hash(rev.ParentID),
+			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+			PublicKeyIndex: 0,
+		}},
+	}
+	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+	// TODO record the payment intent
+
+	// send PaymentRequest & PayByContractRequest
+	req := modules.PaymentRequest{Type: modules.PayByContract}
+	var pbcr modules.PayByContractRequest
+	pbcr.LoadArguments(rev, sig)
+	err := modules.RPCWriteAll(stream, req, pbcr)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	if err := modules.RPCRead(stream, &payByResponse); err != nil {
+		return err
+	}
+
+	// verify the host's signature
+	hash := crypto.HashAll(rev)
+	var pk crypto.PublicKey
+	copy(pk[:], metadata.HostPublicKey.Key)
+	if err := crypto.VerifyHash(hash, pk, payByResponse.Signature); err != nil {
+		return errors.New("could not verify host's signature")
+	}
+
+	// TODO commit payment intent
+
+	return nil
 }
 
 // RateLimits sets the bandwidth limits for connections created by the
@@ -506,4 +580,29 @@ func (c *Contractor) managedSynced() bool {
 	default:
 	}
 	return false
+}
+
+// newPaymentRevision will make a new revision that transfers the funds from the
+// renter to the host.
+func newPaymentRevision(current types.FileContractRevision, payment types.Currency) types.FileContractRevision {
+	rev := current
+
+	// need to manually copy slice memory
+	rev.NewValidProofOutputs = make([]types.SiacoinOutput, 2)
+	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, 3)
+	copy(rev.NewValidProofOutputs, current.NewValidProofOutputs)
+	copy(rev.NewMissedProofOutputs, current.NewMissedProofOutputs)
+
+	// move valid payout from renter to host
+	rev.NewValidProofOutputs[0].Value = current.NewValidProofOutputs[0].Value.Sub(payment)
+	rev.NewValidProofOutputs[1].Value = current.NewValidProofOutputs[1].Value.Add(payment)
+
+	// move missed payout from renter to void
+	rev.NewMissedProofOutputs[0].Value = current.NewMissedProofOutputs[0].Value.Sub(payment)
+	rev.NewMissedProofOutputs[2].Value = current.NewMissedProofOutputs[2].Value.Add(payment)
+
+	// increment revision number
+	rev.NewRevisionNumber++
+
+	return rev
 }

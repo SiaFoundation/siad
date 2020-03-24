@@ -434,7 +434,7 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 
 	// Create the final revision of the old contract.
 	bandwidthCost := host.BaseRPCPrice
-	finalRev, err := newRevision(contract.LastRevision(), bandwidthCost)
+	finalRev, err := contract.LastRevision().PaymentRevision(bandwidthCost)
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.AddContext(err, "Unable to create final revision")
 	}

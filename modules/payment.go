@@ -58,6 +58,14 @@ type PaymentProcessor interface {
 	ProcessPayment(stream siamux.Stream) (string, types.Currency, error)
 }
 
+// PaymentProvider is the interface implemented to provide payment for an RPC.
+type PaymentProvider interface {
+	// ProvidePayment takes a stream and various payment details and handles the
+	// payment by sending and processing payment request and response objects.
+	// Returns an error in case of failure.
+	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error
+}
+
 // Payment identifiers
 var (
 	PayByContract         = types.NewSpecifier("PayByContract")
@@ -118,6 +126,22 @@ type (
 		Timestamp int64
 	}
 )
+
+// LoadArguments is a helper function that takes a revision and a signature as
+// arguments and decorates their info on a PayByContractRequest object.
+func (pbcr PayByContractRequest) LoadArguments(rev types.FileContractRevision, sig crypto.Signature) {
+	pbcr.ContractID = rev.ID()
+	pbcr.NewRevisionNumber = rev.NewRevisionNumber
+	pbcr.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	for i, o := range rev.NewValidProofOutputs {
+		pbcr.NewValidProofValues[i] = o.Value
+	}
+	pbcr.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
+	for i, o := range rev.NewMissedProofOutputs {
+		pbcr.NewMissedProofValues[i] = o.Value
+	}
+	pbcr.Signature = sig[:]
+}
 
 // Validate checks the WithdrawalMessage's expiry and signature. If the
 // signature is invalid, or if the WithdrawlMessage is already expired, or it

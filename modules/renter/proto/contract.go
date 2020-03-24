@@ -144,6 +144,11 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 	}
 }
 
+// Sign will sign the given hash using the safecontract's secret key
+func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
+	return crypto.SignHash(hash, c.header.SecretKey)
+}
+
 // UpdateUtility updates the utility field of a contract.
 func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 	c.mu.Lock()

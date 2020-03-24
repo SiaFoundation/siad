@@ -5,6 +5,7 @@ package types
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -14,6 +15,14 @@ var (
 	// ProofValid indicates that a valid StorageProof was submitted within the
 	// proof window.
 	ProofValid ProofStatus = true
+
+	// ErrRevisionCostTooHigh indicates that a new revision can't be created
+	// because the cost is higher than the available funds.
+	ErrRevisionCostTooHigh = errors.New("Can't create new revision with this cost. Not enough funds remaining to cover it")
+
+	// ErrRevisionCollateralTooLow indicates that a new revision can't be created
+	// because the available collateral is too low.
+	ErrRevisionCollateralTooLow = errors.New("Can't create new revision with this collateral. Not enough funds remaining to cover it")
 )
 
 type (
@@ -106,6 +115,39 @@ func (fcr FileContractRevision) ID() FileContractID {
 // will panic if called on an incomplete revision.
 func (fcr FileContractRevision) HostPublicKey() SiaPublicKey {
 	return fcr.UnlockConditions.PublicKeys[1]
+}
+
+// PaymentRevision returns a copy of the revision with incremented revision
+// number where the given amount has moved from renter to the host.
+func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRevision, error) {
+	rev := fcr
+
+	// need to manually copy slice memory
+	rev.NewValidProofOutputs = make([]SiacoinOutput, 2)
+	rev.NewMissedProofOutputs = make([]SiacoinOutput, 3)
+	copy(rev.NewValidProofOutputs, fcr.NewValidProofOutputs)
+	copy(rev.NewMissedProofOutputs, fcr.NewMissedProofOutputs)
+
+	// Check that there are enough funds to pay this cost.
+	if fcr.NewValidProofOutputs[0].Value.Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "valid proof output smaller than cost")
+	}
+	if fcr.NewMissedProofOutputs[0].Value.Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "missed proof output smaller than cost")
+	}
+
+	// move valid payout from renter to host
+	rev.NewValidProofOutputs[0].Value = fcr.NewValidProofOutputs[0].Value.Sub(amount)
+	rev.NewValidProofOutputs[1].Value = fcr.NewValidProofOutputs[1].Value.Add(amount)
+
+	// move missed payout from renter to void
+	rev.NewMissedProofOutputs[0].Value = fcr.NewMissedProofOutputs[0].Value.Sub(amount)
+	rev.NewMissedProofOutputs[2].Value = fcr.NewMissedProofOutputs[2].Value.Add(amount)
+
+	// increment revision number
+	rev.NewRevisionNumber++
+
+	return rev, nil
 }
 
 // RenterFunds returns the amount of funds in the contract's renter payout.

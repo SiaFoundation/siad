@@ -246,7 +246,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	}
 
 	// create the revision; we will update the Merkle root later
-	rev, err := newRevision(contract.LastRevision(), cost)
+	rev, err := contract.LastRevision().PaymentRevision(cost)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "Error creating new write revision")
 	}
