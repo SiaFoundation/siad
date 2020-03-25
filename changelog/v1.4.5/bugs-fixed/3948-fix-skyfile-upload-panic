@@ -1,0 +1,1 @@
+- Fix panic when metadata of skyfile upload exceeds modules.SectorSize
