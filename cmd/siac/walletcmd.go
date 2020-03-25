@@ -16,6 +16,7 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"golang.org/x/crypto/ssh/terminal"
 
+	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -654,7 +655,7 @@ func wallettransactionscmd() {
 func walletunlockcmd() {
 	// try reading from environment variable first, then fallback to
 	// interactive method. Also allow overriding auto-unlock via -p
-	password := os.Getenv("SIA_WALLET_PASSWORD")
+	password := os.Getenv(cmd.SiaWalletPassword)
 	if password != "" && !initPassword {
 		fmt.Println("Using SIA_WALLET_PASSWORD environment variable")
 		err := httpClient.WalletUnlockPost(password)

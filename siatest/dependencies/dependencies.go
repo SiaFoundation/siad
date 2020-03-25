@@ -49,6 +49,12 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencySkipDeleteContractAfterRenewal prevents the old contract from
+	// being deleted after a renewal.
+	DependencySkipDeleteContractAfterRenewal struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyInterruptOnceOnKeyword is a generic dependency that interrupts
 	// the flow of the program if the argument passed to Disrupt equals str and
 	// if f was set to true by calling Fail.
@@ -80,7 +86,24 @@ type (
 	DependencyRenewWithoutClear struct {
 		modules.ProductionDependencies
 	}
+
+	// DependencyBlockResumeJobDownloadUntilTimeout blocks in
+	// managedResumeJobDownloadByRoot until the timeout for the download project
+	// is reached.
+	DependencyBlockResumeJobDownloadUntilTimeout struct {
+		DependencyTimeoutProjectDownloadByRoot
+		c chan struct{}
+	}
 )
+
+// NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
+// managedResumeJobDownloadByRoot until the timeout for the download project is
+// reached.
+func NewDependencyBlockResumeJobDownloadUntilTimeout() modules.Dependencies {
+	return &DependencyBlockResumeJobDownloadUntilTimeout{
+		c: make(chan struct{}),
+	}
+}
 
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
 // method which returns a custom resolver that uses the specified lookupIP
@@ -151,8 +174,25 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 }
 
 // Disrupt returns true if the correct string is provided.
+func (d *DependencyBlockResumeJobDownloadUntilTimeout) Disrupt(s string) bool {
+	if s == "BlockUntilTimeout" {
+		<-d.c
+		return true
+	} else if s == "ResumeOnTimeout" {
+		close(d.c)
+		return true
+	}
+	return false
+}
+
+// Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
 	return s == "BlockAsyncStartup"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencySkipDeleteContractAfterRenewal) Disrupt(s string) bool {
+	return s == "SkipContractDeleteAfterRenew"
 }
 
 // Disrupt causes contract formation to fail due to low allowance funds.

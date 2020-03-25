@@ -204,21 +204,27 @@ func TestAccountExpiry(t *testing.T) {
 	accountID := spk.String()
 
 	// Deposit some money into the account
-	err = callDeposit(am, accountID, types.NewCurrency64(10))
-	if err != nil {
+	if err = build.Retry(3, 100*time.Millisecond, func() error {
+		return callDeposit(am, accountID, types.NewCurrency64(10))
+	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify the balance, sleep a bit and verify it is gone
+	// Verify the balance
 	balance := getAccountBalance(am, accountID)
 	if !balance.Equals(types.NewCurrency64(10)) {
 		t.Fatal("Account balance was incorrect after deposit")
 	}
 
-	time.Sleep(pruneExpiredAccountsFrequency)
-	balance = getAccountBalance(am, accountID)
-	if !balance.Equals(types.NewCurrency64(0)) {
-		t.Fatal("Account balance was incorrect after expiry")
+	// Verify the account got pruned
+	if err = build.Retry(3, pruneExpiredAccountsFrequency, func() error {
+		balance = getAccountBalance(am, accountID)
+		if !balance.IsZero() {
+			return errors.New("Account balance was incorrect after expiry")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

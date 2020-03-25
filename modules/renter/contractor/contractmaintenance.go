@@ -748,6 +748,18 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}
 	c.log.Printf("Renewed contract %v\n", id)
 
+	// Skip the deletion of the old contract if required and delete the new
+	// contract to make sure we keep using the old one even though it has been
+	// finalized.
+	if c.staticDeps.Disrupt("SkipContractDeleteAfterRenew") {
+		c.staticContracts.Return(oldContract)
+		newSC, ok := c.staticContracts.Acquire(newContract.ID)
+		if ok {
+			c.staticContracts.Delete(newSC)
+		}
+		return amount, nil
+	}
+
 	// Update the utility values for the new contract, and for the old
 	// contract.
 	newUtility := modules.ContractUtility{

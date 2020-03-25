@@ -407,6 +407,19 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
+	// Check for nil input
+	if len(dirs) == 0 {
+		fmt.Println("No Directories Found")
+		return
+	}
+
+	// Check for no files uploaded
+	total := float64(dirs[0].dir.AggregateNumFiles)
+	if total == 0 {
+		fmt.Println("No Files Uploaded")
+		return
+	}
+
 	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
 	for _, dir := range dirs {
 		for _, file := range dir.files {
@@ -426,7 +439,6 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 			}
 		}
 	}
-	total := float64(dirs[0].dir.AggregateNumFiles)
 
 	fullHealth = 100 * fullHealth / total
 	greater75 = 100 * greater75 / total
@@ -468,15 +480,22 @@ func renterFilesAndContractSummary() error {
 	if rf.Directories[0].AggregateMinRedundancy == -1 {
 		redundancyStr = "-"
 	}
+	// Active Contracts are all good data
+	activeSize, _, _, _ := contractStats(rc.ActiveContracts)
+	// Passive Contracts are all good data
+	passiveSize, _, _, _ := contractStats(rc.PassiveContracts)
 
 	fmt.Printf(`
-  Files:              %v
-  Total Stored:       %v
-  Min Redundancy:     %v
-  Active Contracts:   %v
-  Passive Contracts:  %v
-  Disabled Contracts: %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts), len(rc.PassiveContracts), len(rc.DisabledContracts))
+  Files:               %v
+  Total Stored:        %v
+  Total Contract Data: %v
+  Min Redundancy:      %v
+  Active Contracts:    %v
+  Passive Contracts:   %v
+  Disabled Contracts:  %v
+`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize),
+		modules.FilesizeUnits(activeSize+passiveSize), redundancyStr, len(rc.ActiveContracts),
+		len(rc.PassiveContracts), len(rc.DisabledContracts))
 
 	return nil
 }
@@ -1587,23 +1606,35 @@ func rentercontractscmd() {
 // rentercontractsviewcmd is the handler for the command `siac renter contracts <id>`.
 // It lists details of a specific contract.
 func rentercontractsviewcmd(cid string) {
-	rc, err := httpClient.RenterInactiveContractsGet()
+	rc, err := httpClient.RenterAllContractsGet()
 	if err != nil {
 		die("Could not get contract details: ", err)
 	}
-	rce, err := httpClient.RenterExpiredContractsGet()
+
+	contracts := append(rc.ActiveContracts, rc.PassiveContracts...)
+	contracts = append(contracts, rc.RefreshedContracts...)
+	contracts = append(contracts, rc.DisabledContracts...)
+	contracts = append(contracts, rc.ExpiredContracts...)
+	contracts = append(contracts, rc.ExpiredRefreshedContracts...)
+
+	err = printContractInfo(cid, contracts)
 	if err != nil {
-		die("Could not get expired contract details: ", err)
+		die(err)
 	}
+}
 
-	contracts := append(rc.ActiveContracts, rc.InactiveContracts...)
-	contracts = append(contracts, rce.ExpiredContracts...)
-
+// printContractInfo is a helper function for printing the information about a
+// specific contract
+func printContractInfo(cid string, contracts []api.RenterContract) error {
 	for _, rc := range contracts {
 		if rc.ID.String() == cid {
+			var fundsAllocated types.Currency
+			if rc.TotalCost.Cmp(rc.Fees) > 0 {
+				fundsAllocated = rc.TotalCost.Sub(rc.Fees)
+			}
 			hostInfo, err := httpClient.HostDbHostsGet(rc.HostPublicKey)
 			if err != nil {
-				die("Could not fetch details of host: ", err)
+				return fmt.Errorf("Could not fetch details of host: %v", err)
 			}
 			fmt.Printf(`
 Contract %v
@@ -1621,10 +1652,9 @@ Contract %v
   Remaining Funds:   %v
 
   File Size: %v
-`, rc.ID, rc.NetAddress, rc.HostVersion, rc.HostPublicKey.String(), rc.StartHeight, rc.EndHeight,
-				currencyUnits(rc.TotalCost),
-				currencyUnits(rc.Fees),
-				currencyUnits(rc.TotalCost.Sub(rc.Fees)),
+`, rc.ID, rc.NetAddress, rc.HostPublicKey.String(), rc.HostVersion, rc.StartHeight, rc.EndHeight,
+				currencyUnits(rc.TotalCost), currencyUnits(rc.Fees),
+				currencyUnits(fundsAllocated),
 				currencyUnits(rc.UploadSpending),
 				currencyUnits(rc.StorageSpending),
 				currencyUnits(rc.DownloadSpending),
@@ -1632,11 +1662,12 @@ Contract %v
 				modules.FilesizeUnits(rc.Size))
 
 			printScoreBreakdown(&hostInfo)
-			return
+			return nil
 		}
 	}
 
 	fmt.Println("Contract not found")
+	return nil
 }
 
 // downloadDir downloads the dir at the specified siaPath to the specified
