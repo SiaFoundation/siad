@@ -196,10 +196,11 @@ func TestContractIncompleteWrite(t *testing.T) {
 	}
 
 	// get the size of the merkle roots file.
-	size, err := sc.merkleRoots.rootsFile.Size()
+	stat, err := sc.merkleRoots.rootsFile.Stat()
 	if err != nil {
 		t.Fatal(err)
 	}
+	size := stat.Size()
 	// the size should be crypto.HashSize since we have exactly one root.
 	if size != crypto.HashSize {
 		t.Fatal("unexpected merkle root file size", size)

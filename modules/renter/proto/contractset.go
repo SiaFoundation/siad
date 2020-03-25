@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -68,8 +69,9 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	cs.mu.Unlock()
 	c.revisionMu.Unlock()
 	// delete contract file
-	path := filepath.Join(cs.dir, c.header.ID().String()+contractExtension)
-	err := errors.Compose(c.headerFile.Close(), os.Remove(path))
+	headerPath := filepath.Join(cs.dir, c.header.ID().String()+contractHeaderExtension)
+	rootsPath := filepath.Join(cs.dir, c.header.ID().String()+contractRootsExtension)
+	err := errors.Compose(c.headerFile.Close(), os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
 	}
@@ -218,12 +220,15 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	}
 
 	for _, filename := range dirNames {
-		if filepath.Ext(filename) != contractExtension {
+		if filepath.Ext(filename) != contractHeaderExtension {
 			continue
 		}
-		path := filepath.Join(dir, filename)
-		if err := cs.loadSafeContract(path, walTxns); err != nil {
-			extErr := fmt.Errorf("failed to load safecontract %v", path)
+		nameNoExt := strings.TrimSuffix(filename, contractHeaderExtension)
+		headerPath := filepath.Join(dir, filename)
+		rootsPath := filepath.Join(dir, nameNoExt+contractRootsExtension)
+
+		if err := cs.loadSafeContract(headerPath, rootsPath, walTxns); err != nil {
+			extErr := fmt.Errorf("failed to load safecontract for header %v", headerPath)
 			return nil, errors.Compose(extErr, err)
 		}
 	}

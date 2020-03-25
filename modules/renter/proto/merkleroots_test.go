@@ -74,8 +74,7 @@ func TestLoadExistingMerkleRoots(t *testing.T) {
 	}
 
 	// Create sector roots.
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < 200; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -83,7 +82,7 @@ func TestLoadExistingMerkleRoots(t *testing.T) {
 	}
 
 	// Load the existing file using LoadExistingMerkleRoots
-	merkleRoots2, applyTxns, err := loadExistingMerkleRoots(rootSection)
+	merkleRoots2, applyTxns, err := loadExistingMerkleRoots(file)
 	if err != nil || applyTxns {
 		t.Fatal(applyTxns, err)
 	}
@@ -129,8 +128,7 @@ func TestInsertMerkleRoot(t *testing.T) {
 	}
 
 	// Create sector roots.
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < 200; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -212,8 +210,7 @@ func TestDeleteLastRoot(t *testing.T) {
 	// makes the first delete remove a uncached root and the second delete has
 	// to remove a cached tree.
 	numMerkleRoots := merkleRootsPerCache + 1
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < numMerkleRoots; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -306,8 +303,7 @@ func TestDelete(t *testing.T) {
 
 	// Create many sector roots.
 	numMerkleRoots := 1000
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < numMerkleRoots; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -400,8 +396,7 @@ func TestMerkleRootsRandom(t *testing.T) {
 
 	// Create many sector roots.
 	numMerkleRoots := 10000
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < numMerkleRoots; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
