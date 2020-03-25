@@ -216,13 +216,20 @@ func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Has
 	}
 
 	// Check that there is enough collateral to cover the cost.
-	if rev.NewMissedProofOutputs[1].Value.Cmp(collateral) < 0 {
+	if rev.MissedHostOutput().Value.Cmp(collateral) < 0 {
 		return types.FileContractRevision{}, types.ErrRevisionCollateralTooLow
 	}
 
 	// move collateral from host to void
-	rev.NewMissedProofOutputs[1].Value = rev.NewMissedProofOutputs[1].Value.Sub(collateral)
-	rev.NewMissedProofOutputs[2].Value = rev.NewMissedProofOutputs[2].Value.Add(collateral)
+	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
+	voidOutput, err := rev.MissedVoidOutput()
+	if err != nil {
+		return types.FileContractRevision{}, errors.AddContext(err, "failed to get void output")
+	}
+	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(collateral))
+	if err != nil {
+		return types.FileContractRevision{}, errors.AddContext(err, "failed to set void output")
+	}
 
 	// set new filesize and Merkle root
 	rev.NewFileSize += modules.SectorSize

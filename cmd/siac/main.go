@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -337,7 +338,7 @@ func main() {
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
 	// Check if the api password environment variable is set.
-	apiPassword := os.Getenv("SIA_API_PASSWORD")
+	apiPassword := os.Getenv(cmd.SiaAPIPassword)
 	if apiPassword != "" {
 		httpClient.Password = apiPassword
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
@@ -345,7 +346,7 @@ func main() {
 
 	// If siaDir is not set, use the environment variable provided.
 	if siaDir == "" {
-		siaDir = os.Getenv("SIA_DATA_DIR")
+		siaDir = os.Getenv(cmd.SiaDataDir)
 		if siaDir != "" {
 			fmt.Println("Using SIA_DATA_DIR environment variable")
 		} else {
