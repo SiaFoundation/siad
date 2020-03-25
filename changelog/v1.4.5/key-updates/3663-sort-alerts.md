@@ -1,1 +1,1 @@
- - Alerts returned by /daemon/alerts route are sorted by severity
+- Alerts returned by /daemon/alerts route are sorted by severity
