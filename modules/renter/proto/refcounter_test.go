@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,9 +76,9 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-// TestReadCount tests that the `readCount` method always returns the correct
+// TestCount tests that the `Count` method always returns the correct
 // counter value, either from disk or from in-mem storage.
-func TestReadCount(t *testing.T) {
+func TestCount(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -108,17 +109,21 @@ func TestReadCount(t *testing.T) {
 		t.Fatal("Failed to write a count to disk:", err)
 	}
 	// verify we can read it correctly
-	readVal, err := rc.readCount(testSec)
+	readVal, err := rc.Count(testSec)
 	if err != nil {
 		t.Fatal("Failed to read count from disk:", err)
 	}
 	if readVal != testVal {
 		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", testVal, readVal))
 	}
+	// check behaviour on bad sector number
+	if _, err := rc.Count(math.MaxInt64); !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 	// set up a temporary override
 	rc.newSectorCounts[testSec] = testOverrideVal
 	// verify we can read it correctly
-	readOverrideVal, err := rc.readCount(testSec)
+	readOverrideVal, err := rc.Count(testSec)
 	if err != nil {
 		t.Fatal("Failed to read count from disk:", err)
 	}
@@ -213,6 +218,10 @@ func TestRefCounter(t *testing.T) {
 	if readValAfterInc != 2 {
 		t.Fatal(fmt.Errorf("read wrong value after increment. Expected %d, got %d", 2, readValAfterInc))
 	}
+	// check behaviour on bad sector number
+	if _, err := rc.Increment(math.MaxInt64); !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 
 	// test Decrement on the second appended counter
 	if u, err = rc.Decrement(rc.numSectors - 1); err != nil {
@@ -226,6 +235,10 @@ func TestRefCounter(t *testing.T) {
 	}
 	if readValAfterDec != 0 {
 		t.Fatal(fmt.Errorf("read wrong value after increment. Expected %d, got %d", 0, readValAfterDec))
+	}
+	// check behaviour on bad sector number
+	if _, err := rc.Decrement(math.MaxInt64); !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
 	}
 
 	// test Swap
@@ -243,6 +256,10 @@ func TestRefCounter(t *testing.T) {
 	}
 	if valAfterSwap1 != 0 || valAfterSwap2 != 2 {
 		t.Fatal(fmt.Errorf("read wrong value after swap. Expected %d and %d, got %d and %d", 0, 2, valAfterSwap1, valAfterSwap2))
+	}
+	// check behaviour on bad sector number
+	if _, err := rc.Swap(math.MaxInt64, 0); !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
 	}
 
 	// apply the updates and check the values again
@@ -284,6 +301,10 @@ func TestRefCounter(t *testing.T) {
 	}
 	if rc.numSectors != numSectorsBefore {
 		t.Fatal(fmt.Errorf("wrong number of counters after Truncate. Expected %d, got %d", numSectorsBefore, rc.numSectors))
+	}
+	// check behaviour on bad sector number
+	if _, err := rc.DropSectors(math.MaxInt64); !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
 	}
 	// apply
 	if err = rc.CreateAndApplyTransaction(u); err != nil {
