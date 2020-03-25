@@ -21,17 +21,125 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// TestRefCounter tests the RefCounter type
-func TestRefCounter(t *testing.T) {
+var testWAL = newTestWAL()
+
+// testLoad specifically tests LoadRefCounter and its various failure modes
+func TestLoad(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
+	// prepare
+	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	testSectorsCount := uint64(17)
+	testDir := build.TempDir(t.Name())
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
+		t.Fatal("Failed to create test directory:", err)
+	}
+	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+
+	// create a ref counter
+	_, err := NewRefCounter(rcFilePath, testSectorsCount, testWAL)
+	if err != nil {
+		t.Fatal("Failed to create a reference counter:", err)
+	}
+
+	// happy case
+	if _, err = LoadRefCounter(rcFilePath, testWAL); err != nil {
+		t.Fatal("Failed to load refcounter:", err)
+	}
+
+	// fails with os.ErrNotExist for a non-existent file
+	if _, err = LoadRefCounter("there-is-no-such-file.rc", testWAL); !errors.IsOSNotExist(err) {
+		t.Fatal("Expected os.ErrNotExist, got something else:", err)
+	}
+
+	// fails with ErrInvalidVersion when trying to load a file with a different
+	// version
+	badVerFilePath := rcFilePath + "badver"
+	f, err := os.Create(badVerFilePath)
+	if err != nil {
+		t.Fatal("Failed to create test file:", err)
+	}
+	badVerHeader := RefCounterHeader{Version: [8]byte{9, 9, 9, 9, 9, 9, 9, 9}}
+	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
+	_, err = f.Write(badVerFileContents)
+	_ = f.Close() // close regardless of the success of the write
+	if err != nil {
+		t.Fatal("Failed to write to test file:", err)
+	}
+	_, err = LoadRefCounter(badVerFilePath, testWAL)
+	if !errors.Contains(err, ErrInvalidVersion) {
+		t.Fatal(fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()), err)
+	}
+}
+
+// TestReadCount tests that the `readCount` method always returns the correct
+// counter value, either from disk or from in-mem storage.
+func TestReadCount(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
 
 	// prepare for the tests
 	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
 	testSectorsCount := uint64(17)
 	testDir := build.TempDir(t.Name())
-	testWAL, _ := newTestWAL()
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
+		t.Fatal("Failed to create test directory:", err)
+	}
+	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+
+	// create a ref counter
+	rc, err := NewRefCounter(rcFilePath, testSectorsCount, testWAL)
+	if err != nil {
+		t.Fatal("Failed to create a reference counter:", err)
+	}
+	if _, err = os.Stat(rcFilePath); err != nil {
+		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
+	}
+
+	testSec := uint64(2) // make sure this value is below testSectorsCount
+	testVal := uint16(21)
+	testOverrideVal := uint16(12)
+	// set up the expected value on disk
+	if err := writeVal(rc.filepath, testSec, testVal); err != nil {
+		t.Fatal("Failed to write a count to disk:", err)
+	}
+	// verify we can read it correctly
+	readVal, err := rc.readCount(testSec)
+	if err != nil {
+		t.Fatal("Failed to read count from disk:", err)
+	}
+	if readVal != testVal {
+		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", testVal, readVal))
+	}
+	// set up a temporary override
+	rc.newSectorCounts[testSec] = testOverrideVal
+	// verify we can read it correctly
+	readOverrideVal, err := rc.readCount(testSec)
+	if err != nil {
+		t.Fatal("Failed to read count from disk:", err)
+	}
+	if readOverrideVal != testOverrideVal {
+		t.Fatal(fmt.Sprintf("read wrong override value from disk: expected %d, got %d", testOverrideVal, readOverrideVal))
+	}
+}
+
+// TestRefCounter tests the RefCounter type
+func TestRefCounter(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare for the tests
+	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	testSectorsCount := uint64(17)
+	testDir := build.TempDir(t.Name())
 	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
 		t.Fatal("Failed to create test directory:", err)
 	}
@@ -45,16 +153,6 @@ func TestRefCounter(t *testing.T) {
 	stats, err := os.Stat(rcFilePath)
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
-	}
-
-	// test our ability to reliably read the correct value of a counter
-	if err = testReadCount(&rc); err != nil {
-		t.Fatal(errors.AddContext(err, "Failed to test readCount"))
-	}
-
-	// test our ability to reliably create, read, and execute WAL updates
-	if err = testWALFunctions(); err != nil {
-		t.Fatal(err)
 	}
 
 	var u writeaheadlog.Update
@@ -228,11 +326,6 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(fmt.Sprintf("File size did not go back to the original as expected, expected size: %d, actual size: %d", stats.Size(), endStats.Size()))
 	}
 
-	// individually test LoadRefCounter
-	if err = testLoad(rcFilePath, testWAL); err != nil {
-		t.Fatal(err)
-	}
-
 	// load from disk
 	rcLoaded, err := LoadRefCounter(rcFilePath, testWAL)
 	if err != nil {
@@ -288,8 +381,36 @@ func TestRefCounter(t *testing.T) {
 	}
 }
 
+// TestWALFunctions tests RefCounter's functions for creating and
+// reading WAL updates
+func TestWALFunctions(t *testing.T) {
+	t.Parallel()
+
+	// test creating and reading updates
+	writtenPath := "test/writtenPath"
+	writtenSec := uint64(2)
+	writtenVal := uint16(12)
+	writeUp := createWriteAtUpdate(writtenPath, writtenSec, writtenVal)
+	readPath, readSec, readVal, err := readWriteAtUpdate(writeUp)
+	if err != nil {
+		t.Fatal("Failed to read WriteAt update:", err)
+	}
+	if writtenPath != readPath || writtenSec != readSec || writtenVal != readVal {
+		t.Fatal(fmt.Sprintf("Wrong values read from WriteAt update. Expected %s, %d, %d, found %s, %d, %d.", writtenPath, writtenSec, writtenVal, readPath, readSec, readVal))
+	}
+
+	truncUp := createTruncateUpdate(writtenPath, writtenSec)
+	readPath, readSec, err = readTruncateUpdate(truncUp)
+	if err != nil {
+		t.Fatal("Failed to read a Truncate update:", err)
+	}
+	if writtenPath != readPath || writtenSec != readSec {
+		t.Fatal(fmt.Sprintf("Wrong values read from Truncate update. Expected %s, %d found %s, %d.", writtenPath, writtenSec, readPath, readSec))
+	}
+}
+
 // newTestWal is a helper method to create a WAL for testing.
-func newTestWAL() (*writeaheadlog.WAL, string) {
+func newTestWAL() *writeaheadlog.WAL {
 	// Create the wal.
 	walsDir := filepath.Join(os.TempDir(), "rc-wals")
 	if err := os.MkdirAll(walsDir, modules.DefaultDirPerm); err != nil {
@@ -300,103 +421,7 @@ func newTestWAL() (*writeaheadlog.WAL, string) {
 	if err != nil {
 		panic(err)
 	}
-	return wal, walFilePath
-}
-
-// testLoad specifically tests LoadRefCounter and its various failure modes
-func testLoad(validFilePath string, wal *writeaheadlog.WAL) error {
-	// happy case
-	_, err := LoadRefCounter(validFilePath, wal)
-	if err != nil {
-		return err
-	}
-
-	// fails with os.ErrNotExist for a non-existent file
-	_, err = LoadRefCounter("there-is-no-such-file.rc", wal)
-	if !errors.IsOSNotExist(err) {
-		return errors.AddContext(err, "expected os.ErrNotExist, got something else")
-	}
-
-	// fails with ErrInvalidVersion when trying to load a file with a different
-	// version
-	badVerFilePath := validFilePath + "badver"
-	f, err := os.Create(badVerFilePath)
-	if err != nil {
-		return errors.AddContext(err, "failed to create test file")
-	}
-	badVerHeader := RefCounterHeader{Version: [8]byte{9, 9, 9, 9, 9, 9, 9, 9}}
-	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
-	_, err = f.Write(badVerFileContents)
-	_ = f.Close() // close regardless of the success of the write
-	if err != nil {
-		return errors.AddContext(err, "failed to write to test file")
-	}
-	_, err = LoadRefCounter(badVerFilePath, wal)
-	if !errors.Contains(err, ErrInvalidVersion) {
-		return errors.AddContext(err, fmt.Sprintf("should not be able to read file with wrong version, expected `%s` error", ErrInvalidVersion.Error()))
-	}
-
-	return nil
-}
-
-// testReadCount tests that the `readCount` method always returns the correct
-// counter value, either from disk or from in-mem storage.
-func testReadCount(rc *RefCounter) error {
-	testSec := uint64(2) // make sure this value is below testSectorsCount
-	testVal := uint16(21)
-	testOverrideVal := uint16(12)
-	// set up the expected value on disk
-	if err := writeVal(rc.filepath, testSec, testVal); err != nil {
-		return err
-	}
-	// verify we can read it correctly
-	readVal, err := rc.readCount(testSec)
-	if err != nil {
-		return errors.AddContext(err, "failed to read count from disk")
-	}
-	if readVal != testVal {
-		return fmt.Errorf("read wrong value from disk: expected %d, got %d", testVal, readVal)
-	}
-	// set up a temporary override
-	rc.newSectorCounts[testSec] = testOverrideVal
-	// verify we can read it correctly
-	readOverrideVal, err := rc.readCount(testSec)
-	if err != nil {
-		return errors.AddContext(err, "failed to read count from disk")
-	}
-	if readOverrideVal != testOverrideVal {
-		return fmt.Errorf("read wrong override value from disk: expected %d, got %d", testOverrideVal, readOverrideVal)
-	}
-	return nil
-}
-
-// testWALFunctions tests RefCounter's functions for creating and
-// reading WAL updates
-func testWALFunctions() error {
-	// test creating and reading updates
-	writtenPath := "test/writtenPath"
-	writtenSec := uint64(2)
-	writtenVal := uint16(12)
-	writeUp := createWriteAtUpdate(writtenPath, writtenSec, writtenVal)
-	readPath, readSec, readVal, err := readWriteAtUpdate(writeUp)
-	if err != nil {
-		return errors.AddContext(err, "failed to read WriteAt update")
-	}
-	if writtenPath != readPath || writtenSec != readSec || writtenVal != readVal {
-		return fmt.Errorf("Wrong values read from WriteAt update. Expected %s, %d, %d, found %s, %d, %d.", writtenPath, writtenSec, writtenVal, readPath, readSec, readVal)
-	}
-
-	truncUp := createTruncateUpdate(writtenPath, writtenSec)
-	readPath, readSec, err = readTruncateUpdate(truncUp)
-	if err != nil {
-		return errors.AddContext(err, "failed to read Truncate update")
-	}
-	if writtenPath != readPath || writtenSec != readSec {
-		return fmt.Errorf("Wrong values read from Truncate update. Expected %s, %d found %s, %d.", writtenPath, writtenSec, readPath, readSec)
-	}
-
-	return nil
+	return wal
 }
 
 // writeVal is a helper method that writes a certain counter value to disk. This
