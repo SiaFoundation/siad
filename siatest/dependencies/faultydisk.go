@@ -1,17 +1,16 @@
-package siafile
+package dependencies
 
 import (
 	"errors"
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/fastrand"
-
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 var (
-	errDiskFault = errors.New("disk fault")
+	ErrDiskFault = errors.New("disk fault")
 )
 
 // scrambleData takes some data as input and replaces parts of it randomly with
@@ -29,8 +28,8 @@ func scrambleData(d []byte) []byte {
 	return scrambled
 }
 
-// dependencyFaultyDisk implements dependencies that simulate a faulty disk.
-type dependencyFaultyDisk struct {
+// DependencyFaultyDisk implements dependencies that simulate a faulty disk.
+type DependencyFaultyDisk struct {
 	modules.ProductionDependencies
 	// failDenominator determines how likely it is that a write will fail,
 	// defined as 1/failDenominator. Each write call increments
@@ -46,30 +45,18 @@ type dependencyFaultyDisk struct {
 	mu sync.Mutex
 }
 
-// newFaultyDiskDependency creates a dependency that can be used to simulate a
+// NewFaultyDiskDependency creates a dependency that can be used to simulate a
 // failing disk. writeLimit is the maximum number of writes the disk will
 // endure before failing
-func newFaultyDiskDependency(writeLimit int) *dependencyFaultyDisk {
-	return &dependencyFaultyDisk{
+func NewFaultyDiskDependency(writeLimit int) *DependencyFaultyDisk {
+	return &DependencyFaultyDisk{
 		writeLimit: writeLimit,
 	}
 }
 
-// disabled allows the caller to temporarily disable the dependency
-func (d *dependencyFaultyDisk) disable() {
-	d.mu.Lock()
-	d.disabled = true
-	d.mu.Unlock()
-}
-func (d *dependencyFaultyDisk) enable() {
-	d.mu.Lock()
-	d.disabled = false
-	d.mu.Unlock()
-}
-
 // tryFail will check if the disk has failed yet, and if not, it'll rng to see
 // if the disk should fail now. Returns 'true' if the disk has failed.
-func (d *dependencyFaultyDisk) tryFail() bool {
+func (d *DependencyFaultyDisk) tryFail() bool {
 	d.totalWrites++
 	if d.disabled {
 		return false
@@ -88,21 +75,33 @@ func (d *dependencyFaultyDisk) tryFail() bool {
 }
 
 // newFaultyFile creates a new faulty file around the provided file handle.
-func (d *dependencyFaultyDisk) newFaultyFile(f *os.File) modules.File {
-	return &faultyFile{d: d, file: f}
+func (d *DependencyFaultyDisk) newFaultyFile(f *os.File) modules.File {
+	return &FaultyFile{d: d, file: f}
 }
 
-// reset resets the failDenominator and the failed flag of the dependency
-func (d *dependencyFaultyDisk) reset() {
+// disabled allows the caller to temporarily disable the dependency
+func (d *DependencyFaultyDisk) Disable() {
+	d.mu.Lock()
+	d.disabled = true
+	d.mu.Unlock()
+}
+func (d *DependencyFaultyDisk) Enable() {
+	d.mu.Lock()
+	d.disabled = false
+	d.mu.Unlock()
+}
+
+// Reset resets the failDenominator and the failed flag of the dependency
+func (d *DependencyFaultyDisk) Reset() {
 	d.mu.Lock()
 	d.failDenominator = 0
 	d.failed = false
 	d.mu.Unlock()
 }
-func (d *dependencyFaultyDisk) Open(path string) (modules.File, error) {
+func (d *DependencyFaultyDisk) Open(path string) (modules.File, error) {
 	return d.OpenFile(path, os.O_RDONLY, 0)
 }
-func (d *dependencyFaultyDisk) OpenFile(path string, flag int, perm os.FileMode) (modules.File, error) {
+func (d *DependencyFaultyDisk) OpenFile(path string, flag int, perm os.FileMode) (modules.File, error) {
 	f, err := os.OpenFile(path, flag, perm)
 	if err != nil {
 		return nil, err
@@ -110,16 +109,16 @@ func (d *dependencyFaultyDisk) OpenFile(path string, flag int, perm os.FileMode)
 	return d.newFaultyFile(f), nil
 }
 
-// faultyFile implements a file that simulates a faulty disk.
-type faultyFile struct {
-	d    *dependencyFaultyDisk
+// FaultyFile implements a file that simulates a faulty disk.
+type FaultyFile struct {
+	d    *DependencyFaultyDisk
 	file *os.File
 }
 
-func (f *faultyFile) Read(p []byte) (int, error) {
+func (f *FaultyFile) Read(p []byte) (int, error) {
 	return f.file.Read(p)
 }
-func (f *faultyFile) Write(p []byte) (int, error) {
+func (f *FaultyFile) Write(p []byte) (int, error) {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()
 	if f.d.tryFail() {
@@ -127,20 +126,20 @@ func (f *faultyFile) Write(p []byte) (int, error) {
 	}
 	return f.file.Write(p)
 }
-func (f *faultyFile) Close() error { return f.file.Close() }
-func (f *faultyFile) Name() string {
+func (f *FaultyFile) Close() error { return f.file.Close() }
+func (f *FaultyFile) Name() string {
 	return f.file.Name()
 }
-func (f *faultyFile) ReadAt(p []byte, off int64) (int, error) {
+func (f *FaultyFile) ReadAt(p []byte, off int64) (int, error) {
 	return f.file.ReadAt(p, off)
 }
-func (f *faultyFile) Seek(offset int64, whence int) (int64, error) {
+func (f *FaultyFile) Seek(offset int64, whence int) (int64, error) {
 	return f.file.Seek(offset, whence)
 }
-func (f *faultyFile) Truncate(size int64) error {
+func (f *FaultyFile) Truncate(size int64) error {
 	return f.file.Truncate(size)
 }
-func (f *faultyFile) WriteAt(p []byte, off int64) (int, error) {
+func (f *FaultyFile) WriteAt(p []byte, off int64) (int, error) {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()
 	if f.d.tryFail() {
@@ -148,14 +147,14 @@ func (f *faultyFile) WriteAt(p []byte, off int64) (int, error) {
 	}
 	return f.file.WriteAt(p, off)
 }
-func (f *faultyFile) Stat() (os.FileInfo, error) {
+func (f *FaultyFile) Stat() (os.FileInfo, error) {
 	return f.file.Stat()
 }
-func (f *faultyFile) Sync() error {
+func (f *FaultyFile) Sync() error {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()
 	if f.d.tryFail() {
-		return errDiskFault
+		return ErrDiskFault
 	}
 	return f.file.Sync()
 }
