@@ -373,6 +373,10 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 // data that uploadSkyfileReadLeadingChunk had to read to figure out whether
 // the file was too large to fit into the leading chunk.
 func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSize uint64) ([]byte, io.Reader, bool, error) {
+	// Check for underflow.
+	if headerSize+1 > modules.SectorSize {
+		return nil, nil, false, ErrMetadataTooBig
+	}
 	// Read data from the reader to fill out the remainder of the first sector.
 	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
 	size, err := io.ReadFull(lup.Reader, fileBytes)
