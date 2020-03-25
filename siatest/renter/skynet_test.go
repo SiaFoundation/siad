@@ -58,12 +58,9 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
-<<<<<<< HEAD
 		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
-=======
 		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
->>>>>>> c2a4d83861934a98e90b29ac0efda7eb454cac69
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 	}
 
 	// Run tests
