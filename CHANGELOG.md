@@ -10,7 +10,7 @@ Version History
 
 Latest:
 
-## Mar 24, 2020:
+## Mar 25, 2020:
 ### v1.4.6
 **Bugs Fixed**
 - Fix panic when metadata of skyfile upload exceeds modules.SectorSize
