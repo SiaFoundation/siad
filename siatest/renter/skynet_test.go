@@ -55,9 +55,9 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 	}
 
 	// Run tests
@@ -1656,12 +1656,27 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 // testSkynetDryRunUpload verifies the --dry-run flag when uploading a Skyfile.
 func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-
-	// verify you can't perform a dry-run using the force parameter
 	siaPath, err := modules.NewSiaPath(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// verify we can perform a skyfile upload (note that we need this to trigger
+	// contracts being created, this issue only surfaces when commenting out all
+	// other skynet tets)
+	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRun",
+			Mode:     0640,
+		},
+	})
+	if err != nil {
+		t.Fatal("Expected skynet upload to be successful, instead received err:", err)
+	}
+
+	// verify you can't perform a dry-run using the force parameter
 	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		BaseChunkRedundancy: 2,
@@ -1684,6 +1699,22 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		skylinkDry, _, err := r.SkynetSkyfilePost(sup)
 		if err != nil {
 			t.Fatal(err)
+		}
+
+		// verify the skylink can't be found after a dry run
+		status, _, _ := r.SkynetSkylinkHead(skylinkDry, 0)
+		if status != http.StatusNotFound {
+			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
+		}
+
+		// verify the skfyile got deleted properly
+		skyfilePath, err := modules.SkynetFolder.Join(sup.SiaPath.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.RenterFileRootGet(skyfilePath)
+		if err == nil || !strings.Contains(err.Error(), "path does not exist") {
+			t.Fatal(errors.New("Skyfile not deleted after dry run."))
 		}
 
 		sup.DryRun = false

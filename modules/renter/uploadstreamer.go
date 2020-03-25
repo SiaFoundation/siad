@@ -137,7 +137,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
 func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
-	siaPath, ec, force, repair, dryRun, cipherType := up.SiaPath, up.ErasureCode, up.Force, up.Repair, up.DryRun, up.CipherType
+	siaPath, ec, force, repair, cipherType := up.SiaPath, up.ErasureCode, up.Force, up.Repair, up.CipherType
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
@@ -153,14 +153,6 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 	// Make sure that force and repair aren't both set.
 	if force && repair {
 		return nil, errors.New("'force' and 'repair' can't both be set")
-	}
-
-	// Make sure that dryRun is not used in combination with other flags.
-	if dryRun && force {
-		return nil, errors.New("'dryRun' and 'force' can't both be set")
-	}
-	if dryRun && repair {
-		return nil, errors.New("'dryRun' and 'repair' can't both be set")
 	}
 
 	// Delete existing file if overwrite flag is set. Ignore ErrUnknownPath.
@@ -222,61 +214,6 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		}
 	}()
 
-	// In case of a dry-run we don't want to actually push upload chunks onto
-	// the heap, but rather only read the pieces from the stream and decorate
-	// the siafile with the roots.
-	var peek []byte
-	if up.DryRun {
-		hpk := types.SiaPublicKey{} // blank host key
-		ec := fileNode.ErasureCode()
-		psize := fileNode.PieceSize()
-		csize := fileNode.ChunkSize()
-
-		for chunkIndex := uint64(0); ; chunkIndex++ {
-			// Grow the SiaFile to the right size.
-			err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1)
-			if err != nil {
-				return nil, err
-			}
-
-			// Allocate data pieces and fill them with data from r.
-			ss := NewStreamShard(reader, peek)
-			err = func() error {
-				defer ss.Close()
-
-				dataPieces, total, errRead := readDataPieces(ss, ec, psize)
-				if errRead != nil {
-					return errRead
-				}
-
-				dataEncoded, _ := ec.EncodeShards(dataPieces)
-				for pieceIndex, dataPieceEnc := range dataEncoded {
-					if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
-						return err
-					}
-				}
-
-				adjustedSize := fileNode.Size() - csize + total
-				if err := fileNode.SetFileSize(adjustedSize); err != nil {
-					return errors.AddContext(err, "failed to adjust FileSize")
-				}
-				return nil
-			}()
-			if err != nil {
-				return nil, err
-			}
-
-			_, err = ss.Result()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return nil, err
-			}
-		}
-		return fileNode, nil
-	}
-
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
 	for _, pk := range fileNode.HostPublicKeys() {
@@ -292,13 +229,13 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	availableWorkers := len(r.staticWorkerPool.workers)
 	r.staticWorkerPool.mu.RUnlock()
 	if availableWorkers < minWorkers {
-		return nil, fmt.Errorf("Need at least %v workers for upload but got only %v",
-			minWorkers, availableWorkers)
+		return nil, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
 	}
 
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
+	var peek []byte
 	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
 		// Disrupt the upload by closing the reader and simulating losing
