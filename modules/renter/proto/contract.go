@@ -3,6 +3,7 @@ package proto
 import (
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -78,6 +79,12 @@ func (h *contractHeader) copyTransaction() (txn types.Transaction) {
 	return
 }
 
+// Finalized returns 'true' if a contract can not be revised anymore due to
+// reaching its final revision number.
+func (h *contractHeader) Finalized() bool {
+	return h.LastRevision().NewRevisionNumber == math.MaxUint64
+}
+
 func (h *contractHeader) LastRevision() types.FileContractRevision {
 	return h.Transaction.FileContractRevisions[0]
 }
@@ -91,7 +98,7 @@ func (h *contractHeader) HostPublicKey() types.SiaPublicKey {
 }
 
 func (h *contractHeader) RenterFunds() types.Currency {
-	return h.LastRevision().RenterFunds()
+	return h.LastRevision().ValidRenterPayout()
 }
 
 func (h *contractHeader) EndHeight() types.BlockHeight {
@@ -176,6 +183,14 @@ func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 		return err
 	}
 	return nil
+}
+
+// Finalized returns 'true' if a contract can not be revised anymore due to
+// reaching its final revision number.
+func (c *SafeContract) Finalized() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.header.Finalized()
 }
 
 // Utility returns the contract utility for the contract.
@@ -539,6 +554,7 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 		headerFile:  headerSection,
 		wal:         cs.wal,
 	}
+	// Compatv144 fix missing void output.
 	cs.mu.Lock()
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
@@ -716,7 +732,7 @@ func (c *V130Contract) RenterFunds() types.Currency {
 	if len(c.LastRevision.NewValidProofOutputs) < 2 {
 		return types.ZeroCurrency
 	}
-	return c.LastRevision.NewValidProofOutputs[0].Value
+	return c.LastRevision.ValidRenterPayout()
 }
 
 // A V130CachedRevision contains changes that would be applied to a

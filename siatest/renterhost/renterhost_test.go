@@ -257,7 +257,7 @@ func TestHostLockTimeout(t *testing.T) {
 	lockedRev := lockedContract.Transaction.FileContractRevisions[0]
 	if rev.NewRevisionNumber != lockedRev.NewRevisionNumber ||
 		rev.NewFileMerkleRoot != lockedRev.NewFileMerkleRoot ||
-		!rev.RenterFunds().Equals(lockedRev.RenterFunds()) {
+		!rev.ValidRenterPayout().Equals(lockedRev.ValidRenterPayout()) {
 		t.Fatal("acquired wrong contract after lock:", rev.NewRevisionNumber, lockedRev.NewRevisionNumber)
 	}
 }
