@@ -11,30 +11,32 @@ Version History
 Latest:
 
 ## Mar 24, 2020:
+### v1.4.6
+**Bugs Fixed**
+- Fix panic when metadata of skyfile upload exceeds modules.SectorSize
+- Fix curl example for `/skynet/skyfile/` post
+
+
 ### v1.4.5
 **Key Updates**
 - Alerts returned by /daemon/alerts route are sorted by severity
-- Add `--fee-included` parameter to `siac wallet send siacoins` that allows
-  sending an exact wallet balance with the fees included.
+- Add `--fee-included` parameter to `siac wallet send siacoins` that allows    sending an exact wallet balance with the fees included.
 - Extend `siac hostdb view` to include all the fields returned from the API.
 - `siac renter delete` now accepts a list of files.
 - add pause and resume uploads to siac
 - Extended `siac renter` to include number of passive and disabled contracts
 - Add contract data to `siac renter`
-- Add getters and setter to `FileContract` and `FileContractRevision` types to
-  prevent index-out-of-bounds panics after a `RenewAndClear`.
+- Add getters and setter to `FileContract` and `FileContractRevision` types to prevent index-out-of-bounds panics after a `RenewAndClear`.
 
 **Bugs Fixed**
-- Fixed file health output of `siac renter -v` not adding to 100% by adding
-  parsePercentage function.
+- Fixed file health output of `siac renter -v` not adding to 100% by adding   parsePercentage function.
 - Fix `unlock of unlocked mutex` panic in the download destination writer.
 - Fix potential channel double closed panic in DownloadByRootProject 
 - Fix divide by zero panic in `renterFileHealthSummary` for `siac renter -v`
 - Fix negative currency panic in `siac renter contracts view`
 
 **Other**
-- Add timeout parameter to Skylink pin route - Also apply timeout when fetching
-  the individual chunks
+- Add timeout parameter to Skylink pin route - Also apply timeout when fetching the individual chunks
 - Add SiaMux stream handler to the host
 - Fix TestAccountExpiry NDF
 - Add benchmark test for bubble metadata
