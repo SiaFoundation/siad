@@ -63,6 +63,7 @@ func (wp *workerPool) callUpdate() {
 		if exists {
 			continue
 		}
+
 		// Create a new worker and add it to the map
 		w, err := wp.renter.newWorker(contract.HostPublicKey)
 		if err != nil {

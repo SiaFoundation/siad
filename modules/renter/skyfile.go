@@ -797,7 +797,6 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
-
 	var skylink modules.Skylink
 	if largeFile {
 		skylink, err = r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
