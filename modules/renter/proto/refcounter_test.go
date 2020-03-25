@@ -38,7 +38,6 @@ func TestLoad(t *testing.T) {
 		t.Fatal("Failed to create test directory:", err)
 	}
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
-
 	// create a ref counter
 	_, err := NewRefCounter(rcFilePath, testSectorsCount, testWAL)
 	if err != nil {
@@ -92,7 +91,6 @@ func TestReadCount(t *testing.T) {
 		t.Fatal("Failed to create test directory:", err)
 	}
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
-
 	// create a ref counter
 	rc, err := NewRefCounter(rcFilePath, testSectorsCount, testWAL)
 	if err != nil {
@@ -144,7 +142,6 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal("Failed to create test directory:", err)
 	}
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
-
 	// create a ref counter
 	rc, err := NewRefCounter(rcFilePath, testSectorsCount, testWAL)
 	if err != nil {
@@ -153,30 +150,6 @@ func TestRefCounter(t *testing.T) {
 	stats, err := os.Stat(rcFilePath)
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
-	}
-
-	var u writeaheadlog.Update
-	// make sure we cannot create updates outside of an update session
-	if _, err = rc.Append(); err != ErrUpdateWithoutUpdateSession {
-		t.Fatal("Failed to prevent an append update creation outside an update session", err)
-	}
-	if _, err = rc.Decrement(1); err != ErrUpdateWithoutUpdateSession {
-		t.Fatal("Failed to prevent a decrement update creation outside an update session", err)
-	}
-	if _, err = rc.DeleteRefCounter(); err != ErrUpdateWithoutUpdateSession {
-		t.Fatal("Failed to prevent a delete update creation outside an update session", err)
-	}
-	if _, err = rc.DropSectors(1); err != ErrUpdateWithoutUpdateSession {
-		t.Fatal("Failed to prevent a truncate update creation outside an update session", err)
-	}
-	if _, err = rc.Increment(1); err != ErrUpdateWithoutUpdateSession {
-		t.Fatal("Failed to prevent an increment update creation outside an update session", err)
-	}
-	if _, err = rc.Swap(1, 2); err != ErrUpdateWithoutUpdateSession {
-		t.Fatal("Failed to prevent a swap update creation outside an update session", err)
-	}
-	if err = rc.CreateAndApplyTransaction(u); err != ErrUpdateWithoutUpdateSession {
-		t.Fatal("Failed to prevent a CreateAndApplyTransaction call outside an update session", err)
 	}
 
 	// testCounterVal generates a specific count value based on the given `n`
@@ -196,7 +169,6 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal("Failed to write count to disk")
 	}
 	rc.UpdateApplied()
-
 	// verify the counts we wrote
 	for i := uint64(0); i < testSectorsCount; i++ {
 		c, err := rc.readCount(i)
@@ -208,11 +180,13 @@ func TestRefCounter(t *testing.T) {
 		}
 	}
 
+	var u writeaheadlog.Update
 	numSectorsBefore := rc.numSectors
 	updates = make([]writeaheadlog.Update, 0)
 	if err = rc.StartUpdate(); err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
+
 	// test Append
 	if u, err = rc.Append(); err != nil {
 		t.Fatal("Failed to create an append update", err)
@@ -345,6 +319,74 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal("Failed to create a delete update", err)
 	}
 
+	if err = rc.CreateAndApplyTransaction(u); err != nil {
+		t.Fatal("Failed to apply a delete update:", err)
+	}
+	rc.UpdateApplied()
+
+	_, err = os.Stat(rcFilePath)
+	if err == nil {
+		t.Fatal("RefCounter deletion finished successfully but the file is still on disk", err)
+	}
+}
+
+// TestUpdateSessionConstraints ensures that StartUpdate() and UpdateApplied()
+// enforce all applicable restrictions to update creation and execution
+func TestUpdateSessionConstraints(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare for the tests
+	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	testSectorsCount := uint64(5)
+	testDir := build.TempDir(t.Name())
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
+		t.Fatal("Failed to create test directory:", err)
+	}
+	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+	// create a ref counter
+	rc, err := NewRefCounter(rcFilePath, testSectorsCount, testWAL)
+	if err != nil {
+		t.Fatal("Failed to create a reference counter:", err)
+	}
+	if _, err = os.Stat(rcFilePath); err != nil {
+		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
+	}
+
+	var u writeaheadlog.Update
+	// make sure we cannot create updates outside of an update session
+	if _, err = rc.Append(); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent an append update creation outside an update session", err)
+	}
+	if _, err = rc.Decrement(1); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a decrement update creation outside an update session", err)
+	}
+	if _, err = rc.DeleteRefCounter(); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a delete update creation outside an update session", err)
+	}
+	if _, err = rc.DropSectors(1); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a truncate update creation outside an update session", err)
+	}
+	if _, err = rc.Increment(1); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent an increment update creation outside an update session", err)
+	}
+	if _, err = rc.Swap(1, 2); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a swap update creation outside an update session", err)
+	}
+	if err = rc.CreateAndApplyTransaction(u); err != ErrUpdateWithoutUpdateSession {
+		t.Fatal("Failed to prevent a CreateAndApplyTransaction call outside an update session", err)
+	}
+
+	// start an update session
+	if err = rc.StartUpdate(); err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
+	// delete the ref counter
+	if u, err = rc.DeleteRefCounter(); err != nil {
+		t.Fatal("Failed to create a delete update", err)
+	}
 	// make sure we cannot create any updates after a deletion has been triggered
 	if _, err = rc.Append(); err != ErrUpdateAfterDelete {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
@@ -365,6 +407,7 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
 	}
 
+	// apply the updates and close the update session
 	if err = rc.CreateAndApplyTransaction(u); err != nil {
 		t.Fatal("Failed to apply a delete update:", err)
 	}
@@ -373,11 +416,6 @@ func TestRefCounter(t *testing.T) {
 	// make sure we cannot start an update session on a deleted counter
 	if err = rc.StartUpdate(); err != ErrUpdateAfterDelete {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
-	}
-
-	_, err = os.Stat(rcFilePath)
-	if err == nil {
-		t.Fatal("RefCounter deletion finished successfully but the file is still on disk", err)
 	}
 }
 
