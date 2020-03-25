@@ -714,6 +714,152 @@ Returns the version of the Sia daemon currently running.
 **version** | string  
 This is the version number that is visible to its peers on the network.
 
+# FeeManager
+
+The feemanager allows applications built on top of Sia to charge the Sia user a
+fee. The feemanager's API endpoints expose methods for viewing information about
+the feemanager and for setting and canceling fees. Additionally the feemanager
+launches a web server that allows fees to be viewable at `localhost:9979`
+
+## /feemanager [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager"
+```
+
+returns information about the feemanager.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "settings": {
+    "currentpayout": "1000",                      // Hastings
+    "maxpayout": "10000000000000000000000000000", // Hastings
+    "payoutheight":249854                         // blockheight
+  },
+  "pendingfees": [
+    {
+      "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
+      "amount":"1000",         // hastings
+      "appuid":"supercoolapp", // string
+      "cancelled":false,       // bool
+      "offset":1000,           // int64
+      "reoccuring":true,       // bool
+      "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+    }
+  ],
+  "paidfees": [
+    {
+      "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
+      "amount":"1000",     // hastings
+      "appuid":"okapp",    // string
+      "cancelled":false,   // bool
+      "offset":1000,       // int64
+      "reoccuring":false,  // bool
+      "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+    }
+  ]
+}
+
+```
+
+**settings** | FeeManagerSettings  
+List of current settings of the FeeManager.
+
+**currentpayout** | hastings  
+This is the amount in hastings that the feemanager expects to payout this
+period.
+
+**maxpayout** | hastings  
+This is the maximum amount in hastings that the feemanager will payout this
+period.
+
+**payoutheight** | blockheight  
+This is the height at which the FeeManager will payout the pending fees.
+
+**pendingfees** | AppFee
+A list of the fees that are currently pending for this period. 
+
+**paidfees** | AppFee  
+A list of historical fees that have been paid out by the FeeManager. 
+
+**address** | address  
+The address is the application developer's wallet address that the fee should be
+paid out to.
+
+**amount** | hastings  
+The amount is how much the fee will charge the user.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+**cancelled** | bool  
+Indicates whether or not this fee has been cancelled. 
+
+**offset** | int64  
+Offset of the fee within the fee persist file.
+
+**reoccuring** | bool  
+Indicates whether or not this fee will be a reoccuring fee. 
+
+**uid** | string  
+This is the unique identifier for the fee
+
+## /feemanager/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "feeuid=9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" "localhost:9980/feemanager/cancel"
+```
+
+cancels a fee.
+
+### Query String Parameters
+### REQUIRED
+**feeuid** | string  
+The unique identifier for the fee.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /feemanager/set [POST]
+> curl example  
+
+```go
+// Required Fields Only
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp" "localhost:9980/feemanager/set"
+
+// All Fields
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&reoccuring=true" "localhost:9980/feemanager/set"
+```
+sets a fee and associates it with the provided application UID.
+
+### Query String Parameters
+### REQUIRED
+**amount** | hastings  
+The amount is how much the fee will charge the user.
+
+**address** | address  
+The address is the application developer's wallet address that the fee should be
+paid out to.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+### OPTIONAL
+**reoccuring** | bool  
+Indicates whether or not this fee will be a reoccuring fee. 
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 # Gateway
 
 The gateway maintains a peer to peer connection to the network and provides a
