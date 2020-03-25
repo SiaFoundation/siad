@@ -63,6 +63,10 @@ var (
 	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
 	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
 
+	// ErrMetadataTooBig is the error returned when the metadata exceeds a
+	// sectorsize.
+	ErrMetadataTooBig = errors.New("metadata exceeds sectorsize")
+
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
 	ExtendedSuffix = "-extended"
