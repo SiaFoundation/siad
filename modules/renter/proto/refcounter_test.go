@@ -22,7 +22,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-var testWAL = newTestWAL()
+var testWAL *writeaheadlog.WAL
+
+func init() {
+	testWAL, _ = newTestWAL()
+}
 
 // testLoad specifically tests LoadRefCounter and its various failure modes
 func TestLoad(t *testing.T) {
@@ -469,7 +473,7 @@ func TestWALFunctions(t *testing.T) {
 }
 
 // newTestWal is a helper method to create a WAL for testing.
-func newTestWAL() *writeaheadlog.WAL {
+func newTestWAL() (*writeaheadlog.WAL, string) {
 	// Create the wal.
 	walsDir := filepath.Join(os.TempDir(), "rc-wals")
 	if err := os.MkdirAll(walsDir, modules.DefaultDirPerm); err != nil {
@@ -480,7 +484,7 @@ func newTestWAL() *writeaheadlog.WAL {
 	if err != nil {
 		panic(err)
 	}
-	return wal
+	return wal, walFilePath
 }
 
 // writeVal is a helper method that writes a certain counter value to disk. This

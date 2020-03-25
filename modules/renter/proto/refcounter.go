@@ -71,6 +71,9 @@ type (
 		staticWal  *writeaheadlog.WAL
 		mu         sync.Mutex
 
+		// utility fields
+		deps modules.Dependencies
+
 		refCounterUpdateControl
 	}
 
@@ -129,6 +132,7 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 		filepath:         path,
 		numSectors:       numSectors,
 		staticWal:        wal,
+		deps:             modules.ProdDependencies,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
@@ -155,6 +159,7 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 		filepath:         path,
 		numSectors:       numSec,
 		staticWal:        wal,
+		deps:             modules.ProdDependencies,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
@@ -189,6 +194,11 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	f, err := rc.deps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
+	}
+	defer f.Close()
 	if !rc.isUpdateInProgress {
 		return ErrUpdateWithoutUpdateSession
 	}
@@ -202,7 +212,7 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
 	// Apply the updates.
-	if err := applyUpdates(rc.filepath, updates...); err != nil {
+	if err := applyUpdates(f, updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
@@ -367,7 +377,7 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 		return count, nil
 	}
 	// read the value from disk
-	f, err := os.Open(rc.filepath)
+	f, err := rc.deps.Open(rc.filepath)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to open the refcounter file")
 	}
@@ -393,7 +403,7 @@ func applyDeleteUpdate(update writeaheadlog.Update) error {
 }
 
 // applyTruncateUpdate parses and applies a Truncate update.
-func applyTruncateUpdate(f *os.File, u writeaheadlog.Update) error {
+func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
 	if u.Name != UpdateNameTruncate {
 		return fmt.Errorf("applyAppendTruncate called on update of type %v", u.Name)
 	}
@@ -410,12 +420,7 @@ func applyTruncateUpdate(f *os.File, u writeaheadlog.Update) error {
 }
 
 // applyUpdates takes a list of WAL updates and applies them.
-func applyUpdates(path string, updates ...writeaheadlog.Update) (err error) {
-	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
-	if err != nil {
-		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
-	}
-	defer f.Close()
+func applyUpdates(f modules.File, updates ...writeaheadlog.Update) (err error) {
 	for _, update := range updates {
 		var err error
 		switch update.Name {
@@ -436,7 +441,7 @@ func applyUpdates(path string, updates ...writeaheadlog.Update) (err error) {
 }
 
 // applyWriteAtUpdate parses and applies a WriteAt update.
-func applyWriteAtUpdate(f *os.File, u writeaheadlog.Update) error {
+func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
 	if u.Name != UpdateNameWriteAt {
 		return fmt.Errorf("applyAppendWriteAt called on update of type %v", u.Name)
 	}
