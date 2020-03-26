@@ -76,7 +76,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	defer stream.Close()
 
 	// call the update price table rpc
-	err = ht.host.managedRPCUpdatePriceTable(stream)
+	err = ht.host.rpcUpdatePriceTable(stream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,8 +204,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		// call the update price table RPC, we purposefully ignore the error
 		// here because the client is not providing payment. This RPC call will
 		// end up with a closed stream, which will end up with a payment error.
-		_ = ht.host.managedRPCUpdatePriceTable(stream)
-
+		_ = ht.host.rpcUpdatePriceTable(stream)
 	}()
 	wg.Wait()
 

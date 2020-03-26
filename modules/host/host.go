@@ -186,7 +186,7 @@ type Host struct {
 	// for a fixed period of time. The host's RPC prices are dynamic, and are
 	// subject to various conditions specific to the RPC in question. Examples
 	// of such conditions are congestion, load, liquidity, etc.
-	staticPriceTables hostPrices
+	staticPriceTables *hostPrices
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -209,6 +209,30 @@ type hostPrices struct {
 	guaranteed    map[types.Specifier]*modules.RPCPriceTable
 	staticMinHeap priceTableHeap
 	mu            sync.RWMutex
+}
+
+// Current returns the current price table
+func (hp *hostPrices) Current() modules.RPCPriceTable {
+	hp.mu.RLock()
+	defer hp.mu.RUnlock()
+	return hp.current
+}
+
+// Update overwrites the current with the given price table
+func (hp *hostPrices) Update(pt modules.RPCPriceTable) {
+	hp.mu.Lock()
+	defer hp.mu.Unlock()
+	hp.current = pt
+}
+
+// Track adds the given price table to the guaranteed map that tracks all of the
+// price tables the host has given out. It will also add it to the heap which
+// facilates efficient pruning of that map.
+func (hp *hostPrices) Track(pt *modules.RPCPriceTable) {
+	hp.mu.Lock()
+	hp.guaranteed[pt.UUID] = pt
+	hp.mu.Unlock()
+	hp.staticMinHeap.Push(pt)
 }
 
 // lockedObligation is a helper type that locks a TryMutex and a counter to
@@ -334,9 +358,7 @@ func (h *Host) managedUpdatePriceTable() {
 	}
 
 	// update the pricetable
-	h.staticPriceTables.mu.Lock()
-	h.staticPriceTables.current = priceTable
-	h.staticPriceTables.mu.Unlock()
+	h.staticPriceTables.Update(priceTable)
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
@@ -404,7 +426,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
-		staticPriceTables: hostPrices{
+		staticPriceTables: &hostPrices{
 			guaranteed: make(map[types.Specifier]*modules.RPCPriceTable),
 			staticMinHeap: priceTableHeap{
 				heap: make([]*modules.RPCPriceTable, 0),
