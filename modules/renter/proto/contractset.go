@@ -213,6 +213,25 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.
 	cs.rl = ratelimit.NewRateLimit(0, 0, 0)
 
+	// Before loading the contract files apply the updates which were meant to
+	// create new contracts and filter them out.
+	var remainingTxns []*writeaheadlog.Transaction
+	for _, txn := range walTxns {
+		if len(txn.Updates) != 1 && txn.Updates[0].Name != updateNameInsertContract {
+			remainingTxns = append(remainingTxns, txn)
+			continue
+		}
+		_, err := cs.managedApplyInsertContractUpdate(txn.Updates[0])
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
+		}
+		err = txn.SignalUpdatesApplied()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
+		}
+	}
+	walTxns = remainingTxns
+
 	// Load the contract files.
 	dirNames, err := d.Readdirnames(-1)
 	if err != nil {

@@ -2,6 +2,7 @@ package proto
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -19,22 +20,35 @@ import (
 )
 
 const (
-	updateNameClearContract = "clearContract"
-	updateNameSetHeader     = "setHeader"
-	updateNameSetRoot       = "setRoot"
+	updateNameInsertContract = "insertContract"
+	updateNameSetHeader      = "setHeader"
+	updateNameSetRoot        = "setRoot"
 )
 
+// updateInsertContract is an update that inserts a contract into the
+// contractset with the given header and roots.
+type updateInsertContract struct {
+	Header contractHeader
+	Roots  []crypto.Hash
+}
+
+// updateSetHeader is an update that updates the header of the filecontract with
+// the given id.
 type updateSetHeader struct {
 	ID     types.FileContractID
 	Header contractHeader
 }
 
+// updateSetRoot is an update which updates the sector root at the given index
+// of a filecontract with the specified id.
 type updateSetRoot struct {
 	ID    types.FileContractID
 	Root  crypto.Hash
 	Index int
 }
 
+// contractHeader holds all the information about a contract apart from the
+// sector roots themselves.
 type contractHeader struct {
 	// transaction is the signed transaction containing the most recent
 	// revision of the file contract.
@@ -180,6 +194,23 @@ func (c *SafeContract) Utility() modules.ContractUtility {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.header.Utility
+}
+
+// makeUpdateInsertContract creates a writeaheadlog.Update to insert a new
+// contract into the contractset.
+func makeUpdateInsertContract(h contractHeader, roots []crypto.Hash) (writeaheadlog.Update, error) {
+	// Validate header.
+	if err := h.validate(); err != nil {
+		return writeaheadlog.Update{}, err
+	}
+	// Create update.
+	return writeaheadlog.Update{
+		Name: updateNameInsertContract,
+		Instructions: encoding.Marshal(updateInsertContract{
+			Header: h,
+			Roots:  roots,
+		}),
+	}, nil
 }
 
 func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Update {
@@ -503,18 +534,68 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	return nil
 }
 
+// managedInsertContract inserts a contract into the set in an ACID fashion
+// using the set's WAL.
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
+	insertUpdate, err := makeUpdateInsertContract(h, roots)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{insertUpdate})
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	err = <-txn.SignalSetupComplete()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	rc, err := cs.managedApplyInsertContractUpdate(insertUpdate)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	err = txn.SignalUpdatesApplied()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	return rc, nil
+}
+
+// managedApplyInsertContractUpdate applies the update to insert a contract into
+// a set. This will overwrite existing contracts of the same name to make sure
+// the update is idempotent.
+func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Update) (modules.RenterContract, error) {
+	// Sanity check update.
+	if update.Name != updateNameInsertContract {
+		return modules.RenterContract{}, fmt.Errorf("can't call managedApplyInsertContractUpdate on update of type '%v'", update.Name)
+	}
+	// Decode update.
+	var insertUpdate updateInsertContract
+	if err := encoding.UnmarshalAll(update.Instructions, &insertUpdate); err != nil {
+		return modules.RenterContract{}, err
+	}
+	h := insertUpdate.Header
+	roots := insertUpdate.Roots
+	// Validate header.
 	if err := h.validate(); err != nil {
 		return modules.RenterContract{}, err
 	}
 	headerFilePath := filepath.Join(cs.dir, h.ID().String()+contractHeaderExtension)
 	rootsFilePath := filepath.Join(cs.dir, h.ID().String()+contractRootsExtension)
 	// create the files.
-	headerFile, err := os.Create(headerFilePath)
+	headerFile, err := os.OpenFile(headerFilePath, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	rootsFile, err := os.Create(rootsFilePath)
+	rootsFile, err := os.OpenFile(rootsFilePath, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	// truncate files to make sure existing files are empty.
+	err = headerFile.Truncate(0)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	err = rootsFile.Truncate(0)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
