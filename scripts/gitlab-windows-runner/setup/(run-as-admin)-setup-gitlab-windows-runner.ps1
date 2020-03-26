@@ -47,9 +47,9 @@ Invoke-Expression "cmd /c gitlab-runner.exe register --non-interactive --url htt
 
 # Install and run the service
 
-$user = "Administrator"
+$user = ".\Administrator"
 
-Invoke-Expression "cmd /c gitlab-runner.exe install --user $user --password $pass"
+Invoke-Expression "cmd /c gitlab-runner.exe install --user $user --password $pass --force"
 Invoke-Expression "cmd /c gitlab-runner.exe start"
 
 Pop-Location
