@@ -93,7 +93,7 @@ dependencies:
 
 # fmt calls go fmt on all packages.
 fmt:
-	# xxx debug
+# xxx debug
 	echo %cd%
 	dir
 	echo $(pkgs)
