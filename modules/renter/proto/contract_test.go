@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -13,6 +14,17 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// dependencyInterruptContractInsertion will interrupt inserting a contract
+// after writing the header but before writing the roots.
+type dependencyInterruptContractInsertion struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *dependencyInterruptContractInsertion) Disrupt(s string) bool {
+	return s == "InterruptContractInsertion"
+}
 
 // TestContractUncommittedTxn tests that if a contract revision is left in an
 // uncommitted state, either version of the contract can be recovered.
@@ -274,5 +286,56 @@ func TestContractLargeHeader(t *testing.T) {
 	// Applying a large header update should also work.
 	if err := sc.applySetHeader(largeHeader); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestContractSetInsert checks if inserting contracts into the set is ACID.
+func TestContractSetInsertInterrupted(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// create contract set with a custom dependency.
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, &dependencyInterruptContractInsertion{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contractHeader := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber:    1,
+				NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	// Inserting the contract should fail due to the dependency.
+	c, err := cs.managedInsertContract(contractHeader, initialRoots)
+	if err == nil || !strings.Contains(err.Error(), "interrupted") {
+		t.Fatal("insertion should have been interrupted")
+	}
+
+	// Reload the contract set. The contract should be there.
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, ok := cs.Acquire(c.ID)
+	if !ok {
+		t.Fatal("faild to acquire contract")
+	}
+	if !bytes.Equal(encoding.Marshal(sc.header), encoding.Marshal(contractHeader)) {
+		t.Error("header doesn't match")
+	}
+	mr, err := sc.merkleRoots.merkleRoots()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(mr, initialRoots) {
+		t.Error("roots don't match")
 	}
 }

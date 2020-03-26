@@ -603,6 +603,10 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if _, err := headerFile.WriteAt(encoding.Marshal(h), 0); err != nil {
 		return modules.RenterContract{}, err
 	}
+	// Interrupt if necessary.
+	if cs.deps.Disrupt("InterruptContractInsertion") {
+		return modules.RenterContract{}, errors.New("interrupted")
+	}
 	// write roots
 	merkleRoots := newMerkleRoots(rootsFile)
 	for _, root := range roots {
