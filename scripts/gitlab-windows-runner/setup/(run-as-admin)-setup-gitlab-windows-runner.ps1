@@ -16,6 +16,9 @@ nvoke-Expression ".\install-chocolatey.ps1"
 # Install git (Gitlab Runner prerequisity)
 Invoke-Expression "choco install git -y"
 
+# Install make
+Invoke-Expression "choco install make -y"
+
 # Install Gitlab Runner
 Invoke-Expression "choco install gitlab-runner -y"
 
