@@ -40,7 +40,7 @@ Pop-Location
 Push-Location "C:\gitlab-runner"
 
 # Register runner
-Invoke-Expression "cmd /c gitlab-runner.exe register --non-interactive --url https://gitlab.com/ --registration-token $token --executor shell --description Win10-Server-Hetzner --tag-list windows10"
+Invoke-Expression "cmd /c gitlab-runner.exe register --non-interactive --url https://gitlab.com/ --registration-token $token --executor shell --description Win10-Server-Hetzner --tag-list nebulous-windows"
 
 # Install and run the service
 Invoke-Expression "cmd /c gitlab-runner.exe install"
