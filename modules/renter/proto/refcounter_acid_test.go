@@ -5,7 +5,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -60,7 +59,6 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	atomicNumSuccessfulIterations := int64(0)
 
 	var walMu sync.Mutex // controls the wal reloads
-	var wg sync.WaitGroup
 
 	workload := func() {
 		testDone := time.After(testTimeout)
@@ -160,18 +158,8 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 				if tries%10 == 0 {
 					fdd.Reset()
 				}
-				walMu.Lock()
-				// Close existing wal.
-				if _, err := wal.CloseIncomplete(); err != nil {
-					t.Fatal(err)
-				}
-				// Reopen wal.
-				var txns []*writeaheadlog.Transaction
-				txns, wal, errLoad := writeaheadlog.New(walPath)
-				if errLoad != nil {
-					t.Fatal(errLoad)
-				}
-				walMu.Unlock()
+				// Close and reopen wal.
+				txns, wal, errLoad := reloadWal(wal, &walMu, walPath)
 				// Apply unfinished txns.
 				rc.StartUpdate()
 				f, errLoad := rc.deps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
@@ -212,13 +200,16 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 				break
 			}
 		}
-		wg.Done()
 	}
 
 	// Run the workload on runtime.NumCPU() * 10 threads
-	wg.Add(runtime.NumCPU() * 10)
-	for i := 0; i < runtime.NumCPU()*10; i++ {
-		go workload()
+	var wg sync.WaitGroup
+	for i := 0; i < 1; i++ {
+		wg.Add(1)
+		go func() {
+			workload()
+			wg.Done()
+		}()
 	}
 	wg.Wait()
 
@@ -254,19 +245,18 @@ func performIncrement(rc *RefCounter) error {
 	secNum := fastrand.Uint64n(rc.numSectors)
 	ok, err := isIncrementValid(rc, secNum)
 	if err != nil || !ok {
+		rc.UpdateApplied()
 		return err
 	}
 	update, err := rc.Increment(secNum)
 	if err != nil {
+		rc.UpdateApplied()
 		return err
 	}
-	if err = rc.CreateAndApplyTransaction(update); err != nil {
-		return err
-	}
-	rc.UpdateApplied()
-
 	fmt.Print("+") // DEBUG
-	return nil
+	err = rc.CreateAndApplyTransaction(update)
+	rc.UpdateApplied()
+	return err
 }
 
 func performDecrement(rc *RefCounter) error {
@@ -277,18 +267,17 @@ func performDecrement(rc *RefCounter) error {
 	secNum := fastrand.Uint64n(rc.numSectors)
 	ok, err := isDecrementValid(rc, secNum)
 	if err != nil || !ok {
+		rc.UpdateApplied()
 		return err
 	}
 	update, err := rc.Decrement(secNum)
 	if err != nil {
 		return err
+		rc.UpdateApplied()
 	}
-	if err = rc.CreateAndApplyTransaction(update); err != nil {
-		return err
-	}
-	rc.UpdateApplied()
-
 	fmt.Print("-") // DEBUG
+	err = rc.CreateAndApplyTransaction(update)
+	rc.UpdateApplied()
 	return nil
 }
 
@@ -297,14 +286,12 @@ func performAppend(rc *RefCounter) error {
 	_ = rc.StartUpdate()
 	update, err := rc.Append()
 	if err != nil {
+		rc.UpdateApplied()
 		return err
 	}
-	if err = rc.CreateAndApplyTransaction(update); err != nil {
-		return err
-	}
-	rc.UpdateApplied()
-
 	fmt.Print("^") // DEBUG
+	err = rc.CreateAndApplyTransaction(update)
+	rc.UpdateApplied()
 	return nil
 }
 
@@ -313,13 +300,22 @@ func performDropSector(rc *RefCounter) error {
 	_ = rc.StartUpdate()
 	update, err := rc.DropSectors(1)
 	if err != nil {
+		rc.UpdateApplied()
 		return err
 	}
-	if err = rc.CreateAndApplyTransaction(update); err != nil {
-		return err
-	}
-	rc.UpdateApplied()
-
 	fmt.Print("x") // DEBUG
+	err = rc.CreateAndApplyTransaction(update)
+	rc.UpdateApplied()
 	return nil
+}
+
+func reloadWal(wal *writeaheadlog.WAL, walMu *sync.Mutex, walPath string) ([]*writeaheadlog.Transaction, *writeaheadlog.WAL, error) {
+	walMu.Lock()
+	defer walMu.Unlock()
+	// Close existing wal.
+	if _, err := wal.CloseIncomplete(); err != nil {
+		return []*writeaheadlog.Transaction{}, wal, err
+	}
+	// Reopen wal.
+	return writeaheadlog.New(walPath)
 }
