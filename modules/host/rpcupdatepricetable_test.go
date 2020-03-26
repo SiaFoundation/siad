@@ -20,9 +20,6 @@ import (
 
 // TestPriceTableMinHeap verifies the working of the min heap
 func TestPriceTableMinHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
 	t.Parallel()
 
 	now := time.Now()
