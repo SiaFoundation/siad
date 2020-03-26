@@ -211,11 +211,10 @@ func TestContractIncompleteWrite(t *testing.T) {
 	}
 
 	// get the size of the merkle roots file.
-	stat, err := sc.merkleRoots.rootsFile.Stat()
+	size, err := sc.merkleRoots.rootsFile.Size()
 	if err != nil {
 		t.Fatal(err)
 	}
-	size := stat.Size()
 	// the size should be crypto.HashSize since we have exactly one root.
 	if size != crypto.HashSize {
 		t.Fatal("unexpected merkle root file size", size)
@@ -329,6 +328,8 @@ func TestContractSetInsertInterrupted(t *testing.T) {
 		t.Fatal("faild to acquire contract")
 	}
 	if !bytes.Equal(encoding.Marshal(sc.header), encoding.Marshal(contractHeader)) {
+		t.Log(sc.header)
+		t.Log(contractHeader)
 		t.Error("header doesn't match")
 	}
 	mr, err := sc.merkleRoots.merkleRoots()

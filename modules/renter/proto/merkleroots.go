@@ -40,7 +40,7 @@ type (
 		uncachedRoots []crypto.Hash
 
 		// rootsFile is the rootsFile of the safe contract that contains the roots.
-		rootsFile *os.File
+		rootsFile *fileSection
 		// numMerkleRoots is the number of merkle roots in file.
 		numMerkleRoots int
 	}
@@ -76,16 +76,23 @@ func parseRootsFromData(b []byte) ([]crypto.Hash, error) {
 // return a boolean to indicate that the last write was incomplete and that the
 // unapplied wal transactions should be applied after loading the roots.
 func loadExistingMerkleRoots(file *os.File) (*merkleRoots, bool, error) {
+	return loadExistingMerkleRootsFromSection(newFileSection(file, 0, remainingFile))
+}
+
+// loadExistingMerkleRootsFromSection reads creates a merkleRoots object from
+// existing merkle roots. If the file has an unexpected length, we truncate it
+// and return a boolean to indicate that the last write was incomplete and that
+// the unapplied wal transactions should be applied after loading the roots.
+func loadExistingMerkleRootsFromSection(file *fileSection) (*merkleRoots, bool, error) {
 	mr := &merkleRoots{
 		rootsFile: file,
 	}
 	applyTxns := false
 	// Get the filesize and truncate the file if necessary.
-	stat, err := file.Stat()
+	size, err := file.Size()
 	if err != nil {
 		return nil, applyTxns, err
 	}
-	size := stat.Size()
 	if mod := size % crypto.HashSize; mod != 0 {
 		if err := file.Truncate(size - mod); err != nil {
 			return nil, applyTxns, err
@@ -139,7 +146,7 @@ func newCachedSubTree(roots []crypto.Hash) *cachedSubTree {
 // Don't use this on a file that contains roots.
 func newMerkleRoots(file *os.File) *merkleRoots {
 	return &merkleRoots{
-		rootsFile: file,
+		rootsFile: newFileSection(file, 0, remainingFile),
 	}
 }
 
@@ -253,15 +260,15 @@ func (mr *merkleRoots) isIndexCached(i int) (int, bool) {
 // lenFromFile returns the number of merkle roots by computing it from the
 // filesize.
 func (mr *merkleRoots) lenFromFile() (int, error) {
-	stat, err := mr.rootsFile.Stat()
+	size, err := mr.rootsFile.Size()
 	if err != nil {
 		return 0, err
 	}
 	// Sanity check contract file length.
-	if stat.Size()%crypto.HashSize != 0 {
+	if size%crypto.HashSize != 0 {
 		return 0, errors.New("contract file has unexpected length and might be corrupted")
 	}
-	return int(stat.Size() / crypto.HashSize), nil
+	return int(size / crypto.HashSize), nil
 }
 
 // len returns the number of merkle roots. It should always return the same

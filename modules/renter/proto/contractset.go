@@ -268,3 +268,59 @@ func v131RC2RenameWAL(dir string) error {
 	}
 	return nil
 }
+
+func (cs *ContractSet) managedV145SplitContractHeaderAndRoots(contractDir *os.File) error {
+	// Load the contract files.
+	dirNames, err := contractDir.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+
+	oldHeaderSize := 4088 // declared here to avoid cluttering of non-legacy codebase
+	for _, filename := range dirNames {
+		if filepath.Ext(filename) != v145ContractExtension {
+			continue
+		}
+		path := filepath.Join(cs.dir, filename)
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		rootsSection := newFileSection(f, int64(oldHeaderSize), -1)
+
+		// Load header.
+		header, err := loadSafeContractHeader(f, oldHeaderSize)
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		// Load roots.
+		roots, unappliedTxns, err := loadExistingMerkleRootsFromSection(rootsSection)
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		if unappliedTxns {
+			build.Critical("can't upgrade contractset after an unclean shutdown, please downgrade Sia, start it, stop it cleanly and then try to upgrade again")
+			return errors.Compose(errors.New("upgrade failed due to unclean shutdown"), f.Close())
+		}
+		merkleRoots, err := roots.merkleRoots()
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		// Insert contract into the set.
+		_, err = cs.managedInsertContract(header, merkleRoots)
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		// Close the file.
+		err = f.Close()
+		if err != nil {
+			return err
+		}
+		// Delete the file.
+		err = os.Remove(path)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
