@@ -19,6 +19,7 @@ variables:
     ./modules
     ./modules/consensus
     ./modules/explorer
+    ./modules/feemanager
     ./modules/gateway
     ./modules/host
     ./modules/host/contractmanager
@@ -43,6 +44,7 @@ variables:
     ./siatest
     ./siatest/consensus
     ./siatest/daemon
+    ./siatest/feemanager
     ./siatest/gateway
     ./siatest/host
     ./siatest/miner
@@ -73,7 +75,6 @@ default: &default_params
   ## disable default tests for scheduled pipelines (nightlies)
   except:
     - schedules
-
 
 ## Define the default nightly test parameters.
 .default_nightly_test: &default_nightly_params
@@ -199,3 +200,4 @@ siatest-renter-sub-tests-nightly:
     - apt-get update
     - apt-get install -y fuse
     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+    

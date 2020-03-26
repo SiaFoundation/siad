@@ -16,6 +16,7 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"golang.org/x/crypto/ssh/terminal"
 
+	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -414,7 +415,7 @@ func walletsendsiacoinscmd(amount, dest string) {
 	if _, err := fmt.Sscan(dest, &hash); err != nil {
 		die("Failed to parse destination address", err)
 	}
-	_, err = httpClient.WalletSiacoinsPost(value, hash)
+	_, err = httpClient.WalletSiacoinsPost(value, hash, walletTxnFeeIncluded)
 	if err != nil {
 		die("Could not send siacoins:", err)
 	}
@@ -477,7 +478,7 @@ Unlock the wallet to view balance
 %s, Unlocked
 Height:              %v
 Confirmed Balance:   %v
-Unconfirmed Delta:  %v
+Unconfirmed Delta:   %v
 Exact:               %v H
 Siafunds:            %v SF
 Siafund Claims:      %v H
@@ -654,7 +655,7 @@ func wallettransactionscmd() {
 func walletunlockcmd() {
 	// try reading from environment variable first, then fallback to
 	// interactive method. Also allow overriding auto-unlock via -p
-	password := os.Getenv("SIA_WALLET_PASSWORD")
+	password := os.Getenv(cmd.SiaWalletPassword)
 	if password != "" && !initPassword {
 		fmt.Println("Using SIA_WALLET_PASSWORD environment variable")
 		err := httpClient.WalletUnlockPost(password)

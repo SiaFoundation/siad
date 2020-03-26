@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -44,6 +45,7 @@ var (
 	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
+	walletTxnFeeIncluded      bool   // include the fee in the balance being sent
 
 	dataPieces   string // the number of data pieces a files should be uploaded with
 	parityPieces string // the number of parity pieces a files should be uploaded with
@@ -256,8 +258,9 @@ func main() {
 		renterFuseCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
 		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd)
 
-	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
+	renterContractsCmd.AddCommand(renterContractsViewCmd)
+	renterFilesUploadCmd.AddCommand(renterFilesUploadPauseCmd, renterFilesUploadResumeCmd)
 
 	renterCmd.Flags().BoolVarP(&renterVerbose, "verbose", "v", false, "Show additional renter info such as allowance details")
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
@@ -322,6 +325,7 @@ func main() {
 	walletInitSeedCmd.Flags().BoolVarP(&initForce, "force", "", false, "destroy the existing wallet")
 	walletLoadCmd.AddCommand(walletLoad033xCmd, walletLoadSeedCmd, walletLoadSiagCmd)
 	walletSendCmd.AddCommand(walletSendSiacoinsCmd, walletSendSiafundsCmd)
+	walletSendSiacoinsCmd.Flags().BoolVarP(&walletTxnFeeIncluded, "fee-included", "", false, "Take the transaction fee out of the balance being submitted instead of the fee being additional")
 	walletUnlockCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Display interactive password prompt even if SIA_WALLET_PASSWORD is set")
 	walletBroadcastCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Decode transaction as base64 instead of JSON")
 	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")
@@ -334,7 +338,7 @@ func main() {
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
 	// Check if the api password environment variable is set.
-	apiPassword := os.Getenv("SIA_API_PASSWORD")
+	apiPassword := os.Getenv(cmd.SiaAPIPassword)
 	if apiPassword != "" {
 		httpClient.Password = apiPassword
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
@@ -342,7 +346,7 @@ func main() {
 
 	// If siaDir is not set, use the environment variable provided.
 	if siaDir == "" {
-		siaDir = os.Getenv("SIA_DATA_DIR")
+		siaDir = os.Getenv(cmd.SiaDataDir)
 		if siaDir != "" {
 			fmt.Println("Using SIA_DATA_DIR environment variable")
 		} else {

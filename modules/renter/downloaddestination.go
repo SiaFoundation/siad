@@ -231,7 +231,6 @@ func (ddw *downloadDestinationWriter) WritePieces(ec modules.ErasureCoder, piece
 		}
 		// Error if the stream has progressed beyond 'offset'.
 		if offset < ddw.progress {
-			ddw.mu.Unlock()
 			return errOffsetAlreadyWritten
 		}
 

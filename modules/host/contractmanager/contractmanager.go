@@ -233,6 +233,6 @@ func NewCustomContractManager(dependencies modules.Dependencies, persistDir stri
 }
 
 // Alerts implements the modules.Alerter interface for the contract manager
-func (cm *ContractManager) Alerts() []modules.Alert {
+func (cm *ContractManager) Alerts() (crit, err, warn []modules.Alert) {
 	return cm.staticAlerter.Alerts()
 }

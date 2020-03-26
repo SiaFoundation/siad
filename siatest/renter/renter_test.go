@@ -56,7 +56,9 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestLocalRepair", Test: testLocalRepair},
 		{Name: "TestClearDownloadHistory", Test: testClearDownloadHistory},
 		{Name: "TestDownloadAfterRenew", Test: testDownloadAfterRenew},
+		{Name: "TestDownloadAfterLegacyRenewAndClear", Test: testDownloadAfterLegacyRenewAndClear},
 		{Name: "TestDirectories", Test: testDirectories},
+		{Name: "TestAlertsSorted", Test: testAlertsSorted},
 	}
 
 	// Run tests
@@ -724,6 +726,27 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testAlertsSorted checks that the alerts returned by the /daemon/alerts
+// endpoint are sorted by severity.
+func testAlertsSorted(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+	dag, err := r.DaemonAlertsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dag.Alerts) < 3 {
+		t.Fatalf("renter should have at least %v alerts registered but was %v", 3, len(dag.Alerts))
+	}
+	sorted := sort.SliceIsSorted(dag.Alerts, func(i, j int) bool {
+		return dag.Alerts[i].Severity > dag.Alerts[j].Severity
+	})
+	if !sorted {
+		t.Log("alerts:", dag.Alerts)
+		t.Fatal("alerts are not sorted by severity")
+	}
+}
+
 // testDownloadAfterRenew makes sure that we can still download a file
 // after the contract period has ended.
 func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
@@ -750,6 +773,43 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testDownloadAfterRenew makes sure that we can't download a file after
+// finalizing the contract and dropping the void output. This is also a
+// regression test for a index-out-of-bounds panic in siad.
+func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
+	// Create a node with the right dependency.
+	params := node.Renter(renterTestDir(t.Name()))
+	params.ContractorDeps = &dependencies.DependencySkipDeleteContractAfterRenewal{}
+
+	// Add the node and remove it at the end of the test.
+	nodes, err := tg.AddNodes(params)
+	renter := nodes[0]
+	defer tg.RemoveNode(renter)
+
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := 100 + siatest.Fuzz()
+	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Mine enough blocks for the next period to start. This means the
+	// contracts should be renewed and the data should still be available for
+	// download.
+	miner := tg.Miners()[0]
+	for i := types.BlockHeight(0); i < siatest.DefaultAllowance.Period; i++ {
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Download the file synchronously directly into memory.
+	_, _, err = renter.DownloadByStream(remoteFile)
+	if err == nil {
+		t.Fatal("download should fail due to contract being finalized")
 	}
 }
 

@@ -959,7 +959,7 @@ type Renter interface {
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.
-	PinSkylink(Skylink, SkyfileUploadParameters) error
+	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

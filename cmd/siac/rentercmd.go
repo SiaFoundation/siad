@@ -190,6 +190,22 @@ flags can be used to set a custom redundancy for the file.`,
 		Run: wrap(renterfilesuploadcmd),
 	}
 
+	renterFilesUploadPauseCmd = &cobra.Command{
+		Use:   "pause [duration]",
+		Short: "Pause renter uploads for a duration",
+		Long: `Temporarily pause renter uploads for the duration specified.
+Available durations include "s" for seconds, "m" for minutes, and "h" for hours.
+For Example: 'siac renter upload pause 3h' would pause uploads for 3 hours.`,
+		Run: wrap(renterfilesuploadpausecmd),
+	}
+
+	renterFilesUploadResumeCmd = &cobra.Command{
+		Use:   "resume",
+		Short: "Resume renter uploads",
+		Long:  "Resume renter uploads that were previously paused.",
+		Run:   wrap(renterfilesuploadresumecmd),
+	}
+
 	renterPricesCmd = &cobra.Command{
 		Use:   "prices [amount] [period] [hosts] [renew window]",
 		Short: "Display the price of storage and bandwidth",
@@ -204,7 +220,7 @@ allowance of 500SC, 12w period, 50 hosts, and 4w renew window will be used.`,
 
 	renterRatelimitCmd = &cobra.Command{
 		Use:   "ratelimit [maxdownloadspeed] [maxuploadspeed]",
-		Short: "set maxdownloadspeed and maxuploadspeed",
+		Short: "Set maxdownloadspeed and maxuploadspeed",
 		Long: `Set the maxdownloadspeed and maxuploadspeed in
 Bytes per second: B/s, KB/s, MB/s, GB/s, TB/s
 or
@@ -391,8 +407,20 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable uint64
-	total := dirs[0].dir.AggregateNumFiles
+	// Check for nil input
+	if len(dirs) == 0 {
+		fmt.Println("No Directories Found")
+		return
+	}
+
+	// Check for no files uploaded
+	total := float64(dirs[0].dir.AggregateNumFiles)
+	if total == 0 {
+		fmt.Println("No Files Uploaded")
+		return
+	}
+
+	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
 	for _, dir := range dirs {
 		for _, file := range dir.files {
 			switch {
@@ -412,12 +440,15 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 		}
 	}
 
-	percentFullHealth := 100 * fullHealth / total
-	percentAbove75 := 100 * greater75 / total
-	percentAbove50 := 100 * greater50 / total
-	percentAbove25 := 100 * greater25 / total
-	percentAbove0 := 100 * greater0 / total
-	percentUnrecoverable := 100 * unrecoverable / total
+	fullHealth = 100 * fullHealth / total
+	greater75 = 100 * greater75 / total
+	greater50 = 100 * greater50 / total
+	greater25 = 100 * greater25 / total
+	greater0 = 100 * greater0 / total
+	unrecoverable = 100 * unrecoverable / total
+
+	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
+	percentages = parsePercentages(percentages)
 
 	fmt.Printf(`File Health Summary:
   %% At 100%%:            %v%%
@@ -426,7 +457,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
   %% Between 25%% - 50%%:  %v%%
   %% Between 0%% - 25%%:   %v%%
   %% Unrecoverable:      %v%%
-`, percentFullHealth, percentAbove75, percentAbove50, percentAbove25, percentAbove0, percentUnrecoverable)
+`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -441,7 +472,7 @@ func renterFilesAndContractSummary() error {
 		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
 	}
 
-	rc, err := httpClient.RenterContractsGet()
+	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
 		return err
 	}
@@ -449,13 +480,22 @@ func renterFilesAndContractSummary() error {
 	if rf.Directories[0].AggregateMinRedundancy == -1 {
 		redundancyStr = "-"
 	}
+	// Active Contracts are all good data
+	activeSize, _, _, _ := contractStats(rc.ActiveContracts)
+	// Passive Contracts are all good data
+	passiveSize, _, _, _ := contractStats(rc.PassiveContracts)
 
 	fmt.Printf(`
-  Files:          %v
-  Total Stored:   %v
-  Min Redundancy: %v
-  Contracts:      %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts))
+  Files:               %v
+  Total Stored:        %v
+  Total Contract Data: %v
+  Min Redundancy:      %v
+  Active Contracts:    %v
+  Passive Contracts:   %v
+  Disabled Contracts:  %v
+`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize),
+		modules.FilesizeUnits(activeSize+passiveSize), redundancyStr, len(rc.ActiveContracts),
+		len(rc.PassiveContracts), len(rc.DisabledContracts))
 
 	return nil
 }
@@ -1566,23 +1606,35 @@ func rentercontractscmd() {
 // rentercontractsviewcmd is the handler for the command `siac renter contracts <id>`.
 // It lists details of a specific contract.
 func rentercontractsviewcmd(cid string) {
-	rc, err := httpClient.RenterInactiveContractsGet()
+	rc, err := httpClient.RenterAllContractsGet()
 	if err != nil {
 		die("Could not get contract details: ", err)
 	}
-	rce, err := httpClient.RenterExpiredContractsGet()
+
+	contracts := append(rc.ActiveContracts, rc.PassiveContracts...)
+	contracts = append(contracts, rc.RefreshedContracts...)
+	contracts = append(contracts, rc.DisabledContracts...)
+	contracts = append(contracts, rc.ExpiredContracts...)
+	contracts = append(contracts, rc.ExpiredRefreshedContracts...)
+
+	err = printContractInfo(cid, contracts)
 	if err != nil {
-		die("Could not get expired contract details: ", err)
+		die(err)
 	}
+}
 
-	contracts := append(rc.ActiveContracts, rc.InactiveContracts...)
-	contracts = append(contracts, rce.ExpiredContracts...)
-
+// printContractInfo is a helper function for printing the information about a
+// specific contract
+func printContractInfo(cid string, contracts []api.RenterContract) error {
 	for _, rc := range contracts {
 		if rc.ID.String() == cid {
+			var fundsAllocated types.Currency
+			if rc.TotalCost.Cmp(rc.Fees) > 0 {
+				fundsAllocated = rc.TotalCost.Sub(rc.Fees)
+			}
 			hostInfo, err := httpClient.HostDbHostsGet(rc.HostPublicKey)
 			if err != nil {
-				die("Could not fetch details of host: ", err)
+				return fmt.Errorf("Could not fetch details of host: %v", err)
 			}
 			fmt.Printf(`
 Contract %v
@@ -1600,10 +1652,9 @@ Contract %v
   Remaining Funds:   %v
 
   File Size: %v
-`, rc.ID, rc.NetAddress, rc.HostVersion, rc.HostPublicKey.String(), rc.StartHeight, rc.EndHeight,
-				currencyUnits(rc.TotalCost),
-				currencyUnits(rc.Fees),
-				currencyUnits(rc.TotalCost.Sub(rc.Fees)),
+`, rc.ID, rc.NetAddress, rc.HostPublicKey.String(), rc.HostVersion, rc.StartHeight, rc.EndHeight,
+				currencyUnits(rc.TotalCost), currencyUnits(rc.Fees),
+				currencyUnits(fundsAllocated),
 				currencyUnits(rc.UploadSpending),
 				currencyUnits(rc.StorageSpending),
 				currencyUnits(rc.DownloadSpending),
@@ -1611,11 +1662,12 @@ Contract %v
 				modules.FilesizeUnits(rc.Size))
 
 			printScoreBreakdown(&hostInfo)
-			return
+			return nil
 		}
 	}
 
 	fmt.Println("Contract not found")
+	return nil
 }
 
 // downloadDir downloads the dir at the specified siaPath to the specified
@@ -2429,6 +2481,31 @@ func renterfilesuploadcmd(source, path string) {
 		}
 		fmt.Printf("Uploaded '%s' as '%s'.\n", abs(source), path)
 	}
+}
+
+// renterfilesuploadpausecmd is the handler for the command `siac renter upload
+// pause`.  It pauses all renter uploads for the duration (in minutes)
+// passed in.
+func renterfilesuploadpausecmd(dur string) {
+	pauseDuration, err := time.ParseDuration(dur)
+	if err != nil {
+		die("Couldn't parse duration:", err)
+	}
+	err = httpClient.RenterUploadsPausePost(pauseDuration)
+	if err != nil {
+		die("Could not pause renter uploads:", err)
+	}
+	fmt.Println("Renter uploads have been paused for", dur)
+}
+
+// renterfilesuploadresumecmd is the handler for the command `siac renter upload
+// resume`.  It resumes all renter uploads that have been paused.
+func renterfilesuploadresumecmd() {
+	err := httpClient.RenterUploadsResumePost()
+	if err != nil {
+		die("Could not resume renter uploads:", err)
+	}
+	fmt.Println("Renter uploads have been resumed")
 }
 
 // skynetcmd displays the usage info for the command.
