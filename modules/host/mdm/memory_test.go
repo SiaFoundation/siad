@@ -7,8 +7,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// TestMemoryCost tests the value of MemoryCost for different situations to make
-// sure we have sensible memory costs.
+// TestMemoryCost tests the value of MemoryCost for different instructions to
+// make sure we have sensible memory costs.
 func TestMemoryCost(t *testing.T) {
 	pt := newTestPriceTable()
 
@@ -24,18 +24,19 @@ func TestMemoryCost(t *testing.T) {
 	}
 
 	// Append
-	cost = modules.MDMMemoryCost(pt, modules.MDMAppendMemory(), modules.MDMTimeAppend)
-	costPerTB := cost.Div64(modules.SectorSize).Mul(perTB)
+	appendMemory := modules.SectorSizeStandard // override MDMAppendMemory()
+	cost = modules.MDMMemoryCost(pt, appendMemory, modules.MDMTimeAppend)
+	costPerTB := cost.Div64(appendMemory).Mul(perTB)
 	expectedCostPerTB := sc.Mul64(38).Div64(10) // 3.8 SC
 	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append memory cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
 
 	// Two Appends. The memory cost should grow more than linearly.
-	cost = modules.MDMMemoryCost(pt, modules.MDMAppendMemory(), modules.MDMTimeAppend)
-	cost = cost.Add(modules.MDMMemoryCost(pt, modules.MDMAppendMemory()*2, modules.MDMTimeAppend))
-	costPerTB = cost.Div64(modules.SectorSize).Mul(perTB)
-	expectedCostPerTB = sc.Mul64(115).Div64(10) // 11.5 SC
+	appendMemory *= 2
+	cost = cost.Add(modules.MDMMemoryCost(pt, appendMemory, modules.MDMTimeAppend))
+	costPerTB = cost.Div64(appendMemory).Mul(perTB)
+	expectedCostPerTB = sc.Mul64(58).Div64(10) // 5.8 SC
 	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected double append memory cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}

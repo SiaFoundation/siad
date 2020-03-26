@@ -7,6 +7,58 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// TestCostForAppendProgram calculates the cost for a program which appends 1
+// TiB of data.
+//
+// NOTE: We use a modified cost function for Append which returns the cost for
+// production-sized sectors, as sectors in testing are only 4 KiB.
+func TestCostForAppendProgram(t *testing.T) {
+	pt := newTestPriceTable()
+
+	// Define helper variables.
+	sc := types.SiacoinPrecision
+
+	// Initialize starting values.
+	runningCost := modules.MDMInitCost(pt, 1e12)
+	runningRefund := types.ZeroCurrency
+	runningMemory := modules.MDMInitMemory()
+	size := uint64(0)
+
+	// Simulate running a program to append 1 TiB of data.
+	for size < (1e12) {
+		cost, refund := appendTrueCost(pt)
+		memory := modules.SectorSizeStandard // override MDMAppendMemory()
+		time := uint64(modules.MDMTimeAppend)
+		runningCost, runningRefund, runningMemory = updateRunningCosts(pt, runningCost, runningRefund, runningMemory, cost, refund, memory, time)
+		size += modules.SectorSizeStandard
+	}
+	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))
+
+	expectedCost := sc.Mul64(1000).Mul64(460) // 460 KS
+	if !aboutEquals(expectedCost, runningCost) {
+		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
+	}
+
+	expectedRefund := sc.Div64(1000).Mul64(116).Div64(10) // 11.6 mS
+	if !aboutEquals(expectedRefund, runningRefund) {
+		t.Errorf("expected refund for appending 1 TiB to be %v, got refund %v", expectedRefund.HumanString(), runningRefund.HumanString())
+	}
+
+	expectedMemory := size + modules.MDMInitMemory() // 1 TiB + 1 MiB
+	if expectedMemory != runningMemory {
+		t.Errorf("expected memory for appending 1 TiB to be %v, got %v", expectedMemory, runningMemory)
+	}
+}
+
+// appendTrueCost returns the true, production cost of an append. This is
+// necessary because in tests the sector size is only 4 KiB and the append cost
+// is misleading.
+func appendTrueCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
+	writeCost := pt.WriteLengthCost.Mul64(modules.SectorSizeStandard).Add(pt.WriteBaseCost)
+	storeCost := pt.WriteStoreCost.Mul64(modules.SectorSizeStandard) // potential refund
+	return writeCost.Add(storeCost), storeCost
+}
+
 // TestCosts tests the costs for individual instructions so that we have a sense
 // of their relative costs and to make sure they are sensible values.
 func TestCosts(t *testing.T) {
@@ -17,32 +69,29 @@ func TestCosts(t *testing.T) {
 	perTB := modules.BytesPerTerabyte
 
 	// Init for a TB of data
-	tb, err := perTB.Uint64()
-	if err != nil {
-		t.Error(err)
-	}
-	cost := modules.MDMInitCost(pt, tb)
+	cost := modules.MDMInitCost(pt, 1e12)
 	expectedCost := sc.Div64(1e3).Mul64(38).Div64(10) // 3.8 mS
 	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected init cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}
 
 	// Append
-	cost, refund := modules.MDMAppendCost(pt)
-	costPerTB := cost.Div64(modules.SectorSize).Mul(perTB)
-	expectedCostPerTB := sc.Mul64(254).Div64(10) // 25.4 SC
+	cost, refund := appendTrueCost(pt)
+	// Scale the costs up to a TB of data.
+	costPerTB := cost.Div64(modules.SectorSizeStandard).Mul(perTB)
+	expectedCostPerTB := sc // 1 SC
 	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
 	expectedRefundPerTB := sc.Div64(1e3).Mul64(115).Div64(10) // 11.5 mS
-	refundPerTB := refund.Div64(modules.SectorSize).Mul(perTB)
+	refundPerTB := refund.Div64(modules.SectorSizeStandard).Mul(perTB)
 	if !aboutEquals(refundPerTB, expectedRefundPerTB) {
 		t.Errorf("expected append refund %v, got %v", expectedRefundPerTB.HumanString(), refundPerTB.HumanString())
 	}
 
 	// DropSectors
 	cost, refund = modules.MDMDropSectorsCost(pt, 1)
-	expectedCost = sc.Div64(1e6).Mul64(21).Div64(10) // 2.1uS
+	expectedCost = sc.Div64(1e6).Mul64(21).Div64(10) // 2.1 uS
 	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected dropsectors cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}
@@ -79,7 +128,7 @@ func TestAboutEquals(t *testing.T) {
 	c := types.NewCurrency64
 	tests := []struct {
 		cExpected, cActual types.Currency
-		out    bool
+		out                bool
 	}{
 		{c(100), c(90), true},
 		{c(100), c(110), true},
