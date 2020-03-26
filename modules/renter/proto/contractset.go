@@ -232,6 +232,11 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	}
 	walTxns = remainingTxns
 
+	// Check for legacy contracts and split them up.
+	if err := cs.managedV145SplitContractHeaderAndRoots(d); err != nil {
+		return nil, err
+	}
+
 	// Load the contract files.
 	dirNames, err := d.Readdirnames(-1)
 	if err != nil {
@@ -269,6 +274,8 @@ func v131RC2RenameWAL(dir string) error {
 	return nil
 }
 
+// managedV145SplitContractHeaderAndRoots goes through all the legacy contracts
+// in a directory and splits the file up into a header and roots file.
 func (cs *ContractSet) managedV145SplitContractHeaderAndRoots(contractDir *os.File) error {
 	// Load the contract files.
 	dirNames, err := contractDir.Readdirnames(-1)
