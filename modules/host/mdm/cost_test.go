@@ -16,11 +16,6 @@ func TestCosts(t *testing.T) {
 	sc := types.SiacoinPrecision
 	perTB := modules.BytesPerTerabyte
 
-	// Set the precision with which to check results to 0.1 SC. We don't need to
-	// know that the exact cost of an append is '25425636574074000000000000', we
-	// just need a rough value.
-	precision := sc.Div64(10)
-
 	// Init for a TB of data
 	tb, err := perTB.Uint64()
 	if err != nil {
@@ -28,7 +23,7 @@ func TestCosts(t *testing.T) {
 	}
 	cost := modules.MDMInitCost(pt, tb)
 	expectedCost := sc.Div64(1e3).Mul64(38).Div64(10) // 3.8 mS
-	if !aboutEquals(cost, expectedCost, precision.Div64(1e3)) {
+	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected init cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}
 
@@ -36,30 +31,30 @@ func TestCosts(t *testing.T) {
 	cost, refund := modules.MDMAppendCost(pt)
 	costPerTB := cost.Div64(modules.SectorSize).Mul(perTB)
 	expectedCostPerTB := sc.Mul64(254).Div64(10) // 25.4 SC
-	if !aboutEquals(costPerTB, expectedCostPerTB, precision) {
+	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
 	expectedRefundPerTB := sc.Div64(1e3).Mul64(115).Div64(10) // 11.5 mS
 	refundPerTB := refund.Div64(modules.SectorSize).Mul(perTB)
-	if !aboutEquals(refundPerTB, expectedRefundPerTB, precision.Div64(1e3)) {
+	if !aboutEquals(refundPerTB, expectedRefundPerTB) {
 		t.Errorf("expected append refund %v, got %v", expectedRefundPerTB.HumanString(), refundPerTB.HumanString())
 	}
 
 	// DropSectors
 	cost, refund = modules.MDMDropSectorsCost(pt, 1)
 	expectedCost = sc.Div64(1e6).Mul64(21).Div64(10) // 2.1uS
-	if !aboutEquals(cost, expectedCost, precision.Div64(1e6)) {
+	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected dropsectors cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}
 	expectedRefund := types.ZeroCurrency
-	if !aboutEquals(refund, expectedRefund, precision) {
+	if !aboutEquals(refund, expectedRefund) {
 		t.Errorf("expected dropsectors refund %v, got %v", expectedRefund.HumanString(), refund.HumanString())
 	}
 
 	// HasSector
 	cost, refund = modules.MDMHasSectorCost(pt)
 	expectedCost = sc.Div64(1e12).Mul64(4045).Div64(10) // 404.5 pS
-	if !aboutEquals(cost, expectedCost, precision.Div64(1e12)) {
+	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected hassector cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}
 	expectedRefund = types.ZeroCurrency
@@ -70,7 +65,7 @@ func TestCosts(t *testing.T) {
 	// Read
 	costPerTB, refundPerTB = modules.MDMReadCost(pt, 1e12)
 	expectedCostPerTB = sc.Mul64(25) // 25 SC
-	if !aboutEquals(costPerTB, expectedCostPerTB, precision) {
+	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected read cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
 	expectedRefundPerTB = types.ZeroCurrency
@@ -83,23 +78,27 @@ func TestCosts(t *testing.T) {
 func TestAboutEquals(t *testing.T) {
 	c := types.NewCurrency64
 	tests := []struct {
-		c1, c2, precision types.Currency
-		out               bool
+		cExpected, cActual types.Currency
+		out    bool
 	}{
-		{c(105), c(100), c(5), true},
-		{c(100), c(105), c(5), true},
-		{c(100), c(105), c(4), false},
-		{c(105), c(100), c(4), false},
+		{c(100), c(90), true},
+		{c(100), c(110), true},
+		{c(100), c(89), false},
+		{c(100), c(111), false},
 	}
 	for _, test := range tests {
-		out := aboutEquals(test.c1, test.c2, test.precision)
+		out := aboutEquals(test.cExpected, test.cActual)
 		if out != test.out {
-			t.Errorf("aboutEquals(%v, %v, %v): expected '%v', got '%v'", test.c1, test.c2, test.precision, test.out, out)
+			t.Errorf("aboutEquals(%v, %v): expected '%v', got '%v'", test.cExpected, test.cActual, test.out, out)
 		}
 	}
 }
 
-// aboutEquals checks that two currencies are approximately equal, within the given error window.
-func aboutEquals(c1, c2, errorWindow types.Currency) bool {
-	return c1.Cmp(c2.Add(errorWindow)) <= 0 && c2.Cmp(c1.Add(errorWindow)) <= 0
+// aboutEquals checks that two currencies are approximately equal.
+func aboutEquals(cExpected, cActual types.Currency) bool {
+	// The precision with which we check results is 10% of the expected value. We
+	// don't need to know that the exact cost of an append is
+	// '25425636574074000000000000', we just need a rough value.
+	errorWindow := cExpected.Div64(10)
+	return cExpected.Add(errorWindow).Cmp(cActual) >= 0 && cExpected.Sub(errorWindow).Cmp(cActual) <= 0
 }

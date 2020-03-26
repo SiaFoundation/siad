@@ -16,15 +16,10 @@ func TestMemoryCost(t *testing.T) {
 	sc := types.SiacoinPrecision
 	perTB := modules.BytesPerTerabyte
 
-	// Set the precision with which to check results to 0.1 SC. We don't need to
-	// know that the exact cost of an append is '25425636574074000000000000', we
-	// just need a rough value.
-	precision := sc.Div64(10)
-
 	// Base program memory cost
 	cost := modules.MDMMemoryCost(pt, modules.MDMInitMemory(), modules.MDMProgramInitTime)
 	expectedCost := sc.Div64(1e9).Mul64(4) // 4.0 nS
-	if !aboutEquals(cost, expectedCost, precision.Div64(1e9)) {
+	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected base memory cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}
 
@@ -32,7 +27,7 @@ func TestMemoryCost(t *testing.T) {
 	cost = modules.MDMMemoryCost(pt, modules.MDMAppendMemory(), modules.MDMTimeAppend)
 	costPerTB := cost.Div64(modules.SectorSize).Mul(perTB)
 	expectedCostPerTB := sc.Mul64(38).Div64(10) // 3.8 SC
-	if !aboutEquals(costPerTB, expectedCostPerTB, precision) {
+	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append memory cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
 
@@ -41,7 +36,7 @@ func TestMemoryCost(t *testing.T) {
 	cost = cost.Add(modules.MDMMemoryCost(pt, modules.MDMAppendMemory()*2, modules.MDMTimeAppend))
 	costPerTB = cost.Div64(modules.SectorSize).Mul(perTB)
 	expectedCostPerTB = sc.Mul64(115).Div64(10) // 11.5 SC
-	if !aboutEquals(costPerTB, expectedCostPerTB, precision) {
+	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected double append memory cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
 
