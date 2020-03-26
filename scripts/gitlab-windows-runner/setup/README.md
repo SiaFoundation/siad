@@ -12,32 +12,26 @@ Gitlab registration token is needed to pair the new runner with Gitlab repositor
   `<userhome>\Documents\gitlab-registration-token.txt`
   the file should not contain any spaces or newlines.
 
-## Gitlab Runner - Windows Service User
-
-Gitlab runner Windows service user should be run under `Administrator` account to have access to needed files.
-
-To prepare Windows service to be run under this user:
-
-- Type Administrator user password to Windows machine to
-  `<userhome>\Documents\gitlab-registration-token.txt`
-  the file should not contain any spaces or newlines.
-- After the installation is finished, this file can be deleted.
-  
-
 ## Gitlab Runner Setup
 
+- Login as `Administrator` Windows user
 - From Sia repo directory `scripts/gitlab-windows-runner/setup`
-  copy the installation script `(run-as-admin)-setup-gitlab-windows-runner.ps1`
+  download the installation script `setup-gitlab-windows-runner.ps1`
   to the Windows machine
-- Run the PowerShell script as Admin
+- Open PowerShell console (do NOT use: run as administrator),
+  because it spoils Windows service installation
+- Execute the downloaded PowerShell script
 
 The script
 
 - Installs Chocolatey (Windows package/software manager)
+- Installs golang
+- Installs make
 - Installs Gitlab Runner
 - Registers Gitlab Runner using previously prepared token
-- Sets the Gitlab Runner tag to `windows10`
+- Sets the Gitlab Runner tag to `nebulous-windows`
 - Installs Gitlab Runner as a Windows service
 - Starts the Gitlab Runner service
 
-Since now the Windows Gitlab runner is ready to execute jobs.
+Since now the Windows Gitlab runner is ready to execute jobs
+that are tagged `nebulous-windows`.
