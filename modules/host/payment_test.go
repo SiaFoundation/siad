@@ -325,7 +325,6 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	return so, nil
 }
 
-
 // revisionSignature is a helper function that signs the given revision with the
 // given key
 func revisionSignature(rev types.FileContractRevision, blockHeight types.BlockHeight, secretKey crypto.SecretKey) crypto.Signature {
