@@ -98,7 +98,7 @@ default: &default_params
   <<: *default_windows_params
   stage: test
   tags:
-    - windows10
+    - nebulous-windows
 
   ## disable default tests for scheduled pipelines (nightlies)
   except:
