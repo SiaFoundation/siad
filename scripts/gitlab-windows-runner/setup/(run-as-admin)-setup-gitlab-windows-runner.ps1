@@ -11,7 +11,7 @@ $url = "https://chocolatey.org/install.ps1 "
 $output = ".\install-chocolatey.ps1"
 Invoke-WebRequest -Uri $url -OutFile $output
 
-nvoke-Expression ".\install-chocolatey.ps1"
+Invoke-Expression ".\install-chocolatey.ps1"
 
 # Install git (Gitlab Runner prerequisity)
 Invoke-Expression "choco install git -y"
@@ -49,7 +49,7 @@ Invoke-Expression "cmd /c gitlab-runner.exe register --non-interactive --url htt
 
 $user = ".\Administrator"
 
-Invoke-Expression "cmd /c gitlab-runner.exe install --user $user --password $pass --force"
+Invoke-Expression "cmd /c gitlab-runner.exe install --user $user --password $pass"
 Invoke-Expression "cmd /c gitlab-runner.exe start"
 
 Pop-Location
