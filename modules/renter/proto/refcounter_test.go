@@ -54,13 +54,13 @@ func TestLoad(t *testing.T) {
 	// version
 	badVerFilePath := rcFilePath + "badver"
 	f, err := os.Create(badVerFilePath)
+	defer f.Close()
 	assertSuccess(err, t, "Failed to create test file:")
 	badVerHeader := RefCounterHeader{Version: [8]byte{9, 9, 9, 9, 9, 9, 9, 9}}
 	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
 	_, err = f.Write(badVerFileContents)
 	_ = f.Sync()
-	_ = f.Close() // close regardless of the success of the write
 	assertSuccess(err, t, "Failed to write to test file:")
 	_, err = LoadRefCounter(badVerFilePath, testWAL)
 	assertErrorIs(err, ErrInvalidVersion, t, fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()))
@@ -69,11 +69,11 @@ func TestLoad(t *testing.T) {
 	// different version
 	badHeaderFilePath := rcFilePath + "badhead"
 	f, err = os.Create(badHeaderFilePath)
+	defer f.Close()
 	assertSuccess(err, t, "Failed to create test file:")
 	badHeadFileContents := append([]byte{9, 9, 9, 9}, badVerCounters...)
 	_, err = f.Write(badHeadFileContents)
 	_ = f.Sync()
-	_ = f.Close() // close regardless of the success of the write
 	assertSuccess(err, t, "Failed to write to test file:")
 	_, err = LoadRefCounter(badHeaderFilePath, testWAL)
 	assertErrorIs(err, ErrInvalidHeaderData, t, fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", ErrInvalidHeaderData.Error()))
