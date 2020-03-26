@@ -2,6 +2,7 @@ package proto
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,7 +188,9 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	} else if !stat.IsDir() {
 		return nil, errors.New("not a directory")
 	}
-	defer d.Close()
+	if err := d.Close(); err != nil {
+		return nil, err
+	}
 
 	// Load the WAL. Any recovered updates will be applied after loading
 	// contracts.
@@ -233,17 +236,17 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	walTxns = remainingTxns
 
 	// Check for legacy contracts and split them up.
-	if err := cs.managedV145SplitContractHeaderAndRoots(d); err != nil {
+	if err := cs.managedV145SplitContractHeaderAndRoots(dir); err != nil {
 		return nil, err
 	}
 
 	// Load the contract files.
-	dirNames, err := d.Readdirnames(-1)
+	fis, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, filename := range dirNames {
+	for _, fi := range fis {
+		filename := fi.Name()
 		if filepath.Ext(filename) != contractHeaderExtension {
 			continue
 		}
@@ -276,15 +279,16 @@ func v131RC2RenameWAL(dir string) error {
 
 // managedV145SplitContractHeaderAndRoots goes through all the legacy contracts
 // in a directory and splits the file up into a header and roots file.
-func (cs *ContractSet) managedV145SplitContractHeaderAndRoots(contractDir *os.File) error {
+func (cs *ContractSet) managedV145SplitContractHeaderAndRoots(dir string) error {
 	// Load the contract files.
-	dirNames, err := contractDir.Readdirnames(-1)
+	fis, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 
 	oldHeaderSize := 4088 // declared here to avoid cluttering of non-legacy codebase
-	for _, filename := range dirNames {
+	for _, fi := range fis {
+		filename := fi.Name()
 		if filepath.Ext(filename) != v145ContractExtension {
 			continue
 		}
