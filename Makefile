@@ -93,10 +93,6 @@ dependencies:
 
 # fmt calls go fmt on all packages.
 fmt:
-# xxx debug
-	echo %cd%
-	dir
-	echo $(pkgs)
 	gofmt -s -l -w $(pkgs)
 
 # vet calls go vet on all packages.
