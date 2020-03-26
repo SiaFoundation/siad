@@ -31,9 +31,12 @@ Pop-Location
 
 Push-Location "~\Documents"
 
-## Read prepared token
+## Read prepared variables
 $tokenPath = ".\gitlab-registration-token.txt"
 $token = Get-Content $tokenPath -Raw 
+
+$passPath = ".\gitlab-runner-user-pass.txt"
+$pass = Get-Content $passPath -Raw
 
 Pop-Location
 
@@ -43,7 +46,10 @@ Push-Location "C:\gitlab-runner"
 Invoke-Expression "cmd /c gitlab-runner.exe register --non-interactive --url https://gitlab.com/ --registration-token $token --executor shell --description Win10-Server-Hetzner --tag-list nebulous-windows"
 
 # Install and run the service
-Invoke-Expression "cmd /c gitlab-runner.exe install"
+
+$user = "Administrator"
+
+Invoke-Expression "cmd /c gitlab-runner.exe install --user $user --password $pass"
 Invoke-Expression "cmd /c gitlab-runner.exe start"
 
 Pop-Location

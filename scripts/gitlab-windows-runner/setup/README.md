@@ -12,6 +12,17 @@ Gitlab registration token is needed to pair the new runner with Gitlab repositor
   `<userhome>\Documents\gitlab-registration-token.txt`
   the file should not contain any spaces or newlines.
 
+## Gitlab Runner - Windows Service User
+
+Gitlab runner Windows service user should be run under `Administrator` account to have access to needed files.
+
+To prepare Windows service to be run under this user:
+
+- Type Administrator user password to Windows machine to
+  `<userhome>\Documents\gitlab-registration-token.txt`
+  the file should not contain any spaces or newlines.
+  
+
 ## Gitlab Runner Setup
 
 - From Sia repo directory `scripts/gitlab-windows-runner/setup`
