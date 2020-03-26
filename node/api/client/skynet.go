@@ -395,7 +395,7 @@ func (c *Client) SkykeyCreateKeyPost(name string, ct crypto.CipherType) (skykey.
 	var sk skykey.Skykey
 	err = sk.FromString(skykeyGet.Skykey)
 	if err != nil {
-		return skykey.Skykey{}, errors.AddContext(err, "failed to decode Skykey string")
+		return skykey.Skykey{}, errors.AddContext(err, "failed to decode skykey string")
 	}
 	return sk, nil
 }
@@ -405,7 +405,7 @@ func (c *Client) SkykeyAddKeyPost(sk skykey.Skykey) error {
 	values := url.Values{}
 	skString, err := sk.ToString()
 	if err != nil {
-		return errors.AddContext(err, "failed to encode Skykey as string")
+		return errors.AddContext(err, "failed to encode skykey as string")
 	}
 	values.Set("skykey", skString)
 

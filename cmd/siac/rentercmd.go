@@ -345,7 +345,7 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 	}
 
 	skynetAddSkykeyCmd = &cobra.Command{
-		Use:   "addskykey [skykey base64-encoded Skykey]",
+		Use:   "addskykey [skykey base64-encoded skykey]",
 		Short: "Add a base64-encoded skykey to the key manager.",
 		Long:  `Add a base64-encoded skykey to the key manager.`,
 		Run:   wrap(skynetaddskykey),
@@ -2929,7 +2929,7 @@ func skynetcreateskykey(name string) {
 	if err != nil {
 		die("Could not print skykey string:", err)
 	}
-	fmt.Printf("Created new Skykey: %v\n", skykeyStr)
+	fmt.Printf("Created new skykey: %v\n", skykeyStr)
 }
 
 // skynetaddskykey adds the given skykey to the renter's skykey manager.
@@ -2945,7 +2945,7 @@ func skynetaddskykey(skykeyString string) {
 		die("could not add skykey:", err)
 	}
 
-	fmt.Printf("Successfully added new Skykey: %v\n", skykeyString)
+	fmt.Printf("Successfully added new skykey: %v\n", skykeyString)
 }
 
 // skynetgetskykey retrieves the skykey using a name or id flag.
