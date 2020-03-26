@@ -307,9 +307,9 @@ func main() {
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
-	skynetCreateSkykeyCmd.Flags().StringVar(&skykeyCipherType, "cipher-type", "XChaCha20", "The cipher type of the key")
-	skynetGetSkykeyCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the Skykey")
-	skynetGetSkykeyCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded SkykeyID")
+	skynetCreateSkykeyCmd.Flags().StringVar(&skykeyCipherType, "cipher-type", "XChaCha20", "The cipher type of the skykey")
+	skynetGetSkykeyCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
+	skynetGetSkykeyCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
 
 	root.AddCommand(updateCmd)
 	updateCmd.AddCommand(updateCheckCmd)

@@ -338,7 +338,7 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 
 	skynetCreateSkykeyCmd = &cobra.Command{
 		Use:   "createskykey [name]",
-		Short: "Create a Skykey with the given name.",
+		Short: "Create a skykey with the given name.",
 		Long: `Create a skykey  with the given name. The --cipher-type flag can be
 		used to specify the cipher type. Its default is XChaCha20.`,
 		Run: wrap(skynetcreateskykey),
@@ -346,15 +346,15 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 
 	skynetAddSkykeyCmd = &cobra.Command{
 		Use:   "addskykey [skykey base64-encoded Skykey]",
-		Short: "Add a base64-encoded Skykey to the key manager.",
-		Long:  `Add a base64-encoded Skykey to the key manager.`,
+		Short: "Add a base64-encoded skykey to the key manager.",
+		Long:  `Add a base64-encoded skykey to the key manager.`,
 		Run:   wrap(skynetaddskykey),
 	}
 
 	skynetGetSkykeyCmd = &cobra.Command{
-		Use:   "getskykey [skykey base64-encoded Skykey]",
-		Short: "Add a base64-encoded Skykey to the key manager.",
-		Long:  `Add a base64-encoded Skykey to the key manager.`,
+		Use:   "getskykey",
+		Short: "Get the skykey by its name or id",
+		Long:  `Get the base64-encoded skykey using either its name with --name or id with --id`,
 		Run:   wrap(skynetgetskykey),
 	}
 )
@@ -2951,7 +2951,10 @@ func skynetaddskykey(skykeyString string) {
 // skynetgetskykey retrieves the skykey using a name or id flag.
 func skynetgetskykey() {
 	if skykeyName == "" && skykeyID == "" {
-		die("Cannot get Skykey without using --name or --id flag")
+		die("Cannot get skykey without using --name or --id flag")
+	}
+	if skykeyName != "" && skykeyID != "" {
+		die("Use only one flag to get the skykey: --name or --id flag")
 	}
 
 	var sk skykey.Skykey
@@ -2959,13 +2962,13 @@ func skynetgetskykey() {
 	if skykeyName != "" {
 		sk, err = httpClient.SkykeyGetByName(skykeyName)
 	} else {
-		var ID skykey.SkykeyID
-		err = ID.FromString(skykeyID)
+		var id skykey.SkykeyID
+		err = id.FromString(skykeyID)
 		if err != nil {
-			die("Could not decode SkykeyID")
+			die("Could not decode skykey ID")
 		}
 
-		sk, err = httpClient.SkykeyGetByID(ID)
+		sk, err = httpClient.SkykeyGetByID(id)
 	}
 
 	if err != nil {
@@ -2976,7 +2979,7 @@ func skynetgetskykey() {
 	if err != nil {
 		die("Could not print skykey string:", err)
 	}
-	fmt.Printf("Found Skykey: %v\n", skykeyStr)
+	fmt.Printf("Found skykey: %v\n", skykeyStr)
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
