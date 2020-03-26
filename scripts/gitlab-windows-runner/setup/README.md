@@ -21,6 +21,7 @@ To prepare Windows service to be run under this user:
 - Type Administrator user password to Windows machine to
   `<userhome>\Documents\gitlab-registration-token.txt`
   the file should not contain any spaces or newlines.
+- After the installation is finished, this file can be deleted.
   
 
 ## Gitlab Runner Setup
