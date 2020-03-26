@@ -51,7 +51,7 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
-		{Name: "TestSkynetSkykeys", Test: testSkynetSkykey},
+		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
 		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},

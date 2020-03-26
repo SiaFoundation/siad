@@ -157,7 +157,7 @@ func (id SkykeyID) ToString() string {
 	return base64.URLEncoding.EncodeToString(id[:])
 }
 
-// FromString decodes the base64 string into a Skykey.
+// FromString decodes the base64 string into a Skykey ID.
 func (id *SkykeyID) FromString(s string) error {
 	idBytes, err := base64.URLEncoding.DecodeString(s)
 	if err != nil {

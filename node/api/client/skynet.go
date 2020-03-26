@@ -379,7 +379,7 @@ func (c *Client) SkykeyIDGet(name string) (skykey.SkykeyID, error) {
 	return ID, nil
 }
 
-// SkykeyCreateKeyPost requests the /skyney/createskykey POST endpoint.
+// SkykeyCreateKeyPost requests the /skynet/createskykey POST endpoint.
 func (c *Client) SkykeyCreateKeyPost(name string, ct crypto.CipherType) (skykey.Skykey, error) {
 	// Set the url values.
 	values := url.Values{}
@@ -400,7 +400,7 @@ func (c *Client) SkykeyCreateKeyPost(name string, ct crypto.CipherType) (skykey.
 	return sk, nil
 }
 
-// SkykeyAddKeyPost requests the /skyney/addskykey POST endpoint.
+// SkykeyAddKeyPost requests the /skynet/addskykey POST endpoint.
 func (c *Client) SkykeyAddKeyPost(sk skykey.Skykey) error {
 	values := url.Values{}
 	skString, err := sk.ToString()

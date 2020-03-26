@@ -789,7 +789,12 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 	idString := req.FormValue("id")
 
 	if idString == "" && name == "" {
-		WriteError(w, Error{"you must specify the name or ID of the Skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	if idString != "" && name != "" {
+		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusInternalServerError)
 		return
 	}
 
@@ -834,7 +839,7 @@ func (api *API) skykeyIDHandlerGET(w http.ResponseWriter, req *http.Request, ps 
 	name := req.FormValue("name")
 
 	if name == "" {
-		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
@@ -852,12 +857,17 @@ func (api *API) skykeyIDHandlerGET(w http.ResponseWriter, req *http.Request, ps 
 // skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
 // skykey manager.
 func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Parse Skykey name and ciphertype
+	// Parse skykey name and ciphertype
 	name := req.FormValue("name")
 	ctString := req.FormValue("ciphertype")
 
 	if name == "" {
-		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	if ctString == "" {
+		WriteError(w, Error{"you must specify the desited ciphertype for the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
@@ -888,7 +898,7 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 // skykeyAddKeyHandlerPost handles the API call to add a skykey to the renter's
 // skykey manager.
 func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Parse Skykey name and ciphertype
+	// Parse skykey.
 	skString := req.FormValue("skykey")
 
 	if skString == "" {
