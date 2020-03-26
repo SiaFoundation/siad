@@ -55,20 +55,18 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// Create the dependency.
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
-	fdd.Disable()
 	rc.deps = fdd
-
-	// The outer loop is responsible for simulating a restart of siad by
-	// reloading the wal, applying transactions and loading the sf from disk
-	// again.
-	fdd.Enable()
 	atomicNumRecoveries := int64(0)
 	atomicNumSuccessfulIterations := int64(0)
 
-	// We'll use rcMu in order to control access to our refcounter
+	var walMu sync.Mutex // controls the wal reloads
 	var wg sync.WaitGroup
-	workload := func(rcLocal *RefCounter) {
-		testDone := time.After(testTimeout / 2)
+
+	workload := func() {
+		testDone := time.After(testTimeout)
+		// The outer loop is responsible for simulating a restart of siad by
+		// reloading the wal, applying transactions and loading the refcounter
+		// from disk again.
 	OUTER:
 		for {
 			select {
@@ -90,117 +88,62 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 					break
 				}
 
-				// Start an update session for this run of the for loop.
-				// Ignore the err, as we're not going to delete the file.
-				_ = rcLocal.StartUpdate()
-				updates := make([]writeaheadlog.Update, 0)
-				var u writeaheadlog.Update
-
-				//  - 50% chance to increment, 2 chances
+				// 50% chance to increment, 2 chances
 				for i := 0; i < 2; i++ {
 					if fastrand.Intn(100) < 50 {
-						// check if the operation is ok - we won't gain anything
-						// from hitting an overflow
-						secNum := fastrand.Uint64n(rcLocal.numSectors)
-						ok, err := isIncrementValid(rcLocal, secNum)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if !ok {
-							continue
-						}
-						if u, err = rcLocal.Increment(fastrand.Uint64n(rcLocal.numSectors)); err != nil {
+						if err = performIncrement(rc); err != nil {
 							if errors.Contains(err, dependencies.ErrDiskFault) {
 								atomic.AddInt64(&atomicNumRecoveries, 1)
-								rcLocal.UpdateApplied() // break the update session
 								break INNER
 							}
 							// If the error wasn't caused by the dependency, the
 							// test fails.
 							t.Fatal(err)
 						}
-						updates = append(updates, u)
-						fmt.Print("+") // DEBUG
 					}
 				}
 
-				//  - 50% chance to decrement, 2 chances
+				// 50% chance to decrement, 2 chances
 				for i := 0; i < 2; i++ {
 					if fastrand.Intn(100) < 50 {
-						// check if the operation is ok - we won't gain anything
-						// from hitting an underflow
-						secNum := fastrand.Uint64n(rcLocal.numSectors)
-						ok, err := isDecrementValid(rcLocal, secNum)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if !ok {
-							continue
-						}
-						if u, err = rcLocal.Decrement(secNum); err != nil {
+						if err = performDecrement(rc); err != nil {
 							if errors.Contains(err, dependencies.ErrDiskFault) {
 								atomic.AddInt64(&atomicNumRecoveries, 1)
-								rcLocal.UpdateApplied() // break the update session
 								break INNER
 							}
 							// If the error wasn't caused by the dependency, the
 							// test fails.
 							t.Fatal(err)
 						}
-						updates = append(updates, u)
-						fmt.Print("-") // DEBUG
 					}
 				}
 
-				//  - 20% chance to append
+				// 20% chance to append
 				if fastrand.Intn(100) < 20 {
-					if u, err = rcLocal.Append(); err != nil {
+					if err = performAppend(rc); err != nil {
 						if errors.Contains(err, dependencies.ErrDiskFault) {
 							atomic.AddInt64(&atomicNumRecoveries, 1)
-							rcLocal.UpdateApplied() // break the update session
 							break INNER
 						}
 						// If the error wasn't caused by the dependency, the
 						// test fails.
 						t.Fatal(err)
 					}
-					updates = append(updates, u)
-					fmt.Print("^") // DEBUG
 				}
 
-				//  - 20% chance to drop a sector
+				// 20% chance to drop a sector
 				if fastrand.Intn(100) < 20 {
-					// we can't drop more sectors than we have - ignore
-					if rc.numSectors == 0 {
-						continue
-					}
-					if u, err = rcLocal.DropSectors(1); err != nil {
+					if err = performDropSector(rc); err != nil {
 						if errors.Contains(err, dependencies.ErrDiskFault) {
 							atomic.AddInt64(&atomicNumRecoveries, 1)
-							rcLocal.UpdateApplied() // break the update session
 							break INNER
 						}
 						// If the error wasn't caused by the dependency, the
 						// test fails.
 						t.Fatal(err)
 					}
-					updates = append(updates, u)
-					fmt.Print("x") // DEBUG
 				}
 
-				// Finish the update session.
-				if len(updates) > 0 {
-					if err = rcLocal.CreateAndApplyTransaction(updates...); err != nil {
-						if errors.Contains(err, dependencies.ErrDiskFault) {
-							atomic.AddInt64(&atomicNumRecoveries, 1)
-							break
-						}
-						// If the error wasn't caused by the dependency, the test
-						// fails.
-						t.Fatal(err)
-					}
-				}
-				rcLocal.UpdateApplied()
 				atomic.AddInt64(&atomicNumSuccessfulIterations, 1)
 			}
 
@@ -211,48 +154,51 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 			// Try to reload the file. This simulates failures during recovery.
 		LOAD:
-			for tries := 0; ; tries++ {
-				// If we have already tried for 10 times, we Reset the dependency
-				// to avoid getting stuck here.
+			for tries := 1; ; tries++ {
+				// If we have already tried for 10 times, we reset the
+				// dependency to avoid getting stuck here.
 				if tries%10 == 0 {
 					fdd.Reset()
 				}
+				walMu.Lock()
 				// Close existing wal.
-				_, err := wal.CloseIncomplete()
-				if err != nil {
+				if _, err := wal.CloseIncomplete(); err != nil {
 					t.Fatal(err)
 				}
 				// Reopen wal.
 				var txns []*writeaheadlog.Transaction
-				txns, wal, err = writeaheadlog.New(walPath)
-				if err != nil {
-					t.Fatal(err)
+				txns, wal, errLoad := writeaheadlog.New(walPath)
+				if errLoad != nil {
+					t.Fatal(errLoad)
 				}
+				walMu.Unlock()
 				// Apply unfinished txns.
-				f, err := rcLocal.deps.OpenFile(rcLocal.filepath, os.O_RDWR, modules.DefaultFilePerm)
-				if err != nil {
-					t.Fatal("Failed to open refcounter file in order to apply updates:", err)
+				rc.StartUpdate()
+				f, errLoad := rc.deps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
+				if errLoad != nil {
+					t.Fatal("Failed to open refcounter file in order to apply updates:", errLoad)
 				}
 				for _, txn := range txns {
 					if err := applyUpdates(f, txn.Updates...); err != nil {
+						rc.UpdateApplied()
+						_ = f.Close()
 						if errors.Contains(err, dependencies.ErrDiskFault) {
 							atomic.AddInt64(&atomicNumRecoveries, 1)
-							f.Close()
 							continue LOAD // try again
 						} else {
-							f.Close()
 							t.Fatal(err)
 						}
 					}
 					if err := txn.SignalUpdatesApplied(); err != nil {
-						f.Close()
+						_ = f.Close()
 						t.Fatal(err)
 					}
 				}
-				f.Close()
+				rc.UpdateApplied()
+				_ = f.Close()
 
-				// Load file again.
-				rcNew, err := LoadRefCounter(rcLocal.filepath, wal)
+				// Load the file again.
+				rcNew, err := LoadRefCounter(rc.filepath, wal)
 				if err != nil {
 					if errors.Contains(err, dependencies.ErrDiskFault) {
 						atomic.AddInt64(&atomicNumRecoveries, 1)
@@ -261,8 +207,8 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				rcLocal = &rcNew
-				rcLocal.deps = fdd
+				rcNew.deps = fdd
+				rc = &rcNew
 				break
 			}
 		}
@@ -272,7 +218,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	// Run the workload on runtime.NumCPU() * 10 threads
 	wg.Add(runtime.NumCPU() * 10)
 	for i := 0; i < runtime.NumCPU()*10; i++ {
-		go workload(&rc)
+		go workload()
 	}
 	wg.Wait()
 
@@ -298,4 +244,82 @@ func isIncrementValid(rc *RefCounter, secNum uint64) (bool, error) {
 		return false, err
 	}
 	return n < math.MaxUint16, nil
+}
+
+func performIncrement(rc *RefCounter) error {
+	// Ignore the err, as we're not going to delete the file.
+	_ = rc.StartUpdate()
+	// check if the operation is valid - we won't gain anything
+	// from hitting an overflow
+	secNum := fastrand.Uint64n(rc.numSectors)
+	ok, err := isIncrementValid(rc, secNum)
+	if err != nil || !ok {
+		return err
+	}
+	update, err := rc.Increment(secNum)
+	if err != nil {
+		return err
+	}
+	if err = rc.CreateAndApplyTransaction(update); err != nil {
+		return err
+	}
+	rc.UpdateApplied()
+
+	fmt.Print("+") // DEBUG
+	return nil
+}
+
+func performDecrement(rc *RefCounter) error {
+	// Ignore the err, as we're not going to delete the file.
+	_ = rc.StartUpdate()
+	// check if the operation is valid - we won't gain anything
+	// from hitting an overflow
+	secNum := fastrand.Uint64n(rc.numSectors)
+	ok, err := isDecrementValid(rc, secNum)
+	if err != nil || !ok {
+		return err
+	}
+	update, err := rc.Decrement(secNum)
+	if err != nil {
+		return err
+	}
+	if err = rc.CreateAndApplyTransaction(update); err != nil {
+		return err
+	}
+	rc.UpdateApplied()
+
+	fmt.Print("-") // DEBUG
+	return nil
+}
+
+func performAppend(rc *RefCounter) error {
+	// Ignore the err, as we're not going to delete the file.
+	_ = rc.StartUpdate()
+	update, err := rc.Append()
+	if err != nil {
+		return err
+	}
+	if err = rc.CreateAndApplyTransaction(update); err != nil {
+		return err
+	}
+	rc.UpdateApplied()
+
+	fmt.Print("^") // DEBUG
+	return nil
+}
+
+func performDropSector(rc *RefCounter) error {
+	// Ignore the err, as we're not going to delete the file.
+	_ = rc.StartUpdate()
+	update, err := rc.DropSectors(1)
+	if err != nil {
+		return err
+	}
+	if err = rc.CreateAndApplyTransaction(update); err != nil {
+		return err
+	}
+	rc.UpdateApplied()
+
+	fmt.Print("x") // DEBUG
+	return nil
 }

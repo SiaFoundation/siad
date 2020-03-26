@@ -141,7 +141,7 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 
 // NewRefCounter creates a new sector reference counter file to accompany
 // a contract file
-func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCounter, error) {
+func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
@@ -154,7 +154,7 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 	updateCounters := writeaheadlog.WriteAtUpdate(path, RefCounterHeaderSize, b)
 
 	err := wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, updateHeader, updateCounters)
-	return RefCounter{
+	return &RefCounter{
 		RefCounterHeader: h,
 		filepath:         path,
 		numSectors:       numSec,
