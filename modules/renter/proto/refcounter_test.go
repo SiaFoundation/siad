@@ -48,7 +48,9 @@ func TestLoad(t *testing.T) {
 
 	// fails with os.ErrNotExist for a non-existent file
 	_, err = LoadRefCounter("there-is-no-such-file.rc", testWAL)
-	assertErrorIs(err, os.ErrNotExist, t, "Expected os.ErrNotExist, got something else:")
+	if !errors.IsOSNotExist(err) {
+		t.Fatal("Expected os.ErrNotExist, got something else:", err)
+	}
 
 	// fails with ErrInvalidVersion when trying to load a file with a different
 	// version
@@ -71,7 +73,7 @@ func TestLoad(t *testing.T) {
 	f, err = os.Create(badHeaderFilePath)
 	defer f.Close()
 	assertSuccess(err, t, "Failed to create test file:")
-	badHeadFileContents := append([]byte{9, 9, 9, 9}, badVerCounters...)
+	badHeadFileContents := append([]byte{9, 9, 9, 9})
 	_, err = f.Write(badHeadFileContents)
 	_ = f.Sync()
 	assertSuccess(err, t, "Failed to write to test file:")

@@ -3,6 +3,7 @@ package proto
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"sync"
@@ -111,6 +112,10 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 	var header RefCounterHeader
 	headerBytes := make([]byte, RefCounterHeaderSize)
 	if _, err = f.ReadAt(headerBytes, 0); err != nil {
+		// The file is too short to contain the entire header
+		if errors.Contains(err, io.EOF) {
+			return RefCounter{}, ErrInvalidHeaderData
+		}
 		return RefCounter{}, errors.AddContext(err, "unable to read from file")
 	}
 	if err = deserializeHeader(headerBytes, &header); err != nil {
