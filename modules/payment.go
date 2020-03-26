@@ -129,7 +129,7 @@ type (
 
 // LoadArguments is a helper function that takes a revision and a signature as
 // arguments and decorates their info on a PayByContractRequest object.
-func (pbcr PayByContractRequest) LoadArguments(rev types.FileContractRevision, sig crypto.Signature) {
+func (pbcr *PayByContractRequest) LoadArguments(rev types.FileContractRevision, sig crypto.Signature) {
 	pbcr.ContractID = rev.ID()
 	pbcr.NewRevisionNumber = rev.NewRevisionNumber
 	pbcr.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))

@@ -4,7 +4,10 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // TODO: try to load account from persistence
@@ -12,6 +15,12 @@ import (
 // TODO: for now the account is a separate object that sits as first class
 // object on the worker, most probably though this will move as to not have two
 // separate mutex domains.
+
+// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
+// remains spendable after it has been created. Together with the current block
+// height at time of creation, this period makes up the WithdrawalMessage's
+// expiry block height.
+const withdrawalValidityPeriod = 6
 
 // account represents a renter's ephemeral account on a host.
 type account struct {
@@ -30,7 +39,7 @@ type account struct {
 // openAccount returns an account for the given host. In the case it does
 // not exist yet, it gets created. Every time a new account is created, a new
 // keypair is used.
-func openAccount(hostKey types.SiaPublicKey, contractor hostContractor) *account {
+func openAccount(hostKey types.SiaPublicKey) *account {
 	// generate a new key pair
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
@@ -43,7 +52,6 @@ func openAccount(hostKey types.SiaPublicKey, contractor hostContractor) *account
 		staticID:        spk.String(),
 		staticHostKey:   hostKey,
 		staticSecretKey: sk,
-		c:               contractor,
 	}
 }
 
@@ -58,4 +66,51 @@ func (a *account) AvailableBalance() types.Currency {
 		return total.Sub(a.pendingSpends)
 	}
 	return types.ZeroCurrency
+}
+
+// ProvidePayment takes a stream and various payment details and handles the
+// payment by sending and processing payment request and response objects.
+// Returns an error in case of failure.
+func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error {
+	// NOTE: we purposefully do not verify if the account has sufficient funds.
+	// Seeing as spends are a blocking action on the host, it is perfectly ok to
+	// trigger spends from an account with insufficient balance. If it is
+	// succeeded by a fund in due time, the RPCs will successfully execute as
+	// soon as funds are available.
+
+	// create a withdrawal message
+	msg := a.createWithdrawalMessage(amount, blockHeight+withdrawalValidityPeriod)
+	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
+
+	// send PaymentRequest & PayByEphemeralAccountRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
+	pbcRequest := modules.PayByEphemeralAccountRequest{
+		Message:   msg,
+		Signature: sig,
+	}
+	err := modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByEphemeralAccountResponse
+	var payByResponse modules.PayByEphemeralAccountResponse
+	if err := modules.RPCRead(stream, &payByResponse); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// createWithdrawalMessage returns a new withdrawal message using the given
+// parameters.
+func (a *account) createWithdrawalMessage(amount types.Currency, expiry types.BlockHeight) modules.WithdrawalMessage {
+	var nonce [modules.WithdrawalNonceSize]byte
+	copy(nonce[:], fastrand.Bytes(len(nonce)))
+	return modules.WithdrawalMessage{
+		Account: a.staticID,
+		Expiry:  expiry,
+		Amount:  amount,
+		Nonce:   nonce,
+	}
 }

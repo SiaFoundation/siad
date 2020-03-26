@@ -1,10 +1,11 @@
 package contractor
 
 import (
-	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // newModules initializes the modules needed to test creating a new contractor
@@ -440,6 +443,144 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 }
 
+// TestPayment verifies the PaymentProvider interface on the contractor. It does
+// this by trying to pay the host using a filecontract and verifying if payment
+// can be made successfully.
+func TestPayment(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testing trio
+	h, c, _, err := newTestingTrio(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// set an allowance and wait for contracts
+	err = c.SetAllowance(modules.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = build.Retry(50, 100*time.Millisecond, func() error {
+		if len(c.Contracts()) == 0 {
+			return errors.New("no contract created")
+		}
+		return nil
+	})
+
+	// check we have a contract with the host
+	hpk := h.PublicKey()
+	contract, ok := c.ContractByPublicKey(hpk)
+	if !ok {
+		t.Fatal("No contract with host")
+	}
+
+	// create two streams and verify the payment process
+	pay := func(payment types.Currency) (paid types.Currency, err error) {
+		rStream, hStream := NewTestStreams()
+		defer rStream.Close()
+		defer hStream.Close()
+
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mu.Lock()
+			err = errors.Compose(err, c.ProvidePayment(rStream, hpk, types.Specifier{}, payment, 0))
+			mu.Unlock()
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, pResult, pErr := h.ProcessPayment(hStream)
+			if pErr != nil {
+				modules.RPCWriteError(hStream, pErr)
+				return
+			}
+			mu.Lock()
+			paid = pResult
+			mu.Unlock()
+		}()
+		c := make(chan struct{})
+		go func() {
+			defer close(c)
+			wg.Wait()
+		}()
+		select {
+		case <-c:
+		case <-time.After(5 * time.Second):
+			mu.Lock()
+			err = errors.Compose(err, fmt.Errorf("Timed out"))
+			mu.Unlock()
+		}
+		return paid, err
+	}
+
+	// move half of the renter's funds to the host
+	initial := contract.RenterFunds
+	paid, err := pay(initial.Div64(2))
+	if err != nil {
+		t.Fatal("Failed to provide payment", err)
+	}
+
+	// verify the host received the correct amount
+	if !paid.Equals(initial.Div64(2)) {
+		t.Fatalf("Expected host to have received half of the funds in the contract, instead it received %s", paid.HumanString())
+	}
+
+	// verify the contract was updated
+	expected := initial.Sub(initial.Div64(2))
+	contract, _ = c.ContractByPublicKey(hpk)
+	remaining := contract.RenterFunds
+	if !remaining.Equals(expected) {
+		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
+	}
+
+	// verify we can not spend more than what's in the contract
+	_, err = pay(remaining.Add64(1))
+	if !errors.Contains(err, errContractInsufficientFunds) {
+		t.Fatalf("Expected 'errContractInsufficientFunds', instead error was '%v'", err)
+	}
+
+	// verify we can spend what's left in the contract
+	paid, err = pay(remaining)
+	if err != nil {
+		t.Fatal("Failed to provide payment", err)
+	}
+
+	// verify the host received the correct amount
+	if !paid.Equals(remaining) {
+		t.Fatalf("Expected host to have received half of the funds in the contract, instead it received %s", paid.HumanString())
+	}
+
+	// verify the contract was updated
+	expected = types.ZeroCurrency
+	contract, _ = c.ContractByPublicKey(hpk)
+	remaining = contract.RenterFunds
+	if !remaining.Equals(expected) {
+		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
+	}
+
+	// verify the host's SO reflects the payments
+	var hso modules.StorageObligation
+	for _, so := range h.StorageObligations() {
+		if so.ObligationId == contract.ID {
+			hso = so
+			break
+		}
+	}
+	if hso.ObligationId != contract.ID {
+		t.Fatal("Expected storage obligation to be found on the host")
+	}
+
+	// TODO once we have updated the host to track potential revenue we can
+	// extend this test here to verify it
+	// hso.PotentialUnknownRevenue == amount transferred
+}
+
 // TestLinkedContracts tests that the contractors maps are updated correctly
 // when renewing contracts
 func TestLinkedContracts(t *testing.T) {
@@ -548,4 +689,42 @@ func TestLinkedContracts(t *testing.T) {
 		got:
 		%v`, c.OldContracts()[0].ID, c.Contracts()[0].ID, c.renewedTo)
 	}
+}
+
+// testStream is a helper struct that wraps a net.Conn and implements the
+// siamux.Stream interface.
+type testStream struct{ c net.Conn }
+
+// NewTestStreams returns two siamux.Stream mock objects.
+func NewTestStreams() (client siamux.Stream, server siamux.Stream) {
+	var cc, sc net.Conn
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		sc, _ = ln.Accept()
+		wg.Done()
+	}()
+	cc, _ = net.Dial("tcp", ln.Addr().String())
+	wg.Wait()
+
+	client = testStream{c: cc}
+	server = testStream{c: sc}
+	return
+}
+
+func (s testStream) Read(b []byte) (n int, err error)  { return s.c.Read(b) }
+func (s testStream) Write(b []byte) (n int, err error) { return s.c.Write(b) }
+func (s testStream) Close() error                      { return s.c.Close() }
+
+func (s testStream) LocalAddr() net.Addr            { panic("not implemented") }
+func (s testStream) RemoteAddr() net.Addr           { panic("not implemented") }
+func (s testStream) SetDeadline(t time.Time) error  { panic("not implemented") }
+func (s testStream) SetPriority(priority int) error { panic("not implemented") }
+
+func (s testStream) SetReadDeadline(t time.Time) error {
+	panic("not implemented")
+}
+func (s testStream) SetWriteDeadline(t time.Time) error {
+	panic("not implemented")
 }

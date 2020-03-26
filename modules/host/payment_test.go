@@ -61,9 +61,19 @@ func TestProcessPayment(t *testing.T) {
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK crypto.SecretKey) {
+	// get recent revision
+	recent, err := so.recentRevision()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// prepare an updated revision that pays the host
 	payment := types.NewCurrency64(1)
-	rev := paymentRevision(so, payment)
+	rev, err := recent.PaymentRevision(payment)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sig := revisionSignature(rev, host.blockHeight, renterSK)
 
 	// create two streams
@@ -99,7 +109,7 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK 
 	}
 
 	// run the payment code
-	err := run(renterFunc, hostFunc)
+	err = run(renterFunc, hostFunc)
 	if err != nil {
 		t.Fatal("Unexpected error occurred", err.Error())
 	}
@@ -135,7 +145,14 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK 
 	missedPayouts[1].Value = missedPayouts[1].Value.Add(payment)
 
 	// overwrite the correct payouts with the faulty payouts
-	rev = paymentRevision(updated, payment)
+	recent, err = updated.recentRevision()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err = recent.PaymentRevision(payment)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rev.NewValidProofOutputs = validPayouts
 	rev.NewMissedProofOutputs = missedPayouts
 	sig = revisionSignature(rev, host.blockHeight, renterSK)
@@ -308,23 +325,6 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	return so, nil
 }
 
-// paymentRevision is a helper function that moves the given payment amount from
-// the renter to the host in a new revision
-func paymentRevision(so storageObligation, payment types.Currency) types.FileContractRevision {
-	rev, err := so.recentRevision()
-	if err != nil {
-		panic(err)
-	}
-	validPayouts, missedPayouts := so.payouts()
-	validPayouts[0].Value = validPayouts[0].Value.Sub(payment)
-	validPayouts[1].Value = validPayouts[1].Value.Add(payment)
-	missedPayouts[0].Value = missedPayouts[0].Value.Sub(payment)
-	missedPayouts[1].Value = missedPayouts[1].Value.Add(payment)
-	rev.NewValidProofOutputs = validPayouts
-	rev.NewMissedProofOutputs = missedPayouts
-	rev.NewRevisionNumber = rev.NewRevisionNumber + 1
-	return rev
-}
 
 // revisionSignature is a helper function that signs the given revision with the
 // given key

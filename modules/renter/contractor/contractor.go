@@ -234,13 +234,17 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
-	// TODO record the payment intent
+	// record the payment intent
+	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc)
+	if err != nil {
+		return errors.AddContext(err, "Failed to record payment intent")
+	}
 
 	// send PaymentRequest & PayByContractRequest
 	req := modules.PaymentRequest{Type: modules.PayByContract}
 	var pbcr modules.PayByContractRequest
 	pbcr.LoadArguments(rev, sig)
-	err := modules.RPCWriteAll(stream, req, pbcr)
+	err = modules.RPCWriteAll(stream, req, pbcr)
 	if err != nil {
 		return err
 	}
@@ -259,7 +263,11 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 		return errors.New("could not verify host's signature")
 	}
 
-	// TODO commit payment intent
+	// commit payment intent
+	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+	if err != nil {
+		return errors.AddContext(err, "Failed to commit unknown spending intent")
+	}
 
 	return nil
 }
