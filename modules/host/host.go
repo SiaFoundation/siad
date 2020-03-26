@@ -211,28 +211,41 @@ type hostPrices struct {
 	mu            sync.RWMutex
 }
 
-// Current returns the current price table
+// Current returns the host's current price table
 func (hp *hostPrices) Current() modules.RPCPriceTable {
 	hp.mu.RLock()
 	defer hp.mu.RUnlock()
 	return hp.current
 }
 
-// Update overwrites the current with the given price table
+// Update overwrites the current price table with the one that's given
 func (hp *hostPrices) Update(pt modules.RPCPriceTable) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 	hp.current = pt
 }
 
-// Track adds the given price table to the guaranteed map that tracks all of the
-// price tables the host has given out. It will also add it to the heap which
-// facilates efficient pruning of that map.
+// Track adds the given price table to the 'guaranteed' map, that holds all of
+// the price tables the host has recently guaranteed to renters. It will also
+// add it to the heap which facilates efficient pruning of that map.
 func (hp *hostPrices) Track(pt *modules.RPCPriceTable) {
 	hp.mu.Lock()
 	hp.guaranteed[pt.UUID] = pt
 	hp.mu.Unlock()
 	hp.staticMinHeap.Push(pt)
+}
+
+// PruneExpired removes all of the price tables that have expired from the
+// 'guaranteed' map.
+func (hp *hostPrices) PruneExpired() {
+	expired := hp.staticMinHeap.PopExpired()
+	if len(expired) > 0 {
+		hp.mu.Lock()
+		for _, uuid := range expired {
+			delete(hp.guaranteed, uuid)
+		}
+		hp.mu.Unlock()
+	}
 }
 
 // lockedObligation is a helper type that locks a TryMutex and a counter to
@@ -373,17 +386,7 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 				return
 			}
 			defer h.tg.Done()
-
-			// collect expired uuids using our min heap and prune the expired
-			// price tables
-			expired := h.staticPriceTables.staticMinHeap.PopExpired()
-			if len(expired) > 0 {
-				h.staticPriceTables.mu.Lock()
-				for _, uuid := range expired {
-					delete(h.staticPriceTables.guaranteed, uuid)
-				}
-				h.staticPriceTables.mu.Unlock()
-			}
+			h.staticPriceTables.PruneExpired()
 		}()
 
 		// Block until next cycle.
