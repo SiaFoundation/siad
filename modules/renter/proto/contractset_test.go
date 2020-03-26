@@ -156,6 +156,8 @@ func TestContractSet(t *testing.T) {
 	wg.Wait()
 }
 
+// TestCompatV145SplitContracts tests the compat code for converting single file
+// contracts into split contracts.
 func TestCompatV145SplitContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
