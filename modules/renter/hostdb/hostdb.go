@@ -307,6 +307,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	hdb.mu.Lock()
 	if hdb.blockHeight == 0 || compatV147ForceRescan {
 		hdb.lastChange = modules.ConsensusChangeBeginning
+		hdb.blockHeight = 0
 	}
 	hdb.mu.Unlock()
 
