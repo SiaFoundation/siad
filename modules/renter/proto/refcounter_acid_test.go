@@ -151,7 +151,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	t.Logf("Inner loop %v iterations without failures\n", atomicNumSuccessfulIterations)
 }
 
-// isDecrementValid is a helper method that returns false is the counter is 0.
+// isDecrementValid is a helper method that returns false if the counter is 0.
 // This allows us to avoid a counter underflow.
 func isDecrementValid(rc *RefCounter, secNum uint64) (bool, error) {
 	n, err := rc.readCount(secNum)
@@ -163,7 +163,14 @@ func isDecrementValid(rc *RefCounter, secNum uint64) (bool, error) {
 	return n > 0, nil
 }
 
-// isDecrementValid is a helper method that returns false is the counter has
+// isDropSectorsValid is a helper method that returns false if the number of
+// sectors in the refcounter is smaller than the number of sectors we want to
+// drop.
+func isDropSectorsValid(rc *RefCounter, secNum uint64) bool {
+	return rc.numSectors > secNum
+}
+
+// isDecrementValid is a helper method that returns false if the counter has
 // reached its maximum value. This allows us to avoid a counter overflow.
 func isIncrementValid(rc *RefCounter, secNum uint64) (bool, error) {
 	n, err := rc.readCount(secNum)
@@ -247,8 +254,8 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 		}
 	}
 
-	// 30% chance to append
-	if fastrand.Intn(100) < 20 {
+	// 40% chance to append
+	if fastrand.Intn(100) < 40 {
 		if u, err = rc.Append(); err != nil {
 			return
 		}
@@ -257,10 +264,15 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 
 	// 20% chance to drop up to 2 sectors
 	if fastrand.Intn(100) < 20 {
-		if u, err = rc.DropSectors(fastrand.Uint64n(3)); err != nil {
-			return
+		secNum := fastrand.Uint64n(3)
+		// check if the operation is valid - we won't gain anything
+		// from running out of sectors
+		if ok := isDropSectorsValid(rc, secNum); !ok {
+			if u, err = rc.DropSectors(secNum); err != nil {
+				return
+			}
+			updates = append(updates, u)
 		}
-		updates = append(updates, u)
 	}
 
 	// 20% chance to swap sectors
