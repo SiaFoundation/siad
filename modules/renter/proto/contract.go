@@ -654,11 +654,11 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
 func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName string, walTxns []*writeaheadlog.Transaction) (err error) {
-	headerFile, err := os.OpenFile(headerFileName, os.O_RDWR, 0600)
+	headerFile, err := os.OpenFile(headerFileName, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
 	}
-	rootsFile, err := os.OpenFile(rootsFileName, os.O_RDWR, 0600)
+	rootsFile, err := os.OpenFile(rootsFileName, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
 	}
@@ -671,9 +671,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName string, wa
 	if err != nil {
 		return err
 	}
-	decodeMaxSize := int(headerStat.Size() * 3)
-
-	header, err := loadSafeContractHeader(headerFile, decodeMaxSize)
+	header, err := loadSafeContractHeader(headerFile, int(headerStat.Size()))
 	if err != nil {
 		return errors.AddContext(err, "unable to load contract header")
 	}
