@@ -800,13 +800,8 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 
 	var sk skykey.Skykey
 	var err error
-
 	if name != "" {
 		sk, err = api.renter.SkykeyByName(name)
-		if err != nil {
-			WriteError(w, Error{"failed to retrieve skykey: " + err.Error()}, http.StatusInternalServerError)
-			return
-		}
 	} else if idString != "" {
 		var id skykey.SkykeyID
 		err = id.FromString(idString)
@@ -814,12 +809,11 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 			WriteError(w, Error{"failed to decode ID string: "}, http.StatusInternalServerError)
 			return
 		}
-
 		sk, err = api.renter.SkykeyByID(id)
-		if err != nil {
-			WriteError(w, Error{"failed to retrieve skykey: " + err.Error()}, http.StatusInternalServerError)
-			return
-		}
+	}
+	if err != nil {
+		WriteError(w, Error{"failed to retrieve skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
 	}
 
 	skString, err := sk.ToString()
@@ -900,7 +894,6 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse skykey.
 	skString := req.FormValue("skykey")
-
 	if skString == "" {
 		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
 		return
