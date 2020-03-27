@@ -34,6 +34,10 @@ type RPCPriceTable struct {
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
 
+	// CollateralCost is the amount of money per byte the host is promising to
+	// lock away as collateral when adding new data to a contract.
+	CollateralCost types.Currency `json:"collateralcost"`
+
 	// Cost values specific to the DropSectors instruction.
 	DropSectorsBaseCost   types.Currency `json:"dropsectorsbasecost"`
 	DropSectorsLengthCost types.Currency `json:"dropsectorslengthcost"`

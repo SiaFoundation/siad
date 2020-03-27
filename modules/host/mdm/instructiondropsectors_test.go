@@ -40,7 +40,7 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 
 	time := TimeDropSingleSector * numSectorsDropped
 	cost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
-	return i, cost, refund, DropSectorsMemory(), time
+	return i, cost, refund, modules.MDMDropSectorsMemory(), time
 }
 
 // TestProgramWithDropSectors tests executing a program with multiple append and swap
@@ -87,7 +87,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	instruction6, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
 	cost6, refund6, memory6 := updateRunningCosts(pt, cost5, refund5, memory5, cost, refund, memory, time)
 
-	cost = cost6.Add(MemoryCost(pt, memory6, TimeCommit))
+	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, TimeCommit))
 
 	// Construct the inputs and expected outputs.
 	instructions := []modules.Instruction{
@@ -104,6 +104,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost1,
+			types.ZeroCurrency,
 			refund1,
 		},
 		{
@@ -113,6 +114,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost2,
+			types.ZeroCurrency,
 			refund2,
 		},
 		{
@@ -122,6 +124,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost3,
+			types.ZeroCurrency,
 			refund3,
 		},
 		// 0 sectors dropped.
@@ -132,6 +135,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost4,
+			types.ZeroCurrency,
 			refund4,
 		},
 		// 1 sector dropped.
@@ -142,6 +146,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{cachedMerkleRoot(merkleRoots2)},
 			},
 			cost5,
+			types.ZeroCurrency,
 			refund5,
 		},
 		// 2 remaining sectors dropped.
@@ -152,6 +157,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost6,
+			types.ZeroCurrency,
 			refund6,
 		},
 	}

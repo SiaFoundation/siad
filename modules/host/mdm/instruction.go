@@ -8,6 +8,9 @@ import (
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
+	// Collateral returns the amount of additional collateral the host is
+	// expected to put up for this instruction after execution.
+	Collateral() (collateral types.Currency)
 	// Cost returns the cost of executing the instruction and the potential
 	// refund should the program not be committed.
 	Cost() (cost types.Currency, refund types.Currency, _ error)
@@ -30,6 +33,7 @@ type instruction interface {
 type Output struct {
 	output
 	ExecutionCost   types.Currency
+	NewCollateral   types.Currency
 	PotentialRefund types.Currency
 }
 

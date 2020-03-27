@@ -15,7 +15,7 @@ import (
 func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
 	i := NewAppendInstruction(dataOffset, merkleProof)
 	cost, refund := modules.MDMAppendCost(pt)
-	return i, cost, refund, AppendMemory(), TimeAppend
+	return i, cost, refund, modules.MDMAppendMemory(), TimeAppend
 }
 
 // newAppendProgram is a convenience method which prepares the instructions

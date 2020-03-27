@@ -117,6 +117,11 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	}
 }
 
+// Collateral is zero for the ReadSector instruction.
+func (i *instructionReadSector) Collateral() types.Currency {
+	return modules.MDMReadCollateral()
+}
+
 // Cost returns the cost of a ReadSector instruction.
 func (i *instructionReadSector) Cost() (types.Currency, types.Currency, error) {
 	length, err := i.staticData.Uint64(i.lengthOffset)
