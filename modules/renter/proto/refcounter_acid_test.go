@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"

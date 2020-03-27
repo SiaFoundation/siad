@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	// ErrDiskFault is returned when a simulated disk error happens
 	ErrDiskFault = errors.New("disk fault")
 )
 
@@ -66,7 +67,7 @@ func (d *DependencyFaultyDisk) tryFail() bool {
 	}
 
 	d.failDenominator += fastrand.Intn(8)
-	fail := fastrand.Intn(int(d.failDenominator+1)) == 0 // +1 to prevent 0 from being passed in.
+	fail := fastrand.Intn(d.failDenominator+1) == 0 // +1 to prevent 0 from being passed in.
 	if fail || d.failDenominator >= d.writeLimit {
 		d.failed = true
 		return true
@@ -79,12 +80,14 @@ func (d *DependencyFaultyDisk) newFaultyFile(f *os.File) modules.File {
 	return &FaultyFile{d: d, file: f}
 }
 
-// disabled allows the caller to temporarily disable the dependency
+// Disable allows the caller to temporarily disable the dependency
 func (d *DependencyFaultyDisk) Disable() {
 	d.mu.Lock()
 	d.disabled = true
 	d.mu.Unlock()
 }
+
+// Enable allows the caller to re-enable the dependency
 func (d *DependencyFaultyDisk) Enable() {
 	d.mu.Lock()
 	d.disabled = false
@@ -98,9 +101,13 @@ func (d *DependencyFaultyDisk) Reset() {
 	d.failed = false
 	d.mu.Unlock()
 }
+
+// Open is an os.Open replacement
 func (d *DependencyFaultyDisk) Open(path string) (modules.File, error) {
 	return d.OpenFile(path, os.O_RDONLY, 0)
 }
+
+// OpenFile is an os.OpenFile replacement
 func (d *DependencyFaultyDisk) OpenFile(path string, flag int, perm os.FileMode) (modules.File, error) {
 	f, err := os.OpenFile(path, flag, perm)
 	if err != nil {
@@ -115,9 +122,12 @@ type FaultyFile struct {
 	file *os.File
 }
 
+// Read is an *File.Read replacement
 func (f *FaultyFile) Read(p []byte) (int, error) {
 	return f.file.Read(p)
 }
+
+// Write is a *File.Write replacement
 func (f *FaultyFile) Write(p []byte) (int, error) {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()
@@ -126,19 +136,31 @@ func (f *FaultyFile) Write(p []byte) (int, error) {
 	}
 	return f.file.Write(p)
 }
+
+// Close is a *File.Close replacement
 func (f *FaultyFile) Close() error { return f.file.Close() }
+
+// Name returns the name of the file
 func (f *FaultyFile) Name() string {
 	return f.file.Name()
 }
+
+// ReadAt is a *File.ReadAt replacement
 func (f *FaultyFile) ReadAt(p []byte, off int64) (int, error) {
 	return f.file.ReadAt(p, off)
 }
+
+// Seek is a *File.Seek replacement
 func (f *FaultyFile) Seek(offset int64, whence int) (int64, error) {
 	return f.file.Seek(offset, whence)
 }
+
+// Truncate is a *File.Truncate replacement
 func (f *FaultyFile) Truncate(size int64) error {
 	return f.file.Truncate(size)
 }
+
+// WriteAt is a *File.WriteAt replacement
 func (f *FaultyFile) WriteAt(p []byte, off int64) (int, error) {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()
@@ -147,9 +169,13 @@ func (f *FaultyFile) WriteAt(p []byte, off int64) (int, error) {
 	}
 	return f.file.WriteAt(p, off)
 }
+
+// Stat is a *File.Stat replacement
 func (f *FaultyFile) Stat() (os.FileInfo, error) {
 	return f.file.Stat()
 }
+
+// Sync is a *File.Sync replacement
 func (f *FaultyFile) Sync() error {
 	f.d.mu.Lock()
 	defer f.d.mu.Unlock()
