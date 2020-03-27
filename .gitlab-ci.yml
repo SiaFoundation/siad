@@ -139,7 +139,7 @@ default: &default_params
     - XCOPY "C:\Windows\Temp\SiaTesting\*" "$CI_PROJECT_DIR\SiaTesting" /S /I /Y
     # Git cache permission denied workaround
     # on second and following runs
-    - RMDIR /S /Q "$CI_PROJECT_DIR\.cache"
+    - Remove-Item -path "$CI_PROJECT_DIR\.cache" -recurse -force
 
 lint:
   stage: lint
