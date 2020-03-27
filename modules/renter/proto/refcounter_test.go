@@ -352,20 +352,18 @@ func TestUpdateSessionConstraints(t *testing.T) {
 
 	var u writeaheadlog.Update
 	// make sure we cannot create updates outside of an update session
-	_, err = rc.Append()
-	assertErrorIs(err, ErrUpdateWithoutUpdateSession, t, "Failed to prevent an append update creation outside an update session")
-	_, err = rc.Decrement(1)
-	assertErrorIs(err, ErrUpdateWithoutUpdateSession, t, "Failed to prevent a decrement update creation outside an update session")
-	_, err = rc.DeleteRefCounter()
-	assertErrorIs(err, ErrUpdateWithoutUpdateSession, t, "Failed to prevent a delete update creation outside an update session")
-	_, err = rc.DropSectors(1)
-	assertErrorIs(err, ErrUpdateWithoutUpdateSession, t, "Failed to prevent a truncate update creation outside an update session")
-	_, err = rc.Increment(1)
-	assertErrorIs(err, ErrUpdateWithoutUpdateSession, t, "Failed to prevent an increment update creation outside an update session")
-	_, err = rc.Swap(1, 2)
-	assertErrorIs(err, ErrUpdateWithoutUpdateSession, t, "Failed to prevent a swap update creation outside an update session")
-	err = rc.CreateAndApplyTransaction(u)
-	assertErrorIs(err, ErrUpdateWithoutUpdateSession, t, "Failed to prevent a CreateAndApplyTransaction call outside an update session")
+	_, err1 := rc.Append()
+	_, err2 := rc.Decrement(1)
+	_, err3 := rc.DeleteRefCounter()
+	_, err4 := rc.DropSectors(1)
+	_, err5 := rc.Increment(1)
+	_, err6 := rc.Swap(1, 2)
+	err7 := rc.CreateAndApplyTransaction(u)
+	for i, err := range []error{err1, err2, err3, err4, err5, err6, err7} {
+		if !errors.Contains(err, ErrUpdateWithoutUpdateSession) {
+			t.Fatalf("err%v: expected %v but was %v", i+1, ErrUpdateWithoutUpdateSession, err)
+		}
+	}
 
 	// start an update session
 	err = rc.StartUpdate()
@@ -374,18 +372,17 @@ func TestUpdateSessionConstraints(t *testing.T) {
 	u, err = rc.DeleteRefCounter()
 	assertSuccess(err, t, "Failed to create a delete update")
 	// make sure we cannot create any updates after a deletion has been triggered
-	_, err = rc.Append()
-	assertErrorIs(err, ErrUpdateAfterDelete, t, "Failed to prevent an update creation after a deletion")
-	_, err = rc.Decrement(1)
-	assertErrorIs(err, ErrUpdateAfterDelete, t, "Failed to prevent an update creation after a deletion")
-	_, err = rc.DeleteRefCounter()
-	assertErrorIs(err, ErrUpdateAfterDelete, t, "Failed to prevent an update creation after a deletion")
-	_, err = rc.DropSectors(1)
-	assertErrorIs(err, ErrUpdateAfterDelete, t, "Failed to prevent an update creation after a deletion")
-	_, err = rc.Increment(1)
-	assertErrorIs(err, ErrUpdateAfterDelete, t, "Failed to prevent an update creation after a deletion")
-	_, err = rc.Swap(1, 2)
-	assertErrorIs(err, ErrUpdateAfterDelete, t, "Failed to prevent an update creation after a deletion")
+	_, err1 = rc.Append()
+	_, err2 = rc.Decrement(1)
+	_, err3 = rc.DeleteRefCounter()
+	_, err4 = rc.DropSectors(1)
+	_, err5 = rc.Increment(1)
+	_, err6 = rc.Swap(1, 2)
+	for i, err := range []error{err1, err2, err3, err4, err5, err6} {
+		if !errors.Contains(err, ErrUpdateAfterDelete) {
+			t.Fatalf("err%v: expected %v but was %v", i+1, ErrUpdateAfterDelete, err)
+		}
+	}
 
 	// apply the updates and close the update session
 	err = rc.CreateAndApplyTransaction(u)
