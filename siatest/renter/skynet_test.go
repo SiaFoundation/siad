@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,6 +49,7 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
 		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
@@ -1787,5 +1789,39 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected download request to time out")
+	}
+}
+
+// testSkynetLargeMetadata makes sure that
+func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Prepare a filename that's greater than a sector. That's the easiest way
+	// to force the metadata to be larger than a sector.
+	filename := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize + 1)))
+	// Quick fuzz on the force value so that sometimes it is set, sometimes it
+	// is not.
+	var force bool
+	if fastrand.Intn(2) == 0 {
+		force = true
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             modules.RandomSiaPath(),
+		Force:               force,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: filename,
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
+		Reader: reader,
+	}
+	_, _, err := r.SkynetSkyfilePost(sup)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
+		t.Fatal("Should fail due to ErrMetadataTooBig", err)
 	}
 }
