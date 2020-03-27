@@ -279,13 +279,33 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return hdb, nil
 	}
 
+	// COMPATv1.4.7
+	// Before version v1.4.7, the hostdb sometimes removed hosts from the host
+	// tree even if it was known that the contractor had contracts with them. To
+	// fix this, we must initiate a rescan if we don't have a knownContract's host
+	// in the hostdb.
+	hdb.mu.Lock()
+	knownContractHosts := make([]types.SiaPublicKey, 0, len(hdb.knownContracts))
+	for _, contractInfo := range hdb.knownContracts {
+		knownContractHosts = append(knownContractHosts, contractInfo.HostPublicKey)
+	}
+	hdb.mu.Unlock()
+	compatV147ForceRescan := false
+	for _, host := range knownContractHosts {
+		_, exists := hdb.staticHostTree.Select(host)
+		if !exists {
+			compatV147ForceRescan = true
+			break
+		}
+	}
+
 	// COMPATv1.1.0
 	//
 	// If the block height has loaded as zero, the most recent consensus change
 	// needs to be set to perform a full rescan. This will also help the hostdb
 	// to pick up any hosts that it has incorrectly dropped in the past.
 	hdb.mu.Lock()
-	if hdb.blockHeight == 0 {
+	if hdb.blockHeight == 0 || compatV147ForceRescan {
 		hdb.lastChange = modules.ConsensusChangeBeginning
 	}
 	hdb.mu.Unlock()
