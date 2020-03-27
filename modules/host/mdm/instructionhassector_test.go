@@ -24,7 +24,7 @@ func newHasSectorInstruction(dataOffset uint64, pt modules.RPCPriceTable) (modul
 func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)))
+	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
 	i, cost, refund, memory, time := newHasSectorInstruction(0, pt)
 	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
 	instructions := []modules.Instruction{i}
@@ -53,7 +53,7 @@ func TestInstructionHasSector(t *testing.T) {
 	instructions, programData, cost, refund, usedMemory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

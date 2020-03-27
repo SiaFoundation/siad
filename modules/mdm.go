@@ -18,24 +18,28 @@ type (
 )
 
 const (
-	// MDMProgramInitTime is the time it takes to execute a program. This is a
-	// hardcoded value which is meant to be replaced in the future.
-	//
-	// TODO: The time is hardcoded to 10 for now until we add time management in
-	// the future.
-	MDMProgramInitTime = 10
-
 	// MDMTimeAppend is the time for executing an 'Append' instruction.
 	MDMTimeAppend = 10000
 
 	// MDMTimeCommit is the time used for executing managedFinalize.
 	MDMTimeCommit = 50e3
 
+	// MDMTimeDropSectorsBase is the base time for executing a 'DropSectors'
+	// instruction.
+	MDMTimeDropSectorsBase = 10
+
 	// MDMTimeDropSingleSector is the time for dropping a single sector.
 	MDMTimeDropSingleSector = 1
 
 	// MDMTimeHasSector is the time for executing a 'HasSector' instruction.
-	MDMTimeHasSector = 1
+	MDMTimeHasSector = 10
+
+	// MDMTimeInitProgramBase is the base time for initializing a program.
+	MDMTimeInitProgramBase = 10e3
+
+	// MDMTimeInitSingleInstruction is the time it takes to initialize a single
+	// instruction.
+	MDMTimeInitSingleInstruction = 10
 
 	// MDMTimeReadSector is the time for executing a 'ReadSector' instruction.
 	MDMTimeReadSector = 1000
@@ -99,9 +103,11 @@ func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Curre
 }
 
 // MDMInitCost is the cost of instantiatine the MDM. It is defined as:
-// 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time
-func MDMInitCost(pt RPCPriceTable, programLen uint64) types.Currency {
-	return pt.MemoryTimeCost.Mul64(programLen).Mul64(MDMProgramInitTime).Add(pt.InitBaseCost)
+// 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time, where Time is
+// `TimeInitProgramBase` + `TimeInitSingleInstruction` * `numInstructions`
+func MDMInitCost(pt RPCPriceTable, programLen, numInstructions uint64) types.Currency {
+	time := MDMTimeInitProgramBase + MDMTimeInitSingleInstruction * numInstructions
+	return pt.MemoryTimeCost.Mul64(programLen).Mul64(time).Add(pt.InitBaseCost)
 }
 
 // MDMHasSectorCost is the cost of executing a 'HasSector' instruction.

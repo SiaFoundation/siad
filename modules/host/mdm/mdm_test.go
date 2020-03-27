@@ -110,7 +110,8 @@ func newTestPriceTable() modules.RPCPriceTable {
 		Expiry:               time.Now().Add(time.Minute).Unix(),
 		UpdatePriceTableCost: host.DefaultBaseRPCPrice,
 		InitBaseCost:         host.DefaultBaseRPCPrice,
-		MemoryTimeCost:       host.DefaultStoragePrice.Div64(30),
+		// Convert the default storage price from per month to per minute.
+		MemoryTimeCost:       host.DefaultStoragePrice.Div64(30 * 24 * 60),
 
 		DropSectorsBaseCost:   host.DefaultBaseRPCPrice,
 		DropSectorsLengthCost: host.DefaultSectorAccessPrice,

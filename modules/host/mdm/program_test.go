@@ -29,7 +29,8 @@ func TestNewEmptyProgram(t *testing.T) {
 	var r io.Reader
 	// Execute the program.
 	pt := newTestPriceTable()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.MDMInitCost(pt, 0), newTestStorageObligation(true), 0, r)
+	initCost := modules.MDMInitCost(pt, 0, 0)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, initCost, newTestStorageObligation(true), 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,8 @@ func TestNewProgramLowBudget(t *testing.T) {
 	instructions, r, dataLen, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen), newTestStorageObligation(true), dataLen, r)
+	cost := modules.MDMInitCost(pt, dataLen, 1)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, newTestStorageObligation(true), dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -115,7 +115,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		p.instructions = append(p.instructions, instruction)
 	}
 	// Increment the execution cost of the program.
-	err = p.addCost(modules.MDMInitCost(pt, p.staticData.Len()))
+	err = p.addCost(modules.MDMInitCost(pt, p.staticData.Len(), uint64(len(p.instructions))))
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}

@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"math"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -19,22 +20,23 @@ func TestCostForAppendProgram(t *testing.T) {
 	sc := types.SiacoinPrecision
 
 	// Initialize starting values.
-	runningCost := modules.MDMInitCost(pt, 1e12)
+	numInstructions := uint64(math.Ceil(1e12 / float64(modules.SectorSizeStandard)))
+	runningCost := modules.MDMInitCost(pt, 1e12, numInstructions)
 	runningRefund := types.ZeroCurrency
 	runningMemory := modules.MDMInitMemory()
-	size := uint64(0)
+	runningSize := uint64(0)
 
 	// Simulate running a program to append 1 TiB of data.
-	for size < (1e12) {
+	for runningSize < (1e12) {
 		cost, refund := appendTrueCost(pt)
 		memory := modules.SectorSizeStandard // override MDMAppendMemory()
 		time := uint64(modules.MDMTimeAppend)
 		runningCost, runningRefund, runningMemory = updateRunningCosts(pt, runningCost, runningRefund, runningMemory, cost, refund, memory, time)
-		size += modules.SectorSizeStandard
+		runningSize += modules.SectorSizeStandard
 	}
 	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))
 
-	expectedCost := sc.Mul64(1000).Mul64(460) // 460 KS
+	expectedCost := sc.Mul64(321) // 321.1 SC
 	if !aboutEquals(expectedCost, runningCost) {
 		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
 	}
@@ -44,7 +46,7 @@ func TestCostForAppendProgram(t *testing.T) {
 		t.Errorf("expected refund for appending 1 TiB to be %v, got refund %v", expectedRefund.HumanString(), runningRefund.HumanString())
 	}
 
-	expectedMemory := size + modules.MDMInitMemory() // 1 TiB + 1 MiB
+	expectedMemory := runningSize + modules.MDMInitMemory() // 1 TiB + 1 MiB
 	if expectedMemory != runningMemory {
 		t.Errorf("expected memory for appending 1 TiB to be %v, got %v", expectedMemory, runningMemory)
 	}
@@ -69,8 +71,8 @@ func TestCosts(t *testing.T) {
 	perTB := modules.BytesPerTerabyte
 
 	// Init for a TB of data
-	cost := modules.MDMInitCost(pt, 1e12)
-	expectedCost := sc.Div64(1e3).Mul64(38).Div64(10) // 3.8 mS
+	cost := modules.MDMInitCost(pt, 1e12, 0)
+	expectedCost := sc.Div64(1e3).Mul64(27).Div64(10) // 2.7 mS
 	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected init cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}
@@ -102,7 +104,7 @@ func TestCosts(t *testing.T) {
 
 	// HasSector
 	cost, refund = modules.MDMHasSectorCost(pt)
-	expectedCost = sc.Div64(1e12).Mul64(4045).Div64(10) // 404.5 pS
+	expectedCost = sc.Div64(1e12).Mul64(28).Div64(10) // 2.8 pS
 	if !aboutEquals(cost, expectedCost) {
 		t.Errorf("expected hassector cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
 	}

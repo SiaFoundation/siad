@@ -22,7 +22,7 @@ func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPri
 // and the program data for a program that executes a single
 // AppendInstruction.
 func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
+	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)), 1)
 	i, cost, refund, memory, time := newAppendInstruction(merkleProof, 0, pt)
 	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
 	instructions := []modules.Instruction{i}

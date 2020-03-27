@@ -29,7 +29,7 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modu
 	binary.LittleEndian.PutUint64(data[:8], length)
 	binary.LittleEndian.PutUint64(data[8:16], offset)
 	copy(data[16:], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)))
+	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
 	i, cost, refund, memory, time := newReadSectorInstruction(length, true, 0, pt)
 	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
 	instructions := []modules.Instruction{i}
