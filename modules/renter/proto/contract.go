@@ -582,25 +582,16 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	headerFilePath := filepath.Join(cs.dir, h.ID().String()+contractHeaderExtension)
 	rootsFilePath := filepath.Join(cs.dir, h.ID().String()+contractRootsExtension)
 	// create the files.
-	headerFile, err := os.OpenFile(headerFilePath, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	headerFile, err := os.OpenFile(headerFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, modules.DefaultFilePerm)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	rootsFile, err := os.OpenFile(rootsFilePath, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
-	// truncate files to make sure existing files are empty.
-	err = headerFile.Truncate(0)
-	if err != nil {
-		return modules.RenterContract{}, err
-	}
-	err = rootsFile.Truncate(0)
+	rootsFile, err := os.OpenFile(rootsFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, modules.DefaultFilePerm)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
 	// write header
-	if _, err := headerFile.WriteAt(encoding.Marshal(h), 0); err != nil {
+	if _, err := headerFile.Write(encoding.Marshal(h)); err != nil {
 		return modules.RenterContract{}, err
 	}
 	// Interrupt if necessary.

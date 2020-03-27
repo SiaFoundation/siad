@@ -236,7 +236,7 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	walTxns = remainingTxns
 
 	// Check for legacy contracts and split them up.
-	if err := cs.managedV145SplitContractHeaderAndRoots(dir); err != nil {
+	if err := cs.managedV146SplitContractHeaderAndRoots(dir); err != nil {
 		return nil, err
 	}
 
@@ -277,9 +277,9 @@ func v131RC2RenameWAL(dir string) error {
 	return nil
 }
 
-// managedV145SplitContractHeaderAndRoots goes through all the legacy contracts
+// managedV146SplitContractHeaderAndRoots goes through all the legacy contracts
 // in a directory and splits the file up into a header and roots file.
-func (cs *ContractSet) managedV145SplitContractHeaderAndRoots(dir string) error {
+func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error {
 	// Load the contract files.
 	fis, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -289,7 +289,7 @@ func (cs *ContractSet) managedV145SplitContractHeaderAndRoots(dir string) error 
 	oldHeaderSize := 4088 // declared here to avoid cluttering of non-legacy codebase
 	for _, fi := range fis {
 		filename := fi.Name()
-		if filepath.Ext(filename) != v145ContractExtension {
+		if filepath.Ext(filename) != v146ContractExtension {
 			continue
 		}
 		path := filepath.Join(cs.dir, filename)

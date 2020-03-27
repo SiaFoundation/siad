@@ -156,9 +156,9 @@ func TestContractSet(t *testing.T) {
 	wg.Wait()
 }
 
-// TestCompatV145SplitContracts tests the compat code for converting single file
+// TestCompatV146SplitContracts tests the compat code for converting single file
 // contracts into split contracts.
-func TestCompatV145SplitContracts(t *testing.T) {
+func TestCompatV146SplitContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -185,7 +185,7 @@ func TestCompatV145SplitContracts(t *testing.T) {
 	initialRoot := crypto.Hash{1}
 	// Place the legacy contract in the dir.
 	pathNoExt := filepath.Join(testDir, id.String())
-	legacyPath := pathNoExt + v145ContractExtension
+	legacyPath := pathNoExt + v146ContractExtension
 	file, err := os.Create(legacyPath)
 	if err != nil {
 		t.Fatal(err)

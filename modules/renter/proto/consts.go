@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// v145ContractExtension is the extension given to contract files pre v146.
-	v145ContractExtension = ".contract"
+	// v146ContractExtension is the extension given to contract files pre v147.
+	v146ContractExtension = ".contract"
 
 	// contractHeaderExtension is the extension given to the header file of a
 	// contract.
