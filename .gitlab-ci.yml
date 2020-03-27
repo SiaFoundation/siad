@@ -136,7 +136,7 @@ default: &default_params
     when: always
 
   after_script:
-    - @XCOPY "C:\Windows\Temp\SiaTesting\*" "$CI_PROJECT_DIR\SiaTesting" /S /I /Y
+    - XCOPY "C:\Windows\Temp\SiaTesting\*" "$CI_PROJECT_DIR\SiaTesting" /S /I /Y > $null
     # Git cache permission denied workaround
     # on second and following runs
     - Remove-Item -path "$CI_PROJECT_DIR\.cache" -recurse -force
