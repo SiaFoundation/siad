@@ -211,33 +211,33 @@ type hostPrices struct {
 	mu            sync.RWMutex
 }
 
-// Current returns the host's current price table
-func (hp *hostPrices) Current() modules.RPCPriceTable {
+// managedCurrent returns the host's current price table
+func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
 	hp.mu.RLock()
 	defer hp.mu.RUnlock()
 	return hp.current
 }
 
-// Update overwrites the current price table with the one that's given
-func (hp *hostPrices) Update(pt modules.RPCPriceTable) {
+// managedUpdate overwrites the current price table with the one that's given
+func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 	hp.current = pt
 }
 
-// Track adds the given price table to the 'guaranteed' map, that holds all of
-// the price tables the host has recently guaranteed to renters. It will also
-// add it to the heap which facilates efficient pruning of that map.
-func (hp *hostPrices) Track(pt *modules.RPCPriceTable) {
+// managedTrack adds the given price table to the 'guaranteed' map, that holds
+// all of the price tables the host has recently guaranteed to renters. It will
+// also add it to the heap which facilates efficient pruning of that map.
+func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
 	hp.mu.Lock()
 	hp.guaranteed[pt.UUID] = pt
 	hp.mu.Unlock()
 	hp.staticMinHeap.Push(pt)
 }
 
-// PruneExpired removes all of the price tables that have expired from the
-// 'guaranteed' map.
-func (hp *hostPrices) PruneExpired() {
+// managedPruneExpired removes all of the price tables that have expired from
+// the 'guaranteed' map.
+func (hp *hostPrices) managedPruneExpired() {
 	expired := hp.staticMinHeap.PopExpired()
 	if len(expired) > 0 {
 		hp.mu.Lock()
@@ -371,7 +371,7 @@ func (h *Host) managedUpdatePriceTable() {
 	}
 
 	// update the pricetable
-	h.staticPriceTables.Update(priceTable)
+	h.staticPriceTables.managedUpdate(priceTable)
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
@@ -386,7 +386,7 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 				return
 			}
 			defer h.tg.Done()
-			h.staticPriceTables.PruneExpired()
+			h.staticPriceTables.managedPruneExpired()
 		}()
 
 		// Block until next cycle.

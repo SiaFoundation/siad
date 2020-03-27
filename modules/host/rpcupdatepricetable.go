@@ -14,7 +14,7 @@ import (
 // is defined by the price table's Expiry
 func (h *Host) rpcUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table
-	pt := h.staticPriceTables.Current()
+	pt := h.staticPriceTables.managedCurrent()
 
 	// update the epxiry to ensure prices are guaranteed for the duration of the
 	// rpcPriceGuaranteePeriod
@@ -42,7 +42,7 @@ func (h *Host) rpcUpdatePriceTable(stream siamux.Stream) error {
 
 	// after payment has been received, track the price table in the host's list
 	// of price tables
-	h.staticPriceTables.Track(&pt)
+	h.staticPriceTables.managedTrack(&pt)
 
 	return nil
 }
