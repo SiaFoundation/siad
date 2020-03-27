@@ -37,7 +37,7 @@ type programState struct {
 	potentialUploadRevenue  types.Currency
 
 	// budget related fields
-	priceTable modules.RPCPriceTable
+	priceTable *modules.RPCPriceTable
 }
 
 // Program is a collection of instructions. Within a program, each instruction
@@ -90,7 +90,7 @@ func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, program modules.Program, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, program modules.Program, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	// Sanity check program length.
 	if len(program) == 0 {
 		return nil, nil, errors.New("can#t execute program without instructions")

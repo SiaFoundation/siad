@@ -16,7 +16,7 @@ import (
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, io.Reader, uint64, types.Currency, types.Currency, uint64) {
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, io.Reader, uint64, types.Currency, types.Currency, uint64) {
 	i := NewReadSectorInstruction(0, 8, 16, true)
 	instructions := []modules.Instruction{i}
 	data := make([]byte, 8+8+crypto.HashSize)

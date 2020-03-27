@@ -1,0 +1,1 @@
+- Extended `siac renter` to include number of passive and disabled contracts

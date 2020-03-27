@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -25,13 +26,15 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Extract the arguments.
-	fcid, program, _, dataLength := epr.FileContractID, epr.Program, epr.PriceTableID, epr.ProgramDataLength
+	fcid, program, ptid, dataLength := epr.FileContractID, epr.Program, epr.PriceTableID, epr.ProgramDataLength
 
 	// Get price table.
-	// TODO: change once price table MR is merged to get the negotiated table.
-	h.mu.RLock()
-	pt := h.priceTable
-	h.mu.RUnlock()
+	h.staticPriceTables.mu.RLock()
+	pt, valid := h.staticPriceTables.guaranteed[ptid]
+	h.staticPriceTables.mu.RUnlock()
+	if !valid || pt.Expiry < time.Now().Unix() {
+		return errors.New("invalid price table")
+	}
 
 	// If the program isn't readonly we need to acquire the storage obligation.
 	readonly := program.ReadOnly()
@@ -125,6 +128,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 	// Call finalize if the program is not readonly.
 	if !readonly {
+		// TODO: The program was not readonly which means the merkle root
+		// changed. Sign a new revision with the correct root.
+		// TODO: The revision needs to update the collateral if necessary.
 		so, err := h.managedGetStorageObligation(fcid)
 		if err != nil {
 			return errors.AddContext(err, "Failed to get storage obligation for finalizing the program")

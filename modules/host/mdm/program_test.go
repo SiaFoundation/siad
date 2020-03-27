@@ -13,7 +13,7 @@ import (
 
 // updateRunningCosts is a testing helper function for updating the running
 // costs of a program after adding an instruction.
-func updateRunningCosts(pt modules.RPCPriceTable, runningCost, runningRefund types.Currency, runningMemory uint64, cost, refund types.Currency, memory, time uint64) (types.Currency, types.Currency, uint64) {
+func updateRunningCosts(pt *modules.RPCPriceTable, runningCost, runningRefund types.Currency, runningMemory uint64, cost, refund types.Currency, memory, time uint64) (types.Currency, types.Currency, uint64) {
 	runningMemory = runningMemory + memory
 	memoryCost := MemoryCost(pt, runningMemory, time)
 	runningCost = runningCost.Add(memoryCost).Add(cost)

@@ -12,7 +12,7 @@ import (
 
 // newAppendInstruction is a convenience method for creating a single
 // Append instruction.
-func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+func newAppendInstruction(merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
 	i := NewAppendInstruction(dataOffset, merkleProof)
 	cost, refund := modules.MDMAppendCost(pt)
 	return i, cost, refund, AppendMemory(), TimeAppend
@@ -21,7 +21,7 @@ func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPri
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
-func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
+func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
 	i, cost, refund, memory, time := newAppendInstruction(merkleProof, 0, pt)
 	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, 0, cost, refund, memory, time)
@@ -125,8 +125,11 @@ func TestInstructionAppend(t *testing.T) {
 		if output.NewMerkleRoot != cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}) {
 			t.Fatalf("expected merkle root to be root of appended sector: %v != %v", imr, output.NewMerkleRoot)
 		}
-		if len(output.Proof) != 0 {
-			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
+		if len(output.Proof) != 1 {
+			t.Fatalf("expected proof length to be %v but was %v", 1, len(output.Proof))
+		}
+		if output.Proof[0] != appendDataRoot1 {
+			t.Logf("proof should just be hash %v but was %v", appendDataRoot1, output.Proof[0])
 		}
 		if uint64(len(output.Output)) != 0 {
 			t.Fatalf("expected output to have len %v but was %v", 0, len(output.Output))

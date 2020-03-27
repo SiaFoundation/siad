@@ -34,7 +34,7 @@ func TestDropSectorsVerify(t *testing.T) {
 
 // newDropSectorsInstruction is a convenience method for creating a single
 // DropSectors instruction.
-func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
 	i := NewDropSectorsInstruction(dataOffset, true)
 	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
 

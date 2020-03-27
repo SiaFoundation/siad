@@ -29,6 +29,6 @@ func ReadMemory() uint64 {
 }
 
 // MemoryCost computes the memory cost given a price table, memory and time.
-func MemoryCost(pt modules.RPCPriceTable, usedMemory, time uint64) types.Currency {
+func MemoryCost(pt *modules.RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
 }

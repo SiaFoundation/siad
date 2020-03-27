@@ -2,7 +2,6 @@ package host
 
 import (
 	"io"
-	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -16,7 +15,7 @@ import (
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) (modules.Program, []byte, types.Currency, types.Currency, uint64) {
+func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (modules.Program, []byte, types.Currency, types.Currency, uint64) {
 	i := mdm.NewHasSectorInstruction(0)
 	instructions := []modules.Instruction{i}
 	data := make([]byte, crypto.HashSize)
@@ -67,23 +66,11 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 	ht.host.managedUnlockStorageObligation(so.id())
 
-	// Call the handler directly.
-	cc, sc := createTestingConns()
-	var wg sync.WaitGroup
-	defer wg.Wait()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err := ht.host.managedRPCExecuteProgram(sc)
-		if err != nil {
-			t.Error("Failed to execute the 'HasSector' program", err)
-		}
-	}()
-
 	// Fetch the price table.
-	ht.host.mu.RLock()
-	pt := ht.host.priceTable
-	ht.host.mu.RUnlock()
+	pt, err := negotiatePriceTable(ht.host)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Create the 'HasSector' program.
 	program, data, cost, refund, _ := newHasSectorProgram(sectorRoot, pt)
@@ -96,14 +83,29 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		ProgramDataLength: uint64(len(data)),
 	}
 
+	// Get a stream to the host.
+	stream, err := createTestStream(ht.host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	// Write the specifier.
+	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: send payment
+
 	// Send the request.
-	err = modules.RPCWrite(cc, epr)
+	err = modules.RPCWrite(stream, epr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Send the programData.
-	_, err = cc.Write(data)
+	_, err = stream.Write(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +113,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Read the response. There should only be one since there was only one
 	// instruction.
 	var resp modules.RPCExecuteProgramResponse
-	err = modules.RPCRead(cc, &resp)
+	err = modules.RPCRead(stream, &resp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +143,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// The next read should return io.EOF since the host closes the connection
 	// after the RPC is done.
-	err = modules.RPCRead(cc, &resp)
+	err = modules.RPCRead(stream, &resp)
 	if !errors.Contains(err, io.EOF) {
 		t.Fatal(err)
 	}

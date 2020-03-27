@@ -575,7 +575,7 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 	return nil
 }
 
-// chunkOffset returns the offset of a marshaled chunk withint the file.
+// chunkOffset returns the offset of a marshaled chunk within the file.
 func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 	if chunkIndex < 0 {
 		panic("chunk index can't be negative")

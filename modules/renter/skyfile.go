@@ -63,6 +63,10 @@ var (
 	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
 	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
 
+	// ErrMetadataTooBig is the error returned when the metadata exceeds a
+	// sectorsize.
+	ErrMetadataTooBig = errors.New("metadata exceeds sectorsize")
+
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
 	ExtendedSuffix = "-extended"
@@ -369,6 +373,10 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 // data that uploadSkyfileReadLeadingChunk had to read to figure out whether
 // the file was too large to fit into the leading chunk.
 func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSize uint64) ([]byte, io.Reader, bool, error) {
+	// Check for underflow.
+	if headerSize+1 > modules.SectorSize {
+		return nil, nil, false, ErrMetadataTooBig
+	}
 	// Read data from the reader to fill out the remainder of the first sector.
 	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
 	size, err := io.ReadFull(lup.Reader, fileBytes)
@@ -583,7 +591,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes)
+	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes, timeout)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -592,7 +600,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
-func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters) error {
+func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration) error {
 	// Check if link is blacklisted
 	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
 		return ErrSkylinkBlacklisted
@@ -602,7 +610,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	skyfileEstablishDefaults(&lup)
 
 	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, 0)
+	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
@@ -648,7 +656,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		CipherType: crypto.TypePlain,
 	}
 
-	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes)
+	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}
