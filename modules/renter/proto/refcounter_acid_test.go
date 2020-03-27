@@ -28,7 +28,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Determine a reasonable timeout for the test.
+	// Determine a reasonable timeout for the test
 	var testTimeout time.Duration
 	if testing.Short() {
 		t.SkipNow()
@@ -39,28 +39,29 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	}
 
 	// Prepare for the tests
-	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
-	testSectorsCount := uint64(123)
 	testDir := build.TempDir(t.Name())
 	wal, walPath := newTestWAL()
 	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
 		t.Fatal("Failed to create test directory:", err)
 	}
-	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
 	// Create a new ref counter
-	rc, err := NewRefCounter(rcFilePath, testSectorsCount, wal)
+	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+	rc, err := NewRefCounter(rcFilePath, 200, wal)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
 	}
 
-	// Create the dependency.
+	// Create the faulty disk dependency
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
+	// attach it to the refcounter
 	rc.deps = fdd
+
+	// stat counters
 	atomicNumRecoveries := int64(0)
 	atomicNumSuccessfulIterations := int64(0)
 
-	rcMuRW := &sync.RWMutex{}
-	workload := func() {
+	workload := func(rcLocal *RefCounter) {
 		testDone := time.After(testTimeout)
 		// The outer loop is responsible for simulating a restart of siad by
 		// reloading the wal, applying transactions and loading the refcounter
@@ -72,7 +73,6 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 				break OUTER
 			default:
 			}
-
 			// The inner loop applies a random number of operations on the file.
 		INNER:
 			for {
@@ -86,7 +86,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 					break
 				}
 
-				if err = preformUpdateOperations(rc, rcMuRW); err != nil {
+				if err := preformUpdateOperations(rcLocal); err != nil {
 					if errors.Contains(err, dependencies.ErrDiskFault) {
 						atomic.AddInt64(&atomicNumRecoveries, 1)
 						break INNER
@@ -111,22 +111,17 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 				if tries%10 == 0 {
 					fdd.Reset()
 				}
-				// Reload the wal from disk
-				txns, newWal, errLoad := writeaheadlog.New(walPath)
-				if errLoad != nil {
-					t.Fatal("Failed to load WAL from disk:", err)
-				}
-				// Apply unfinished txns.
-				if err = applyUnfinishedTransactions(rcFilePath, txns, fdd, rcMuRW); err != nil {
+				// Reload the wal from disk and apply unfinished txns.
+				newWal, err := applyUnfinishedTransactions(rcFilePath, walPath, fdd)
+				if err != nil {
 					if errors.Contains(err, dependencies.ErrDiskFault) {
 						atomic.AddInt64(&atomicNumRecoveries, 1)
 						continue LOAD // try again
 					}
 					t.Fatal(err)
 				}
-
 				// Load the file again.
-				rcNew, err := LoadRefCounter(rcFilePath, newWal)
+				newRc, err := LoadRefCounter(rcFilePath, newWal)
 				if err != nil {
 					if errors.Contains(err, dependencies.ErrDiskFault) {
 						atomic.AddInt64(&atomicNumRecoveries, 1)
@@ -135,8 +130,8 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				rcNew.deps = fdd
-				rc = &rcNew
+				newRc.deps = fdd
+				rcLocal = &newRc
 				break
 			}
 		}
@@ -147,19 +142,20 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	for i := 0; i < runtime.NumCPU()*10; i++ {
 		wg.Add(1)
 		go func() {
-			workload()
+			workload(rc)
 			wg.Done()
 		}()
 	}
 	wg.Wait()
 
-	t.Logf("Recovered from %v disk failures", atomicNumRecoveries)
-	t.Logf("Inner loop %v iterations without failures", atomicNumSuccessfulIterations)
+	t.Logf("\nRecovered from %v disk failures\n", atomicNumRecoveries)
+	t.Logf("Inner loop %v iterations without failures\n", atomicNumSuccessfulIterations)
 }
 
+// isDecrementValid is a helper method that returns false is the counter is 0.
+// This allows us to avoid a counter underflow.
 func isDecrementValid(rc *RefCounter, secNum uint64) (bool, error) {
-
-	n, err := rc.Count(secNum)
+	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
 		// If the error wasn't caused by the dependency, the test fails.
@@ -168,8 +164,10 @@ func isDecrementValid(rc *RefCounter, secNum uint64) (bool, error) {
 	return n > 0, nil
 }
 
+// isDecrementValid is a helper method that returns false is the counter has
+// reached its maximum value. This allows us to avoid a counter overflow.
 func isIncrementValid(rc *RefCounter, secNum uint64) (bool, error) {
-	n, err := rc.Count(secNum)
+	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
 		// If the error wasn't caused by the dependency, the test fails.
@@ -178,9 +176,7 @@ func isIncrementValid(rc *RefCounter, secNum uint64) (bool, error) {
 	return n < math.MaxUint16, nil
 }
 
-func preformUpdateOperations(rc *RefCounter, walMuRW *sync.RWMutex) (err error) {
-	walMuRW.RLock()
-	defer walMuRW.RUnlock()
+func preformUpdateOperations(rc *RefCounter) (err error) {
 	// Ignore the err, as we're not going to delete the file.
 	_ = rc.StartUpdate()
 	defer func() {
@@ -206,7 +202,6 @@ func preformUpdateOperations(rc *RefCounter, walMuRW *sync.RWMutex) (err error) 
 			if u, err = rc.Increment(secIdx); err != nil {
 				return
 			}
-			fmt.Print("+")
 			updates = append(updates, u)
 		}
 	}
@@ -223,7 +218,6 @@ func preformUpdateOperations(rc *RefCounter, walMuRW *sync.RWMutex) (err error) 
 			if u, err = rc.Decrement(secIdx); err != nil {
 				return
 			}
-			fmt.Print("-")
 			updates = append(updates, u)
 		}
 	}
@@ -233,7 +227,6 @@ func preformUpdateOperations(rc *RefCounter, walMuRW *sync.RWMutex) (err error) 
 		if u, err = rc.Append(); err != nil {
 			return
 		}
-		fmt.Print("^")
 		updates = append(updates, u)
 	}
 
@@ -242,7 +235,6 @@ func preformUpdateOperations(rc *RefCounter, walMuRW *sync.RWMutex) (err error) 
 		if u, err = rc.DropSectors(fastrand.Uint64n(3)); err != nil {
 			return
 		}
-		fmt.Print("x")
 		updates = append(updates, u)
 	}
 
@@ -252,7 +244,6 @@ func preformUpdateOperations(rc *RefCounter, walMuRW *sync.RWMutex) (err error) 
 		if us, err = rc.Swap(fastrand.Uint64n(rc.numSectors), fastrand.Uint64n(rc.numSectors)); err != nil {
 			return
 		}
-		fmt.Print("@")
 		updates = append(updates, us...)
 	}
 
@@ -264,26 +255,28 @@ func preformUpdateOperations(rc *RefCounter, walMuRW *sync.RWMutex) (err error) 
 		return
 	}
 	rc.UpdateApplied()
-	fmt.Print("|")
-
 	return nil
 }
 
-func applyUnfinishedTransactions(filepath string, txns []*writeaheadlog.Transaction, fdd *dependencies.DependencyFaultyDisk, rcMuRW *sync.RWMutex) error {
-	rcMuRW.Lock()
-	defer rcMuRW.Unlock()
+func applyUnfinishedTransactions(filepath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
+	// lead the wal from disk
+	txns, newWal, err := writeaheadlog.New(walPath)
+	if err != nil {
+		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to load wal from disk")
+	}
 	f, err := fdd.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
-		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
+		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
 	defer f.Close()
+	// applied any outstanding transactions
 	for _, txn := range txns {
 		if err := applyUpdates(f, txn.Updates...); err != nil {
-			return errors.AddContext(err, "failed to apply updates")
+			return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to apply updates")
 		}
 		if err := txn.SignalUpdatesApplied(); err != nil {
-			return errors.AddContext(err, "failed to signal updates applied")
+			return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to signal updates applied")
 		}
 	}
-	return f.Sync()
+	return newWal, f.Sync()
 }

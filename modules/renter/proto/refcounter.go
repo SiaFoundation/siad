@@ -311,12 +311,12 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 // StartUpdate acquires a lock, ensuring the caller is the only one currently
 // allowed to perform updates on this refcounter file.
 func (rc *RefCounter) StartUpdate() error {
+	rc.muUpdate.Lock()
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if rc.isDeleted {
 		return ErrUpdateAfterDelete
 	}
-	rc.muUpdate.Lock()
 	// open an update session
 	rc.isUpdateInProgress = true
 	return nil
