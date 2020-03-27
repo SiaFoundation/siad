@@ -124,11 +124,7 @@ func (sk Skykey) marshalSia(w io.Writer) error {
 func (sk Skykey) ToString() (string, error) {
 	var b bytes.Buffer
 	err := sk.marshalSia(&b)
-	if err != nil {
-		return "", err
-	}
-
-	return base64.URLEncoding.EncodeToString(b.Bytes()), nil
+	return base64.URLEncoding.EncodeToString(b.Bytes()), err
 }
 
 // FromString decodes the base64 string into a Skykey.
@@ -137,12 +133,7 @@ func (sk *Skykey) FromString(s string) error {
 	if err != nil {
 		return err
 	}
-
-	err = sk.unmarshalSia(bytes.NewReader(keyBytes))
-	if err != nil {
-		return err
-	}
-	return nil
+	return sk.unmarshalSia(bytes.NewReader(keyBytes))
 }
 
 // ID returns the ID for the Skykey.
