@@ -6,7 +6,7 @@ Gitlab registration token is needed to pair the new runner with Gitlab repositor
 
 - Open [Sia repo > Settings > CI/CD](https://gitlab.com/NebulousLabs/Sia/-/settings/ci_cd)
 - Navigate to `Runners`
-- Find: Use the following registration token during setup: 
+- Find: "Use the following registration token during setup:" 
 - Copy displayed registration token
 - Paste token string to Windows machine to
   `<userhome>\Documents\gitlab-registration-token.txt`
@@ -25,6 +25,7 @@ Gitlab registration token is needed to pair the new runner with Gitlab repositor
 The script
 
 - Installs Chocolatey (Windows package/software manager)
+- installs git
 - Installs golang
 - Installs make
 - Installs Gitlab Runner
