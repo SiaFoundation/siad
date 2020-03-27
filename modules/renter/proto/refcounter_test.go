@@ -55,8 +55,9 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-// TestLoadBadHeader ensures that we cannot load a file with a bad header
-func TestLoadBadHeader(t *testing.T) {
+// TestLoadInvalidHeader checks that loading a refcounters file with invalid
+// header fails.
+func TestLoadInvalidHeader(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -72,10 +73,11 @@ func TestLoadBadHeader(t *testing.T) {
 	// Create a file that contains a corrupted header. This basically means
 	// that the file is too short to have the entire header in there.
 	f, err := os.Create(rcFilePath)
-	defer f.Close()
 	assertSuccess(err, t, "Failed to create test file:")
-	badHeadFileContents := append([]byte{9, 9, 9, 9})
-	_, err = f.Write(badHeadFileContents)
+	defer f.Close()
+
+	// The version number is 8 bytes. We'll only write 4.
+	_, err = f.Write(fastrand.Bytes(4))
 	assertSuccess(err, t, "Failed to write to test file:")
 	_ = f.Sync()
 
@@ -85,9 +87,9 @@ func TestLoadBadHeader(t *testing.T) {
 	assertErrorIs(err, io.EOF, t, fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", io.EOF.Error()))
 }
 
-// TestLoadBadVersion ensures that we cannot load a file with a bad header
-// version
-func TestLoadBadVersion(t *testing.T) {
+// TestLoadInvalidVersion checks that loading a refcounters file with invalid
+// version fails.
+func TestLoadInvalidVersion(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -102,12 +104,12 @@ func TestLoadBadVersion(t *testing.T) {
 
 	// create a file with a header that encodes a bad version number
 	f, err := os.Create(rcFilePath)
-	defer f.Close()
 	assertSuccess(err, t, "Failed to create test file:")
-	badVerHeader := RefCounterHeader{Version: [8]byte{9, 9, 9, 9, 9, 9, 9, 9}}
-	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
-	_, err = f.Write(badVerFileContents)
+	defer f.Close()
+
+	// The first 8 bytes are the version number. Write down an invalid one
+	// followed 4 counters (another 8 bytes).
+	_, err = f.Write(fastrand.Bytes(16))
 	assertSuccess(err, t, "Failed to write to test file:")
 	_ = f.Sync()
 
