@@ -75,11 +75,6 @@ default: &default_params
     - $env:PATH
     - $env:GOPATH = "$CI_PROJECT_DIR\.cache"
     - $env:GOPATH
-  
-  after_script:
-    # Git cache permission denied workaround
-    # on second and following runs
-    - Remove-Item -path "$CI_PROJECT_DIR\.cache" -recurse -force
 
 ## Define the default test parameters.
 .default_test: &default_test_params
@@ -142,6 +137,9 @@ default: &default_params
 
   after_script:
     - XCOPY "C:\Windows\Temp\SiaTesting\*" "$CI_PROJECT_DIR\SiaTesting" /S /I /Y
+    # Git cache permission denied workaround
+    # on second and following runs
+    - RMDIR /S /Q "$CI_PROJECT_DIR\.cache"
 
 lint:
   stage: lint
