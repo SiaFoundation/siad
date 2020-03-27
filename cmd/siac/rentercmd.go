@@ -341,21 +341,21 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 		Short: "Create a skykey with the given name.",
 		Long: `Create a skykey  with the given name. The --cipher-type flag can be
 		used to specify the cipher type. Its default is XChaCha20.`,
-		Run: wrap(skynetcreateskykey),
+		Run: wrap(skynetcreateskykeycmd),
 	}
 
 	skynetAddSkykeyCmd = &cobra.Command{
 		Use:   "addskykey [skykey base64-encoded skykey]",
 		Short: "Add a base64-encoded skykey to the key manager.",
 		Long:  `Add a base64-encoded skykey to the key manager.`,
-		Run:   wrap(skynetaddskykey),
+		Run:   wrap(skynetaddskykeycmd),
 	}
 
 	skynetGetSkykeyCmd = &cobra.Command{
 		Use:   "getskykey",
 		Short: "Get the skykey by its name or id",
 		Long:  `Get the base64-encoded skykey using either its name with --name or id with --id`,
-		Run:   wrap(skynetgetskykey),
+		Run:   wrap(skynetgetskykeycmd),
 	}
 )
 
@@ -2911,9 +2911,9 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
 }
 
-// skynetcreateskykey creates a new Skykey with the given name and cipher type
+// skynetcreateskykeycmd creates a new Skykey with the given name and cipher type
 // as set by flag.
-func skynetcreateskykey(name string) {
+func skynetcreateskykeycmd(name string) {
 	var cipherType crypto.CipherType
 	err := cipherType.FromString(skykeyCipherType)
 	if err != nil {
@@ -2933,7 +2933,7 @@ func skynetcreateskykey(name string) {
 }
 
 // skynetaddskykey adds the given skykey to the renter's skykey manager.
-func skynetaddskykey(skykeyString string) {
+func skynetaddskykeycmd(skykeyString string) {
 	var sk skykey.Skykey
 	err := sk.FromString(skykeyString)
 	if err != nil {
@@ -2948,8 +2948,8 @@ func skynetaddskykey(skykeyString string) {
 	fmt.Printf("Successfully added new skykey: %v\n", skykeyString)
 }
 
-// skynetgetskykey retrieves the skykey using a name or id flag.
-func skynetgetskykey() {
+// skynetgetskykeycmd retrieves the skykey using a name or id flag.
+func skynetgetskykeycmd() {
 	if skykeyName == "" && skykeyID == "" {
 		die("Cannot get skykey without using --name or --id flag")
 	}
