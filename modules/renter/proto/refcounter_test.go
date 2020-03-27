@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ func TestLoad(t *testing.T) {
 	err := os.MkdirAll(testDir, modules.DefaultDirPerm)
 	assertSuccess(err, t, "Failed to create test directory:")
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+
 	// create a ref counter
 	_, err = NewRefCounter(rcFilePath, testSectorsCount, testWAL)
 	assertSuccess(err, t, "Failed to create a reference counter:")
@@ -51,34 +53,67 @@ func TestLoad(t *testing.T) {
 	if !errors.IsOSNotExist(err) {
 		t.Fatal("Expected os.ErrNotExist, got something else:", err)
 	}
+}
 
-	// fails with ErrInvalidVersion when trying to load a file with a different
-	// version
-	badVerFilePath := rcFilePath + "badver"
-	f, err := os.Create(badVerFilePath)
+// TestLoadBadHeader ensures that we cannot load a file with a bad header
+func TestLoadBadHeader(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare
+	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	testDir := build.TempDir(t.Name())
+	err := os.MkdirAll(testDir, modules.DefaultDirPerm)
+	assertSuccess(err, t, "Failed to create test directory:")
+	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+
+	// Create a file that contains a corrupted header. This basically means
+	// that the file is too short to have the entire header in there.
+	f, err := os.Create(rcFilePath)
+	defer f.Close()
+	assertSuccess(err, t, "Failed to create test file:")
+	badHeadFileContents := append([]byte{9, 9, 9, 9})
+	_, err = f.Write(badHeadFileContents)
+	assertSuccess(err, t, "Failed to write to test file:")
+	_ = f.Sync()
+
+	// Make sure we fail to load from that file and that we fail with the right
+	// error
+	_, err = LoadRefCounter(rcFilePath, testWAL)
+	assertErrorIs(err, io.EOF, t, fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", io.EOF.Error()))
+}
+
+// TestLoadBadVersion ensures that we cannot load a file with a bad header
+// version
+func TestLoadBadVersion(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare
+	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	testDir := build.TempDir(t.Name())
+	err := os.MkdirAll(testDir, modules.DefaultDirPerm)
+	assertSuccess(err, t, "Failed to create test directory:")
+	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+
+	// create a file with a header that encodes a bad version number
+	f, err := os.Create(rcFilePath)
 	defer f.Close()
 	assertSuccess(err, t, "Failed to create test file:")
 	badVerHeader := RefCounterHeader{Version: [8]byte{9, 9, 9, 9, 9, 9, 9, 9}}
 	badVerCounters := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	badVerFileContents := append(serializeHeader(badVerHeader), badVerCounters...)
 	_, err = f.Write(badVerFileContents)
-	_ = f.Sync()
 	assertSuccess(err, t, "Failed to write to test file:")
-	_, err = LoadRefCounter(badVerFilePath, testWAL)
-	assertErrorIs(err, ErrInvalidVersion, t, fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()))
+	_ = f.Sync()
 
-	// fails with ErrInvalidHeaderData when trying to load a file with a
-	// different version
-	badHeaderFilePath := rcFilePath + "badhead"
-	f, err = os.Create(badHeaderFilePath)
-	defer f.Close()
-	assertSuccess(err, t, "Failed to create test file:")
-	badHeadFileContents := append([]byte{9, 9, 9, 9})
-	_, err = f.Write(badHeadFileContents)
-	_ = f.Sync()
-	assertSuccess(err, t, "Failed to write to test file:")
-	_, err = LoadRefCounter(badHeaderFilePath, testWAL)
-	assertErrorIs(err, ErrInvalidHeaderData, t, fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", ErrInvalidHeaderData.Error()))
+	// ensure that we cannot load it and we return the correct error
+	_, err = LoadRefCounter(rcFilePath, testWAL)
+	assertErrorIs(err, ErrInvalidVersion, t, fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()))
 }
 
 // TestCount tests that the `Count` method always returns the correct
@@ -278,15 +313,6 @@ func TestRefCounter(t *testing.T) {
 	assertSuccess(err, t, "Failed to get file stats:")
 	if endStats.Size() != stats.Size() {
 		t.Fatal(fmt.Sprintf("File size did not go back to the original as expected, expected size: %d, actual size: %d", stats.Size(), endStats.Size()))
-	}
-
-	// load from disk
-	rcLoaded, err := LoadRefCounter(rcFilePath, testWAL)
-	assertSuccess(err, t, "Failed to load RefCounter from disk:")
-	// make sure we have the right number of counts after the truncation
-	// (nothing was truncated away that we still needed)
-	if rcLoaded.numSectors != testSectorsCount {
-		t.Fatal(fmt.Sprintf("Failed to load the correct number of sectors. expected %d, got %d", testSectorsCount, rc.numSectors))
 	}
 
 	// delete the ref counter
