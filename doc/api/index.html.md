@@ -4466,7 +4466,10 @@ Returns a new skykey created and stored under that name.
 desired name of the skykey
 
 ### JSON Response
-```json
+> JSON Response Example
+
+ 
+```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
 }
@@ -4474,7 +4477,6 @@ desired name of the skykey
 
 **skykey** | string  
 base-64 encoded skykey
-
 
 
 ## /skynet/skykey [GET]
@@ -4499,8 +4501,7 @@ or
 base-64 encoded ID of the skykey being queried
 
 
-### JSON Response
-```json
+### JSON Response ```json
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
 }
@@ -4526,7 +4527,10 @@ name of the skykey being queried
 
 
 ### JSON Response
-```json
+> JSON Response Example
+
+ 
+```go
 {
   "skykeyid": "gi5z8cf5NWbcvPBaBn0DFQ=="
 }
