@@ -804,29 +804,44 @@ func (r *Renter) Unmount(mountPoint string) error {
 // AddSkykey adds the skykey with the given name, cipher type, and entropy to
 // the renter's skykey manager.
 func (r *Renter) AddSkykey(sk skykey.Skykey) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
 	return r.staticSkykeyManager.AddKey(sk)
 }
 
 // SkykeyByName gets the Skykey with the given name from the renter's skykey
 // manager if it exists.
 func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
 	return r.staticSkykeyManager.KeyByName(name)
 }
 
 // CreateSkykey creates a new Skykey with the given name and ciphertype.
 func (r *Renter) CreateSkykey(name string, ct crypto.CipherType) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
 	return r.staticSkykeyManager.CreateKey(name, ct)
 }
 
 // SkykeyByID gets the Skykey with the given ID from the renter's skykey
 // manager if it exists.
 func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
 	return r.staticSkykeyManager.KeyByID(id)
 }
 
 // SkykeyIDByName gets the SkykeyID of the key with the given name if it
 // exists.
 func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.SkykeyID{}, err
+	}
 	return r.staticSkykeyManager.IDByName(name)
 }
 
