@@ -111,7 +111,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 					fdd.Reset()
 				}
 				// Reload the wal from disk and apply unfinished txns.
-				newWal, err := applyUnfinishedTransactions(rcFilePath, walPath, fdd)
+				newWal, err := loadWal(rcFilePath, walPath, fdd)
 				if err != nil {
 					if errors.Contains(err, dependencies.ErrDiskFault) {
 						atomic.AddInt64(&atomicNumRecoveries, 1)
@@ -175,6 +175,32 @@ func isIncrementValid(rc *RefCounter, secNum uint64) (bool, error) {
 	return n < math.MaxUint16, nil
 }
 
+// loadWal reads the wal from disk and applies all outstanding transactions
+func loadWal(filepath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
+	// lead the wal from disk
+	txns, newWal, err := writeaheadlog.New(walPath)
+	if err != nil {
+		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to load wal from disk")
+	}
+	f, err := fdd.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to open refcounter file in order to apply updates")
+	}
+	defer f.Close()
+	// applied any outstanding transactions
+	for _, txn := range txns {
+		if err := applyUpdates(f, txn.Updates...); err != nil {
+			return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to apply updates")
+		}
+		if err := txn.SignalUpdatesApplied(); err != nil {
+			return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to signal updates applied")
+		}
+	}
+	return newWal, f.Sync()
+}
+
+// preformUpdateOperations executes a randomised set of updates within an
+// update session.
 func preformUpdateOperations(rc *RefCounter) (err error) {
 	// Ignore the err, as we're not going to delete the file.
 	_ = rc.StartUpdate()
@@ -255,27 +281,4 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 	}
 	rc.UpdateApplied()
 	return nil
-}
-
-func applyUnfinishedTransactions(filepath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
-	// lead the wal from disk
-	txns, newWal, err := writeaheadlog.New(walPath)
-	if err != nil {
-		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to load wal from disk")
-	}
-	f, err := fdd.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
-	if err != nil {
-		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to open refcounter file in order to apply updates")
-	}
-	defer f.Close()
-	// applied any outstanding transactions
-	for _, txn := range txns {
-		if err := applyUpdates(f, txn.Updates...); err != nil {
-			return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to apply updates")
-		}
-		if err := txn.SignalUpdatesApplied(); err != nil {
-			return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to signal updates applied")
-		}
-	}
-	return newWal, f.Sync()
 }
