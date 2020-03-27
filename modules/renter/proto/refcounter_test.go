@@ -24,7 +24,7 @@ import (
 
 var testWAL = newTestWAL()
 
-// testLoad specifically tests LoadRefCounter and its various failure modes
+// TestLoad specifically tests LoadRefCounter and its various failure modes
 func TestLoad(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
