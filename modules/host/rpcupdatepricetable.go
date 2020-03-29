@@ -9,10 +9,10 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// rpcUpdatePriceTable returns a copy of the host's current rpc price table.
-// These prices are valid for the duration of the rpcPriceGuaranteePeriod, which
-// is defined by the price table's Expiry
-func (h *Host) rpcUpdatePriceTable(stream siamux.Stream) error {
+// staticRPCUpdatePriceTable returns a copy of the host's current rpc price
+// table. These prices are valid for the duration of the
+// rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
+func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table
 	pt := h.staticPriceTables.managedCurrent()
 
