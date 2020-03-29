@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
@@ -1470,7 +1471,7 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Upload a skyfile
-	skylink, _, _, err := r.UploadSkyfileBlocking(t.Name(), 100, false)
+	skylink, err := r.UploadRandomSkyfileBlocking()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1529,12 +1530,12 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if strContentDisposition == "" {
 		t.Fatal("Expected 'Content-Disposition' response header to be present")
 	}
-	if strContentDisposition != "inline; filename=\"TestSkynetHeadRequest\"" {
+	if !strings.Contains(strContentDisposition, "inline; filename=") {
 		t.Fatal("Unexpected 'Content-Disposition' header")
 	}
 
 	// Perform a HEAD request with a timeout that exceeds the max timeout
-	status, _, _ = r.SkynetSkylinkHead(skylink, 901)
+	status, _, _ = r.SkynetSkylinkHead(skylink, api.MaxSkynetRequestTimeout+1)
 	if status != http.StatusBadRequest {
 		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
 	}
@@ -1579,7 +1580,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Upload a skyfile
-	skylink, _, _, err := r.UploadSkyfileBlocking(t.Name(), 100, false)
+	skylink, err := r.UploadRandomSkyfileBlocking()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1645,7 +1646,7 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Upload a skyfile
-	skylink, _, _, err := r.UploadSkyfileBlocking(t.Name(), 100, false)
+	skylink, err := r.UploadRandomSkyfileBlocking()
 	if err != nil {
 		t.Fatal(err)
 	}
