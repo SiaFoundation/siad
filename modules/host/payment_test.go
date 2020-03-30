@@ -122,7 +122,6 @@ func TestPaymentDetails(t *testing.T) {
 		defer assertRecover()
 		contractPaymentDetails(curr, rev)
 	}()
-
 }
 
 // TestProcessPayment verifies the host's ProcessPayment method. It covers both

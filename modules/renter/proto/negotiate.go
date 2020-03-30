@@ -217,7 +217,7 @@ func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Has
 
 	// Check that there is enough collateral to cover the cost.
 	if rev.MissedHostOutput().Value.Cmp(collateral) < 0 {
-		return types.FileContractRevision{}, errRevisionCollateralTooLow
+		return types.FileContractRevision{}, types.ErrRevisionCollateralTooLow
 	}
 
 	// move collateral from host to void
