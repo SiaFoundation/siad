@@ -74,7 +74,7 @@ Reviewers.
 
 ## Comments / Discussions
 When reviewing an MR, approvers use comments and discussions to work through the
-approval. Comments are none blocking while discussions are blocking. 
+approval. Comments are non-blocking while discussions are blocking. 
 
 Comments should be used by the developer and/or reviewers to provide additional
 context or information. An example would be an reviewer leaving a comment of
@@ -95,22 +95,14 @@ prefix that informs the priority of the issue.
 in the current merge request, not in a follow up, in order for a merge request
 to be approved.
 
-**NTH**: The `NTH` prefix indicates that a discussion would be nice to have. A
-developer can either address this in the current merge request or a follow up
-issue could be created.
-
 **PP**: The `PP` prefix indicates that a discussion is a personal preference of
 a reviewer. The developer can decide how they want to handle this discussion and
 choose to incorporate the feedback or not.
 
-**FU**: The `FU` prefix indicates that a discussion is intended to be addressed
-in a follow up and shouldn't be addressed in the current merge request. `FU` is
-used to avoid merge request bloat and keep the merge request diff contained.
-
-**Q**: The `Q` prefix indicates that the reviewer has a question. Questions are
-not necessarily blocking, it is helpful for developers to `@` the reviewer in
-their response so they are notified in case the merge request is approved and
-merged in the meantime.
+**F/U**: The `F/U` prefix indicates that a discussion is intended to be
+addressed in a follow up and shouldn't be addressed in the current merge
+request. `F/U` is used to avoid merge request bloat and keep the merge request
+diff contained.
 
 ## Follow Ups
 For comments that are resolved into follow up issues, the expectation is that
@@ -145,13 +137,13 @@ keep track of changes.
 ## WIP Merge Requests 
 Gitlab allows the use of the `WIP:` prefix in the title of the merge request.
 This `WIP:` prefix is blocking and will not allow the merge request to be merged
-until it is removed. Developers should use this prefix to informed reviewers
-that the merge request is still under development and should not be reviewed.
-The `WIP:` prefix is also automatically added when a merge request is created
-from an issue so as the case of follow ups from previous merge requests. This
-allows the developer to make the initial changes and have the follow up merge
-request staged until the initial merge request is merged.
+until it is removed. Developers should use this prefix to inform reviewers that
+the merge request is still under development and should not be reviewed. The
+`WIP:` prefix is also automatically added when a merge request is created from
+an issue as in the case of follow ups from previous merge requests. This allows
+the developer to make the initial changes and have the follow up merge request
+staged until the initial merge request is merged.
 
-To keep the list of open merge request down, it is advised to use the `WIP:`
+To keep the list of open merge requests down, it is advised to use the `WIP:`
 prefix sparingly. The majority of development should be done locally and most
-merge requests should to created ready for review.
+merge requests should be created ready for review.
