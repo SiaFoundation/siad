@@ -25,6 +25,9 @@ choco install make -y
 # Install Gitlab Runner
 choco install gitlab-runner -y
 
+# Install Dokany (FUSE for Windows)
+choco install dokany -y
+
 Pop-Location
 
 # Install Gitlab Runner Service
