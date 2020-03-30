@@ -88,7 +88,7 @@ default: &default_params
 
 ## Define the default test parameters
 ## for Windows runner.
-.default_test: &default_test_windows_params
+.default_windows_test: &default_test_windows_params
   ## Merge the contents of the 'default_windows_params' alias
   <<: *default_windows_params
   stage: test
@@ -223,8 +223,20 @@ legacy-tests-nightly:
   script:
     - make test-vlong run=. pkgs="$legacy_pkgs"
 
+# Windows execution
+legacy-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong run=. pkgs="$legacy_pkgs"
+
 package-tests-nightly:
   <<: *default_nightly_params
+  script:
+    - make test-vlong run=. pkgs="$package_pkgs"
+
+# Windows execution
+package-windows-tests-nightly:
+  <<: *default_nightly_windows_params
   script:
     - make test-vlong run=. pkgs="$package_pkgs"
 
