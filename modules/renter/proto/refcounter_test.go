@@ -40,18 +40,24 @@ func TestRefCounter_Count(t *testing.T) {
 
 	// set up the expected value on disk
 	err := writeVal(rc.filepath, sec, val)
-	assertSuccess(err, t, "Failed to write a count to disk:")
+	if err != nil {
+		t.Fatal("Failed to write a count to disk:", err)
+	}
 
 	// verify we can read it correctly
 	rval, err := rc.Count(sec)
-	assertSuccess(err, t, "Failed to read count from disk:")
+	if err != nil {
+		t.Fatal("Failed to read count from disk:", err)
+	}
 	if rval != val {
 		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", val, rval))
 	}
 
 	// check behaviour on bad sector number
 	_, err = rc.Count(math.MaxInt64)
-	assertErrorIs(err, ErrInvalidSectorNumber, t, "Expected ErrInvalidSectorNumber, got:")
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 
 	// set up a temporary override
 	ov := uint16(12)
@@ -59,7 +65,9 @@ func TestRefCounter_Count(t *testing.T) {
 
 	// verify we can read it correctly
 	rov, err := rc.Count(sec)
-	assertSuccess(err, t, "Failed to read count from disk:")
+	if err != nil {
+		t.Fatal("Failed to read count from disk:", err)
+	}
 	if rov != ov {
 		t.Fatal(fmt.Sprintf("read wrong override value from disk: expected %d, got %d", ov, rov))
 	}
@@ -76,26 +84,36 @@ func TestRefCounter_Append(t *testing.T) {
 	numSec := fastrand.Uint64n(10)
 	rc := testPrepareRefCounter(numSec, t)
 	stats, err := os.Stat(rc.filepath)
-	assertSuccess(err, t, "RefCounter creation finished successfully but the file is not accessible:")
+	if err != nil {
+		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
+	}
 	err = rc.StartUpdate()
-	assertSuccess(err, t, "Failed to start an update session")
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 
 	// test Append
 	u, err := rc.Append()
-	assertSuccess(err, t, "Failed to create an append update")
+	if err != nil {
+		t.Fatal("Failed to create an append update", err)
+	}
 	expectNumSec := numSec + 1
 	if rc.numSectors != expectNumSec {
-		t.Fatal(fmt.Errorf("Append failed to properly increase the numSectors counter. Expected %d, got %d", expectNumSec, rc.numSectors))
+		t.Fatal(fmt.Errorf("append failed to properly increase the numSectors counter. Expected %d, got %d", expectNumSec, rc.numSectors))
 	}
 
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
-	assertSuccess(err, t, "Failed to apply append update:")
+	if err != nil {
+		t.Fatal("Failed to apply append update:", err)
+	}
 	rc.UpdateApplied()
 
 	// verify: we expect the file size to have grown by 2 bytes
 	endStats, err := os.Stat(rc.filepath)
-	assertSuccess(err, t, "Failed to get file stats:")
+	if err != nil {
+		t.Fatal("Failed to get file stats:", err)
+	}
 	expectSize := stats.Size() + 2
 	actualSize := endStats.Size()
 	if actualSize != expectSize {
@@ -113,26 +131,36 @@ func TestRefCounter_Decrement(t *testing.T) {
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	err := rc.StartUpdate()
-	assertSuccess(err, t, "Failed to start an update session")
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 
 	// test Decrement
 	u, err := rc.Decrement(rc.numSectors - 2)
-	assertSuccess(err, t, "Failed to create an decrement update:")
+	if err != nil {
+		t.Fatal("Failed to create an decrement update:", err)
+	}
 
 	// verify: we expect the value to have increased from the base 1 to 0
 	val, err := rc.readCount(rc.numSectors - 2)
-	assertSuccess(err, t, "Failed to read value after decrement:")
+	if err != nil {
+		t.Fatal("Failed to read value after decrement:", err)
+	}
 	if val != 0 {
 		t.Fatal(fmt.Errorf("read wrong value after decrement. Expected %d, got %d", 2, val))
 	}
 
 	// check behaviour on bad sector number
 	_, err = rc.Decrement(math.MaxInt64)
-	assertErrorIs(err, ErrInvalidSectorNumber, t, "Expected ErrInvalidSectorNumber, got:")
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
-	assertSuccess(err, t, "Failed to apply decrement update:")
+	if err != nil {
+		t.Fatal("Failed to apply decrement update:", err)
+	}
 	rc.UpdateApplied()
 }
 
@@ -146,15 +174,21 @@ func TestRefCounter_Delete(t *testing.T) {
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
 	err := rc.StartUpdate()
-	assertSuccess(err, t, "Failed to start an update session")
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 
 	// delete the ref counter
 	u, err := rc.DeleteRefCounter()
-	assertSuccess(err, t, "Failed to create a delete update")
+	if err != nil {
+		t.Fatal("Failed to create a delete update", err)
+	}
 
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
-	assertSuccess(err, t, "Failed to apply a delete update:")
+	if err != nil {
+		t.Fatal("Failed to apply a delete update:", err)
+	}
 	rc.UpdateApplied()
 
 	// verify
@@ -176,18 +210,26 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	numSec := 2 + fastrand.Uint64n(10)
 	rc := testPrepareRefCounter(numSec, t)
 	stats, err := os.Stat(rc.filepath)
-	assertSuccess(err, t, "RefCounter creation finished successfully but the file is not accessible:")
+	if err != nil {
+		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
+	}
 	err = rc.StartUpdate()
-	assertSuccess(err, t, "Failed to start an update session")
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 
 	// check behaviour on bad sector number
 	// (trying to drop more sectors than we have)
 	_, err = rc.DropSectors(math.MaxInt64)
-	assertErrorIs(err, ErrInvalidSectorNumber, t, "Expected ErrInvalidSectorNumber, got:")
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 
 	// test DropSectors by dropping two counters
 	u, err := rc.DropSectors(2)
-	assertSuccess(err, t, "Failed to create truncate update:")
+	if err != nil {
+		t.Fatal("Failed to create truncate update:", err)
+	}
 	expectNumSec := numSec - 2
 	if rc.numSectors != expectNumSec {
 		t.Fatal(fmt.Errorf("wrong number of counters after Truncate. Expected %d, got %d", expectNumSec, rc.numSectors))
@@ -195,14 +237,18 @@ func TestRefCounter_DropSectors(t *testing.T) {
 
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
-	assertSuccess(err, t, "Failed to apply truncate update:")
+	if err != nil {
+		t.Fatal("Failed to apply truncate update:", err)
+	}
 	rc.UpdateApplied()
 
 	//verify:  we expect the file size to have shrunk with 2*2 bytes
 	endStats, err := os.Stat(rc.filepath)
+	if err != nil {
+		t.Fatal("Failed to get file stats:", err)
+	}
 	expectSize := stats.Size() - 4
 	actualSize := endStats.Size()
-	assertSuccess(err, t, "Failed to get file stats:")
 	if actualSize != expectSize {
 		t.Fatal(fmt.Sprintf("File size did not shrink as expected. Expected size: %d, actual size: %d", expectSize, actualSize))
 	}
@@ -218,27 +264,37 @@ func TestRefCounter_Increment(t *testing.T) {
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	err := rc.StartUpdate()
-	assertSuccess(err, t, "Failed to start an update session")
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 
 	// test Increment
 	secIdx := rc.numSectors - 2
 	u, err := rc.Increment(secIdx)
-	assertSuccess(err, t, "Failed to create an increment update:")
+	if err != nil {
+		t.Fatal("Failed to create an increment update:", err)
+	}
 
 	// verify: we expect the value to have increased from the base 1 to 2
 	readValAfterInc, err := rc.readCount(secIdx)
-	assertSuccess(err, t, "Failed to read value after increment:")
+	if err != nil {
+		t.Fatal("Failed to read value after increment:", err)
+	}
 	if readValAfterInc != 2 {
 		t.Fatal(fmt.Errorf("read wrong value after increment. Expected %d, got %d", 2, readValAfterInc))
 	}
 
 	// check behaviour on bad sector number
 	_, err = rc.Increment(math.MaxInt64)
-	assertErrorIs(err, ErrInvalidSectorNumber, t, "Expected ErrInvalidSectorNumber, got:")
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
-	assertSuccess(err, t, "Failed to apply increment update:")
+	if err != nil {
+		t.Fatal("Failed to apply increment update:", err)
+	}
 	rc.UpdateApplied()
 }
 
@@ -254,7 +310,9 @@ func TestRefCounter_Load(t *testing.T) {
 
 	// happy case
 	_, err := LoadRefCounter(rc.filepath, testWAL)
-	assertSuccess(err, t, "Failed to load refcounter:")
+	if err != nil {
+		t.Fatal("Failed to load refcounter:", err)
+	}
 
 	// fails with os.ErrNotExist for a non-existent file
 	_, err = LoadRefCounter("there-is-no-such-file.rc", testWAL)
@@ -275,24 +333,32 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 	cid := types.FileContractID(crypto.HashBytes([]byte("contractId")))
 	d := build.TempDir(t.Name())
 	err := os.MkdirAll(d, modules.DefaultDirPerm)
-	assertSuccess(err, t, "Failed to create test directory:")
+	if err != nil {
+		t.Fatal("Failed to create test directory:", err)
+	}
 	path := filepath.Join(d, cid.String()+refCounterExtension)
 
 	// Create a file that contains a corrupted header. This basically means
 	// that the file is too short to have the entire header in there.
 	f, err := os.Create(path)
-	assertSuccess(err, t, "Failed to create test file:")
+	if err != nil {
+		t.Fatal("Failed to create test file:", err)
+	}
 	defer f.Close()
 
 	// The version number is 8 bytes. We'll only write 4.
 	_, err = f.Write(fastrand.Bytes(4))
-	assertSuccess(err, t, "Failed to write to test file:")
+	if err != nil {
+		t.Fatal("Failed to write to test file:", err)
+	}
 	_ = f.Sync()
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
 	_, err = LoadRefCounter(path, testWAL)
-	assertErrorIs(err, io.EOF, t, fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", io.EOF.Error()))
+	if !errors.Contains(err, io.EOF) {
+		t.Fatal(fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", io.EOF.Error()), err)
+	}
 }
 
 // TestRefCounter_Load_InvalidVersion checks that loading a refcounters file
@@ -307,23 +373,31 @@ func TestRefCounter_Load_InvalidVersion(t *testing.T) {
 	cid := types.FileContractID(crypto.HashBytes([]byte("contractId")))
 	d := build.TempDir(t.Name())
 	err := os.MkdirAll(d, modules.DefaultDirPerm)
-	assertSuccess(err, t, "Failed to create test directory:")
+	if err != nil {
+		t.Fatal("Failed to create test directory:", err)
+	}
 	path := filepath.Join(d, cid.String()+refCounterExtension)
 
 	// create a file with a header that encodes a bad version number
 	f, err := os.Create(path)
-	assertSuccess(err, t, "Failed to create test file:")
+	if err != nil {
+		t.Fatal("Failed to create test file:", err)
+	}
 	defer f.Close()
 
 	// The first 8 bytes are the version number. Write down an invalid one
 	// followed 4 counters (another 8 bytes).
 	_, err = f.Write(fastrand.Bytes(16))
-	assertSuccess(err, t, "Failed to write to test file:")
+	if err != nil {
+		t.Fatal("Failed to write to test file:", err)
+	}
 	_ = f.Sync()
 
 	// ensure that we cannot load it and we return the correct error
 	_, err = LoadRefCounter(path, testWAL)
-	assertErrorIs(err, ErrInvalidVersion, t, fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()))
+	if !errors.Contains(err, ErrInvalidVersion) {
+		t.Fatal(fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()), err)
+	}
 }
 
 // TestRefCounter_Swap tests that the Swap method results in correct values
@@ -337,33 +411,47 @@ func TestRefCounter_Swap(t *testing.T) {
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	updates := make([]writeaheadlog.Update, 0)
 	err := rc.StartUpdate()
-	assertSuccess(err, t, "Failed to start an update session")
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 
 	// increment one of the sectors, so we can tell the values apart
 	u, err := rc.Increment(rc.numSectors - 1)
-	assertSuccess(err, t, "Failed to create increment update")
+	if err != nil {
+		t.Fatal("Failed to create increment update", err)
+	}
 	updates = append(updates, u)
 
 	// test Swap
 	us, err := rc.Swap(rc.numSectors-2, rc.numSectors-1)
 	updates = append(updates, us...)
-	assertSuccess(err, t, "Failed to create swap update")
+	if err != nil {
+		t.Fatal("Failed to create swap update", err)
+	}
 	var v1, v2 uint16
 	v1, err = rc.readCount(rc.numSectors - 2)
-	assertSuccess(err, t, "Failed to read value after swap")
+	if err != nil {
+		t.Fatal("Failed to read value after swap", err)
+	}
 	v2, err = rc.readCount(rc.numSectors - 1)
-	assertSuccess(err, t, "Failed to read value after swap")
+	if err != nil {
+		t.Fatal("Failed to read value after swap", err)
+	}
 	if v1 != 2 || v2 != 1 {
 		t.Fatal(fmt.Errorf("read wrong value after swap. Expected %d and %d, got %d and %d", 2, 1, v1, v2))
 	}
 
 	// check behaviour on bad sector number
 	_, err = rc.Swap(math.MaxInt64, 0)
-	assertErrorIs(err, ErrInvalidSectorNumber, t, "Expected ErrInvalidSectorNumber, got:")
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 
 	// apply the updates and check the values again
 	err = rc.CreateAndApplyTransaction(updates...)
-	assertSuccess(err, t, "Failed to apply updates")
+	if err != nil {
+		t.Fatal("Failed to apply updates", err)
+	}
 	rc.UpdateApplied()
 }
 
@@ -395,10 +483,14 @@ func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
 
 	// start an update session
 	err := rc.StartUpdate()
-	assertSuccess(err, t, "Failed to start an update session")
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
 	// delete the ref counter
 	u, err = rc.DeleteRefCounter()
-	assertSuccess(err, t, "Failed to create a delete update")
+	if err != nil {
+		t.Fatal("Failed to create a delete update", err)
+	}
 	// make sure we cannot create any updates after a deletion has been triggered
 	_, err1 = rc.Append()
 	_, err2 = rc.Decrement(1)
@@ -414,12 +506,16 @@ func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
 
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
-	assertSuccess(err, t, "Failed to apply a delete update:")
+	if err != nil {
+		t.Fatal("Failed to apply a delete update:", err)
+	}
 	rc.UpdateApplied()
 
 	// verify: make sure we cannot start an update session on a deleted counter
 	err = rc.StartUpdate()
-	assertErrorIs(err, ErrUpdateAfterDelete, t, "Failed to prevent an update creation after a deletion")
+	if !errors.Contains(err, ErrUpdateAfterDelete) {
+		t.Fatal("Failed to prevent an update creation after a deletion", err)
+	}
 }
 
 // TestRefCounter_WALFunctions tests RefCounter's functions for creating and
@@ -433,32 +529,20 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 	wval := uint16(12)
 	u := createWriteAtUpdate(wpath, wsec, wval)
 	rpath, rsec, rval, err := readWriteAtUpdate(u)
-	assertSuccess(err, t, "Failed to read writeAt update:")
+	if err != nil {
+		t.Fatal("Failed to read writeAt update:", err)
+	}
 	if wpath != rpath || wsec != rsec || wval != rval {
-		t.Fatal(fmt.Sprintf("Wrong values read from WriteAt update. Expected %wsec, %d, %d, found %wsec, %d, %d.", wpath, wsec, wval, rpath, rsec, rval))
+		t.Fatal(fmt.Errorf("wrong values read from WriteAt update. Expected %s, %d, %d, found %s, %d, %d", wpath, wsec, wval, rpath, rsec, rval))
 	}
 
 	u = createTruncateUpdate(wpath, wsec)
 	rpath, rsec, err = readTruncateUpdate(u)
-	assertSuccess(err, t, "Failed to read a truncate update:")
-	if wpath != rpath || wsec != rsec {
-		t.Fatal(fmt.Sprintf("Wrong values read from Truncate update. Expected %wsec, %d found %wsec, %d.", wpath, wsec, rpath, rsec))
-	}
-}
-
-// assertSuccess is a helper function that fails the test with the given message
-// if there is an error
-func assertSuccess(err error, t *testing.T, msg string) {
 	if err != nil {
-		t.Fatal(msg, err)
+		t.Fatal("Failed to read a truncate update:", err)
 	}
-}
-
-// assertSuccess is a helper function that fails the test with the given message
-// if there is an error
-func assertErrorIs(err error, baseError error, t *testing.T, msg string) {
-	if !errors.Contains(err, baseError) {
-		t.Fatal(msg, err)
+	if wpath != rpath || wsec != rsec {
+		t.Fatal(fmt.Errorf("wrong values read from Truncate update. Expected %s, %d found %s, %d", wpath, wsec, rpath, rsec))
 	}
 }
 
@@ -483,11 +567,15 @@ func testPrepareRefCounter(numSec uint64, t *testing.T) *RefCounter {
 	tcid := types.FileContractID(crypto.HashBytes([]byte("contractId")))
 	td := build.TempDir(t.Name())
 	err := os.MkdirAll(td, modules.DefaultDirPerm)
-	assertSuccess(err, t, "Failed to create test directory:")
+	if err != nil {
+		t.Fatal("Failed to create test directory:", err)
+	}
 	path := filepath.Join(td, tcid.String()+refCounterExtension)
 	// create a ref counter
 	rc, err := NewRefCounter(path, numSec, testWAL)
-	assertSuccess(err, t, "Failed to create a reference counter:")
+	if err != nil {
+		t.Fatal("Failed to create a reference counter:", err)
+	}
 	return rc
 }
 
