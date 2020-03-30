@@ -205,7 +205,6 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		// here because the client is not providing payment. This RPC call will
 		// end up with a closed stream, which will end up with a payment error.
 		_ = ht.host.managedRPCUpdatePriceTable(stream)
-
 	}()
 	wg.Wait()
 

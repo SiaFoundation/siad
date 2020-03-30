@@ -156,7 +156,6 @@ func TestNegotiateContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestReviseContract(t *testing.T) {

@@ -77,7 +77,6 @@ func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 
 	// Wait for the method's go routines to finish
 	wgDelete.Wait()
-
 }
 
 // renameDuringDownloadAndStream will download and stream a file in parallel, it

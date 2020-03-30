@@ -48,7 +48,6 @@ func TestUnitSignatureEncoding(t *testing.T) {
 	if sig != unmarshalledSig {
 		t.Error("signature not same after marshalling and unmarshalling")
 	}
-
 }
 
 // TestUnitSigning creates a bunch of keypairs and signs random data with each of

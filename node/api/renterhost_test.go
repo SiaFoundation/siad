@@ -1690,7 +1690,6 @@ func TestUploadedBytesReporting(t *testing.T) {
 		t.Fatalf("api reports having uploaded %v bytes when upload progress is 100%%, but the actual fully redundant file size is %v\n",
 			rf.File.UploadedBytes, fullyRedundantSize(rf.File.CipherType))
 	}
-
 }
 
 // TestRepairLoopBlocking checks if the repair loop blocks operations while a

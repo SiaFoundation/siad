@@ -1933,7 +1933,6 @@ func bandwidthUnit(bps uint64) string {
 			// would give us 1.235 Ybps instead of 1235 Ybps
 			mag *= 1e3
 		}
-
 	}
 	return fmt.Sprintf("%.2f %s", float64(bps)/float64(mag), unit)
 }
@@ -2315,7 +2314,6 @@ func renterfusecmd() {
 	}
 	w.Flush()
 	fmt.Println()
-
 }
 
 // renterfusemountcmd is the handler for the command `siac renter fuse mount [path] [siapath]`.
