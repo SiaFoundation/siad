@@ -100,31 +100,31 @@ type (
 )
 
 // LoadRefCounter loads a refcounter from disk
-func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
+func LoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
-		return RefCounter{}, err
+		return &RefCounter{}, err
 	}
 	defer f.Close()
 
 	var header RefCounterHeader
 	headerBytes := make([]byte, RefCounterHeaderSize)
 	if _, err = f.ReadAt(headerBytes, 0); err != nil {
-		return RefCounter{}, errors.AddContext(err, "unable to read from file")
+		return &RefCounter{}, errors.AddContext(err, "unable to read from file")
 	}
 	if err = deserializeHeader(headerBytes, &header); err != nil {
-		return RefCounter{}, errors.AddContext(err, "unable to load refcounter header")
+		return &RefCounter{}, errors.AddContext(err, "unable to load refcounter header")
 	}
 	if header.Version != RefCounterVersion {
-		return RefCounter{}, errors.AddContext(ErrInvalidVersion, fmt.Sprintf("expected version %d, got version %d", RefCounterVersion, header.Version))
+		return &RefCounter{}, errors.AddContext(ErrInvalidVersion, fmt.Sprintf("expected version %d, got version %d", RefCounterVersion, header.Version))
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
-		return RefCounter{}, errors.AddContext(err, "failed to read file stats")
+		return &RefCounter{}, errors.AddContext(err, "failed to read file stats")
 	}
 	numSectors := uint64((fi.Size() - RefCounterHeaderSize) / 2)
-	return RefCounter{
+	return &RefCounter{
 		RefCounterHeader: header,
 		filepath:         path,
 		numSectors:       numSectors,
@@ -137,7 +137,7 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 
 // NewRefCounter creates a new sector reference counter file to accompany
 // a contract file
-func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCounter, error) {
+func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
@@ -150,7 +150,7 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (RefCount
 	updateCounters := writeaheadlog.WriteAtUpdate(path, RefCounterHeaderSize, b)
 
 	err := wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, updateHeader, updateCounters)
-	return RefCounter{
+	return &RefCounter{
 		RefCounterHeader: h,
 		filepath:         path,
 		numSectors:       numSec,
