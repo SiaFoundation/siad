@@ -347,11 +347,12 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 	defer f.Close()
 
 	// The version number is 8 bytes. We'll only write 4.
-	_, err = f.Write(fastrand.Bytes(4))
-	if err != nil {
+	if _, err = f.Write(fastrand.Bytes(4)); err != nil {
 		t.Fatal("Failed to write to test file:", err)
 	}
-	_ = f.Sync()
+	if err = f.Sync(); err != nil {
+		t.Fatal("Failed to sync to disk:", err)
+	}
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
