@@ -278,7 +278,8 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	// period to be confident that the host really is offline for good, and if we
 	// don't have any contracts with that host.
 	_, haveContractWithHost := hdb.knownContracts[entry.PublicKey.String()]
-	if !haveContractWithHost && time.Now().Sub(newEntry.ScanHistory[0].Timestamp) > maxHostDowntime && !recentUptime && len(newEntry.ScanHistory) >= minScans {
+	downPastMaxDowntime := time.Now().Sub(newEntry.ScanHistory[0].Timestamp) > maxHostDowntime && !recentUptime
+	if !haveContractWithHost && downPastMaxDowntime && len(newEntry.ScanHistory) >= minScans {
 		// Remove from hosttrees
 		err := hdb.remove(newEntry.PublicKey)
 		if err != nil {
