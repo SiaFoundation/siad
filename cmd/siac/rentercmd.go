@@ -2719,35 +2719,43 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		return
 	}
 
-	uploadedSkyfiles := make(map[string]string)
-	var muUploaded sync.Mutex
-	var wg sync.WaitGroup
-	// make a channel that limits the parallel goroutines to X
-	threadsChan := make(chan struct{}, SimultaneousSkynetUploads)
-	// Collect all filenames under this directory with their relative paths.
-	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+	filesChan := make(chan string)
+	// Collect all filenames under this directory with their relative paths and
+	// pipe them into a channel to be uploaded
+	go filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			die(fmt.Sprintf("Failed to process path %s: ", path), err)
 		}
 		if info.IsDir() {
 			return nil
 		}
-		wg.Add(1)
-		threadsChan <- struct{}{} // use one goroutine slot
-		go func(filename string) {
-			defer wg.Done()
-			defer func() { <-threadsChan }() // release the goroutine slot
+		filesChan <- path
+		return nil
+	})
+
+	// keep a list of all uploaded files and their skylinks, so we can print
+	// them at the end of the process
+	uploadedSkyfiles := make(map[string]string)
+	var muUploaded sync.Mutex
+	var wg sync.WaitGroup
+	upload := func() {
+		defer wg.Done()
+		for filename := range filesChan {
 			// get only the filename and path, relative to the original destSiaPath
 			// in order to figure out where to put the file
 			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
 			skylink := skynetuploadfile(filename, newDestSiaPath, progress)
-			// remember where we uploaded the file, so we can print it at the end
 			muUploaded.Lock()
 			uploadedSkyfiles[filename] = skylink
 			muUploaded.Unlock()
-		}(path)
-		return nil
-	})
+		}
+	}
+
+	// start the workers that will upload the files in parallel
+	for i := 0; i < SimultaneousSkynetUploads; i++ {
+		wg.Add(1)
+		go upload()
+	}
 	wg.Wait()
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(uploadedSkyfiles))
 	for name, skylink := range uploadedSkyfiles {
