@@ -1,4 +1,4 @@
-package skynetblacklist
+package skynetportals
 
 import (
 	"bytes"
@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -24,11 +23,10 @@ const (
 	metadataPageSize int64 = 4096
 
 	// persistFile is the name of the persist file
-	persistFile string = "skynetblacklist"
+	persistFile string = "skynetportals"
 
-	// persistMerkleRootSize is the size of a persisted merkleroot in the
-	// blacklist
-	persistMerkleRootSize int64 = 32 + 1
+	// persistPortalSize is the size of a persisted portal in the portals list
+	persistPortalSize int64 = modules.MaxEncodedNetAddressLength + 2
 )
 
 var (
@@ -37,71 +35,96 @@ var (
 	errWrongVersion = errors.New("wrong version")
 
 	// metadataHeader is the header of the metadata for the persist file
-	metadataHeader = types.NewSpecifier("SkynetBlacklist\n")
+	metadataHeader = types.NewSpecifier("SkynetPortals\n")
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = types.NewSpecifier("v1.4.3\n")
+	metadataVersion = types.NewSpecifier("v1.4.6\n")
 )
 
-// marshalMetadata marshals the Skynet Blacklist's metadata and returns the byte
+// marshalMetadata marshals the Skynet Portal List's metadata and returns the byte
 // slice
-func (sb *SkynetBlacklist) marshalMetadata() ([]byte, error) {
+func (sp *SkynetPortals) marshalMetadata() ([]byte, error) {
 	headerBytes, headerErr := metadataHeader.MarshalText()
 	versionBytes, versionErr := metadataVersion.MarshalText()
-	lengthBytes := encoding.Marshal(sb.persistLength)
+	lengthBytes := encoding.Marshal(sp.persistLength)
 	metadataBytes := append(headerBytes, append(versionBytes, lengthBytes...)...)
 	return metadataBytes, errors.Compose(headerErr, versionErr)
 }
 
 // marshalSia implements the encoding.SiaMarshaler interface.
-func marshalSia(w io.Writer, merkleRoot crypto.Hash, blacklisted bool) error {
+func marshalSia(w io.Writer, address modules.NetAddress, public bool, listed bool) error {
 	e := encoding.NewEncoder(w)
-	e.Encode(merkleRoot)
-	e.WriteBool(blacklisted)
+	// Create a padded buffer so that we always write the same amount of bytes.
+	buf := make([]byte, modules.MaxEncodedNetAddressLength)
+	copy(buf, address)
+	_, err := e.Write(buf)
+	if err != nil {
+		return err
+	}
+	err = e.WriteBool(public)
+	if err != nil {
+		return err
+	}
+	err = e.WriteBool(listed)
+	if err != nil {
+		return err
+	}
 	return e.Err()
 }
 
-// unmarshalBlacklist unmarshals the sia encoded blacklist
-func unmarshalBlacklist(r io.Reader, numMerkleRoots int64) (map[crypto.Hash]struct{}, error) {
-	// Unmarshal numLinks blacklisted links one by one
-	blacklist := make(map[crypto.Hash]struct{})
-	for i := int64(0); i < numMerkleRoots; i++ {
-		merkleRoot, blacklisted, err := unmarshalSia(r)
+// unmarshalPortals unmarshals the sia encoded portals list
+func unmarshalPortals(r io.Reader, numPortals int64) (map[modules.NetAddress]bool, error) {
+	// Unmarshal portals one by one
+	portals := make(map[modules.NetAddress]bool)
+	for i := int64(0); i < numPortals; i++ {
+		address, public, listed, err := unmarshalSia(r)
 		if err != nil {
 			return nil, err
 		}
-		if !blacklisted {
-			delete(blacklist, merkleRoot)
+		if !listed {
+			delete(portals, address)
 			continue
 		}
-		blacklist[merkleRoot] = struct{}{}
+		portals[address] = public
 	}
-	return blacklist, nil
+	return portals, nil
 }
 
 // unmarshalSia implements the encoding.SiaUnmarshaler interface.
-func unmarshalSia(r io.Reader) (merkleRoot crypto.Hash, blacklisted bool, err error) {
+func unmarshalSia(r io.Reader) (address modules.NetAddress, public, listed bool, err error) {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	err = d.Decode(&merkleRoot)
+	// Read into a padded buffer and extract the address string.
+	buf := make([]byte, modules.MaxEncodedNetAddressLength)
+	n, err := d.Read(buf)
 	if err != nil {
-		err = errors.AddContext(err, "unable to read merkleroot")
+		err = errors.AddContext(err, "unable to read address")
 		return
 	}
-	blacklisted = d.NextBool()
+	if n != len(buf) {
+		err = errors.New("did not read address correctly")
+		return
+	}
+	end := bytes.IndexByte(buf, 0)
+	if end == -1 {
+		end = len(buf)
+	}
+	address = modules.NetAddress(string(buf[:end]))
+	public = d.NextBool()
+	listed = d.NextBool()
 	err = d.Err()
 	return
 }
 
-// initPersist initializes the persistence of the SkynetBlacklist
-func (sb *SkynetBlacklist) callInitPersist() error {
+// initPersist initializes the persistence of the SkynetPortals
+func (sp *SkynetPortals) callInitPersist() error {
 	// Initialize the persistence directory
-	err := os.MkdirAll(sb.staticPersistDir, modules.DefaultDirPerm)
+	err := os.MkdirAll(sp.staticPersistDir, modules.DefaultDirPerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to make persistence directory")
 	}
 
 	// Try and Load persistence
-	err = sb.load()
+	err = sp.load()
 	if err == nil {
 		return nil
 	} else if !os.IsNotExist(err) {
@@ -109,15 +132,15 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath.Join(sp.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
 	// Marshal the metadata.
-	sb.persistLength = metadataPageSize
-	metadataBytes, err := sb.marshalMetadata()
+	sp.persistLength = metadataPageSize
+	metadataBytes, err := sp.marshalMetadata()
 	if err != nil {
 		return errors.AddContext(err, "unable to marshal metadata")
 	}
@@ -142,51 +165,51 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	return nil
 }
 
-// callUpdateAndAppend updates the blacklist with the additions and removals and
-// appends the changes to the persist file on disk.
+// callUpdateAndAppend updates the portals list with the additions and removals
+// and appends the changes to the persist file on disk.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Skylink) error {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
+func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) error {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 
 	// Create buffer for encoder
 	var buf bytes.Buffer
-	// Create and encode the persist links
-	for _, skylink := range additions {
-		// Add skylink merkleroot to map
-		mr := skylink.MerkleRoot()
-		sb.merkleroots[mr] = struct{}{}
+	// Create and encode the persist portals
+	for _, portal := range additions {
+		// Add portal to map
+		address := portal.Address
+		public := portal.Public
+		sp.portals[address] = public
 
 		// Marshal the update
-		err := marshalSia(&buf, mr, true)
+		err := marshalSia(&buf, address, public, true)
 		if err != nil {
-			return errors.AddContext(err, "unable to encode persistLink")
+			return errors.AddContext(err, "unable to encode persist portal")
 		}
 	}
-	for _, skylink := range removals {
-		// Remove skylink merkleroot from map
-		mr := skylink.MerkleRoot()
-		delete(sb.merkleroots, mr)
+	for _, address := range removals {
+		// Remove portal from map
+		delete(sp.portals, address)
 
 		// Marshal the update
-		err := marshalSia(&buf, mr, false)
+		err := marshalSia(&buf, address, true, false)
 		if err != nil {
-			return errors.AddContext(err, "unable to encode persistLink")
+			return errors.AddContext(err, "unable to encode persist portal")
 		}
 	}
 
 	// Open file
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath.Join(sp.staticPersistDir, persistFile), os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
 	// Append data and sync
-	_, err = f.WriteAt(buf.Bytes(), sb.persistLength)
+	_, err = f.WriteAt(buf.Bytes(), sp.persistLength)
 	if err != nil {
-		return errors.AddContext(err, "unable to append new data to blacklist persist file")
+		return errors.AddContext(err, "unable to append new data to portals persist file")
 	}
 	err = f.Sync()
 	if err != nil {
@@ -194,8 +217,8 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 	}
 
 	// Update length and sync
-	sb.persistLength += int64(buf.Len())
-	lengthBytes := encoding.Marshal(sb.persistLength)
+	sp.persistLength += int64(buf.Len())
+	lengthBytes := encoding.Marshal(sp.persistLength)
 
 	// Write to file
 	lengthOffset := int64(2 * types.SpecifierLen)
@@ -210,10 +233,10 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 	return nil
 }
 
-// load loads the persisted blacklist from disk
-func (sb *SkynetBlacklist) load() error {
+// load loads the persisted portals list from disk.
+func (sp *SkynetPortals) load() error {
 	// Open File
-	f, err := os.Open(filepath.Join(sb.staticPersistDir, persistFile))
+	f, err := os.Open(filepath.Join(sp.staticPersistDir, persistFile))
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return err
@@ -227,37 +250,37 @@ func (sb *SkynetBlacklist) load() error {
 	if err != nil {
 		return errors.AddContext(err, "unable to read metadata bytes from file")
 	}
-	err = sb.unmarshalMetadata(metadataBytes)
+	err = sp.unmarshalMetadata(metadataBytes)
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal metadata bytes")
 	}
 
-	// Check if there is a persisted blacklist after the metatdata
-	goodBytes := sb.persistLength - metadataPageSize
+	// Check if there is a persisted portals list after the metatdata
+	goodBytes := sp.persistLength - metadataPageSize
 	if goodBytes <= 0 {
 		return nil
 	}
 
-	// Seek to the start of the persisted blacklist
+	// Seek to the start of the persisted portals list
 	_, err = f.Seek(metadataPageSize, 0)
 	if err != nil {
-		return errors.AddContext(err, "unable to seek to start of persisted blacklist")
+		return errors.AddContext(err, "unable to seek to start of persisted portals list")
 	}
-	// Decode persist links
-	blacklist, err := unmarshalBlacklist(f, goodBytes/persistMerkleRootSize)
+	// Decode persist portals
+	portals, err := unmarshalPortals(f, goodBytes/persistPortalSize)
 	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal persistLinks")
+		return errors.AddContext(err, "unable to unmarshal persist portals")
 	}
 
-	// Add to Skynet Blacklist
-	sb.merkleroots = blacklist
+	// Add to Skynet Portals List
+	sp.portals = portals
 
 	return nil
 }
 
-// unmarshalMetadata ummarshals the Skynet Blacklist's metadata from the
-// provided byte slice
-func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
+// unmarshalMetadata ummarshals the Skynet Portals List's metadata from the
+// provided byte slice.
+func (sp *SkynetPortals) unmarshalMetadata(raw []byte) error {
 	// Define offsets for reading from provided byte slice
 	versionOffset := types.SpecifierLen
 	lengthOffset := 2 * types.SpecifierLen
@@ -280,5 +303,5 @@ func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
 	}
 
 	// Unmarshal the length
-	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
+	return encoding.Unmarshal(raw[lengthOffset:], &sp.persistLength)
 }

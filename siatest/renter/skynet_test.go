@@ -55,6 +55,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		{Name: "TestSkynetPortals", Test: testSkynetPortals},
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
@@ -1383,7 +1384,7 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	data := fastrand.Bytes(int(modules.SectorSize) + 100 + siatest.Fuzz())
 	reader := bytes.NewReader(data)
 	filename := "skyfile"
-	uploadSiaPath, err := modules.NewSiaPath("testskyfile")
+	uploadSiaPath, err := modules.NewSiaPath("testblacklist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1532,6 +1533,125 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetPortals tests the skynet portals module.
+func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	portal1 := modules.SkynetPortalInfo{
+		Address: modules.NetAddress("siasky.net:9980"),
+		Public:  true,
+	}
+	// loopback address
+	portal2 := modules.SkynetPortalInfo{
+		Address: "localhost:9980",
+		Public:  true,
+	}
+	portal3 := modules.SkynetPortalInfo{
+		Address: modules.NetAddress("siasky.net"),
+		Public:  true,
+	}
+
+	// Add portal.
+	add := []modules.SkynetPortalInfo{portal1}
+	remove := []modules.NetAddress{}
+	err := r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the portal has been added.
+	spg, err := r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
+	}
+	if spg.Portals[0] != portal1 {
+		t.Fatalf("Addresses don't match, expected %v got %v", portal1, spg.Portals[0])
+	}
+
+	// Remove the portal.
+	add = []modules.SkynetPortalInfo{}
+	remove = []modules.NetAddress{portal1.Address}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the portal has been removed.
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 0 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 0, len(spg.Portals))
+	}
+
+	// Try to add and remove the portal at the same time.
+	add = []modules.SkynetPortalInfo{portal2}
+	remove = []modules.NetAddress{portal2.Address}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the portal was not added.
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 0 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 0, len(spg.Portals))
+	}
+
+	// Test updating a portal's public status.
+	portal1.Public = false
+	add = []modules.SkynetPortalInfo{portal1}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the portal has been added.
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
+	}
+	if spg.Portals[0] != portal1 {
+		t.Fatalf("Addresses don't match, expected %v got %v", portal1, spg.Portals[0])
+	}
+
+	portal1.Public = true
+	add = []modules.SkynetPortalInfo{portal1}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the portal has been added.
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spg.Portals[0] != portal1 {
+		t.Fatalf("Addresses don't match, expected %v got %v", portal1, spg.Portals[0])
+	}
+
+	// Test an invalid network address.
+	add = []modules.SkynetPortalInfo{portal3}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	if !strings.Contains(err.Error(), "missing port in address") {
+		t.Fatal("expected 'missing port' error")
 	}
 }
 

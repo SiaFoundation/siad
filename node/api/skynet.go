@@ -61,6 +61,19 @@ type (
 		Remove []string `json:"remove"`
 	}
 
+	// SkynetPortalsGET contains the information queried for the /skynet/portals
+	// GET endpoint.
+	SkynetPortalsGET struct {
+		Portals []modules.SkynetPortalInfo `json:"portals"`
+	}
+
+	// SkynetPortalsPOST contains the information needed for the /skynet/portals
+	// POST endpoint to be called.
+	SkynetPortalsPOST struct {
+		Add    []modules.SkynetPortalInfo `json:"add"`
+		Remove []modules.NetAddress       `json:"remove"`
+	}
+
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
@@ -81,8 +94,8 @@ type (
 	}
 )
 
-// skynetBlacklistHandlerGET handles the API call to get the list of
-// blacklisted skylinks
+// skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
+// skylinks.
 func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the Blacklist
 	blacklist, err := api.renter.Blacklist()
@@ -96,7 +109,7 @@ func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request
 	})
 }
 
-// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
+// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks.
 func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
 	var params SkynetBlacklistPOST
@@ -138,6 +151,66 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
 	if err != nil {
 		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
+// skynetPortalsHandlerGET handles the API call to get the list of known skynet
+// portals.
+func (api *API) skynetPortalsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the list of portals.
+	portals, err := api.renter.Portals()
+	if err != nil {
+		WriteError(w, Error{"unable to get the blacklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetPortalsGET{
+		Portals: portals,
+	})
+}
+
+// skynetPortalsHandlerPOST handles the API call to add and remove portals from
+// the list of known skynet portals.
+func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters.
+	var params SkynetPortalsPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check for nil input
+	if len(params.Add)+len(params.Remove) == 0 {
+		WriteError(w, Error{"no portals submitted"}, http.StatusBadRequest)
+		return
+	}
+
+	// Convert to portal info objects
+	addPortals := make([]modules.SkynetPortalInfo, len(params.Add))
+	for i, portalInfo := range params.Add {
+		if err := portalInfo.Address.IsStdValid(); err != nil {
+			WriteError(w, Error{"invalid network address: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		addPortals[i] = portalInfo
+	}
+	removePortals := make([]modules.NetAddress, len(params.Remove))
+	for i, address := range params.Remove {
+		if err := address.IsStdValid(); err != nil {
+			WriteError(w, Error{"invalid network address: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		removePortals[i] = address
+	}
+
+	// Update the list of known skynet portals.
+	err = api.renter.UpdateSkynetPortals(addPortals, removePortals)
+	if err != nil {
+		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 

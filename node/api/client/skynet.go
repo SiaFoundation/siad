@@ -308,6 +308,26 @@ func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
 	return
 }
 
+// SkynetPortalsGet requests the /skynet/portals Get endpoint.
+func (c *Client) SkynetPortalsGet() (portals api.SkynetPortalsGET, err error) {
+	err = c.get("/skynet/portals", &portals)
+	return
+}
+
+// SkynetPortalsPost requests the /skynet/portals Post endpoint.
+func (c *Client) SkynetPortalsPost(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) (err error) {
+	spp := api.SkynetPortalsPOST{
+		Add:    additions,
+		Remove: removals,
+	}
+	data, err := json.Marshal(spp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/skynet/portals", string(data), nil)
+	return
+}
+
 // SkynetStatsGet requests the /skynet/stats Get endpoint
 func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 	err = c.get("/skynet/stats", &stats)

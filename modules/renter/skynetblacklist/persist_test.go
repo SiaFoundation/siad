@@ -42,7 +42,7 @@ func TestPersist(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Creat a new SkynetBlacklist
+	// Create a new SkynetBlacklist
 	testdir := testDir(t.Name())
 	sb, err := New(testdir)
 	if err != nil {
@@ -96,9 +96,9 @@ func TestPersist(t *testing.T) {
 	if len(sb.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb.merkleroots))
 	}
-	mr, ok := sb.merkleroots[skylink.MerkleRoot()]
+	_, ok := sb.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load a new Skynet Blacklist to verify the contents from disk get loaded
@@ -118,9 +118,9 @@ func TestPersist(t *testing.T) {
 	if len(sb2.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
 	}
-	mr, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Add the skylink again
@@ -133,9 +133,9 @@ func TestPersist(t *testing.T) {
 	if len(sb2.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
 	}
-	mr, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load another new Skynet Blacklist to verify the contents from disk get loaded
@@ -155,9 +155,9 @@ func TestPersist(t *testing.T) {
 	if len(sb3.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb3.merkleroots))
 	}
-	mr, ok = sb3.merkleroots[skylink.MerkleRoot()]
+	_, ok = sb3.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 }
 
@@ -194,7 +194,7 @@ func TestMarshalSia(t *testing.T) {
 		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, mr)
 	}
 	if bl {
-		t.Fatal("expected persisted link to be blacklisted")
+		t.Fatal("expected persisted link to not be blacklisted")
 	}
 	mr, bl, err = unmarshalSia(r)
 	if err != nil {
