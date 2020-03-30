@@ -18,7 +18,7 @@ Gitlab registration token is needed to pair the new runner with Gitlab repositor
 - From Sia repo directory `scripts/gitlab-windows-runner/setup`
   download the installation script `setup-gitlab-windows-runner.ps1`
   to the Windows machine
-- Open PowerShell console (do NOT use: run as administrator),
+- Open PowerShell console (do NOT use: "Run as administrator"),
   because it spoils Windows service installation
 - Execute the downloaded PowerShell script
 
