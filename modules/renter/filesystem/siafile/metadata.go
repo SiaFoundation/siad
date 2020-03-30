@@ -191,9 +191,17 @@ func (sf *SiaFile) AccessTime() time.Time {
 }
 
 // AddSkylink will add a skylink to the SiaFile.
-func (sf *SiaFile) AddSkylink(s modules.Skylink) error {
+func (sf *SiaFile) AddSkylink(s modules.Skylink) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	skylinkBackup := sf.staticMetadata.Skylinks
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.Skylinks = skylinkBackup
+		}
+	}()
 	sf.staticMetadata.Skylinks = append(sf.staticMetadata.Skylinks, s.String())
 
 	// Save changes to metadata to disk.
@@ -306,17 +314,27 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 // rename changes the name of the file to a new one. To guarantee that renaming
 // the file is atomic across all operating systems, we create a wal transaction
 // that moves over all the chunks one-by-one and deletes the src file.
-func (sf *SiaFile) rename(newSiaFilePath string) error {
+func (sf *SiaFile) rename(newSiaFilePath string) (err error) {
 	if sf.deleted {
 		return errors.New("can't rename deleted siafile")
 	}
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldMD := sf.staticMetadata
+	oldPath := sf.siaFilePath
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.ChangeTime = oldMD.ChangeTime
+			sf.siaFilePath = oldPath
+		}
+	}()
 	// Check if file exists at new location.
 	if _, err := os.Stat(newSiaFilePath); err == nil {
 		return ErrPathOverload
 	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
-	err := os.MkdirAll(dir, 0700)
+	err = os.MkdirAll(dir, 0700)
 	if err != nil {
 		return err
 	}
@@ -353,9 +371,18 @@ func (sf *SiaFile) rename(newSiaFilePath string) error {
 }
 
 // SetMode sets the filemode of the sia file.
-func (sf *SiaFile) SetMode(mode os.FileMode) error {
+func (sf *SiaFile) SetMode(mode os.FileMode) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldMD := sf.staticMetadata
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.Mode = oldMD.Mode
+			sf.staticMetadata.ChangeTime = oldMD.ChangeTime
+		}
+	}()
 	sf.staticMetadata.Mode = mode
 	sf.staticMetadata.ChangeTime = time.Now()
 
@@ -380,9 +407,17 @@ func (sf *SiaFile) SetLastHealthCheckTime() {
 
 // SetLocalPath changes the local path of the file which is used to repair
 // the file from disk.
-func (sf *SiaFile) SetLocalPath(path string) error {
+func (sf *SiaFile) SetLocalPath(path string) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldMD := sf.staticMetadata
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.LocalPath = oldMD.LocalPath
+		}
+	}()
 	sf.staticMetadata.LocalPath = path
 
 	// Save changes to metadata to disk.
@@ -406,9 +441,15 @@ func (sf *SiaFile) UpdateUniqueID() {
 }
 
 // UpdateAccessTime updates the AccessTime timestamp to the current time.
-func (sf *SiaFile) UpdateAccessTime() error {
+func (sf *SiaFile) UpdateAccessTime() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	oldMD := sf.staticMetadata
+	defer func() {
+		if err != nil {
+			sf.staticMetadata.AccessTime = oldMD.AccessTime
+		}
+	}()
 	sf.staticMetadata.AccessTime = time.Now()
 
 	// Save changes to metadata to disk.
