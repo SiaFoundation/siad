@@ -28,6 +28,7 @@ The script
 - installs git
 - Installs golang
 - Installs make
+- Installs dokany (FUSE for Windows)
 - Installs Gitlab Runner
 - Registers Gitlab Runner using previously prepared token
 - Sets the Gitlab Runner tag to `nebulous-windows`
