@@ -191,15 +191,19 @@ func accountPaymentDetails(message modules.WithdrawalMessage) (*paymentDetails, 
 
 // contractPaymentDetails returns the payment details for a payment that was
 // paid for using a file contract. It takes the old and new file contract
-// revision to calculate the output deltas.
-func contractPaymentDetails(old, new types.FileContractRevision) (*paymentDetails, error) {
-	// note that all values are calculated using safeSub, which performs a
-	// sanity check against underflows.
-	vhp, err := safeSub(new.ValidHostPayout(), old.ValidHostPayout())
+// revision to calculate the amount that was paid to the host and how much
+// collateral moved.
+//
+// Note that this function does not validate the revisions. To mitigate possible
+// underflows the values are calculated using safeSub which performs a sanity
+// check against underflows. The payment revision will have been verified during
+// the payment process.
+func contractPaymentDetails(curr, payment types.FileContractRevision) (*paymentDetails, error) {
+	vhp, err := safeSub(payment.ValidHostPayout(), curr.ValidHostPayout())
 	if err != nil {
 		return nil, err
 	}
-	mho, err := safeSub(old.MissedHostOutput().Value, new.MissedHostOutput().Value)
+	mho, err := safeSub(curr.MissedHostOutput().Value, payment.MissedHostOutput().Value)
 	if err != nil {
 		return nil, err
 	}

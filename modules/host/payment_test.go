@@ -171,7 +171,7 @@ func TestProcessPayment(t *testing.T) {
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK crypto.SecretKey) {
-	amount := types.NewCurrency64(1)
+	amount := types.SiacoinPrecision
 	amountStr := amount.HumanString()
 
 	// prepare an updated revision that pays the host
