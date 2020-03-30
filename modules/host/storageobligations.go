@@ -336,7 +336,7 @@ func (so storageObligation) merkleRoot() crypto.Hash {
 // the latest revision for the storage obligation.
 func (so storageObligation) payouts() (valid []types.SiacoinOutput, missed []types.SiacoinOutput) {
 	valid = make([]types.SiacoinOutput, 2)
-	missed = make([]types.SiacoinOutput, 2)
+	missed = make([]types.SiacoinOutput, 3)
 	if len(so.RevisionTransactionSet) > 0 {
 		copy(valid, so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewValidProofOutputs)
 		copy(missed, so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewMissedProofOutputs)

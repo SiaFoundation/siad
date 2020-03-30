@@ -53,9 +53,16 @@ var (
 // RPC.
 type PaymentProcessor interface {
 	// ProcessPayment takes a stream and handles the payment request objects
-	// sent by the caller. Returns the account id (in case payment was made by
-	// an ephemeral account), the amount paid, or an error in case of failure.
-	ProcessPayment(stream siamux.Stream) (string, types.Currency, error)
+	// sent by the caller. Returns an object that implements the PaymentDetails interface, or an error in case of failure.
+	ProcessPayment(stream siamux.Stream) (PaymentDetails, error)
+}
+
+// PaymentDetails is an interface that defines method that give more information
+// about the details of a processed payment.
+type PaymentDetails interface {
+	Account() string
+	Amount() types.Currency
+	AddedCollateral() types.Currency
 }
 
 // Payment identifiers

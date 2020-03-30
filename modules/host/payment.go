@@ -3,6 +3,7 @@ package host
 import (
 	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -16,53 +17,53 @@ import (
 // amount paid and an error in case of failure. The account id will only be
 // valid if the payment method is PayByEphemeralAccount, it will be an empty
 // string otherwise.
-func (h *Host) ProcessPayment(stream siamux.Stream) (string, types.Currency, error) {
+func (h *Host) ProcessPayment(stream siamux.Stream) (modules.PaymentDetails, error) {
 	// read the PaymentRequest
 	var pr modules.PaymentRequest
 	if err := modules.RPCRead(stream, &pr); err != nil {
-		return "", types.ZeroCurrency, errors.AddContext(err, "Could not read payment request")
+		return nil, errors.AddContext(err, "Could not read payment request")
 	}
+
 	// process payment depending on the payment method
-	switch pr.Type {
-	case modules.PayByEphemeralAccount:
+	if pr.Type == modules.PayByEphemeralAccount {
 		return h.staticPayByEphemeralAccount(stream)
-	case modules.PayByContract:
-		amountPaid, err := h.managedPayByContract(stream)
-		return "", amountPaid, err
-	default:
-		return "", types.ZeroCurrency, errors.Compose(fmt.Errorf("Could not handle payment method %v", pr.Type), modules.ErrUnknownPaymentMethod)
 	}
+	if pr.Type == modules.PayByContract {
+		return h.managedPayByContract(stream)
+	}
+
+	return nil, errors.Compose(fmt.Errorf("Could not handle payment method %v", pr.Type), modules.ErrUnknownPaymentMethod)
 }
 
 // staticPayByEphemeralAccount processes a PayByEphemeralAccountRequest coming
 // in over the given stream.
-func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (string, types.Currency, error) {
+func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.PaymentDetails, error) {
 	// read the PayByEphemeralAccountRequest
 	var req modules.PayByEphemeralAccountRequest
 	if err := modules.RPCRead(stream, &req); err != nil {
-		return "", types.ZeroCurrency, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
+		return nil, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
 	}
 
 	// process the request
 	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority); err != nil {
-		return "", types.ZeroCurrency, errors.AddContext(err, "Withdraw failed")
+		return nil, errors.AddContext(err, "Withdraw failed")
 	}
 
 	// send the response
 	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: req.Message.Amount}); err != nil {
-		return "", types.ZeroCurrency, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
+		return nil, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
-	return req.Message.Account, req.Message.Amount, nil
+	return accountPaymentDetails(req.Message)
 }
 
 // managedPayByContract processes a PayByContractRequest coming in over the
 // given stream.
-func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error) {
+func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetails, error) {
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
 	if err := modules.RPCRead(stream, &pbcr); err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not read PayByContractRequest")
+		return nil, errors.AddContext(err, "Could not read PayByContractRequest")
 	}
 	fcid := pbcr.ContractID
 
@@ -73,35 +74,51 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error
 	// get the storage obligation
 	so, err := h.managedGetStorageObligation(fcid)
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not fetch storage obligation")
+		return nil, errors.AddContext(err, "Could not fetch storage obligation")
 	}
 
-	// extract the proposed revision and the signature from the request
-	recentRevision, err := so.recentRevision()
+	// get the current blockheight
+	bh := h.BlockHeight()
+
+	// extract the proposed revision
+	currentRevision, err := so.recentRevision()
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not find the most recent revision")
+		return nil, errors.AddContext(err, "Could not find the most recent revision")
 	}
-	renterRevision := revisionFromRequest(recentRevision, pbcr)
-	renterSignature := signatureFromRequest(recentRevision, pbcr)
+	paymentRevision := revisionFromRequest(currentRevision, pbcr)
+
+	// extract the amount the renter is paying the host
+	crp := currentRevision.ValidRenterPayout()
+	nrp := paymentRevision.ValidRenterPayout()
+	if crp.Cmp(nrp) < 0 {
+		return nil, errors.AddContext(err, "Invalid renter payout, causes underflow")
+	}
+	amount := crp.Sub(nrp)
+
+	// verify the payment revision
+	err = verifyPaymentRevision(currentRevision, paymentRevision, bh, amount)
+	if err != nil {
+		return nil, errors.AddContext(err, "Invalid payment revision")
+	}
 
 	// sign the revision
-	txn, err := createRevisionSignature(renterRevision, renterSignature, h.secretKey, h.blockHeight)
+	renterSignature := signatureFromRequest(currentRevision, pbcr)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
+		return nil, errors.AddContext(err, "Could not create revision signature")
 	}
 
 	// extract the payment output & update the storage obligation with the
 	// host's signature
-	amount := recentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
 	so.RevisionTransactionSet = []types.Transaction{{
-		FileContractRevisions: []types.FileContractRevision{renterRevision},
+		FileContractRevisions: []types.FileContractRevision{paymentRevision},
 		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 	}}
 
 	// update the storage obligation
 	err = h.managedModifyStorageObligation(so, nil, nil)
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not modify storage obligation")
+		return nil, errors.AddContext(err, "Could not modify storage obligation")
 	}
 
 	// send the response
@@ -111,10 +128,10 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (types.Currency, error
 		Signature: sig,
 	})
 	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not send PayByContractResponse")
+		return nil, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return amount, nil
+	return contractPaymentDetails(currentRevision, paymentRevision)
 }
 
 // revisionFromRequest is a helper function that creates a copy of the recent
@@ -153,4 +170,63 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 		PublicKeyIndex: 0,
 		Signature:      pbcr.Signature,
 	}
+}
+
+// payment details is a helper struct that implements the PaymentDetails
+// interface.
+type paymentDetails struct {
+	account         string
+	amount          types.Currency
+	addedCollateral types.Currency
+}
+
+// accountPaymentDetails returns the payment details for a payment that was
+// paid for using an ephemeral account.
+func accountPaymentDetails(message modules.WithdrawalMessage) (*paymentDetails, error) {
+	return &paymentDetails{
+		account: message.Account,
+		amount:  message.Amount,
+	}, nil
+}
+
+// contractPaymentDetails returns the payment details for a payment that was
+// paid for using a file contract. It takes the old and new file contract
+// revision to calculate the output deltas.
+func contractPaymentDetails(old, new types.FileContractRevision) (*paymentDetails, error) {
+	// note that all values are calculated using safeSub, which performs a
+	// sanity check against underflows.
+	vhp, err := safeSub(new.ValidHostPayout(), old.ValidHostPayout())
+	if err != nil {
+		return nil, err
+	}
+	mho, err := safeSub(old.MissedHostOutput().Value, new.MissedHostOutput().Value)
+	if err != nil {
+		return nil, err
+	}
+	return &paymentDetails{
+		amount:          vhp,
+		addedCollateral: mho,
+	}, nil
+}
+
+// Account returns the account id used for payment. For payments made by
+// contract this will return the empty string.
+func (pd *paymentDetails) Account() string { return pd.account }
+
+// Amount returns how much money the host received.
+func (pd *paymentDetails) Amount() types.Currency { return pd.amount }
+
+// AddedCollatoral returns the amount of collateral that moved from the host to
+// the void output.
+func (pd *paymentDetails) AddedCollateral() types.Currency { return pd.addedCollateral }
+
+// safeSub is a helper function that subtracts but at the same time performs a
+// sanity check to harden against underflows.
+func safeSub(x, y types.Currency) (types.Currency, error) {
+	if x.Cmp(y) < 0 {
+		err := fmt.Errorf("Subtract would causes underflow")
+		build.Critical(err.Error())
+		return types.ZeroCurrency, err
+	}
+	return x.Sub(y), nil
 }
