@@ -316,12 +316,11 @@ flag can be used to view skyfiles pinned in other folders.`,
 	skynetUploadCmd = &cobra.Command{
 		Use:   "upload [source path] [destination siapath]",
 		Short: "Upload a file or a directory to Skynet.",
-		Long: `Upload a file or a directory to Skynet. A skylink will be produced which
-can be shared and used to retrieve the file. If the given path is a directory all
-files under that directory will be uploaded individually and an individual skylink
-will be produced for each. All files that get uploaded will be pinned to this Sia
-node, meaning that this node will pay for storage and repairs until the files are
-manually deleted.`,
+		Long: `Upload a file or a directory to Skynet. A skylink will be produced which can be
+shared and used to retrieve the file. If the given path is a directory all files under that directory will
+be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
+will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files 
+are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
 		Run: wrap(skynetuploadcmd),
 	}
 
@@ -2798,6 +2797,8 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
+
+		DryRun: skynetUploadDryRun,
 
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: sourceName,

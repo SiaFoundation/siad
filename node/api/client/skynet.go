@@ -158,6 +158,8 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", params.FileMetadata.Filename)
+	dryRunStr := fmt.Sprintf("%t", params.DryRun)
+	values.Set("dryrun", dryRunStr)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
 	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
