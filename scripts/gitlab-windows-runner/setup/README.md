@@ -1,5 +1,16 @@
 # Windows Gitlab Runner Setup
 
+## GCC setup
+
+Some tests need working, configured GCC.
+Easiest way is to use TDM-GCC.
+
+- Go to: https://jmeubank.github.io/tdm-gcc/download/
+- Download: `tdm64-gcc-9.2.0.exe` 
+- Install: `tdm64-gcc-9.2.0.exe` with default values
+- If GCC is not found by tests,
+  restart the box to refresh environment variables.
+
 ## Gitlab Registration Token Preparation
 
 Gitlab registration token is needed to pair the new runner with Gitlab repository and its CI/CD.
