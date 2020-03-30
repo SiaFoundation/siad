@@ -34,7 +34,7 @@ func TestRefCounter_Count(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	rc := testPrepareRefCounter(17, t)
+	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	testSec := uint64(2) // make sure this value is below testSectorsCount
 	testVal := uint16(21)
 	testOverrideVal := uint16(12)
@@ -73,7 +73,7 @@ func TestRefCounter_Append(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	startNumSec := uint64(11)
+	startNumSec := fastrand.Uint64n(10)
 	rc := testPrepareRefCounter(startNumSec, t)
 	stats, err := os.Stat(rc.filepath)
 	assertSuccess(err, t, "RefCounter creation finished successfully but the file is not accessible:")
@@ -108,7 +108,7 @@ func TestRefCounter_Decrement(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	rc := testPrepareRefCounter(5, t)
+	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	err := rc.StartUpdate()
 	assertSuccess(err, t, "Failed to start an update session")
 
@@ -141,7 +141,7 @@ func TestRefCounter_Delete(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	rc := testPrepareRefCounter(5, t)
+	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
 	err := rc.StartUpdate()
 	assertSuccess(err, t, "Failed to start an update session")
 
@@ -170,7 +170,7 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	startNumSec := uint64(11)
+	startNumSec := 2 + fastrand.Uint64n(10)
 	rc := testPrepareRefCounter(startNumSec, t)
 	stats, err := os.Stat(rc.filepath)
 	assertSuccess(err, t, "RefCounter creation finished successfully but the file is not accessible:")
@@ -210,7 +210,7 @@ func TestRefCounter_Increment(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	rc := testPrepareRefCounter(5, t)
+	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	err := rc.StartUpdate()
 	assertSuccess(err, t, "Failed to start an update session")
 
@@ -243,7 +243,7 @@ func TestRefCounter_Load(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter to load
-	rc := testPrepareRefCounter(3, t)
+	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
 
 	// happy case
 	_, err := LoadRefCounter(rc.filepath, testWAL)
@@ -327,7 +327,7 @@ func TestRefCounter_Swap(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	rc := testPrepareRefCounter(5, t)
+	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	updates := make([]writeaheadlog.Update, 0)
 	err := rc.StartUpdate()
 	assertSuccess(err, t, "Failed to start an update session")
@@ -369,7 +369,7 @@ func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	rc := testPrepareRefCounter(5, t)
+	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
 
 	var u writeaheadlog.Update
 	// make sure we cannot create updates outside of an update session
