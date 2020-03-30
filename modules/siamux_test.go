@@ -95,3 +95,27 @@ func TestSiaMuxCompat(t *testing.T) {
 		t.Fatal("SiaMux's public key was not equal to the host's pubkey")
 	}
 }
+
+// TestSiaMuxAbsolutePath verifies we can not create the SiaMux using a relative
+// path for neither the siamux dir nor the sia data dir.
+func TestSiaMuxAbsolutePath(t *testing.T) {
+	t.Parallel()
+
+	assertRecover := func() {
+		if r := recover(); r == nil {
+			t.Fatalf("Expected a panic when a relative path is passed to the SiaMux")
+		}
+	}
+
+	absPath := os.TempDir()
+	for _, relPath := range []string{"", ".", ".."} {
+		func() {
+			defer assertRecover()
+			NewSiaMux(absPath, relPath, "localhost:0")
+		}()
+		func() {
+			defer assertRecover()
+			NewSiaMux(relPath, absPath, "localhost:0")
+		}()
+	}
+}
