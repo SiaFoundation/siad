@@ -274,8 +274,7 @@ func TestUpdateEntryWithKnownHost(t *testing.T) {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
 
-	// Add enough entries to get to minScans total length. When that length is
-	// reached, the entry should be deleted.
+	// Add enough entries to get to minScans total length.
 	for i := len(updatedEntry.ScanHistory); i < minScans; i++ {
 		hdbt.hdb.updateEntry(entry, someErr)
 	}
@@ -283,5 +282,18 @@ func TestUpdateEntryWithKnownHost(t *testing.T) {
 	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry.PublicKey)
 	if !exists {
 		t.Fatal("entry should not have been purged for being offline for too long")
+	}
+
+	// Remove the host from the hostContracts map and update with the same entry. It should
+	// now be deleted.
+	hdbt.hdb.mu.Lock()
+	delete(hdbt.hdb.knownContracts, updatedEntry.PublicKey.String())
+	hdbt.hdb.mu.Unlock()
+	hdbt.hdb.updateEntry(entry, someErr)
+
+	// Entry should not exist.
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry.PublicKey)
+	if exists {
+		t.Fatal("Entry did not get removed from the host tree")
 	}
 }
