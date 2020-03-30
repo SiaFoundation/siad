@@ -35,19 +35,18 @@ func TestRefCounter_Count(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	s := uint64(2)
-	v := uint16(21)
-	ov := uint16(12)
+	sec := uint64(2)
+	val := uint16(21)
 
 	// set up the expected value on disk
-	err := writeVal(rc.filepath, s, v)
+	err := writeVal(rc.filepath, sec, val)
 	assertSuccess(err, t, "Failed to write a count to disk:")
 
 	// verify we can read it correctly
-	rv, err := rc.Count(s)
+	rval, err := rc.Count(sec)
 	assertSuccess(err, t, "Failed to read count from disk:")
-	if rv != v {
-		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", v, rv))
+	if rval != val {
+		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", val, rval))
 	}
 
 	// check behaviour on bad sector number
@@ -55,10 +54,11 @@ func TestRefCounter_Count(t *testing.T) {
 	assertErrorIs(err, ErrInvalidSectorNumber, t, "Expected ErrInvalidSectorNumber, got:")
 
 	// set up a temporary override
-	rc.newSectorCounts[s] = ov
+	ov := uint16(12)
+	rc.newSectorCounts[sec] = ov
 
 	// verify we can read it correctly
-	rov, err := rc.Count(s)
+	rov, err := rc.Count(sec)
 	assertSuccess(err, t, "Failed to read count from disk:")
 	if rov != ov {
 		t.Fatal(fmt.Sprintf("read wrong override value from disk: expected %d, got %d", ov, rov))
@@ -73,8 +73,8 @@ func TestRefCounter_Append(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	startNumSec := fastrand.Uint64n(10)
-	rc := testPrepareRefCounter(startNumSec, t)
+	numSec := fastrand.Uint64n(10)
+	rc := testPrepareRefCounter(numSec, t)
 	stats, err := os.Stat(rc.filepath)
 	assertSuccess(err, t, "RefCounter creation finished successfully but the file is not accessible:")
 	err = rc.StartUpdate()
@@ -83,8 +83,9 @@ func TestRefCounter_Append(t *testing.T) {
 	// test Append
 	u, err := rc.Append()
 	assertSuccess(err, t, "Failed to create an append update")
-	if rc.numSectors != startNumSec+1 {
-		t.Fatal(fmt.Errorf("Append failed to properly increase the numSectors counter. Expected %d, got %d", startNumSec+2, rc.numSectors))
+	expectNumSec := numSec + 1
+	if rc.numSectors != expectNumSec {
+		t.Fatal(fmt.Errorf("Append failed to properly increase the numSectors counter. Expected %d, got %d", expectNumSec, rc.numSectors))
 	}
 
 	// apply the update
@@ -95,8 +96,10 @@ func TestRefCounter_Append(t *testing.T) {
 	// verify: we expect the file size to have grown by 2 bytes
 	endStats, err := os.Stat(rc.filepath)
 	assertSuccess(err, t, "Failed to get file stats:")
-	if endStats.Size() != stats.Size()+2 {
-		t.Fatal(fmt.Sprintf("File size did not grow as expected. Expected size: %d, actual size: %d", stats.Size()+2, endStats.Size()))
+	expectSize := stats.Size() + 2
+	actualSize := endStats.Size()
+	if actualSize != expectSize {
+		t.Fatal(fmt.Sprintf("File size did not grow as expected. Expected size: %d, actual size: %d", expectSize, actualSize))
 	}
 }
 
@@ -117,10 +120,10 @@ func TestRefCounter_Decrement(t *testing.T) {
 	assertSuccess(err, t, "Failed to create an decrement update:")
 
 	// verify: we expect the value to have increased from the base 1 to 0
-	readValAfterDec, err := rc.readCount(rc.numSectors - 2)
+	val, err := rc.readCount(rc.numSectors - 2)
 	assertSuccess(err, t, "Failed to read value after decrement:")
-	if readValAfterDec != 0 {
-		t.Fatal(fmt.Errorf("read wrong value after decrement. Expected %d, got %d", 2, readValAfterDec))
+	if val != 0 {
+		t.Fatal(fmt.Errorf("read wrong value after decrement. Expected %d, got %d", 2, val))
 	}
 
 	// check behaviour on bad sector number
@@ -170,8 +173,8 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	t.Parallel()
 
 	// prepare a refcounter for the tests
-	startNumSec := 2 + fastrand.Uint64n(10)
-	rc := testPrepareRefCounter(startNumSec, t)
+	numSec := 2 + fastrand.Uint64n(10)
+	rc := testPrepareRefCounter(numSec, t)
 	stats, err := os.Stat(rc.filepath)
 	assertSuccess(err, t, "RefCounter creation finished successfully but the file is not accessible:")
 	err = rc.StartUpdate()
@@ -185,8 +188,9 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	// test DropSectors by dropping two counters
 	u, err := rc.DropSectors(2)
 	assertSuccess(err, t, "Failed to create truncate update:")
-	if rc.numSectors != startNumSec-2 {
-		t.Fatal(fmt.Errorf("wrong number of counters after Truncate. Expected %d, got %d", startNumSec-2, rc.numSectors))
+	expectNumSec := numSec - 2
+	if rc.numSectors != expectNumSec {
+		t.Fatal(fmt.Errorf("wrong number of counters after Truncate. Expected %d, got %d", expectNumSec, rc.numSectors))
 	}
 
 	// apply the update
@@ -196,9 +200,11 @@ func TestRefCounter_DropSectors(t *testing.T) {
 
 	//verify:  we expect the file size to have shrunk with 2*2 bytes
 	endStats, err := os.Stat(rc.filepath)
+	expectSize := stats.Size() - 4
+	actualSize := endStats.Size()
 	assertSuccess(err, t, "Failed to get file stats:")
-	if endStats.Size() != stats.Size()-4 {
-		t.Fatal(fmt.Sprintf("File size did not shrink as expected. Expected size: %d, actual size: %d", stats.Size(), endStats.Size()))
+	if actualSize != expectSize {
+		t.Fatal(fmt.Sprintf("File size did not shrink as expected. Expected size: %d, actual size: %d", expectSize, actualSize))
 	}
 }
 
@@ -215,11 +221,12 @@ func TestRefCounter_Increment(t *testing.T) {
 	assertSuccess(err, t, "Failed to start an update session")
 
 	// test Increment
-	u, err := rc.Increment(rc.numSectors - 2)
+	secIdx := rc.numSectors - 2
+	u, err := rc.Increment(secIdx)
 	assertSuccess(err, t, "Failed to create an increment update:")
 
 	// verify: we expect the value to have increased from the base 1 to 2
-	readValAfterInc, err := rc.readCount(rc.numSectors - 2)
+	readValAfterInc, err := rc.readCount(secIdx)
 	assertSuccess(err, t, "Failed to read value after increment:")
 	if readValAfterInc != 2 {
 		t.Fatal(fmt.Errorf("read wrong value after increment. Expected %d, got %d", 2, readValAfterInc))
@@ -265,15 +272,15 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 	t.Parallel()
 
 	// prepare
-	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
-	testDir := build.TempDir(t.Name())
-	err := os.MkdirAll(testDir, modules.DefaultDirPerm)
+	cid := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	d := build.TempDir(t.Name())
+	err := os.MkdirAll(d, modules.DefaultDirPerm)
 	assertSuccess(err, t, "Failed to create test directory:")
-	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+	path := filepath.Join(d, cid.String()+refCounterExtension)
 
 	// Create a file that contains a corrupted header. This basically means
 	// that the file is too short to have the entire header in there.
-	f, err := os.Create(rcFilePath)
+	f, err := os.Create(path)
 	assertSuccess(err, t, "Failed to create test file:")
 	defer f.Close()
 
@@ -284,7 +291,7 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
-	_, err = LoadRefCounter(rcFilePath, testWAL)
+	_, err = LoadRefCounter(path, testWAL)
 	assertErrorIs(err, io.EOF, t, fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", io.EOF.Error()))
 }
 
@@ -297,14 +304,14 @@ func TestRefCounter_Load_InvalidVersion(t *testing.T) {
 	t.Parallel()
 
 	// prepare
-	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
-	testDir := build.TempDir(t.Name())
-	err := os.MkdirAll(testDir, modules.DefaultDirPerm)
+	cid := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	d := build.TempDir(t.Name())
+	err := os.MkdirAll(d, modules.DefaultDirPerm)
 	assertSuccess(err, t, "Failed to create test directory:")
-	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+	path := filepath.Join(d, cid.String()+refCounterExtension)
 
 	// create a file with a header that encodes a bad version number
-	f, err := os.Create(rcFilePath)
+	f, err := os.Create(path)
 	assertSuccess(err, t, "Failed to create test file:")
 	defer f.Close()
 
@@ -315,7 +322,7 @@ func TestRefCounter_Load_InvalidVersion(t *testing.T) {
 	_ = f.Sync()
 
 	// ensure that we cannot load it and we return the correct error
-	_, err = LoadRefCounter(rcFilePath, testWAL)
+	_, err = LoadRefCounter(path, testWAL)
 	assertErrorIs(err, ErrInvalidVersion, t, fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()))
 }
 
@@ -333,21 +340,21 @@ func TestRefCounter_Swap(t *testing.T) {
 	assertSuccess(err, t, "Failed to start an update session")
 
 	// increment one of the sectors, so we can tell the values apart
-	uInc, err := rc.Increment(rc.numSectors - 1)
+	u, err := rc.Increment(rc.numSectors - 1)
 	assertSuccess(err, t, "Failed to create increment update")
-	updates = append(updates, uInc)
+	updates = append(updates, u)
 
 	// test Swap
-	uSwap, err := rc.Swap(rc.numSectors-2, rc.numSectors-1)
-	updates = append(updates, uSwap...)
+	us, err := rc.Swap(rc.numSectors-2, rc.numSectors-1)
+	updates = append(updates, us...)
 	assertSuccess(err, t, "Failed to create swap update")
-	var valAfterSwap1, valAfterSwap2 uint16
-	valAfterSwap1, err = rc.readCount(rc.numSectors - 2)
+	var v1, v2 uint16
+	v1, err = rc.readCount(rc.numSectors - 2)
 	assertSuccess(err, t, "Failed to read value after swap")
-	valAfterSwap2, err = rc.readCount(rc.numSectors - 1)
+	v2, err = rc.readCount(rc.numSectors - 1)
 	assertSuccess(err, t, "Failed to read value after swap")
-	if valAfterSwap1 != 2 || valAfterSwap2 != 1 {
-		t.Fatal(fmt.Errorf("read wrong value after swap. Expected %d and %d, got %d and %d", 2, 1, valAfterSwap1, valAfterSwap2))
+	if v1 != 2 || v2 != 1 {
+		t.Fatal(fmt.Errorf("read wrong value after swap. Expected %d and %d, got %d and %d", 2, 1, v1, v2))
 	}
 
 	// check behaviour on bad sector number
@@ -421,21 +428,21 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 	t.Parallel()
 
 	// test creating and reading updates
-	wp := "test/wp"
-	ws := uint64(2)
-	wv := uint16(12)
-	u := createWriteAtUpdate(wp, ws, wv)
-	rp, rs, rv, err := readWriteAtUpdate(u)
+	wpath := "test/writtenPath"
+	wsec := uint64(2)
+	wval := uint16(12)
+	u := createWriteAtUpdate(wpath, wsec, wval)
+	rpath, rsec, rval, err := readWriteAtUpdate(u)
 	assertSuccess(err, t, "Failed to read writeAt update:")
-	if wp != rp || ws != rs || wv != rv {
-		t.Fatal(fmt.Sprintf("Wrong values read from WriteAt update. Expected %ws, %d, %d, found %ws, %d, %d.", wp, ws, wv, rp, rs, rv))
+	if wpath != rpath || wsec != rsec || wval != rval {
+		t.Fatal(fmt.Sprintf("Wrong values read from WriteAt update. Expected %wsec, %d, %d, found %wsec, %d, %d.", wpath, wsec, wval, rpath, rsec, rval))
 	}
 
-	u = createTruncateUpdate(wp, ws)
-	rp, rs, err = readTruncateUpdate(u)
+	u = createTruncateUpdate(wpath, wsec)
+	rpath, rsec, err = readTruncateUpdate(u)
 	assertSuccess(err, t, "Failed to read a truncate update:")
-	if wp != rp || ws != rs {
-		t.Fatal(fmt.Sprintf("Wrong values read from Truncate update. Expected %ws, %d found %ws, %d.", wp, ws, rp, rs))
+	if wpath != rpath || wsec != rsec {
+		t.Fatal(fmt.Sprintf("Wrong values read from Truncate update. Expected %wsec, %d found %wsec, %d.", wpath, wsec, rpath, rsec))
 	}
 }
 
@@ -462,8 +469,8 @@ func newTestWAL() *writeaheadlog.WAL {
 	if err := os.MkdirAll(wd, modules.DefaultDirPerm); err != nil {
 		panic(err)
 	}
-	walFilePath := filepath.Join(wd, hex.EncodeToString(fastrand.Bytes(8)))
-	_, wal, err := writeaheadlog.New(walFilePath)
+	p := filepath.Join(wd, hex.EncodeToString(fastrand.Bytes(8)))
+	_, wal, err := writeaheadlog.New(p)
 	if err != nil {
 		panic(err)
 	}
@@ -477,9 +484,9 @@ func testPrepareRefCounter(numSec uint64, t *testing.T) *RefCounter {
 	td := build.TempDir(t.Name())
 	err := os.MkdirAll(td, modules.DefaultDirPerm)
 	assertSuccess(err, t, "Failed to create test directory:")
-	rcFilePath := filepath.Join(td, tcid.String()+refCounterExtension)
+	path := filepath.Join(td, tcid.String()+refCounterExtension)
 	// create a ref counter
-	rc, err := NewRefCounter(rcFilePath, numSec, testWAL)
+	rc, err := NewRefCounter(path, numSec, testWAL)
 	assertSuccess(err, t, "Failed to create a reference counter:")
 	return rc
 }
