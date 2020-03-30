@@ -258,10 +258,22 @@ siatest-renter-tests-nightly:
     - apt-get install -y fuse
     - make test-vlong run=. pkgs="$siatest_renter_pkgs"
 
+# Windows execution
+siatest-renter-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
+    - make test-vlong run=. pkgs="$siatest_renter_pkgs"
+
 siatest-renter-sub-tests-nightly:
   <<: *default_nightly_params
   script:
     - apt-get update
     - apt-get install -y fuse
+    - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+
+# Windows execution
+siatest-renter-sub-windows-tests-nightly:
+  <<: *default_nightly_windows_params
+  script:
     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
     
