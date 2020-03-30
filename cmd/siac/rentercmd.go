@@ -20,9 +20,10 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/vbauerster/mpb/v5/decor"
+
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
-	"github.com/vbauerster/mpb/v5/decor"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -2713,7 +2714,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	progress := mpb.New()
 
 	if !fi.IsDir() {
-		skylink := skynetuploadfile(sourcePath, destSiaPath, progress)
+		skylink := skynetUploadFileWithProgressBar(sourcePath, destSiaPath, progress)
 		fmt.Printf("Successfully uploaded skyfile!\n")
 		fmt.Printf("%v => %v\n", sourcePath, skylink)
 		return
@@ -2744,7 +2745,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			// get only the filename and path, relative to the original destSiaPath
 			// in order to figure out where to put the file
 			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-			skylink := skynetuploadfile(filename, newDestSiaPath, progress)
+			skylink := skynetUploadFileWithProgressBar(filename, newDestSiaPath, progress)
 			muUploaded.Lock()
 			uploadedSkyfiles[filename] = skylink
 			muUploaded.Unlock()
@@ -2763,15 +2764,9 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	}
 }
 
-// skynetuploadfile handles the upload of a single file. It should only be
-// called from skynetuploadcmd
-func skynetuploadfile(sourcePath, destSiaPath string, progress *mpb.Progress) (skylink string) {
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
-	if err != nil {
-		die("Could not parse destination siapath:", err)
-	}
-
+// skynetUploadFile uploads a file to Skynet without any visual indication to
+// the user. To be used for tests.
+func skynetUploadFile(sourcePath, destSiaPath string) (skylink string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
 	if err != nil {
@@ -2782,35 +2777,48 @@ func skynetuploadfile(sourcePath, destSiaPath string, progress *mpb.Progress) (s
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
-	// Do not process directories. Those should be processed by skynetuploadcmd.
-	if fi.IsDir() {
-		return
-	}
-	// Calculate the siapath that was used for the upload.
-	skypath := siaPath
-	if !skynetUploadRoot {
-		skypath, err = modules.SkynetFolder.Join(siaPath.String())
-		if err != nil {
-			die("could not fetch skypath:", err)
-		}
-	}
+	_, filename := filepath.Split(sourcePath)
+	return skynetUploadFileFromReader(file, filename, destSiaPath, fi.Mode())
+}
 
-	// start a progress bar for this file upload and bind it to the file reader
-	proxyReader := newProgressReader(progress, fi.Size(), skypath.Path, file)
-	_, sourceName := filepath.Split(sourcePath)
-	// Perform the upload and print the result.
+// skynetUploadFileWithProgressBar uploads a file to Skynet and displays a
+// progress bar that tracks the upload
+func skynetUploadFileWithProgressBar(sourcePath, destSiaPath string, progress *mpb.Progress) (skylink string) {
+	// Open the source file.
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		die("Unable to open source path:", err)
+	}
+	defer file.Close()
+	fi, err := file.Stat()
+	if err != nil {
+		die("Unable to fetch source fileinfo:", err)
+	}
+	_, filename := filepath.Split(sourcePath)
+	// Wrap the file reader in a progress bar reader
+	progressReader := newProgressReader(progress, fi.Size(), filename, file)
+	return skynetUploadFileFromReader(progressReader, filename, destSiaPath, fi.Mode())
+}
+
+// skynetUploadFileFromReader is a helper method that uploads a file to Skynet
+func skynetUploadFileFromReader(source io.Reader, filename, destSiaPath string, mode os.FileMode) (skylink string) {
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+	// Upload the file and return a skylink
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
 
 		FileMetadata: modules.SkyfileMetadata{
-			Filename: sourceName,
-			Mode:     fi.Mode(),
+			Filename: filename,
+			Mode:     mode,
 		},
 
-		Reader: proxyReader,
+		Reader: source,
 	}
-
 	skylink, _, err = httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
