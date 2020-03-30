@@ -35,19 +35,19 @@ func TestRefCounter_Count(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	testSec := uint64(2) // make sure this value is below testSectorsCount
-	testVal := uint16(21)
-	testOverrideVal := uint16(12)
+	s := uint64(2)
+	v := uint16(21)
+	ov := uint16(12)
 
 	// set up the expected value on disk
-	err := writeVal(rc.filepath, testSec, testVal)
+	err := writeVal(rc.filepath, s, v)
 	assertSuccess(err, t, "Failed to write a count to disk:")
 
 	// verify we can read it correctly
-	readVal, err := rc.Count(testSec)
+	rv, err := rc.Count(s)
 	assertSuccess(err, t, "Failed to read count from disk:")
-	if readVal != testVal {
-		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", testVal, readVal))
+	if rv != v {
+		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", v, rv))
 	}
 
 	// check behaviour on bad sector number
@@ -55,13 +55,13 @@ func TestRefCounter_Count(t *testing.T) {
 	assertErrorIs(err, ErrInvalidSectorNumber, t, "Expected ErrInvalidSectorNumber, got:")
 
 	// set up a temporary override
-	rc.newSectorCounts[testSec] = testOverrideVal
+	rc.newSectorCounts[s] = ov
 
 	// verify we can read it correctly
-	readOverrideVal, err := rc.Count(testSec)
+	rov, err := rc.Count(s)
 	assertSuccess(err, t, "Failed to read count from disk:")
-	if readOverrideVal != testOverrideVal {
-		t.Fatal(fmt.Sprintf("read wrong override value from disk: expected %d, got %d", testOverrideVal, readOverrideVal))
+	if rov != ov {
+		t.Fatal(fmt.Sprintf("read wrong override value from disk: expected %d, got %d", ov, rov))
 	}
 }
 
@@ -421,21 +421,21 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 	t.Parallel()
 
 	// test creating and reading updates
-	writtenPath := "test/writtenPath"
-	writtenSec := uint64(2)
-	writtenVal := uint16(12)
-	writeUp := createWriteAtUpdate(writtenPath, writtenSec, writtenVal)
-	readPath, readSec, readVal, err := readWriteAtUpdate(writeUp)
+	wp := "test/wp"
+	ws := uint64(2)
+	wv := uint16(12)
+	u := createWriteAtUpdate(wp, ws, wv)
+	rp, rs, rv, err := readWriteAtUpdate(u)
 	assertSuccess(err, t, "Failed to read writeAt update:")
-	if writtenPath != readPath || writtenSec != readSec || writtenVal != readVal {
-		t.Fatal(fmt.Sprintf("Wrong values read from WriteAt update. Expected %s, %d, %d, found %s, %d, %d.", writtenPath, writtenSec, writtenVal, readPath, readSec, readVal))
+	if wp != rp || ws != rs || wv != rv {
+		t.Fatal(fmt.Sprintf("Wrong values read from WriteAt update. Expected %ws, %d, %d, found %ws, %d, %d.", wp, ws, wv, rp, rs, rv))
 	}
 
-	truncUp := createTruncateUpdate(writtenPath, writtenSec)
-	readPath, readSec, err = readTruncateUpdate(truncUp)
+	u = createTruncateUpdate(wp, ws)
+	rp, rs, err = readTruncateUpdate(u)
 	assertSuccess(err, t, "Failed to read a truncate update:")
-	if writtenPath != readPath || writtenSec != readSec {
-		t.Fatal(fmt.Sprintf("Wrong values read from Truncate update. Expected %s, %d found %s, %d.", writtenPath, writtenSec, readPath, readSec))
+	if wp != rp || ws != rs {
+		t.Fatal(fmt.Sprintf("Wrong values read from Truncate update. Expected %ws, %d found %ws, %d.", wp, ws, rp, rs))
 	}
 }
 
@@ -458,11 +458,11 @@ func assertErrorIs(err error, baseError error, t *testing.T, msg string) {
 // newTestWal is a helper method to create a WAL for testing.
 func newTestWAL() *writeaheadlog.WAL {
 	// Create the wal.
-	walsDir := filepath.Join(os.TempDir(), "rc-wals")
-	if err := os.MkdirAll(walsDir, modules.DefaultDirPerm); err != nil {
+	wd := filepath.Join(os.TempDir(), "rc-wals")
+	if err := os.MkdirAll(wd, modules.DefaultDirPerm); err != nil {
 		panic(err)
 	}
-	walFilePath := filepath.Join(walsDir, hex.EncodeToString(fastrand.Bytes(8)))
+	walFilePath := filepath.Join(wd, hex.EncodeToString(fastrand.Bytes(8)))
 	_, wal, err := writeaheadlog.New(walFilePath)
 	if err != nil {
 		panic(err)
@@ -473,11 +473,11 @@ func newTestWAL() *writeaheadlog.WAL {
 // testPrepareRefCounter is a helper that creates a refcounter and fails the
 // test if that is not successful
 func testPrepareRefCounter(numSec uint64, t *testing.T) *RefCounter {
-	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
-	testDir := build.TempDir(t.Name())
-	err := os.MkdirAll(testDir, modules.DefaultDirPerm)
+	tcid := types.FileContractID(crypto.HashBytes([]byte("contractId")))
+	td := build.TempDir(t.Name())
+	err := os.MkdirAll(td, modules.DefaultDirPerm)
 	assertSuccess(err, t, "Failed to create test directory:")
-	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
+	rcFilePath := filepath.Join(td, tcid.String()+refCounterExtension)
 	// create a ref counter
 	rc, err := NewRefCounter(rcFilePath, numSec, testWAL)
 	assertSuccess(err, t, "Failed to create a reference counter:")
