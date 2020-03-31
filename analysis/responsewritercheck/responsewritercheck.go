@@ -192,7 +192,6 @@ func passesArgument(info *types.Info, n ast.Node, v *types.Var) bool {
 		if info.Uses[ident] == v {
 			return true
 		}
-
 	}
 
 	return false

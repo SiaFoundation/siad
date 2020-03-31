@@ -4210,7 +4210,6 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 			t.Logf("testing key %v and value %v", test.key, test.value)
 			t.Fatalf("Expected error to contain %v but got %v", test.err, err)
 		}
-
 	}
 
 	// Test setting a non allowance field, this should have no affect on the

@@ -368,7 +368,6 @@ func main() {
 			} else {
 				httpClient.Password = strings.TrimSpace(string(pw))
 			}
-
 		}
 	})
 
