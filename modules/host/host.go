@@ -239,13 +239,14 @@ func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
 // the 'guaranteed' map.
 func (hp *hostPrices) managedPruneExpired() {
 	expired := hp.staticMinHeap.PopExpired()
-	if len(expired) > 0 {
-		hp.mu.Lock()
-		for _, uuid := range expired {
-			delete(hp.guaranteed, uuid)
-		}
-		hp.mu.Unlock()
+	if len(expired) == 0 {
+		return
 	}
+	hp.mu.Lock()
+	for _, uuid := range expired {
+		delete(hp.guaranteed, uuid)
+	}
+	hp.mu.Unlock()
 }
 
 // lockedObligation is a helper type that locks a TryMutex and a counter to
