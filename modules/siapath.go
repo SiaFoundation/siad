@@ -313,6 +313,9 @@ func (sp SiaPath) Validate(isRoot bool) error {
 		if prevElem == "/" || pathElem == "/" {
 			return errors.New("siapath cannot contain //")
 		}
+		if strings.Contains(pathElem, `\`) {
+			return errors.New(`siapath cannot contain \`)
+		}
 		prevElem = pathElem
 	}
 	return nil
