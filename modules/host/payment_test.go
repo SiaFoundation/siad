@@ -15,7 +15,8 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// TestPaymentDetails verifies the payment details that are returned by both its constructors in case of payment by file contract or by account
+// TestPaymentDetails verifies the payment details that are returned by both its
+// constructors in case of payment by file contract or by account
 func TestPaymentDetails(t *testing.T) {
 	// prepare some variables
 	account := "c436215b2c9c"
