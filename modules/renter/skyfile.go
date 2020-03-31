@@ -407,7 +407,6 @@ func (r *Renter) managedCreateFileNodeFromReader(up modules.FileUploadParams, re
 		}
 	}
 	return fileNode, nil
-
 }
 
 // Blacklist returns the merkleroots that are blacklisted
