@@ -407,21 +407,17 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 
 	// Create a file that contains a corrupted header. This basically means
 	// that the file is too short to have the entire header in there.
-	func() {
-		f, err := os.Create(path)
-		if err != nil {
-			t.Fatal("Failed to create test file:", err)
-		}
-		defer f.Close()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal("Failed to create test file:", err)
+	}
 
-		// The version number is 8 bytes. We'll only write 4.
-		if _, err = f.Write(fastrand.Bytes(4)); err != nil {
-			t.Fatal("Failed to write to test file:", err)
-		}
-		if err = f.Sync(); err != nil {
-			t.Fatal("Failed to sync to disk:", err)
-		}
-	}()
+	// The version number is 8 bytes. We'll only write 4.
+	if _, err = f.Write(fastrand.Bytes(4)); err != nil {
+		f.Close()
+		t.Fatal("Failed to write to test file:", err)
+	}
+	f.Close()
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
@@ -461,7 +457,6 @@ func TestRefCounter_Load_InvalidVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to write to test file:", err)
 	}
-	_ = f.Sync()
 
 	// ensure that we cannot load it and we return the correct error
 	_, err = LoadRefCounter(path, testWAL)
@@ -724,5 +719,5 @@ func writeVal(path string, secIdx uint64, val uint16) error {
 	if _, err = f.WriteAt(b[:], int64(offset(secIdx))); err != nil {
 		return errors.AddContext(err, "failed to write to refcounter file")
 	}
-	return f.Sync()
+	return nil
 }
