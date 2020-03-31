@@ -87,16 +87,8 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	}
 	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
-	// extract the amount the renter is paying the host
-	crp := currentRevision.ValidRenterPayout()
-	nrp := paymentRevision.ValidRenterPayout()
-	if crp.Cmp(nrp) < 0 {
-		return nil, errors.AddContext(err, "Invalid renter payout, causes underflow")
-	}
-	amount := crp.Sub(nrp)
-
 	// verify the payment revision
-	err = verifyPaymentRevision(currentRevision, paymentRevision, bh, amount)
+	err = verifyPaymentRevision(currentRevision, paymentRevision, bh, types.ZeroCurrency)
 	if err != nil {
 		return nil, errors.AddContext(err, "Invalid payment revision")
 	}
@@ -180,13 +172,19 @@ type paymentDetails struct {
 	addedCollateral types.Currency
 }
 
+// newPaymentDetails returns a new paymentDetails object using the given values
+func newPaymentDetails(account string, amount, addedCollateral types.Currency) *paymentDetails {
+	return &paymentDetails{
+		account:         account,
+		amount:          amount,
+		addedCollateral: addedCollateral,
+	}
+}
+
 // accountPaymentDetails returns the payment details for a payment that was
 // paid for using an ephemeral account.
 func accountPaymentDetails(message modules.WithdrawalMessage) (*paymentDetails, error) {
-	return &paymentDetails{
-		account: message.Account,
-		amount:  message.Amount,
-	}, nil
+	return newPaymentDetails(message.Account, message.Amount, types.ZeroCurrency), nil
 }
 
 // contractPaymentDetails returns the payment details for a payment that was
@@ -199,18 +197,12 @@ func accountPaymentDetails(message modules.WithdrawalMessage) (*paymentDetails, 
 // check against underflows. The payment revision will have been verified during
 // the payment process.
 func contractPaymentDetails(curr, payment types.FileContractRevision) (*paymentDetails, error) {
-	vhp, err := safeSub(payment.ValidHostPayout(), curr.ValidHostPayout())
-	if err != nil {
+	vhp, err1 := safeSub(payment.ValidHostPayout(), curr.ValidHostPayout())
+	mho, err2 := safeSub(curr.MissedHostOutput().Value, payment.MissedHostOutput().Value)
+	if err := errors.Compose(err1, err2); err != nil {
 		return nil, err
 	}
-	mho, err := safeSub(curr.MissedHostOutput().Value, payment.MissedHostOutput().Value)
-	if err != nil {
-		return nil, err
-	}
-	return &paymentDetails{
-		amount:          vhp,
-		addedCollateral: mho,
-	}, nil
+	return newPaymentDetails("", vhp, mho), nil
 }
 
 // Account returns the account id used for payment. For payments made by
