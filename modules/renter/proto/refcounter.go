@@ -343,15 +343,22 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 
 // UpdateApplied cleans up temporary data and releases the update lock, thus
 // allowing other actors to acquire it in order to update the refcounter.
-func (rc *RefCounter) UpdateApplied() {
+func (rc *RefCounter) UpdateApplied() error {
 	rc.mu.Lock()
+	defer rc.mu.Unlock()
+
+	// this method cannot be called if there is no active update session
+	if !rc.isUpdateInProgress {
+		return ErrUpdateWithoutUpdateSession
+	}
+
 	// clean up the temp counts
 	rc.newSectorCounts = make(map[uint64]uint16)
-	rc.mu.Unlock()
 	// close the update session
 	rc.isUpdateInProgress = false
 	// release the update lock
 	rc.muUpdate.Unlock()
+	return nil
 }
 
 // readCount reads the given sector count either from disk (if there are no

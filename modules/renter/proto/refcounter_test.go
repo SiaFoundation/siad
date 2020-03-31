@@ -101,13 +101,19 @@ func TestRefCounter_Append(t *testing.T) {
 	if rc.numSectors != expectNumSec {
 		t.Fatal(fmt.Errorf("append failed to properly increase the numSectors counter. Expected %d, got %d", expectNumSec, rc.numSectors))
 	}
+	if rc.newSectorCounts[rc.numSectors-1] != 1 {
+		t.Fatal(fmt.Errorf("append failed to properly initialise the new coutner. Expected 1, got %d", rc.newSectorCounts[rc.numSectors-1]))
+	}
 
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
 	if err != nil {
 		t.Fatal("Failed to apply append update:", err)
 	}
-	rc.UpdateApplied()
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
 
 	// verify: we expect the file size to have grown by 2 bytes
 	endStats, err := os.Stat(rc.filepath)
@@ -118,6 +124,14 @@ func TestRefCounter_Append(t *testing.T) {
 	actualSize := endStats.Size()
 	if actualSize != expectSize {
 		t.Fatal(fmt.Sprintf("File size did not grow as expected. Expected size: %d, actual size: %d", expectSize, actualSize))
+	}
+	// verify that the added count has the right value
+	val, err := rc.readCount(rc.numSectors - 1)
+	if err != nil {
+		t.Fatal("Failed to read counter value after append:", err)
+	}
+	if val != 1 {
+		t.Fatal(fmt.Errorf("read wrong counter value from disk after append. Expected 1, got %d", val))
 	}
 }
 
@@ -136,13 +150,14 @@ func TestRefCounter_Decrement(t *testing.T) {
 	}
 
 	// test Decrement
-	u, err := rc.Decrement(rc.numSectors - 2)
+	secIdx := rc.numSectors - 2
+	u, err := rc.Decrement(secIdx)
 	if err != nil {
 		t.Fatal("Failed to create an decrement update:", err)
 	}
 
-	// verify: we expect the value to have increased from the base 1 to 0
-	val, err := rc.readCount(rc.numSectors - 2)
+	// verify: we expect the value to have decreased the base from 1 to 0
+	val, err := rc.readCount(secIdx)
 	if err != nil {
 		t.Fatal("Failed to read value after decrement:", err)
 	}
@@ -161,7 +176,18 @@ func TestRefCounter_Decrement(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to apply decrement update:", err)
 	}
-	rc.UpdateApplied()
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
+	// check the value on disk (the in-mem map is now gone)
+	val, err = rc.readCount(secIdx)
+	if err != nil {
+		t.Fatal("Failed to read value after decrement:", err)
+	}
+	if val != 0 {
+		t.Fatal(fmt.Errorf("read wrong value from disk after decrement. Expected 0, got %d", val))
+	}
 }
 
 // TestRefCounter_Delete tests that the Delete method behaves correctly
@@ -189,11 +215,14 @@ func TestRefCounter_Delete(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to apply a delete update:", err)
 	}
-	rc.UpdateApplied()
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
 
 	// verify
 	_, err = os.Stat(rc.filepath)
-	if err == nil {
+	if !os.IsNotExist(err) {
 		t.Fatal("RefCounter deletion finished successfully but the file is still on disk", err)
 	}
 }
@@ -217,6 +246,20 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
+	updates := make([]writeaheadlog.Update, 0)
+	// update both counters we intend to drop
+	secIdx1 := rc.numSectors - 1
+	secIdx2 := rc.numSectors - 2
+	u, err := rc.Increment(secIdx1)
+	if err != nil {
+		t.Fatal("Failed to create truncate update:", err)
+	}
+	updates = append(updates, u)
+	u, err = rc.DropSectors(secIdx2)
+	if err != nil {
+		t.Fatal("Failed to create truncate update:", err)
+	}
+	updates = append(updates, u)
 
 	// check behaviour on bad sector number
 	// (trying to drop more sectors than we have)
@@ -226,21 +269,25 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	}
 
 	// test DropSectors by dropping two counters
-	u, err := rc.DropSectors(2)
+	u, err = rc.DropSectors(2)
 	if err != nil {
 		t.Fatal("Failed to create truncate update:", err)
 	}
+	updates = append(updates, u)
 	expectNumSec := numSec - 2
 	if rc.numSectors != expectNumSec {
 		t.Fatal(fmt.Errorf("wrong number of counters after Truncate. Expected %d, got %d", expectNumSec, rc.numSectors))
 	}
 
 	// apply the update
-	err = rc.CreateAndApplyTransaction(u)
+	err = rc.CreateAndApplyTransaction(updates...)
 	if err != nil {
 		t.Fatal("Failed to apply truncate update:", err)
 	}
-	rc.UpdateApplied()
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
 
 	//verify:  we expect the file size to have shrunk with 2*2 bytes
 	endStats, err := os.Stat(rc.filepath)
@@ -252,9 +299,18 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	if actualSize != expectSize {
 		t.Fatal(fmt.Sprintf("File size did not shrink as expected. Expected size: %d, actual size: %d", expectSize, actualSize))
 	}
+	// verify that we cannot read the values of the dropped counters
+	_, err = rc.readCount(secIdx1)
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+	_, err = rc.readCount(secIdx2)
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
 }
 
-// TestRefCounter_Increment tests that the Decrement method behaves correctly
+// TestRefCounter_Increment tests that the Increment method behaves correctly
 func TestRefCounter_Increment(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -276,12 +332,12 @@ func TestRefCounter_Increment(t *testing.T) {
 	}
 
 	// verify: we expect the value to have increased from the base 1 to 2
-	readValAfterInc, err := rc.readCount(secIdx)
+	val, err := rc.readCount(secIdx)
 	if err != nil {
 		t.Fatal("Failed to read value after increment:", err)
 	}
-	if readValAfterInc != 2 {
-		t.Fatal(fmt.Errorf("read wrong value after increment. Expected %d, got %d", 2, readValAfterInc))
+	if val != 2 {
+		t.Fatal(fmt.Errorf("read wrong value after increment. Expected 2, got %d", val))
 	}
 
 	// check behaviour on bad sector number
@@ -295,7 +351,18 @@ func TestRefCounter_Increment(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to apply increment update:", err)
 	}
-	rc.UpdateApplied()
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
+	// check the value on disk (the in-mem map is now gone)
+	val, err = rc.readCount(secIdx)
+	if err != nil {
+		t.Fatal("Failed to read value after increment:", err)
+	}
+	if val != 0 {
+		t.Fatal(fmt.Errorf("read wrong value from disk after increment. Expected 2, got %d", val))
+	}
 }
 
 // TestRefCounter_Load specifically tests refcounter's Load method
@@ -340,19 +407,21 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 
 	// Create a file that contains a corrupted header. This basically means
 	// that the file is too short to have the entire header in there.
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal("Failed to create test file:", err)
-	}
-	defer f.Close()
+	func() {
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal("Failed to create test file:", err)
+		}
+		defer f.Close()
 
-	// The version number is 8 bytes. We'll only write 4.
-	if _, err = f.Write(fastrand.Bytes(4)); err != nil {
-		t.Fatal("Failed to write to test file:", err)
-	}
-	if err = f.Sync(); err != nil {
-		t.Fatal("Failed to sync to disk:", err)
-	}
+		// The version number is 8 bytes. We'll only write 4.
+		if _, err = f.Write(fastrand.Bytes(4)); err != nil {
+			t.Fatal("Failed to write to test file:", err)
+		}
+		if err = f.Sync(); err != nil {
+			t.Fatal("Failed to sync to disk:", err)
+		}
+	}()
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
@@ -453,7 +522,65 @@ func TestRefCounter_Swap(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to apply updates", err)
 	}
-	rc.UpdateApplied()
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
+	// verify values on disk (the in-mem map is now gone)
+	v1, err = rc.readCount(rc.numSectors - 2)
+	if err != nil {
+		t.Fatal("Failed to read value from disk after swap", err)
+	}
+	v2, err = rc.readCount(rc.numSectors - 1)
+	if err != nil {
+		t.Fatal("Failed to read value from disk after swap", err)
+	}
+	if v1 != 2 || v2 != 1 {
+		t.Fatal(fmt.Errorf("read wrong value from disk after swap. Expected %d and %d, got %d and %d", 2, 1, v1, v2))
+	}
+}
+
+// TestRefCounter_UpdateApplied tests that the UpdateApplied method cleans up
+// after itself
+func TestRefCounter_UpdateApplied(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare a refcounter for the tests
+	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
+	updates := make([]writeaheadlog.Update, 0)
+	err := rc.StartUpdate()
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
+
+	// generate some update
+	secIdx := rc.numSectors - 1
+	u, err := rc.Increment(secIdx)
+	if err != nil {
+		t.Fatal("Failed to create increment update", err)
+	}
+	updates = append(updates, u)
+	// verify that the override map reflects the update
+	if _, ok := rc.newSectorCounts[secIdx]; !ok {
+		t.Fatal("Failed to update the in-mem override map.")
+	}
+
+	// apply the updates and check the values again
+	err = rc.CreateAndApplyTransaction(updates...)
+	if err != nil {
+		t.Fatal("Failed to apply updates", err)
+	}
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
+	// verify that the in-mem override map is now cleaned up
+	if len(rc.newSectorCounts) != 0 {
+		t.Fatal(fmt.Errorf("updateApplied failed to clean up the newSectorCounts. Expected len 0, got %d", len(rc.newSectorCounts)))
+	}
 }
 
 // TestRefCounter_UpdateSessionConstraints ensures that StartUpdate() and UpdateApplied()
@@ -510,7 +637,10 @@ func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to apply a delete update:", err)
 	}
-	rc.UpdateApplied()
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
 
 	// verify: make sure we cannot start an update session on a deleted counter
 	err = rc.StartUpdate()
