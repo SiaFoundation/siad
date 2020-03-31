@@ -175,9 +175,8 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
 	// prepare an ephmeral account and fund it
-	sk, spk := prepareAccount()
-	account := spk.String()
-	err := callDeposit(host.staticAccountManager, account, deposit)
+	sk, accountID := prepareAccount()
+	err := callDeposit(host.staticAccountManager, accountID, deposit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +191,7 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	renterFunc := func() error {
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
-		pbcRequest := newPayByEphemeralAccountRequest(account, host.blockHeight+6, amount, sk)
+		pbcRequest := newPayByEphemeralAccountRequest(accountID, host.blockHeight+6, amount, sk)
 		err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 		if err != nil {
 			return err
@@ -221,8 +220,8 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	}
 
 	// verify the account id that's returned equals the account
-	if payment.Account() != account {
-		t.Fatalf("Unexpected account id, expected %s but received %s", account, payment.Account())
+	if payment.AccountID() != accountID {
+		t.Fatalf("Unexpected account id, expected %s but received %s", accountID, payment.AccountID())
 	}
 
 	// verify the response contains the amount that got withdrawn
@@ -231,7 +230,7 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	}
 
 	// verify the payment got withdrawn from the ephemeral account
-	balance := getAccountBalance(host.staticAccountManager, account)
+	balance := getAccountBalance(host.staticAccountManager, accountID)
 	if !balance.Equals(deposit.Sub(amount)) {
 		t.Fatalf("Unexpected account balance, expected %v but received %s", deposit.Sub(amount), balance.HumanString())
 	}
@@ -267,7 +266,7 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 
 // newPayByEphemeralAccountRequest uses the given parameters to create a
 // PayByEphemeralAccountRequest
-func newPayByEphemeralAccountRequest(account string, expiry types.BlockHeight, amount types.Currency, sk crypto.SecretKey) modules.PayByEphemeralAccountRequest {
+func newPayByEphemeralAccountRequest(account modules.AccountID, expiry types.BlockHeight, amount types.Currency, sk crypto.SecretKey) modules.PayByEphemeralAccountRequest {
 	// generate a nonce
 	var nonce [modules.WithdrawalNonceSize]byte
 	copy(nonce[:], fastrand.Bytes(len(nonce)))

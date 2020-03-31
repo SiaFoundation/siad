@@ -181,13 +181,13 @@ func verifyPayByContractRevision(current, payment types.FileContractRevision, bl
 // payment details is a helper struct that implements the PaymentDetails
 // interface.
 type paymentDetails struct {
-	account         string
+	account         modules.AccountID
 	amount          types.Currency
 	addedCollateral types.Currency
 }
 
 // newPaymentDetails returns a new paymentDetails object using the given values
-func newPaymentDetails(account string, amountPaid, addedCollateral types.Currency) *paymentDetails {
+func newPaymentDetails(account modules.AccountID, amountPaid, addedCollateral types.Currency) *paymentDetails {
 	return &paymentDetails{
 		account:         account,
 		amount:          amountPaid,
@@ -195,9 +195,9 @@ func newPaymentDetails(account string, amountPaid, addedCollateral types.Currenc
 	}
 }
 
-// Account returns the account id used for payment. For payments made by
+// AccountID returns the account id used for payment. For payments made by
 // contract this will return the empty string.
-func (pd *paymentDetails) Account() string { return pd.account }
+func (pd *paymentDetails) AccountID() modules.AccountID { return pd.account }
 
 // Amount returns how much money the host received.
 func (pd *paymentDetails) Amount() types.Currency { return pd.amount }
