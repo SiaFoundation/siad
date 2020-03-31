@@ -618,7 +618,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) (e
 	// Starting at this point the changes to be made are written to the WAL.
 	// This means we need to panic in case applying the updates fails.
 	defer func() {
-		if err != nil {
+		if err != nil && !sf.deps.Disrupt("faultyFile") {
 			panic(err)
 		}
 	}()
