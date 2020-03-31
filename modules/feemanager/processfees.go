@@ -44,9 +44,9 @@ func (fm *FeeManager) threadedProcessFees() {
 	}
 	if fm.payoutHeight < bh {
 		// It is not time to process any fees yet
-		fm.staticLog.Printf("Not time to process fees; Blockheight %v, PayoutHeight %v", bh, fm.payoutHeight)
 		return
 	}
+	fm.staticLog.Printf("Processing fees; Blockheight %v, PayoutHeight %v", bh, fm.payoutHeight)
 
 	// Process the fees
 	var processErrors error
@@ -59,16 +59,15 @@ func (fm *FeeManager) threadedProcessFees() {
 			continue
 		}
 
-		// Remove any non-reoccuring fees
-		if fee.Reoccuring {
-			continue
+		// Remove any non-recurring fees
+		if !fee.Recurring {
+			delete(fm.fees, fee.UID)
 		}
-		delete(fm.fees, fee.UID)
 	}
 
 	// Increment the payoutHeight and reset the currentPayout if we successfully
 	// processed all the fees
-	if processErrors != nil {
+	if processErrors == nil {
 		fm.payoutHeight += PayoutInterval
 		fm.currentPayout = types.ZeroCurrency
 		fm.staticLog.Println("All fees processed, new PayoutHeight is", fm.payoutHeight)

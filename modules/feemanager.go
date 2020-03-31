@@ -42,9 +42,9 @@ type (
 		// Offset is the fee's offset in the persist file on disk
 		Offset int64 `json:"offset"`
 
-		// Reoccuring indicates whether or not this fee is a reoccuring fee and
+		// Recurring indicates whether or not this fee is a recurring fee and
 		// will be charged in the next period as well
-		Reoccuring bool `json:"reoccuring"`
+		Recurring bool `json:"recurring"`
 
 		// UID is a unique identifier for the Fee
 		UID FeeUID `json:"uid"`
@@ -77,7 +77,7 @@ type FeeManager interface {
 	Fees() (pending []AppFee, paid []AppFee, err error)
 
 	// SetFee sets a fee for the FeeManager to manage
-	SetFee(address types.UnlockHash, amount types.Currency, appUID AppUID, reoccuring bool) error
+	SetFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) error
 
 	// Settings returns the settings of the FeeManager
 	Settings() (FeeManagerSettings, error)
@@ -91,7 +91,7 @@ func (fee *AppFee) marshalSia(w io.Writer) error {
 	e.Encode(fee.AppUID)
 	e.WriteBool(fee.Cancelled)
 	e.Encode(fee.Offset)
-	e.WriteBool(fee.Reoccuring)
+	e.WriteBool(fee.Recurring)
 	e.Encode(fee.UID)
 	return e.Err()
 }
@@ -104,7 +104,7 @@ func (fee *AppFee) unmarshalSia(r io.Reader) error {
 	d.Decode(&fee.AppUID)
 	fee.Cancelled = d.NextBool()
 	d.Decode(&fee.Offset)
-	fee.Reoccuring = d.NextBool()
+	fee.Recurring = d.NextBool()
 	d.Decode(&fee.UID)
 	return d.Err()
 }

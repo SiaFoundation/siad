@@ -13,22 +13,22 @@ import (
 func TestAppFeeEncoding(t *testing.T) {
 	// Create fees
 	fee1 := AppFee{
-		Address:    types.UnlockHash{},
-		Amount:     types.NewCurrency64(fastrand.Uint64n(100)),
-		AppUID:     AppUID(hex.EncodeToString(fastrand.Bytes(20))),
-		Cancelled:  fastrand.Intn(100)%2 == 0,
-		Offset:     int64(fastrand.Intn(1000)),
-		Reoccuring: fastrand.Intn(100)%2 == 0,
-		UID:        FeeUID("fee1"),
+		Address:   types.UnlockHash{},
+		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
+		AppUID:    AppUID(hex.EncodeToString(fastrand.Bytes(20))),
+		Cancelled: fastrand.Intn(100)%2 == 0,
+		Offset:    int64(fastrand.Intn(1000)),
+		Recurring: fastrand.Intn(100)%2 == 0,
+		UID:       FeeUID("fee1"),
 	}
 	fee2 := AppFee{
-		Address:    types.UnlockHash{},
-		Amount:     types.NewCurrency64(fastrand.Uint64n(100)),
-		AppUID:     AppUID(hex.EncodeToString(fastrand.Bytes(20))),
-		Cancelled:  fastrand.Intn(100)%2 == 0,
-		Offset:     int64(fastrand.Intn(1000)),
-		Reoccuring: fastrand.Intn(100)%2 == 0,
-		UID:        FeeUID("fee2"),
+		Address:   types.UnlockHash{},
+		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
+		AppUID:    AppUID(hex.EncodeToString(fastrand.Bytes(20))),
+		Cancelled: fastrand.Intn(100)%2 == 0,
+		Offset:    int64(fastrand.Intn(1000)),
+		Recurring: fastrand.Intn(100)%2 == 0,
+		UID:       FeeUID("fee2"),
 	}
 
 	// Marshal Fees

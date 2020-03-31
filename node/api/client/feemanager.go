@@ -27,12 +27,12 @@ func (c *Client) FeeManagerCancelPost(feeUID modules.FeeUID) (err error) {
 
 // FeeManagerSetPost use the /feemanager/set POST endpoint to set a fee for the
 // FeeManager to manage
-func (c *Client) FeeManagerSetPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, reoccuring bool) (err error) {
+func (c *Client) FeeManagerSetPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (err error) {
 	values := url.Values{}
 	values.Set("address", address.String())
 	values.Set("amount", amount.String())
 	values.Set("appuid", string(appUID))
-	values.Set("reoccuring", fmt.Sprint(reoccuring))
+	values.Set("recurring", fmt.Sprint(recurring))
 	err = c.post("/feemanager/set", values.Encode(), nil)
 	return
 }

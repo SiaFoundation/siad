@@ -65,7 +65,7 @@ func (fm *FeeManager) callCancelFee(feeUID modules.FeeUID) error {
 
 	// Negative Currency check
 	if fee.Amount.Cmp(fm.currentPayout) > 0 {
-		build.Critical("fee amount is large than the current payout, this should not happen")
+		build.Critical("fee amount is larger than the current payout, this should not happen")
 		fm.currentPayout = fee.Amount
 	}
 	fm.currentPayout = fm.currentPayout.Sub(fee.Amount)
@@ -95,7 +95,7 @@ func (fm *FeeManager) callInitPersist() error {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 	// Create the persist directories if they do not yet exists
-	err := os.MkdirAll(fm.staticPersistDir, 0700)
+	err := os.MkdirAll(fm.staticPersistDir, modules.DefaultDirPerm)
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func (fm *FeeManager) callInitPersist() error {
 }
 
 // callSetFee sets a fee for the FeeManager to manage
-func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, reoccuring bool) error {
+func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) error {
 	// Acquire Lock
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
@@ -158,17 +158,17 @@ func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency
 	// Check if we are going to exceed the maxPayout
 	newPayout := fm.currentPayout.Add(amount)
 	if newPayout.Cmp(fm.maxPayout) > 0 {
-		return fmt.Errorf("Cannot set fee as it would cause the MaxPayout of %v to be exceeded", fm.maxPayout.HumanString())
+		return fmt.Errorf("Cannot set fee with amount of %v as it would cause the MaxPayout of %v to be exceeded", amount.HumanString(), fm.maxPayout.HumanString())
 	}
 
 	// Create Fee
 	fee := &modules.AppFee{
-		Address:    address,
-		Amount:     amount,
-		AppUID:     appUID,
-		Offset:     fm.nextFeeOffset,
-		Reoccuring: reoccuring,
-		UID:        uniqueID(),
+		Address:   address,
+		Amount:    amount,
+		AppUID:    appUID,
+		Offset:    fm.nextFeeOffset,
+		Recurring: recurring,
+		UID:       uniqueID(),
 	}
 
 	// Add fee to FeeManager

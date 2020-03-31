@@ -26,12 +26,12 @@ type (
 func (api *API) feemanagerHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	settings, err := api.feemanager.Settings()
 	if err != nil {
-		WriteError(w, Error{"could not get the settings of the FeeManager: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"could not get the settings of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	pending, paid, err := api.feemanager.Fees()
 	if err != nil {
-		WriteError(w, Error{"could not get the fees of the FeeManager: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"could not get the fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteJSON(w, FeeManagerGET{
@@ -53,7 +53,7 @@ func (api *API) feemanagerCancelHandlerPOST(w http.ResponseWriter, req *http.Req
 	// Cancel the fee
 	err := api.feemanager.CancelFee(modules.FeeUID(feeUID))
 	if err != nil {
-		WriteError(w, Error{"could not cancel the fee: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"could not cancel the fee: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -92,20 +92,20 @@ func (api *API) feemanagerSetHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	// Scan for reoccuring - OPTIONAL
-	var reoccuring bool
-	if r := req.FormValue("reoccuring"); r != "" {
-		reoccuring, err = scanBool(r)
+	// Scan for recurring - OPTIONAL
+	var recurring bool
+	if r := req.FormValue("recurring"); r != "" {
+		recurring, err = scanBool(r)
 		if err != nil {
-			WriteError(w, Error{"could not read reoccuring: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"could not read recurring: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
 
 	// Set the fee
-	err = api.feemanager.SetFee(address, amount, modules.AppUID(appUIDstr), reoccuring)
+	err = api.feemanager.SetFee(address, amount, modules.AppUID(appUIDstr), recurring)
 	if err != nil {
-		WriteError(w, Error{"could not set the fee: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"could not set the fee: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 

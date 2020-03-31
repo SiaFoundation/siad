@@ -50,8 +50,8 @@ func TestFeeManager(t *testing.T) {
 	amount := types.NewCurrency64(1000)
 	address := types.UnlockHash{}
 	appUID := modules.AppUID("testapp")
-	reoccuring := false
-	err = fm.FeeManagerSetPost(address, amount, appUID, reoccuring)
+	recurring := false
+	err = fm.FeeManagerSetPost(address, amount, appUID, recurring)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +73,11 @@ func TestFeeManager(t *testing.T) {
 
 	fee := fmg.PendingFees[0]
 	expectedFee := modules.AppFee{
-		Address:    address,
-		Amount:     amount,
-		AppUID:     appUID,
-		Reoccuring: reoccuring,
-		UID:        fee.UID,
+		Address:   address,
+		Amount:    amount,
+		AppUID:    appUID,
+		Recurring: recurring,
+		UID:       fee.UID,
 	}
 	if !reflect.DeepEqual(fee, expectedFee) {
 		t.Log("Fee:", fee)
@@ -127,7 +127,7 @@ func TestFeeManagerFeeProcessing(t *testing.T) {
 	// create 2 other nodes and fully connect them, one node should be the
 	// developer wallet and the other should represent nebulous's wallet
 
-	// Set two Fees with the developer wallet's address. one reoccuring and one
+	// Set two Fees with the developer wallet's address. one recurring and one
 	// not
 
 	// Check for Fees and FeeManager settings

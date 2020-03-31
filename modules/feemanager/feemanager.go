@@ -2,7 +2,7 @@ package feemanager
 
 import (
 	"encoding/hex"
-	"strings"
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -13,6 +13,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
+)
+
+const (
+	// nebAddressStr is the string representation of the Nebulous Wallet Address
+	nebAddressStr = "0e38c99857408b7d2604a1ce20c6776c9e42b105b2de9b0cd1e75baad5ec39e5c5308be19cea"
 )
 
 var (
@@ -28,11 +33,19 @@ var (
 	_ modules.FeeManager = (*FeeManager)(nil)
 
 	// nebAddress is the address that Nebulous's share of the fees will be paid
-	// out to.
-	//
-	// TODO - set
-	nebAddress = types.UnlockHash{}
+	// out to
+	nebAddress = initNebAddress()
 )
+
+// initNebAddress initializes the Nebulous wallet address
+func initNebAddress() types.UnlockHash {
+	var addr types.UnlockHash
+	_, err := fmt.Sscan(nebAddressStr, &addr)
+	if err != nil {
+		panic(err)
+	}
+	return addr
+}
 
 type (
 	// FeeManager is responsible for tracking any application fees that are
@@ -41,7 +54,7 @@ type (
 		// fees are all the fees that are currently charging this siad instance
 		fees map[modules.FeeUID]*modules.AppFee
 
-		// currentPayout is how much is going to the payout is going to be for this period
+		// currentPayout is how much the payout is going to be for this period
 		currentPayout types.Currency
 
 		// maxPayout is the maximum amount that will get paid out per period
@@ -121,9 +134,6 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir, 
 	done := make(chan struct{})
 	defer close(done)
 	err = cs.ConsensusSetSubscribe(fm, modules.ConsensusChangeRecent, fm.staticTG.StopChan())
-	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
-		return nil, err
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -192,12 +202,12 @@ func (fm *FeeManager) Fees() (pending []modules.AppFee, paid []modules.AppFee, e
 }
 
 // SetFee sets a fee for the FeeManager to manage
-func (fm *FeeManager) SetFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, reoccuring bool) error {
+func (fm *FeeManager) SetFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) error {
 	if err := fm.staticTG.Add(); err != nil {
 		return err
 	}
 	defer fm.staticTG.Done()
-	return fm.callSetFee(address, amount, appUID, reoccuring)
+	return fm.callSetFee(address, amount, appUID, recurring)
 }
 
 // Settings returns the settings of the FeeManager

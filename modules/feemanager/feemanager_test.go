@@ -225,8 +225,8 @@ func setRandomFees(fm *FeeManager) error {
 	for i := 0; i < fastrand.Intn(5)+1; i++ {
 		amount := types.NewCurrency64(fastrand.Uint64n(100))
 		appUID := modules.AppUID(hex.EncodeToString(fastrand.Bytes(20)))
-		reoccuring := fastrand.Intn(100)%2 == 0
-		err := fm.SetFee(types.UnlockHash{}, amount, appUID, reoccuring)
+		recurring := fastrand.Intn(100)%2 == 0
+		err := fm.SetFee(types.UnlockHash{}, amount, appUID, recurring)
 		if err != nil {
 			return err
 		}

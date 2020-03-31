@@ -747,7 +747,7 @@ returns information about the feemanager.
       "appuid":"supercoolapp", // string
       "cancelled":false,       // bool
       "offset":1000,           // int64
-      "reoccuring":true,       // bool
+      "recurring":true,       // bool
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
   ],
@@ -758,7 +758,7 @@ returns information about the feemanager.
       "appuid":"okapp",    // string
       "cancelled":false,   // bool
       "offset":1000,       // int64
-      "reoccuring":false,  // bool
+      "recurring":false,  // bool
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
   ]
@@ -770,28 +770,25 @@ returns information about the feemanager.
 List of current settings of the FeeManager.
 
 **currentpayout** | hastings  
-This is the amount in hastings that the feemanager expects to payout this
-period.
+Amount in hastings that the feemanager expects to payout this period.
 
 **maxpayout** | hastings  
-This is the maximum amount in hastings that the feemanager will payout this
-period.
+Maximum amount in hastings that the feemanager will payout this period.
 
 **payoutheight** | blockheight  
-This is the height at which the FeeManager will payout the pending fees.
+Height at which the FeeManager will payout the pending fees.
 
-**pendingfees** | AppFee
-A list of the fees that are currently pending for this period. 
+**pendingfees** | []AppFee
+List of the fees that are currently pending for this period. 
 
-**paidfees** | AppFee  
-A list of historical fees that have been paid out by the FeeManager. 
+**paidfees** | []AppFee  
+List of historical fees that have been paid out by the FeeManager. 
 
 **address** | address  
-The address is the application developer's wallet address that the fee should be
-paid out to.
+The application developer's wallet address that the fee should be paid out to.
 
 **amount** | hastings  
-The amount is how much the fee will charge the user.
+The number of hastings the fee will charge the user.
 
 **appuid** | string  
 The unique application identifier for the application that set the fee.
@@ -802,8 +799,8 @@ Indicates whether or not this fee has been cancelled.
 **offset** | int64  
 Offset of the fee within the fee persist file.
 
-**reoccuring** | bool  
-Indicates whether or not this fee will be a reoccuring fee. 
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
 
 **uid** | string  
 This is the unique identifier for the fee
@@ -835,7 +832,7 @@ responses](#standard-responses).
 curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp" "localhost:9980/feemanager/set"
 
 // All Fields
-curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&reoccuring=true" "localhost:9980/feemanager/set"
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&recurring=true" "localhost:9980/feemanager/set"
 ```
 sets a fee and associates it with the provided application UID.
 
@@ -852,8 +849,8 @@ paid out to.
 The unique application identifier for the application that set the fee.
 
 ### OPTIONAL
-**reoccuring** | bool  
-Indicates whether or not this fee will be a reoccuring fee. 
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
 
 ### Response
 
