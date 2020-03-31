@@ -51,7 +51,7 @@ func TestInstructionReadSector(t *testing.T) {
 	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestInstructionReadSector(t *testing.T) {
 	length := offset
 	instructions, r, dataLen, cost, refund, collateral, usedMemory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}

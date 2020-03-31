@@ -93,7 +93,7 @@ func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
@@ -102,9 +102,10 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			priceTable:  pt,
 			sectors:     newSectors(sos.SectorRoots()),
 		},
-		staticBudget: budget,
-		staticData:   openProgramData(data, programDataLen),
-		tg:           &mdm.tg,
+		staticBudget:           budget,
+		staticCollateralBudget: collateralBudget,
+		staticData:             openProgramData(data, programDataLen),
+		tg:                     &mdm.tg,
 	}
 
 	// Convert the instructions.
@@ -143,7 +144,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 // program, an error is returned.
 func (p *Program) addCollateral(collateral types.Currency) error {
 	newCollateral := p.potentialNewCollateral.Add(collateral)
-	if p.staticBudget.Cmp(newCollateral) < 0 {
+	if p.staticCollateralBudget.Cmp(newCollateral) < 0 {
 		return modules.ErrMDMInsufficientCollateralBudget
 	}
 	p.potentialNewCollateral = newCollateral
