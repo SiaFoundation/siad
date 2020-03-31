@@ -13,13 +13,13 @@ import (
 
 // updateRunningCosts is a testing helper function for updating the running
 // costs of a program after adding an instruction.
-func updateRunningCosts(pt modules.RPCPriceTable, runningCost, runningRefund types.Currency, runningMemory uint64, cost, refund types.Currency, memory, time uint64) (types.Currency, types.Currency, uint64) {
+func updateRunningCosts(pt modules.RPCPriceTable, runningCost, runningRefund, runningCollateral types.Currency, runningMemory uint64, cost, refund, collateral types.Currency, memory, time uint64) (types.Currency, types.Currency, types.Currency, uint64) {
 	runningMemory = runningMemory + memory
 	memoryCost := modules.MDMMemoryCost(pt, runningMemory, time)
 	runningCost = runningCost.Add(memoryCost).Add(cost)
 	runningRefund = runningRefund.Add(refund)
 
-	return runningCost, runningRefund, runningMemory
+	return runningCost, runningRefund, runningCollateral, runningMemory
 }
 
 // TestNewEmptyProgram runs a program without instructions.
@@ -72,7 +72,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 	var r io.Reader
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, r, dataLen, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
+	instructions, r, dataLen, _, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen), newTestStorageObligation(true), dataLen, r)

@@ -13,7 +13,7 @@ import (
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
+func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	i := NewHasSectorInstruction(0)
 	instructions := []modules.Instruction{i}
 	data := make([]byte, crypto.HashSize)
@@ -25,7 +25,8 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]mo
 	memoryCost := modules.MDMMemoryCost(pt, usedMemory, TimeHasSector+TimeCommit)
 	initCost := modules.MDMInitCost(pt, uint64(len(data)))
 	cost = cost.Add(memoryCost).Add(initCost)
-	return instructions, data, cost, refund, usedMemory
+	collateral := modules.MDMHasSectorCollateral()
+	return instructions, data, cost, refund, collateral, usedMemory
 }
 
 // TestInstructionHasSector tests executing a program with a single
@@ -46,7 +47,7 @@ func TestInstructionHasSector(t *testing.T) {
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, usedMemory := newHasSectorProgram(sectorRoot, pt)
+	instructions, programData, cost, refund, collateral, usedMemory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
@@ -74,6 +75,9 @@ func TestInstructionHasSector(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.NewCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected colalteral: %v != %v", output.NewCollateral.HumanString(), collateral.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
