@@ -300,7 +300,7 @@ func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error 
 		rootsSection := newFileSection(f, int64(oldHeaderSize), -1)
 
 		// Load header.
-		header, err := loadSafeContractHeader(f, oldHeaderSize)
+		header, err := loadSafeContractHeader(f, oldHeaderSize*decodeMaxSizeMultiplier)
 		if err != nil {
 			return errors.Compose(err, f.Close())
 		}

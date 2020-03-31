@@ -23,6 +23,10 @@ const (
 	updateNameInsertContract = "insertContract"
 	updateNameSetHeader      = "setHeader"
 	updateNameSetRoot        = "setRoot"
+
+	// decodeMaxSizeMultiplier is multiplied with the size of an encoded object
+	// to allocated a bit of extra space for decoding.
+	decodeMaxSizeMultiplier = 3
 )
 
 // updateInsertContract is an update that inserts a contract into the
@@ -671,7 +675,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName string, wa
 	if err != nil {
 		return err
 	}
-	header, err := loadSafeContractHeader(headerFile, int(headerStat.Size()))
+	header, err := loadSafeContractHeader(headerFile, int(headerStat.Size())*decodeMaxSizeMultiplier)
 	if err != nil {
 		return errors.AddContext(err, "unable to load contract header")
 	}
