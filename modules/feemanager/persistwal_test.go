@@ -1,6 +1,7 @@
 package feemanager
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"reflect"
@@ -206,11 +207,12 @@ func randomFees() ([]modules.AppFee, int64, error) {
 	for i := 0; i < fastrand.Intn(5); i++ {
 		fee := randomFee()
 		fee.Offset = nextOffset
-		data, err := modules.MarshalFee(fee)
+		var buf bytes.Buffer
+		err := fee.MarshalSia(&buf)
 		if err != nil {
 			return []modules.AppFee{}, 0, err
 		}
-		nextOffset += int64(len(data))
+		nextOffset += int64(buf.Len())
 		fees = append(fees, fee)
 	}
 	return fees, nextOffset, nil

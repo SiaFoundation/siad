@@ -1,6 +1,7 @@
 package feemanager
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -290,17 +291,19 @@ func (fm *FeeManager) save() error {
 // nextFeeOffset of the FeeManager, and saves all changes to disk
 func (fm *FeeManager) saveFeeAndUpdate(fee modules.AppFee) error {
 	// Marshal the fee and create update
-	data, err := modules.MarshalFee(fee)
+	// Create a buffer.
+	var buf bytes.Buffer
+	err := fee.MarshalSia(&buf)
 	if err != nil {
 		return errors.AddContext(err, "unable to marshal fee")
 	}
-	feeUpdate, err := createInsertUpdateFromRaw(data, fee.Offset)
+	feeUpdate, err := createInsertUpdateFromRaw(buf.Bytes(), fee.Offset)
 	if err != nil {
 		return errors.AddContext(err, "unable to create fee update")
 	}
 
 	// Update the FeeManager's nextFeeOffset and create the peristence update
-	fm.nextFeeOffset += int64(len(data))
+	fm.nextFeeOffset += int64(buf.Len())
 	persistUpdate, err := createPersistUpdate(fm.persistData())
 	if err != nil {
 		return errors.AddContext(err, "unable to create persist update")

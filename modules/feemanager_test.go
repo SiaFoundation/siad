@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"bytes"
 	"encoding/hex"
 	"reflect"
 	"testing"
@@ -32,17 +33,18 @@ func TestAppFeeEncoding(t *testing.T) {
 	}
 
 	// Marshal Fees
-	data1, err := MarshalFee(fee1)
+	var buf1, buf2 bytes.Buffer
+	err := fee1.MarshalSia(&buf1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data2, err := MarshalFee(fee2)
+	err = fee2.MarshalSia(&buf2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Unmarshal fees
-	fees, err := UnmarshalFees(append(data1, data2...))
+	fees, err := UnmarshalFees(append(buf1.Bytes(), buf2.Bytes()...))
 	if err != nil {
 		t.Fatal(err)
 	}

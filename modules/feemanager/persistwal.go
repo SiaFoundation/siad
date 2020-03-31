@@ -1,6 +1,7 @@
 package feemanager
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,12 +28,14 @@ const (
 // fee persist file
 func createInsertUpdate(fee modules.AppFee) (writeaheadlog.Update, error) {
 	// Marshal the fee
-	data, err := modules.MarshalFee(fee)
+	// Create a buffer.
+	var buf bytes.Buffer
+	err := fee.MarshalSia(&buf)
 	if err != nil {
 		return writeaheadlog.Update{}, errors.AddContext(err, "unable to marshal fee")
 	}
 
-	return createInsertUpdateFromRaw(data, fee.Offset)
+	return createInsertUpdateFromRaw(buf.Bytes(), fee.Offset)
 }
 
 // createInsertUpdateFromRaw creates a writeaheadlog update for inserting a fee

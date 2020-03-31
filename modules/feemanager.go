@@ -83,8 +83,8 @@ type FeeManager interface {
 	Settings() (FeeManagerSettings, error)
 }
 
-// marshalSia implements the encoding.SiaMarshaler interface.
-func (fee *AppFee) marshalSia(w io.Writer) error {
+// MarshalSia implements the encoding.SiaMarshaler interface.
+func (fee *AppFee) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
 	e.Encode(fee.Address)
 	e.Encode(fee.Amount)
@@ -107,18 +107,6 @@ func (fee *AppFee) unmarshalSia(r io.Reader) error {
 	fee.Recurring = d.NextBool()
 	d.Decode(&fee.UID)
 	return d.Err()
-}
-
-// MarshalFee marshals the AppFee using Sia encoding.
-func MarshalFee(fee AppFee) ([]byte, error) {
-	// Create a buffer.
-	var buf bytes.Buffer
-	// Marshal all the data into the buffer
-	err := fee.marshalSia(&buf)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
 
 // UnmarshalFees unmarshals the sia encoded fees.
