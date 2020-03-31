@@ -98,6 +98,11 @@ func TestSiapath(t *testing.T) {
 		{"/leading/slash", true}, // clean will trim leading slashes so this is a valid input
 		{"foo/./bar", false},
 		{"", false},
+		{"/", false},
+		{"//", false},
+		{"///", false},
+		{"////", false},
+		{"/////", false},
 		{"blank/end/", true}, // clean will trim trailing slashes so this is a valid input
 		{"double//dash", false},
 		{"../", false},
