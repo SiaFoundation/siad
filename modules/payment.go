@@ -53,7 +53,8 @@ var (
 // RPC.
 type PaymentProcessor interface {
 	// ProcessPayment takes a stream and handles the payment request objects
-	// sent by the caller. Returns an object that implements the PaymentDetails interface, or an error in case of failure.
+	// sent by the caller. Returns an object that implements the PaymentDetails
+	// interface, or an error in case of failure.
 	ProcessPayment(stream siamux.Stream) (PaymentDetails, error)
 }
 
