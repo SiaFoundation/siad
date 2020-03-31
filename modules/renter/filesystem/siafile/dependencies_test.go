@@ -70,7 +70,7 @@ func (d *dependencyFaultyDisk) enable() {
 // Disrupt returns true if the faulty disk dependency is enabled to make sure we
 // don't panic when updates can't be applied but instead are able to handle the
 // error gracefully during testing.
-func (d *dependencyFaultyDisk) Dirupt(s string) bool {
+func (d *dependencyFaultyDisk) Disrupt(s string) bool {
 	return s == "faultyFile"
 }
 
