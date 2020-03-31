@@ -92,7 +92,6 @@ func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb m
 			c.log.Println("Storage Adjustment:    ", sb.StorageRemainingAdjustment)
 			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
 			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
-
 		}
 		if !u.GoodForRenew {
 			c.log.Println("Marking contract as being good for renew", contract.ID)

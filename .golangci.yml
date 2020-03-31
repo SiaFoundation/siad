@@ -84,13 +84,14 @@ linters:
   disable-all: true
   fast: false
   enable:
-    - govet
+    - gocritic
     - gofmt
     - golint
-    - gocritic
-    - typecheck
     - gosec
+    - govet
     - misspell
+    - typecheck
+    - whitespace
 
 issues:
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
@@ -109,7 +110,7 @@ issues:
   # it can be disabled by this option. To list all
   # excluded by default patterns execute `golangci-lint run --help`.
   # Default value for this option is true.
-  exclude-use-default: true
+  exclude-use-default: false
 
   # Additional exclusion rules.
   exclude-rules:
@@ -120,5 +121,23 @@ issues:
         - gosec
     - path: cmd/siac/
       text: "G107: Potential HTTP request made with variable url"
+      linters:
+        - gosec
+
+    # Some default exclude patterns that we want to keep after setting
+    # `exclude-use-default` to `false`.
+    - text: "G103: Use of unsafe calls should be audited"
+      linters:
+        - gosec
+    - text: "G104: Errors unhandled"
+      linters:
+        - gosec
+    - text: "G301: Expect directory permissions to be 0750 or less"
+      linters:
+        - gosec
+    - text: "G302: Expect file permissions to be 0600 or less"
+      linters:
+        - gosec
+    - text: "G304: Potential file inclusion via variable"
       linters:
         - gosec

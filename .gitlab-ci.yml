@@ -186,7 +186,7 @@ package-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs="$package_pkgs"    
+    - make test-long run=. pkgs="$package_pkgs"
 siatest-tests:
   <<: *default_test_params
   cache:
@@ -276,4 +276,3 @@ siatest-renter-sub-windows-tests-nightly:
   <<: *default_nightly_windows_params
   script:
     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
-    

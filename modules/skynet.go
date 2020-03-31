@@ -175,6 +175,10 @@ type SkyfileUploadParameters struct {
 	// Recommended that the skyfile is placed in /var/skynet
 	SiaPath SiaPath `json:"siapath"`
 
+	// DryRun allows to retrieve the skylink without actually uploading the file
+	// to the Sia network.
+	DryRun bool `json:"dryrun"`
+
 	// Force determines whether the upload should overwrite an existing siafile
 	// at 'SiaPath'. If set to false, an error will be returned if there is
 	// already a file or folder at 'SiaPath'. If set to true, any existing file

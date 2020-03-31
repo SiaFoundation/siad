@@ -250,7 +250,6 @@ func bytesToRecover(chunkFetchOffset, chunkFetchLength, chunkSize uint64, rs mod
 	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
 	_, numSegments := segmentsForRecovery(chunkFetchOffset, chunkFetchLength, rs)
 	return numSegments * recoveredSegmentSize
-
 }
 
 // recoveredDataOffset translates the fetch offset of the chunk into the offset

@@ -196,7 +196,6 @@ func TestHostTreeParallel(t *testing.T) {
 					return
 				default:
 					switch fastrand.Intn(4) {
-
 					// INSERT
 					case 0:
 						entry := makeHostDBEntry()
