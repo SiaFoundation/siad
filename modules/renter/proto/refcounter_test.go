@@ -255,7 +255,7 @@ func TestRefCounter_DropSectors(t *testing.T) {
 		t.Fatal("Failed to create truncate update:", err)
 	}
 	updates = append(updates, u)
-	u, err = rc.DropSectors(secIdx2)
+	u, err = rc.Increment(secIdx2)
 	if err != nil {
 		t.Fatal("Failed to create truncate update:", err)
 	}
@@ -360,7 +360,7 @@ func TestRefCounter_Increment(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to read value after increment:", err)
 	}
-	if val != 0 {
+	if val != 2 {
 		t.Fatal(fmt.Errorf("read wrong value from disk after increment. Expected 2, got %d", val))
 	}
 }
