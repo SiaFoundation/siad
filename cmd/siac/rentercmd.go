@@ -35,6 +35,10 @@ import (
 
 const (
 	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
+
+	progBarJobProc   = "\x1b[34;1;4mprocessing\x1b[0m"
+	progBarJobUpload = "\x1b[33;1;4muploading\x1b[0m"
+	progBarJobDone   = "\x1b[32;1;4mdone!\x1b[0m"
 )
 
 var (
@@ -2710,11 +2714,11 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		die("Unable to fetch source fileinfo:", err)
 	}
 
-	// create a new progress bar pool:
-	progress := mpb.New()
+	// create a new progress bar set:
+	pbs := mpb.New()
 
 	if !fi.IsDir() {
-		skylink := skynetUploadFileWithProgressBar(sourcePath, destSiaPath, progress)
+		skylink := skynetUploadFileWithProgressBar(sourcePath, destSiaPath, pbs)
 		fmt.Printf("Successfully uploaded skyfile!\n")
 		fmt.Printf("%v => %v\n", sourcePath, skylink)
 		return
@@ -2745,7 +2749,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			// get only the filename and path, relative to the original destSiaPath
 			// in order to figure out where to put the file
 			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-			skylink := skynetUploadFileWithProgressBar(filename, newDestSiaPath, progress)
+			skylink := skynetUploadFileWithProgressBar(filename, newDestSiaPath, pbs)
 			muUploaded.Lock()
 			uploadedSkyfiles[filename] = skylink
 			muUploaded.Unlock()
@@ -2758,6 +2762,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		go upload()
 	}
 	wg.Wait()
+	pbs.Wait()
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(uploadedSkyfiles))
 	for name, skylink := range uploadedSkyfiles {
 		fmt.Printf("%v => %v\n", name, skylink)
@@ -2777,8 +2782,13 @@ func skynetUploadFile(sourcePath, destSiaPath string) (skylink string) {
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
 	_, filename := filepath.Split(sourcePath)
-	return skynetUploadFileFromReader(file, filename, destSiaPath, fi.Mode())
+	return skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
 }
 
 // skynetUploadFileWithProgressBar uploads a file to Skynet and displays a
@@ -2795,18 +2805,29 @@ func skynetUploadFileWithProgressBar(sourcePath, destSiaPath string, progress *m
 		die("Unable to fetch source fileinfo:", err)
 	}
 	_, filename := filepath.Split(sourcePath)
-	// Wrap the file reader in a progress bar reader
-	progressReader := newProgressReader(progress, fi.Size(), filename, file)
-	return skynetUploadFileFromReader(progressReader, filename, destSiaPath, fi.Mode())
-}
-
-// skynetUploadFileFromReader is a helper method that uploads a file to Skynet
-func skynetUploadFileFromReader(source io.Reader, filename, destSiaPath string, mode os.FileMode) (skylink string) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
 	if err != nil {
 		die("Could not parse destination siapath:", err)
 	}
+
+	// this will hold the skylink once we have it in order to dynamically pass
+	// it to the spinner
+	skylink = "this is not the link" // TODO  replace with a struct
+	pskylink := &skylink
+	// Wrap the file reader in a progress bar reader
+	pBar, pReader := newProgressReader(progress, fi.Size(), filename, file)
+	// Set a spinner to start after the upload is finished
+	pSpinner := newProcessingSpinner(progress, pBar, filename, pskylink)
+
+	skylink = skynetUploadFileFromReader(pReader, filename, siaPath, fi.Mode())
+	// we have the skylink - stop the spinner
+	pSpinner.Increment()
+	return
+}
+
+// skynetUploadFileFromReader is a helper method that uploads a file to Skynet
+func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modules.SiaPath, mode os.FileMode) (skylink string) {
 	// Upload the file and return a skylink
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
@@ -2819,7 +2840,8 @@ func skynetUploadFileFromReader(source io.Reader, filename, destSiaPath string, 
 
 		Reader: source,
 	}
-	skylink, _, err = httpClient.SkynetSkyfilePost(sup)
+	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
+	fmt.Println(" >>> ", skylink) // DEBUG
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}
@@ -2828,20 +2850,57 @@ func skynetUploadFileFromReader(source io.Reader, filename, destSiaPath string, 
 
 // newProgressReader is a helper method for adding a new progress bar to an
 // existing *mpb.Progress object.
-func newProgressReader(progress *mpb.Progress, size int64, name string, file io.Reader) io.ReadCloser {
-	bar := progress.AddBar(
+func newProgressReader(progress *mpb.Progress, size int64, name string, file io.Reader) (*mpb.Bar, io.ReadCloser) {
+	bUpload := progress.AddBar(
 		size,
-		mpb.BarWidth(120-len(name)), // align the bars
+		mpb.BarWidth(120-len(name)), // right-align the bars
 		mpb.PrependDecorators(
-			decor.Name(name),
+			decor.Name(name, decor.WC{W: len(name) + 1, C: decor.DidentRight}),
+			decor.Name(progBarJobUpload, decor.WCSyncSpaceR),
+			decor.CountersNoUnit("%d / %d", decor.WCSyncWidth),
 		),
 		mpb.AppendDecorators(
-			decor.Counters(decor.UnitKB, "%d / %d"),
-			decor.Name("\t| "),
-			decor.EwmaSpeed(decor.UnitKB, "% .1f", 60),
+			decor.Percentage(decor.WC{W: 5}),
 		),
 	)
-	return bar.ProxyReader(file)
+
+	//bUpload := progress.AddBar(
+	//	size,
+	//	mpb.BarWidth(120-len(name)), // right-align the bars
+	//	mpb.PrependDecorators(
+	//		decor.Name(name),
+	//	),
+	//	mpb.AppendDecorators(
+	//		decor.Counters(decor.UnitKB, "%d / %d"),
+	//		decor.Name("\t| "),
+	//		decor.EwmaSpeed(decor.UnitKB, "% .1f", 60),
+	//	),
+	//)
+	return bUpload, bUpload.ProxyReader(file)
+}
+
+// newProcessingSpinner creates a spinner that is queued after `afterBar` is
+// complete. Once finished it will display the value to which `pskylink` points.
+// This allows us to display a skylink that we don't know when creating the
+// spinner.
+func newProcessingSpinner(progress *mpb.Progress, afterBar *mpb.Bar, filename string, pskylink *string) *mpb.Bar {
+	return progress.AddSpinner(
+		// we have a total of 1 because we'll only increment it once in order
+		// to stop the spinner
+		1,
+		mpb.SpinnerOnMiddle,
+		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
+		mpb.BarQueueAfter(afterBar),
+		mpb.BarFillerClearOnComplete(),
+		mpb.PrependDecorators(
+			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
+			decor.OnComplete(decor.Name(progBarJobProc, decor.WCSyncSpaceR), progBarJobDone),
+		),
+		mpb.AppendDecorators(
+			// keep an empty decorator and replace it with the skylink when done
+			decor.OnComplete(decor.Name(""), *pskylink),
+		),
+	)
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
