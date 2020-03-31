@@ -36,9 +36,9 @@ import (
 const (
 	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
 
-	progBarJobProc   = "\x1b[34;1;4mprocessing\x1b[0m"
-	progBarJobUpload = "\x1b[33;1;4muploading\x1b[0m"
-	progBarJobDone   = "\x1b[32;1;4mdone!\x1b[0m"
+	pBarJobUpload  = "\x1b[33;1;4muploading\x1b[0m"
+	pBarJobProcess = "\x1b[34;1;4mprocessing\x1b[0m"
+	pBarJobDone    = "\x1b[32;1;4mdone!\x1b[0m"
 )
 
 var (
@@ -2793,7 +2793,7 @@ func skynetUploadFile(sourcePath, destSiaPath string) (skylink string) {
 
 // skynetUploadFileWithProgressBar uploads a file to Skynet and displays a
 // progress bar that tracks the upload
-func skynetUploadFileWithProgressBar(sourcePath, destSiaPath string, progress *mpb.Progress) (skylink string) {
+func skynetUploadFileWithProgressBar(sourcePath, destSiaPath string, pbs *mpb.Progress) (skylink string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
 	if err != nil {
@@ -2811,17 +2811,15 @@ func skynetUploadFileWithProgressBar(sourcePath, destSiaPath string, progress *m
 		die("Could not parse destination siapath:", err)
 	}
 
-	// this will hold the skylink once we have it in order to dynamically pass
-	// it to the spinner
-	skylink = "this is not the link" // TODO  replace with a struct
-	pskylink := &skylink
-	// Wrap the file reader in a progress bar reader
-	pBar, pReader := newProgressReader(progress, fi.Size(), filename, file)
+	// Wrap the file reader in a pbs bar reader
+	pUpload, pReader := newProgressReader(pbs, fi.Size(), filename, file)
 	// Set a spinner to start after the upload is finished
-	pSpinner := newProcessingSpinner(progress, pBar, filename, pskylink)
+	pSpinner := newProgressSpinner(pbs, pUpload, filename)
 
 	skylink = skynetUploadFileFromReader(pReader, filename, siaPath, fi.Mode())
-	// we have the skylink - stop the spinner
+
+	// we have the skylink - replace the spinner with the skylink and stop it
+	newProgressSkylink(pbs, pSpinner, filename, skylink)
 	pSpinner.Increment()
 	return
 }
@@ -2841,7 +2839,6 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 		Reader: source,
 	}
 	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
-	fmt.Println(" >>> ", skylink) // DEBUG
 	if err != nil {
 		die("could not upload file to Skynet:", err)
 	}
@@ -2850,57 +2847,53 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 
 // newProgressReader is a helper method for adding a new progress bar to an
 // existing *mpb.Progress object.
-func newProgressReader(progress *mpb.Progress, size int64, name string, file io.Reader) (*mpb.Bar, io.ReadCloser) {
-	bUpload := progress.AddBar(
+func newProgressReader(pbs *mpb.Progress, size int64, filename string, file io.Reader) (*mpb.Bar, io.ReadCloser) {
+	bar := pbs.AddBar(
 		size,
-		mpb.BarWidth(120-len(name)), // right-align the bars
+		mpb.BarWidth(120-len(filename)), // right-align the bars
 		mpb.PrependDecorators(
-			decor.Name(name, decor.WC{W: len(name) + 1, C: decor.DidentRight}),
-			decor.Name(progBarJobUpload, decor.WCSyncSpaceR),
+			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
+			decor.Name(pBarJobUpload, decor.WCSyncSpaceR),
 			decor.CountersNoUnit("%d / %d", decor.WCSyncWidth),
 		),
 		mpb.AppendDecorators(
 			decor.Percentage(decor.WC{W: 5}),
 		),
 	)
-
-	//bUpload := progress.AddBar(
-	//	size,
-	//	mpb.BarWidth(120-len(name)), // right-align the bars
-	//	mpb.PrependDecorators(
-	//		decor.Name(name),
-	//	),
-	//	mpb.AppendDecorators(
-	//		decor.Counters(decor.UnitKB, "%d / %d"),
-	//		decor.Name("\t| "),
-	//		decor.EwmaSpeed(decor.UnitKB, "% .1f", 60),
-	//	),
-	//)
-	return bUpload, bUpload.ProxyReader(file)
+	return bar, bar.ProxyReader(file)
 }
 
-// newProcessingSpinner creates a spinner that is queued after `afterBar` is
-// complete. Once finished it will display the value to which `pskylink` points.
-// This allows us to display a skylink that we don't know when creating the
-// spinner.
-func newProcessingSpinner(progress *mpb.Progress, afterBar *mpb.Bar, filename string, pskylink *string) *mpb.Bar {
-	return progress.AddSpinner(
-		// we have a total of 1 because we'll only increment it once in order
-		// to stop the spinner
-		1,
+// newProgressSpinner creates a spinner that is queued after `afterBar` is
+// complete.
+func newProgressSpinner(pbs *mpb.Progress, afterBar *mpb.Bar, filename string) *mpb.Bar {
+	return pbs.AddSpinner(
+		1, // we'll increment it once to stop it
 		mpb.SpinnerOnMiddle,
 		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
 		mpb.BarQueueAfter(afterBar),
 		mpb.BarFillerClearOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
-			decor.OnComplete(decor.Name(progBarJobProc, decor.WCSyncSpaceR), progBarJobDone),
-		),
-		mpb.AppendDecorators(
-			// keep an empty decorator and replace it with the skylink when done
-			decor.OnComplete(decor.Name(""), *pskylink),
+			decor.OnComplete(decor.Name(pBarJobProcess, decor.WCSyncSpaceR), pBarJobDone),
 		),
 	)
+}
+
+// newProgressSkylink creates a static progress bar that starts after `afterBar`
+// and displays the skylink. The bar is stopped immediately.
+func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink string) {
+	pbs.AddBar(
+		1, // we'll increment it once to stop it
+		mpb.BarQueueAfter(afterBar),
+		mpb.BarFillerClearOnComplete(),
+		mpb.PrependDecorators(
+			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
+			decor.Name(pBarJobDone, decor.WCSyncSpaceR),
+		),
+		mpb.AppendDecorators(
+			decor.Name(skylink),
+		),
+	).Increment()
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
