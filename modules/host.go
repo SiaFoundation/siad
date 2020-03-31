@@ -260,6 +260,8 @@ type (
 		// have been made to the host.
 		NetworkMetrics() HostNetworkMetrics
 
+		PaymentProcessor
+
 		// PruneStaleStorageObligations will delete storage obligations from the
 		// host that, for whatever reason, did not make it on the block chain.
 		// As these stale storage obligations have an impact on the host
