@@ -213,6 +213,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		p.outputChan <- Output{
 			output:          output,
 			ExecutionCost:   p.executionCost,
+			NewCollateral:   p.newCollateral,
 			PotentialRefund: p.potentialRefund,
 		}
 		// Abort if the last output contained an error.

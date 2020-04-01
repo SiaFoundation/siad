@@ -20,6 +20,7 @@ func updateRunningCosts(pt modules.RPCPriceTable, runningCost, runningRefund, ru
 	memoryCost := modules.MDMMemoryCost(pt, runningMemory, time)
 	runningCost = runningCost.Add(memoryCost).Add(cost)
 	runningRefund = runningRefund.Add(refund)
+	runningCollateral = runningCollateral.Add(collateral)
 
 	return runningCost, runningRefund, runningCollateral, runningMemory
 }

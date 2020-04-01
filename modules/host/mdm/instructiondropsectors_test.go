@@ -88,6 +88,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	cost6, refund6, collateral6, memory6 := updateRunningCosts(pt, cost5, refund5, collateral5, memory5, cost, refund, collateral, memory, time)
 
 	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, TimeCommit))
+	collateral = collateral6
 
 	// Construct the inputs and expected outputs.
 	instructions := []modules.Instruction{
