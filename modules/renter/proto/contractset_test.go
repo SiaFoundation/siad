@@ -286,7 +286,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Make sure we can acquire the contract.
+	// Make sure we can't acquire the contract.
 	_, ok := cs.Acquire(header.ID())
 	if ok {
 		t.Fatal("shouldn't be able to acquire the contract")
