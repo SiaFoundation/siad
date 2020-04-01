@@ -164,7 +164,7 @@ func TestUpdateEntry(t *testing.T) {
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
-	updatedEntry.ScanHistory = append([]modules.HostDBScan{{Success: true, Timestamp: time.Now().Add(time.Hour * 24 * 11 * -1)}}, updatedEntry.ScanHistory...)
+	updatedEntry.ScanHistory = append([]modules.HostDBScan{{Success: true, Timestamp: time.Now().Add(time.Hour * 24 * (maxHostDownTimeInDays + 1) * -1)}}, updatedEntry.ScanHistory...)
 	err = hdbt.hdb.staticHostTree.Modify(updatedEntry)
 	if err != nil {
 		t.Fatal(err)
@@ -224,5 +224,76 @@ func TestFeeChangeSignificant(t *testing.T) {
 	s = feeChangeSignificant(types.NewCurrency64(n1), types.NewCurrency64(n2))
 	if s {
 		t.Fatalf("shouldn't be significant but was")
+	}
+}
+
+// TestUpdateEntryWithKnown host checks that a host from a knownContract (i.e. a
+// host we have a contract with currently) is never deleted from the host tree.
+func TestUpdateEntryWithKnownHost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entry := modules.HostDBEntry{
+		PublicKey: types.SiaPublicKey{
+			Key: []byte{1},
+		},
+	}
+	// we need an err in updateEntry to make all interactions unsuccessful.
+	someErr := errors.New("testing err")
+
+	// Add the host from that entry to the knownContracts map.
+	hdbt.hdb.mu.Lock()
+	hdbt.hdb.knownContracts[entry.PublicKey.String()] = contractInfo{HostPublicKey: entry.PublicKey}
+	hdbt.hdb.mu.Unlock()
+
+	hdbt.hdb.updateEntry(entry, someErr)
+	updatedEntry, exists := hdbt.hdb.staticHostTree.Select(entry.PublicKey)
+	if !exists {
+		t.Fatal("Entry did not get inserted into the host tree")
+	}
+	if len(updatedEntry.ScanHistory) != 2 {
+		t.Fatal("new entry was not given two scanning history entries")
+	}
+
+	// Prefix an invalid entry to have a scan from more than maxHostDowntime
+	// days ago. At less than minScans total, the host should not be deleted
+	// upon update.
+	updatedEntry.ScanHistory = append([]modules.HostDBScan{{}}, updatedEntry.ScanHistory...)
+	err = hdbt.hdb.staticHostTree.Modify(updatedEntry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Entry should still exist.
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry.PublicKey)
+	if !exists {
+		t.Fatal("Entry did not get inserted into the host tree")
+	}
+
+	// Add enough entries to get to minScans total length.
+	for i := len(updatedEntry.ScanHistory); i < minScans; i++ {
+		hdbt.hdb.updateEntry(entry, someErr)
+	}
+	// The entry should **still** exist in the hostdb, despite being offline.
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry.PublicKey)
+	if !exists {
+		t.Fatal("entry should not have been purged for being offline for too long")
+	}
+
+	// Remove the host from the hostContracts map and update with the same entry. It should
+	// now be deleted.
+	hdbt.hdb.mu.Lock()
+	delete(hdbt.hdb.knownContracts, updatedEntry.PublicKey.String())
+	hdbt.hdb.mu.Unlock()
+	hdbt.hdb.updateEntry(entry, someErr)
+
+	// Entry should not exist.
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry.PublicKey)
+	if exists {
+		t.Fatal("Entry did not get removed from the host tree")
 	}
 }

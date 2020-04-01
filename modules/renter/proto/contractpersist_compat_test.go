@@ -21,7 +21,7 @@ func TestLoadV1412Contract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	decodeMaxSize := int(stat.Size() * 3)
+	decodeMaxSize := int(stat.Size() * decodeMaxSizeMultiplier)
 
 	_, err = loadSafeContractHeader(f, decodeMaxSize)
 	if err != nil {

@@ -2,8 +2,10 @@ package proto
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -68,8 +70,9 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	cs.mu.Unlock()
 	c.revisionMu.Unlock()
 	// delete contract file
-	path := filepath.Join(cs.dir, c.header.ID().String()+contractExtension)
-	err := errors.Compose(c.headerFile.Close(), os.Remove(path))
+	headerPath := filepath.Join(cs.dir, c.header.ID().String()+contractHeaderExtension)
+	rootsPath := filepath.Join(cs.dir, c.header.ID().String()+contractRootsExtension)
+	err := errors.Compose(c.headerFile.Close(), os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
 	}
@@ -185,7 +188,9 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	} else if !stat.IsDir() {
 		return nil, errors.New("not a directory")
 	}
-	defer d.Close()
+	if err := d.Close(); err != nil {
+		return nil, err
+	}
 
 	// Load the WAL. Any recovered updates will be applied after loading
 	// contracts.
@@ -211,19 +216,46 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.
 	cs.rl = ratelimit.NewRateLimit(0, 0, 0)
 
-	// Load the contract files.
-	dirNames, err := d.Readdirnames(-1)
-	if err != nil {
+	// Before loading the contract files apply the updates which were meant to
+	// create new contracts and filter them out.
+	var remainingTxns []*writeaheadlog.Transaction
+	for _, txn := range walTxns {
+		if len(txn.Updates) != 1 && txn.Updates[0].Name != updateNameInsertContract {
+			remainingTxns = append(remainingTxns, txn)
+			continue
+		}
+		_, err := cs.managedApplyInsertContractUpdate(txn.Updates[0])
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
+		}
+		err = txn.SignalUpdatesApplied()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
+		}
+	}
+	walTxns = remainingTxns
+
+	// Check for legacy contracts and split them up.
+	if err := cs.managedV146SplitContractHeaderAndRoots(dir); err != nil {
 		return nil, err
 	}
 
-	for _, filename := range dirNames {
-		if filepath.Ext(filename) != contractExtension {
+	// Load the contract files.
+	fis, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, fi := range fis {
+		filename := fi.Name()
+		if filepath.Ext(filename) != contractHeaderExtension {
 			continue
 		}
-		path := filepath.Join(dir, filename)
-		if err := cs.loadSafeContract(path, walTxns); err != nil {
-			extErr := fmt.Errorf("failed to load safecontract %v", path)
+		nameNoExt := strings.TrimSuffix(filename, contractHeaderExtension)
+		headerPath := filepath.Join(dir, filename)
+		rootsPath := filepath.Join(dir, nameNoExt+contractRootsExtension)
+
+		if err := cs.loadSafeContract(headerPath, rootsPath, walTxns); err != nil {
+			extErr := fmt.Errorf("failed to load safecontract for header %v", headerPath)
 			return nil, errors.Compose(extErr, err)
 		}
 	}
@@ -241,6 +273,65 @@ func v131RC2RenameWAL(dir string) error {
 	if !os.IsNotExist(errOld) && os.IsNotExist(errNew) {
 		return build.ExtendErr("failed to rename contractset.log to contractset.wal",
 			os.Rename(oldPath, newPath))
+	}
+	return nil
+}
+
+// managedV146SplitContractHeaderAndRoots goes through all the legacy contracts
+// in a directory and splits the file up into a header and roots file.
+func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error {
+	// Load the contract files.
+	fis, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	oldHeaderSize := 4088 // declared here to avoid cluttering of non-legacy codebase
+	for _, fi := range fis {
+		filename := fi.Name()
+		if filepath.Ext(filename) != v146ContractExtension {
+			continue
+		}
+		path := filepath.Join(cs.dir, filename)
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		rootsSection := newFileSection(f, int64(oldHeaderSize), -1)
+
+		// Load header.
+		header, err := loadSafeContractHeader(f, oldHeaderSize*decodeMaxSizeMultiplier)
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		// Load roots.
+		roots, unappliedTxns, err := loadExistingMerkleRootsFromSection(rootsSection)
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		if unappliedTxns {
+			build.Critical("can't upgrade contractset after an unclean shutdown, please downgrade Sia, start it, stop it cleanly and then try to upgrade again")
+			return errors.Compose(errors.New("upgrade failed due to unclean shutdown"), f.Close())
+		}
+		merkleRoots, err := roots.merkleRoots()
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		// Insert contract into the set.
+		_, err = cs.managedInsertContract(header, merkleRoots)
+		if err != nil {
+			return errors.Compose(err, f.Close())
+		}
+		// Close the file.
+		err = f.Close()
+		if err != nil {
+			return err
+		}
+		// Delete the file.
+		err = os.Remove(path)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
