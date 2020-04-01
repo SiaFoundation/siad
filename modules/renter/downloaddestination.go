@@ -70,7 +70,7 @@ func NewSectionWriter(w io.WriterAt, off int64, n int64) *sectionWriter {
 
 // Write implements the io.Writer interface using WriteAt.
 func (s *sectionWriter) Write(p []byte) (n int, err error) {
-	if s.off+int64(len(p)) >= s.limit {
+	if s.off >= s.limit || int64(len(p)) > s.limit-s.off {
 		return 0, errSectionWriteOutOfBounds
 	}
 	n, err = s.w.WriteAt(p, s.off)
