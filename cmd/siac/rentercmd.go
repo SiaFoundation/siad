@@ -2725,36 +2725,38 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	}
 
 	filesChan := make(chan string)
-	// Collect all filenames under this directory with their relative paths and
-	// pipe them into a channel to be uploaded
-	go filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			die(fmt.Sprintf("Failed to process path %s: ", path), err)
-		}
-		if info.IsDir() {
+	go func() {
+		// Collect all filenames under this directory with their relative paths
+		// and pipe them into a channel to be uploaded
+		_ = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				die(fmt.Sprintf("Failed to process path %s: ", path), err)
+			}
+			if info.IsDir() {
+				return nil
+			}
+			filesChan <- path
 			return nil
-		}
-		filesChan <- path
-		return nil
-	})
+		})
+		// we've processed all files - close the channel, so the workers can exit
+		close(filesChan)
+	}()
 
 	numUploadedSkyfiles := int32(0)
-	var wg sync.WaitGroup
-	upload := func() {
-		defer wg.Done()
-		for filename := range filesChan {
-			// get only the filename and path, relative to the original destSiaPath
-			// in order to figure out where to put the file
-			newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-			skynetUploadFileWithProgressBar(filename, newDestSiaPath, pbs)
-			atomic.AddInt32(&numUploadedSkyfiles, 1)
-		}
-	}
-
 	// start the workers that will upload the files in parallel
+	var wg sync.WaitGroup
 	for i := 0; i < SimultaneousSkynetUploads; i++ {
 		wg.Add(1)
-		go upload()
+		go func() {
+			defer wg.Done()
+			for filename := range filesChan {
+				// get only the filename and path, relative to the original destSiaPath
+				// in order to figure out where to put the file
+				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
+				skynetUploadFileWithProgressBar(filename, newDestSiaPath, pbs)
+				atomic.AddInt32(&numUploadedSkyfiles, 1)
+			}
+		}()
 	}
 	wg.Wait()
 	pbs.Wait()
