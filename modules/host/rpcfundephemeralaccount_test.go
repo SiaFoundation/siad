@@ -53,26 +53,22 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// prepare an updated revision that pays the host
-	rev := so.recentRevision()
+	recent, err := so.recentRevision()
+	if err != nil {
+		t.Fatal(err)
+	}
 	funding := types.NewCurrency64(100)
 	payment := funding.Add(pt.FundAccountCost)
-	validPayouts, missedPayouts := so.payouts()
-	validPayouts[0].Value = validPayouts[0].Value.Sub(payment)
-	validPayouts[1].Value = validPayouts[1].Value.Add(payment)
-	missedPayouts[0].Value = missedPayouts[0].Value.Sub(payment)
-	missedPayouts[1].Value = missedPayouts[1].Value.Add(payment)
-	rev.NewValidProofOutputs = validPayouts
-	rev.NewMissedProofOutputs = missedPayouts
-	rev.NewRevisionNumber = rev.NewRevisionNumber + 1
+	rev, err := recent.PaymentRevision(payment)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// create transaction containing the revision
-	signedTxn := types.NewTransaction(rev, 0)
-	hash := signedTxn.SigHash(0, bh)
-	sig := crypto.SignHash(hash, sk)
+	sig := revisionSignature(rev, bh, sk)
 
 	// prepare an account
-	_, spk := prepareAccount()
-	id := spk.String()
+	_, accountID := prepareAccount()
 
 	// create streams
 	rStream, hStream := NewTestStreams()
@@ -86,7 +82,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		defer wg.Done()
 
 		// send fund account request
-		req := modules.FundAccountRequest{AccountID: id}
+		req := modules.FundAccountRequest{Account: accountID}
 		err := modules.RPCWrite(rStream, req)
 		if err != nil {
 			t.Log(err)
@@ -140,15 +136,15 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if !resp.Receipt.Amount.Equals(funding) {
 		t.Fatalf("Unexpected funded amount in the receipt, expected %v but received %v", funding.HumanString(), resp.Receipt.Amount.HumanString())
 	}
-	if resp.Receipt.Account != id {
-		t.Fatalf("Unexpected account id in the receipt, expected %v but received %v", id, resp.Receipt.Account)
+	if resp.Receipt.Account != accountID {
+		t.Fatalf("Unexpected account id in the receipt, expected %v but received %v", accountID, resp.Receipt.Account)
 	}
 	if !resp.Receipt.Host.Equals(hpk) {
 		t.Fatalf("Unexpected host pubkey in the receipt, expected %v but received %v", hpk, resp.Receipt.Host)
 	}
 
 	// verify the funding got deposited into the ephemeral account
-	balance := getAccountBalance(ht.host.staticAccountManager, id)
+	balance := getAccountBalance(ht.host.staticAccountManager, accountID)
 	if !balance.Equals(funding) {
 		t.Fatalf("Unexpected account balance, expected %v but received %v", funding.HumanString(), balance.HumanString())
 	}

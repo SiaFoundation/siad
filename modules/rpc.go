@@ -61,7 +61,7 @@ var (
 type (
 	// FundAccountRequest specifies the ephemeral account id that gets funded.
 	FundAccountRequest struct {
-		AccountID string
+		Account AccountID
 	}
 
 	// FundAccountResponse contains the signature. This signature is a

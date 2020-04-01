@@ -30,19 +30,19 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt modules.R
 	}
 
 	// fund the account
-	funded, err := h.managedFundByContract(stream, far, pt.FundAccountCost)
+	funded, err := h.managedFundAccount(stream, far, pt.FundAccountCost)
 	if err != nil {
 		return errors.AddContext(err, "Funding ephemeral failed")
 	}
 
-	// There's no need to verify payment here. The account get funded by the
+	// There's no need to verify payment here. The account gets funded by the
 	// amount paid minus the cost of the RPC. If the amount paid did not cover
 	// the cost of the RPC, an error will have been returned.
 
 	// create the receipt and sign it
 	receipt := modules.Receipt{
 		Host:      h.PublicKey(),
-		Account:   far.AccountID,
+		Account:   far.Account,
 		Amount:    funded,
 		Timestamp: time.Now().Unix(),
 	}

@@ -126,12 +126,12 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	return newPaymentDetails("", amount, collateral), nil
 }
 
-// managedFundByContract processes a PayByContractRequest coming in over the
-// given stream, intended to pay for the given FundAccountRequest. Note that
-// this method is very similar to managedPayByContract, however it has to be
-// separate due to the orchestration required to both fund the ephemeral account
-// and fsync the storage obligation to disk. See `callDeposit` for more details.
-func (h *Host) managedFundByContract(stream siamux.Stream, request modules.FundAccountRequest, cost types.Currency) (types.Currency, error) {
+// managedFundAccount processes a PayByContractRequest coming in over the given
+// stream, intended to pay for the given FundAccountRequest. Note that this
+// method is very similar to managedPayByContract, however it has to be separate
+// due to the orchestration required to both fund the ephemeral account and
+// fsync the storage obligation to disk. See `callDeposit` for more details.
+func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAccountRequest, cost types.Currency) (types.Currency, error) {
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
 	if err := modules.RPCRead(stream, &pbcr); err != nil {
@@ -149,19 +149,30 @@ func (h *Host) managedFundByContract(stream siamux.Stream, request modules.FundA
 		return types.ZeroCurrency, errors.AddContext(err, "Could not fetch storage obligation")
 	}
 
-	// extract the proposed revision and the signature from the request
-	recentRevision := so.recentRevision()
-	renterRevision := revisionFromRequest(recentRevision, pbcr)
-	renterSignature := signatureFromRequest(recentRevision, pbcr)
+	// get the current blockheight
+	bh := h.BlockHeight()
+
+	// extract the proposed revision
+	currentRevision, err := so.recentRevision()
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not get the latest revision")
+	}
+	paymentRevision := revisionFromRequest(currentRevision, pbcr)
+
+	// verify the payment revision
+	amount, _, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision")
+	}
 
 	// sign the revision
-	txn, err := createRevisionSignature(renterRevision, renterSignature, h.secretKey, h.blockHeight)
+	renterSignature := signatureFromRequest(currentRevision, pbcr)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
 	}
 
 	// extract the payment
-	amount := recentRevision.NewValidProofOutputs[0].Value.Sub(renterRevision.NewValidProofOutputs[0].Value)
 	if amount.Cmp(cost) < 0 {
 		return types.ZeroCurrency, errors.New("Could not fund, deposit was zero after deducting the cost")
 	}
@@ -171,13 +182,13 @@ func (h *Host) managedFundByContract(stream siamux.Stream, request modules.FundA
 	// fsynced we'll close this so the account manager can properly lower the
 	// host's outstanding risk induced by the (immediate) deposit.
 	syncChan := make(chan struct{})
-	if err = h.staticAccountManager.callDeposit(request.AccountID, deposit, syncChan); err != nil {
+	if err = h.staticAccountManager.callDeposit(request.Account, deposit, syncChan); err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not deposit funds")
 	}
 
 	// update the storage obligation with the host's signature
 	so.RevisionTransactionSet = []types.Transaction{{
-		FileContractRevisions: []types.FileContractRevision{renterRevision},
+		FileContractRevisions: []types.FileContractRevision{paymentRevision},
 		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 	}}
 
