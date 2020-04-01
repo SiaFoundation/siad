@@ -2726,11 +2726,12 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 	filesChan := make(chan string)
 	go func() {
+		defer close(filesChan)
 		// Collect all filenames under this directory with their relative paths
 		// and pipe them into a channel to be uploaded
-		_ = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				die(fmt.Sprintf("Failed to process path %s: ", path), err)
+				return errors.AddContext(err, fmt.Sprintf("Failed to process path %s: ", path))
 			}
 			if info.IsDir() {
 				return nil
@@ -2738,11 +2739,12 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			filesChan <- path
 			return nil
 		})
-		// we've processed all files - close the channel, so the workers can exit
-		close(filesChan)
+		if err != nil {
+			die(err)
+		}
 	}()
 
-	var numUploadedSkyfiles int32
+	var numUploadedSkyfiles uint32
 	// start the workers that will upload the files in parallel
 	var wg sync.WaitGroup
 	for i := 0; i < SimultaneousSkynetUploads; i++ {
@@ -2754,7 +2756,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 				// in order to figure out where to put the file
 				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
 				skynetUploadFileWithProgressBar(filename, newDestSiaPath, pbs)
-				atomic.AddInt32(&numUploadedSkyfiles, 1)
+				atomic.AddUint32(&numUploadedSkyfiles, 1)
 			}
 		}()
 	}
