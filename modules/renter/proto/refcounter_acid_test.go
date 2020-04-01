@@ -28,13 +28,9 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	t.Parallel()
 
 	// Determine a reasonable timeout for the test
-	var testTimeout time.Duration
-	if testing.Short() {
-		t.SkipNow()
-	} else if build.VLONG {
+	testTimeout := 5 * time.Second
+	if build.VLONG {
 		testTimeout = 30 * time.Second
-	} else {
-		testTimeout = 5 * time.Second
 	}
 
 	// Prepare for the tests
@@ -46,19 +42,17 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	// Create a new ref counter
 	testContractID := types.FileContractID(crypto.HashBytes([]byte("contractId")))
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
-	rc, err := NewRefCounter(rcFilePath, 200, wal)
+	// Create the faulty disk dependency
+	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
+	// attach it to the refcounter
+	rc, err := NewCustomRefCounter(rcFilePath, 200, wal, fdd)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
 	}
 
-	// Create the faulty disk dependency
-	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
-	// attach it to the refcounter
-	rc.deps = fdd
-
 	// stat counters
-	atomicNumRecoveries := int64(0)
-	atomicNumSuccessfulIterations := int64(0)
+	var atomicNumRecoveries int64
+	var atomicNumSuccessfulIterations int64
 
 	workload := func(rcLocal *RefCounter) {
 		testDone := time.After(testTimeout)
@@ -105,31 +99,28 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 			// Try to reload the file. This simulates failures during recovery.
 		LOAD:
 			for tries := 1; ; tries++ {
-				// If we have already tried for 10 times, we reset the
-				// dependency to avoid getting stuck here.
+				// Every 10 times, we reset the dependency to avoid getting
+				// stuck here.
 				if tries%10 == 0 {
 					fdd.Reset()
 				}
 				// Reload the wal from disk and apply unfinished txns.
 				newWal, err := loadWal(rcFilePath, walPath, fdd)
-				if err != nil {
-					if errors.Contains(err, dependencies.ErrDiskFault) {
-						atomic.AddInt64(&atomicNumRecoveries, 1)
-						continue LOAD // try again
-					}
+				if errors.Contains(err, dependencies.ErrDiskFault) {
+					atomic.AddInt64(&atomicNumRecoveries, 1)
+					continue LOAD // try again
+				} else if err != nil {
 					t.Fatal(err)
 				}
 				// Load the file again.
 				newRc, err := LoadRefCounter(rcFilePath, newWal)
-				if err != nil {
-					if errors.Contains(err, dependencies.ErrDiskFault) {
-						atomic.AddInt64(&atomicNumRecoveries, 1)
-						continue // try again
-					} else {
-						t.Fatal(err)
-					}
+				if errors.Contains(err, dependencies.ErrDiskFault) {
+					atomic.AddInt64(&atomicNumRecoveries, 1)
+					continue // try again
+				} else if err != nil {
+					t.Fatal(err)
 				}
-				newRc.deps = fdd
+				newRc.staticDeps = fdd
 				rcLocal = &newRc
 				break
 			}
@@ -151,35 +142,44 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	t.Logf("Inner loop %v iterations without failures\n", atomicNumSuccessfulIterations)
 }
 
-// isDecrementValid is a helper method that returns false if the counter is 0.
+// validateDecrement is a helper method that returns false if the counter is 0.
 // This allows us to avoid a counter underflow.
-func isDecrementValid(rc *RefCounter, secNum uint64) (bool, error) {
+func validateDecrement(rc *RefCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
 		// If the error wasn't caused by the dependency, the test fails.
-		return false, err
+		return err
 	}
-	return n > 0, nil
+	if n < 1 {
+		return errors.New("Cannot decrement a zero counter")
+	}
+	return nil
 }
 
-// isDropSectorsValid is a helper method that returns false if the number of
+// validateDropSectors is a helper method that returns false if the number of
 // sectors in the refcounter is smaller than the number of sectors we want to
 // drop.
-func isDropSectorsValid(rc *RefCounter, secNum uint64) bool {
-	return rc.numSectors > secNum
+func validateDropSectors(rc *RefCounter, secNum uint64) error {
+	if rc.numSectors < secNum {
+		return errors.New("Cannot drop more sectors than the total")
+	}
+	return nil
 }
 
-// isDecrementValid is a helper method that returns false if the counter has
+// validateDecrement is a helper method that returns false if the counter has
 // reached its maximum value. This allows us to avoid a counter overflow.
-func isIncrementValid(rc *RefCounter, secNum uint64) (bool, error) {
+func validateIncrement(rc *RefCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
 		// If the error wasn't caused by the dependency, the test fails.
-		return false, err
+		return err
 	}
-	return n < math.MaxUint16, nil
+	if n == math.MaxUint16 {
+		return errors.New("Cannot increment a counter at max value")
+	}
+	return nil
 }
 
 // loadWal reads the wal from disk and applies all outstanding transactions
@@ -228,11 +228,11 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 			// check if the operation is valid - we won't gain anything
 			// from hitting an overflow
 			secIdx := fastrand.Uint64n(rc.numSectors)
-			if ok, _ := isIncrementValid(rc, secIdx); !ok {
+			if err := validateIncrement(rc, secIdx); err != nil {
 				continue
 			}
 			if u, err = rc.Increment(secIdx); err != nil {
-				return
+				return err
 			}
 			updates = append(updates, u)
 		}
@@ -244,11 +244,11 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 			// check if the operation is valid - we won't gain anything
 			// from hitting an underflow
 			secIdx := fastrand.Uint64n(rc.numSectors)
-			if ok, _ := isDecrementValid(rc, secIdx); !ok {
+			if err := validateDecrement(rc, secIdx); err != nil {
 				continue
 			}
 			if u, err = rc.Decrement(secIdx); err != nil {
-				return
+				return err
 			}
 			updates = append(updates, u)
 		}
@@ -267,9 +267,9 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 		secNum := fastrand.Uint64n(3)
 		// check if the operation is valid - we won't gain anything
 		// from running out of sectors
-		if ok := isDropSectorsValid(rc, secNum); !ok {
+		if err := validateDropSectors(rc, secNum); err == nil {
 			if u, err = rc.DropSectors(secNum); err != nil {
-				return
+				return err
 			}
 			updates = append(updates, u)
 		}

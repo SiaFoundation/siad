@@ -72,7 +72,7 @@ type (
 		mu         sync.Mutex
 
 		// utility fields
-		deps modules.Dependencies
+		staticDeps modules.Dependencies
 
 		refCounterUpdateControl
 	}
@@ -132,16 +132,16 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (RefCounter, error) {
 		filepath:         path,
 		numSectors:       numSectors,
 		staticWal:        wal,
-		deps:             modules.ProdDependencies,
+		staticDeps:       modules.ProdDependencies,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
 	}, nil
 }
 
-// NewRefCounter creates a new sector reference counter file to accompany
-// a contract file
-func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
+// NewCustomRefCounter creates a new sector reference counter file to accompany
+// a contract file and allows setting custom dependencies
+func NewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*RefCounter, error) {
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
@@ -159,11 +159,17 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCoun
 		filepath:         path,
 		numSectors:       numSec,
 		staticWal:        wal,
-		deps:             modules.ProdDependencies,
+		staticDeps:       deps,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
 	}, err
+}
+
+// NewRefCounter creates a new sector reference counter file to accompany
+// a contract file
+func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
+	return NewCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
 
 // Append appends one counter to the end of the refcounter file and
@@ -194,7 +200,7 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	f, err := rc.deps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
+	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
@@ -377,7 +383,7 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 		return count, nil
 	}
 	// read the value from disk
-	f, err := rc.deps.Open(rc.filepath)
+	f, err := rc.staticDeps.Open(rc.filepath)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to open the refcounter file")
 	}
@@ -413,10 +419,7 @@ func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
 		return err
 	}
 	// Truncate the file to the needed size.
-	if err = f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2); err != nil {
-		return err
-	}
-	return f.Sync()
+	return f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2)
 }
 
 // applyUpdates takes a list of WAL updates and applies them.
@@ -451,10 +454,8 @@ func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
 	// Write the value to disk.
 	var b u16
 	binary.LittleEndian.PutUint16(b[:], value)
-	if _, err = f.WriteAt(b[:], int64(offset(secIdx))); err != nil {
-		return err
-	}
-	return f.Sync()
+	_, err = f.WriteAt(b[:], int64(offset(secIdx)))
+	return err
 }
 
 // createDeleteUpdate is a helper function which creates a writeaheadlog update
