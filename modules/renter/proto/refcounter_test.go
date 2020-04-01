@@ -50,7 +50,7 @@ func TestRefCounter_Count(t *testing.T) {
 		t.Fatal("Failed to read count from disk:", err)
 	}
 	if rval != val {
-		t.Fatal(fmt.Sprintf("read wrong value from disk: expected %d, got %d", val, rval))
+		t.Fatalf("read wrong value from disk: expected %d, got %d", val, rval)
 	}
 
 	// check behaviour on bad sector number
@@ -69,7 +69,7 @@ func TestRefCounter_Count(t *testing.T) {
 		t.Fatal("Failed to read count from disk:", err)
 	}
 	if rov != ov {
-		t.Fatal(fmt.Sprintf("read wrong override value from disk: expected %d, got %d", ov, rov))
+		t.Fatalf("read wrong override value from disk: expected %d, got %d", ov, rov)
 	}
 }
 
@@ -99,10 +99,10 @@ func TestRefCounter_Append(t *testing.T) {
 	}
 	expectNumSec := numSec + 1
 	if rc.numSectors != expectNumSec {
-		t.Fatal(fmt.Errorf("append failed to properly increase the numSectors counter. Expected %d, got %d", expectNumSec, rc.numSectors))
+		t.Fatalf("append failed to properly increase the numSectors counter. Expected %d, got %d", expectNumSec, rc.numSectors)
 	}
 	if rc.newSectorCounts[rc.numSectors-1] != 1 {
-		t.Fatal(fmt.Errorf("append failed to properly initialise the new coutner. Expected 1, got %d", rc.newSectorCounts[rc.numSectors-1]))
+		t.Fatalf("append failed to properly initialise the new coutner. Expected 1, got %d", rc.newSectorCounts[rc.numSectors-1])
 	}
 
 	// apply the update
@@ -123,7 +123,7 @@ func TestRefCounter_Append(t *testing.T) {
 	expectSize := stats.Size() + 2
 	actualSize := endStats.Size()
 	if actualSize != expectSize {
-		t.Fatal(fmt.Sprintf("File size did not grow as expected. Expected size: %d, actual size: %d", expectSize, actualSize))
+		t.Fatalf("File size did not grow as expected. Expected size: %d, actual size: %d", expectSize, actualSize)
 	}
 	// verify that the added count has the right value
 	val, err := rc.readCount(rc.numSectors - 1)
@@ -131,7 +131,7 @@ func TestRefCounter_Append(t *testing.T) {
 		t.Fatal("Failed to read counter value after append:", err)
 	}
 	if val != 1 {
-		t.Fatal(fmt.Errorf("read wrong counter value from disk after append. Expected 1, got %d", val))
+		t.Fatalf("read wrong counter value from disk after append. Expected 1, got %d", val)
 	}
 }
 
@@ -162,7 +162,7 @@ func TestRefCounter_Decrement(t *testing.T) {
 		t.Fatal("Failed to read value after decrement:", err)
 	}
 	if val != 0 {
-		t.Fatal(fmt.Errorf("read wrong value after decrement. Expected %d, got %d", 2, val))
+		t.Fatalf("read wrong value after decrement. Expected %d, got %d", 2, val)
 	}
 
 	// check behaviour on bad sector number
@@ -186,7 +186,7 @@ func TestRefCounter_Decrement(t *testing.T) {
 		t.Fatal("Failed to read value after decrement:", err)
 	}
 	if val != 0 {
-		t.Fatal(fmt.Errorf("read wrong value from disk after decrement. Expected 0, got %d", val))
+		t.Fatalf("read wrong value from disk after decrement. Expected 0, got %d", val)
 	}
 }
 
@@ -276,7 +276,7 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	updates = append(updates, u)
 	expectNumSec := numSec - 2
 	if rc.numSectors != expectNumSec {
-		t.Fatal(fmt.Errorf("wrong number of counters after Truncate. Expected %d, got %d", expectNumSec, rc.numSectors))
+		t.Fatalf("wrong number of counters after Truncate. Expected %d, got %d", expectNumSec, rc.numSectors)
 	}
 
 	// apply the update
@@ -297,7 +297,7 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	expectSize := stats.Size() - 4
 	actualSize := endStats.Size()
 	if actualSize != expectSize {
-		t.Fatal(fmt.Sprintf("File size did not shrink as expected. Expected size: %d, actual size: %d", expectSize, actualSize))
+		t.Fatalf("File size did not shrink as expected. Expected size: %d, actual size: %d", expectSize, actualSize)
 	}
 	// verify that we cannot read the values of the dropped counters
 	_, err = rc.readCount(secIdx1)
@@ -337,7 +337,7 @@ func TestRefCounter_Increment(t *testing.T) {
 		t.Fatal("Failed to read value after increment:", err)
 	}
 	if val != 2 {
-		t.Fatal(fmt.Errorf("read wrong value after increment. Expected 2, got %d", val))
+		t.Fatalf("read wrong value after increment. Expected 2, got %d", val)
 	}
 
 	// check behaviour on bad sector number
@@ -361,7 +361,7 @@ func TestRefCounter_Increment(t *testing.T) {
 		t.Fatal("Failed to read value after increment:", err)
 	}
 	if val != 2 {
-		t.Fatal(fmt.Errorf("read wrong value from disk after increment. Expected 2, got %d", val))
+		t.Fatalf("read wrong value from disk after increment. Expected 2, got %d", val)
 	}
 }
 
@@ -503,7 +503,7 @@ func TestRefCounter_Swap(t *testing.T) {
 		t.Fatal("Failed to read value after swap", err)
 	}
 	if v1 != 2 || v2 != 1 {
-		t.Fatal(fmt.Errorf("read wrong value after swap. Expected %d and %d, got %d and %d", 2, 1, v1, v2))
+		t.Fatalf("read wrong value after swap. Expected %d and %d, got %d and %d", 2, 1, v1, v2)
 	}
 
 	// check behaviour on bad sector number
@@ -531,7 +531,7 @@ func TestRefCounter_Swap(t *testing.T) {
 		t.Fatal("Failed to read value from disk after swap", err)
 	}
 	if v1 != 2 || v2 != 1 {
-		t.Fatal(fmt.Errorf("read wrong value from disk after swap. Expected %d and %d, got %d and %d", 2, 1, v1, v2))
+		t.Fatalf("read wrong value from disk after swap. Expected %d and %d, got %d and %d", 2, 1, v1, v2)
 	}
 }
 
@@ -574,7 +574,7 @@ func TestRefCounter_UpdateApplied(t *testing.T) {
 	}
 	// verify that the in-mem override map is now cleaned up
 	if len(rc.newSectorCounts) != 0 {
-		t.Fatal(fmt.Errorf("updateApplied failed to clean up the newSectorCounts. Expected len 0, got %d", len(rc.newSectorCounts)))
+		t.Fatalf("updateApplied failed to clean up the newSectorCounts. Expected len 0, got %d", len(rc.newSectorCounts))
 	}
 }
 
@@ -659,7 +659,7 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 		t.Fatal("Failed to read writeAt update:", err)
 	}
 	if wpath != rpath || wsec != rsec || wval != rval {
-		t.Fatal(fmt.Errorf("wrong values read from WriteAt update. Expected %s, %d, %d, found %s, %d, %d", wpath, wsec, wval, rpath, rsec, rval))
+		t.Fatalf("wrong values read from WriteAt update. Expected %s, %d, %d, found %s, %d, %d", wpath, wsec, wval, rpath, rsec, rval)
 	}
 
 	u = createTruncateUpdate(wpath, wsec)
@@ -668,7 +668,7 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 		t.Fatal("Failed to read a truncate update:", err)
 	}
 	if wpath != rpath || wsec != rsec {
-		t.Fatal(fmt.Errorf("wrong values read from Truncate update. Expected %s, %d found %s, %d", wpath, wsec, rpath, rsec))
+		t.Fatalf("wrong values read from Truncate update. Expected %s, %d found %s, %d", wpath, wsec, rpath, rsec)
 	}
 }
 
