@@ -95,6 +95,9 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 			{
 				Value: types.ZeroCurrency,
 			},
+			{
+				Value: types.ZeroCurrency,
+			},
 		},
 		UnlockHash:     (types.UnlockConditions{}).UnlockHash(),
 		RevisionNumber: 0,
