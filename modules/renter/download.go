@@ -289,9 +289,9 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download,
 			return nil, err
 		}
 		dw = &downloadDestinationFile{
-			deps: 				r.deps, 
-			f: 					osFile, 
-			staticChunkSize:	int64(entry.ChunkSize()),
+			deps:            r.deps,
+			f:               osFile,
+			staticChunkSize: int64(entry.ChunkSize()),
 		}
 		destinationType = "file"
 	}
