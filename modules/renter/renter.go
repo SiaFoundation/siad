@@ -807,6 +807,7 @@ func (r *Renter) AddSkykey(sk skykey.Skykey) error {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
+	defer r.tg.Done()
 	return r.staticSkykeyManager.AddKey(sk)
 }
 
@@ -816,6 +817,7 @@ func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
 	if err := r.tg.Add(); err != nil {
 		return skykey.Skykey{}, err
 	}
+	defer r.tg.Done()
 	return r.staticSkykeyManager.KeyByName(name)
 }
 
@@ -824,6 +826,7 @@ func (r *Renter) CreateSkykey(name string, ct crypto.CipherType) (skykey.Skykey,
 	if err := r.tg.Add(); err != nil {
 		return skykey.Skykey{}, err
 	}
+	defer r.tg.Done()
 	return r.staticSkykeyManager.CreateKey(name, ct)
 }
 
@@ -833,6 +836,7 @@ func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 	if err := r.tg.Add(); err != nil {
 		return skykey.Skykey{}, err
 	}
+	defer r.tg.Done()
 	return r.staticSkykeyManager.KeyByID(id)
 }
 
@@ -842,6 +846,7 @@ func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
 	if err := r.tg.Add(); err != nil {
 		return skykey.SkykeyID{}, err
 	}
+	defer r.tg.Done()
 	return r.staticSkykeyManager.IDByName(name)
 }
 
