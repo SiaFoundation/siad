@@ -21,6 +21,16 @@ var (
 	// storage folder which does not appear to exist within the storage
 	// manager.
 	errStorageFolderNotFound = errors.New("storage folder with the provided path could not be found")
+
+	// ErrInvalidRPCDownloadRatio is returned if the user tries to set a value
+	// for the download price or the base RPC Price that violates the maximum
+	// ratio
+	ErrInvalidRPCDownloadRatio = errors.New("invalid ratio between the download price and the base RPC price, either increase download price or decrease RPC price")
+
+	// ErrInvalidSectorAccessDownloadRatio is returned if the user tries to set
+	// a value for the download price or the Sector Access Price that violates
+	// the maximum ratio
+	ErrInvalidSectorAccessDownloadRatio = errors.New("invalid ratio between the download price and the sector access price, either increase download price or decrease sector access price")
 )
 
 type (
@@ -265,6 +275,19 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxEphemeralAccountRisk = x
+	}
+
+	// Validate the RPC, Sector Access, and Download Prices
+	minDownloadBandwidthPrice := settings.MinDownloadBandwidthPrice
+	minBaseRPCPrice := settings.MinBaseRPCPrice
+	if minBaseRPCPrice.Div(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
+		//return error
+		return modules.HostInternalSettings{}, ErrInvalidRPCDownloadRatio
+	}
+	minSectorAccessPrice := settings.MinSectorAccessPrice
+	if minSectorAccessPrice.Div(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
+		//return error
+		return modules.HostInternalSettings{}, ErrInvalidSectorAccessDownloadRatio
 	}
 
 	return settings, nil

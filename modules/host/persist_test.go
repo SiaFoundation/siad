@@ -85,3 +85,86 @@ func TestHostAddressPersistence(t *testing.T) {
 		t.Error("User-set address does not seem to be persisting.")
 	}
 }
+
+// TestHostPriceRatios checks that the host fixes and price ratios that were
+// incorrect and persisted.
+func TestHostPriceRatios(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// Set the unreasonable defaults for the RPC and Sector Access Prices.
+	rpcPrice := defaultBaseRPCPrice.Mul64(1e9)
+	sectorPrice := defaultSectorAccessPrice.Mul64(1e9)
+	settings := ht.host.InternalSettings()
+	settings.MinBaseRPCPrice = rpcPrice
+	settings.MinSectorAccessPrice = sectorPrice
+	err = ht.host.SetInternalSettings(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reboot the host.
+	err = ht.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host, err = New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the RPC and Sector Access Prices were updated as expected
+	settings = ht.host.InternalSettings()
+	rpcPrice = settings.MinDownloadBandwidthPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
+	sectorPrice = settings.MinDownloadBandwidthPrice.Mul(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv)
+	if settings.MinBaseRPCPrice.Cmp(rpcPrice) != 0 {
+		t.Log("Actual:", settings.MinBaseRPCPrice.HumanString())
+		t.Log("Expected:", rpcPrice.HumanString())
+		t.Fatal("rpc price not as expected")
+	}
+	if settings.MinSectorAccessPrice.Cmp(sectorPrice) != 0 {
+		t.Log("Actual:", settings.MinSectorAccessPrice.HumanString())
+		t.Log("Expected:", sectorPrice.HumanString())
+		t.Fatal("sector price not as expected")
+	}
+
+	// Not try setting the mindownload price to an unreasonable value that would
+	// force the RPC and Sector prices to be updated
+	downloadPrice := settings.MinDownloadBandwidthPrice.Div64(1e6)
+	settings.MinDownloadBandwidthPrice = downloadPrice
+	err = ht.host.SetInternalSettings(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reboot the host.
+	err = ht.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host, err = New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the RPC and Sector Access Prices were updated as expected
+	settings = ht.host.InternalSettings()
+	rpcPrice = downloadPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
+	sectorPrice = downloadPrice.Mul(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv)
+	if settings.MinBaseRPCPrice.Cmp(rpcPrice) != 0 {
+		t.Log("Actual:", settings.MinBaseRPCPrice.HumanString())
+		t.Log("Expected:", rpcPrice.HumanString())
+		t.Fatal("rpc price not as expected")
+	}
+	if settings.MinSectorAccessPrice.Cmp(sectorPrice) != 0 {
+		t.Log("Actual:", settings.MinSectorAccessPrice.HumanString())
+		t.Log("Expected:", sectorPrice.HumanString())
+		t.Fatal("sector price not as expected")
+	}
+}

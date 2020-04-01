@@ -193,6 +193,30 @@ func (h *Host) load() error {
 		return err
 	}
 
+	// Check if the host is currently using defaults that violate the ratios
+	// between the SectorAccessPrice, BaseRPCPrice, and DownloadBandwidthPrice
+	var updated bool
+	minDownloadBandwidthPrice := h.settings.MinDownloadBandwidthPrice
+	minBaseRPCPrice := h.settings.MinBaseRPCPrice
+	maxBaseRPCPrice := minDownloadBandwidthPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
+	if minBaseRPCPrice.Div(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
+		h.settings.MinBaseRPCPrice = maxBaseRPCPrice
+		updated = true
+	}
+	minSectorAccessPrice := h.settings.MinSectorAccessPrice
+	maxSectorAccessPrice := minDownloadBandwidthPrice.Mul(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv)
+	if minSectorAccessPrice.Div(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
+		h.settings.MinSectorAccessPrice = maxSectorAccessPrice
+		updated = true
+	}
+	// If we updated the Price values we should save the changes to disk
+	if updated {
+		err = h.saveSync()
+		if err != nil {
+			return err
+		}
+	}
+
 	// Get the contract count and locked collateral by observing all of the incomplete
 	// storage obligations in the database.
 	// TODO: both contract count and locked collateral are not correctly updated during

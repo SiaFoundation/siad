@@ -46,6 +46,22 @@ var (
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
+
+	// MaxMinBaseRPCPricesToDownloadPricesRatioDiv is the max ratio for sane
+	// pricing between the MinBaseRPCPrice and the MinDownloadBandwidthPrice.
+	// This ensures that 1 million base RPC charges are at most 1% of the cost
+	// to download 4TB. This ratio should be used by dividing the
+	// MinBaseRPCPrice by the ratio and checking that the end value is <= to the
+	// MinDownloadBandwidthPrice
+	MaxMinBaseRPCPricesToDownloadPricesRatioDiv = types.NewCurrency64(25e6)
+
+	// MaxMinSectorAccessPriceToDownloadPricesRatioDiv is the max ratio for sane
+	// pricing between the MinSectorAccessPrice and the
+	// MinDownloadBandwidthPrice. This ensures that 1 million base accesses are
+	// at most 10% of the cost to download 4TB. This ratio should be used by
+	// dividing the MinSectorAccessPrice by the ratio and checking that the end
+	// value is <= to the MinDownloadBandwidthPrice
+	MaxMinSectorAccessPriceToDownloadPricesRatioDiv = types.NewCurrency64(25e7)
 )
 
 var (
