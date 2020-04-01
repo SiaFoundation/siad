@@ -238,7 +238,7 @@ func TestCompatV146SplitContracts(t *testing.T) {
 }
 
 // TestContractSetApplyInsertUpdateAtStartup makes sure that a valid insert
-// updates gets applied at startup and an invalid one won't.
+// update gets applied at startup and an invalid one won't.
 func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -289,13 +289,13 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Make sure we can acquire the contract.
+	// Make sure we can't acquire the contract.
 	_, ok := cs.Acquire(header.ID())
 	if ok {
 		t.Fatal("shouldn't be able to acquire the contract")
 	}
 	// Prepare the insertion of 2 valid contracts within a single txn. This
-	// should update should be ignored at startup.
+	// should be ignored at startup.
 	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
 	if err != nil {
 		t.Fatal(err)
@@ -314,7 +314,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Make sure we can acquire the contract.
+	// Make sure we can't acquire the contract.
 	_, ok = cs.Acquire(header.ID())
 	if ok {
 		t.Fatal("shouldn't be able to acquire the contract")
