@@ -49,9 +49,9 @@ func (sw *skipWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// SectionWriter implements Write on a section
+// sectionWriter implements Write on a section
 // of an underlying WriterAt.
-type SectionWriter struct {
+type sectionWriter struct {
 	w     io.WriterAt
 	base  int64
 	off   int64
@@ -62,14 +62,14 @@ type SectionWriter struct {
 // write would cross the boundaries between section.
 var errSectionWriteOutOfBounds = errors.New("section write is out of bounds")
 
-// NewSectionWriter returns a SectionWriter that writes to w
+// NewSectionWriter returns a sectionWriter that writes to w
 // starting at offset off and stops with EOF after n bytes.
-func NewSectionWriter(w io.WriterAt, off int64, n int64) *SectionWriter {
-	return &SectionWriter{w, off, off, off + n}
+func NewSectionWriter(w io.WriterAt, off int64, n int64) *sectionWriter {
+	return &sectionWriter{w, off, off, off + n}
 }
 
 // Write implements the io.Writer interface using WriteAt.
-func (s *SectionWriter) Write(p []byte) (n int, err error) {
+func (s *sectionWriter) Write(p []byte) (n int, err error) {
 	if s.off+int64(len(p)) >= s.limit {
 		return 0, errSectionWriteOutOfBounds
 	}
