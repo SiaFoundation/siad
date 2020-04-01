@@ -36,6 +36,7 @@ func TestContractSet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// create contract set
 	testDir := build.TempDir(t.Name())
 	cs, err := NewContractSet(testDir, modules.ProdDependencies)
@@ -163,6 +164,7 @@ func TestCompatV146SplitContracts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// get the dir of the contractset.
 	testDir := build.TempDir(t.Name())
 	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
@@ -241,6 +243,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Prepare a header for the test.
 	header := contractHeader{Transaction: types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{{
