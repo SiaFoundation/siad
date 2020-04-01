@@ -40,16 +40,16 @@ func TestVerifyPaymentRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// happy case
+	// verify a properly created payment revision is accepted
 	err = verifyPaymentRevision(curr, payment, height, amount)
 	if err != nil {
 		t.Fatal("Unexpected error when verifying revision, ", err)
 	}
 
 	// deepCopy is a helper function that makes a deep copy of a revision
-	deepCopy := func(rev types.FileContractRevision) (copy types.FileContractRevision) {
+	deepCopy := func(rev types.FileContractRevision) (revCopy types.FileContractRevision) {
 		rBytes := encoding.Marshal(rev)
-		err := encoding.Unmarshal(rBytes, &copy)
+		err := encoding.Unmarshal(rBytes, &revCopy)
 		if err != nil {
 			panic(err)
 		}
