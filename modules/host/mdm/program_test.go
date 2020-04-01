@@ -114,7 +114,8 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	pt := newTestPriceTable()
 	instructions, programData, cost, _, _, _ := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt)
 	// Execute the program with no collateral budget.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, newTestStorageObligation(true), uint64(len(programData)), bytes.NewReader(programData))
+	so := newTestStorageObligation(true)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, so, uint64(len(programData)), bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,8 +136,8 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	if numInsufficientBudgetErrs != 1 {
 		t.Fatalf("numInsufficientBudgetErrs was %v but should be %v", numInsufficientBudgetErrs, 1)
 	}
-	// Finalize should be nil for readonly programs.
-	if finalize != nil {
-		t.Fatal("finalize should be 'nil' for readonly programs")
+	// Try to finalize program. Should fail.
+	if err := finalize(so); err == nil {
+		t.Fatal("shouldn't be able to finalize program")
 	}
 }

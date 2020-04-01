@@ -58,6 +58,7 @@ type Program struct {
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
+	outputErr  error // contains the error of the first instruction of the program that failed
 
 	tg *threadgroup.ThreadGroup
 }
@@ -130,7 +131,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		defer p.staticData.Close()
 		defer p.tg.Done()
 		defer close(p.outputChan)
-		p.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
+		p.outputErr = p.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
 	}()
 	// If the program is readonly there is no need to finalize it.
 	if p.readOnly() {
@@ -165,7 +166,7 @@ func (p *Program) addCost(cost types.Currency) error {
 
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
-func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) {
+func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) error {
 	output := output{
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
@@ -189,14 +190,14 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		instructionCost, refund, err := i.Cost()
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.newCollateral, p.executionCost, p.potentialRefund)
-			return
+			return err
 		}
 		cost := memoryCost.Add(instructionCost)
 		// Increment the cost.
 		err = p.addCost(cost)
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.newCollateral, p.executionCost, p.potentialRefund)
-			return
+			return err
 		}
 		// Add the instruction's potential refund to the total.
 		p.potentialRefund = p.potentialRefund.Add(refund)
@@ -205,7 +206,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		err = p.addCollateral(collateral)
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.newCollateral, p.executionCost, p.potentialRefund)
-			return
+			return err
 		}
 		// Execute next instruction.
 		output = i.Execute(output)
@@ -216,14 +217,19 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {
-			break
+			return output.Error
 		}
 	}
+	return nil
 }
 
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
 func (p *Program) managedFinalize(so StorageObligation) error {
+	// Prevent finalizing the program when it was aborted due to a failure.
+	if p.outputErr != nil {
+		return errors.Compose(p.outputErr, errors.New("can't call finalize on program that was aborted due to an error"))
+	}
 	// Compute the memory cost of finalizing the program.
 	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * modules.MDMTimeCommit)
 	err := p.addCost(memoryCost)
