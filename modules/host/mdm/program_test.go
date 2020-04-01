@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // updateRunningCosts is a testing helper function for updating the running
@@ -69,10 +71,11 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 func TestNewProgramLowBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	var r io.Reader
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, r, dataLen, _, _, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
+	instructions, programData, _, _, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
+	r := bytes.NewReader(programData)
+	dataLen := uint64(len(programData))
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen), collateral, newTestStorageObligation(true), dataLen, r)
@@ -107,12 +110,11 @@ func TestNewProgramLowBudget(t *testing.T) {
 func TestNewProgramLowCollateralBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	var r io.Reader
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, r, dataLen, cost, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
+	instructions, programData, cost, _, _, _ := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt)
 	// Execute the program with no collateral budget.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, newTestStorageObligation(true), dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, newTestStorageObligation(true), uint64(len(programData)), bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

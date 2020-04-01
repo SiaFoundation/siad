@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"io"
 	"reflect"
 	"testing"
 
@@ -16,7 +15,7 @@ import (
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, io.Reader, uint64, types.Currency, types.Currency, types.Currency, uint64) {
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	i := NewReadSectorInstruction(0, 8, 16, true)
 	instructions := []modules.Instruction{i}
 	data := make([]byte, 8+8+crypto.HashSize)
@@ -31,7 +30,7 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modu
 	initCost := modules.MDMInitCost(pt, uint64(len(data)))
 	cost = cost.Add(memoryCost).Add(initCost)
 	collateral := modules.MDMReadCollateral()
-	return instructions, bytes.NewReader(data), uint64(len(data)), cost, refund, collateral, usedMemory
+	return instructions, data, cost, refund, collateral, usedMemory
 }
 
 // TestInstructionReadSector tests executing a program with a single
@@ -47,7 +46,9 @@ func TestInstructionReadSector(t *testing.T) {
 	// Execute it.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(10)
-	instructions, r, dataLen, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
+	instructions, programData, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
+	r := bytes.NewReader(programData)
+	dataLen := uint64(len(programData))
 	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
@@ -96,7 +97,9 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, r, dataLen, cost, refund, collateral, usedMemory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
+	instructions, programData, cost, refund, collateral, usedMemory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
+	r = bytes.NewReader(programData)
+	dataLen = uint64(len(programData))
 	// Execute it.
 	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
 	if err != nil {
