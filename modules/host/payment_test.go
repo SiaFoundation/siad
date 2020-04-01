@@ -206,115 +206,6 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	}
 }
 
-// TestPaymentDetails verifies the payment details that are returned by both its constructors in case of payment by file contract or by account
-func TestPaymentDetails(t *testing.T) {
-	// prepare some variables
-	account := "c436215b2c9c"
-	amount := types.NewCurrency64(1)
-
-	// verify payment details that are generated from a withdrawal message
-	msg := modules.WithdrawalMessage{
-		Account: account,
-		Amount:  amount,
-	}
-	details, err := accountPaymentDetails(msg)
-	if err != nil {
-		t.Fatal("Could not generate account payment details", err)
-	}
-	if details.Account() != account {
-		t.Fatalf("Unexpected account, expected %v actual %v", account, details.Account())
-	}
-	if !details.Amount().Equals(amount) {
-		t.Fatalf("Unexpected amount, expected %v actual %v", amount.HumanString(), details.Amount().HumanString())
-	}
-	if !details.AddedCollateral().IsZero() {
-		t.Fatalf("Unexpected added collateral, expected 0 actual %v", details.AddedCollateral().HumanString())
-	}
-
-	// verify payment details that are generated from a revision
-	curr := types.FileContractRevision{
-		NewValidProofOutputs: []types.SiacoinOutput{
-			{Value: types.NewCurrency64(10)},
-			{Value: types.ZeroCurrency},
-		},
-		NewMissedProofOutputs: []types.SiacoinOutput{
-			{Value: types.NewCurrency64(10)},
-			{Value: types.NewCurrency64(10)},
-			{Value: types.ZeroCurrency},
-		},
-	}
-	rev, err := curr.PaymentRevision(amount)
-	if err != nil {
-		t.Fatal(err)
-	}
-	details, err = contractPaymentDetails(curr, rev)
-	if err != nil {
-		t.Fatal("Could not generate contract payment details", err)
-	}
-	if details.Account() != "" {
-		t.Fatal("Expected account to be an empty string")
-	}
-	if !details.Amount().Equals(amount) {
-		t.Fatalf("Unexpected amount, expected %v actual %v", amount.HumanString(), details.Amount().HumanString())
-	}
-	if !details.AddedCollateral().IsZero() {
-		t.Fatalf("Unexpected added collateral, expected 0 actual %v", details.AddedCollateral().HumanString())
-	}
-
-	// update the current revision, update amount as well to keep things spicy
-	curr = rev
-	amount = types.NewCurrency64(2)
-	collateral := types.NewCurrency64(1)
-
-	// verify a revision that moves collateral
-	rev, err = curr.PaymentRevision(amount)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// move the collateral
-	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
-	voidOutput, err := rev.MissedVoidOutput()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(collateral))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	details, err = contractPaymentDetails(curr, rev)
-	if err != nil {
-		t.Fatal("Could not generate contract payment details", err)
-	}
-	if details.Account() != "" {
-		t.Fatal("Expected account to be an empty string")
-	}
-	if !details.Amount().Equals(amount) {
-		t.Fatalf("Unexpected amount, expected %v actual %v", amount.HumanString(), details.Amount().HumanString())
-	}
-	if !details.AddedCollateral().Equals(collateral) {
-		t.Fatalf("Unexpected added collateral, expected %v actual %v", collateral.HumanString(), details.AddedCollateral().HumanString())
-	}
-
-	// update the current revision
-	oldHostPayout := curr.ValidHostPayout()
-	curr = rev
-
-	// verify a revision that would cause an underflow
-	rev, err = curr.PaymentRevision(amount)
-	rev.SetValidHostPayout(oldHostPayout)
-	assertRecover := func() {
-		if r := recover(); r == nil {
-			t.Fatalf("Expected a panic when a revision is passed that results in an underflow")
-		}
-	}
-	func() {
-		defer assertRecover()
-		contractPaymentDetails(curr, rev)
-	}()
-}
-
 // TestProcessPayment verifies the host's ProcessPayment method. It covers both
 // the PayByContract and PayByEphemeralAccount payment methods.
 func TestProcessPayment(t *testing.T) {
@@ -475,9 +366,8 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
 	// prepare an ephmeral account and fund it
-	sk, spk := prepareAccount()
-	account := spk.String()
-	err := callDeposit(host.staticAccountManager, account, deposit)
+	sk, accountID := prepareAccount()
+	err := callDeposit(host.staticAccountManager, accountID, deposit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +382,7 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	renterFunc := func() error {
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
-		pbcRequest := newPayByEphemeralAccountRequest(account, host.blockHeight+6, amount, sk)
+		pbcRequest := newPayByEphemeralAccountRequest(accountID, host.blockHeight+6, amount, sk)
 		err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 		if err != nil {
 			return err
@@ -521,8 +411,8 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	}
 
 	// verify the account id that's returned equals the account
-	if payment.Account() != account {
-		t.Fatalf("Unexpected account id, expected %s but received %s", account, payment.Account())
+	if payment.AccountID() != accountID {
+		t.Fatalf("Unexpected account id, expected %s but received %s", accountID, payment.AccountID())
 	}
 
 	// verify the response contains the amount that got withdrawn
@@ -531,7 +421,7 @@ func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
 	}
 
 	// verify the payment got withdrawn from the ephemeral account
-	balance := getAccountBalance(host.staticAccountManager, account)
+	balance := getAccountBalance(host.staticAccountManager, accountID)
 	if !balance.Equals(deposit.Sub(amount)) {
 		t.Fatalf("Unexpected account balance, expected %v but received %s", deposit.Sub(amount), balance.HumanString())
 	}
@@ -567,7 +457,7 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 
 // newPayByEphemeralAccountRequest uses the given parameters to create a
 // PayByEphemeralAccountRequest
-func newPayByEphemeralAccountRequest(account string, expiry types.BlockHeight, amount types.Currency, sk crypto.SecretKey) modules.PayByEphemeralAccountRequest {
+func newPayByEphemeralAccountRequest(account modules.AccountID, expiry types.BlockHeight, amount types.Currency, sk crypto.SecretKey) modules.PayByEphemeralAccountRequest {
 	// generate a nonce
 	var nonce [modules.WithdrawalNonceSize]byte
 	copy(nonce[:], fastrand.Bytes(len(nonce)))

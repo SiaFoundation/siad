@@ -3,7 +3,6 @@ package host
 import (
 	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -54,7 +53,8 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 		return nil, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
-	return accountPaymentDetails(req.Message)
+	// Payment done through EAs don't move collateral
+	return newPaymentDetails(req.Message.Account, req.Message.Amount, types.ZeroCurrency), nil
 }
 
 // managedPayByContract processes a PayByContractRequest coming in over the
@@ -87,16 +87,8 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	}
 	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
-	// extract the amount the renter is paying the host
-	crp := currentRevision.ValidRenterPayout()
-	nrp := paymentRevision.ValidRenterPayout()
-	if crp.Cmp(nrp) < 0 {
-		return nil, errors.AddContext(err, "Invalid renter payout, causes underflow")
-	}
-	amount := crp.Sub(nrp)
-
 	// verify the payment revision
-	err = verifyPaymentRevision(currentRevision, paymentRevision, bh, amount)
+	amount, collateral, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
 	if err != nil {
 		return nil, errors.AddContext(err, "Invalid payment revision")
 	}
@@ -131,7 +123,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return contractPaymentDetails(currentRevision, paymentRevision)
+	return newPaymentDetails("", amount, collateral), nil
 }
 
 // revisionFromRequest is a helper function that creates a copy of the recent
@@ -172,50 +164,40 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 	}
 }
 
+// verifyPayByContractRevision verifies the given payment revision and returns
+// the amount that was transferred, the collateral that was moved and a
+// potential error.
+func verifyPayByContractRevision(current, payment types.FileContractRevision, blockHeight types.BlockHeight) (amount, collateral types.Currency, err error) {
+	if err = verifyPaymentRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
+		return
+	}
+
+	// Note that we can safely subtract the values of the outputs seeing as verifyPaymentRevision will have checked for potential underflows
+	amount = payment.ValidHostPayout().Sub(current.ValidHostPayout())
+	collateral = current.MissedHostOutput().Value.Sub(payment.MissedHostOutput().Value)
+	return
+}
+
 // payment details is a helper struct that implements the PaymentDetails
 // interface.
 type paymentDetails struct {
-	account         string
+	account         modules.AccountID
 	amount          types.Currency
 	addedCollateral types.Currency
 }
 
-// accountPaymentDetails returns the payment details for a payment that was
-// paid for using an ephemeral account.
-func accountPaymentDetails(message modules.WithdrawalMessage) (*paymentDetails, error) {
+// newPaymentDetails returns a new paymentDetails object using the given values
+func newPaymentDetails(account modules.AccountID, amountPaid, addedCollateral types.Currency) *paymentDetails {
 	return &paymentDetails{
-		account: message.Account,
-		amount:  message.Amount,
-	}, nil
+		account:         account,
+		amount:          amountPaid,
+		addedCollateral: addedCollateral,
+	}
 }
 
-// contractPaymentDetails returns the payment details for a payment that was
-// paid for using a file contract. It takes the old and new file contract
-// revision to calculate the amount that was paid to the host and how much
-// collateral moved.
-//
-// Note that this function does not validate the revisions. To mitigate possible
-// underflows the values are calculated using safeSub which performs a sanity
-// check against underflows. The payment revision will have been verified during
-// the payment process.
-func contractPaymentDetails(curr, payment types.FileContractRevision) (*paymentDetails, error) {
-	vhp, err := safeSub(payment.ValidHostPayout(), curr.ValidHostPayout())
-	if err != nil {
-		return nil, err
-	}
-	mho, err := safeSub(curr.MissedHostOutput().Value, payment.MissedHostOutput().Value)
-	if err != nil {
-		return nil, err
-	}
-	return &paymentDetails{
-		amount:          vhp,
-		addedCollateral: mho,
-	}, nil
-}
-
-// Account returns the account id used for payment. For payments made by
+// AccountID returns the account id used for payment. For payments made by
 // contract this will return the empty string.
-func (pd *paymentDetails) Account() string { return pd.account }
+func (pd *paymentDetails) AccountID() modules.AccountID { return pd.account }
 
 // Amount returns how much money the host received.
 func (pd *paymentDetails) Amount() types.Currency { return pd.amount }
@@ -223,14 +205,3 @@ func (pd *paymentDetails) Amount() types.Currency { return pd.amount }
 // AddedCollatoral returns the amount of collateral that moved from the host to
 // the void output.
 func (pd *paymentDetails) AddedCollateral() types.Currency { return pd.addedCollateral }
-
-// safeSub is a helper function that subtracts but at the same time performs a
-// sanity check to harden against underflows.
-func safeSub(x, y types.Currency) (types.Currency, error) {
-	if x.Cmp(y) < 0 {
-		err := fmt.Errorf("Subtract would causes underflow")
-		build.Critical(err.Error())
-		return types.ZeroCurrency, err
-	}
-	return x.Sub(y), nil
-}

@@ -127,10 +127,8 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 	rev := fcr
 
 	// need to manually copy slice memory
-	rev.NewValidProofOutputs = make([]SiacoinOutput, 2)
-	rev.NewMissedProofOutputs = make([]SiacoinOutput, 3)
-	copy(rev.NewValidProofOutputs, fcr.NewValidProofOutputs)
-	copy(rev.NewMissedProofOutputs, fcr.NewMissedProofOutputs)
+	rev.NewValidProofOutputs = append([]SiacoinOutput{}, fcr.NewValidProofOutputs...)
+	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, fcr.NewMissedProofOutputs...)
 
 	// Check that there are enough funds to pay this cost.
 	if fcr.ValidRenterPayout().Cmp(amount) < 0 {
@@ -157,7 +155,6 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 
 	// increment revision number
 	rev.NewRevisionNumber++
-
 	return rev, nil
 }
 

@@ -53,14 +53,15 @@ var (
 // RPC.
 type PaymentProcessor interface {
 	// ProcessPayment takes a stream and handles the payment request objects
-	// sent by the caller. Returns an object that implements the PaymentDetails interface, or an error in case of failure.
+	// sent by the caller. Returns an object that implements the PaymentDetails
+	// interface, or an error in case of failure.
 	ProcessPayment(stream siamux.Stream) (PaymentDetails, error)
 }
 
 // PaymentDetails is an interface that defines method that give more information
 // about the details of a processed payment.
 type PaymentDetails interface {
-	Account() string
+	AccountID() AccountID
 	Amount() types.Currency
 	AddedCollateral() types.Currency
 }
@@ -72,6 +73,10 @@ var (
 )
 
 type (
+	// AccountID is the unique identifier of an ephemeral account on the host.
+	// It is the string representation of a SiaPublicKey.
+	AccountID string
+
 	// PaymentRequest identifies the payment method. This can be either
 	// PayByContract or PayByEphemeralAccount
 	PaymentRequest struct {
@@ -110,7 +115,7 @@ type (
 
 	// WithdrawalMessage contains all details to spend from an ephemeral account
 	WithdrawalMessage struct {
-		Account string
+		Account AccountID
 		Expiry  types.BlockHeight
 		Amount  types.Currency
 		Nonce   [WithdrawalNonceSize]byte
@@ -120,7 +125,7 @@ type (
 	// ephemeral account and can be used as proof of payment.
 	Receipt struct {
 		Host      types.SiaPublicKey
-		Account   string
+		Account   AccountID
 		Amount    types.Currency
 		Timestamp int64
 	}
@@ -153,7 +158,7 @@ func (wm *WithdrawalMessage) ValidateExpiry(blockHeight, expiry types.BlockHeigh
 // ValidateSignature returns an error if the provided signature is invalid
 func (wm *WithdrawalMessage) ValidateSignature(hash crypto.Hash, sig crypto.Signature) error {
 	var spk types.SiaPublicKey
-	spk.LoadString(wm.Account)
+	spk.LoadString(string(wm.Account))
 	var pk crypto.PublicKey
 	copy(pk[:], spk.Key)
 
