@@ -312,7 +312,13 @@ func TestHostBaseRPCPrice(t *testing.T) {
 
 	// Increase the host's base price.
 	host := tg.Hosts()[0]
-	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, types.SiacoinPrecision.Mul64(1000))
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	minDownloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice
+	maxRPCPrice := minDownloadPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
+	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, maxRPCPrice)
 	if err != nil {
 		t.Fatal(err)
 	}
