@@ -29,7 +29,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	defer ht.Close()
 
 	// fetch some host variables
-	pt := ht.host.PriceTable()
+	pt := ht.host.staticPriceTables.managedCurrent()
 	bh := ht.host.BlockHeight()
 	hpk := ht.host.PublicKey()
 	his := ht.host.InternalSettings()
