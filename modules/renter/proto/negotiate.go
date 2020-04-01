@@ -201,63 +201,23 @@ func negotiateRevision(conn net.Conn, rev types.FileContractRevision, secretKey 
 	return signedTxn, responseErr
 }
 
-// newRevision creates a copy of current with its revision number incremented,
-// and with cost transferred from the renter to the host.
-func newRevision(current types.FileContractRevision, cost types.Currency) (types.FileContractRevision, error) {
-	rev := current
-
-	// need to manually copy slice memory
-	rev.NewValidProofOutputs = make([]types.SiacoinOutput, 2)
-	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, 3)
-	copy(rev.NewValidProofOutputs, current.NewValidProofOutputs)
-	copy(rev.NewMissedProofOutputs, current.NewMissedProofOutputs)
-
-	// Check that there are enough funds to pay this cost.
-	if current.ValidRenterPayout().Cmp(cost) < 0 {
-		return types.FileContractRevision{}, errors.AddContext(errRevisionCostTooHigh, "valid proof output smaller than cost")
-	}
-	if current.MissedRenterOutput().Value.Cmp(cost) < 0 {
-		return types.FileContractRevision{}, errors.AddContext(errRevisionCostTooHigh, "missed proof output smaller than cost")
-	}
-
-	// move valid payout from renter to host
-	rev.SetValidRenterPayout(current.ValidRenterPayout().Sub(cost))
-	rev.SetValidHostPayout(current.ValidHostPayout().Add(cost))
-
-	// move missed payout from renter to void
-	rev.SetMissedRenterPayout(current.MissedRenterOutput().Value.Sub(cost))
-	voidOutput, err := current.MissedVoidOutput()
-	if err != nil {
-		return types.FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
-	}
-	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(cost))
-	if err != nil {
-		return types.FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
-	}
-
-	// increment revision number
-	rev.NewRevisionNumber++
-
-	return rev, nil
-}
-
 // newDownloadRevision revises the current revision to cover the cost of
 // downloading data.
 func newDownloadRevision(current types.FileContractRevision, downloadCost types.Currency) (types.FileContractRevision, error) {
-	return newRevision(current, downloadCost)
+	return current.PaymentRevision(downloadCost)
 }
 
 // newUploadRevision revises the current revision to cover the cost of
 // uploading a sector.
 func newUploadRevision(current types.FileContractRevision, merkleRoot crypto.Hash, price, collateral types.Currency) (types.FileContractRevision, error) {
-	rev, err := newRevision(current, price)
+	rev, err := current.PaymentRevision(price)
 	if err != nil {
 		return types.FileContractRevision{}, err
 	}
 
 	// Check that there is enough collateral to cover the cost.
 	if rev.MissedHostOutput().Value.Cmp(collateral) < 0 {
-		return types.FileContractRevision{}, errRevisionCollateralTooLow
+		return types.FileContractRevision{}, types.ErrRevisionCollateralTooLow
 	}
 
 	// move collateral from host to void
