@@ -292,7 +292,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal("shouldn't be able to acquire the contract")
 	}
 	// Prepare the insertion of 2 valid contracts within a single txn. This
-	// should update should be ignored at startup.
+	// should be ignored at startup.
 	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
 	if err != nil {
 		t.Fatal(err)
