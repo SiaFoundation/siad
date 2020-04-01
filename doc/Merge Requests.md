@@ -106,10 +106,8 @@ diff contained.
 
 ## Follow Ups
 For comments that are resolved into follow up issues, the expectation is that
-they are addressed immediately. The recommended process for handling follow ups
-is for whomever creates the follow up issue to immediately create an MR from the
-issue and assign it to the responsible party. Gitlab allows users to create a
-branch and MR directly from an issue which makes this quite easy.
+they are addressed immediately. Gitlab allows users to create a branch and MR
+directly from an issue.
 
 If the follow up is not a minor change then it should be updated to a new issue
 and fully filled out and properly labelled and assigned.
