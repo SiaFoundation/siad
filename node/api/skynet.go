@@ -830,7 +830,7 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 // name.
 func (api *API) skykeyIDHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse Skykey name.
-	name := req.FormValue("name")
+	name := strings.TrimPrefix(ps.ByName("name"), "/")
 
 	if name == "" {
 		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)

@@ -360,9 +360,7 @@ func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 
 // SkykeyIDGet requests the /skynet/skykeyid Get endpoint.
 func (c *Client) SkykeyIDGet(name string) (skykey.SkykeyID, error) {
-	values := url.Values{}
-	values.Set("name", name)
-	getQuery := fmt.Sprintf("/skynet/skykeyid/?%s", values.Encode())
+	getQuery := fmt.Sprintf("/skynet/skykeyid/%s", name)
 
 	var skykeyIDGet api.SkykeyIDGET
 	err := c.get(getQuery, &skykeyIDGet)
