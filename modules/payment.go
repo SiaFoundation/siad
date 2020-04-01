@@ -4,7 +4,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (
@@ -13,15 +12,6 @@ const (
 )
 
 var (
-	// ErrUnknownPaymentMethod occurs when the payment method specified in the
-	// PaymentRequest object is unknown. The possible options are outlined below
-	// under "Payment identifiers".
-	ErrUnknownPaymentMethod = errors.New("unknown payment method")
-
-	// ErrInvalidPaymentMethod occurs when the payment method is not accepted
-	// for a specific RPC.
-	ErrInvalidPaymentMethod = errors.New("invalid payment method")
-
 	// ErrInsufficientPaymentForRPC is returned when the provided payment was
 	// lower than the cost of the RPC.
 	ErrInsufficientPaymentForRPC = errors.New("Insufficient payment, the provided payment did not cover the cost of the RPC.")
@@ -49,85 +39,13 @@ var (
 	ErrWithdrawalInvalidSignature = errors.New("ephemeral account withdrawal message signature is invalid")
 )
 
-// PaymentProcessor is the interface implemented when handling RPC payment or
-// ephemeral account funding.
-type PaymentProcessor interface {
-	// ProcessPayment takes a stream and handles the payment request objects
-	// sent by the caller. Returns an object that implements the PaymentDetails
-	// interface, or an error in case of failure.
-	ProcessPayment(stream siamux.Stream) (PaymentDetails, error)
-}
-
-// PaymentDetails is an interface that defines method that give more information
-// about the details of a processed payment.
-type PaymentDetails interface {
-	AccountID() AccountID
-	Amount() types.Currency
-	AddedCollateral() types.Currency
-}
-
-// Payment identifiers
-var (
-	PayByContract         = types.NewSpecifier("PayByContract")
-	PayByEphemeralAccount = types.NewSpecifier("PayByEphemAcc")
-)
-
 type (
-	// AccountID is the unique identifier of an ephemeral account on the host.
-	// It is the string representation of a SiaPublicKey.
-	AccountID string
-
-	// PaymentRequest identifies the payment method. This can be either
-	// PayByContract or PayByEphemeralAccount
-	PaymentRequest struct {
-		Type types.Specifier
-	}
-
-	// PayByEphemeralAccountRequest holds all payment details to pay from an
-	// ephemeral account.
-	PayByEphemeralAccountRequest struct {
-		Message   WithdrawalMessage
-		Signature crypto.Signature
-		Priority  int64
-	}
-
-	// PayByEphemeralAccountResponse is the object sent in response to the
-	// PayByEphemeralAccountRequest
-	PayByEphemeralAccountResponse struct {
-		Amount types.Currency
-	}
-
-	// PayByContractRequest holds all payment details to pay from a file
-	// contract.
-	PayByContractRequest struct {
-		ContractID           types.FileContractID
-		NewRevisionNumber    uint64
-		NewValidProofValues  []types.Currency
-		NewMissedProofValues []types.Currency
-		Signature            []byte
-	}
-
-	// PayByContractResponse is the object sent in response to the
-	// PayByContractRequest
-	PayByContractResponse struct {
-		Signature crypto.Signature
-	}
-
 	// WithdrawalMessage contains all details to spend from an ephemeral account
 	WithdrawalMessage struct {
-		Account AccountID
+		Account string
 		Expiry  types.BlockHeight
 		Amount  types.Currency
 		Nonce   [WithdrawalNonceSize]byte
-	}
-
-	// Receipt is returned by the host after a successful deposit into an
-	// ephemeral account and can be used as proof of payment.
-	Receipt struct {
-		Host      types.SiaPublicKey
-		Account   AccountID
-		Amount    types.Currency
-		Timestamp int64
 	}
 )
 
@@ -158,7 +76,7 @@ func (wm *WithdrawalMessage) ValidateExpiry(blockHeight, expiry types.BlockHeigh
 // ValidateSignature returns an error if the provided signature is invalid
 func (wm *WithdrawalMessage) ValidateSignature(hash crypto.Hash, sig crypto.Signature) error {
 	var spk types.SiaPublicKey
-	spk.LoadString(string(wm.Account))
+	spk.LoadString(wm.Account)
 	var pk crypto.PublicKey
 	copy(pk[:], spk.Key)
 
