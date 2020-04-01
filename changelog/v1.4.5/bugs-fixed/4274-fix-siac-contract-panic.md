@@ -1,0 +1,1 @@
+- Fix negative currency panic in `siac renter contracts view`

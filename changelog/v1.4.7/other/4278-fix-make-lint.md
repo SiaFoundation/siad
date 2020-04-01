@@ -1,0 +1,1 @@
+- Move golangci-lint to `make lint` and remove `make lint-all`.

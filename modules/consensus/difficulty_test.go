@@ -365,6 +365,5 @@ func TestHardforkMechanic(t *testing.T) {
 			t.Error("target is not adjusting down during mining every block")
 		}
 		prevTarg = targ
-
 	}
 }

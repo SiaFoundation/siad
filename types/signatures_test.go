@@ -114,7 +114,6 @@ func TestSigHash(t *testing.T) {
 
 	_ = txn.SigHash(0, 0)
 	_ = txn.SigHash(1, 0)
-
 }
 
 // TestSortedUnique probes the sortedUnique function.

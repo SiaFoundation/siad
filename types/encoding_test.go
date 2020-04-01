@@ -463,7 +463,6 @@ func TestSiaPublicKeyLoadString(t *testing.T) {
 	spk.LoadString(parts[1][1:])
 	spk.LoadString(parts[1][:1])
 	spk.LoadString(parts[0] + parts[1])
-
 }
 
 // TestSiaPublicKeyString does a quick check to verify that the String method

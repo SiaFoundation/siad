@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,6 +49,7 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
 		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
@@ -55,8 +57,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
+		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 	}
 
 	// Run tests
@@ -1652,6 +1656,113 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetDryRunUpload verifies the --dry-run flag when uploading a Skyfile.
+func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	siaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify we can perform a skyfile upload (note that we need this to trigger
+	// contracts being created, this issue only surfaces when commenting out all
+	// other skynet tets)
+	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRun",
+			Mode:     0640,
+		},
+	})
+	if err != nil {
+		t.Fatal("Expected skynet upload to be successful, instead received err:", err)
+	}
+
+	// verify you can't perform a dry-run using the force parameter
+	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRun",
+			Mode:     0640,
+		},
+		Force:  true,
+		DryRun: true,
+	})
+	if err == nil {
+		t.Fatal("Expected failure when both 'force' and 'dryrun' parameter are given")
+	}
+
+	verifyDryRun := func(sup modules.SkyfileUploadParameters, dataSize int) {
+		data := fastrand.Bytes(dataSize)
+
+		sup.DryRun = true
+		sup.Reader = bytes.NewReader(data)
+		skylinkDry, _, err := r.SkynetSkyfilePost(sup)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// verify the skylink can't be found after a dry run
+		status, _, _ := r.SkynetSkylinkHead(skylinkDry, 0)
+		if status != http.StatusNotFound {
+			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
+		}
+
+		// verify the skfyile got deleted properly
+		skyfilePath, err := modules.SkynetFolder.Join(sup.SiaPath.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.RenterFileRootGet(skyfilePath)
+		if err == nil || !strings.Contains(err.Error(), "path does not exist") {
+			t.Fatal(errors.New("Skyfile not deleted after dry run."))
+		}
+
+		sup.DryRun = false
+		sup.Reader = bytes.NewReader(data)
+		skylink, _, err := r.SkynetSkyfilePost(sup)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if skylinkDry != skylink {
+			t.Log("Expected:", skylink)
+			t.Log("Actual:  ", skylinkDry)
+			t.Fatalf("VerifyDryRun failed for data size %db, skylink received during the dry-run is not identical to the skylink received when performing the actual upload.", dataSize)
+		}
+	}
+
+	// verify dry-run of small file
+	uploadSiaPath, err := modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "S"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyDryRun(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRunUploadSmall",
+			Mode:     0640,
+		},
+	}, 100)
+
+	// verify dry-run of large file
+	uploadSiaPath, err = modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "L"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyDryRun(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRunUploadLarge",
+			Mode:     0640,
+		},
+	}, int(modules.SectorSize*2)+siatest.Fuzz())
+}
+
 // testSkynetRequestTimeout verifies that the Skylink routes timeout when a
 // timeout query string parameter has been passed.
 func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
@@ -1709,6 +1820,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r = nodes[0]
+	defer tg.RemoveNode(r)
 
 	// Upload a skyfile
 	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
@@ -1738,8 +1850,86 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected pin request to time out")
 	}
-	if !strings.Contains(err.Error(), "timed out after 2s") {
+	if err == nil || !strings.Contains(err.Error(), "timed out after 2s") {
 		t.Log(err)
 		t.Fatal("Expected error to specify the timeout")
+	}
+}
+
+// testRegressionTimeoutPanic is a regression test for a double channel close
+// which happened when a timeout was hit right before a download project was
+// resumed.
+func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	uploadSiaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testRegressionTimeoutPanic",
+			Mode:     0640,
+		},
+		Reader: reader,
+		Force:  true,
+	}
+	// Create a renter with a BlockResumeJobDownloadUntilTimeout dependency.
+	testDir := renterTestDir(t.Name())
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = dependencies.NewDependencyBlockResumeJobDownloadUntilTimeout()
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+	defer tg.RemoveNode(r)
+
+	// Upload a skyfile
+	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify timeout on download request doesn't panic.
+	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
+	if errors.Contains(err, renter.ErrProjectTimedOut) {
+		t.Fatal("Expected download request to time out")
+	}
+}
+
+// testSkynetLargeMetadata makes sure that
+func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Prepare a filename that's greater than a sector. That's the easiest way
+	// to force the metadata to be larger than a sector.
+	filename := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize + 1)))
+	// Quick fuzz on the force value so that sometimes it is set, sometimes it
+	// is not.
+	var force bool
+	if fastrand.Intn(2) == 0 {
+		force = true
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             modules.RandomSiaPath(),
+		Force:               force,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: filename,
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
+		Reader: reader,
+	}
+	_, _, err := r.SkynetSkyfilePost(sup)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
+		t.Fatal("Should fail due to ErrMetadataTooBig", err)
 	}
 }

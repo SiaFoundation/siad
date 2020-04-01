@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"math/big"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -371,4 +374,65 @@ func fmtDuration(dur time.Duration) string {
 	dur -= h * time.Hour
 	m := dur / time.Minute
 	return fmt.Sprintf("%02d days %02d hours %02d minutes", d, h, m)
+}
+
+// parsePercentages takes a range of floats and returns them rounded to
+// percentages that add up to 100. They will be returned in the same order that
+// they were provided
+func parsePercentages(values []float64) []float64 {
+	// Create a map to track information of the values in the slice and
+	// calculate the subTotal of the floor values
+	type info struct {
+		index    int
+		floorVal float64
+	}
+	m := make(map[float64]*info)
+	var subTotal float64
+	for i, v := range values {
+		fv := math.Floor(v)
+		m[v] = &info{
+			index:    i,
+			floorVal: fv,
+		}
+		subTotal += fv
+	}
+
+	// Determine the difference to 100 from the subTotal of the floor values
+	diff := 100 - subTotal
+
+	// Diff should always be smaller than the number of values. Sanity check for
+	// developers, fine to continue through in production as result will only be
+	// a minor UX descrepency
+	if int(diff) > len(values) {
+		build.Critical(fmt.Errorf("Unexpected diff value %v, number of values %v", diff, len(values)))
+	}
+
+	// Sort the slice based on the size of the decimal value
+	sort.Slice(values, func(i, j int) bool {
+		_, a := math.Modf(values[i])
+		_, b := math.Modf(values[j])
+		return a > b
+	})
+
+	// Divide the diff amongst the floor values from largest decimal value to
+	// the smallest to decide which values get rounded up.
+	for _, v := range values {
+		if diff <= 0 {
+			break
+		}
+		info, ok := m[v]
+		if !ok {
+			build.Critical("value not found in map, this should not happen")
+			continue
+		}
+		info.floorVal++
+		diff--
+	}
+
+	// Reorder the slice and return
+	for _, v := range m {
+		values[v.index] = v.floorVal
+	}
+
+	return values
 }

@@ -316,12 +316,11 @@ flag can be used to view skyfiles pinned in other folders.`,
 	skynetUploadCmd = &cobra.Command{
 		Use:   "upload [source path] [destination siapath]",
 		Short: "Upload a file or a directory to Skynet.",
-		Long: `Upload a file or a directory to Skynet. A skylink will be produced which
-can be shared and used to retrieve the file. If the given path is a directory all
-files under that directory will be uploaded individually and an individual skylink
-will be produced for each. All files that get uploaded will be pinned to this Sia
-node, meaning that this node will pay for storage and repairs until the files are
-manually deleted.`,
+		Long: `Upload a file or a directory to Skynet. A skylink will be produced which can be
+shared and used to retrieve the file. If the given path is a directory all files under that directory will
+be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
+will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files 
+are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
 		Run: wrap(skynetuploadcmd),
 	}
 
@@ -407,8 +406,20 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable uint64
-	total := dirs[0].dir.AggregateNumFiles
+	// Check for nil input
+	if len(dirs) == 0 {
+		fmt.Println("No Directories Found")
+		return
+	}
+
+	// Check for no files uploaded
+	total := float64(dirs[0].dir.AggregateNumFiles)
+	if total == 0 {
+		fmt.Println("No Files Uploaded")
+		return
+	}
+
+	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
 	for _, dir := range dirs {
 		for _, file := range dir.files {
 			switch {
@@ -428,12 +439,15 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 		}
 	}
 
-	percentFullHealth := 100 * fullHealth / total
-	percentAbove75 := 100 * greater75 / total
-	percentAbove50 := 100 * greater50 / total
-	percentAbove25 := 100 * greater25 / total
-	percentAbove0 := 100 * greater0 / total
-	percentUnrecoverable := 100 * unrecoverable / total
+	fullHealth = 100 * fullHealth / total
+	greater75 = 100 * greater75 / total
+	greater50 = 100 * greater50 / total
+	greater25 = 100 * greater25 / total
+	greater0 = 100 * greater0 / total
+	unrecoverable = 100 * unrecoverable / total
+
+	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
+	percentages = parsePercentages(percentages)
 
 	fmt.Printf(`File Health Summary:
   %% At 100%%:            %v%%
@@ -442,7 +456,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
   %% Between 25%% - 50%%:  %v%%
   %% Between 0%% - 25%%:   %v%%
   %% Unrecoverable:      %v%%
-`, percentFullHealth, percentAbove75, percentAbove50, percentAbove25, percentAbove0, percentUnrecoverable)
+`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -465,15 +479,22 @@ func renterFilesAndContractSummary() error {
 	if rf.Directories[0].AggregateMinRedundancy == -1 {
 		redundancyStr = "-"
 	}
+	// Active Contracts are all good data
+	activeSize, _, _, _ := contractStats(rc.ActiveContracts)
+	// Passive Contracts are all good data
+	passiveSize, _, _, _ := contractStats(rc.PassiveContracts)
 
 	fmt.Printf(`
-  Files:              %v
-  Total Stored:       %v
-  Min Redundancy:     %v
-  Active Contracts:   %v
-  Passive Contracts:  %v
-  Disabled Contracts: %v
-`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize), redundancyStr, len(rc.ActiveContracts), len(rc.PassiveContracts), len(rc.DisabledContracts))
+  Files:               %v
+  Total Stored:        %v
+  Total Contract Data: %v
+  Min Redundancy:      %v
+  Active Contracts:    %v
+  Passive Contracts:   %v
+  Disabled Contracts:  %v
+`, rf.Directories[0].AggregateNumFiles, modules.FilesizeUnits(rf.Directories[0].AggregateSize),
+		modules.FilesizeUnits(activeSize+passiveSize), redundancyStr, len(rc.ActiveContracts),
+		len(rc.PassiveContracts), len(rc.DisabledContracts))
 
 	return nil
 }
@@ -1584,23 +1605,35 @@ func rentercontractscmd() {
 // rentercontractsviewcmd is the handler for the command `siac renter contracts <id>`.
 // It lists details of a specific contract.
 func rentercontractsviewcmd(cid string) {
-	rc, err := httpClient.RenterInactiveContractsGet()
+	rc, err := httpClient.RenterAllContractsGet()
 	if err != nil {
 		die("Could not get contract details: ", err)
 	}
-	rce, err := httpClient.RenterExpiredContractsGet()
+
+	contracts := append(rc.ActiveContracts, rc.PassiveContracts...)
+	contracts = append(contracts, rc.RefreshedContracts...)
+	contracts = append(contracts, rc.DisabledContracts...)
+	contracts = append(contracts, rc.ExpiredContracts...)
+	contracts = append(contracts, rc.ExpiredRefreshedContracts...)
+
+	err = printContractInfo(cid, contracts)
 	if err != nil {
-		die("Could not get expired contract details: ", err)
+		die(err)
 	}
+}
 
-	contracts := append(rc.ActiveContracts, rc.InactiveContracts...)
-	contracts = append(contracts, rce.ExpiredContracts...)
-
+// printContractInfo is a helper function for printing the information about a
+// specific contract
+func printContractInfo(cid string, contracts []api.RenterContract) error {
 	for _, rc := range contracts {
 		if rc.ID.String() == cid {
+			var fundsAllocated types.Currency
+			if rc.TotalCost.Cmp(rc.Fees) > 0 {
+				fundsAllocated = rc.TotalCost.Sub(rc.Fees)
+			}
 			hostInfo, err := httpClient.HostDbHostsGet(rc.HostPublicKey)
 			if err != nil {
-				die("Could not fetch details of host: ", err)
+				return fmt.Errorf("Could not fetch details of host: %v", err)
 			}
 			fmt.Printf(`
 Contract %v
@@ -1618,10 +1651,9 @@ Contract %v
   Remaining Funds:   %v
 
   File Size: %v
-`, rc.ID, rc.NetAddress, rc.HostVersion, rc.HostPublicKey.String(), rc.StartHeight, rc.EndHeight,
-				currencyUnits(rc.TotalCost),
-				currencyUnits(rc.Fees),
-				currencyUnits(rc.TotalCost.Sub(rc.Fees)),
+`, rc.ID, rc.NetAddress, rc.HostPublicKey.String(), rc.HostVersion, rc.StartHeight, rc.EndHeight,
+				currencyUnits(rc.TotalCost), currencyUnits(rc.Fees),
+				currencyUnits(fundsAllocated),
 				currencyUnits(rc.UploadSpending),
 				currencyUnits(rc.StorageSpending),
 				currencyUnits(rc.DownloadSpending),
@@ -1629,11 +1661,12 @@ Contract %v
 				modules.FilesizeUnits(rc.Size))
 
 			printScoreBreakdown(&hostInfo)
-			return
+			return nil
 		}
 	}
 
 	fmt.Println("Contract not found")
+	return nil
 }
 
 // downloadDir downloads the dir at the specified siaPath to the specified
@@ -1899,7 +1932,6 @@ func bandwidthUnit(bps uint64) string {
 			// would give us 1.235 Ybps instead of 1235 Ybps
 			mag *= 1e3
 		}
-
 	}
 	return fmt.Sprintf("%.2f %s", float64(bps)/float64(mag), unit)
 }
@@ -2281,7 +2313,6 @@ func renterfusecmd() {
 	}
 	w.Flush()
 	fmt.Println()
-
 }
 
 // renterfusemountcmd is the handler for the command `siac renter fuse mount [path] [siapath]`.
@@ -2764,6 +2795,8 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
+
+		DryRun: skynetUploadDryRun,
 
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: sourceName,

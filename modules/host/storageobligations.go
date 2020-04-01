@@ -864,7 +864,6 @@ func (h *Host) resetFinancialMetrics() error {
 					fm.LostStorageCollateral = fm.LostStorageCollateral.Add(so.RiskedCollateral)
 				}
 			}
-
 		}
 		return nil
 	})

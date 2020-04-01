@@ -140,7 +140,7 @@ package-tests:
     paths:
       - .cache
   script: 
-    - make test-long run=. pkgs="$package_pkgs"    
+    - make test-long run=. pkgs="$package_pkgs"
 siatest-tests:
   <<: *default_test_params
   cache:
@@ -200,4 +200,3 @@ siatest-renter-sub-tests-nightly:
     - apt-get update
     - apt-get install -y fuse
     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
-    

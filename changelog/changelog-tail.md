@@ -1,3 +1,4 @@
+## Mar 2020:
 ### v1.4.4
 **Key Updates**
 - Add a delay when modifying large contracts on hosts to prevent hosts from
@@ -60,7 +61,8 @@
 - Add Skynet-Disable-Force header to allow disabling the force update feature
   on Skynet uploads
 - Create generator for Changelog to improve changelog update process
- 
+
+## Feb 2020:
 ### v1.4.3
 **Key Updates**
 - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
@@ -89,6 +91,7 @@
 - Upgrade host metadata to v1.4.3
 - Removed stubs from testing
 
+## Jan 2020:
 ### v1.4.2.1
 **Key Updates**
 - Wallet can generate an address before it finishes scanning the blockchain
@@ -109,8 +112,7 @@
 - Crash preventing host from starting up correctly after an unclean shutdown
   while resizing a storage folder
 
-Dec 2019:
-
+## Dec 2019:
 ### v1.4.2.0
 **Key Updates**
 - Allowance in Backups

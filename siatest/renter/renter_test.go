@@ -56,6 +56,7 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestLocalRepair", Test: testLocalRepair},
 		{Name: "TestClearDownloadHistory", Test: testClearDownloadHistory},
 		{Name: "TestDownloadAfterRenew", Test: testDownloadAfterRenew},
+		{Name: "TestDownloadAfterLegacyRenewAndClear", Test: testDownloadAfterLegacyRenewAndClear},
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},
 	}
@@ -772,6 +773,43 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testDownloadAfterRenew makes sure that we can't download a file after
+// finalizing the contract and dropping the void output. This is also a
+// regression test for a index-out-of-bounds panic in siad.
+func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
+	// Create a node with the right dependency.
+	params := node.Renter(renterTestDir(t.Name()))
+	params.ContractorDeps = &dependencies.DependencySkipDeleteContractAfterRenewal{}
+
+	// Add the node and remove it at the end of the test.
+	nodes, err := tg.AddNodes(params)
+	renter := nodes[0]
+	defer tg.RemoveNode(renter)
+
+	// Upload file, creating a piece for each host in the group
+	dataPieces := uint64(1)
+	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	fileSize := 100 + siatest.Fuzz()
+	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Mine enough blocks for the next period to start. This means the
+	// contracts should be renewed and the data should still be available for
+	// download.
+	miner := tg.Miners()[0]
+	for i := types.BlockHeight(0); i < siatest.DefaultAllowance.Period; i++ {
+		if err := miner.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Download the file synchronously directly into memory.
+	_, _, err = renter.DownloadByStream(remoteFile)
+	if err == nil {
+		t.Fatal("download should fail due to contract being finalized")
 	}
 }
 
@@ -4172,7 +4210,6 @@ func testRenterPostCancelAllowance(t *testing.T, tg *siatest.TestGroup) {
 			t.Logf("testing key %v and value %v", test.key, test.value)
 			t.Fatalf("Expected error to contain %v but got %v", test.err, err)
 		}
-
 	}
 
 	// Test setting a non allowance field, this should have no affect on the

@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -42,6 +43,7 @@ var (
 	skynetLsRecursive         bool   // List files of folder recursively.
 	skynetLsRoot              bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDryRun        bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
 	walletTxnFeeIncluded      bool   // include the fee in the balance being sent
@@ -296,6 +298,7 @@ func main() {
 	root.AddCommand(skynetCmd)
 	skynetCmd.AddCommand(skynetBlacklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetUploadCmd.Flags().BoolVar(&skynetUploadDryRun, "dry-run", false, "Perform a dry-run of the upload, returning the skylink without actually uploading the file")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
@@ -337,7 +340,7 @@ func main() {
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
 	// Check if the api password environment variable is set.
-	apiPassword := os.Getenv("SIA_API_PASSWORD")
+	apiPassword := os.Getenv(cmd.SiaAPIPassword)
 	if apiPassword != "" {
 		httpClient.Password = apiPassword
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
@@ -345,7 +348,7 @@ func main() {
 
 	// If siaDir is not set, use the environment variable provided.
 	if siaDir == "" {
-		siaDir = os.Getenv("SIA_DATA_DIR")
+		siaDir = os.Getenv(cmd.SiaDataDir)
 		if siaDir != "" {
 			fmt.Println("Using SIA_DATA_DIR environment variable")
 		} else {
@@ -365,7 +368,6 @@ func main() {
 			} else {
 				httpClient.Password = strings.TrimSpace(string(pw))
 			}
-
 		}
 	})
 
