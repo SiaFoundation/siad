@@ -89,7 +89,6 @@ func extendErr(s string, err error) error {
 	default:
 		return errors.New(s + err.Error())
 	}
-
 }
 
 // Error satisfies the Error interface for the ErrorCommunication type.

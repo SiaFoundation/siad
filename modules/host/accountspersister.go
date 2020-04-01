@@ -370,7 +370,6 @@ func (ap *accountsPersister) openAccountsFile(path string) (modules.File, error)
 func (ap *accountsPersister) openFingerprintBucket(path string) (modules.File, error) {
 	// open file in append-only mode and create if it does not exist yet
 	return ap.openFileWithMetadata(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, fingerprintsMetadata)
-
 }
 
 // openFileWithMetadata will open the file at given path. If the file did not

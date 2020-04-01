@@ -136,7 +136,6 @@ func (cs *ConsensusSet) updateSubscribers(ce changeEntry) {
 // sent to the modules starting with the genesis block.
 func (cs *ConsensusSet) managedInitializeSubscribe(subscriber modules.ConsensusSetSubscriber, start modules.ConsensusChangeID,
 	cancel <-chan struct{}) (modules.ConsensusChangeID, error) {
-
 	if start == modules.ConsensusChangeRecent {
 		cs.mu.Lock()
 		defer cs.mu.Unlock()
@@ -238,7 +237,6 @@ func (cs *ConsensusSet) recentConsensusChangeID() (cid modules.ConsensusChangeID
 // sent to the modules starting with the genesis block.
 func (cs *ConsensusSet) ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber, start modules.ConsensusChangeID,
 	cancel <-chan struct{}) error {
-
 	err := cs.tg.Add()
 	if err != nil {
 		return err
