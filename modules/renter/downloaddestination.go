@@ -128,12 +128,12 @@ func (ddf *downloadDestinationFile) Close() error {
 // WritePieces will decode the pieces and write them to a file at the provided
 // offset, using the provided length.
 func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
-	sectionWriter := NewSectionWriter(ddf.f, offset, ddf.staticChunkSize)
+	sw := NewSectionWriter(ddf.f, offset, ddf.staticChunkSize)
 	if ddf.deps.Disrupt("PostponeWritePiecesRecovery") {
 		time.Sleep(time.Duration(fastrand.Intn(1000)) * time.Millisecond)
 	}
 	skipWriter := &skipWriter{
-		writer: sectionWriter,
+		writer: sw,
 		skip:   int(dataOffset),
 	}
 	bufioWriter := bufio.NewWriter(skipWriter)
