@@ -79,6 +79,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -206,7 +207,7 @@ type Host struct {
 // 'guaranteed' map.
 type hostPrices struct {
 	current       modules.RPCPriceTable
-	guaranteed    map[types.Specifier]*modules.RPCPriceTable
+	guaranteed    map[modules.UniqueID]*modules.RPCPriceTable
 	staticMinHeap priceTableHeap
 	mu            sync.RWMutex
 }
@@ -238,12 +239,20 @@ func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
 // managedPruneExpired removes all of the price tables that have expired from
 // the 'guaranteed' map.
 func (hp *hostPrices) managedPruneExpired() {
+	current := hp.managedCurrent()
 	expired := hp.staticMinHeap.PopExpired()
 	if len(expired) == 0 {
 		return
 	}
 	hp.mu.Lock()
 	for _, uuid := range expired {
+		// Sanity check to never prune the host's current price table. This can
+		// never occur because the host's price table UUID is not added to the
+		// minheap.
+		if uuid == current.UUID {
+			build.Critical("The host's current price table should not be pruned")
+			continue
+		}
 		delete(hp.guaranteed, uuid)
 	}
 	hp.mu.Unlock()
@@ -266,7 +275,7 @@ type priceTableHeap struct {
 }
 
 // PopExpired returns the UUIDs for all rpc price tables that have expired
-func (pth *priceTableHeap) PopExpired() (expired []types.Specifier) {
+func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
 
@@ -370,6 +379,7 @@ func (h *Host) managedUpdatePriceTable() {
 		ReadBaseCost:   his.MinBaseRPCPrice,
 		ReadLengthCost: his.MinBaseRPCPrice,
 	}
+	fastrand.Read(priceTable.UUID[:])
 
 	// update the pricetable
 	h.staticPriceTables.managedUpdate(priceTable)
@@ -431,7 +441,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
 		staticPriceTables: &hostPrices{
-			guaranteed: make(map[types.Specifier]*modules.RPCPriceTable),
+			guaranteed: make(map[modules.UniqueID]*modules.RPCPriceTable),
 			staticMinHeap: priceTableHeap{
 				heap: make([]*modules.RPCPriceTable, 0),
 			},

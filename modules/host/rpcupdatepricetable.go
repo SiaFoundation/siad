@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -15,6 +16,11 @@ import (
 func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table
 	pt := h.staticPriceTables.managedCurrent()
+
+	// generate a random UUID
+	var newUUID modules.UniqueID
+	fastrand.Read(newUUID[:])
+	pt.UUID = newUUID
 
 	// update the epxiry to ensure prices are guaranteed for the duration of the
 	// rpcPriceGuaranteePeriod
@@ -38,7 +44,13 @@ func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	// been added to the map, which means that the renter has to pay for it in
 	// order for it to became active and accepted by the host.
 
-	// TODO process payment
+	payment, err := h.ProcessPayment(stream)
+	if err != nil {
+		return errors.AddContext(err, "Failed to process payment")
+	}
+	if payment.Amount().Cmp(pt.UpdatePriceTableCost) < 0 {
+		return modules.ErrInsufficientPaymentForRPC
+	}
 
 	// after payment has been received, track the price table in the host's list
 	// of price tables
