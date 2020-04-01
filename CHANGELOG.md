@@ -10,11 +10,29 @@ Version History
 
 Latest:
 
-## Mar 25, 2020:
+## Apr 2, 2020
+### v1.4.7
+**Key Updates**
+- Add `--dry-run` parameter to Skynet upload
+- Set ratio for `MinBaseRPCPrice` and `MinSectorAccessPrice` with   `MinDownloadBandwidthPrice`
+
+**Bugs Fixed**
+- Don't delete hosts the renter has a contract with from hostdb - Initiate a hostdb rescan on startup if a host the renter has a contract with isn't in the host tree - Increase max host downtime in hostbd from 10 days to 20 days.
+- Remove `build.Critical` and update to a metadata update
+
+**Other**
+ - Add PaymentProcessor interface (host-side)
+- Move golangci-lint to `make lint` and remove `make lint-all`.
+- Add whitespace lint to catch extraneous whitespace and newlines.
+- Expand `SiaPath` unit testing to address more edge cases.
+
+
+## Mar 25, 2020
 ### v1.4.6
 **Bugs Fixed**
 - Fix panic when metadata of skyfile upload exceeds modules.SectorSize
 - Fix curl example for `/skynet/skyfile/` post
+
 
 ## Mar 24, 2020
 ### v1.4.5

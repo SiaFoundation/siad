@@ -5,7 +5,7 @@ set -e
 
 # config
 
-generate_till_version=v1.4.6
+generate_till_version=v1.4.7
 changelog_md=../CHANGELOG.md
 changelog_files_dir=../changelog
 head_filename=changelog-head.md
