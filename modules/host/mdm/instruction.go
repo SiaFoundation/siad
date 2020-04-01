@@ -32,9 +32,9 @@ type instruction interface {
 // Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
 	output
-	ExecutionCost   types.Currency
-	NewCollateral   types.Currency
-	PotentialRefund types.Currency
+	ExecutionCost        types.Currency
+	AdditionalCollateral types.Currency
+	PotentialRefund      types.Currency
 }
 
 // output is the type returned by all instructions when being executed.

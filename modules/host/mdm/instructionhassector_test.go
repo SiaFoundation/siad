@@ -76,8 +76,8 @@ func TestInstructionHasSector(t *testing.T) {
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
-		if !output.NewCollateral.Equals(collateral) {
-			t.Fatalf("collateral doesnt't match expected colalteral: %v != %v", output.NewCollateral.HumanString(), collateral.HumanString())
+		if !output.AdditionalCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected colalteral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())

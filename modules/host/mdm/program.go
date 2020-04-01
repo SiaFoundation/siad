@@ -52,7 +52,7 @@ type Program struct {
 	staticBudget           types.Currency
 	staticCollateralBudget types.Currency
 	executionCost          types.Currency
-	newCollateral          types.Currency // collateral the host is required to add
+	additionalCollateral   types.Currency // collateral the host is required to add
 	potentialRefund        types.Currency // refund if the program isn't committed
 	usedMemory             uint64
 
@@ -69,9 +69,9 @@ func outputFromError(err error, collateral, cost, refund types.Currency) Output 
 		output: output{
 			Error: err,
 		},
-		ExecutionCost:   cost,
-		NewCollateral:   collateral,
-		PotentialRefund: refund,
+		ExecutionCost:        cost,
+		AdditionalCollateral: collateral,
+		PotentialRefund:      refund,
 	}
 }
 
@@ -144,11 +144,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 // a result the collateral becomes larger than the collateral budget of the
 // program, an error is returned.
 func (p *Program) addCollateral(collateral types.Currency) error {
-	newCollateral := p.newCollateral.Add(collateral)
-	if p.staticCollateralBudget.Cmp(newCollateral) < 0 {
+	additionalCollateral := p.additionalCollateral.Add(collateral)
+	if p.staticCollateralBudget.Cmp(additionalCollateral) < 0 {
 		return modules.ErrMDMInsufficientCollateralBudget
 	}
-	p.newCollateral = newCollateral
+	p.additionalCollateral = additionalCollateral
 	return nil
 }
 
@@ -174,7 +174,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
-			p.outputChan <- outputFromError(ErrInterrupted, p.newCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.potentialRefund)
 			break
 		default:
 		}
@@ -183,20 +183,20 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		p.usedMemory += i.Memory()
 		time, err := i.Time()
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.newCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
 		}
 		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
 		// Get the instruction cost and refund.
 		instructionCost, refund, err := i.Cost()
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.newCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
 			return err
 		}
 		cost := memoryCost.Add(instructionCost)
 		// Increment the cost.
 		err = p.addCost(cost)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.newCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
 			return err
 		}
 		// Add the instruction's potential refund to the total.
@@ -205,16 +205,16 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		collateral := i.Collateral()
 		err = p.addCollateral(collateral)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.newCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
 			return err
 		}
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
-			output:          output,
-			ExecutionCost:   p.executionCost,
-			NewCollateral:   p.newCollateral,
-			PotentialRefund: p.potentialRefund,
+			output:               output,
+			ExecutionCost:        p.executionCost,
+			AdditionalCollateral: p.additionalCollateral,
+			PotentialRefund:      p.potentialRefund,
 		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {
