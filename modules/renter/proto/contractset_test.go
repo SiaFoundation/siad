@@ -236,7 +236,7 @@ func TestCompatV146SplitContracts(t *testing.T) {
 }
 
 // TestContractSetApplyInsertUpdateAtStartup makes sure that a valid insert
-// updates gets applied at startup and an invalid one won't.
+// update gets applied at startup and an invalid one won't.
 func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
