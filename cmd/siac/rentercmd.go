@@ -2742,7 +2742,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		close(filesChan)
 	}()
 
-	numUploadedSkyfiles := int32(0)
+	var numUploadedSkyfiles int32
 	// start the workers that will upload the files in parallel
 	var wg sync.WaitGroup
 	for i := 0; i < SimultaneousSkynetUploads; i++ {
