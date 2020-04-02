@@ -221,41 +221,6 @@ func newMockHostTester(d modules.Dependencies, name string) (*hostTester, error)
 	return ht, nil
 }
 
-// newRenterHostTester creates a renter host pair where the renter is
-// represented by a secret key (which it can use to sign revisions with), and
-// where the host already has a storage obligation with that renter.
-func newRenterHostTester(name string) (ht *hostTester, renter crypto.SecretKey, so storageObligation, err error) {
-	// setup host
-	ht, err = newHostTester(name)
-	if err != nil {
-		return
-	}
-
-	// create a renter key pair
-	renter, pk := crypto.GenerateKeyPair()
-	renterPK := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-
-	// setup storage obligationn (emulating a renter creating a contract)
-	so, err = ht.newTesterStorageObligation()
-	if err != nil {
-		return
-	}
-	so, err = ht.addNoOpRevision(so, renterPK)
-	if err != nil {
-		return
-	}
-	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
-	if err != nil {
-		return
-	}
-	ht.host.managedUnlockStorageObligation(so.id())
-	return
-}
-
 // Close safely closes the hostTester. It panics if err != nil because there
 // isn't a good way to errcheck when deferring a close.
 func (ht *hostTester) Close() error {
@@ -270,6 +235,79 @@ func (ht *hostTester) Close() error {
 		panic(err)
 	}
 	return nil
+}
+
+// renterHostPair is a helper struct that contains a secret key, symbolizing the
+// renter, a host and the id of the file contract they share.
+type renterHostPair struct {
+	host   *Host
+	renter crypto.SecretKey
+	fcid   types.FileContractID
+}
+
+// newRenterHostPair creates a new host tester and returns a renter host pair,
+// this pair is a helper struct that contains both the host and renter,
+// represented by its secret key. This helper will precreated a storage
+// obligation emulating a file contract between them.
+func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
+	// setup host
+	ht, err := newHostTester(name)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// create a renter key pair
+	sk, pk := crypto.GenerateKeyPair()
+	renterPK := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// setup storage obligationn (emulating a renter creating a contract)
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		return nil, nil, err
+	}
+	so, err = ht.addNoOpRevision(so, renterPK)
+	if err != nil {
+		return nil, nil, err
+	}
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	pair := &renterHostPair{
+		host:   ht.host,
+		renter: sk,
+		fcid:   so.id(),
+	}
+	return ht, pair, nil
+}
+
+// PaymentRevision returns a new revision that transfer the given amount to the
+// host. Returns the payment revision together with a signature signed by the
+// pair's renter.
+func (p *renterHostPair) PaymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
+	blockHeight := p.host.BlockHeight()
+	updated, err := p.host.managedGetStorageObligation(p.fcid)
+	if err != nil {
+		return types.FileContractRevision{}, crypto.Signature{}, err
+	}
+
+	recent, err := updated.recentRevision()
+	if err != nil {
+		return types.FileContractRevision{}, crypto.Signature{}, err
+	}
+
+	rev, err := recent.PaymentRevision(amount)
+	if err != nil {
+		return types.FileContractRevision{}, crypto.Signature{}, err
+	}
+	sig := revisionSignature(rev, blockHeight, p.renter)
+	return rev, sig, nil
 }
 
 // TestHostInitialization checks that the host initializes to sensible default

@@ -131,7 +131,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	t.Parallel()
 
 	// setup a host and renter pair with an emulated file contract between them
-	ht, renter, so, err := newRenterHostTester(t.Name())
+	ht, pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,19 +165,10 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		}
 
 		// prepare an updated revision that pays the host
-		so, err = ht.host.managedGetStorageObligation(so.id())
+		rev, sig, err := pair.PaymentRevision(ptc)
 		if err != nil {
 			return
 		}
-		recent, err := so.recentRevision()
-		if err != nil {
-			return
-		}
-		rev, err := recent.PaymentRevision(ptc)
-		if err != nil {
-			return
-		}
-		sig := revisionSignature(rev, ht.host.blockHeight, renter)
 
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
