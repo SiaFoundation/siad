@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"errors"
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -69,7 +70,14 @@ type (
 
 // RPCRead tries to read the given object from the stream.
 func RPCRead(stream siamux.Stream, obj interface{}) error {
-	return encoding.ReadObject(stream, &rpcResponse{nil, obj}, uint64(RPCMinLen))
+	resp := rpcResponse{nil, obj}
+	readErr := encoding.ReadObject(stream, &resp, uint64(RPCMinLen))
+	if resp.err != nil {
+		return errors.New(resp.err.Error())
+	} else if readErr != nil {
+		return readErr
+	}
+	return nil
 }
 
 // RPCWrite writes the given object to the stream.
@@ -112,8 +120,9 @@ func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, 0)
 	if err := d.Decode(&resp.err); err != nil {
 		return err
-	} else if resp.err != nil {
-		return resp.err
 	}
+	//  else if resp.err != nil {
+	// 	return resp.err
+	// }
 	return d.Decode(resp.data)
 }
