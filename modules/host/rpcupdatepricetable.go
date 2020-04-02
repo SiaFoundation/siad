@@ -14,13 +14,9 @@ import (
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
 func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
-	// copy the host's price table
+	// copy the host's price table and give it a random UID
 	pt := h.staticPriceTables.managedCurrent()
-
-	// generate a random.UID
-	var newUID modules.UniqueID
-	fastrand.Read(newUID[:])
-	pt.UID = newUID
+	fastrand.Read(pt.UID[:])
 
 	// update the epxiry to ensure prices are guaranteed for the duration of the
 	// rpcPriceGuaranteePeriod
