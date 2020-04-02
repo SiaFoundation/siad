@@ -274,7 +274,7 @@ type priceTableHeap struct {
 	mu   sync.Mutex
 }
 
-// PopExpired returns the.UIDs for all rpc price tables that have expired
+// PopExpired returns the UIDs for all rpc price tables that have expired
 func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
