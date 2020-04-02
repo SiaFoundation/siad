@@ -247,7 +247,7 @@ func (hp *hostPrices) managedPruneExpired() {
 	hp.mu.Lock()
 	for _, uid := range expired {
 		// Sanity check to never prune the host's current price table. This can
-		// never occur because the host's price table.UID is not added to the
+		// never occur because the host's price table UID is not added to the
 		// minheap.
 		if uid == current.UID {
 			build.Critical("The host's current price table should not be pruned")

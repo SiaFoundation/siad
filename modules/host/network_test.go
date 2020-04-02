@@ -181,7 +181,7 @@ func TestHostSiaMuxSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// write the price table.UID
+	// write the price table UID
 	var ptID types.Specifier
 	fastrand.Read(ptID[:])
 	err = modules.RPCWrite(stream, randomRPCID)
