@@ -101,14 +101,13 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updat
 	}
 	// backup the changed metadata before changing it. Revert the change on
 	// error.
-	oldMD := sf.staticMetadata
 	oldNumChunks := sf.numChunks
-	defer func() {
+	defer func(backup Metadata) {
 		if err != nil {
-			sf.staticMetadata.PartialChunks = oldMD.PartialChunks
+			sf.staticMetadata.restore(backup)
 			sf.numChunks = oldNumChunks
 		}
-	}()
+	}(sf.staticMetadata.backup())
 	// Lock both the SiaFile and partials SiaFile. We need to atomically update
 	// both of them.
 	sf.mu.Lock()
@@ -730,11 +729,18 @@ func (sf *SiaFile) readAndApplyTruncateUpdate(f modules.File, u writeaheadlog.Up
 }
 
 // saveFile saves the SiaFile's header and the provided chunks atomically.
-func (sf *SiaFile) saveFile(chunks []chunk) error {
+func (sf *SiaFile) saveFile(chunks []chunk) (err error) {
 	// Sanity check that file hasn't been deleted.
 	if sf.deleted {
 		return errors.New("can't call saveFile on deleted file")
 	}
+	// Restore metadata on failure.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+	// Update header and chunks.
 	headerUpdates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return errors.AddContext(err, "failed to to create save header updates")
@@ -765,12 +771,11 @@ func (sf *SiaFile) saveHeaderUpdates() (_ []writeaheadlog.Update, err error) {
 
 	// backup the changed metadata before changing it. Revert the change on
 	// error.
-	oldMD := sf.staticMetadata
-	defer func() {
+	defer func(backup Metadata) {
 		if err != nil {
-			sf.staticMetadata.PubKeyTableOffset = oldMD.PubKeyTableOffset
+			sf.staticMetadata.restore(backup)
 		}
-	}()
+	}(sf.staticMetadata.backup())
 
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
