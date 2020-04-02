@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -16,7 +15,7 @@ import (
 // set its own prices for the individual MDM instructions and RPC costs.
 type RPCPriceTable struct {
 	// UUID is a specifier that uniquely identifies this price table
-	UUID types.Specifier `json:"uuid"`
+	UUID UniqueID `json:"uuid"`
 
 	// Expiry is a unix timestamp that specifies the time until which the
 	// MDMCostTable is valid.
@@ -130,24 +129,34 @@ func (uid UniqueID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(uid.String())
 }
 
-// String prints the id in hex.
+// String prints the uid in hex.
 func (uid UniqueID) String() string {
-	return fmt.Sprintf("%x", uid[:])
+	return hex.EncodeToString(uid[:])
+}
+
+// LoadString loads the unique id from the given string. It is the inverse of
+// the `String` method.
+func (uid *UniqueID) LoadString(input string) error {
+	// *2 because there are 2 hex characters per byte.
+	if len(input) != types.SpecifierLen*2 {
+		return errors.New("incorrect length")
+	}
+	uidBytes, err := hex.DecodeString(input)
+	if err != nil {
+		return errors.New("could not unmarshal hash: " + err.Error())
+	}
+	copy(uid[:], uidBytes)
+	return nil
 }
 
 // UnmarshalJSON decodes the json hex string of the id.
 func (uid *UniqueID) UnmarshalJSON(b []byte) error {
 	// *2 because there are 2 hex characters per byte.
-	// +2 because the encoded JSON string has a `"` added at the beginning and end.
+	// +2 because the encoded JSON string is wrapped in `"`.
 	if len(b) != types.SpecifierLen*2+2 {
 		return errors.New("incorrect length")
 	}
 
 	// b[1 : len(b)-1] cuts off the leading and trailing `"` in the JSON string.
-	hBytes, err := hex.DecodeString(string(b[1 : len(b)-1]))
-	if err != nil {
-		return errors.New("could not unmarshal hash: " + err.Error())
-	}
-	copy(uid[:], hBytes)
-	return nil
+	return uid.LoadString(string(b[1 : len(b)-1]))
 }
