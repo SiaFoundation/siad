@@ -96,6 +96,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	// track a copy of the host's current price table
 	pt := ht.host.staticPriceTables.managedCurrent()
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
+	fastrand.Read(pt.UUID[:])
 	ht.host.staticPriceTables.managedTrack(&pt)
 
 	// verify there's at least one price table
