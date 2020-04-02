@@ -23,38 +23,15 @@ func TestProcessPayment(t *testing.T) {
 	}
 	t.Parallel()
 
-	// setup host
-	ht, err := newHostTester(t.Name())
+	// setup a host and renter pair with an emulated file contract between them
+	ht, renter, so, err := newRenterHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ht.Close()
 
-	// create a renter key pair
-	sk, pk := crypto.GenerateKeyPair()
-	renterPK := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-
-	// setup storage obligationn (emulating a renter creating a contract)
-	so, err := ht.newTesterStorageObligation()
-	if err != nil {
-		t.Fatal(err)
-	}
-	so, err = ht.addNoOpRevision(so, renterPK)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(so.id())
-
 	// test both payment methods
-	testPayByContract(t, ht.host, so, sk)
+	testPayByContract(t, ht.host, so, renter)
 	testPayByEphemeralAccount(t, ht.host, so)
 }
 

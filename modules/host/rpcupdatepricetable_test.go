@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -99,12 +98,12 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	fastrand.Read(pt.UID[:])
 	ht.host.staticPriceTables.managedTrack(&pt)
 
-	// verify there's at least one price table
+	// verify the price table is being tracked
 	ht.host.staticPriceTables.mu.RLock()
-	numPTs := len(ht.host.staticPriceTables.guaranteed)
+	_, tracked := ht.host.staticPriceTables.guaranteed[pt.UID]
 	ht.host.staticPriceTables.mu.RUnlock()
-	if numPTs == 0 {
-		t.Fatal("Expected at least one price table to be set in the host's price table map")
+	if !tracked {
+		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
 	// sleep for the duration of the epxiry frequency, seeing as that is greater
@@ -131,37 +130,15 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	}
 	t.Parallel()
 
-	// setup host
-	ht, err := newHostTester(t.Name())
+	// setup a host and renter pair with an emulated file contract between them
+	ht, renter, so, err := newRenterHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ht.Close()
 
-	// create a renter key pair
-	sk, pk := crypto.GenerateKeyPair()
-	renterPK := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-
-	// setup storage obligationn (emulating a renter creating a contract)
-	so, err := ht.newTesterStorageObligation()
-	if err != nil {
-		t.Fatal(err)
-	}
-	so, err = ht.addNoOpRevision(so, renterPK)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(so.id())
-
-	errMockPriceGouging := errors.New("Expected the cost of the updatePriceTableRPC to be sane")
+	errMockRenterPriceGougingTooLow := errors.New("Cost too low")
+	errMockRenterPriceGougingTooHigh := errors.New("Cost too high")
 
 	// renter-side logic
 	renterFunc := func(stream siamux.Stream) (pt modules.RPCPriceTable, err error) {
@@ -179,8 +156,11 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		ptc := pt.UpdatePriceTableCost
 
 		// mock of what is going to be price gouging on the renter
-		if ptc.Equals(types.ZeroCurrency) || ptc.Cmp(types.SiacoinPrecision) > 0 {
-			err = errMockPriceGouging
+		if ptc.Equals(types.ZeroCurrency) {
+			err = errMockRenterPriceGougingTooLow
+			return
+		} else if ptc.Cmp(types.SiacoinPrecision) > 0 {
+			err = errMockRenterPriceGougingTooHigh
 			return
 		}
 
@@ -197,7 +177,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		if err != nil {
 			return
 		}
-		sig := revisionSignature(rev, ht.host.blockHeight, sk)
+		sig := revisionSignature(rev, ht.host.blockHeight, renter)
 
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
@@ -227,10 +207,8 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		return nil
 	}
 
-	runRPC := func(mockedHostPriceTable modules.RPCPriceTable) (pt modules.RPCPriceTable, err error) {
-		var rErr, hErr error
+	runRPC := func(mockedHostPriceTable modules.RPCPriceTable) (pt modules.RPCPriceTable, rErr, hErr error) {
 		rStream, hStream := NewTestStreams()
-
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
@@ -243,15 +221,14 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			wg.Done()
 		}()
 		wg.Wait()
-		err = errors.Compose(rErr, hErr)
 		return
 	}
 
 	// verify happy flow
 	current := ht.host.staticPriceTables.managedCurrent()
 	fastrand.Read(current.UID[:]) // overwrite to avoid critical during prune
-	update, err := runRPC(current)
-	if err != nil {
+	update, rErr, hErr := runRPC(current)
+	if err := errors.Compose(rErr, hErr); err != nil {
 		t.Fatal("Update price table failed")
 	}
 
@@ -267,15 +244,21 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	invalidPT := current
 	fastrand.Read(invalidPT.UID[:]) // overwrite to avoid critical during prune
 	invalidPT.UpdatePriceTableCost = types.ZeroCurrency
-	_, err = runRPC(invalidPT)
-	if !errors.Contains(err, errMockPriceGouging) {
-		t.Fatalf("Expected err '%v', received '%v'", errMockPriceGouging, err)
+	_, rErr, hErr = runRPC(invalidPT)
+	if rErr != errMockRenterPriceGougingTooLow {
+		t.Fatalf("Expected err '%v', received '%v'", errMockRenterPriceGougingTooLow, err)
+	}
+	if hErr != nil {
+		t.Fatalf("Expected no err, received '%v'", hErr)
 	}
 
 	// expect error if the rpc costs an insane amount
 	invalidPT.UpdatePriceTableCost = types.SiacoinPrecision.Add64(1)
-	_, err = runRPC(invalidPT)
-	if !errors.Contains(err, errMockPriceGouging) {
-		t.Fatalf("Expected err '%v', received '%v'", errMockPriceGouging, err)
+	_, rErr, hErr = runRPC(invalidPT)
+	if rErr != errMockRenterPriceGougingTooHigh {
+		t.Fatalf("Expected err '%v', received '%v'", errMockRenterPriceGougingTooHigh, err)
+	}
+	if hErr != nil {
+		t.Fatalf("Expected no err, received '%v'", hErr)
 	}
 }

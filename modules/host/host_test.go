@@ -221,6 +221,41 @@ func newMockHostTester(d modules.Dependencies, name string) (*hostTester, error)
 	return ht, nil
 }
 
+// newRenterHostTester creates a renter host pair where the renter is
+// represented by a secret key (which it can use to sign revisions with), and
+// where the host already has a storage obligation with that renter.
+func newRenterHostTester(name string) (ht *hostTester, renter crypto.SecretKey, so storageObligation, err error) {
+	// setup host
+	ht, err = newHostTester(name)
+	if err != nil {
+		return
+	}
+
+	// create a renter key pair
+	renter, pk := crypto.GenerateKeyPair()
+	renterPK := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// setup storage obligationn (emulating a renter creating a contract)
+	so, err = ht.newTesterStorageObligation()
+	if err != nil {
+		return
+	}
+	so, err = ht.addNoOpRevision(so, renterPK)
+	if err != nil {
+		return
+	}
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	if err != nil {
+		return
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+	return
+}
+
 // Close safely closes the hostTester. It panics if err != nil because there
 // isn't a good way to errcheck when deferring a close.
 func (ht *hostTester) Close() error {
