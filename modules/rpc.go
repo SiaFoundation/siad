@@ -16,7 +16,7 @@ import (
 // set its own prices for the individual MDM instructions and RPC costs.
 type RPCPriceTable struct {
 	// UUID is a specifier that uniquely identifies this price table
-	UUID UniqueID
+	UUID UniqueID `json:"uuid"`
 
 	// Expiry is a unix timestamp that specifies the time until which the
 	// MDMCostTable is valid.
