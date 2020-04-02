@@ -14,8 +14,8 @@ import (
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
 // set its own prices for the individual MDM instructions and RPC costs.
 type RPCPriceTable struct {
-	// UUID is a specifier that uniquely identifies this price table
-	UUID UniqueID `json:"uuid"`
+	// UID is a specifier that uniquely identifies this price table
+	UID UniqueID `json:"uid"`
 
 	// Expiry is a unix timestamp that specifies the time until which the
 	// MDMCostTable is valid.

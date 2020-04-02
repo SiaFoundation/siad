@@ -27,7 +27,7 @@ func TestPriceTableMarshaling(t *testing.T) {
 		ReadBaseCost:         types.SiacoinPrecision.Mul64(1e4),
 		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
 	}
-	fastrand.Read(pt.UUID[:])
+	fastrand.Read(pt.UID[:])
 
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
@@ -40,8 +40,8 @@ func TestPriceTableMarshaling(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(pt, ptCopy) {
-		t.Log(pt.UUID[:])
-		t.Log(ptCopy.UUID[:])
+		t.Log(pt.UID[:])
+		t.Log(ptCopy.UID[:])
 		t.Fatal(errors.New("PriceTable not equal after unmarshaling"))
 	}
 }
@@ -96,7 +96,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	// track a copy of the host's current price table
 	pt := ht.host.staticPriceTables.managedCurrent()
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
-	fastrand.Read(pt.UUID[:])
+	fastrand.Read(pt.UID[:])
 	ht.host.staticPriceTables.managedTrack(&pt)
 
 	// verify there's at least one price table
@@ -111,7 +111,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	// than the price guarantee period, it is the worst case
 	err = build.Retry(3, pruneExpiredRPCPriceTableFrequency, func() error {
 		ht.host.staticPriceTables.mu.RLock()
-		_, exists := ht.host.staticPriceTables.guaranteed[pt.UUID]
+		_, exists := ht.host.staticPriceTables.guaranteed[pt.UID]
 		ht.host.staticPriceTables.mu.RUnlock()
 		if exists {
 			return errors.New("Expected RPC price table to be pruned because it should have expired")
@@ -249,7 +249,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 	// verify happy flow
 	current := ht.host.staticPriceTables.managedCurrent()
-	fastrand.Read(current.UUID[:]) // overwrite to avoid critical during prune
+	fastrand.Read(current.UID[:]) // overwrite to avoid critical during prune
 	update, err := runRPC(current)
 	if err != nil {
 		t.Fatal("Update price table failed")
@@ -257,15 +257,15 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 	// verify the price table is tracked
 	ht.host.staticPriceTables.mu.Lock()
-	_, tracked := ht.host.staticPriceTables.guaranteed[update.UUID]
+	_, tracked := ht.host.staticPriceTables.guaranteed[update.UID]
 	ht.host.staticPriceTables.mu.Unlock()
 	if !tracked {
-		t.Fatalf("Expected price table with UUID %v to be tracked after successful update", update.UUID[:])
+		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", update.UID[:])
 	}
 
 	// expect error if the rpc costs nothing
 	invalidPT := current
-	fastrand.Read(invalidPT.UUID[:]) // overwrite to avoid critical during prune
+	fastrand.Read(invalidPT.UID[:]) // overwrite to avoid critical during prune
 	invalidPT.UpdatePriceTableCost = types.ZeroCurrency
 	_, err = runRPC(invalidPT)
 	if !errors.Contains(err, errMockPriceGouging) {

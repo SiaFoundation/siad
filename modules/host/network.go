@@ -371,13 +371,13 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		return
 	}
 
-	// read the price table, the renter will send its pricetable UUID by means
+	// read the price table, the renter will send its pricetable.UID by means
 	// of identification, except for when it is updating its price table
 	if rpcID != modules.RPCUpdatePriceTable {
 		var ptID types.Specifier
 		err = modules.RPCRead(stream, &ptID)
 		if err != nil {
-			if wErr := modules.RPCWriteError(stream, errors.New("Failed to read price table UUID")); wErr != nil {
+			if wErr := modules.RPCWriteError(stream, errors.New("Failed to read price table.UID")); wErr != nil {
 				h.managedLogError(err)
 			}
 			atomic.AddUint64(&h.atomicErroredCalls, 1)

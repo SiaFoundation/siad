@@ -17,10 +17,10 @@ func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table
 	pt := h.staticPriceTables.managedCurrent()
 
-	// generate a random UUID
-	var newUUID modules.UniqueID
-	fastrand.Read(newUUID[:])
-	pt.UUID = newUUID
+	// generate a random.UID
+	var newUID modules.UniqueID
+	fastrand.Read(newUID[:])
+	pt.UID = newUID
 
 	// update the epxiry to ensure prices are guaranteed for the duration of the
 	// rpcPriceGuaranteePeriod
