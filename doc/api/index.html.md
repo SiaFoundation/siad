@@ -4329,6 +4329,10 @@ The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
 well.
 
+**dryrun** | bool  
+If dryrun is set to true, the request will return the Skylink of the file
+without uploading the actual file to the Sia network.
+
 **force** | bool  
 If there is already a file that exists at the provided siapath, setting this
 flag will cause the new file to overwrite/delete the existing file. If this flag

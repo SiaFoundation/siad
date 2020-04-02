@@ -6,6 +6,7 @@ package proto
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -74,7 +75,15 @@ func parseRootsFromData(b []byte) ([]crypto.Hash, error) {
 // merkle roots. If the file has an unexpected length, we truncate it and
 // return a boolean to indicate that the last write was incomplete and that the
 // unapplied wal transactions should be applied after loading the roots.
-func loadExistingMerkleRoots(file *fileSection) (*merkleRoots, bool, error) {
+func loadExistingMerkleRoots(file *os.File) (*merkleRoots, bool, error) {
+	return loadExistingMerkleRootsFromSection(newFileSection(file, 0, remainingFile))
+}
+
+// loadExistingMerkleRootsFromSection reads creates a merkleRoots object from
+// existing merkle roots. If the file has an unexpected length, we truncate it
+// and return a boolean to indicate that the last write was incomplete and that
+// the unapplied wal transactions should be applied after loading the roots.
+func loadExistingMerkleRootsFromSection(file *fileSection) (*merkleRoots, bool, error) {
 	mr := &merkleRoots{
 		rootsFile: file,
 	}
@@ -135,9 +144,9 @@ func newCachedSubTree(roots []crypto.Hash) *cachedSubTree {
 // newMerkleRoots creates a new merkleRoots object. This doesn't load existing
 // roots from file and will assume that the file doesn't contain any roots.
 // Don't use this on a file that contains roots.
-func newMerkleRoots(file *fileSection) *merkleRoots {
+func newMerkleRoots(file *os.File) *merkleRoots {
 	return &merkleRoots{
-		rootsFile: file,
+		rootsFile: newFileSection(file, 0, remainingFile),
 	}
 }
 
@@ -255,7 +264,6 @@ func (mr *merkleRoots) lenFromFile() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	// Sanity check contract file length.
 	if size%crypto.HashSize != 0 {
 		return 0, errors.New("contract file has unexpected length and might be corrupted")

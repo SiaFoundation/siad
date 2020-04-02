@@ -18,5 +18,4 @@ func TestUnitMaxFileContractSetLenSanity(t *testing.T) {
 	if NegotiateMaxFileContractSetLen > TransactionSetSizeLimit-1e3 {
 		t.Fatal("MaxfileContractSetLen does not have a sensible value - should be smaller than the TransactionSetSizeLimit")
 	}
-
 }

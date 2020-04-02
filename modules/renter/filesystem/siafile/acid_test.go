@@ -180,7 +180,6 @@ OUTER:
 			sf.SetPartialsSiaFile(nil)
 			break
 		}
-
 	}
 	t.Logf("Recovered from %v disk failures", numRecoveries)
 	t.Logf("Inner loop %v iterations without failures", numSuccessfulIterations)

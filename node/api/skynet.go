@@ -419,6 +419,17 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Parse whether the upload should be performed as a dry-run.
+	var dryRun bool
+	dryRunStr := queryForm.Get("dryrun")
+	if dryRunStr != "" {
+		dryRun, err = strconv.ParseBool(dryRunStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'dryrun' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse whether the siapath should be from root or from the skynet folder.
 	var root bool
 	rootStr := queryForm.Get("root")
@@ -473,6 +484,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Verify the dry-run and force parameter are not combined
+	if allowForce && force && dryRun {
+		WriteError(w, Error{"'dryRun' and 'force' can not be combined"}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
@@ -496,6 +513,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Build the upload parameters
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
+		DryRun:              dryRun,
 		Force:               force,
 		BaseChunkRedundancy: redundancy,
 	}

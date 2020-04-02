@@ -290,7 +290,6 @@ func TestRandomHosts(t *testing.T) {
 				disjoint = true
 			}
 			dupCheck2[host.PublicKey.String()] = host
-
 		}
 		if !overlap || !disjoint {
 			t.Error("Random hosts does not seem to be random")

@@ -120,5 +120,4 @@ func markInconsistency(tx *bolt.Tx) {
 	if build.DEBUG && err != nil {
 		panic(err)
 	}
-
 }

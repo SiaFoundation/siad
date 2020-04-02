@@ -508,7 +508,6 @@ func hostfolderaddcmd(path, size string) {
 
 // hostfolderremovecmd removes a folder from the host.
 func hostfolderremovecmd(path string) {
-
 	// Ask for confirm for dangerous --force flag
 	if hostFolderRemoveForce {
 		fmt.Println(`Forced removing will completely destroy your renter's data,

@@ -84,13 +84,14 @@ linters:
   disable-all: true
   fast: false
   enable:
-    - govet
+    - gocritic
     - gofmt
     - golint
-    - gocritic
-    - typecheck
     - gosec
+    - govet
     - misspell
+    - typecheck
+    - whitespace
 
 issues:
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
