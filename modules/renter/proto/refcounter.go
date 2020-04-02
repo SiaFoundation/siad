@@ -245,7 +245,7 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	}
 	count, err := rc.readCount(secIdx)
 	if err != nil {
-		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from decrement")
 	}
 	if count == 0 {
 		return writeaheadlog.Update{}, errors.New("sector count underflow")
@@ -304,7 +304,7 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	}
 	count, err := rc.readCount(secIdx)
 	if err != nil {
-		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from increment")
 	}
 	if count == math.MaxUint16 {
 		return writeaheadlog.Update{}, errors.New("sector count overflow")
@@ -343,11 +343,11 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	}
 	firstVal, err := rc.readCount(firstIdx)
 	if err != nil {
-		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from swap")
 	}
 	secondVal, err := rc.readCount(secondIdx)
 	if err != nil {
-		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from swap")
 	}
 	rc.newSectorCounts[firstIdx] = secondVal
 	rc.newSectorCounts[secondIdx] = firstVal
@@ -391,7 +391,7 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 
 	var b u16
 	if _, err = f.ReadAt(b[:], int64(offset(secIdx))); err != nil {
-		return 0, errors.AddContext(err, "failed to read from the refcounter file")
+		return 0, errors.AddContext(err, "failed to read from refcounter file")
 	}
 	return binary.LittleEndian.Uint16(b[:]), nil
 }

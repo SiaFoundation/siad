@@ -76,7 +76,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 				}
 				// 5% chance to break out of inner loop.
 				if fastrand.Intn(100) < 5 {
-					break
+					break INNER
 				}
 
 				if err := preformUpdateOperations(rcLocal); err != nil {
@@ -84,9 +84,10 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 						atomic.AddInt64(&atomicNumRecoveries, 1)
 						break INNER
 					}
-					// If the error wasn't caused by the dependency, the
+					// If the error wasn't caused by the dependency the
 					// test fails.
-					t.Fatal(err)
+					t.Error(err)
+					return
 				}
 				atomic.AddInt64(&atomicNumSuccessfulIterations, 1)
 			}
@@ -116,13 +117,13 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 				newRc, err := LoadRefCounter(rcFilePath, newWal)
 				if errors.Contains(err, dependencies.ErrDiskFault) {
 					atomic.AddInt64(&atomicNumRecoveries, 1)
-					continue // try again
+					continue LOAD // try again
 				} else if err != nil {
 					t.Fatal(err)
 				}
 				newRc.staticDeps = fdd
 				rcLocal = &newRc
-				break
+				break LOAD
 			}
 		}
 	}
@@ -184,7 +185,7 @@ func validateIncrement(rc *RefCounter, secNum uint64) error {
 
 // loadWal reads the wal from disk and applies all outstanding transactions
 func loadWal(filepath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
-	// lead the wal from disk
+	// load the wal from disk
 	txns, newWal, err := writeaheadlog.New(walPath)
 	if err != nil {
 		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to load wal from disk")
@@ -194,7 +195,7 @@ func loadWal(filepath string, walPath string, fdd *dependencies.DependencyFaulty
 		return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
 	defer f.Close()
-	// applied any outstanding transactions
+	// apply any outstanding transactions
 	for _, txn := range txns {
 		if err := applyUpdates(f, txn.Updates...); err != nil {
 			return &writeaheadlog.WAL{}, errors.AddContext(err, "failed to apply updates")
@@ -209,8 +210,10 @@ func loadWal(filepath string, walPath string, fdd *dependencies.DependencyFaulty
 // preformUpdateOperations executes a randomised set of updates within an
 // update session.
 func preformUpdateOperations(rc *RefCounter) (err error) {
-	// Ignore the err, as we're not going to delete the file.
-	_ = rc.StartUpdate()
+	err = rc.StartUpdate()
+	if err != nil {
+		return
+	}
 	defer func() {
 		if err != nil {
 			// if there is an error wrap up the update session, so we can start
@@ -225,14 +228,14 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 	// 50% chance to increment, 2 chances
 	for i := 0; i < 2; i++ {
 		if fastrand.Intn(100) < 50 {
+			secIdx := fastrand.Uint64n(rc.numSectors)
 			// check if the operation is valid - we won't gain anything
 			// from hitting an overflow
-			secIdx := fastrand.Uint64n(rc.numSectors)
-			if err := validateIncrement(rc, secIdx); err != nil {
+			if err = validateIncrement(rc, secIdx); err != nil {
 				continue
 			}
 			if u, err = rc.Increment(secIdx); err != nil {
-				return err
+				return
 			}
 			updates = append(updates, u)
 		}
@@ -241,14 +244,14 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 	// 50% chance to decrement, 2 chances
 	for i := 0; i < 2; i++ {
 		if fastrand.Intn(100) < 50 {
+			secIdx := fastrand.Uint64n(rc.numSectors)
 			// check if the operation is valid - we won't gain anything
 			// from hitting an underflow
-			secIdx := fastrand.Uint64n(rc.numSectors)
-			if err := validateDecrement(rc, secIdx); err != nil {
+			if err = validateDecrement(rc, secIdx); err != nil {
 				continue
 			}
 			if u, err = rc.Decrement(secIdx); err != nil {
-				return err
+				return
 			}
 			updates = append(updates, u)
 		}
@@ -267,9 +270,9 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 		secNum := fastrand.Uint64n(3)
 		// check if the operation is valid - we won't gain anything
 		// from running out of sectors
-		if err := validateDropSectors(rc, secNum); err == nil {
+		if err = validateDropSectors(rc, secNum); err == nil {
 			if u, err = rc.DropSectors(secNum); err != nil {
-				return err
+				return
 			}
 			updates = append(updates, u)
 		}
