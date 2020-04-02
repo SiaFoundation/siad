@@ -99,9 +99,9 @@ func TestHostPriceRatios(t *testing.T) {
 	defer ht.Close()
 
 	// Set the unreasonable defaults for the RPC and Sector Access Prices.
-	rpcPrice := defaultDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth).Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
-	sectorPrice := defaultDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth).Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
 	settings := ht.host.InternalSettings()
+	rpcPrice := settings.MaxBaseRPCPrice().Mul64(modules.MaxBaseRPCPriceVsBandwidth)
+	sectorPrice := settings.MaxSectorAccessPrice().Mul64(modules.MaxSectorAccessPriceVsBandwidth)
 	settings.MinBaseRPCPrice = rpcPrice
 	settings.MinSectorAccessPrice = sectorPrice
 	err = ht.host.SetInternalSettings(settings)
@@ -119,16 +119,15 @@ func TestHostPriceRatios(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify that the RPC and Sector Access Prices were updated as expected
+	// Verify that the RPC and Sector Access Prices were updated as expected.
+	// Use the Max Price methods since the download price was not updated
 	settings = ht.host.InternalSettings()
-	rpcPrice = settings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
-	sectorPrice = settings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
-	if settings.MinBaseRPCPrice.Cmp(rpcPrice) != 0 {
+	if settings.MinBaseRPCPrice.Cmp(settings.MaxBaseRPCPrice()) != 0 {
 		t.Log("Actual:", settings.MinBaseRPCPrice.HumanString())
 		t.Log("Expected:", rpcPrice.HumanString())
 		t.Fatal("rpc price not as expected")
 	}
-	if settings.MinSectorAccessPrice.Cmp(sectorPrice) != 0 {
+	if settings.MinSectorAccessPrice.Cmp(settings.MaxSectorAccessPrice()) != 0 {
 		t.Log("Actual:", settings.MinSectorAccessPrice.HumanString())
 		t.Log("Expected:", sectorPrice.HumanString())
 		t.Fatal("sector price not as expected")
@@ -136,7 +135,7 @@ func TestHostPriceRatios(t *testing.T) {
 
 	// Not try setting the mindownload price to an unreasonable value that would
 	// force the RPC and Sector prices to be updated
-	downloadPrice := settings.MinDownloadBandwidthPrice.Div64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	downloadPrice := settings.MinDownloadBandwidthPrice.Div64(modules.MaxBaseRPCPriceVsBandwidth)
 	settings.MinDownloadBandwidthPrice = downloadPrice
 	err = ht.host.SetInternalSettings(settings)
 	if err != nil {
@@ -153,10 +152,11 @@ func TestHostPriceRatios(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify that the RPC and Sector Access Prices were updated as expected
+	// Verify that the RPC and Sector Access Prices were updated as expected.
+	// Don't use the Max Price methods to ensure the new download price is used
 	settings = ht.host.InternalSettings()
-	rpcPrice = downloadPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
-	sectorPrice = downloadPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
+	rpcPrice = downloadPrice.Mul64(modules.MaxBaseRPCPriceVsBandwidth)
+	sectorPrice = downloadPrice.Mul64(modules.MaxSectorAccessPriceVsBandwidth)
 	if settings.MinBaseRPCPrice.Cmp(rpcPrice) != 0 {
 		t.Log("Actual:", settings.MinBaseRPCPrice.HumanString())
 		t.Log("Expected:", rpcPrice.HumanString())

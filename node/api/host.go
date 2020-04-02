@@ -278,14 +278,13 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 	}
 
 	// Validate the RPC, Sector Access, and Download Prices
-	minDownloadBandwidthPrice := settings.MinDownloadBandwidthPrice
 	minBaseRPCPrice := settings.MinBaseRPCPrice
-	maxBaseRPCPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	maxBaseRPCPrice := settings.MaxBaseRPCPrice()
 	if minBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
 		return modules.HostInternalSettings{}, ErrInvalidRPCDownloadRatio
 	}
 	minSectorAccessPrice := settings.MinSectorAccessPrice
-	maxSectorAccessPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
+	maxSectorAccessPrice := settings.MaxSectorAccessPrice()
 	if minSectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
 		return modules.HostInternalSettings{}, ErrInvalidSectorAccessDownloadRatio
 	}

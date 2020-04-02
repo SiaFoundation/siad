@@ -47,21 +47,20 @@ var (
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
 
-	// MaxMinBaseRPCPriceVsBandwidth is the max ratio for sane pricing between
-	// the MinBaseRPCPrice and the MinDownloadBandwidthPrice. This ensures that
-	// 1 million base RPC charges are at most 1% of the cost to download 4TB.
-	// This ratio should be used by checking that the MinBaseRPCPrice is less
-	// than or equal to the MinDownloadBandwidthPrice multiplied by this
-	// constant
-	MaxMinBaseRPCPriceVsBandwidth = uint64(40e3)
+	// MaxBaseRPCPriceVsBandwidth is the max ratio for sane pricing between the
+	// MinBaseRPCPrice and the MinDownloadBandwidthPrice. This ensures that 1
+	// million base RPC charges are at most 1% of the cost to download 4TB. This
+	// ratio should be used by checking that the MinBaseRPCPrice is less than or
+	// equal to the MinDownloadBandwidthPrice multiplied by this constant
+	MaxBaseRPCPriceVsBandwidth = uint64(40e3)
 
-	// MaxMinSectorAccessPriceVsBandwidth is the max ratio for sane pricing
-	// between the MinSectorAccessPrice and the MinDownloadBandwidthPrice. This
-	// ensures that 1 million base accesses are at most 10% of the cost to
-	// download 4TB. This ratio should be used by checking that the
-	// MinSectorAccessPrice is less than or equal to the
-	// MinDownloadBandwidthPrice multiplied by this constant
-	MaxMinSectorAccessPriceVsBandwidth = uint64(400e3)
+	// MaxSectorAccessPriceVsBandwidth is the max ratio for sane pricing between
+	// the MinSectorAccessPrice and the MinDownloadBandwidthPrice. This ensures
+	// that 1 million base accesses are at most 10% of the cost to download 4TB.
+	// This ratio should be used by checking that the MinSectorAccessPrice is
+	// less than or equal to the MinDownloadBandwidthPrice multiplied by this
+	// constant
+	MaxSectorAccessPriceVsBandwidth = uint64(400e3)
 )
 
 var (
@@ -345,3 +344,15 @@ type (
 		WorkingStatus() HostWorkingStatus
 	}
 )
+
+// MaxBaseRPCPrice returns the maximum value for the MinBaseRPCPrice based on
+// the MinDownloadBandwidthPrice
+func (his HostInternalSettings) MaxBaseRPCPrice() types.Currency {
+	return his.MinDownloadBandwidthPrice.Mul64(MaxBaseRPCPriceVsBandwidth)
+}
+
+// MaxSectorAccessPrice returns the maximum value for the MinSectorAccessPrice
+// based on the MinDownloadBandwidthPrice
+func (his HostInternalSettings) MaxSectorAccessPrice() types.Currency {
+	return his.MinDownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
+}

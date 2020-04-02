@@ -197,15 +197,14 @@ func (h *Host) load() error {
 	// restrictions between the SectorAccessPrice, BaseRPCPrice, and
 	// DownloadBandwidthPrice
 	var updated bool
-	minDownloadBandwidthPrice := h.settings.MinDownloadBandwidthPrice
 	minBaseRPCPrice := h.settings.MinBaseRPCPrice
-	maxBaseRPCPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	maxBaseRPCPrice := h.settings.MaxBaseRPCPrice()
 	if minBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
 		h.settings.MinBaseRPCPrice = maxBaseRPCPrice
 		updated = true
 	}
 	minSectorAccessPrice := h.settings.MinSectorAccessPrice
-	maxSectorAccessPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
+	maxSectorAccessPrice := h.settings.MaxSectorAccessPrice()
 	if minSectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
 		h.settings.MinSectorAccessPrice = maxSectorAccessPrice
 		updated = true

@@ -308,14 +308,14 @@ func TestHostValidPrices(t *testing.T) {
 	}
 
 	// Verify that setting an invalid RPC price will return an error
-	rpcPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth).Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	rpcPrice := hg.InternalSettings.MaxBaseRPCPrice().Mul64(modules.MaxBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, rpcPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
 	}
 
 	// Verify that setting an invalid Sector price will return an error
-	sectorPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth).Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
+	sectorPrice := hg.InternalSettings.MaxSectorAccessPrice().Mul64(modules.MaxSectorAccessPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinSectorAccessPrice, sectorPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidSectorAccessDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidSectorAccessDownloadRatio, err)
@@ -323,7 +323,7 @@ func TestHostValidPrices(t *testing.T) {
 
 	// Verify that setting an invalid download price will return an error. Error
 	// should be the RPC error since that is the first check
-	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Div64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Div64(modules.MaxBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
