@@ -8,15 +8,17 @@ import (
 
 // TestSaneDefaults verifies that the defaults satisfy the ratios
 func TestSaneDefaults(t *testing.T) {
-	if defaultBaseRPCPrice.Div(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv).Cmp(defaultDownloadBandwidthPrice) > 0 {
+	maxBaseRPCPrice := defaultDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	if defaultBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
 		t.Log("defaultBaseRPCPrice", defaultBaseRPCPrice.HumanString())
-		t.Log("defaultBaseRPCPrice / ratio", defaultBaseRPCPrice.Div(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv).HumanString())
+		t.Log("maxBaseRPCPrice", maxBaseRPCPrice.HumanString())
 		t.Log("defaultDownloadBandwidthPrice", defaultDownloadBandwidthPrice.HumanString())
 		t.Fatal("Default for BaseRPCPrice is bad")
 	}
-	if defaultSectorAccessPrice.Div(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv).Cmp(defaultDownloadBandwidthPrice) > 0 {
+	maxBaseSectorAccessPrice := defaultDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
+	if defaultSectorAccessPrice.Cmp(maxBaseSectorAccessPrice) > 0 {
 		t.Log("defaultSectorAccessPrice", defaultSectorAccessPrice.HumanString())
-		t.Log("defaultSectorAccessPrice / ratio", defaultSectorAccessPrice.Div(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv).HumanString())
+		t.Log("maxBaseSectorAccessPrice", maxBaseSectorAccessPrice.HumanString())
 		t.Log("defaultDownloadBandwidthPrice", defaultDownloadBandwidthPrice.HumanString())
 		t.Fatal("Default for SectorAccessPrice is bad")
 	}

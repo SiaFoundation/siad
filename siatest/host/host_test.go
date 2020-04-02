@@ -290,8 +290,6 @@ func TestHostValidPrices(t *testing.T) {
 
 	// Create Host
 	testDir := hostTestDir(t.Name())
-
-	// Create a new server
 	hostParams := node.Host(testDir)
 	host, err := siatest.NewCleanNode(hostParams)
 	if err != nil {
@@ -303,21 +301,21 @@ func TestHostValidPrices(t *testing.T) {
 		}
 	}()
 
-	// Call HostGet, confirm public key is not a blank key
+	// Get the Host
 	hg, err := host.HostGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify that setting an invalid RPC price will return an error
-	rpcPrice := hg.InternalSettings.MinBaseRPCPrice.Mul64(1e9)
+	rpcPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth).Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, rpcPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
 	}
 
 	// Verify that setting an invalid Sector price will return an error
-	sectorPrice := hg.InternalSettings.MinSectorAccessPrice.Mul64(1e9)
+	sectorPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth).Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinSectorAccessPrice, sectorPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidSectorAccessDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidSectorAccessDownloadRatio, err)
@@ -325,7 +323,7 @@ func TestHostValidPrices(t *testing.T) {
 
 	// Verify that setting an invalid download price will return an error. Error
 	// should be the RPC error since that is the first check
-	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Div64(1e6)
+	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Div64(modules.MaxMinBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)

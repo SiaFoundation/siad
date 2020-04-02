@@ -317,7 +317,7 @@ func TestHostBaseRPCPrice(t *testing.T) {
 		t.Fatal(err)
 	}
 	minDownloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice
-	maxRPCPrice := minDownloadPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
+	maxRPCPrice := minDownloadPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
 	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, maxRPCPrice)
 	if err != nil {
 		t.Fatal(err)

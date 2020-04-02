@@ -99,8 +99,8 @@ func TestHostPriceRatios(t *testing.T) {
 	defer ht.Close()
 
 	// Set the unreasonable defaults for the RPC and Sector Access Prices.
-	rpcPrice := defaultBaseRPCPrice.Mul64(1e9)
-	sectorPrice := defaultSectorAccessPrice.Mul64(1e9)
+	rpcPrice := defaultDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth).Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	sectorPrice := defaultDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth).Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
 	settings := ht.host.InternalSettings()
 	settings.MinBaseRPCPrice = rpcPrice
 	settings.MinSectorAccessPrice = sectorPrice
@@ -121,8 +121,8 @@ func TestHostPriceRatios(t *testing.T) {
 
 	// Verify that the RPC and Sector Access Prices were updated as expected
 	settings = ht.host.InternalSettings()
-	rpcPrice = settings.MinDownloadBandwidthPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
-	sectorPrice = settings.MinDownloadBandwidthPrice.Mul(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv)
+	rpcPrice = settings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	sectorPrice = settings.MinDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
 	if settings.MinBaseRPCPrice.Cmp(rpcPrice) != 0 {
 		t.Log("Actual:", settings.MinBaseRPCPrice.HumanString())
 		t.Log("Expected:", rpcPrice.HumanString())
@@ -136,7 +136,7 @@ func TestHostPriceRatios(t *testing.T) {
 
 	// Not try setting the mindownload price to an unreasonable value that would
 	// force the RPC and Sector prices to be updated
-	downloadPrice := settings.MinDownloadBandwidthPrice.Div64(1e6)
+	downloadPrice := settings.MinDownloadBandwidthPrice.Div64(modules.MaxMinBaseRPCPriceVsBandwidth)
 	settings.MinDownloadBandwidthPrice = downloadPrice
 	err = ht.host.SetInternalSettings(settings)
 	if err != nil {
@@ -155,8 +155,8 @@ func TestHostPriceRatios(t *testing.T) {
 
 	// Verify that the RPC and Sector Access Prices were updated as expected
 	settings = ht.host.InternalSettings()
-	rpcPrice = downloadPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
-	sectorPrice = downloadPrice.Mul(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv)
+	rpcPrice = downloadPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	sectorPrice = downloadPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
 	if settings.MinBaseRPCPrice.Cmp(rpcPrice) != 0 {
 		t.Log("Actual:", settings.MinBaseRPCPrice.HumanString())
 		t.Log("Expected:", rpcPrice.HumanString())

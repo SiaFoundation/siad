@@ -193,19 +193,20 @@ func (h *Host) load() error {
 		return err
 	}
 
-	// Check if the host is currently using defaults that violate the ratios
-	// between the SectorAccessPrice, BaseRPCPrice, and DownloadBandwidthPrice
+	// Check if the host is currently using defaults that violate the ratio
+	// restrictions between the SectorAccessPrice, BaseRPCPrice, and
+	// DownloadBandwidthPrice
 	var updated bool
 	minDownloadBandwidthPrice := h.settings.MinDownloadBandwidthPrice
 	minBaseRPCPrice := h.settings.MinBaseRPCPrice
-	maxBaseRPCPrice := minDownloadBandwidthPrice.Mul(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv)
-	if minBaseRPCPrice.Div(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
+	maxBaseRPCPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	if minBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
 		h.settings.MinBaseRPCPrice = maxBaseRPCPrice
 		updated = true
 	}
 	minSectorAccessPrice := h.settings.MinSectorAccessPrice
-	maxSectorAccessPrice := minDownloadBandwidthPrice.Mul(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv)
-	if minSectorAccessPrice.Div(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
+	maxSectorAccessPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
+	if minSectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
 		h.settings.MinSectorAccessPrice = maxSectorAccessPrice
 		updated = true
 	}

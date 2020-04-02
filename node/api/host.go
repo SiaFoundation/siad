@@ -25,12 +25,12 @@ var (
 	// ErrInvalidRPCDownloadRatio is returned if the user tries to set a value
 	// for the download price or the base RPC Price that violates the maximum
 	// ratio
-	ErrInvalidRPCDownloadRatio = errors.New("invalid ratio between the download price and the base RPC price, either increase download price or decrease RPC price")
+	ErrInvalidRPCDownloadRatio = errors.New("invalid ratio between the download price and the base RPC price, base cost of 100M request should be cheaper than downloading 4TB")
 
 	// ErrInvalidSectorAccessDownloadRatio is returned if the user tries to set
 	// a value for the download price or the Sector Access Price that violates
 	// the maximum ratio
-	ErrInvalidSectorAccessDownloadRatio = errors.New("invalid ratio between the download price and the sector access price, either increase download price or decrease sector access price")
+	ErrInvalidSectorAccessDownloadRatio = errors.New("invalid ratio between the download price and the sector access price, base cost of 10M accesses should be cheaper than downloading 4TB")
 )
 
 type (
@@ -280,13 +280,13 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 	// Validate the RPC, Sector Access, and Download Prices
 	minDownloadBandwidthPrice := settings.MinDownloadBandwidthPrice
 	minBaseRPCPrice := settings.MinBaseRPCPrice
-	if minBaseRPCPrice.Div(modules.MaxMinBaseRPCPricesToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
-		//return error
+	maxBaseRPCPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinBaseRPCPriceVsBandwidth)
+	if minBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
 		return modules.HostInternalSettings{}, ErrInvalidRPCDownloadRatio
 	}
 	minSectorAccessPrice := settings.MinSectorAccessPrice
-	if minSectorAccessPrice.Div(modules.MaxMinSectorAccessPriceToDownloadPricesRatioDiv).Cmp(minDownloadBandwidthPrice) > 0 {
-		//return error
+	maxSectorAccessPrice := minDownloadBandwidthPrice.Mul64(modules.MaxMinSectorAccessPriceVsBandwidth)
+	if minSectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
 		return modules.HostInternalSettings{}, ErrInvalidSectorAccessDownloadRatio
 	}
 
