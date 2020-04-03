@@ -163,7 +163,7 @@ func (api *API) skynetPortalsHandlerGET(w http.ResponseWriter, _ *http.Request, 
 	// Get the list of portals.
 	portals, err := api.renter.Portals()
 	if err != nil {
-		WriteError(w, Error{"unable to get the blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to get the portals list: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 

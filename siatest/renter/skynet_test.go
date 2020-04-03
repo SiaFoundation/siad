@@ -1591,6 +1591,14 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Incorrect number of portals, expected %v got %v", 0, len(spg.Portals))
 	}
 
+	// Try removing a portal that's not there.
+	add = []modules.SkynetPortalInfo{}
+	remove = []modules.NetAddress{portal1.Address}
+	err = r.SkynetPortalsPost(add, remove)
+	if !strings.Contains(err.Error(), "could not remove portal, address "+string(portal1.Address)+" not already listed") {
+		t.Fatal("portal should fail to be removed")
+	}
+
 	// Try to add and remove the portal at the same time.
 	add = []modules.SkynetPortalInfo{portal2}
 	remove = []modules.NetAddress{portal2.Address}

@@ -27,8 +27,9 @@ const (
 	persistFile string = "skynetblacklist"
 
 	// persistMerkleRootSize is the size of a persisted merkleroot in the
-	// blacklist
-	persistMerkleRootSize int64 = 32 + 1
+	// blacklist. It is the length of `merkleroot` plus the `listed` flag (32 +
+	// 1).
+	persistMerkleRootSize int64 = 33
 )
 
 var (
@@ -82,11 +83,7 @@ func unmarshalBlacklist(r io.Reader, numMerkleRoots int64) (map[crypto.Hash]stru
 // unmarshalSia implements the encoding.SiaUnmarshaler interface.
 func unmarshalSia(r io.Reader) (merkleRoot crypto.Hash, blacklisted bool, err error) {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	err = d.Decode(&merkleRoot)
-	if err != nil {
-		err = errors.AddContext(err, "unable to read merkleroot")
-		return
-	}
+	d.Decode(&merkleRoot)
 	blacklisted = d.NextBool()
 	err = d.Err()
 	return

@@ -25,7 +25,8 @@ const (
 	// persistFile is the name of the persist file
 	persistFile string = "skynetportals"
 
-	// persistPortalSize is the size of a persisted portal in the portals list
+	// persistPortalSize is the size of a persisted portal in the portals list.
+	// It is the length of `NetAddress` plus the `public` and `listed` flags.
 	persistPortalSize int64 = modules.MaxEncodedNetAddressLength + 2
 )
 
@@ -57,18 +58,9 @@ func marshalSia(w io.Writer, address modules.NetAddress, public bool, listed boo
 	// Create a padded buffer so that we always write the same amount of bytes.
 	buf := make([]byte, modules.MaxEncodedNetAddressLength)
 	copy(buf, address)
-	_, err := e.Write(buf)
-	if err != nil {
-		return err
-	}
-	err = e.WriteBool(public)
-	if err != nil {
-		return err
-	}
-	err = e.WriteBool(listed)
-	if err != nil {
-		return err
-	}
+	e.Write(buf)
+	e.WriteBool(public)
+	e.WriteBool(listed)
 	return e.Err()
 }
 
@@ -189,6 +181,9 @@ func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortalInf
 		}
 	}
 	for _, address := range removals {
+		if _, ok := sp.portals[address]; !ok {
+			return errors.New("could not remove portal, address " + string(address) + " not already listed")
+		}
 		// Remove portal from map
 		delete(sp.portals, address)
 
