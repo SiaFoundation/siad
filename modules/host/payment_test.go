@@ -90,6 +90,14 @@ func TestVerifyPaymentRevision(t *testing.T) {
 		t.Fatalf("Expected host payout error but received '%v'", err)
 	}
 
+	// expect missed void output
+	badCurr = deepCopy(curr)
+	badCurr.NewMissedProofOutputs = append([]types.SiacoinOutput{}, curr.NewMissedProofOutputs[:2]...)
+	err = verifyPaymentRevision(badCurr, payment, height, amount)
+	if !errors.Contains(err, types.ErrMissingVoidOutput) {
+		t.Fatalf("Expected '%v' but received '%v'", types.ErrMissingVoidOutput, err)
+	}
+
 	// expect lost collateral address changed
 	badPayment = deepCopy(payment)
 	badPayment.NewMissedProofOutputs[2].UnlockHash = types.UnlockHash(hash)
@@ -120,8 +128,13 @@ func TestVerifyPaymentRevision(t *testing.T) {
 		t.Fatalf("Expected '%v' but received '%v'", string(errLowHostValidOutput), err)
 	}
 
-	badPayment = deepCopy(payment)
-	badPayment.SetValidHostPayout(badPayment.ValidHostPayout().Sub64(1))
+	// expect errLowHostValidOutput
+	badCurr = deepCopy(curr)
+	badCurr.SetValidHostPayout(curr.ValidHostPayout().Sub64(1))
+	err = verifyPaymentRevision(badCurr, payment, height, amount)
+	if err == nil || !strings.Contains(err.Error(), string(errLowHostValidOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(errLowHostValidOutput), err)
+	}
 
 	// expect errHighRenterMissedOutput
 	badPayment = deepCopy(payment)
@@ -203,6 +216,14 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
 	if err != errBadUnlockHash {
 		t.Fatalf("Expected errBadUnlockHash but received '%v'", err)
+	}
+
+	// expect errLowHostMissedOutput
+	badCurr = deepCopy(curr)
+	badCurr.SetMissedHostPayout(payment.MissedHostOutput().Value.Sub64(1))
+	err = verifyPaymentRevision(badCurr, payment, height, amount)
+	if err != errLowHostMissedOutput {
+		t.Fatalf("Expected errLowHostMissedOutput but received '%v'", err)
 	}
 }
 
