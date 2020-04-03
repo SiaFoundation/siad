@@ -193,7 +193,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		ht.host.staticPriceTables.managedUpdate(mock)
 		err := ht.host.staticRPCUpdatePriceTable(stream)
 		if err != nil {
-			return modules.RPCWriteError(stream, err)
+			modules.RPCWriteError(stream, err)
 		}
 		return nil
 	}
