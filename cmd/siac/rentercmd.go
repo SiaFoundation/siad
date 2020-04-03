@@ -23,12 +23,10 @@ import (
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
-	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -334,28 +332,6 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 	siafile are both necessary to pin the file and keep the skylink active. The
 	skyfile will consume an additional 40 MiB of storage.`,
 		Run: wrap(skynetconvertcmd),
-	}
-
-	skynetCreateSkykeyCmd = &cobra.Command{
-		Use:   "createskykey [name]",
-		Short: "Create a skykey with the given name.",
-		Long: `Create a skykey  with the given name. The --cipher-type flag can be
-		used to specify the cipher type. Its default is XChaCha20.`,
-		Run: wrap(skynetcreateskykeycmd),
-	}
-
-	skynetAddSkykeyCmd = &cobra.Command{
-		Use:   "addskykey [skykey base64-encoded skykey]",
-		Short: "Add a base64-encoded skykey to the key manager.",
-		Long:  `Add a base64-encoded skykey to the key manager.`,
-		Run:   wrap(skynetaddskykeycmd),
-	}
-
-	skynetGetSkykeyCmd = &cobra.Command{
-		Use:   "getskykey",
-		Short: "Get the skykey by its name or id",
-		Long:  `Get the base64-encoded skykey using either its name with --name or id with --id`,
-		Run:   wrap(skynetgetskykeycmd),
 	}
 )
 
@@ -2909,77 +2885,6 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 		}
 	}
 	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
-}
-
-// skynetcreateskykeycmd creates a new Skykey with the given name and cipher type
-// as set by flag.
-func skynetcreateskykeycmd(name string) {
-	var cipherType crypto.CipherType
-	err := cipherType.FromString(skykeyCipherType)
-	if err != nil {
-		die("could not decode cipher-type:", err)
-	}
-
-	sk, err := httpClient.SkykeyCreateKeyPost(name, cipherType)
-	if err != nil {
-		die("could not create skykey:", err)
-	}
-
-	skykeyStr, err := sk.ToString()
-	if err != nil {
-		die("Could not print skykey string:", err)
-	}
-	fmt.Printf("Created new skykey: %v\n", skykeyStr)
-}
-
-// skynetaddskykey adds the given skykey to the renter's skykey manager.
-func skynetaddskykeycmd(skykeyString string) {
-	var sk skykey.Skykey
-	err := sk.FromString(skykeyString)
-	if err != nil {
-		die("Could not decode skykey string:", err)
-	}
-
-	err = httpClient.SkykeyAddKeyPost(sk)
-	if err != nil {
-		die("could not add skykey:", err)
-	}
-
-	fmt.Printf("Successfully added new skykey: %v\n", skykeyString)
-}
-
-// skynetgetskykeycmd retrieves the skykey using a name or id flag.
-func skynetgetskykeycmd() {
-	if skykeyName == "" && skykeyID == "" {
-		die("Cannot get skykey without using --name or --id flag")
-	}
-	if skykeyName != "" && skykeyID != "" {
-		die("Use only one flag to get the skykey: --name or --id flag")
-	}
-
-	var sk skykey.Skykey
-	var err error
-	if skykeyName != "" {
-		sk, err = httpClient.SkykeyGetByName(skykeyName)
-	} else {
-		var id skykey.SkykeyID
-		err = id.FromString(skykeyID)
-		if err != nil {
-			die("Could not decode skykey ID")
-		}
-
-		sk, err = httpClient.SkykeyGetByID(id)
-	}
-
-	if err != nil {
-		die("Failed to retrieve skykey:", err)
-	}
-
-	skykeyStr, err := sk.ToString()
-	if err != nil {
-		die("Could not print skykey string:", err)
-	}
-	fmt.Printf("Found skykey: %v\n", skykeyStr)
 }
 
 // renterpricescmd is the handler for the command `siac renter prices`, which
