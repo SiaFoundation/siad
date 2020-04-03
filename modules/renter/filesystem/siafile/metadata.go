@@ -36,6 +36,10 @@ type (
 	SiafileUID string
 
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
+	// Note: Methods which update the metadata and can potentially fail after
+	// doing so and before persisting the change should use backup() and
+	// restore() to restore the metadata before returning the error. Also
+	// changes to Metadata require backup() and restore() to be updated as well.
 	Metadata struct {
 		UniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
 
@@ -381,7 +385,7 @@ func (md Metadata) backup() (b Metadata) {
 	return
 }
 
-// restore restores the metadata from a backup.
+// restore restores the metadata from a backup created with the backup() method.
 func (md *Metadata) restore(b Metadata) {
 	md.UniqueID = b.UniqueID
 	md.FileSize = b.FileSize
