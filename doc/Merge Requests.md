@@ -95,9 +95,10 @@ prefix that informs the priority of the issue.
 in the current merge request, not in a follow up, in order for a merge request
 to be approved.
 
-**PP**: The `PP` prefix indicates that a discussion is a personal preference of
-a reviewer. The developer can decide how they want to handle this discussion and
-choose to incorporate the feedback or not.
+**nit**: The `nit` prefix indicates that a discussion is a personal preference
+or a small recommendation of a reviewer. The developer can decide how they want
+to handle this discussion and choose to incorporate the feedback or not. The use
+of `nit` is to be more consistent with the Bitcoin review standards.
 
 **F/U**: The `F/U` prefix indicates that a discussion is intended to be
 addressed in a follow up and shouldn't be addressed in the current merge
