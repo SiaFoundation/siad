@@ -25,7 +25,7 @@ var (
 // expected to add to the file contract based on the payout of the file
 // contract and based on the host settings.
 func contractCollateral(settings modules.HostExternalSettings, fc types.FileContract) types.Currency {
-	return fc.ValidProofOutputs[1].Value.Sub(settings.ContractPrice)
+	return fc.ValidHostPayout().Sub(settings.ContractPrice)
 }
 
 // managedAddCollateral adds the host's collateral to the file contract
@@ -278,19 +278,23 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 	// The unlock hashes of the valid and missed proof outputs for the host
 	// must match the host's unlock hash. The third missed output should point
 	// to the void.
-	if fc.ValidProofOutputs[1].UnlockHash != unlockHash || fc.MissedProofOutputs[1].UnlockHash != unlockHash || fc.MissedProofOutputs[2].UnlockHash != (types.UnlockHash{}) {
+	voidOutput, err := fc.MissedVoidOutput()
+	if err != nil {
+		return err
+	}
+	if fc.ValidHostOutput().UnlockHash != unlockHash || fc.MissedHostOutput().UnlockHash != unlockHash || voidOutput.UnlockHash != (types.UnlockHash{}) {
 		return errBadPayoutUnlockHashes
 	}
 	// Check that the payouts for the valid proof outputs and the missed proof
 	// outputs are the same - this is important because no data has been added
 	// to the file contract yet.
-	if !fc.ValidProofOutputs[1].Value.Equals(fc.MissedProofOutputs[1].Value) {
+	if !fc.ValidHostPayout().Equals(fc.MissedHostOutput().Value) {
 		return errMismatchedHostPayouts
 	}
 	// Check that there's enough payout for the host to cover at least the
 	// contract price. This will prevent negative currency panics when working
 	// with the collateral.
-	if fc.ValidProofOutputs[1].Value.Cmp(eSettings.ContractPrice) < 0 {
+	if fc.ValidHostPayout().Cmp(eSettings.ContractPrice) < 0 {
 		return errLowHostValidOutput
 	}
 	// Check that the collateral does not exceed the maximum amount of

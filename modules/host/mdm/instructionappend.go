@@ -70,17 +70,16 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 	// i.staticState.potentialUploadRevenue = i.staticState.potentialUploadRevenue.Add(types.ZeroCurrency)
 
 	ps := i.staticState
+	oldSectors := ps.sectors.merkleRoots
 	newMerkleRoot, err := ps.sectors.appendSector(sectorData)
 	if err != nil {
 		return errOutput(err)
 	}
 
-	// TODO: Construct proof if necessary.
+	// Construct proof if necessary.
 	var proof []crypto.Hash
 	if i.staticMerkleProof {
-		start := len(ps.sectors.merkleRoots)
-		end := start + 1
-		proof = crypto.MerkleSectorRangeProof(ps.sectors.merkleRoots, start, end)
+		proof = crypto.MerkleDiffProof(nil, uint64(len(oldSectors)), nil, oldSectors)
 	}
 
 	return output{

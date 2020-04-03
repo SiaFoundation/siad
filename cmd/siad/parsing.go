@@ -20,6 +20,9 @@ func parseModules(config Config) node.NodeParams {
 	if strings.Contains(config.Siad.Modules, "e") {
 		params.CreateExplorer = true
 	}
+	if strings.Contains(config.Siad.Modules, "f") {
+		params.CreateFeeManager = true
+	}
 	if strings.Contains(config.Siad.Modules, "t") {
 		params.CreateTransactionPool = true
 	}

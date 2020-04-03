@@ -37,8 +37,7 @@ func TestAccountCallDeposit(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	_, spk := prepareAccount()
-	accountID := spk.String()
+	_, accountID := prepareAccount()
 
 	// Deposit money into it
 	diff := types.NewCurrency64(100)
@@ -70,8 +69,7 @@ func TestAccountMaxBalance(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	_, spk := prepareAccount()
-	accountID := spk.String()
+	_, accountID := prepareAccount()
 
 	// Verify the deposit can not exceed the max account balance
 	maxBalance := am.h.InternalSettings().MaxEphemeralAccountBalance
@@ -96,8 +94,7 @@ func TestAccountCallWithdraw(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	sk, spk := prepareAccount()
-	accountID := spk.String()
+	sk, accountID := prepareAccount()
 
 	// Fund the account
 	err = callDeposit(am, accountID, types.NewCurrency64(10))
@@ -175,8 +172,7 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare a new account
-	sk, spk := prepareAccount()
-	unknown := spk.String()
+	sk, unknown := prepareAccount()
 
 	// Withdraw from it
 	amount := types.NewCurrency64(1)
@@ -200,25 +196,30 @@ func TestAccountExpiry(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	_, spk := prepareAccount()
-	accountID := spk.String()
+	_, accountID := prepareAccount()
 
 	// Deposit some money into the account
-	err = callDeposit(am, accountID, types.NewCurrency64(10))
-	if err != nil {
+	if err = build.Retry(3, 100*time.Millisecond, func() error {
+		return callDeposit(am, accountID, types.NewCurrency64(10))
+	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify the balance, sleep a bit and verify it is gone
+	// Verify the balance
 	balance := getAccountBalance(am, accountID)
 	if !balance.Equals(types.NewCurrency64(10)) {
 		t.Fatal("Account balance was incorrect after deposit")
 	}
 
-	time.Sleep(pruneExpiredAccountsFrequency)
-	balance = getAccountBalance(am, accountID)
-	if !balance.Equals(types.NewCurrency64(0)) {
-		t.Fatal("Account balance was incorrect after expiry")
+	// Verify the account got pruned
+	if err = build.Retry(3, pruneExpiredAccountsFrequency, func() error {
+		balance = getAccountBalance(am, accountID)
+		if !balance.IsZero() {
+			return errors.New("Account balance was incorrect after expiry")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -237,8 +238,7 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	sk, spk := prepareAccount()
-	accountID := spk.String()
+	sk, accountID := prepareAccount()
 
 	// Fund the account
 	err = callDeposit(am, accountID, types.NewCurrency64(10))
@@ -276,8 +276,7 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	sk, spk := prepareAccount()
-	accountID := spk.String()
+	sk, accountID := prepareAccount()
 
 	// Fund the account
 	err = callDeposit(am, accountID, types.NewCurrency64(10))
@@ -310,8 +309,7 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	sk, spk := prepareAccount()
-	accountID := spk.String()
+	sk, accountID := prepareAccount()
 
 	// Fund the account
 	err = callDeposit(am, accountID, types.NewCurrency64(10))
@@ -354,19 +352,19 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account and fund it
-	sk1, spk1 := prepareAccount()
-	err = callDeposit(am, spk1.String(), types.NewCurrency64(10))
+	sk1, accountID1 := prepareAccount()
+	err = callDeposit(am, accountID1, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Prepare a withdrawal message
 	diff := types.NewCurrency64(5)
-	msg1, _ := prepareWithdrawal(spk1.String(), diff, am.h.blockHeight+5, sk1)
+	msg1, _ := prepareWithdrawal(accountID1, diff, am.h.blockHeight+5, sk1)
 
 	// Prepare another account and sign the same message using the other account
 	sk2, _ := prepareAccount()
-	_, sig2 := prepareWithdrawal(spk1.String(), diff, am.h.blockHeight+5, sk2)
+	_, sig2 := prepareWithdrawal(accountID1, diff, am.h.blockHeight+5, sk2)
 
 	err = callWithdraw(am, msg1, sig2)
 	if !errors.Contains(err, modules.ErrWithdrawalInvalidSignature) {
@@ -436,14 +434,14 @@ func TestAccountRiskBenchmark(t *testing.T) {
 	withdrawalSize := maxBalance.Div64(10000)
 
 	// Prepare the accounts
-	accountIDs := make([]string, acc)
+	accountIDs := make([]modules.AccountID, acc)
 	accountSKs := make([]crypto.SecretKey, acc)
 	accountBal := maxBalance
 	for a := 0; a < acc; a++ {
-		sk, spk := prepareAccount()
-		accountIDs[a] = spk.String()
+		sk, accountID := prepareAccount()
+		accountIDs[a] = accountID
 		accountSKs[a] = sk
-		err = callDeposit(am, accountIDs[a], accountBal)
+		err = callDeposit(am, accountID, accountBal)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -599,12 +597,12 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 		fmt.Printf("Configuration:\nAccounts: %d\nWithdrawals: %d\nThreads: %d\n\n", acc, withdrawals, threads)
 
 		// Prepare the accounts
-		accountIDs := make([]string, acc)
+		accountIDs := make([]modules.AccountID, acc)
 		accountSKs := make([]crypto.SecretKey, acc)
 		accountBal := types.NewCurrency64(uint64(withdrawals))
 		for a := 0; a < acc; a++ {
-			sk, spk := prepareAccount()
-			accountIDs[a] = spk.String()
+			sk, accountID := prepareAccount()
+			accountIDs[a] = accountID
 			accountSKs[a] = sk
 			err = callDeposit(am, accountIDs[a], accountBal)
 			if err != nil {
@@ -700,9 +698,8 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	threads := 100
 
 	// Prepare an account and fund it
-	sk, spk := prepareAccount()
-	account := spk.String()
-	err = callDeposit(am, account, maxBalance)
+	sk, accountID := prepareAccount()
+	err = callDeposit(am, accountID, maxBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,7 +708,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	msgs := make([]*modules.WithdrawalMessage, withdrawals)
 	sigs := make([]crypto.Signature, withdrawals)
 	for w := 0; w < int(withdrawals); w++ {
-		msgs[w], sigs[w] = prepareWithdrawal(account, withdrawalSize, am.h.blockHeight, sk)
+		msgs[w], sigs[w] = prepareWithdrawal(accountID, withdrawalSize, am.h.blockHeight, sk)
 	}
 
 	// Run the withdrawals in separate threads (ensure that withdrawals do not
@@ -739,7 +736,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	}
 
 	// Verify we've drained the account completely
-	balance := getAccountBalance(am, account)
+	balance := getAccountBalance(am, accountID)
 	if !balance.IsZero() {
 		t.Log(balance.HumanString())
 		t.Fatal("Unexpected account balance after withdrawals")
@@ -763,8 +760,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	sk, spk := prepareAccount()
-	account := spk.String()
+	sk, accountID := prepareAccount()
 
 	// Deposit money into the account in small increments
 	deposits := 20
@@ -778,7 +774,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	msgs := make([]*modules.WithdrawalMessage, withdrawals)
 	sigs := make([]crypto.Signature, withdrawals)
 	for w := 0; w < withdrawals; w++ {
-		msgs[w], sigs[w] = prepareWithdrawal(account, types.NewCurrency64(uint64(withdrawalAmount)), am.h.blockHeight, sk)
+		msgs[w], sigs[w] = prepareWithdrawal(accountID, types.NewCurrency64(uint64(withdrawalAmount)), am.h.blockHeight, sk)
 	}
 
 	// Add a waitgroup to wait for all deposits and withdrawals that are taking
@@ -790,7 +786,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 		defer wg.Done()
 		for d := 0; d < deposits; d++ {
 			time.Sleep(time.Duration(10 * time.Millisecond))
-			if err := callDeposit(am, account, types.NewCurrency64(uint64(depositAmount))); err != nil {
+			if err := callDeposit(am, accountID, types.NewCurrency64(uint64(depositAmount))); err != nil {
 				atomic.AddUint64(&atomicDepositErrs, 1)
 			}
 		}
@@ -825,7 +821,7 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	}
 
 	// Account balance should be zero..
-	balance := getAccountBalance(am, account)
+	balance := getAccountBalance(am, accountID)
 	if !balance.IsZero() {
 		t.Log(balance.String())
 		t.Fatal("Unexpected account balance")
@@ -863,15 +859,15 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 
 	// Prepare the accounts
 	accountSKs := make([]crypto.SecretKey, buckets)
-	accountPKs := make([]string, buckets)
+	accountIDs := make([]modules.AccountID, buckets)
 	for i := 0; i < int(buckets); i++ {
-		sk, spk := prepareAccount()
+		sk, accountID := prepareAccount()
 		accountSKs[i] = sk
-		accountPKs[i] = spk.String()
+		accountIDs[i] = accountID
 	}
 
 	// Fund all acounts to the max
-	for _, acc := range accountPKs {
+	for _, acc := range accountIDs {
 		if err = callDeposit(am, acc, maxBalance); err != nil {
 			t.Fatal(err)
 		}
@@ -890,9 +886,9 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			accPK := accountPKs[i]
+			accID := accountIDs[i]
 			accSK := accountSKs[i]
-			msg, sig := prepareWithdrawal(accPK, maxBalance, cbh, accSK)
+			msg, sig := prepareWithdrawal(accID, maxBalance, cbh, accSK)
 			if wErr := callWithdraw(am, msg, sig); errors.Contains(wErr, errMaxRiskReached) {
 				atomic.AddUint64(&atomicMaxRiskReached, 1)
 			}
@@ -927,11 +923,11 @@ func TestAccountIndexRecycling(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	numAcc := 100
-	accToIndex := make(map[string]uint32, numAcc)
+	accToIndex := make(map[modules.AccountID]uint32, numAcc)
 
 	// deposit is a helper function to deposit 1H into the given account, this
 	// acts as a keepalive for the account
-	deposit := func(id string) {
+	deposit := func(id modules.AccountID) {
 		err := callDeposit(am, id, types.NewCurrency64(1))
 		if err != nil {
 			t.Fatal(err)
@@ -941,7 +937,7 @@ func TestAccountIndexRecycling(t *testing.T) {
 	// expire is a helper function that decides if an account should expire or
 	// not. These indexes are deterministic but are random locations in the
 	// 64 bit field.
-	expire := func(id string) bool {
+	expire := func(id modules.AccountID) bool {
 		index, ok := accToIndex[id]
 		if !ok {
 			t.Fatal("Unexpected failure, account id unknown")
@@ -951,14 +947,13 @@ func TestAccountIndexRecycling(t *testing.T) {
 
 	// Prepare a number of accounts
 	for i := 0; i < numAcc; i++ {
-		_, pk := prepareAccount()
-		id := pk.String()
-		deposit(id)
-		persistInfo := am.managedAccountPersistInfo(id)
+		_, accountID := prepareAccount()
+		deposit(accountID)
+		persistInfo := am.managedAccountPersistInfo(accountID)
 		if persistInfo == nil {
 			t.Fatal("Unexpected failure, account id unknown")
 		}
-		accToIndex[id] = persistInfo.index
+		accToIndex[accountID] = persistInfo.index
 	}
 
 	// Keep accounts alive past the expire frequency by periodically depositing
@@ -1007,9 +1002,9 @@ func TestAccountIndexRecycling(t *testing.T) {
 	}
 
 	for i := len(expired); i > 0; i-- {
-		_, pk := prepareAccount()
-		deposit(pk.String())
-		persistInfo := am.managedAccountPersistInfo(pk.String())
+		_, accountID := prepareAccount()
+		deposit(accountID)
+		persistInfo := am.managedAccountPersistInfo(accountID)
 		if persistInfo == nil {
 			t.Fatal("Unexpected failure, account id unknown")
 		}
@@ -1040,8 +1035,7 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	sk, spk := prepareAccount()
-	accountID := spk.String()
+	sk, accountID := prepareAccount()
 	oneCurrency := types.NewCurrency64(1)
 
 	// Fund the account
@@ -1107,7 +1101,7 @@ func callWithdraw(am *accountManager, msg *modules.WithdrawalMessage, sig crypto
 // disk. To test that callDeposit can handle closed syncChans in a
 // non-deterministic fashion the both are raced using a waitgroup and two
 // goroutines.
-func callDeposit(am *accountManager, id string, amount types.Currency) error {
+func callDeposit(am *accountManager, id modules.AccountID, amount types.Currency) error {
 	startChan := make(chan struct{})
 	syncChan := make(chan struct{})
 
@@ -1132,7 +1126,7 @@ func callDeposit(am *accountManager, id string, amount types.Currency) error {
 
 // prepareWithdrawal prepares a withdrawal message, signs it using the provided
 // secret key and returns the message and the signature
-func prepareWithdrawal(id string, amount types.Currency, expiry types.BlockHeight, sk crypto.SecretKey) (*modules.WithdrawalMessage, crypto.Signature) {
+func prepareWithdrawal(id modules.AccountID, amount types.Currency, expiry types.BlockHeight, sk crypto.SecretKey) (*modules.WithdrawalMessage, crypto.Signature) {
 	msg := &modules.WithdrawalMessage{
 		Account: id,
 		Expiry:  expiry,
@@ -1147,13 +1141,13 @@ func prepareWithdrawal(id string, amount types.Currency, expiry types.BlockHeigh
 
 // prepareAccount will create an account and return its secret key alonside it's
 // sia public key
-func prepareAccount() (crypto.SecretKey, types.SiaPublicKey) {
+func prepareAccount() (crypto.SecretKey, modules.AccountID) {
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	return sk, spk
+	return sk, modules.AccountID(spk.String())
 }
 
 // randuint64 generates a random uint64

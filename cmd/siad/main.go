@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/cmd"
 )
 
 var (
@@ -127,6 +128,12 @@ Miner (m):
 	The miner requires the consensus set, transaction pool, and wallet.
 	Example:
 		siad -M gctwm
+FeeManager (f):
+	The FeeManager provides a means for application developers to charge
+	users for the user of their application.
+	The FeeManager requires the consensus set, gateway, transaction pool, and wallet.
+	Example:
+		siad -M gctwf
 Explorer (e):
 	The explorer provides statistics about the blockchain and can be
 	queried for information about specific transactions or other objects on
@@ -172,15 +179,14 @@ func main() {
 	root.Flags().StringVarP(&globalConfig.Siad.Profile, "profile", "", "", "enable profiling with flags 'cmt' for CPU, memory, trace")
 	root.Flags().StringVarP(&globalConfig.Siad.RPCaddr, "rpc-addr", "", ":9981", "which port the gateway listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxAddr, "siamux-addr", "", ":9999", "which port the SiaMux listens on")
-
-	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "cghrtw", "enabled modules, see 'siad modules' for more info")
+	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "cghrtwf", "enabled modules, see 'siad modules' for more info")
 	root.Flags().BoolVarP(&globalConfig.Siad.AuthenticateAPI, "authenticate-api", "", true, "enable API password protection")
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
 	root.Flags().BoolVarP(&globalConfig.Siad.AllowAPIBind, "disable-api-security", "", false, "allow siad to listen on a non-localhost address (DANGEROUS)")
 
 	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
 	if globalConfig.Siad.SiaDir == "" {
-		globalConfig.Siad.SiaDir = os.Getenv("SIA_DATA_DIR")
+		globalConfig.Siad.SiaDir = os.Getenv(cmd.SiaDataDir)
 		if globalConfig.Siad.SiaDir != "" {
 			fmt.Println("Using SIA_DATA_DIR environment variable")
 		}

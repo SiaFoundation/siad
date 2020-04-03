@@ -149,6 +149,15 @@ arbitrary-precision number (bignum), and it should be parsed with your
 language's corresponding bignum library. Currency values are the most common
 example where this is necessary.
 
+# Environment Variables
+There are three environment variables supported by siad.
+ - `SIA_API_PASSWORD` is the environment variable that sets a custom API
+   password if the default is not used
+ - `SIA_DATA_DIR` is the environment variable that tells siad where to put the
+   sia data
+ - `SIA_WALLET_PASSWORD` is the environment variable that can be set to enable
+   auto unlocking the wallet
+
 # Consensus
 
 The consensus set manages everything related to consensus and keeps the
@@ -418,7 +427,8 @@ the rest of Sia.
 curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
 ```
 
-Returns the alerts of the Sia instance.
+Returns the alerts of the Sia instance sorted by severity from highest to
+lowest.
 
 ### JSON Response
 > JSON Response Example
@@ -4286,7 +4296,7 @@ The response body is the raw data for the file.
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png'. Users who download the file will see the name
 // 'image.png'.
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?name=image.png" --data-binary @myImage.png
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?filename=image.png" --data-binary @myImage.png
 ```
 
 uploads a file to the network using a stream. If the upload stream POST call
@@ -4318,6 +4328,10 @@ active. This field is mutually exclusive with uploading streaming.
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
 well.
+
+**dryrun** | bool  
+If dryrun is set to true, the request will return the Skylink of the file
+without uploading the actual file to the Sia network.
 
 **force** | bool  
 If there is already a file that exists at the provided siapath, setting this
@@ -4389,6 +4403,10 @@ returns statistical information about Skynet, e.g. number of files uploaded
   "uploadstats": {
     "numfiles": 2,         // int
     "totalsize": 44527895  // int
+  },
+  "versioninfo": {
+    "version":     "1.4.4-master", // string
+    "gitrevision": "cd5a83712"     // string
   }
 }
 ```
@@ -4401,6 +4419,15 @@ Numfiles is the total number of files uploaded to Skynet.
 
 **totalsize** | int  
 Totalsize is the total amount of data in bytes uploaded to Skynet.
+
+**versioninfo** | object  
+Versioninfo is an object that contains the node's version information.
+
+**version** | string  
+Version is the siad version the node is running.
+
+**gitrevision** | string  
+Gitrevision refers to the commit hash used to build said.
 
 # Transaction Pool
 

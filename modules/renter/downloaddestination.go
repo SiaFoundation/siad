@@ -49,9 +49,9 @@ func (sw *skipWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// SectionWriter implements Write on a section
+// sectionWriter implements Write on a section
 // of an underlying WriterAt.
-type SectionWriter struct {
+type sectionWriter struct {
 	w     io.WriterAt
 	base  int64
 	off   int64
@@ -62,18 +62,15 @@ type SectionWriter struct {
 // write would cross the boundaries between section.
 var errSectionWriteOutOfBounds = errors.New("section write is out of bounds")
 
-// NewSectionWriter returns a SectionWriter that writes to w
+// NewSectionWriter returns a sectionWriter that writes to w
 // starting at offset off and stops with EOF after n bytes.
-func NewSectionWriter(w io.WriterAt, off int64, n int64) *SectionWriter {
-	return &SectionWriter{w, off, off, off + n}
+func NewSectionWriter(w io.WriterAt, off int64, n int64) *sectionWriter {
+	return &sectionWriter{w, off, off, off + n}
 }
 
 // Write implements the io.Writer interface using WriteAt.
-func (s *SectionWriter) Write(p []byte) (n int, err error) {
-	if s.off >= s.limit {
-		return 0, errSectionWriteOutOfBounds
-	}
-	if int64(len(p)) > s.limit-s.off {
+func (s *sectionWriter) Write(p []byte) (n int, err error) {
+	if s.off >= s.limit || int64(len(p)) > s.limit-s.off {
 		return 0, errSectionWriteOutOfBounds
 	}
 	n, err = s.w.WriteAt(p, s.off)
@@ -131,12 +128,12 @@ func (ddf *downloadDestinationFile) Close() error {
 // WritePieces will decode the pieces and write them to a file at the provided
 // offset, using the provided length.
 func (ddf *downloadDestinationFile) WritePieces(ec modules.ErasureCoder, pieces [][]byte, dataOffset uint64, offset int64, length uint64) error {
-	sectionWriter := NewSectionWriter(ddf.f, offset, ddf.staticChunkSize)
+	sw := NewSectionWriter(ddf.f, offset, ddf.staticChunkSize)
 	if ddf.deps.Disrupt("PostponeWritePiecesRecovery") {
 		time.Sleep(time.Duration(fastrand.Intn(1000)) * time.Millisecond)
 	}
 	skipWriter := &skipWriter{
-		writer: sectionWriter,
+		writer: sw,
 		skip:   int(dataOffset),
 	}
 	bufioWriter := bufio.NewWriter(skipWriter)
@@ -231,7 +228,6 @@ func (ddw *downloadDestinationWriter) WritePieces(ec modules.ErasureCoder, piece
 		}
 		// Error if the stream has progressed beyond 'offset'.
 		if offset < ddw.progress {
-			ddw.mu.Unlock()
 			return errOffsetAlreadyWritten
 		}
 

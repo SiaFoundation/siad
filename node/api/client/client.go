@@ -102,11 +102,6 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 		return nil, nil, errors.AddContext(err, "GET request failed")
 	}
 
-	if res.StatusCode == http.StatusNotFound {
-		drainAndClose(res.Body)
-		return nil, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
-	}
-
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
@@ -221,10 +216,6 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
 	}
 	defer drainAndClose(res.Body)
-
-	if res.StatusCode == http.StatusNotFound {
-		return http.Header{}, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform POST on "+resource)
-	}
 
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.

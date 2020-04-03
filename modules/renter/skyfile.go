@@ -42,6 +42,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -62,6 +63,10 @@ const (
 var (
 	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
 	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
+
+	// ErrMetadataTooBig is the error returned when the metadata exceeds a
+	// sectorsize.
+	ErrMetadataTooBig = errors.New("metadata exceeds sectorsize")
 
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
@@ -302,23 +307,15 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	// Create the base sector.
 	baseSector, fetchSize := skyfileBuildBaseSector(ll.encode(), fanoutBytes, metadataBytes, nil)
 	baseSectorReader := bytes.NewReader(baseSector)
-	fileUploadParams, err := fileUploadParamsFromLUP(lup)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "unable to build the file upload parameters")
-	}
-
-	// Perform the full upload.
-	newFileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "skyfile base chunk upload failed")
-	}
-	defer newFileNode.Close()
 
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector)
 	skylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to build skylink")
+	}
+	if lup.DryRun {
+		return skylink, nil
 	}
 
 	// Check if skylink is blacklisted
@@ -328,10 +325,88 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	}
 
 	// Add the skylink to the siafiles.
-	err1 := fileNode.AddSkylink(skylink)
-	err2 := newFileNode.AddSkylink(skylink)
-	err = errors.Compose(err1, err2)
+	err = fileNode.AddSkylink(skylink)
+	if err != nil {
+		return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+	}
+
+	// Perform the full upload.
+	fileUploadParams, err := fileUploadParamsFromLUP(lup)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to build the file upload parameters")
+	}
+
+	newFileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "skyfile base chunk upload failed")
+	}
+	defer newFileNode.Close()
+
+	err = newFileNode.AddSkylink(skylink)
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+}
+
+// managedCreateFileNodeFromReader takes the file upload parameters and a reader
+// and returns a filenode. This method turns the reader into a FileNode without
+// effectively uploading the data. It is used to perform a dry-run of a skyfile
+// upload.
+func (r *Renter) managedCreateFileNodeFromReader(up modules.FileUploadParams, reader io.Reader) (*filesystem.FileNode, error) {
+	// Check the upload params first.
+	fileNode, err := r.managedInitUploadStream(up, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract some helper variables
+	hpk := types.SiaPublicKey{} // blank host key
+	ec := fileNode.ErasureCode()
+	psize := fileNode.PieceSize()
+	csize := fileNode.ChunkSize()
+
+	var peek []byte
+	for chunkIndex := uint64(0); ; chunkIndex++ {
+		// Grow the SiaFile to the right size.
+		err := fileNode.SiaFile.GrowNumChunks(chunkIndex + 1)
+		if err != nil {
+			return nil, err
+		}
+
+		// Allocate data pieces and fill them with data from r.
+		ss := NewStreamShard(reader, peek)
+		err = func() error {
+			defer ss.Close()
+
+			dataPieces, total, errRead := readDataPieces(ss, ec, psize)
+			if errRead != nil {
+				return errRead
+			}
+
+			dataEncoded, _ := ec.EncodeShards(dataPieces)
+			for pieceIndex, dataPieceEnc := range dataEncoded {
+				if err := fileNode.SiaFile.AddPiece(hpk, chunkIndex, uint64(pieceIndex), crypto.MerkleRoot(dataPieceEnc)); err != nil {
+					return err
+				}
+			}
+
+			adjustedSize := fileNode.Size() - csize + total
+			if err := fileNode.SetFileSize(adjustedSize); err != nil {
+				return errors.AddContext(err, "failed to adjust FileSize")
+			}
+			return nil
+		}()
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = ss.Result()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return fileNode, nil
 }
 
 // Blacklist returns the merkleroots that are blacklisted
@@ -369,6 +444,10 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 // data that uploadSkyfileReadLeadingChunk had to read to figure out whether
 // the file was too large to fit into the leading chunk.
 func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSize uint64) ([]byte, io.Reader, bool, error) {
+	// Check for underflow.
+	if headerSize+1 > modules.SectorSize {
+		return nil, nil, false, ErrMetadataTooBig
+	}
 	// Read data from the reader to fill out the remainder of the first sector.
 	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
 	size, err := io.ReadFull(lup.Reader, fileBytes)
@@ -431,16 +510,39 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		Force:               lup.Force,
 		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
 		Repair:              false, // indicates whether this is a repair operation
-
-		CipherType: crypto.TypePlain,
+		CipherType:          crypto.TypePlain,
 	}
 
-	// Upload the file using a streamer.
-	fileNode, err := r.callUploadStreamFromReader(fup, fileReader, false)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
+	var fileNode *filesystem.FileNode
+	if lup.DryRun {
+		// In case of a dry-run we don't want to perform the actual upload,
+		// instead we create a filenode that contains all of the data pieces and
+		// their merkle roots.
+		fileNode, err = r.managedCreateFileNodeFromReader(fup, fileReader)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
+		}
+	} else {
+		// Upload the file using a streamer.
+		fileNode, err = r.callUploadStreamFromReader(fup, fileReader, false)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
+		}
 	}
-	defer fileNode.Close()
+
+	// Defer closing and cleanup of the file in case this was a dry-run
+	defer func() {
+		err := fileNode.Close()
+		if err != nil {
+			r.log.Printf("Could not close node, err: %s\n", err.Error())
+		}
+
+		if lup.DryRun {
+			if err := r.DeleteFile(siaPath); err != nil {
+				r.log.Printf("unable to cleanup siafile after performing a dry run of the Skyfile upload, err: %s", err.Error())
+			}
+		}
+	}()
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
@@ -490,6 +592,11 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 	skylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
+	}
+
+	// If this is a dry-run, we do not need to upload the base sector
+	if lup.DryRun {
+		return skylink, nil
 	}
 
 	// Upload the base sector.
@@ -583,7 +690,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes)
+	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes, timeout)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -592,7 +699,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
-func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters) error {
+func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration) error {
 	// Check if link is blacklisted
 	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
 		return ErrSkylinkBlacklisted
@@ -602,7 +709,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	skyfileEstablishDefaults(&lup)
 
 	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, 0)
+	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
@@ -648,7 +755,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		CipherType: crypto.TypePlain,
 	}
 
-	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes)
+	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}
@@ -705,6 +812,9 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	}
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
+	}
+	if lup.DryRun {
+		return skylink, nil
 	}
 
 	// Check if skylink is blacklisted

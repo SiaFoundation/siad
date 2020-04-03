@@ -99,7 +99,7 @@ func TestNewRevisionFundChecks(t *testing.T) {
 	}
 	// Cost is more than renter funds should fail.
 	_, err = newDownloadRevision(revWithValues(100, 0), types.NewCurrency64(101))
-	if !errors.Contains(err, errRevisionCostTooHigh) {
+	if !errors.Contains(err, types.ErrRevisionCostTooHigh) {
 		t.Fatal(err)
 	}
 
@@ -117,7 +117,7 @@ func TestNewRevisionFundChecks(t *testing.T) {
 	}
 	// Not enough collateral should cause an error.
 	_, err = newUploadRevision(revWithValues(100, 100), crypto.Hash{}, types.NewCurrency64(99), types.NewCurrency64(100))
-	if errors.Contains(err, errRevisionCollateralTooLow) {
+	if errors.Contains(err, types.ErrRevisionCollateralTooLow) {
 		t.Fatal(err)
 	}
 }

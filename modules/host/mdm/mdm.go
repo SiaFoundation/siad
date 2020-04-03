@@ -10,7 +10,7 @@ import (
 // StorageObligation defines an interface the storage obligation must adhere to.
 type StorageObligation interface {
 	// Update updates the storage obligation.
-	Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error
+	Update(sectorRoots []crypto.Hash, sectorsRemoved map[crypto.Hash]struct{}, sectorsGained map[crypto.Hash][]byte) error
 }
 
 // StorageObligationSnapshot defines an interface the snapshot must adhere to in
