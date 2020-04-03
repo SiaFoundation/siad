@@ -51,7 +51,8 @@ func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		defer wgDelete.Done()
 		_, _, err := r.DownloadToDisk(rf, false)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 	}()
 	// Stream the File
@@ -60,7 +61,8 @@ func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		defer wgDelete.Done()
 		_, err := r.Stream(rf)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 	}()
 	// Delete the file
@@ -72,6 +74,7 @@ func deleteDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		err := r.RenterFileDeletePost(rf.SiaPath())
 		if err != nil {
 			t.Error(err)
+			return
 		}
 	}()
 
@@ -91,7 +94,8 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		defer wgRename.Done()
 		_, _, err := r.DownloadToDisk(rf, false)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 	}()
 	// Stream the File
@@ -100,7 +104,8 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		defer wgRename.Done()
 		_, err := r.Stream(rf)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 	}()
 	// Rename the file
@@ -112,7 +117,8 @@ func renameDuringDownloadAndStream(r *siatest.TestNode, rf *siatest.RemoteFile, 
 		var err error
 		rf, err = r.Rename(rf, modules.RandomSiaPath())
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 	}()
 
