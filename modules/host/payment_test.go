@@ -240,57 +240,30 @@ func TestProcessPayment(t *testing.T) {
 	}
 	t.Parallel()
 
-	// setup host
-	ht, err := newHostTester(t.Name())
+	// setup a host and renter pair with an emulated file contract between them
+	ht, pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ht.Close()
 
-	// create a renter key pair
-	sk, pk := crypto.GenerateKeyPair()
-	renterPK := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-
-	// setup storage obligationn (emulating a renter creating a contract)
-	so, err := ht.newTesterStorageObligation()
-	if err != nil {
-		t.Fatal(err)
-	}
-	so, err = ht.addNoOpRevision(so, renterPK)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(so.id())
-
 	// test both payment methods
-	testPayByContract(t, ht.host, so, sk)
-	testPayByEphemeralAccount(t, ht.host, so)
+	testPayByContract(t, pair)
+	testPayByEphemeralAccount(t, pair)
 }
 
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
-func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK crypto.SecretKey) {
+func testPayByContract(t *testing.T, pair *renterHostPair) {
+	host, renterSK := pair.host, pair.renter
 	amount := types.SiacoinPrecision
 	amountStr := amount.HumanString()
 
 	// prepare an updated revision that pays the host
-	recent, err := so.recentRevision()
+	rev, sig, err := pair.paymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rev, err := recent.PaymentRevision(amount)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig := revisionSignature(rev, host.blockHeight, renterSK)
 
 	// create two streams
 	rStream, hStream := NewTestStreams()
@@ -341,11 +314,11 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK 
 	}
 
 	// verify the host updated the storage obligation
-	updated, err := host.managedGetStorageObligation(so.id())
+	updated, err := host.managedGetStorageObligation(pair.fcid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recent, err = updated.recentRevision()
+	recent, err := updated.recentRevision()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +360,8 @@ func testPayByContract(t *testing.T, host *Host, so storageObligation, renterSK 
 
 // testPayByEphemeralAccount verifies payment is processed correctly in the case
 // of the PayByEphemeralAccount payment method.
-func testPayByEphemeralAccount(t *testing.T, host *Host, so storageObligation) {
+func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
+	host := pair.host
 	amount := types.NewCurrency64(5)
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
