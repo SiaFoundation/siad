@@ -70,9 +70,9 @@ Multiple changelog items can be entered into one changelog file.
 Example body of multiple items in one file `3456-big-change.md`:
 
 ```
-- Updated module A
-- Refactored module B
-- Created module M
+- Updated module A.
+- Refactored module B.
+- Created module M.
 ```
 
 To ensure consistent spacing please remove leading spaces from the first line,
