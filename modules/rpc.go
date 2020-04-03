@@ -3,6 +3,7 @@ package modules
 import (
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/siamux"
@@ -21,6 +22,10 @@ type RPCPriceTable struct {
 	// UpdatePriceTableCost refers to the cost of fetching a new price table
 	// from the host.
 	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`
+
+	// FundAccountCost refers to the cost of funding an ephemeral account on the
+	// host.
+	FundAccountCost types.Currency `json:"fundaccountcost"`
 
 	// MDM related costs
 	//
@@ -54,6 +59,18 @@ var (
 )
 
 type (
+	// FundAccountRequest specifies the ephemeral account id that gets funded.
+	FundAccountRequest struct {
+		Account AccountID
+	}
+
+	// FundAccountResponse contains the signature. This signature is a
+	// signed receipt, and can be used as proof of funding.
+	FundAccountResponse struct {
+		Receipt   Receipt
+		Signature crypto.Signature
+	}
+
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
