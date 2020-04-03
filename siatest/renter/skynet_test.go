@@ -2005,14 +2005,4 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	if skStr != sk3Str {
 		t.Fatal("Expected same Skykey string")
 	}
-
-	// Check that the correct ID is matched to the known keyname
-	id, err := r.SkykeyIDGet("testkey1")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if id.ToString() != sk.ID().ToString() {
-		t.Fatal("expected to get same ID")
-	}
 }

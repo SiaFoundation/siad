@@ -320,7 +320,7 @@ func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 func (c *Client) SkykeyGetByName(name string) (skykey.Skykey, error) {
 	values := url.Values{}
 	values.Set("name", name)
-	getQuery := fmt.Sprintf("/skynet/skykey/?%s", values.Encode())
+	getQuery := fmt.Sprintf("/skynet/skykey?%s", values.Encode())
 
 	var skykeyGet api.SkykeyGET
 	err := c.get(getQuery, &skykeyGet)
@@ -341,7 +341,7 @@ func (c *Client) SkykeyGetByName(name string) (skykey.Skykey, error) {
 func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 	values := url.Values{}
 	values.Set("id", id.ToString())
-	getQuery := fmt.Sprintf("/skynet/skykey/?%s", values.Encode())
+	getQuery := fmt.Sprintf("/skynet/skykey?%s", values.Encode())
 
 	var skykeyGet api.SkykeyGET
 	err := c.get(getQuery, &skykeyGet)
@@ -356,25 +356,6 @@ func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 	}
 
 	return sk, nil
-}
-
-// SkykeyIDGet requests the /skynet/skykeyid Get endpoint.
-func (c *Client) SkykeyIDGet(name string) (skykey.SkykeyID, error) {
-	getQuery := fmt.Sprintf("/skynet/skykeyid/%s", name)
-
-	var skykeyIDGet api.SkykeyIDGET
-	err := c.get(getQuery, &skykeyIDGet)
-	if err != nil {
-		return skykey.SkykeyID{}, err
-	}
-
-	var ID skykey.SkykeyID
-	err = ID.FromString(skykeyIDGet.ID)
-	if err != nil {
-		return skykey.SkykeyID{}, err
-	}
-
-	return ID, nil
 }
 
 // SkykeyCreateKeyPost requests the /skynet/createskykey POST endpoint.

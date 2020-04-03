@@ -85,11 +85,6 @@ type (
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
 	}
-
-	// SkykeyIDGET contains a base64 encoded SkykeyID.
-	SkykeyIDGET struct {
-		ID string `json:"id"` // base64 encoded SkykeyID
-	}
 )
 
 // skynetBlacklistHandlerGET handles the API call to get the list of
@@ -781,7 +776,7 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 	return subfiles, io.MultiReader(readers...), nil
 }
 
-// skykeyHandlerGET handles the API call to get a Skykey using its
+// skykeyHandlerGET handles the API call to get a Skykey and its ID using its
 // name or ID.
 func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse Skykey id and name.
@@ -792,7 +787,6 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusInternalServerError)
 		return
 	}
-
 	if idString != "" && name != "" {
 		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusInternalServerError)
 		return
@@ -823,28 +817,6 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 	}
 	WriteJSON(w, SkykeyGET{
 		Skykey: skString,
-	})
-}
-
-// skykeyIDHandlerGET handles the API call to get a SkykeyID using its
-// name.
-func (api *API) skykeyIDHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Parse Skykey name.
-	name := strings.TrimPrefix(ps.ByName("name"), "/")
-
-	if name == "" {
-		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
-		return
-	}
-
-	id, err := api.renter.SkykeyIDByName(name)
-	if err != nil {
-		WriteError(w, Error{"failed to retrieve skykey" + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-
-	WriteJSON(w, SkykeyIDGET{
-		ID: id.ToString(),
 	})
 }
 
