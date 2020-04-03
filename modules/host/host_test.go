@@ -287,11 +287,10 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 	return ht, pair, nil
 }
 
-// PaymentRevision returns a new revision that transfer the given amount to the
+// paymentRevision returns a new revision that transfer the given amount to the
 // host. Returns the payment revision together with a signature signed by the
 // pair's renter.
-func (p *renterHostPair) PaymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
-	blockHeight := p.host.BlockHeight()
+func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
 	updated, err := p.host.managedGetStorageObligation(p.fcid)
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
@@ -306,7 +305,8 @@ func (p *renterHostPair) PaymentRevision(amount types.Currency) (types.FileContr
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
-	sig := revisionSignature(rev, blockHeight, p.renter)
+
+	sig := revisionSignature(rev, p.host.BlockHeight(), p.renter)
 	return rev, sig, nil
 }
 

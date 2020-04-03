@@ -43,7 +43,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	amountStr := amount.HumanString()
 
 	// prepare an updated revision that pays the host
-	rev, sig, err := pair.PaymentRevision(amount)
+	rev, sig, err := pair.paymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}

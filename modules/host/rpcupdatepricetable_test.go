@@ -165,7 +165,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		}
 
 		// prepare an updated revision that pays the host
-		rev, sig, err := pair.PaymentRevision(ptc)
+		rev, sig, err := pair.paymentRevision(ptc)
 		if err != nil {
 			return
 		}
