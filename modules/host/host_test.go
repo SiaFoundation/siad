@@ -247,7 +247,7 @@ type renterHostPair struct {
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
 // this pair is a helper struct that contains both the host and renter,
-// represented by its secret key. This helper will precreated a storage
+// represented by its secret key. This helper will create a storage
 // obligation emulating a file contract between them.
 func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 	// setup host
