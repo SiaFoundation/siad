@@ -4202,8 +4202,8 @@ returns the list of known Skynet portals.
 {
   "portals": [ // []SkynetPortalInfo | null
     {
-      "address": "siasky.net:9980", // string
-      "public":  true               // bool
+      "address": "siasky.net:443", // string
+      "public":  true              // bool
     }
   ]
 }
@@ -4218,9 +4218,9 @@ Indicates whether the portal can be accessed publicly or not.
 > curl example
 
 ```go
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : [{"address":"siasky.net:9980","public":true}]}' "localhost:9980/skynet/portals"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : [{"address":"siasky.net:443","public":true}]}' "localhost:9980/skynet/portals"
 
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["siasky.net:9980"]}' "localhost:9980/skynet/portals"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["siasky.net:443"]}' "localhost:9980/skynet/portals"
 ```
 
 updates the list of known Skynet portals. This endpoint can be used to both add

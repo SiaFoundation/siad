@@ -150,7 +150,7 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	// Update the Skynet Blacklist
 	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
 	if err != nil {
-		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -189,7 +189,7 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	// Convert to portal info objects
+	// Validate portal info.
 	addPortals := make([]modules.SkynetPortalInfo, len(params.Add))
 	for i, portalInfo := range params.Add {
 		if err := portalInfo.Address.IsStdValid(); err != nil {
@@ -210,7 +210,7 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Update the list of known skynet portals.
 	err = api.renter.UpdateSkynetPortals(addPortals, removePortals)
 	if err != nil {
-		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 

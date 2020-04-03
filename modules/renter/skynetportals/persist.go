@@ -39,7 +39,7 @@ var (
 	metadataHeader = types.NewSpecifier("SkynetPortals\n")
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = types.NewSpecifier("v1.4.6\n")
+	metadataVersion = types.NewSpecifier("v1.4.8\n")
 )
 
 // marshalMetadata marshals the Skynet Portal List's metadata and returns the byte
@@ -53,7 +53,7 @@ func (sp *SkynetPortals) marshalMetadata() ([]byte, error) {
 }
 
 // marshalSia implements the encoding.SiaMarshaler interface.
-func marshalSia(w io.Writer, address modules.NetAddress, public bool, listed bool) error {
+func marshalSia(w io.Writer, address modules.NetAddress, public, listed bool) error {
 	e := encoding.NewEncoder(w)
 	// Create a padded buffer so that we always write the same amount of bytes.
 	buf := make([]byte, modules.MaxEncodedNetAddressLength)
@@ -137,9 +137,9 @@ func (sp *SkynetPortals) callInitPersist() error {
 		return errors.AddContext(err, "unable to marshal metadata")
 	}
 
-	// Sanity check that the metadataBytes are less than the metadatPageSize
+	// Sanity check that the metadataBytes are less than the metadataPageSize
 	if int64(len(metadataBytes)) > metadataPageSize {
-		err = fmt.Errorf("metadata is londer than the defined page size %v", len(metadataBytes))
+		err = fmt.Errorf("metadataBytes too long, %v > %v", len(metadataBytes), metadataPageSize)
 		build.Critical(err)
 		return err
 	}
@@ -157,6 +157,23 @@ func (sp *SkynetPortals) callInitPersist() error {
 	return nil
 }
 
+// validateChanges validates the changes to be made to the Skynet portals list.
+func (sp *SkynetPortals) validateChanges(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) error {
+	additionsMap := make(map[modules.NetAddress]struct{})
+	for _, addition := range additions {
+		additionsMap[addition.Address] = struct{}{}
+	}
+	// Check that each removal is valid.
+	for _, removal := range removals {
+		if _, ok := sp.portals[removal]; !ok {
+			if _, ok := additionsMap[removal]; !ok {
+				return errors.New("address " + string(removal) + " not already present in list of portals or being added")
+			}
+		}
+	}
+	return nil
+}
+
 // callUpdateAndAppend updates the portals list with the additions and removals
 // and appends the changes to the persist file on disk.
 //
@@ -164,6 +181,12 @@ func (sp *SkynetPortals) callInitPersist() error {
 func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) error {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
+
+	// Validate now before we start making changes.
+	err := sp.validateChanges(additions, removals)
+	if err != nil {
+		return err
+	}
 
 	// Create buffer for encoder
 	var buf bytes.Buffer
@@ -175,22 +198,19 @@ func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortalInf
 		sp.portals[address] = public
 
 		// Marshal the update
-		err := marshalSia(&buf, address, public, true)
+		err = marshalSia(&buf, address, public, true)
 		if err != nil {
-			return errors.AddContext(err, "unable to encode persist portal")
+			return errors.AddContext(err, "unable to encode persisted portal")
 		}
 	}
 	for _, address := range removals {
-		if _, ok := sp.portals[address]; !ok {
-			return errors.New("could not remove portal, address " + string(address) + " not already listed")
-		}
 		// Remove portal from map
 		delete(sp.portals, address)
 
 		// Marshal the update
 		err := marshalSia(&buf, address, true, false)
 		if err != nil {
-			return errors.AddContext(err, "unable to encode persist portal")
+			return errors.AddContext(err, "unable to encode persisted portal")
 		}
 	}
 

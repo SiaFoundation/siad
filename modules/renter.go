@@ -964,6 +964,7 @@ type Renter interface {
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortalInfo, error)
 
+	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortalInfo, removals []NetAddress) error
 }
 

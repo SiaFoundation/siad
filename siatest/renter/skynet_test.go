@@ -1571,7 +1571,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
 	}
 	if spg.Portals[0] != portal1 {
-		t.Fatalf("Addresses don't match, expected %v got %v", portal1, spg.Portals[0])
+		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
 	}
 
 	// Remove the portal.
@@ -1595,7 +1595,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortalInfo{}
 	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
-	if !strings.Contains(err.Error(), "could not remove portal, address "+string(portal1.Address)+" not already listed") {
+	if !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
 		t.Fatal("portal should fail to be removed")
 	}
 
@@ -1634,7 +1634,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
 	}
 	if spg.Portals[0] != portal1 {
-		t.Fatalf("Addresses don't match, expected %v got %v", portal1, spg.Portals[0])
+		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
 	}
 
 	portal1.Public = true
@@ -1651,7 +1651,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	if spg.Portals[0] != portal1 {
-		t.Fatalf("Addresses don't match, expected %v got %v", portal1, spg.Portals[0])
+		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
 	}
 
 	// Test an invalid network address.

@@ -61,12 +61,13 @@ func TestPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer f.Close()
 	minNumBytes := int(metadataPageSize)
 	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = f.Close()
+	err = f.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +248,7 @@ func TestMarshalMetadata(t *testing.T) {
 	defer f.Close()
 
 	// Create empty struct of a skynet blacklist and set the length. Not using
-	// the New method to avoid overwritten persist file on disk
+	// the New method to avoid overwriting the persist file on disk.
 	sb := SkynetBlacklist{}
 	sb.persistLength = metadataPageSize
 

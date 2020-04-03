@@ -119,9 +119,9 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 		return errors.AddContext(err, "unable to marshal metadata")
 	}
 
-	// Sanity check that the metadataBytes are less than the metadatPageSize
+	// Sanity check that the metadataBytes are less than the metadataPageSize
 	if int64(len(metadataBytes)) > metadataPageSize {
-		err = fmt.Errorf("metadata is londer than the defined page size %v", len(metadataBytes))
+		err = fmt.Errorf("metadataBytes too long, %v > %v", len(metadataBytes), metadataPageSize)
 		build.Critical(err)
 		return err
 	}
