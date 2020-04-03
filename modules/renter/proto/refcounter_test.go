@@ -167,7 +167,7 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// set specific counts, so we can track drift
-	if err = rc.StartUpdate(); err != nil {
+	if err = rc.StartUpdate(-1); err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
 	updates := make([]writeaheadlog.Update, testSectorsCount)
@@ -192,7 +192,7 @@ func TestRefCounter(t *testing.T) {
 	var u writeaheadlog.Update
 	numSectorsBefore := rc.numSectors
 	updates = make([]writeaheadlog.Update, 0)
-	if err = rc.StartUpdate(); err != nil {
+	if err = rc.StartUpdate(-1); err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
 
@@ -296,7 +296,7 @@ func TestRefCounter(t *testing.T) {
 		t.Fatal(fmt.Sprintf("File size did not grow as expected, expected size: %d, actual size: %d", stats.Size()+4, midStats.Size()))
 	}
 
-	if err = rc.StartUpdate(); err != nil {
+	if err = rc.StartUpdate(-1); err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
 	// test DropSectors by dropping the two counters we added
@@ -337,7 +337,7 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// delete the ref counter
-	if err = rc.StartUpdate(); err != nil {
+	if err = rc.StartUpdate(-1); err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
 	if u, err = rc.DeleteRefCounter(); err != nil {
@@ -405,7 +405,7 @@ func TestUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// start an update session
-	if err = rc.StartUpdate(); err != nil {
+	if err = rc.StartUpdate(-1); err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
 	// delete the ref counter
@@ -439,7 +439,7 @@ func TestUpdateSessionConstraints(t *testing.T) {
 	rc.UpdateApplied()
 
 	// make sure we cannot start an update session on a deleted counter
-	if err = rc.StartUpdate(); err != ErrUpdateAfterDelete {
+	if err = rc.StartUpdate(-1); err != ErrUpdateAfterDelete {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
 	}
 }

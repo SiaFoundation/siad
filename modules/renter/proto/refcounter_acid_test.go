@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -20,6 +19,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
+
+var ErrTestTimeout = errors.New("test timeout has run out")
 
 // TestRefCounterFaultyDisk simulates interacting with a SiaFile on a faulty disk.
 func TestRefCounterFaultyDisk(t *testing.T) {
@@ -55,30 +56,22 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	var atomicNumRecoveries uint64
 	var atomicNumSuccessfulIterations uint64
 
+	// Keeps applying a random number of operations on the refcounter until
+	// an error occurs.
 	performUpdates := func(rcLocal *RefCounter, testDone <-chan time.Time) error {
-		// The loop applies a random number of operations on the file.
 		for {
-			select {
-			case <-testDone:
-				return nil
-			default:
-			}
-
-			fmt.Print(".")
 			err := preformUpdateOperations(rcLocal)
-			if errors.Contains(err, dependencies.ErrDiskFault) {
-				atomic.AddUint64(&atomicNumRecoveries, 1)
-				// 20% chance to auto-recover
-				if fastrand.Intn(100) < 20 {
-					fdd.Reset()
-					err = nil
-				}
-			}
 			if err != nil {
 				// we have an error, fake or not we should return
 				return err
 			}
 			atomic.AddUint64(&atomicNumSuccessfulIterations, 1)
+
+			select {
+			case <-testDone:
+				return nil
+			default:
+			}
 		}
 	}
 
@@ -92,13 +85,11 @@ OUTER:
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				//fmt.Println(" >> starting", n)
-				err = performUpdates(rc, testDone)
-				if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
+				errLocal := performUpdates(rc, testDone)
+				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
 					// We have a real error - fail the test
-					t.Error(err)
+					t.Error(errLocal)
 				}
-				//fmt.Println(" >> ending", n)
 			}(i)
 		}
 		wg.Wait()
@@ -109,7 +100,10 @@ OUTER:
 			break OUTER
 		default:
 			// there is still time, load the wal from disk and re-run the test
-			rc, err = reloadRefCounter(rcFilePath, walPath, fdd, &atomicNumRecoveries)
+			rc, err = reloadRefCounter(rcFilePath, walPath, fdd, &atomicNumRecoveries, testDone)
+			if errors.Contains(err, ErrTestTimeout) {
+				break OUTER
+			}
 			if err != nil {
 				t.Fatal("Failed to reload wal from disk:", err)
 			}
@@ -147,10 +141,16 @@ func loadWal(filepath string, walPath string, fdd *dependencies.DependencyFaulty
 // preformUpdateOperations executes a randomised set of updates within an
 // update session.
 func preformUpdateOperations(rc *RefCounter) (err error) {
-	err = rc.StartUpdate()
+	err = rc.StartUpdate(100 * time.Millisecond)
 	if err != nil {
+		// don't fail the test on a timeout on the lock
+		if errors.Contains(err, ErrTimeoutOnLock) {
+			err = nil
+		}
 		return
 	}
+	defer rc.UpdateApplied()
+
 	updates := []writeaheadlog.Update{}
 	var u writeaheadlog.Update
 
@@ -160,7 +160,7 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 			secIdx := fastrand.Uint64n(rc.numSectors)
 			// check if the operation is valid - we won't gain anything
 			// from hitting an overflow
-			if err = validateIncrement(rc, secIdx); err != nil {
+			if errValidate := validateIncrement(rc, secIdx); errValidate != nil {
 				continue
 			}
 			if u, err = rc.Increment(secIdx); err != nil {
@@ -176,7 +176,7 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 			secIdx := fastrand.Uint64n(rc.numSectors)
 			// check if the operation is valid - we won't gain anything
 			// from hitting an underflow
-			if err = validateDecrement(rc, secIdx); err != nil {
+			if errValidate := validateDecrement(rc, secIdx); errValidate != nil {
 				continue
 			}
 			if u, err = rc.Decrement(secIdx); err != nil {
@@ -199,7 +199,7 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 		secNum := fastrand.Uint64n(3)
 		// check if the operation is valid - we won't gain anything
 		// from running out of sectors
-		if err = validateDropSectors(rc, secNum); err == nil {
+		if errValidate := validateDropSectors(rc, secNum); errValidate == nil {
 			if u, err = rc.DropSectors(secNum); err != nil {
 				return
 			}
@@ -216,21 +216,27 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 		updates = append(updates, us...)
 	}
 
-	if len(updates) == 0 {
-		rc.UpdateApplied()
-		return nil
+	if len(updates) > 0 {
+		err = rc.CreateAndApplyTransaction(updates...)
 	}
-	if err = rc.CreateAndApplyTransaction(updates...); err != nil {
-		return
-	}
-	rc.UpdateApplied()
-	return nil
+	return
 }
 
 // reloadRefCounter tries to reload the file. This simulates failures during recovery.
-func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, atomicNumRecoveries *uint64) (*RefCounter, error) {
+func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, atomicNumRecoveries *uint64, testDone <-chan time.Time) (*RefCounter, error) {
 	// Try to reload the file. This simulates failures during recovery.
 	for tries := 1; ; tries++ {
+		select {
+		case <-testDone:
+			return nil, ErrTestTimeout
+		default:
+		}
+
+		// 20% chance to auto-recover
+		if fastrand.Intn(100) < 20 {
+			fdd.Reset()
+		}
+
 		// Every 10 times, we reset the dependency to avoid getting
 		// stuck here.
 		if tries%10 == 0 {

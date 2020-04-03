@@ -6,6 +6,9 @@ import (
 	"math"
 	"os"
 	"sync"
+	"time"
+
+	siasync "gitlab.com/NebulousLabs/Sia/sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 
@@ -25,6 +28,9 @@ var (
 	// ErrInvalidVersion is returned when the version of the file we are trying to
 	// read does not match the current RefCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
+
+	// ErrTimeoutOnLock is returned when we timeout on getting as lock
+	ErrTimeoutOnLock = errors.New("timeout while acquiring a lock ")
 
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
 	// called without an open update session
@@ -95,7 +101,7 @@ type (
 		// update session, so we can use them even before they are store on disk
 		newSectorCounts map[uint64]uint16
 		// muUpdates controls who can create and apply updates
-		muUpdate sync.Mutex
+		muUpdate siasync.TryMutex
 	}
 
 	// u16 is a utility type for ser/des of uint16 values
@@ -315,9 +321,17 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 }
 
 // StartUpdate acquires a lock, ensuring the caller is the only one currently
-// allowed to perform updates on this refcounter file.
-func (rc *RefCounter) StartUpdate() error {
-	rc.muUpdate.Lock()
+// allowed to perform updates on this refcounter file. Timeout is ignored if it
+// is negative.
+func (rc *RefCounter) StartUpdate(timeout time.Duration) error {
+	if timeout < 0 {
+		rc.muUpdate.Lock()
+	} else {
+		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
+			return ErrTimeoutOnLock
+		}
+	}
+
 	rc.Lock()
 	defer rc.Unlock()
 	if rc.isDeleted {
