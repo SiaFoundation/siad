@@ -64,6 +64,7 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"net"
@@ -109,6 +110,14 @@ var (
 		Standard: 10 * time.Minute,
 		Dev:      1 * time.Minute,
 		Testing:  5 * time.Second,
+	}).(time.Duration)
+
+	// pruneExpiredRPCPriceTableFrequency is the frequency at which the host
+	// checks if it can expire price tables that have an expiry in the past.
+	pruneExpiredRPCPriceTableFrequency = build.Select(build.Var{
+		Standard: 15 * time.Minute,
+		Dev:      5 * time.Minute,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 )
 
@@ -171,12 +180,13 @@ type Host struct {
 	// be locked separately.
 	lockedStorageObligations map[types.FileContractID]*lockedObligation
 
-	// The price table contains a set of RPC costs, along with an expiry that
-	// dictates up until what time the host guarantees the prices that are
-	// listed. These host's RPC prices are dynamic, and are subject to various
-	// conditions specific to the RPC in question. Examples of such conditions
-	// are congestion, load, liquidity, etc.
-	priceTable modules.RPCPriceTable
+	// A collection of rpc price tables, covered by its own RW mutex. It
+	// contains the host's current price table and the set of price tables the
+	// host has communicated to all renters, thus guaranteeing a set of prices
+	// for a fixed period of time. The host's RPC prices are dynamic, and are
+	// subject to various conditions specific to the RPC in question. Examples
+	// of such conditions are congestion, load, liquidity, etc.
+	staticPriceTables *hostPrices
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -189,12 +199,117 @@ type Host struct {
 	tg            siasync.ThreadGroup
 }
 
+// hostPrices is a helper type that wraps both the host's RPC price table and
+// the set of price tables containing prices it has guaranteed to all renters,
+// covered by a read write mutex to help lock contention. It contains a separate
+// minheap that enables efficiently purging expired price tables from the
+// 'guaranteed' map.
+type hostPrices struct {
+	current       modules.RPCPriceTable
+	guaranteed    map[types.Specifier]*modules.RPCPriceTable
+	staticMinHeap priceTableHeap
+	mu            sync.RWMutex
+}
+
+// managedCurrent returns the host's current price table
+func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
+	hp.mu.RLock()
+	defer hp.mu.RUnlock()
+	return hp.current
+}
+
+// managedUpdate overwrites the current price table with the one that's given
+func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
+	hp.mu.Lock()
+	defer hp.mu.Unlock()
+	hp.current = pt
+}
+
+// managedTrack adds the given price table to the 'guaranteed' map, that holds
+// all of the price tables the host has recently guaranteed to renters. It will
+// also add it to the heap which facilates efficient pruning of that map.
+func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
+	hp.mu.Lock()
+	hp.guaranteed[pt.UUID] = pt
+	hp.mu.Unlock()
+	hp.staticMinHeap.Push(pt)
+}
+
+// managedPruneExpired removes all of the price tables that have expired from
+// the 'guaranteed' map.
+func (hp *hostPrices) managedPruneExpired() {
+	expired := hp.staticMinHeap.PopExpired()
+	if len(expired) == 0 {
+		return
+	}
+	hp.mu.Lock()
+	for _, uuid := range expired {
+		delete(hp.guaranteed, uuid)
+	}
+	hp.mu.Unlock()
+}
+
 // lockedObligation is a helper type that locks a TryMutex and a counter to
 // indicate how many times the locked obligation has been fetched from the
 // lockedStorageObligations map already.
 type lockedObligation struct {
 	mu siasync.TryMutex
 	n  uint
+}
+
+// priceTableHeap is a helper type that contains a min heap of rpc price tables,
+// sorted on their expiry. The heap is guarded by its own mutex and allows for
+// peeking at the min expiry.
+type priceTableHeap struct {
+	heap rpcPriceTableHeap
+	mu   sync.Mutex
+}
+
+// PopExpired returns the UUIDs for all rpc price tables that have expired
+func (pth *priceTableHeap) PopExpired() (expired []types.Specifier) {
+	pth.mu.Lock()
+	defer pth.mu.Unlock()
+
+	now := time.Now().Unix()
+	for {
+		if pth.heap.Len() == 0 {
+			return
+		}
+
+		pt := heap.Pop(&pth.heap)
+		if now < pt.(*modules.RPCPriceTable).Expiry {
+			heap.Push(&pth.heap, pt)
+			break
+		}
+		expired = append(expired, pt.(*modules.RPCPriceTable).UUID)
+	}
+	return
+}
+
+// Push will add a price table to the heap.
+func (pth *priceTableHeap) Push(pt *modules.RPCPriceTable) {
+	pth.mu.Lock()
+	defer pth.mu.Unlock()
+	heap.Push(&pth.heap, pt)
+}
+
+// rpcPriceTableHeap is a min heap of rpc price tables
+type rpcPriceTableHeap []*modules.RPCPriceTable
+
+// Implementation of heap.Interface for rpcPriceTableHeap.
+func (pth rpcPriceTableHeap) Len() int           { return len(pth) }
+func (pth rpcPriceTableHeap) Less(i, j int) bool { return pth[i].Expiry < pth[j].Expiry }
+func (pth rpcPriceTableHeap) Swap(i, j int)      { pth[i], pth[j] = pth[j], pth[i] }
+func (pth *rpcPriceTableHeap) Push(x interface{}) {
+	pt := x.(*modules.RPCPriceTable)
+	*pth = append(*pth, pt)
+}
+func (pth *rpcPriceTableHeap) Pop() interface{} {
+	old := *pth
+	n := len(old)
+	pt := old[n-1]
+	*pth = old[0 : n-1]
+	return pt
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -244,8 +359,10 @@ func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
 	his := h.managedInternalSettings()
 	priceTable := modules.RPCPriceTable{
-		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
-		UpdatePriceTableCost: h.managedCalculateUpdatePriceTableRPCPrice(),
+		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+
+		// TODO: hardcoded cost should be updated to use a better value.
+		UpdatePriceTableCost: his.MinBaseRPCPrice,
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
 		InitBaseCost:   his.MinBaseRPCPrice,
@@ -255,9 +372,32 @@ func (h *Host) managedUpdatePriceTable() {
 	}
 
 	// update the pricetable
-	h.mu.Lock()
-	h.priceTable = priceTable
-	h.mu.Unlock()
+	h.staticPriceTables.managedUpdate(priceTable)
+}
+
+// threadedPruneExpiredPriceTables will expire price tables which have an expiry
+// in the past.
+//
+// Note: threadgroup counter must be inside for loop. If not, calling 'Flush'
+// on the threadgroup would deadlock.
+func (h *Host) threadedPruneExpiredPriceTables() {
+	for {
+		func() {
+			if err := h.tg.Add(); err != nil {
+				return
+			}
+			defer h.tg.Done()
+			h.staticPriceTables.managedPruneExpired()
+		}()
+
+		// Block until next cycle.
+		select {
+		case <-h.tg.StopChan():
+			return
+		case <-time.After(pruneExpiredRPCPriceTableFrequency):
+			continue
+		}
+	}
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.
@@ -290,7 +430,12 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
-
+		staticPriceTables: &hostPrices{
+			guaranteed: make(map[types.Specifier]*modules.RPCPriceTable),
+			staticMinHeap: priceTableHeap{
+				heap: make([]*modules.RPCPriceTable, 0),
+			},
+		},
 		persistDir: persistDir,
 	}
 
@@ -382,8 +527,11 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 
-	// Initialize the RPC price table.
+	// Initialize the RPC price table
 	h.managedUpdatePriceTable()
+
+	// Ensure the expired RPC tables get pruned as to not leak memory
+	go h.threadedPruneExpiredPriceTables()
 
 	return h, nil
 }

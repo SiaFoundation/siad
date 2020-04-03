@@ -23,7 +23,7 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
 	// Choose the appropriate protocol depending on the host version.
-	if build.VersionCmp(params.Host.Version, "1.4.4") >= 0 && !cs.deps.Disrupt("RenewWithoutClear") {
+	if build.VersionCmp(params.Host.Version, "1.4.4") >= 0 {
 		return cs.newRenewAndClear(oldContract, params, txnBuilder, tpool, hdb, cancel)
 	}
 	return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
@@ -434,7 +434,7 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 
 	// Create the final revision of the old contract.
 	bandwidthCost := host.BaseRPCPrice
-	finalRev, err := newRevision(contract.LastRevision(), bandwidthCost)
+	finalRev, err := contract.LastRevision().PaymentRevision(bandwidthCost)
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, errors.AddContext(err, "Unable to create final revision")
 	}
@@ -444,7 +444,7 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	finalRev.NewRevisionNumber = math.MaxUint64
 
 	// The missed proof outputs become the valid ones since the host won't need
-	// to provide a storage proof.
+	// to provide a storage proof. We need to preserve the void output though.
 	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
 
 	// Create the RenewContract request.
@@ -454,7 +454,9 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	}
 	for _, vpo := range finalRev.NewValidProofOutputs {
 		req.FinalValidProofValues = append(req.FinalValidProofValues, vpo.Value)
-		req.FinalMissedProofValues = append(req.FinalMissedProofValues, vpo.Value)
+	}
+	for _, mpo := range finalRev.NewMissedProofOutputs {
+		req.FinalMissedProofValues = append(req.FinalMissedProofValues, mpo.Value)
 	}
 
 	// Send the request.

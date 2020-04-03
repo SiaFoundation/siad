@@ -518,7 +518,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	hostSig := txn.TransactionSignatures[1].Signature
 
 	// Update the storage obligation.
-	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
+	paymentTransfer := currentRevision.ValidRenterPayout().Sub(newRevision.ValidRenterPayout())
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	err = h.managedModifyStorageObligation(s.so, nil, nil)
@@ -856,7 +856,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	}
 
 	// Update the storage obligation.
-	paymentTransfer := currentRevision.NewValidProofOutputs[0].Value.Sub(newRevision.NewValidProofOutputs[0].Value)
+	paymentTransfer := currentRevision.ValidRenterPayout().Sub(newRevision.ValidRenterPayout())
 	s.so.PotentialDownloadRevenue = s.so.PotentialDownloadRevenue.Add(paymentTransfer)
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	err = h.managedModifyStorageObligation(s.so, nil, nil)

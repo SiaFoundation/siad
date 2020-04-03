@@ -223,7 +223,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	if contract.RenterFunds().Cmp(cost) < 0 {
 		return modules.RenterContract{}, errors.New("contract has insufficient funds to support upload")
 	}
-	if contract.LastRevision().NewMissedProofOutputs[1].Value.Cmp(collateral) < 0 {
+	if contract.LastRevision().MissedHostOutput().Value.Cmp(collateral) < 0 {
 		// The contract doesn't have enough value in it to supply the
 		// collateral. Instead of giving up, have the host put up everything
 		// that remains, even if that is zero. The renter was aware when the
@@ -242,17 +242,18 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 		// this contract, the renter is aware that there isn't enough collateral
 		// remaining and is happy to use the contract anyway. Therefore this
 		// TODO should be moved to a different part of the codebase.
-		collateral = contract.LastRevision().NewMissedProofOutputs[1].Value
+		collateral = contract.LastRevision().MissedHostOutput().Value
 	}
 
 	// create the revision; we will update the Merkle root later
-	rev, err := newRevision(contract.LastRevision(), cost)
+	rev, err := contract.LastRevision().PaymentRevision(cost)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "Error creating new write revision")
 	}
 
-	rev.NewMissedProofOutputs[1].Value = rev.NewMissedProofOutputs[1].Value.Sub(collateral)
-	rev.NewMissedProofOutputs[2].Value = rev.NewMissedProofOutputs[2].Value.Add(collateral)
+	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
+	voidOutput, err := rev.MissedVoidOutput()
+	rev.SetMissedVoidPayout(voidOutput.Value.Add(collateral))
 	rev.NewFileSize = newFileSize
 
 	// create the request
@@ -727,7 +728,7 @@ func (s *Session) RecoverSectorRoots(lastRev types.FileContractRevision, sk cryp
 	}
 	bandwidthPrice := s.host.DownloadBandwidthPrice.Mul64(estBandwidth)
 	price := s.host.BaseRPCPrice.Add(bandwidthPrice)
-	if lastRev.RenterFunds().Cmp(price) < 0 {
+	if lastRev.ValidRenterPayout().Cmp(price) < 0 {
 		return types.Transaction{}, nil, errors.New("contract has insufficient funds to support sector roots download")
 	}
 	// To mitigate small errors (e.g. differing block heights), fudge the

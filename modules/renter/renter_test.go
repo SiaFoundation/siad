@@ -286,7 +286,6 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 // TestRenterPricesVolatility verifies that the renter caches its price

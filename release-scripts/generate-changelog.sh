@@ -5,6 +5,7 @@ set -e
 
 # config
 
+generate_till_version=v1.4.7
 changelog_md=../CHANGELOG.md
 changelog_files_dir=../changelog
 head_filename=changelog-head.md
@@ -28,20 +29,36 @@ function add_items {
     
     echo "  > writing $items_header"
     
-    items_header_written=false
+    section_has_items=false
     items_list=$(find ./"$version" -wholename "*/$items_folder/*.md" | sort)
+    new_line=false
     for item in $items_list
     do
-        if [ "$items_header_written" == false ]
+        if [ "$section_has_items" == false ]
     	then
-    	    items_header_written=true
+    	    section_has_items=true
     		echo "    > writing $items_header header"
     		echo "**$items_header**" >> "$changelog_md"
     		echo "    > writing $items_header"
     	fi
     	echo "      > $item"
-    	cat "$item" >> "$changelog_md"
+
+        # remove trailing new lines from items
+        # to fix markdown rendering
+        text=$(printf "%s" "$(< $item)")
+
+        # remove trailing spaces
+        # to fix markdown rendering
+        text=`echo $text | xargs -0`
+
+        echo "$text" >> "$changelog_md"
     done
+
+    # add new line to fix markdown rendering
+    if [ "$section_has_items" == true ]
+    then
+        echo "" >> "$changelog_md"
+    fi
 }
 
 # get script location
@@ -68,17 +85,51 @@ echo ---  end  ---
 
 # Write versions and add changelog items to the changelog
 echo writing versions to changelog...
+upcoming_version_found=false
 for version in $version_list
 do
-    echo ">  writing version header: $version"
-    echo "" >> "$changelog_md"
-    echo "### $version" >> "$changelog_md"
+    versions_compare="$version
+$generate_till_version"
     
-    add_items "Key Updates" "key-updates"
-    add_items "Bugs Fixed" "bugs-fixed"
-    add_items "Other" "other"
+    # check if current version should be included
+    if [ "$versions_compare" == "$(sort --version-sort <<< "$versions_compare")" ]
+    then
+        echo "version $version WILL be included to changelog file"
+        echo ">  writing version header: $version"
+        echo "" >> "$changelog_md"
+        
+        # echo current month in English and year in format
+        # '## Mar 2020:'
+        echo "## $(LC_ALL=C date +%b) $(date +%Y):"
+        
+        echo "### $version" >> "$changelog_md"
+        
+        add_items "Key Updates" "key-updates"
+        add_items "Bugs Fixed" "bugs-fixed"
+        add_items "Other" "other"
+    else
+        echo "version $version WILL NOT be included to changelog file"
+        upcoming_version_found=true
+    fi
 done
 echo writing versions to changelog: done
+
+# Generate upcoming version directory structure
+if [ "$upcoming_version_found" == false ]
+then
+    # Calculate new version from current version
+    upcoming_version=$(echo "$generate_till_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
+    echo "generating directory structure for upcoming version $upcoming_version ..."
+
+    for section in 'key-updates' 'bugs-fixed' 'other'
+    do
+        # create section directory
+        mkdir -p "$upcoming_version/$section"
+
+        # create dummy files for git commit to catch empty section directories
+        touch "$upcoming_version/$section/.init"
+    done
+fi
 
 # Write the tail of the changelog
 echo 'writing tail of changelog.md'

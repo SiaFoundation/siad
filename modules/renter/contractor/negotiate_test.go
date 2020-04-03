@@ -156,7 +156,6 @@ func TestNegotiateContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestReviseContract(t *testing.T) {
@@ -207,7 +206,7 @@ func TestReviseContract(t *testing.T) {
 	}
 	fc.MissedProofOutputs = []types.SiacoinOutput{
 		// same as above
-		fc.ValidProofOutputs[0],
+		fc.ValidRenterOutput(),
 		// goes to the void, not the hostdb
 		{Value: types.ZeroCurrency, UnlockHash: types.UnlockHash{}},
 	}

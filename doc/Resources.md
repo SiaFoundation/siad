@@ -17,18 +17,21 @@ Here is a list of technical documentation to help understand the different parts
 ### Module README's
 * Consensus - `coming soon`
 * Explorer - `coming soon`
-* Gateway - `coming soon`
-* Host - `coming soon`
+* [Gateway](../modules/gateway/README.md)
+* [Host](../modules/host/README.md)
     * Contract Manager - `coming soon`
 * Miner - `coming soon`
 * [Renter](../modules/renter/README.md)
-    * Contractor - `coming soon`
-    * HostDB - `coming soon`
-    * Proto - `coming soon`
-    * SiaDir - `coming soon`
-    * SiaFile - `coming soon`
+    * [Contractor](../modules/renter/contractor/README.md)
+    * [File System](../modules/renter/filesystem/README.md)
+        * [SiaDir](../modules/renter/filesystem/siadir/README.md)
+        * [SiaFile](../modules/renter/filesystem/siafile/README.md)
+    * [HostDB](../modules/renter/hostdb/README.md)
+        * [Hosttree](../modules/renter/hostdb/hosttree/README.md)
+    * [Proto](../modules/renter/proto/README.md)
+    * [Skynet Blacklist](../modules/renter/skynetblacklist/README.md)
 * Transaction Pool - `coming soon`
-* Wallet - `coming soon`
+* [Wallet](../modules/wallet/README.md)
 
 ### API
 The API documentation can be found [here](api/index.html.md) and at [sia.tech/docs](https://sia.tech/docs).

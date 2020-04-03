@@ -258,10 +258,12 @@ func TestHostInitialization(t *testing.T) {
 	}
 
 	// verify its RPC price table was properly initialised
-	if reflect.DeepEqual(ht.host.priceTable, modules.RPCPriceTable{}) {
+	ht.host.staticPriceTables.mu.RLock()
+	defer ht.host.staticPriceTables.mu.RUnlock()
+	if reflect.DeepEqual(ht.host.staticPriceTables.current, modules.RPCPriceTable{}) {
 		t.Fatal("RPC price table wasn't initialized")
 	}
-	if ht.host.priceTable.Expiry == 0 {
+	if ht.host.staticPriceTables.current.Expiry == 0 {
 		t.Fatal("RPC price table was not properly initialised")
 	}
 }

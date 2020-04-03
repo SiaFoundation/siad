@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
 	"gitlab.com/NebulousLabs/Sia/profile"
@@ -70,7 +71,7 @@ func processNetAddr(addr string) string {
 // invalid module character.
 func processModules(modules string) (string, error) {
 	modules = strings.ToLower(modules)
-	validModules := "cghmrtwe"
+	validModules := "cghmrtwef"
 	invalidModules := modules
 	for _, m := range validModules {
 		invalidModules = strings.Replace(invalidModules, string(m), "", 1)
@@ -118,7 +119,7 @@ func processConfig(config Config) (Config, error) {
 // stdin.
 func apiPassword(siaDir string) (string, error) {
 	// Check the environment variable.
-	pw := os.Getenv("SIA_API_PASSWORD")
+	pw := os.Getenv(cmd.SiaAPIPassword)
 	if pw != "" {
 		fmt.Println("Using SIA_API_PASSWORD environment variable")
 		return pw, nil
@@ -209,7 +210,7 @@ func installKillSignalHandler() chan os.Signal {
 // tryAutoUnlock will try to automatically unlock the server's wallet if the
 // environment variable is set.
 func tryAutoUnlock(srv *server.Server) {
-	if password := os.Getenv("SIA_WALLET_PASSWORD"); password != "" {
+	if password := os.Getenv(cmd.SiaWalletPassword); password != "" {
 		fmt.Println("Sia Wallet Password found, attempting to auto-unlock wallet")
 		if err := srv.Unlock(password); err != nil {
 			fmt.Println("Auto-unlock failed:", err)
@@ -310,6 +311,6 @@ func startDaemonCmd(cmd *cobra.Command, _ []string) {
 		die(err)
 	}
 
-	// Daemon seems to have closed cleanly. Print a 'closed' mesasge.
+	// Daemon seems to have closed cleanly. Print a 'closed' message.
 	fmt.Println("Shutdown complete.")
 }

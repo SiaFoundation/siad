@@ -402,21 +402,6 @@ func TestHostAndRentVanilla(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	success := false
-	for _, contract := range cts.Contracts {
-		if contract.ProofConfirmed {
-			// Sector roots should be removed from storage obligation
-			if contract.SectorRootsCount > 0 {
-				t.Error("There are sector roots on completed storage obligation.")
-			}
-			success = true
-			break
-		}
-	}
-	if !success {
-		t.Error("does not seem like the host has submitted a storage proof successfully to the network")
-	}
 }
 
 // TestHostAndRentMultiHost sets up an integration test where three hosts and a
@@ -1705,7 +1690,6 @@ func TestUploadedBytesReporting(t *testing.T) {
 		t.Fatalf("api reports having uploaded %v bytes when upload progress is 100%%, but the actual fully redundant file size is %v\n",
 			rf.File.UploadedBytes, fullyRedundantSize(rf.File.CipherType))
 	}
-
 }
 
 // TestRepairLoopBlocking checks if the repair loop blocks operations while a

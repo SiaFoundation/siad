@@ -73,7 +73,7 @@ type (
 
 	// accountsPersisterData contains all accounts data and fingerprints
 	accountsPersisterData struct {
-		accounts     map[string]*account
+		accounts     map[modules.AccountID]*account
 		fingerprints map[crypto.Hash]struct{}
 	}
 
@@ -184,7 +184,7 @@ func (ap *accountsPersister) newFingerprintManager() (_ *fingerprintManager, err
 
 // callLoadData loads all accounts data and fingerprints from disk
 func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
-	accounts := make(map[string]*account)
+	accounts := make(map[modules.AccountID]*account)
 	fingerprints := make(map[crypto.Hash]struct{})
 
 	// Load accounts
@@ -370,7 +370,6 @@ func (ap *accountsPersister) openAccountsFile(path string) (modules.File, error)
 func (ap *accountsPersister) openFingerprintBucket(path string) (modules.File, error) {
 	// open file in append-only mode and create if it does not exist yet
 	return ap.openFileWithMetadata(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, fingerprintsMetadata)
-
 }
 
 // openFileWithMetadata will open the file at given path. If the file did not
@@ -399,7 +398,7 @@ func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metada
 }
 
 // loadAccounts will read the given file and load the accounts into the map
-func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*account) error {
+func (ap *accountsPersister) loadAccounts(file modules.File, m map[modules.AccountID]*account) error {
 	bytes, err := ioutil.ReadFile(file.Name())
 	if err != nil {
 		return errors.AddContext(err, "could not read accounts file")
@@ -578,7 +577,7 @@ func (fm *fingerprintManager) syncAndClose() error {
 // contain all data we persist to disk
 func (a *account) accountData() *accountData {
 	spk := types.SiaPublicKey{}
-	spk.LoadString(a.id)
+	spk.LoadString(string(a.id))
 	return &accountData{
 		Id:          spk,
 		Balance:     a.balance,
@@ -590,7 +589,7 @@ func (a *account) accountData() *accountData {
 // keep in memory
 func (a *accountData) account(index uint32) *account {
 	return &account{
-		id:                 a.Id.String(),
+		id:                 modules.AccountID(a.Id.String()),
 		balance:            a.Balance,
 		lastTxnTime:        a.LastTxnTime,
 		index:              index,

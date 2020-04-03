@@ -5,6 +5,7 @@ package types
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -14,6 +15,18 @@ var (
 	// ProofValid indicates that a valid StorageProof was submitted within the
 	// proof window.
 	ProofValid ProofStatus = true
+
+	// ErrRevisionCostTooHigh indicates that a new revision can't be created
+	// because the cost is higher than the available funds.
+	ErrRevisionCostTooHigh = errors.New("Can't create new revision with this cost. Not enough funds remaining to cover it")
+
+	// ErrRevisionCollateralTooLow indicates that a new revision can't be created
+	// because the available collateral is too low.
+	ErrRevisionCollateralTooLow = errors.New("Can't create new revision with this collateral. Not enough funds remaining to cover it")
+
+	// ErrMissingVoidOutput is the error returned when the void output of a
+	// contract or revision is accessed that no longer has one.
+	ErrMissingVoidOutput = errors.New("void output is missing")
 )
 
 type (
@@ -108,16 +121,181 @@ func (fcr FileContractRevision) HostPublicKey() SiaPublicKey {
 	return fcr.UnlockConditions.PublicKeys[1]
 }
 
-// RenterFunds returns the amount of funds in the contract's renter payout.
-// This method will panic on an incomplete revision.
-func (fcr FileContractRevision) RenterFunds() Currency {
-	return fcr.NewValidProofOutputs[0].Value
+// PaymentRevision returns a copy of the revision with incremented revision
+// number where the given amount has moved from renter to the host.
+func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRevision, error) {
+	rev := fcr
+
+	// need to manually copy slice memory
+	rev.NewValidProofOutputs = append([]SiacoinOutput{}, fcr.NewValidProofOutputs...)
+	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, fcr.NewMissedProofOutputs...)
+
+	// Check that there are enough funds to pay this cost.
+	if fcr.ValidRenterPayout().Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "valid proof output smaller than cost")
+	}
+	if fcr.MissedRenterOutput().Value.Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "missed proof output smaller than cost")
+	}
+
+	// move valid payout from renter to host
+	rev.SetValidRenterPayout(fcr.ValidRenterPayout().Sub(amount))
+	rev.SetValidHostPayout(fcr.ValidHostPayout().Add(amount))
+
+	// move missed payout from renter to void
+	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
+	voidOutput, err := fcr.MissedVoidOutput()
+	if err != nil {
+		return FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
+	}
+	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(amount))
+	if err != nil {
+		return FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
+	}
+
+	// increment revision number
+	rev.NewRevisionNumber++
+	return rev, nil
 }
 
 // EndHeight returns the height at which the host is no longer obligated to
 // store the contract data.
 func (fcr FileContractRevision) EndHeight() BlockHeight {
 	return fcr.NewWindowStart
+}
+
+// SetValidRenterPayout sets the value of the renter's valid proof output.
+func (fc FileContract) SetValidRenterPayout(value Currency) {
+	fc.ValidProofOutputs[0].Value = value
+}
+
+// SetValidHostPayout sets the value of the host's valid proof output.
+func (fc FileContract) SetValidHostPayout(value Currency) {
+	fc.ValidProofOutputs[1].Value = value
+}
+
+// SetMissedRenterPayout sets the value of the renter's missed proof output.
+func (fc FileContract) SetMissedRenterPayout(value Currency) {
+	fc.MissedProofOutputs[0].Value = value
+}
+
+// SetMissedHostPayout sets the value of the host's missed proof output.
+func (fc FileContract) SetMissedHostPayout(value Currency) {
+	fc.MissedProofOutputs[1].Value = value
+}
+
+// SetMissedVoidPayout sets the value of the void's missed proof output.
+func (fc FileContract) SetMissedVoidPayout(value Currency) error {
+	if len(fc.MissedProofOutputs) <= 2 {
+		return ErrMissingVoidOutput
+	}
+	fc.MissedProofOutputs[2].Value = value
+	return nil
+}
+
+// ValidRenterOutput gets the renter's valid proof output.
+func (fc FileContract) ValidRenterOutput() SiacoinOutput {
+	return fc.ValidProofOutputs[0]
+}
+
+// ValidRenterPayout gets the value of the renter's valid proof output.
+func (fc FileContract) ValidRenterPayout() Currency {
+	return fc.ValidRenterOutput().Value
+}
+
+// ValidHostOutput sets gets host's missed proof output.
+func (fc FileContract) ValidHostOutput() SiacoinOutput {
+	return fc.ValidProofOutputs[1]
+}
+
+// ValidHostPayout gets the value of the host's valid proof output.
+func (fc FileContract) ValidHostPayout() Currency {
+	return fc.ValidHostOutput().Value
+}
+
+// MissedRenterOutput gets the renter's missed proof output.
+func (fc FileContract) MissedRenterOutput() SiacoinOutput {
+	return fc.MissedProofOutputs[0]
+}
+
+// MissedHostOutput gets the host's missed proof output.
+func (fc FileContract) MissedHostOutput() SiacoinOutput {
+	return fc.MissedProofOutputs[1]
+}
+
+// MissedVoidOutput gets the void's missed proof output.
+func (fc FileContract) MissedVoidOutput() (SiacoinOutput, error) {
+	if len(fc.MissedProofOutputs) <= 2 {
+		return SiacoinOutput{}, ErrMissingVoidOutput
+	}
+	return fc.MissedProofOutputs[2], nil
+}
+
+// SetValidRenterPayout sets the renter's valid proof output.
+func (fcr FileContractRevision) SetValidRenterPayout(value Currency) {
+	fcr.NewValidProofOutputs[0].Value = value
+}
+
+// SetValidHostPayout sets the host's valid proof output.
+func (fcr FileContractRevision) SetValidHostPayout(value Currency) {
+	fcr.NewValidProofOutputs[1].Value = value
+}
+
+// SetMissedRenterPayout sets the renter's missed proof output.
+func (fcr FileContractRevision) SetMissedRenterPayout(value Currency) {
+	fcr.NewMissedProofOutputs[0].Value = value
+}
+
+// SetMissedHostPayout sets the host's missed proof output.
+func (fcr FileContractRevision) SetMissedHostPayout(value Currency) {
+	fcr.NewMissedProofOutputs[1].Value = value
+}
+
+// SetMissedVoidPayout sets the void's missed proof output.
+func (fcr FileContractRevision) SetMissedVoidPayout(value Currency) error {
+	if len(fcr.NewMissedProofOutputs) <= 2 {
+		return ErrMissingVoidOutput
+	}
+	fcr.NewMissedProofOutputs[2].Value = value
+	return nil
+}
+
+// ValidRenterOutput gets the renter's valid proof output.
+func (fcr FileContractRevision) ValidRenterOutput() SiacoinOutput {
+	return fcr.NewValidProofOutputs[0]
+}
+
+// ValidRenterPayout gets the value of the renter's valid proof output.
+func (fcr FileContractRevision) ValidRenterPayout() Currency {
+	return fcr.ValidRenterOutput().Value
+}
+
+// ValidHostOutput sets gets host's missed proof output.
+func (fcr FileContractRevision) ValidHostOutput() SiacoinOutput {
+	return fcr.NewValidProofOutputs[1]
+}
+
+// ValidHostPayout gets the value of the host's valid proof output.
+func (fcr FileContractRevision) ValidHostPayout() Currency {
+	return fcr.ValidHostOutput().Value
+}
+
+// MissedRenterOutput gets the renter's missed proof output.
+func (fcr FileContractRevision) MissedRenterOutput() SiacoinOutput {
+	return fcr.NewMissedProofOutputs[0]
+}
+
+// MissedHostOutput gets the host's missed proof output.
+func (fcr FileContractRevision) MissedHostOutput() SiacoinOutput {
+	return fcr.NewMissedProofOutputs[1]
+}
+
+// MissedVoidOutput gets the void's missed proof output.
+func (fcr FileContractRevision) MissedVoidOutput() (SiacoinOutput, error) {
+	if len(fcr.NewMissedProofOutputs) <= 2 {
+		return SiacoinOutput{}, ErrMissingVoidOutput
+	}
+	return fcr.NewMissedProofOutputs[2], nil
 }
 
 // StorageProofOutputID returns the ID of an output created by a file

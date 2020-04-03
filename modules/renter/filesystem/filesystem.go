@@ -41,7 +41,7 @@ type (
 		DirNode
 	}
 
-	// node is a struct that contains the commmon fields of every node.
+	// node is a struct that contains the common fields of every node.
 	node struct {
 		// fields that all copies of a node share.
 		path      *string
