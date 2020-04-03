@@ -769,14 +769,6 @@ func (sf *SiaFile) saveHeaderUpdates() (_ []writeaheadlog.Update, err error) {
 	// Create a list of updates which need to be applied to save the metadata.
 	var updates []writeaheadlog.Update
 
-	// backup the changed metadata before changing it. Revert the change on
-	// error.
-	defer func(backup Metadata) {
-		if err != nil {
-			sf.staticMetadata.restore(backup)
-		}
-	}(sf.staticMetadata.backup())
-
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)
 	if err != nil {

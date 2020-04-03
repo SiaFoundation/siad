@@ -136,7 +136,7 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		sf.staticMetadata.PubKeyTableOffset = int64(fastrand.Uint64n(100))
 		sf.staticMetadata.Skylinks = make([]string, fastrand.Intn(10))
 
-		// Error occured after changing the fields.
+		// Error occurred after changing the fields.
 		return errors.New("")
 	}()
 	// Fields should be the same as before.
