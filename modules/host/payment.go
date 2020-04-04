@@ -131,7 +131,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 // method is very similar to managedPayByContract, however it has to be separate
 // due to the orchestration required to both fund the ephemeral account and
 // fsync the storage obligation to disk. See `callDeposit` for more details.
-func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAccountRequest, cost types.Currency) (types.Currency, error) {
+func (h *Host) thmanagedFundAccount(stream siamux.Stream, request modules.FundAccountRequest, cost types.Currency) (types.Currency, error) {
 	// read the PayByContractRequest
 	var pbcr modules.PayByContractRequest
 	if err := modules.RPCRead(stream, &pbcr); err != nil {

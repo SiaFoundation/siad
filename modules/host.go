@@ -108,8 +108,9 @@ type (
 		ContractCompensation          types.Currency `json:"contractcompensation"`
 		PotentialContractCompensation types.Currency `json:"potentialcontractcompensation"`
 
-		// Metrics related to storage proofs, collateral, and submitting
-		// transactions to the blockchain.
+		// Metrics related to ephemeral account funding, storage proofs,
+		// collateral, and submitting transactions to the blockchain.
+		FundAccountRevenue      types.Currency `json:"fundaccountrevenue"`
 		LockedStorageCollateral types.Currency `json:"lockedstoragecollateral"`
 		LostRevenue             types.Currency `json:"lostrevenue"`
 		LostStorageCollateral   types.Currency `json:"loststoragecollateral"`
@@ -167,6 +168,7 @@ type (
 	StorageObligation struct {
 		ContractCost             types.Currency       `json:"contractcost"`
 		DataSize                 uint64               `json:"datasize"`
+		FundAccountRevenue       types.Currency       `json:"fundaccountrevenue"`
 		LockedCollateral         types.Currency       `json:"lockedcollateral"`
 		ObligationId             types.FileContractID `json:"obligationid"`
 		PotentialDownloadRevenue types.Currency       `json:"potentialdownloadrevenue"`
