@@ -249,7 +249,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	if !(cts.Contracts[0].PotentialDownloadRevenue.IsZero() && cts.Contracts[0].PotentialUploadRevenue.IsZero() && cts.Contracts[0].PotentialStorageRevenue.IsZero()) {
 		t.Error("Potential values not zero in new contract.")
 	}
-	// Check if FundAccountRevenue is zero
+	// Check if fund account revenue is zero
 	if !cts.Contracts[0].FundAccountRevenue.IsZero() {
 		t.Error("FundAccountRevenue not zero in new contract.")
 	}
@@ -391,7 +391,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	if cts.Contracts[0].PotentialDownloadRevenue.IsZero() || cts.Contracts[0].PotentialUploadRevenue.IsZero() || cts.Contracts[0].PotentialStorageRevenue.IsZero() {
 		t.Error("Potential revenue value is zero for used obligation.")
 	}
-	// FundAccountRevenue should still be zero
+	// Fund account revenue should still be zero
 	if !cts.Contracts[0].FundAccountRevenue.IsZero() {
 		t.Error("FundAccount revenue is not zero for used obligation, even though it was not used to fund an ephemeral account with.")
 	}
