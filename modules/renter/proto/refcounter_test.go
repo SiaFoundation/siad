@@ -35,7 +35,7 @@ func TestRefCounter_Count(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	sec := uint64(2)
+	sec := uint64(1)
 	val := uint16(21)
 
 	// set up the expected value on disk
