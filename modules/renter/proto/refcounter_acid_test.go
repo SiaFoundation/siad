@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -20,7 +21,16 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
+// ErrTestTimeout is returned when the time allotted for testing runs out. It's
+// not a real error in the sense that it doesn't cause the test to fail.
 var ErrTestTimeout = errors.New("test timeout has run out")
+
+// status allows us to manually keep track of all the changes that happen to a
+// refcounter in order to validate them
+type status struct {
+	counts []uint16
+	sync.Mutex
+}
 
 // TestRefCounterFaultyDisk simulates interacting with a SiaFile on a faulty disk.
 func TestRefCounterFaultyDisk(t *testing.T) {
@@ -46,10 +56,19 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	rcFilePath := filepath.Join(testDir, testContractID.String()+refCounterExtension)
 	// Create the faulty disk dependency
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
-	// attach it to the refcounter
+	// Attach it to the refcounter
 	rc, err := NewCustomRefCounter(rcFilePath, 200, wal, fdd)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
+	}
+
+	// Create a struct to monitor all changes happening to the test refcounter.
+	// At the end we'll use it to validate all changes.
+	statusTracker := &status{
+		counts: make([]uint16, rc.numSectors),
+	}
+	for i := uint64(0); i < rc.numSectors; i++ {
+		statusTracker.counts[i] = 1
 	}
 
 	// stat counters
@@ -58,9 +77,9 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// Keeps applying a random number of operations on the refcounter until
 	// an error occurs.
-	performUpdates := func(rcLocal *RefCounter, doneChan <-chan struct{}) error {
+	performUpdates := func(rcLocal *RefCounter, st *status, doneChan <-chan struct{}) error {
 		for {
-			err := preformUpdateOperations(rcLocal)
+			err := preformUpdateOperations(rcLocal, st)
 			if err != nil {
 				// we have an error, fake or not we should return
 				return err
@@ -92,7 +111,7 @@ OUTER:
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				errLocal := performUpdates(rc, doneChan)
+				errLocal := performUpdates(rc, statusTracker, doneChan)
 				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
 					// We have a real error - fail the test
 					t.Error(errLocal)
@@ -115,6 +134,24 @@ OUTER:
 				t.Fatal("Failed to reload wal from disk:", err)
 			}
 		}
+	}
+
+	// Validate changes
+	if rc.numSectors != uint64(len(statusTracker.counts)) {
+		t.Fatalf("Expected %d sectors, got %d", uint64(len(statusTracker.counts)), rc.numSectors)
+	}
+	errorList := make([]error, 0)
+	for i := uint64(0); i < rc.numSectors; i++ {
+		n, err := rc.readCount(i)
+		if err != nil {
+			t.Fatal("Failed to read count:", err)
+		}
+		if n != statusTracker.counts[i] {
+			errorList = append(errorList, fmt.Errorf("Expected sector count value of sector %d to be %d, got %d", i, statusTracker.counts[i], n))
+		}
+	}
+	if len(errorList) > 0 {
+		t.Fatal("Sector count values do not match expectations!", errors.Compose(errorList...))
 	}
 
 	t.Logf("\nRecovered from %v disk failures\n", atomicNumRecoveries)
@@ -147,7 +184,7 @@ func loadWal(filepath string, walPath string, fdd *dependencies.DependencyFaulty
 
 // preformUpdateOperations executes a randomised set of updates within an
 // update session.
-func preformUpdateOperations(rc *RefCounter) (err error) {
+func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 	err = rc.StartUpdate(100 * time.Millisecond)
 	if err != nil {
 		// don't fail the test on a timeout on the lock
@@ -173,6 +210,9 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 			if u, err = rc.Increment(secIdx); err != nil {
 				return
 			}
+			st.Lock()
+			st.counts[secIdx]++
+			st.Unlock()
 			updates = append(updates, u)
 		}
 	}
@@ -189,6 +229,9 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 			if u, err = rc.Decrement(secIdx); err != nil {
 				return
 			}
+			st.Lock()
+			st.counts[secIdx]--
+			st.Unlock()
 			updates = append(updates, u)
 		}
 	}
@@ -198,6 +241,9 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 		if u, err = rc.Append(); err != nil {
 			return
 		}
+		st.Lock()
+		st.counts = append(st.counts, 1)
+		st.Unlock()
 		updates = append(updates, u)
 	}
 
@@ -210,6 +256,9 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 			if u, err = rc.DropSectors(secNum); err != nil {
 				return
 			}
+			st.Lock()
+			st.counts = st.counts[:len(st.counts)-int(secNum)]
+			st.Unlock()
 			updates = append(updates, u)
 		}
 	}
@@ -217,9 +266,14 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 	// 20% chance to swap sectors
 	if fastrand.Intn(100) < 20 {
 		var us []writeaheadlog.Update
-		if us, err = rc.Swap(fastrand.Uint64n(rc.numSectors), fastrand.Uint64n(rc.numSectors)); err != nil {
+		secIdx1 := fastrand.Uint64n(rc.numSectors)
+		secIdx2 := fastrand.Uint64n(rc.numSectors)
+		if us, err = rc.Swap(secIdx1, secIdx2); err != nil {
 			return
 		}
+		st.Lock()
+		st.counts[secIdx1], st.counts[secIdx2] = st.counts[secIdx2], st.counts[secIdx1]
+		st.Unlock()
 		updates = append(updates, us...)
 	}
 
