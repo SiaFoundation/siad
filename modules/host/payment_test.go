@@ -247,9 +247,9 @@ func TestProcessParallelPayments(t *testing.T) {
 	// determine a reasonable timeout
 	var timeout time.Duration
 	if build.VLONG {
-		timeout = time.Minute
+		timeout = 5 * time.Minute
 	} else {
-		timeout = 10 * time.Second
+		timeout = time.Minute
 	}
 
 	// setup the host
@@ -325,7 +325,7 @@ func TestProcessParallelPayments(t *testing.T) {
 					atomic.AddUint64(&eaPayments, 1)
 				}
 
-				// compare amount paid to what we expect, fail fast on error
+				// compare amount paid to what we expect
 				if err != nil {
 					t.Error(err)
 					break LOOP
