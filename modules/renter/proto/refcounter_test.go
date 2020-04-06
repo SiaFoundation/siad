@@ -672,9 +672,9 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 	}
 }
 
-// TestRefCounter_numSectorsUnderflow tests an NDF that's happening in
-// various methods when numSectors is zero and we check the sector index to be
-// read against numSectors-1
+// TestRefCounter_numSectorsUnderflow tests for and guards against an NDF that
+// can happen in various methods when numSectors is zero and we check the sector
+// index to be read against numSectors-1.
 func TestRefCounter_numSectorsUnderflow(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
