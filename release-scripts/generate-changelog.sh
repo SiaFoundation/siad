@@ -45,11 +45,7 @@ function add_items {
 
         # remove trailing new lines from items
         # to fix markdown rendering
-        text=$(printf "%s" "$(< $item)")
-
-        # remove trailing spaces
-        # to fix markdown rendering
-        text=`echo $text | xargs -0`
+        text="$(printf "%s" "$(< $item)")"
 
         echo "$text" >> "$changelog_md"
     done
