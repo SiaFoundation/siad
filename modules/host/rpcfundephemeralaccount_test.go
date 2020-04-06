@@ -41,7 +41,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		Key:       rpk[:],
 	}
 
-	// setup storage obligationn (emulating a renter creating a contract)
+	// setup storage obligation (emulating a renter creating a contract)
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
 		t.Fatal(err)
