@@ -130,7 +130,7 @@ func TestInstructionReadSector(t *testing.T) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.AdditionalCollateral.Equals(collateral) {
-			t.Fatalf("collateral doesnt't match expected colalteral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
+			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
