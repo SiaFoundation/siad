@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -25,6 +26,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -2004,5 +2007,37 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if skStr != sk3Str {
 		t.Fatal("Expected same Skykey string")
+	}
+
+	// Test misuse of the /skynet/skykey endpoint using an UnsafeClient.
+	uc := client.NewUnsafeClient(r.Client)
+
+	// Passing in 0 params shouild return an error.
+	baseQuery := "/skynet/skykey"
+	var skykeyGet api.SkykeyGET
+	err = uc.Get(baseQuery, &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Passing in 2 params shouild return an error.
+	values := url.Values{}
+	values.Set("name", "testkey1")
+	values.Set("id", skID.ToString())
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Sanity check: uc.Get should return the same value as the safe client
+	// method.
+	values = url.Values{}
+	values.Set("name", "testkey1")
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skykeyGet.Skykey != sk2Str {
+		t.Fatal("Expected same result from  unsafe client")
 	}
 }
