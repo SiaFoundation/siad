@@ -100,12 +100,4 @@ var (
 	// ErrBadHostVersion indicates that the host is using an older, incompatible
 	// version of the renter-host protocol.
 	ErrBadHostVersion = errors.New("Bad host version; host does not support required protocols")
-
-	// errRevisionCostTooHigh indicates that a new revision can't be created
-	// because the cost is higher than the available funds.
-	errRevisionCostTooHigh = errors.New("Can't create new revision with this cost. Not enough funds remaining to cover it")
-
-	// errRevisionCollateralTooLow indicates that a new revision can't be created
-	// because the available collateral is too low.
-	errRevisionCollateralTooLow = errors.New("Can't create new revision with this collateral. Not enough funds remaining to cover it")
 )
