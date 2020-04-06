@@ -193,7 +193,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	}}
 
 	// track the fund account revenue
-	so.FundAccountRevenue = so.FundAccountRevenue.Add(deposit)
+	so.AccountFunding = so.AccountFunding.Add(deposit)
 
 	// update the storage obligation
 	err = h.managedModifyStorageObligation(so, nil, nil)

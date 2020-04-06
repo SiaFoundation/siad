@@ -3,8 +3,11 @@ package host
 import (
 	"testing"
 
+	"fmt"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestStorageObligationID checks that the return function of the storage
@@ -167,6 +170,96 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	err = so.Update([]crypto.Hash{sectorRoot, sectorRoot2, sectorRoot3}, nil, map[crypto.Hash][]byte{sectorRoot3: sectorData})
 	if err == nil {
 		t.Fatal("Expected Update to fail on unlocked SO")
+	}
+}
+
+// TestAccountFundingTracking verifies the AccountFunding field is properly
+// updated when the SOs lifecycle methods get called on the host.
+func TestAccountFundingTracking(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	expectDelta := func(amount int64, action string, f func() error) error {
+		before := ht.host.FinancialMetrics().AccountFunding
+		if err := f(); err != nil {
+			return err
+		}
+
+		if amount > 0 {
+			delta := ht.host.FinancialMetrics().AccountFunding.Sub(before)
+			if !delta.Equals64(uint64(amount)) {
+				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '%v'", action, amount, delta.HumanString())
+			}
+		} else {
+			delta := before.Sub(ht.host.FinancialMetrics().AccountFunding)
+			if !delta.Equals64(uint64(amount * -1)) {
+				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '-%v'", action, amount, delta.HumanString())
+			}
+		}
+
+		return nil
+	}
+
+	// assert account funding is 0 on new host
+	af := ht.host.FinancialMetrics().AccountFunding
+	if !af.IsZero() {
+		t.Fatalf("Expected account funding to be zero but was '%v'", af.HumanString())
+	}
+
+	// create a storage obligation
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedLockStorageObligation(so.id())
+	defer ht.host.managedUnlockStorageObligation(so.id())
+
+	// add the storage obligation
+	so.AccountFunding = so.AccountFunding.Add64(1)
+	if err = expectDelta(1, "add SO", func() error {
+		return ht.host.managedAddStorageObligation(so, false)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// modify the storage obligation
+	so.AccountFunding = so.AccountFunding.Add64(2)
+	if err = expectDelta(2, "modify SO", func() error {
+		return ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte, 0))
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// delete the storage obligation
+	if err = expectDelta(0, "delete SO", func() error {
+		return ht.host.removeStorageObligation(so, obligationSucceeded)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// reset the host's financial metrics
+	if err = expectDelta(0, "reset FM", func() error {
+		return ht.host.resetFinancialMetrics()
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// prune stale obligations - note that we will fake the SO being deleted
+	// from the database instead of mocking the conditions for it to be pruned.
+	// This to avoid having to manually delete the transaction after it have
+	// being confirmed
+	if err = expectDelta(-3, "prune stale SOs", func() error {
+		return errors.Compose(ht.host.deleteStorageObligations([]types.FileContractID{so.id()}), ht.host.PruneStaleStorageObligations())
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
