@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -108,18 +107,17 @@ func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemove
 func newTestPriceTable() modules.RPCPriceTable {
 	return modules.RPCPriceTable{
 		Expiry:               time.Now().Add(time.Minute).Unix(),
-		UpdatePriceTableCost: host.DefaultBaseRPCPrice,
-		InitBaseCost:         host.DefaultBaseRPCPrice,
-		// Convert the default storage price from per month to per minute.
-		MemoryTimeCost:       host.DefaultStoragePrice.Div64(30 * 24 * 60),
+		UpdatePriceTableCost: types.NewCurrency64(1),
+		InitBaseCost:         types.NewCurrency64(1),
+		MemoryTimeCost:       types.NewCurrency64(1),
 
-		DropSectorsBaseCost:   host.DefaultBaseRPCPrice,
-		DropSectorsLengthCost: host.DefaultSectorAccessPrice,
-		ReadBaseCost:          host.DefaultBaseRPCPrice,
-		ReadLengthCost:        host.DefaultDownloadBandwidthPrice,
-		WriteBaseCost:         host.DefaultBaseRPCPrice,
-		WriteLengthCost:       host.DefaultUploadBandwidthPrice,
-		WriteStoreCost:        host.DefaultStoragePrice,
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
+		ReadBaseCost:        types.NewCurrency64(1),
+		ReadLengthCost:      types.NewCurrency64(1),
+		WriteBaseCost:       types.NewCurrency64(1),
+		WriteLengthCost:     types.NewCurrency64(1),
+		WriteStoreCost:      types.NewCurrency64(1),
 	}
 }
 

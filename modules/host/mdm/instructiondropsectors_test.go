@@ -38,7 +38,7 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 	i := NewDropSectorsInstruction(dataOffset, true)
 	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
 
-	time := modules.MDMTimeDropSectorsBase + modules.MDMTimeDropSingleSector * numSectorsDropped
+	time := modules.MDMTimeDropSectorsBase + modules.MDMTimeDropSingleSector*numSectorsDropped
 	cost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
 	return i, cost, refund, modules.MDMDropSectorsMemory(), time
 }

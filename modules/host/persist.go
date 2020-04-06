@@ -64,12 +64,12 @@ func (h *Host) establishDefaults() error {
 		CollateralBudget: defaultCollateralBudget,
 		MaxCollateral:    defaultMaxCollateral,
 
-		MinBaseRPCPrice:           DefaultBaseRPCPrice,
+		MinBaseRPCPrice:           defaultBaseRPCPrice,
 		MinContractPrice:          defaultContractPrice,
-		MinDownloadBandwidthPrice: DefaultDownloadBandwidthPrice,
-		MinSectorAccessPrice:      DefaultSectorAccessPrice,
+		MinDownloadBandwidthPrice: defaultDownloadBandwidthPrice,
+		MinSectorAccessPrice:      defaultSectorAccessPrice,
 		MinStoragePrice:           DefaultStoragePrice,
-		MinUploadBandwidthPrice:   DefaultUploadBandwidthPrice,
+		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
 
 		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,

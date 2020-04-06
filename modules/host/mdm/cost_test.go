@@ -3,10 +3,30 @@ package mdm
 import (
 	"math"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+func newCustomPriceTable() modules.RPCPriceTable {
+	zc := types.ZeroCurrency
+	return modules.RPCPriceTable{
+		Expiry:               time.Now().Add(time.Minute).Unix(),
+		UpdatePriceTableCost: zc,
+		InitBaseCost:         zc,
+		MemoryTimeCost:       zc,
+
+		DropSectorsBaseCost: zc,
+		DropSectorsUnitCost: zc,
+		ReadBaseCost:        zc,
+		ReadLengthCost:      zc,
+		WriteBaseCost:       zc,
+		WriteLengthCost:     zc,
+		WriteStoreCost:      host.DefaultStoragePrice,
+	}
+}
 
 // TestCostForAppendProgram calculates the cost for a program which appends 1
 // TiB of data.
@@ -14,7 +34,7 @@ import (
 // NOTE: We use a modified cost function for Append which returns the cost for
 // production-sized sectors, as sectors in testing are only 4 KiB.
 func TestCostForAppendProgram(t *testing.T) {
-	pt := newTestPriceTable()
+	pt := newCustomPriceTable()
 
 	// Define helper variables.
 	sc := types.SiacoinPrecision
@@ -36,7 +56,7 @@ func TestCostForAppendProgram(t *testing.T) {
 	}
 	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))
 
-	expectedCost := sc.Mul64(321) // 321.1 SC
+	expectedCost := host.DefaultStoragePrice.Mul64(modules.SectorSizeStandard)
 	if !aboutEquals(expectedCost, runningCost) {
 		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
 	}
@@ -64,64 +84,24 @@ func appendTrueCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
 // TestCosts tests the costs for individual instructions so that we have a sense
 // of their relative costs and to make sure they are sensible values.
 func TestCosts(t *testing.T) {
-	pt := newTestPriceTable()
+	pt := newCustomPriceTable()
 
 	// Define helper variables.
 	sc := types.SiacoinPrecision
 	perTB := modules.BytesPerTerabyte
 
-	// Init for a TB of data
-	cost := modules.MDMInitCost(pt, 1e12, 0)
-	expectedCost := sc.Div64(1e3).Mul64(27).Div64(10) // 2.7 mS
-	if !aboutEquals(cost, expectedCost) {
-		t.Errorf("expected init cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
-	}
-
 	// Append
 	cost, refund := appendTrueCost(pt)
 	// Scale the costs up to a TB of data.
 	costPerTB := cost.Div64(modules.SectorSizeStandard).Mul(perTB)
-	expectedCostPerTB := sc // 1 SC
+	expectedCostPerTB := host.DefaultStoragePrice.Mul64(modules.SectorSizeStandard)
 	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
-	expectedRefundPerTB := sc.Div64(1e3).Mul64(115).Div64(10) // 11.5 mS
+	expectedRefundPerTB := sc.Div64(1e3).Mul64(116).Div64(10) // 11.6 mS
 	refundPerTB := refund.Div64(modules.SectorSizeStandard).Mul(perTB)
 	if !aboutEquals(refundPerTB, expectedRefundPerTB) {
 		t.Errorf("expected append refund %v, got %v", expectedRefundPerTB.HumanString(), refundPerTB.HumanString())
-	}
-
-	// DropSectors
-	cost, refund = modules.MDMDropSectorsCost(pt, 1)
-	expectedCost = sc.Div64(1e6).Mul64(21).Div64(10) // 2.1 uS
-	if !aboutEquals(cost, expectedCost) {
-		t.Errorf("expected dropsectors cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
-	}
-	expectedRefund := types.ZeroCurrency
-	if !aboutEquals(refund, expectedRefund) {
-		t.Errorf("expected dropsectors refund %v, got %v", expectedRefund.HumanString(), refund.HumanString())
-	}
-
-	// HasSector
-	cost, refund = modules.MDMHasSectorCost(pt)
-	expectedCost = sc.Div64(1e12).Mul64(28).Div64(10) // 2.8 pS
-	if !aboutEquals(cost, expectedCost) {
-		t.Errorf("expected hassector cost %v, got %v", expectedCost.HumanString(), cost.HumanString())
-	}
-	expectedRefund = types.ZeroCurrency
-	if !refund.Equals(expectedRefund) {
-		t.Errorf("expected hassector refund %v, got %v", expectedRefund, refund)
-	}
-
-	// Read
-	costPerTB, refundPerTB = modules.MDMReadCost(pt, 1e12)
-	expectedCostPerTB = sc.Mul64(25) // 25 SC
-	if !aboutEquals(costPerTB, expectedCostPerTB) {
-		t.Errorf("expected read cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
-	}
-	expectedRefundPerTB = types.ZeroCurrency
-	if !refundPerTB.Equals(expectedRefundPerTB) {
-		t.Errorf("expected read refund %v, got %v", expectedRefundPerTB, refundPerTB)
 	}
 }
 

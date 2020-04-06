@@ -22,24 +22,27 @@ const (
 	MDMTimeAppend = 10000
 
 	// MDMTimeCommit is the time used for executing managedFinalize.
+	// TODO: This should scale with the number of added + removed sectors.
 	MDMTimeCommit = 50e3
 
 	// MDMTimeDropSectorsBase is the base time for executing a 'DropSectors'
+	// instruction. It includes the time for initializing and validating the
 	// instruction.
 	MDMTimeDropSectorsBase = 10
 
 	// MDMTimeDropSingleSector is the time for dropping a single sector.
 	MDMTimeDropSingleSector = 1
 
-	// MDMTimeHasSector is the time for executing a 'HasSector' instruction.
+	// MDMTimeHasSector is the time for executing a 'HasSector' instruction. It
+	// includes the time for initializing and validating the instruction.
 	MDMTimeHasSector = 10
 
 	// MDMTimeInitProgramBase is the base time for initializing a program.
-	MDMTimeInitProgramBase = 10e3
+	MDMTimeInitProgramBase = 10
 
 	// MDMTimeInitSingleInstruction is the time it takes to initialize a single
 	// instruction.
-	MDMTimeInitSingleInstruction = 10
+	MDMTimeInitSingleInstruction = 1
 
 	// MDMTimeReadSector is the time for executing a 'ReadSector' instruction.
 	MDMTimeReadSector = 1000
@@ -97,7 +100,7 @@ func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 // MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction for a
 // certain number of dropped sectors.
 func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
-	cost := pt.DropSectorsLengthCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
+	cost := pt.DropSectorsUnitCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
 	refund := types.ZeroCurrency
 	return cost, refund
 }
@@ -106,7 +109,7 @@ func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Curre
 // 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time, where Time is
 // `TimeInitProgramBase` + `TimeInitSingleInstruction` * `numInstructions`
 func MDMInitCost(pt RPCPriceTable, programLen, numInstructions uint64) types.Currency {
-	time := MDMTimeInitProgramBase + MDMTimeInitSingleInstruction * numInstructions
+	time := MDMTimeInitProgramBase + MDMTimeInitSingleInstruction*numInstructions
 	return pt.MemoryTimeCost.Mul64(programLen).Mul64(time).Add(pt.InitBaseCost)
 }
 

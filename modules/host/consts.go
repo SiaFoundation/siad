@@ -45,32 +45,10 @@ const (
 )
 
 var (
-	// DefaultBaseRPCPrice is the default price of talking to the host. It is
-	// roughly equal to the default bandwidth cost of exchanging a pair of
-	// 4096-byte messages.
-	DefaultBaseRPCPrice = types.SiacoinPrecision.Mul64(100).Div64(1e9) // 100 nS
-
-	// DefaultDownloadBandwidthPrice defines the default price of upload
-	// bandwidth. The default is set to 10 siacoins per gigabyte, because
-	// download bandwidth is expected to be plentiful but also in-demand.
-	DefaultDownloadBandwidthPrice = types.SiacoinPrecision.Mul64(25).Div(modules.BytesPerTerabyte) // 25 SC / TB
-
-	// DefaultSectorAccessPrice defines the default price of a sector access. It
-	// is roughly equal to the cost of downloading 64 KiB.
-	DefaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
-
 	// DefaultStoragePrice defines the starting price for hosts selling
 	// storage. We try to match a number that is both reasonably profitable and
 	// reasonably competitive.
 	DefaultStoragePrice = types.SiacoinPrecision.Mul64(50).Div(modules.BlockBytesPerMonthTerabyte) // 50 SC / TB / Month
-
-	// DefaultUploadBandwidthPrice defines the default price of upload
-	// bandwidth. The default is set to 1 siacoin per GB, because the host is
-	// presumed to have a large amount of downstream bandwidth. Furthermore,
-	// the host is typically only downloading data if it is planning to store
-	// the data, meaning that the host serves to profit from accepting the
-	// data.
-	DefaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
 )
 
 var (
@@ -98,6 +76,11 @@ var (
 		Testing:  time.Second * 90,
 	}).(time.Duration)
 
+	// defaultBaseRPCPrice is the default price of talking to the host. It is
+	// roughly equal to the default bandwidth cost of exchanging a pair of
+	// 4096-byte messages.
+	defaultBaseRPCPrice = types.SiacoinPrecision.Mul64(100).Div64(1e9) // 100 nS
+
 	// defaultCollateral defines the amount of money that the host puts up as
 	// collateral per-byte by default. The collateral should be considered as
 	// an absolute instead of as a percentage, because low prices result in
@@ -122,6 +105,11 @@ var (
 	// the minimum fee estimation of the transactionpool for a filecontract
 	// transaction.
 	defaultContractPrice = types.SiacoinPrecision.Div64(100).Div64(1e3).Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
+
+	// defaultDownloadBandwidthPrice defines the default price of upload
+	// bandwidth. The default is set to 10 siacoins per gigabyte, because
+	// download bandwidth is expected to be plentiful but also in-demand.
+	defaultDownloadBandwidthPrice = types.SiacoinPrecision.Mul64(25).Div(modules.BytesPerTerabyte) // 25 SC / TB
 
 	// defaultMaxCollateral defines the maximum amount of collateral that the
 	// host is comfortable putting into a single file contract. 10e3 is a
@@ -166,6 +154,10 @@ var (
 	// prevent the host from having too much money at risk.
 	defaultMaxEphemeralAccountRisk = types.SiacoinPrecision.Mul64(5)
 
+	// defaultSectorAccessPrice defines the default price of a sector access. It
+	// is roughly equal to the cost of downloading 64 KiB.
+	defaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
+
 	// defaultWindowSize is the size of the proof of storage window requested
 	// by the host. The host will not delete any obligations until the window
 	// has closed and buried under several confirmations. For release builds,
@@ -179,6 +171,14 @@ var (
 		Standard: types.BlockHeight(144), // 1 day.
 		Testing:  types.BlockHeight(5),   // 5 seconds.
 	}).(types.BlockHeight)
+
+	// defaultUploadBandwidthPrice defines the default price of upload
+	// bandwidth. The default is set to 1 siacoin per GB, because the host is
+	// presumed to have a large amount of downstream bandwidth. Furthermore,
+	// the host is typically only downloading data if it is planning to store
+	// the data, meaning that the host serves to profit from accepting the
+	// data.
+	defaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
 
 	// logAllLimit is the number of errors of each type that the host will log
 	// before switching to probabilistic logging. If there are not many errors,
