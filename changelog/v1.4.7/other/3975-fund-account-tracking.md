@@ -1,1 +1,1 @@
-- Add FundAccount tracking to the host's financial metrics
+- Add 'AccountFunding' to the Host's financial metrics
