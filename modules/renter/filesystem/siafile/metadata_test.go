@@ -113,6 +113,10 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		sf.staticMetadata.LocalPath = string(fastrand.Bytes(100))
 		sf.staticMetadata.DisablePartialChunk = !sf.staticMetadata.DisablePartialChunk
 		sf.staticMetadata.HasPartialChunk = !sf.staticMetadata.HasPartialChunk
+		sf.staticMetadata.PartialChunks = nil
+		if fastrand.Intn(2) == 0 { // 50% chance to be not nil
+			sf.staticMetadata.PartialChunks = make([]PartialChunkInfo, fastrand.Intn(10))
+		}
 		sf.staticMetadata.ModTime = time.Now()
 		sf.staticMetadata.ChangeTime = time.Now()
 		sf.staticMetadata.AccessTime = time.Now()
@@ -134,7 +138,10 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		sf.staticMetadata.GroupID = int32(fastrand.Intn(100))
 		sf.staticMetadata.ChunkOffset = int64(fastrand.Uint64n(100))
 		sf.staticMetadata.PubKeyTableOffset = int64(fastrand.Uint64n(100))
-		sf.staticMetadata.Skylinks = make([]string, fastrand.Intn(10))
+		sf.staticMetadata.Skylinks = nil
+		if fastrand.Intn(2) == 0 { // 50% chance to be not nil
+			sf.staticMetadata.Skylinks = make([]string, fastrand.Intn(10))
+		}
 
 		// Error occurred after changing the fields.
 		return errors.New("")
