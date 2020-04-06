@@ -722,7 +722,9 @@ func TestRefCounter_numSectorsUnderflow(t *testing.T) {
 	}
 
 	// check for the same underflow during Swap
-	_, err = rc.Swap(0, 1)
+	_, err1 := rc.Swap(0, 1)
+	_, err2 := rc.Swap(1, 0)
+	err = errors.Compose(err1, err2)
 	if errors.Contains(err, io.EOF) {
 		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
 	}
