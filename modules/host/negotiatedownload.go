@@ -187,11 +187,6 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	if paymentRevision.ValidRenterPayout().Cmp(existingRevision.ValidRenterPayout()) > 0 {
 		return extendErr("renter increased its valid proof output: ", errHighRenterValidOutput)
 	}
-	// Existing revisions's renter payout can't be smaller than the payment
-	// revision's since that would cause an underflow.
-	if existingRevision.ValidRenterPayout().Cmp(paymentRevision.ValidRenterPayout()) < 0 {
-		return errors.New("existing revision's renter payout is smaller than the payment revision's")
-	}
 	fromRenter := existingRevision.ValidRenterPayout().Sub(paymentRevision.ValidRenterPayout())
 	// Verify that enough money was transferred.
 	if fromRenter.Cmp(expectedTransfer) < 0 {
