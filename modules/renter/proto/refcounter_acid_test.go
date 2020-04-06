@@ -58,7 +58,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// Keeps applying a random number of operations on the refcounter until
 	// an error occurs.
-	performUpdates := func(rcLocal *RefCounter, testDone <-chan time.Time) error {
+	performUpdates := func(rcLocal *RefCounter, doneChan <-chan struct{}) error {
 		for {
 			err := preformUpdateOperations(rcLocal)
 			if err != nil {
@@ -68,14 +68,21 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 			atomic.AddUint64(&atomicNumSuccessfulIterations, 1)
 
 			select {
-			case <-testDone:
+			case <-doneChan:
 				return nil
 			default:
 			}
 		}
 	}
 
-	testDone := time.After(testTimeout)
+	// doneChan will signal to all goroutines that it's time to wrap up and exit
+	doneChan := make(chan struct{})
+	// we close the doneChan instead of sending on it so we can notify all
+	// goroutines listening on it and not just one
+	time.AfterFunc(testTimeout, func() {
+		close(doneChan)
+	})
+
 	var wg sync.WaitGroup
 	// The outer loop keeps restarting the tests until the time runs out
 OUTER:
@@ -85,7 +92,7 @@ OUTER:
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				errLocal := performUpdates(rc, testDone)
+				errLocal := performUpdates(rc, doneChan)
 				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
 					// We have a real error - fail the test
 					t.Error(errLocal)
@@ -95,12 +102,12 @@ OUTER:
 		wg.Wait()
 
 		select {
-		case <-testDone:
+		case <-doneChan:
 			// the time has run out, finish the test
 			break OUTER
 		default:
 			// there is still time, load the wal from disk and re-run the test
-			rc, err = reloadRefCounter(rcFilePath, walPath, fdd, &atomicNumRecoveries, testDone)
+			rc, err = reloadRefCounter(rcFilePath, walPath, fdd, &atomicNumRecoveries, doneChan)
 			if errors.Contains(err, ErrTestTimeout) {
 				break OUTER
 			}
@@ -151,7 +158,7 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 	}
 	defer rc.UpdateApplied()
 
-	updates := []writeaheadlog.Update{}
+	updates := make([]writeaheadlog.Update, 0)
 	var u writeaheadlog.Update
 
 	// 50% chance to increment, 2 chances
@@ -223,11 +230,11 @@ func preformUpdateOperations(rc *RefCounter) (err error) {
 }
 
 // reloadRefCounter tries to reload the file. This simulates failures during recovery.
-func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, atomicNumRecoveries *uint64, testDone <-chan time.Time) (*RefCounter, error) {
+func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, atomicNumRecoveries *uint64, doneChan <-chan struct{}) (*RefCounter, error) {
 	// Try to reload the file. This simulates failures during recovery.
 	for tries := 1; ; tries++ {
 		select {
-		case <-testDone:
+		case <-doneChan:
 			return nil, ErrTestTimeout
 		default:
 		}
