@@ -103,8 +103,8 @@ type (
 	// contract for which the file contract window has not yet closed.
 	HostFinancialMetrics struct {
 		// Account funding represents all funds used to fund ephemeral acccounts
-		// with. This field is only ever added to, the eventual revenue created
-		// from these accounts is tracked separately.
+		// with. This field is only ever added to, the eventual revenue
+		// generated through these accounts is tracked separately.
 		AccountFunding types.Currency `json:"accountfunding"`
 
 		// Every time a renter forms a contract with a host, a contract fee is

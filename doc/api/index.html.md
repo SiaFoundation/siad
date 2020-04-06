@@ -1598,7 +1598,7 @@ based on their needs.
 }
 ```
 **accountfunding** | hastings  
-Amount in hastings used to fund ephemeral accounts with.
+Amount in hastings that went to funding ephemeral accounts with.
 
 **contractcost** | hastings  
 Amount in hastings to cover the transaction fees for this storage obligation.
