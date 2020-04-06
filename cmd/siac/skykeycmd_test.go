@@ -5,35 +5,27 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
+// TestSkykeyCommands tests the basic functionality of the siac skykey commands
+// interface. More detailed testing of the skykey manager is done in the skykey
+// package.
 func TestSkykeyCommands(t *testing.T) {
-	// Create a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   0,
-		Miners:  1,
-		Renters: 1,
-	}
-	groupDir := build.TempDir(t.Name())
+	// Create a node for the test
+	n, err := siatest.NewNode(node.AllModules(build.TempDir(t.Name())))
 
-	subTests := []siatest.SubTest{
-		{Name: "TestAddSkykeyCmd", Test: testAddSkykeyCmd},
-	}
+	// Set global HTTP client to the node's client.
+	httpClient = n.Client
 
-	// Run tests
-	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func testAddSkykeyCmd(t *testing.T, tg *siatest.TestGroup) {
-	// Set global HTTP client to the renter's client.
-	httpClient = tg.Renters()[0].Client
+	// Set the (global) cipher type to the only allowed type.
+	// This is normally done by the flag parser.
+	skykeyCipherType = "XChaCha20"
 
 	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
-	err := skykeyAdd(testSkykeyString)
+	err = skykeyAdd(testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,5 +52,46 @@ func testAddSkykeyCmd(t *testing.T, tg *siatest.TestGroup) {
 	err = skykeyAdd(skString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
 		t.Fatal("Expected duplicate name error", err)
+	}
+
+	// Check that adding same key twice returns an error.
+	keyName := "createkey1"
+	newSkykey, err := skykeyCreate(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = skykeyCreate(keyName)
+	if !strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
+		t.Fatal("Expected error when creating key with same name")
+	}
+
+	// Check that invalid cipher types are caught.
+	skykeyCipherType = "InvalidCipherType"
+	_, err = skykeyCreate("createkey2")
+	if err == nil {
+		t.Fatal("Expected error when creating key with invalid ciphertype")
+	}
+	skykeyCipherType = "XChaCha20" //reset the ciphertype
+
+	// Test skykeyGet
+	// known key should have no errors.
+	getKeyStr, err := skykeyGet(keyName, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if getKeyStr != newSkykey {
+		t.Fatal("Expected keys to match")
+	}
+
+	// Using both name and id params should return an error
+	_, err = skykeyGet("name", "id")
+	if err == nil {
+		t.Fatal(err)
+	}
+	// Using neither name or id param should return an error
+	_, err = skykeyGet("", "")
+	if err == nil {
+		t.Fatal(err)
 	}
 }
