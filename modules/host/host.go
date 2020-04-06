@@ -79,6 +79,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -206,7 +207,7 @@ type Host struct {
 // 'guaranteed' map.
 type hostPrices struct {
 	current       modules.RPCPriceTable
-	guaranteed    map[types.Specifier]*modules.RPCPriceTable
+	guaranteed    map[modules.UniqueID]*modules.RPCPriceTable
 	staticMinHeap priceTableHeap
 	mu            sync.RWMutex
 }
@@ -230,7 +231,7 @@ func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
 // also add it to the heap which facilates efficient pruning of that map.
 func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
 	hp.mu.Lock()
-	hp.guaranteed[pt.UUID] = pt
+	hp.guaranteed[pt.UID] = pt
 	hp.mu.Unlock()
 	hp.staticMinHeap.Push(pt)
 }
@@ -238,13 +239,21 @@ func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
 // managedPruneExpired removes all of the price tables that have expired from
 // the 'guaranteed' map.
 func (hp *hostPrices) managedPruneExpired() {
+	current := hp.managedCurrent()
 	expired := hp.staticMinHeap.PopExpired()
 	if len(expired) == 0 {
 		return
 	}
 	hp.mu.Lock()
-	for _, uuid := range expired {
-		delete(hp.guaranteed, uuid)
+	for _, uid := range expired {
+		// Sanity check to never prune the host's current price table. This can
+		// never occur because the host's price table UID is not added to the
+		// minheap.
+		if uid == current.UID {
+			build.Critical("The host's current price table should not be pruned")
+			continue
+		}
+		delete(hp.guaranteed, uid)
 	}
 	hp.mu.Unlock()
 }
@@ -265,8 +274,8 @@ type priceTableHeap struct {
 	mu   sync.Mutex
 }
 
-// PopExpired returns the UUIDs for all rpc price tables that have expired
-func (pth *priceTableHeap) PopExpired() (expired []types.Specifier) {
+// PopExpired returns the UIDs for all rpc price tables that have expired
+func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
 
@@ -281,7 +290,7 @@ func (pth *priceTableHeap) PopExpired() (expired []types.Specifier) {
 			heap.Push(&pth.heap, pt)
 			break
 		}
-		expired = append(expired, pt.(*modules.RPCPriceTable).UUID)
+		expired = append(expired, pt.(*modules.RPCPriceTable).UID)
 	}
 	return
 }
@@ -371,6 +380,7 @@ func (h *Host) managedUpdatePriceTable() {
 		ReadBaseCost:   his.MinBaseRPCPrice,
 		ReadLengthCost: his.MinBaseRPCPrice,
 	}
+	fastrand.Read(priceTable.UID[:])
 
 	// update the pricetable
 	h.staticPriceTables.managedUpdate(priceTable)
@@ -432,7 +442,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
 		staticPriceTables: &hostPrices{
-			guaranteed: make(map[types.Specifier]*modules.RPCPriceTable),
+			guaranteed: make(map[modules.UniqueID]*modules.RPCPriceTable),
 			staticMinHeap: priceTableHeap{
 				heap: make([]*modules.RPCPriceTable, 0),
 			},
