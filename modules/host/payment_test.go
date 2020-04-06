@@ -3,11 +3,14 @@ package host
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -230,6 +233,182 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	if err != errLowHostMissedOutput {
 		t.Fatalf("Expected errLowHostMissedOutput but received '%v'", err)
 	}
+}
+
+// TestProcessParallelPayments tests the behaviour of the ProcessPayment method
+// when multiple threads use multiple contracts and ephemeral accounts at the
+// same time to perform payments.
+func TestProcessParallelPayments(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// determine a reasonable timeout
+	var timeout time.Duration
+	if build.VLONG {
+		timeout = time.Minute
+	} else {
+		timeout = 10 * time.Second
+	}
+
+	// setup the host
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// setup multiple renters and SOs
+	pairs := make([]*renterHostPair, runtime.NumCPU())
+	for i := range pairs {
+		_, pair, err := newRenterHostPairCustomHostTester(ht)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pairs[i] = pair
+
+		// create the sia publickey from its secret key
+		rpk := pair.renter.PublicKey()
+		spk := types.SiaPublicKey{
+			Algorithm: types.SignatureEd25519,
+			Key:       rpk[:],
+		}
+
+		// fund the ephemeral account
+		err = callDeposit(pair.host.staticAccountManager, modules.AccountID(spk.String()), ht.host.InternalSettings().MaxEphemeralAccountBalance)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// setup a lock guarding the filecontracts seeing as we are concurrently
+	// accessing them and generating revisions for them
+	fcLocks := make(map[types.FileContractID]*sync.Mutex)
+	for i := range pairs {
+		fcLocks[pairs[i].fcid] = new(sync.Mutex)
+	}
+
+	var fcPayments uint64
+	var eaPayments uint64
+
+	// start the timer
+	finished := time.After(timeout)
+	for range pairs {
+		go func() {
+			// create two streams
+			rs, hs := NewTestStreams()
+			defer rs.Close()
+			defer hs.Close()
+
+		LOOP:
+			for {
+				select {
+				case <-finished:
+					break LOOP
+				default:
+				}
+
+				// generate random pair and amount
+				rp := pairs[fastrand.Intn(len(pairs))]
+				ra := types.NewCurrency64(uint64(fastrand.Intn(10)) + 1)
+
+				// randomly pick a flow and run it
+				var pd modules.PaymentDetails
+				var err error
+				if fastrand.Intn(100) < 5 { // pay by contract 5% of time
+					fcLocks[rp.fcid].Lock()
+					pd, _, err = runPayByContractFlow(rp, rs, hs, ra)
+					fcLocks[rp.fcid].Unlock()
+					atomic.AddUint64(&fcPayments, 1)
+				} else {
+					pd, _, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra)
+					atomic.AddUint64(&eaPayments, 1)
+				}
+
+				// compare amount paid to what we expect, fail fast on error
+				if err != nil {
+					t.Error(err)
+					break LOOP
+				}
+				if !pd.Amount().Equals(ra) {
+					t.Errorf("Unexpected amount paid, expected %v actual %v", ra, pd.Amount())
+					break LOOP
+				}
+			}
+		}()
+	}
+	<-finished
+
+	t.Logf("\n\nIn %.f seconds, on %d cores, the following payments completed successfully\nPayByContract: %d\nPayByEphemeralAccount: %d\n\n", timeout.Seconds(), runtime.NumCPU(), atomic.LoadUint64(&fcPayments), atomic.LoadUint64(&eaPayments))
+}
+
+// runPayByContractFlow is a helper function that runs the 'PayByContract' flow
+// and returns the result of running it.
+func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByContractResponse, err error) {
+	err = run(
+		func() error {
+			// prepare an updated revision that pays the host
+			rev, sig, err := pair.paymentRevision(amount)
+			if err != nil {
+				return err
+			}
+			// send PaymentRequest & PayByContractRequest
+			pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+			pbcRequest := newPayByContractRequest(rev, sig)
+			err = modules.RPCWriteAll(rStream, pRequest, pbcRequest)
+			if err != nil {
+				return err
+			}
+			// receive PayByContractResponse
+			err = modules.RPCRead(rStream, &payByResponse)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// process payment request
+			var pErr error
+			payment, pErr = pair.host.ProcessPayment(hStream)
+			if pErr != nil {
+				modules.RPCWriteError(hStream, pErr)
+			}
+			return nil
+		},
+	)
+	return
+}
+
+// runPayByContractFlow is a helper function that runs the
+// 'PayByEphemeralAccount' flow and returns the result of running it.
+func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByEphemeralAccountResponse, err error) {
+	err = run(
+		func() error {
+			// send PaymentRequest & PayByEphemeralAccountRequest
+			pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
+			pbcRequest := newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter)
+			err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
+			if err != nil {
+				return err
+			}
+
+			// receive PayByEphemeralAccountResponse
+			err = modules.RPCRead(rStream, &payByResponse)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// process payment request
+			payment, err = pair.host.ProcessPayment(hStream)
+			if err != nil {
+				modules.RPCWriteError(hStream, err)
+			}
+			return nil
+		},
+	)
+	return
 }
 
 // TestProcessPayment verifies the host's ProcessPayment method. It covers both
