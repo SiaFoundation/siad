@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -77,18 +79,35 @@ func skykeycreatecmd(name string) {
 
 // skykeyaddcmd adds the given skykey to the renter's skykey manager.
 func skykeyaddcmd(skykeyString string) {
+	err := skykeyAdd(skykeyString)
+	if strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
+		die("Skykey name already used. Try using the --rename-as parameter with a different name.")
+	}
+	if err != nil {
+		die(err)
+	}
+
+	fmt.Printf("Successfully added new skykey: %v\n", skykeyString)
+}
+
+func skykeyAdd(skykeyString string) error {
 	var sk skykey.Skykey
 	err := sk.FromString(skykeyString)
 	if err != nil {
-		die("Could not decode skykey string:", err)
+		return errors.AddContext(err, "Could not decode skykey string")
+	}
+
+	// Rename the skykey if the --rename-as flag was provided.
+	if skykeyRenameAs != "" {
+		sk.Name = skykeyRenameAs
 	}
 
 	err = httpClient.SkykeyAddKeyPost(sk)
 	if err != nil {
-		die("could not add skykey:", err)
+		return errors.AddContext(err, "Could not add skykey")
 	}
 
-	fmt.Printf("Successfully added new skykey: %v\n", skykeyString)
+	return nil
 }
 
 // skykeygetcmd retrieves the skykey using a name or id flag.
