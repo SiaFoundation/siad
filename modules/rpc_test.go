@@ -11,7 +11,7 @@ import (
 func TestRPCReadWriteError(t *testing.T) {
 	t.Parallel()
 
-	// use a simply bytes buffer as stream to avoid unnecessary stream setup
+	// use a buffer as stream to avoid unnecessary setup
 	stream := new(bytes.Buffer)
 
 	expectedData := []byte("some data")
