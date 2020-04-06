@@ -220,7 +220,10 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	// create new contracts and filter them out.
 	var remainingTxns []*writeaheadlog.Transaction
 	for _, txn := range walTxns {
-		if len(txn.Updates) != 1 && txn.Updates[0].Name != updateNameInsertContract {
+		// txn with insertion updates contain exactly one update and are named
+		// 'updateNameInsertContract'. If that is not the case, we ignore the
+		// txn for now.
+		if len(txn.Updates) != 1 || txn.Updates[0].Name != updateNameInsertContract {
 			remainingTxns = append(remainingTxns, txn)
 			continue
 		}

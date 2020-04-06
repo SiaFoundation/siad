@@ -321,7 +321,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 			return nil, err
 		}
 		newRc.staticDeps = fdd
-		return &newRc, nil
+		return newRc, nil
 	}
 }
 
