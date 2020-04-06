@@ -204,14 +204,14 @@ func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (S
 func (sm *SkykeyManager) AddKey(sk Skykey) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	_, ok := sm.idsByName[sk.Name]
-	if ok {
-		return errSkykeyNameAlreadyExists
-	}
-
-	_, ok = sm.keysByID[sk.ID()]
+	_, ok := sm.keysByID[sk.ID()]
 	if ok {
 		return errSkykeyWithIDAlreadyExists
+	}
+
+	_, ok = sm.idsByName[sk.Name]
+	if ok {
+		return errSkykeyNameAlreadyExists
 	}
 
 	return sm.saveKey(sk)
