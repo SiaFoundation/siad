@@ -221,7 +221,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, err = runWithRevision(rev)
-	if err == nil || !strings.Contains(err.Error(), "deposit was zero after deducting the cost") {
+	if err == nil || !strings.Contains(err.Error(), "amount that was deposited did not cover the cost of the RPC") {
 		t.Fatalf("Expected error indicating the lack of funds, instead error was: '%v'", err)
 	}
 

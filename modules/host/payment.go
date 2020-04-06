@@ -174,7 +174,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 
 	// extract the payment
 	if amount.Cmp(cost) < 0 {
-		return types.ZeroCurrency, errors.New("Could not fund, deposit was zero after deducting the cost")
+		return types.ZeroCurrency, errors.New("Could not fund, the amount that was deposited did not cover the cost of the RPC")
 	}
 	deposit := amount.Sub(cost)
 
@@ -182,7 +182,8 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	// fsynced we'll close this so the account manager can properly lower the
 	// host's outstanding risk induced by the (immediate) deposit.
 	syncChan := make(chan struct{})
-	if err = h.staticAccountManager.callDeposit(request.Account, deposit, syncChan); err != nil {
+	err = h.staticAccountManager.callDeposit(request.Account, deposit, syncChan)
+	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not deposit funds")
 	}
 
@@ -202,9 +203,10 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	// send the response
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
-	if err = modules.RPCWrite(stream, modules.PayByContractResponse{
+	err = modules.RPCWrite(stream, modules.PayByContractResponse{
 		Signature: sig,
-	}); err != nil {
+	})
+	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 

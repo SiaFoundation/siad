@@ -14,7 +14,8 @@ import (
 func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt modules.RPCPriceTable) error {
 	// read the FundAccountRequest
 	var far modules.FundAccountRequest
-	if err := modules.RPCRead(stream, &far); err != nil {
+	err := modules.RPCRead(stream, &far)
+	if err != nil {
 		return errors.AddContext(err, "Could not read FundEphemeralAccountRequest")
 	}
 
@@ -22,7 +23,8 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt modules.R
 	// it does not make sense to fund an ephemeral account by anything but a
 	// file contract - we might enable this in the future
 	var pr modules.PaymentRequest
-	if err := modules.RPCRead(stream, &pr); err != nil {
+	err = modules.RPCRead(stream, &pr)
+	if err != nil {
 		return errors.AddContext(err, "Could not read PaymentRequest")
 	}
 	if pr.Type != modules.PayByContract {
@@ -49,10 +51,11 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream, pt modules.R
 	signature := crypto.SignHash(crypto.HashObject(receipt), h.secretKey)
 
 	// send the FundAccountResponse
-	if err = modules.RPCWrite(stream, modules.FundAccountResponse{
+	err = modules.RPCWrite(stream, modules.FundAccountResponse{
 		Receipt:   receipt,
 		Signature: signature,
-	}); err != nil {
+	})
+	if err != nil {
 		return errors.AddContext(err, "Failed to send FundAccountResponse")
 	}
 
