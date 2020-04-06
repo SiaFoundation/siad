@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -20,12 +21,16 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -49,6 +54,7 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
 		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
@@ -1931,5 +1937,107 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err := r.SkynetSkyfilePost(sup)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
 		t.Fatal("Should fail due to ErrMetadataTooBig", err)
+	}
+}
+
+// testSkynetSkykey tests basic Skykey manager functionality.
+func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	sk, err := r.SkykeyCreateKeyPost("testkey1", crypto.TypeXChaCha20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Adding the same key should return an error.
+	err = r.SkykeyAddKeyPost(sk)
+	if err == nil {
+		t.Fatal("Expected error", err)
+	}
+
+	// Create a testkey from a hard-coded skykey string.
+	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	var testSkykey skykey.Skykey
+	err = testSkykey.FromString(testSkykeyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Adding an unknown key should succeed.
+	err = r.SkykeyAddKeyPost(testSkykey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sk2, err := r.SkykeyGetByName("testkey1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skStr, err := sk.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk2Str, err := sk2.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk2Str {
+		t.Fatal("Expected same Skykey string")
+	}
+
+	// Check byte equality and string equality.
+	skID := sk.ID()
+	sk2ID := sk2.ID()
+	if !bytes.Equal(skID[:], sk2ID[:]) {
+		t.Fatal("Expected byte level equality in IDs")
+	}
+	if sk2.ID().ToString() != sk.ID().ToString() {
+		t.Fatal("Expected to get same key")
+	}
+
+	// Check the GetByID endpoint
+	sk3, err := r.SkykeyGetByID(sk.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk3Str, err := sk3.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk3Str {
+		t.Fatal("Expected same Skykey string")
+	}
+
+	// Test misuse of the /skynet/skykey endpoint using an UnsafeClient.
+	uc := client.NewUnsafeClient(r.Client)
+
+	// Passing in 0 params shouild return an error.
+	baseQuery := "/skynet/skykey"
+	var skykeyGet api.SkykeyGET
+	err = uc.Get(baseQuery, &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Passing in 2 params shouild return an error.
+	values := url.Values{}
+	values.Set("name", "testkey1")
+	values.Set("id", skID.ToString())
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Sanity check: uc.Get should return the same value as the safe client
+	// method.
+	values = url.Values{}
+	values.Set("name", "testkey1")
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skykeyGet.Skykey != sk2Str {
+		t.Fatal("Expected same result from  unsafe client")
 	}
 }
