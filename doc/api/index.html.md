@@ -2161,11 +2161,12 @@ ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
   },
   "scorebreakdown": {
     "score":                      1,        // big int
-    "conversionrate":             9.12345,  // float64
     "ageadjustment":              0.1234,   // float64
+    "basepriceadjustment":        1,        // float64
     "burnadjustment":             0.1234,   // float64
     "collateraladjustment":       23.456,   // float64
-  "durationadjustment":         1,        // float64
+    "conversionrate":             9.12345,  // float64
+    "durationadjustment":         1,        // float64
     "interactionadjustment":      0.1234,   // float64
     "priceadjustment":            0.1234,   // float64
     "storageremainingadjustment": 0.1234,   // float64
@@ -2193,13 +2194,13 @@ be off by many orders of magnitude. When displaying to a human, some form of
 normalization with respect to the other hosts (for example, divide all scores by
 the median score of the hosts) is recommended.  
 
-**conversionrate** | float64  
-conversionrate is the likelihood that the host will be selected by renters
-forming contracts.  
-
 **ageadjustment** | float64  
 The multiplier that gets applied to the host based on how long it has been a
 host. Older hosts typically have a lower penalty.  
+
+**basepriceadjustment** | float64  
+The multiplier that gets applied to the host based on if the `BaseRPCPRice` and
+the `SectorAccessPrice` are reasonable.  
 
 **burnadjustment** | float64  
 The multiplier that gets applied to the host based on how much proof-of-burn the
@@ -2209,6 +2210,10 @@ host has performed. More burn causes a linear increase in score.
 The multiplier that gets applied to a host based on how much collateral the host
 is offering. More collateral is typically better, though above a point it can be
 detrimental.  
+
+**conversionrate** | float64  
+conversionrate is the likelihood that the host will be selected by renters
+forming contracts.  
 
 **durationadjustment** | float64  
 The multiplier that gets applied to a host based on the max duration it accepts
