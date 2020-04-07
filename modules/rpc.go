@@ -72,7 +72,7 @@ func RPCRead(r io.Reader, obj interface{}) error {
 	resp := rpcResponse{nil, obj}
 	readErr := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
 	if resp.err != nil {
-		return errors.New(resp.err.Error())
+		return resp.err
 	} else if readErr != nil {
 		return readErr
 	}
