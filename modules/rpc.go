@@ -72,11 +72,12 @@ type (
 // RPCRead tries to read the given object from the stream.
 func RPCRead(r io.Reader, obj interface{}) error {
 	resp := rpcResponse{nil, obj}
-	readErr := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
+	err := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
+	if err != nil {
+		return err
+	}
 	if resp.err != nil {
-		return resp.err
-	} else if readErr != nil {
-		return readErr
+		return errors.New(resp.err.Error())
 	}
 	return nil
 }
