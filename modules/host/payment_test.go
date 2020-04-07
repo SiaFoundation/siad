@@ -284,8 +284,8 @@ func TestProcessParallelPayments(t *testing.T) {
 	// setup a lock guarding the filecontracts seeing as we are concurrently
 	// accessing them and generating revisions for them
 	fcLocks := make(map[types.FileContractID]*sync.Mutex)
-	for i := range pairs {
-		fcLocks[pairs[i].fcid] = new(sync.Mutex)
+	for _, pair := range pairs {
+		fcLocks[pair.fcid] = new(sync.Mutex)
 	}
 
 	var fcPayments uint64
@@ -310,7 +310,7 @@ func TestProcessParallelPayments(t *testing.T) {
 
 				// generate random pair and amount
 				rp := pairs[fastrand.Intn(len(pairs))]
-				ra := types.NewCurrency64(uint64(fastrand.Intn(10)) + 1)
+				ra := types.NewCurrency64(fastrand.Uint64n(10) + 1)
 
 				// randomly pick a flow and run it
 				var pd modules.PaymentDetails
@@ -386,8 +386,8 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 		func() error {
 			// send PaymentRequest & PayByEphemeralAccountRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
-			pbcRequest := newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter)
-			err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter)
+			err := modules.RPCWriteAll(rStream, pRequest, pbeaRequest)
 			if err != nil {
 				return err
 			}
