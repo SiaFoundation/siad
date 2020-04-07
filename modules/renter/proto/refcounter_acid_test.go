@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -28,6 +29,9 @@ var ErrTestTimeout = errors.New("test timeout has run out")
 // refcounter in order to validate them
 type status struct {
 	counts []uint16
+	// denotes whether we can create new updates or we first need to reload from
+	// disk
+	crashed bool
 	sync.Mutex
 }
 
@@ -76,29 +80,36 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// Keeps applying a random number of operations on the refcounter until
 	// an error occurs.
-	performUpdates := func(rcLocal *RefCounter, st *status, doneChan <-chan struct{}) error {
+	performUpdates := func(rcLocal *RefCounter, st *status, testTimeoutChan <-chan struct{}) error {
 		for {
 			err := preformUpdateOperations(rcLocal, st)
 			if err != nil {
 				// we have an error, fake or not we should return
 				return err
 			}
+			st.Lock()
+			if st.crashed {
+				st.Unlock()
+				return nil
+			}
+			st.Unlock()
+
 			atomic.AddUint64(&atomicNumSuccessfulIterations, 1)
 
 			select {
-			case <-doneChan:
+			case <-testTimeoutChan:
 				return nil
 			default:
 			}
 		}
 	}
 
-	// doneChan will signal to all goroutines that it's time to wrap up and exit
-	doneChan := make(chan struct{})
-	// we close the doneChan instead of sending on it so we can notify all
+	// testTimeoutChan will signal to all goroutines that it's time to wrap up and exit
+	testTimeoutChan := make(chan struct{})
+	// we close the testTimeoutChan instead of sending on it so we can notify all
 	// goroutines listening on it and not just one
 	time.AfterFunc(testTimeout, func() {
-		close(doneChan)
+		close(testTimeoutChan)
 	})
 
 	var wg sync.WaitGroup
@@ -110,7 +121,7 @@ OUTER:
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				errLocal := performUpdates(rc, statusTracker, doneChan)
+				errLocal := performUpdates(rc, statusTracker, testTimeoutChan)
 				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
 					// We have a real error - fail the test
 					t.Error(errLocal)
@@ -120,51 +131,70 @@ OUTER:
 		wg.Wait()
 
 		select {
-		case <-doneChan:
+		case <-testTimeoutChan:
 			// the time has run out, finish the test
 			break OUTER
 		default:
 			// there is still time, load the wal from disk and re-run the test
-			rc, err = reloadRefCounter(rcFilePath, walPath, fdd, &atomicNumRecoveries, doneChan)
+			rcFromDisk, err := reloadRefCounter(rcFilePath, walPath, fdd, &atomicNumRecoveries, testTimeoutChan)
 			if errors.Contains(err, ErrTestTimeout) {
 				break OUTER
 			}
 			if err != nil {
 				t.Fatal("Failed to reload wal from disk:", err)
 			}
+			// clear the "crashed" flag
+			statusTracker.Lock()
+			statusTracker.crashed = false
+			statusTracker.Unlock()
+			// we only assign it when there is no error because we need the
+			// latest reference for the sanity check we do against the status
+			// struct at the end
+			rc = rcFromDisk
 		}
 	}
 
-	//// Validate changes
-	//if rc.numSectors != uint64(len(statusTracker.counts)) {
-	//	t.Fatalf("Expected %d sectors, got %d", uint64(len(statusTracker.counts)), rc.numSectors)
-	//}
-	//errorList := make([]error, 0)
-	//for i := uint64(0); i < rc.numSectors; i++ {
-	//	n, err := rc.readCount(i)
-	//	if err != nil {
-	//		t.Fatal("Failed to read count:", err)
-	//	}
-	//	if n != statusTracker.counts[i] {
-	//		errorList = append(errorList, fmt.Errorf("Expected sector count value of sector %d to be %d, got %d", i, statusTracker.counts[i], n))
-	//	}
-	//}
-	//if len(errorList) > 0 {
-	//	t.Fatal("Sector count values do not match expectations!", errors.Compose(errorList...))
-	//}
+	// Load the WAL from disk and apply all outstanding txns.
+	// Try until successful.
+	for err != nil {
+		wal, err = loadWal(rcFilePath, walPath, fdd)
+		if errors.Contains(err, dependencies.ErrDiskFault) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Load the refcounter from disk.
+	// Try until successful.
+	for err != nil {
+		rc, err = LoadRefCounter(rcFilePath, wal)
+		if errors.Contains(err, dependencies.ErrDiskFault) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Validate changes
+	if err = validateStatusAfterAllTests(rc, statusTracker); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Logf("\nRecovered from %v disk failures\n", atomicNumRecoveries)
 	t.Logf("Inner loop %v iterations without failures\n", atomicNumSuccessfulIterations)
 }
 
 // loadWal reads the wal from disk and applies all outstanding transactions
-func loadWal(filepath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
+func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
 	// load the wal from disk
 	txns, newWal, err := writeaheadlog.New(walPath)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load wal from disk")
 	}
-	f, err := fdd.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
+	f, err := fdd.OpenFile(rcFilePath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
@@ -192,7 +222,25 @@ func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 		}
 		return
 	}
+	// This will wipe the temporary in-mem changes to the counters.
+	// On success that's OK.
+	// On error we need to crash anyway, so it's OK as well.
 	defer rc.UpdateApplied()
+
+	// We can afford to lock the status tracker because only one goroutine is
+	// allowed to make changes at any given time anyway.
+	st.Lock()
+	defer func() {
+		// If we're returning a disk error we need to crash in order to avoid
+		// data corruption.
+		if errors.Contains(err, dependencies.ErrDiskFault) {
+			st.crashed = true
+		}
+		st.Unlock()
+	}()
+	if st.crashed {
+		return nil
+	}
 
 	updates := make([]writeaheadlog.Update, 0)
 	var u writeaheadlog.Update
@@ -209,9 +257,7 @@ func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 			if u, err = rc.Increment(secIdx); err != nil {
 				return
 			}
-			st.Lock()
 			st.counts[secIdx]++
-			st.Unlock()
 			updates = append(updates, u)
 		}
 	}
@@ -228,9 +274,7 @@ func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 			if u, err = rc.Decrement(secIdx); err != nil {
 				return
 			}
-			st.Lock()
 			st.counts[secIdx]--
-			st.Unlock()
 			updates = append(updates, u)
 		}
 	}
@@ -240,9 +284,7 @@ func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 		if u, err = rc.Append(); err != nil {
 			return
 		}
-		st.Lock()
 		st.counts = append(st.counts, 1)
-		st.Unlock()
 		updates = append(updates, u)
 	}
 
@@ -255,9 +297,7 @@ func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 			if u, err = rc.DropSectors(secNum); err != nil {
 				return
 			}
-			st.Lock()
 			st.counts = st.counts[:len(st.counts)-int(secNum)]
-			st.Unlock()
 			updates = append(updates, u)
 		}
 	}
@@ -270,9 +310,7 @@ func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 		if us, err = rc.Swap(secIdx1, secIdx2); err != nil {
 			return
 		}
-		st.Lock()
 		st.counts[secIdx1], st.counts[secIdx2] = st.counts[secIdx2], st.counts[secIdx1]
-		st.Unlock()
 		updates = append(updates, us...)
 	}
 
@@ -313,11 +351,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 		}
 		// Reload the refcounter from disk
 		newRc, err := LoadRefCounter(rcFilePath, newWal)
-		if errors.Contains(err, dependencies.ErrDiskFault) {
-			atomic.AddUint64(atomicNumRecoveries, 1)
-			continue // try again
-		} else if err != nil {
-			// an actual error occurred, the test must fail
+		if err != nil {
 			return nil, err
 		}
 		newRc.staticDeps = fdd
@@ -361,6 +395,28 @@ func validateIncrement(rc *RefCounter, secNum uint64) error {
 	}
 	if n == math.MaxUint16 {
 		return errors.New("Cannot increment a counter at max value")
+	}
+	return nil
+}
+
+// validateStatusAfterAllTests does the final validation of the test by
+// comparing the state of the refcounter after all the test updates are applied.
+func validateStatusAfterAllTests(rc *RefCounter, st *status) error {
+	if rc.numSectors != uint64(len(st.counts)) {
+		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(st.counts)), rc.numSectors)
+	}
+	errorList := make([]error, 0)
+	for i := uint64(0); i < rc.numSectors; i++ {
+		n, err := rc.Count(i)
+		if err != nil {
+			return errors.AddContext(err, "failed to read count")
+		}
+		if n != st.counts[i] {
+			errorList = append(errorList, fmt.Errorf("Expected counter value for sector %d to be %d, got %d", i, st.counts[i], n))
+		}
+	}
+	if len(errorList) > 0 {
+		return errors.AddContext(errors.Compose(errorList...), "sector counter values do not match expectations")
 	}
 	return nil
 }
