@@ -294,7 +294,11 @@ func TestProcessParallelPayments(t *testing.T) {
 	var eaFailures uint64
 
 	// start the timer
-	finished := time.After(timeout)
+	finished := make(chan struct{})
+	time.AfterFunc(timeout, func() {
+		close(finished)
+	})
+
 	for range pairs {
 		go func() {
 			// create two streams
@@ -320,13 +324,13 @@ func TestProcessParallelPayments(t *testing.T) {
 				var err error
 				if fastrand.Intn(100) < 5 { // pay by contract 5% of time
 					fcLocks[rp.fcid].Lock()
-					if pd, _, failed, err = runPayByContractFlow(rp, rs, hs, ra); failed {
+					if pd, failed, err = runPayByContractFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&fcFailures, 1)
 					}
 					atomic.AddUint64(&fcPayments, 1)
 					fcLocks[rp.fcid].Unlock()
 				} else {
-					if pd, _, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
+					if pd, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&eaFailures, 1)
 					}
 					atomic.AddUint64(&eaPayments, 1)
@@ -351,7 +355,7 @@ func TestProcessParallelPayments(t *testing.T) {
 
 // runPayByContractFlow is a helper function that runs the 'PayByContract' flow
 // and returns the result of running it.
-func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByContractResponse, fail bool, err error) {
+func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, fail bool, err error) {
 	if fastrand.Intn(100) < 5 { // fail 5% of time
 		fail = true
 	}
@@ -385,6 +389,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 				return err
 			}
 			// receive PayByContractResponse
+			var payByResponse modules.PayByContractResponse
 			err = modules.RPCRead(rStream, &payByResponse)
 			if err != nil {
 				return err
@@ -406,7 +411,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 
 // runPayByContractFlow is a helper function that runs the
 // 'PayByEphemeralAccount' flow and returns the result of running it.
-func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByEphemeralAccountResponse, fail bool, err error) {
+func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, fail bool, err error) {
 	if fastrand.Intn(100) < 5 { // fail 5% of time
 		fail = true
 	}
@@ -440,6 +445,7 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 			}
 
 			// receive PayByEphemeralAccountResponse
+			var payByResponse modules.PayByEphemeralAccountResponse
 			err = modules.RPCRead(rStream, &payByResponse)
 			if err != nil {
 				return err
