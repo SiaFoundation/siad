@@ -9,8 +9,14 @@ generate_till_version=v1.4.7
 changelog_md=../CHANGELOG.md
 changelog_files_dir=../changelog
 head_filename=changelog-head.md
+mid_filename=changelog-mid.md
 tail_filename=changelog-tail.md
-IFS=$'\n' # fix for loop filenames with spaces 
+IFS=$'\n' # fix for loop filenames with spaces
+final_version=false # updates tail, removes latest version items
+
+if [[ $1 == final ]]; then
+    final_version=true
+fi
 
 ######################################
 # Add changelog item to changelog file
@@ -36,9 +42,10 @@ function add_items {
     do
         if [ "$section_has_items" == false ]
     	then
+            # Write section header
     	    section_has_items=true
     		echo "    > writing $items_header header"
-    		echo "**$items_header**" >> "$changelog_md"
+    		echo "**$items_header**" >> "$mid_filename"
     		echo "    > writing $items_header"
     	fi
     	echo "      > $item"
@@ -47,13 +54,13 @@ function add_items {
         # to fix markdown rendering
         text="$(printf "%s" "$(< $item)")"
 
-        echo "$text" >> "$changelog_md"
+        echo "$text" >> "$mid_filename"
     done
 
     # add new line to fix markdown rendering
     if [ "$section_has_items" == true ]
     then
-        echo "" >> "$changelog_md"
+        echo "" >> "$mid_filename"
     fi
 }
 
@@ -66,6 +73,13 @@ pushd "$changelog_files_dir"
 # Write the head of the changelog
 echo 'writing head of changelog.md'
 cp "$head_filename" "$changelog_md"
+
+# Delete and recreate temp mid changelog md if exists
+if [ -f "$mid_filename" ]; then
+    echo "removing previous $mid_filename file"
+    rm $mid_filename
+fi
+touch $mid_filename
 
 # Get versions to be added to the changelog
 echo "getting versions in reverse order"
@@ -92,17 +106,20 @@ $generate_till_version"
     then
         echo "version $version WILL be included to changelog file"
         echo ">  writing version header: $version"
-        echo "" >> "$changelog_md"
         
-        # echo current month in English and year in format
-        # '## Mar 2020:'
-        echo "## $(LC_ALL=C date +%b) $(date +%Y):"
-        
-        echo "### $version" >> "$changelog_md"
+        # echo current date month (in English), day and year in format
+        # '## Mar 30, 2020:'
+        echo "## $(LC_ALL=C date +%b) $(date +%d), $(date +%Y):" >> "$mid_filename"
+        echo "### $version" >> "$mid_filename"
         
         add_items "Key Updates" "key-updates"
         add_items "Bugs Fixed" "bugs-fixed"
         add_items "Other" "other"
+
+        if [ "$final_version" == "true" ]
+        then
+            rm -rf "$version"
+        fi
     else
         echo "version $version WILL NOT be included to changelog file"
         upcoming_version_found=true
@@ -125,6 +142,25 @@ then
         # create dummy files for git commit to catch empty section directories
         touch "$upcoming_version/$section/.init"
     done
+fi
+
+if [ "$final_version" == "true" ]
+then
+    # Update tail of the changelog with mid
+
+    # Append the tail of the changelog to the mid
+    echo 'appending tail to mid'
+    tail_content=$(<"$tail_filename")
+    echo "$tail_content" >> "$mid_filename"
+
+    # Update tail with mid
+    echo 'updating tail of changelog'
+    cp "$mid_filename" "$tail_filename"
+else
+    # Write the mid of the changelog
+    echo 'writing mid of changelog.md'
+    mid_content=$(<"$mid_filename")
+    echo "$mid_content" >> "$changelog_md"
 fi
 
 # Write the tail of the changelog
