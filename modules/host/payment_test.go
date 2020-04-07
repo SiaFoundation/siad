@@ -290,6 +290,8 @@ func TestProcessParallelPayments(t *testing.T) {
 
 	var fcPayments uint64
 	var eaPayments uint64
+	var fcFailures uint64
+	var eaFailures uint64
 
 	// start the timer
 	finished := time.After(timeout)
@@ -313,25 +315,30 @@ func TestProcessParallelPayments(t *testing.T) {
 				ra := types.NewCurrency64(fastrand.Uint64n(10) + 1)
 
 				// randomly pick a flow and run it
+				var failed bool
 				var pd modules.PaymentDetails
 				var err error
 				if fastrand.Intn(100) < 5 { // pay by contract 5% of time
 					fcLocks[rp.fcid].Lock()
-					pd, _, err = runPayByContractFlow(rp, rs, hs, ra)
-					fcLocks[rp.fcid].Unlock()
+					if pd, _, failed, err = runPayByContractFlow(rp, rs, hs, ra); failed {
+						atomic.AddUint64(&fcFailures, 1)
+					}
 					atomic.AddUint64(&fcPayments, 1)
+					fcLocks[rp.fcid].Unlock()
 				} else {
-					pd, _, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra)
+					if pd, _, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
+						atomic.AddUint64(&eaFailures, 1)
+					}
 					atomic.AddUint64(&eaPayments, 1)
 				}
 
 				// compare amount paid to what we expect
+				if !failed && err == nil && !pd.Amount().Equals(ra) {
+					err = fmt.Errorf("Unexpected amount paid, expected %v actual %v", ra, pd.Amount())
+				}
+
 				if err != nil {
 					t.Error(err)
-					break LOOP
-				}
-				if !pd.Amount().Equals(ra) {
-					t.Errorf("Unexpected amount paid, expected %v actual %v", ra, pd.Amount())
 					break LOOP
 				}
 			}
@@ -339,18 +346,36 @@ func TestProcessParallelPayments(t *testing.T) {
 	}
 	<-finished
 
-	t.Logf("\n\nIn %.f seconds, on %d cores, the following payments completed successfully\nPayByContract: %d\nPayByEphemeralAccount: %d\n\n", timeout.Seconds(), runtime.NumCPU(), atomic.LoadUint64(&fcPayments), atomic.LoadUint64(&eaPayments))
+	t.Logf("\n\nIn %.f seconds, on %d cores, the following payments completed successfully\nPayByContract: %d (%v expected failures)\nPayByEphemeralAccount: %d (%v expected failures)\n\n", timeout.Seconds(), runtime.NumCPU(), atomic.LoadUint64(&fcPayments), atomic.LoadUint64(&fcFailures), atomic.LoadUint64(&eaPayments), atomic.LoadUint64(&eaFailures))
 }
 
 // runPayByContractFlow is a helper function that runs the 'PayByContract' flow
 // and returns the result of running it.
-func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByContractResponse, err error) {
+func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByContractResponse, fail bool, err error) {
+	if fastrand.Intn(100) < 5 { // fail 5% of time
+		fail = true
+	}
+
+	defer func() {
+		if fail && err == nil {
+			err = errors.AddContext(err, "Expected failure but error was nil")
+			return
+		}
+		if fail && err != nil && strings.Contains(err.Error(), "Invalid payment revision") {
+			err = nil
+		}
+	}()
+
 	err = run(
 		func() error {
 			// prepare an updated revision that pays the host
 			rev, sig, err := pair.paymentRevision(amount)
 			if err != nil {
 				return err
+			}
+			// corrupt the revision if we're expected to fail
+			if fail {
+				rev.SetValidRenterPayout(rev.ValidRenterPayout().Add64(1))
 			}
 			// send PaymentRequest & PayByContractRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByContract}
@@ -381,12 +406,34 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 
 // runPayByContractFlow is a helper function that runs the
 // 'PayByEphemeralAccount' flow and returns the result of running it.
-func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByEphemeralAccountResponse, err error) {
+func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, payByResponse modules.PayByEphemeralAccountResponse, fail bool, err error) {
+	if fastrand.Intn(100) < 5 { // fail 5% of time
+		fail = true
+	}
+
+	defer func() {
+		if fail && err == nil {
+			err = errors.AddContext(err, "Expected failure but error was nil")
+			return
+		}
+		if fail && err != nil && strings.Contains(err.Error(), modules.ErrWithdrawalInvalidSignature.Error()) {
+			err = nil
+		}
+	}()
+
 	err = run(
 		func() error {
+			// create the request
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter)
+
+			if fail {
+				// this induces failure because the nonce will be different and
+				// this the signature will be invalid
+				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter).Signature
+			}
+
 			// send PaymentRequest & PayByEphemeralAccountRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
-			pbeaRequest := newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter)
 			err := modules.RPCWriteAll(rStream, pRequest, pbeaRequest)
 			if err != nil {
 				return err
