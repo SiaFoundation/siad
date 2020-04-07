@@ -33,8 +33,6 @@ function add_items {
     items_header="$1"
     items_folder="$2"
     
-    echo "  > writing $items_header"
-    
     section_has_items=false
     items_list=$(find ./"$version" -wholename "*/$items_folder/*.md" | sort)
     new_line=false
@@ -44,12 +42,8 @@ function add_items {
     	then
             # Write section header
     	    section_has_items=true
-    		echo "    > writing $items_header header"
     		echo "**$items_header**" >> "$mid_filename"
-    		echo "    > writing $items_header"
     	fi
-    	echo "      > $item"
-
         # remove trailing new lines from items
         # to fix markdown rendering
         text="$(printf "%s" "$(< $item)")"
@@ -65,36 +59,22 @@ function add_items {
 }
 
 # get script location
-pushd $(dirname "$0")
+pushd $(dirname "$0") > /dev/null
 
 # work from "changelog" folder
-pushd "$changelog_files_dir"
+pushd "$changelog_files_dir" > /dev/null
 
 # Write the head of the changelog
 echo 'writing head of changelog.md'
 cp "$head_filename" "$changelog_md"
 
-# Delete and recreate temp mid changelog md if exists
-if [ -f "$mid_filename" ]; then
-    echo "removing previous $mid_filename file"
-    rm $mid_filename
-fi
+# Create temp changelog-mid.md
 touch $mid_filename
 
-# Get versions to be added to the changelog
-echo "getting versions in reverse order"
+# Get versions to be added to the changelog in reverse order
 version_list=$(find * -maxdepth 1 -name "v*" | sort -r --version-sort)
 
-echo found following versions:
-echo --- begin ---
-for version in $version_list
-do
-	echo "  $version"
-done
-echo ---  end  ---
-
 # Write versions and add changelog items to the changelog
-echo writing versions to changelog...
 upcoming_version_found=false
 for version in $version_list
 do
@@ -104,8 +84,7 @@ $generate_till_version"
     # check if current version should be included
     if [ "$versions_compare" == "$(sort --version-sort <<< "$versions_compare")" ]
     then
-        echo "version $version WILL be included to changelog file"
-        echo ">  writing version header: $version"
+        echo "writing version: $version"
         
         # echo current date month (in English), day and year in format
         # '## Mar 30, 2020:'
@@ -125,7 +104,6 @@ $generate_till_version"
         upcoming_version_found=true
     fi
 done
-echo writing versions to changelog: done
 
 # Generate upcoming version directory structure
 if [ "$upcoming_version_found" == false ]
@@ -146,28 +124,28 @@ fi
 
 if [ "$final_version" == "true" ]
 then
-    # Update tail of the changelog with mid
+    echo "" >> "$changelog_md"
+
+    # Save changelog mid to changelog tail
 
     # Append the tail of the changelog to the mid
-    echo 'appending tail to mid'
-    tail_content=$(<"$tail_filename")
-    echo "$tail_content" >> "$mid_filename"
+    cat "$tail_filename" >> "$mid_filename"
 
     # Update tail with mid
     echo 'updating tail of changelog'
-    cp "$mid_filename" "$tail_filename"
+    mv "$mid_filename" "$tail_filename"
 else
+    echo "" >> "$changelog_md"
+
     # Write the mid of the changelog
     echo 'writing mid of changelog.md'
-    mid_content=$(<"$mid_filename")
-    echo "$mid_content" >> "$changelog_md"
+    cat "$mid_filename" >> "$changelog_md"
+    rm "$mid_filename"
 fi
 
 # Write the tail of the changelog
 echo 'writing tail of changelog.md'
-tail_content=$(<"$tail_filename")
-echo "" >> "$changelog_md"
-echo "$tail_content" >> "$changelog_md"
+cat "$tail_filename" >> "$changelog_md"
 
-popd
-popd
+popd > /dev/null
+popd > /dev/null
