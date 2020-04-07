@@ -247,9 +247,9 @@ func TestProcessParallelPayments(t *testing.T) {
 	// determine a reasonable timeout
 	var timeout time.Duration
 	if build.VLONG {
-		timeout = 5 * time.Minute
-	} else {
 		timeout = time.Minute
+	} else {
+		timeout = 10 * time.Second
 	}
 
 	// setup the host
