@@ -82,7 +82,7 @@ func TestHostDBBasePriceAdjustment(t *testing.T) {
 	entry.BaseRPCPrice = entry.MaxBaseRPCPrice().Mul64(2)
 	bpa = hdb.basePriceAdjustments(entry)
 	if bpa != math.SmallestNonzeroFloat64 {
-		t.Errorf("BasePriceAdjustment for should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
+		t.Errorf("BasePriceAdjustment should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
 	}
 	entry.BaseRPCPrice = DefaultHostDBEntry.BaseRPCPrice
 
@@ -90,7 +90,7 @@ func TestHostDBBasePriceAdjustment(t *testing.T) {
 	entry.SectorAccessPrice = entry.MaxSectorAccessPrice().Mul64(2)
 	bpa = hdb.basePriceAdjustments(entry)
 	if bpa != math.SmallestNonzeroFloat64 {
-		t.Errorf("BasePriceAdjustment for should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
+		t.Errorf("BasePriceAdjustment should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
 	}
 	entry.SectorAccessPrice = DefaultHostDBEntry.SectorAccessPrice
 
@@ -99,12 +99,47 @@ func TestHostDBBasePriceAdjustment(t *testing.T) {
 	entry.DownloadBandwidthPrice = DefaultHostDBEntry.DownloadBandwidthPrice.Div64(modules.MaxBaseRPCPriceVsBandwidth)
 	bpa = hdb.basePriceAdjustments(entry)
 	if bpa != math.SmallestNonzeroFloat64 {
-		t.Errorf("BasePriceAdjustment for should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
+		t.Errorf("BasePriceAdjustment should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
 	}
 	entry.DownloadBandwidthPrice = DefaultHostDBEntry.DownloadBandwidthPrice.Div64(modules.MaxSectorAccessPriceVsBandwidth)
 	bpa = hdb.basePriceAdjustments(entry)
 	if bpa != math.SmallestNonzeroFloat64 {
-		t.Errorf("BasePriceAdjustment for should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
+		t.Errorf("BasePriceAdjustment should have been %v but was %v", math.SmallestNonzeroFloat64, bpa)
+	}
+}
+
+// TestHostWeightBasePrice checks that a host with an unacceptable BaseRPCPrice
+// or SectorAccessPrice has a lower score.
+func TestHostWeightBasePrice(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	hdb := bareHostDB()
+
+	entry := DefaultHostDBEntry
+	entry2 := DefaultHostDBEntry
+	entry2.BaseRPCPrice = entry.MaxBaseRPCPrice().Mul64(2)
+	entry3 := DefaultHostDBEntry
+	entry3.SectorAccessPrice = entry.MaxSectorAccessPrice().Mul64(2)
+
+	w1 := hdb.weightFunc(entry).Score()
+	w2 := hdb.weightFunc(entry2).Score()
+	w3 := hdb.weightFunc(entry3).Score()
+	if w1.Cmp(w2) <= 0 {
+		t.Log("Default Score", w1)
+		t.Log("Bad BaseRPCPrice Score", w2)
+		t.Error("Default host should have higher score")
+	}
+	if w1.Cmp(w3) <= 0 {
+		t.Log("Default Score", w1)
+		t.Log("Bad SectorAccess Score", w3)
+		t.Error("Default host should have higher score")
+	}
+	if w2.Cmp(w3) != 0 {
+		t.Log("Bad BaseRPCPrice Score", w2)
+		t.Log("Bad SectorAccess Score", w3)
+		t.Error("Hosts should have the same score")
 	}
 }
 

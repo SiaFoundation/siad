@@ -373,14 +373,14 @@ type (
 	}
 )
 
-// MaxBaseRPCPrice returns the maximum value for the MinBaseRPCPrice based on
-// the MinDownloadBandwidthPrice
+// MaxBaseRPCPrice returns the maximum value for the BaseRPCPrice based on the
+// DownloadBandwidthPrice
 func (hes HostExternalSettings) MaxBaseRPCPrice() types.Currency {
 	return hes.DownloadBandwidthPrice.Mul64(MaxBaseRPCPriceVsBandwidth)
 }
 
-// MaxSectorAccessPrice returns the maximum value for the MinSectorAccessPrice
-// based on the MinDownloadBandwidthPrice
+// MaxSectorAccessPrice returns the maximum value for the SectorAccessPrice
+// based on the DownloadBandwidthPrice
 func (hes HostExternalSettings) MaxSectorAccessPrice() types.Currency {
 	return hes.DownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
 }
