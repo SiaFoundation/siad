@@ -178,3 +178,9 @@ func MDMReadMemory() uint64 {
 func MDMMemoryCost(pt RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
 }
+
+// MDMDropSectorsTime returns the time for a `DropSectors` instruction given
+// `numSectorsDropped`.
+func MDMDropSectorsTime(numSectorsDropped uint64) uint64 {
+	return MDMTimeDropSectorsBase + MDMTimeDropSingleSector*numSectorsDropped
+}

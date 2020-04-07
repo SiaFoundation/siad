@@ -10,22 +10,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-func newCustomPriceTable() modules.RPCPriceTable {
-	zc := types.ZeroCurrency
-	return modules.RPCPriceTable{
-		Expiry:               time.Now().Add(time.Minute).Unix(),
-		UpdatePriceTableCost: zc,
-		InitBaseCost:         zc,
-		MemoryTimeCost:       zc,
-
-		DropSectorsBaseCost: zc,
-		DropSectorsUnitCost: zc,
-		ReadBaseCost:        zc,
-		ReadLengthCost:      zc,
-		WriteBaseCost:       zc,
-		WriteLengthCost:     zc,
-		WriteStoreCost:      host.DefaultStoragePrice,
-	}
+// newCustomPriceTable returns a custom price table for the cost tests.
+func newTestWriteStorePriceTable() modules.RPCPriceTable {
+	pt := modules.RPCPriceTable{}
+	pt.Expiry = time.Now().Add(time.Minute).Unix()
+	pt.WriteStoreCost = host.DefaultStoragePrice
+	return pt
 }
 
 // TestCostForAppendProgram calculates the cost for a program which appends 1
@@ -34,20 +24,20 @@ func newCustomPriceTable() modules.RPCPriceTable {
 // NOTE: We use a modified cost function for Append which returns the cost for
 // production-sized sectors, as sectors in testing are only 4 KiB.
 func TestCostForAppendProgram(t *testing.T) {
-	pt := newCustomPriceTable()
+	pt := newTestWriteStorePriceTable()
 
 	// Define helper variables.
-	sc := types.SiacoinPrecision
+	tib := uint64(1e12)
 
 	// Initialize starting values.
-	numInstructions := uint64(math.Ceil(1e12 / float64(modules.SectorSizeStandard)))
-	runningCost := modules.MDMInitCost(pt, 1e12, numInstructions)
+	numInstructions := uint64(math.Ceil(float64(tib) / float64(modules.SectorSizeStandard)))
+	runningCost := modules.MDMInitCost(pt, tib, numInstructions)
 	runningRefund := types.ZeroCurrency
 	runningMemory := modules.MDMInitMemory()
 	runningSize := uint64(0)
 
 	// Simulate running a program to append 1 TiB of data.
-	for runningSize < (1e12) {
+	for runningSize < tib {
 		cost, refund := appendTrueCost(pt)
 		memory := modules.SectorSizeStandard // override MDMAppendMemory()
 		time := uint64(modules.MDMTimeAppend)
@@ -61,7 +51,9 @@ func TestCostForAppendProgram(t *testing.T) {
 		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
 	}
 
-	expectedRefund := sc.Div64(1000).Mul64(116).Div64(10) // 11.6 mS
+	// cost == refund because we are testing the storage costs, and the refund
+	// comprises only the storage cost.
+	expectedRefund := expectedCost
 	if !aboutEquals(expectedRefund, runningRefund) {
 		t.Errorf("expected refund for appending 1 TiB to be %v, got refund %v", expectedRefund.HumanString(), runningRefund.HumanString())
 	}
@@ -84,21 +76,22 @@ func appendTrueCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
 // TestCosts tests the costs for individual instructions so that we have a sense
 // of their relative costs and to make sure they are sensible values.
 func TestCosts(t *testing.T) {
-	pt := newCustomPriceTable()
+	pt := newTestWriteStorePriceTable()
 
 	// Define helper variables.
-	sc := types.SiacoinPrecision
 	perTB := modules.BytesPerTerabyte
 
 	// Append
 	cost, refund := appendTrueCost(pt)
-	// Scale the costs up to a TB of data.
+	// Scale the cost from a single, production-sized sector up to a TB of data.
 	costPerTB := cost.Div64(modules.SectorSizeStandard).Mul(perTB)
 	expectedCostPerTB := host.DefaultStoragePrice.Mul64(modules.SectorSizeStandard)
 	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
-	expectedRefundPerTB := sc.Div64(1e3).Mul64(116).Div64(10) // 11.6 mS
+	// cost == refund because we are testing the storage costs, and the refund
+	// comprises only the storage cost.
+	expectedRefundPerTB := expectedCostPerTB
 	refundPerTB := refund.Div64(modules.SectorSizeStandard).Mul(perTB)
 	if !aboutEquals(refundPerTB, expectedRefundPerTB) {
 		t.Errorf("expected append refund %v, got %v", expectedRefundPerTB.HumanString(), refundPerTB.HumanString())

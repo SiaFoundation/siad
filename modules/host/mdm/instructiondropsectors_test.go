@@ -38,7 +38,7 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 	i := NewDropSectorsInstruction(dataOffset, true)
 	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
 
-	time := modules.MDMTimeDropSectorsBase + modules.MDMTimeDropSingleSector*numSectorsDropped
+	time := modules.MDMDropSectorsTime(numSectorsDropped)
 	cost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
 	return i, cost, refund, modules.MDMDropSectorsMemory(), time
 }
@@ -52,10 +52,10 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Construct the program.
 
-	numAppend := uint64(3)
-	numDropSectors := uint64(3)
+	numAppend, instrLenAppend := uint64(3), modules.SectorSize
+	numDropSectors, instrLenDropSectors := uint64(3), uint64(8)
 	numInstructions := numAppend + numDropSectors
-	dataLen := numAppend*modules.SectorSize + numDropSectors*8
+	dataLen := numAppend*instrLenAppend + numDropSectors*instrLenDropSectors
 	programData := make([]byte, dataLen)
 	pt := newTestPriceTable()
 	initCost := modules.MDMInitCost(pt, dataLen, numInstructions)
