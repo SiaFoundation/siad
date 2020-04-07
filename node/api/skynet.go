@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -64,14 +65,14 @@ type (
 	// SkynetPortalsGET contains the information queried for the /skynet/portals
 	// GET endpoint.
 	SkynetPortalsGET struct {
-		Portals []modules.SkynetPortalInfo `json:"portals"`
+		Portals []modules.SkynetPortal `json:"portals"`
 	}
 
 	// SkynetPortalsPOST contains the information needed for the /skynet/portals
 	// POST endpoint to be called.
 	SkynetPortalsPOST struct {
-		Add    []modules.SkynetPortalInfo `json:"add"`
-		Remove []modules.NetAddress       `json:"remove"`
+		Add    []modules.SkynetPortal `json:"add"`
+		Remove []modules.NetAddress   `json:"remove"`
 	}
 
 	// SkynetStatsGET contains the information queried for the /skynet/stats
@@ -183,34 +184,15 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	// Check for nil input
-	if len(params.Add)+len(params.Remove) == 0 {
-		WriteError(w, Error{"no portals submitted"}, http.StatusBadRequest)
-		return
-	}
-
-	// Validate portal info.
-	addPortals := make([]modules.SkynetPortalInfo, len(params.Add))
-	for i, portalInfo := range params.Add {
-		if err := portalInfo.Address.IsStdValid(); err != nil {
-			WriteError(w, Error{"invalid network address: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		addPortals[i] = portalInfo
-	}
-	removePortals := make([]modules.NetAddress, len(params.Remove))
-	for i, address := range params.Remove {
-		if err := address.IsStdValid(); err != nil {
-			WriteError(w, Error{"invalid network address: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		removePortals[i] = address
-	}
-
 	// Update the list of known skynet portals.
-	err = api.renter.UpdateSkynetPortals(addPortals, removePortals)
+	err = api.renter.UpdateSkynetPortals(params.Add, params.Remove)
+	// If validation fails, return a bad request status.
+	errStatus := http.StatusInternalServerError
+	if strings.Contains(err.Error(), skynetportals.ErrSkynetPortalsValidation.Error()) {
+		errStatus = http.StatusBadRequest
+	}
 	if err != nil {
-		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, errStatus)
 		return
 	}
 

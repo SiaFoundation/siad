@@ -962,10 +962,10 @@ type Renter interface {
 	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
 
 	// Portals returns the list of known skynet portals.
-	Portals() ([]SkynetPortalInfo, error)
+	Portals() ([]SkynetPortal, error)
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
-	UpdateSkynetPortals(additions []SkynetPortalInfo, removals []NetAddress) error
+	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

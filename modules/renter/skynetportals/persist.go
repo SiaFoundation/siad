@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -54,6 +55,9 @@ func (sp *SkynetPortals) marshalMetadata() ([]byte, error) {
 
 // marshalSia implements the encoding.SiaMarshaler interface.
 func marshalSia(w io.Writer, address modules.NetAddress, public, listed bool) error {
+	if len(address) > modules.MaxEncodedNetAddressLength {
+		return errors.New("given address " + string(address) + " does not fit in " + string(modules.MaxEncodedNetAddressLength) + " bytes")
+	}
 	e := encoding.NewEncoder(w)
 	// Create a padded buffer so that we always write the same amount of bytes.
 	buf := make([]byte, modules.MaxEncodedNetAddressLength)
@@ -157,17 +161,29 @@ func (sp *SkynetPortals) callInitPersist() error {
 	return nil
 }
 
-// validateChanges validates the changes to be made to the Skynet portals list.
-func (sp *SkynetPortals) validateChanges(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) error {
+// validatePortalChanges validates the changes to be made to the Skynet portals list.
+func (sp *SkynetPortals) validatePortalChanges(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
+	// Check for nil input
+	if len(additions)+len(removals) == 0 {
+		return errors.New("no portals being added or removed")
+	}
+
 	additionsMap := make(map[modules.NetAddress]struct{})
 	for _, addition := range additions {
-		additionsMap[addition.Address] = struct{}{}
+		address := addition.Address
+		if err := address.IsStdValid(); err != nil {
+			return errors.New("invalid network address: " + err.Error())
+		}
+		additionsMap[address] = struct{}{}
 	}
 	// Check that each removal is valid.
-	for _, removal := range removals {
-		if _, ok := sp.portals[removal]; !ok {
-			if _, ok := additionsMap[removal]; !ok {
-				return errors.New("address " + string(removal) + " not already present in list of portals or being added")
+	for _, removalAddress := range removals {
+		if err := removalAddress.IsStdValid(); err != nil {
+			return errors.New("invalid network address: " + err.Error())
+		}
+		if _, exists := sp.portals[removalAddress]; !exists {
+			if _, added := additionsMap[removalAddress]; !added {
+				return errors.New("address " + string(removalAddress) + " not already present in list of portals or being added")
 			}
 		}
 	}
@@ -178,14 +194,27 @@ func (sp *SkynetPortals) validateChanges(additions []modules.SkynetPortalInfo, r
 // and appends the changes to the persist file on disk.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) error {
+func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 
+	// Convert portal addresses to lowercase for case-insensitivity.
+	addPortals := make([]modules.SkynetPortal, len(additions))
+	for i, portalInfo := range additions {
+		address := modules.NetAddress(strings.ToLower(string(portalInfo.Address)))
+		portalInfo.Address = address
+		addPortals[i] = portalInfo
+	}
+	removePortals := make([]modules.NetAddress, len(removals))
+	for i, address := range removals {
+		address = modules.NetAddress(strings.ToLower(string(address)))
+		removePortals[i] = address
+	}
+
 	// Validate now before we start making changes.
-	err := sp.validateChanges(additions, removals)
+	err := sp.validatePortalChanges(additions, removals)
 	if err != nil {
-		return err
+		return errors.AddContext(err, ErrSkynetPortalsValidation.Error())
 	}
 
 	// Create buffer for encoder

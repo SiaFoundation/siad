@@ -315,7 +315,7 @@ func (c *Client) SkynetPortalsGet() (portals api.SkynetPortalsGET, err error) {
 }
 
 // SkynetPortalsPost requests the /skynet/portals Post endpoint.
-func (c *Client) SkynetPortalsPost(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) (err error) {
+func (c *Client) SkynetPortalsPost(additions []modules.SkynetPortal, removals []modules.NetAddress) (err error) {
 	spp := api.SkynetPortalsPOST{
 		Add:    additions,
 		Remove: removals,

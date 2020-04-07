@@ -430,17 +430,17 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 }
 
 // Portals returns the list of known skynet portals.
-func (r *Renter) Portals() ([]modules.SkynetPortalInfo, error) {
+func (r *Renter) Portals() ([]modules.SkynetPortal, error) {
 	err := r.tg.Add()
 	if err != nil {
-		return []modules.SkynetPortalInfo{}, err
+		return []modules.SkynetPortal{}, err
 	}
 	defer r.tg.Done()
 	return r.staticSkynetPortals.Portals(), nil
 }
 
 // UpdateSkynetPortals updates the list of known Skynet portals that are listed.
-func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) error {
+func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err

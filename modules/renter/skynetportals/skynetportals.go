@@ -7,6 +7,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var (
+	// ErrSkynetPortalsValidation is the error returned when validation of
+	// changes to the Skynet portals list fails.
+	ErrSkynetPortalsValidation = errors.New("could not validate additions and removals")
+)
+
 // SkynetPortals manages a list of known Skynet portals by persisting the list
 // to disk.
 type SkynetPortals struct {
@@ -34,12 +40,12 @@ func New(persistDir string) (*SkynetPortals, error) {
 }
 
 // Portals returns the list of known Skynet portals.
-func (sp *SkynetPortals) Portals() []modules.SkynetPortalInfo {
+func (sp *SkynetPortals) Portals() []modules.SkynetPortal {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
-	var portals []modules.SkynetPortalInfo
+	var portals []modules.SkynetPortal
 	for addr, public := range sp.portals {
-		portal := modules.SkynetPortalInfo{
+		portal := modules.SkynetPortal{
 			Address: addr,
 			Public:  public,
 		}
@@ -49,6 +55,6 @@ func (sp *SkynetPortals) Portals() []modules.SkynetPortalInfo {
 }
 
 // UpdateSkynetPortals updates the list of known Skynet portals.
-func (sp *SkynetPortals) UpdateSkynetPortals(additions []modules.SkynetPortalInfo, removals []modules.NetAddress) error {
+func (sp *SkynetPortals) UpdateSkynetPortals(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
 	return sp.callUpdateAndAppend(additions, removals)
 }

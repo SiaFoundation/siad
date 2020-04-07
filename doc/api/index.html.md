@@ -4200,7 +4200,7 @@ returns the list of known Skynet portals.
 
 ```go
 {
-  "portals": [ // []SkynetPortalInfo | null
+  "portals": [ // []SkynetPortal | null
     {
       "address": "siasky.net:443", // string
       "public":  true              // bool
@@ -4208,7 +4208,7 @@ returns the list of known Skynet portals.
   ]
 }
 ```
-**address** | string
+**address** | string  
 The IP or domain name and the port of the portal. Must be a valid network address.
 
 **public** | bool  
@@ -4230,10 +4230,10 @@ and remove portals from the list.
 ### REQUIRED
 At least one of the following fields needs to be non empty.
 
-**add** | array of SkynetPortalInfo  
+**add** | array of SkynetPortal  
 add is an array of portal info that should be added to the list of portals.
 
-**remove** | array of string
+**remove** | array of string  
 remove is an array of portal network addresses that should be removed from the
 list of portals.
 

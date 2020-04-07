@@ -61,7 +61,6 @@ func TestPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 	minNumBytes := int(metadataPageSize)
 	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
@@ -71,10 +70,14 @@ func TestPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Update portals list
-	var portal modules.SkynetPortalInfo
-	add := []modules.SkynetPortalInfo{portal}
+	var portal modules.SkynetPortal
+	add := []modules.SkynetPortal{portal}
 	remove := []modules.NetAddress{portal.Address}
 	err = sp.UpdateSkynetPortals(add, remove)
 	if err != nil {
@@ -174,7 +177,7 @@ func TestPersist(t *testing.T) {
 // TestMarshalSia probes the marshalSia and unmarshalSia methods
 func TestMarshalSia(t *testing.T) {
 	// Test MarshalSia
-	portal := modules.SkynetPortalInfo{
+	portal := modules.SkynetPortal{
 		Address: modules.NetAddress("localhost:9980"),
 		Public:  true,
 	}
@@ -202,7 +205,7 @@ func TestMarshalSia(t *testing.T) {
 		t.Fatalf("Addresses don't match, expected %v, got %v", address, addr)
 	}
 	if public != p {
-		t.Fatalf("Publicnes doesn't match, expected %v, got %v", public, p)
+		t.Fatalf("Publicness doesn't match, expected %v, got %v", public, p)
 	}
 	if l {
 		t.Fatal("expected persisted portal to not be listed")
@@ -212,7 +215,7 @@ func TestMarshalSia(t *testing.T) {
 		t.Fatal(err)
 	}
 	if public != p {
-		t.Fatalf("Publicnes doesn't match, expected %v, got %v", public, p)
+		t.Fatalf("Publicness doesn't match, expected %v, got %v", public, p)
 	}
 	if address != addr {
 		t.Fatalf("Addresses don't match, expected %v, got %v", address, addr)
@@ -258,7 +261,6 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 
 	// Create empty struct of a skynet portals list and set the length. Not
 	// using the New method to avoid overwriting the persist file on disk.
@@ -357,5 +359,10 @@ func TestMarshalMetadata(t *testing.T) {
 	err = sp.unmarshalMetadata(mdBytes)
 	if err != errWrongHeader {
 		t.Fatalf("Expected %v got %v", errWrongHeader, err)
+	}
+
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

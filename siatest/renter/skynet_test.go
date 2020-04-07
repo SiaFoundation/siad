@@ -1540,22 +1540,23 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	portal1 := modules.SkynetPortalInfo{
+	portal1 := modules.SkynetPortal{
 		Address: modules.NetAddress("siasky.net:9980"),
 		Public:  true,
 	}
 	// loopback address
-	portal2 := modules.SkynetPortalInfo{
+	portal2 := modules.SkynetPortal{
 		Address: "localhost:9980",
 		Public:  true,
 	}
-	portal3 := modules.SkynetPortalInfo{
+	// address without a port
+	portal3 := modules.SkynetPortal{
 		Address: modules.NetAddress("siasky.net"),
 		Public:  true,
 	}
 
 	// Add portal.
-	add := []modules.SkynetPortalInfo{portal1}
+	add := []modules.SkynetPortal{portal1}
 	remove := []modules.NetAddress{}
 	err := r.SkynetPortalsPost(add, remove)
 	if err != nil {
@@ -1570,12 +1571,12 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	if len(spg.Portals) != 1 {
 		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
 	}
-	if spg.Portals[0] != portal1 {
+	if !reflect.DeepEqual(spg.Portals[0], portal1) {
 		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
 	}
 
 	// Remove the portal.
-	add = []modules.SkynetPortalInfo{}
+	add = []modules.SkynetPortal{}
 	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
@@ -1592,15 +1593,15 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Try removing a portal that's not there.
-	add = []modules.SkynetPortalInfo{}
+	add = []modules.SkynetPortal{}
 	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
 	if !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
 		t.Fatal("portal should fail to be removed")
 	}
 
-	// Try to add and remove the portal at the same time.
-	add = []modules.SkynetPortalInfo{portal2}
+	// Try to add and remove a portal at the same time.
+	add = []modules.SkynetPortal{portal2}
 	remove = []modules.NetAddress{portal2.Address}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
@@ -1618,14 +1619,13 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 
 	// Test updating a portal's public status.
 	portal1.Public = false
-	add = []modules.SkynetPortalInfo{portal1}
+	add = []modules.SkynetPortal{portal1}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm that the portal has been added.
 	spg, err = r.SkynetPortalsGet()
 	if err != nil {
 		t.Fatal(err)
@@ -1633,33 +1633,54 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	if len(spg.Portals) != 1 {
 		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
 	}
-	if spg.Portals[0] != portal1 {
+	if !reflect.DeepEqual(spg.Portals[0], portal1) {
 		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
 	}
 
 	portal1.Public = true
-	add = []modules.SkynetPortalInfo{portal1}
+	add = []modules.SkynetPortal{portal1}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm that the portal has been added.
 	spg, err = r.SkynetPortalsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spg.Portals[0] != portal1 {
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
+	}
+	if !reflect.DeepEqual(spg.Portals[0], portal1) {
 		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
 	}
 
 	// Test an invalid network address.
-	add = []modules.SkynetPortalInfo{portal3}
+	add = []modules.SkynetPortal{portal3}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
 	if !strings.Contains(err.Error(), "missing port in address") {
 		t.Fatal("expected 'missing port' error")
+	}
+
+	// Test adding an existing portal with an uppercase address.
+	portalUpper := portal1
+	portalUpper.Address = modules.NetAddress(strings.ToUpper(string(portalUpper.Address)))
+	add = []modules.SkynetPortal{portalUpper}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	// This does not currently return an error.
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
 	}
 }
 
