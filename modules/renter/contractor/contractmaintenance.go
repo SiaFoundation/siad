@@ -527,7 +527,7 @@ func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
-func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight) (modules.RenterContract, error) {
+func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
 	// For convenience
 	contract := sc.Metadata()
 	// Sanity check - should not be renewing a bad contract.
@@ -542,6 +542,9 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
 	}
+	// Use the most recent hostSettings, along with the host db entry.
+	host.HostExternalSettings = hostSettings
+
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
@@ -549,6 +552,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 	period := c.allowance.Period
 	c.mu.Unlock()
+
 	if !ok {
 		return modules.RenterContract{}, errors.New("no record of that host")
 	} else if host.Filtered {
@@ -661,7 +665,8 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}()
 
 	// Wait for any active editors/downloaders/sessions to finish for this
-	// contract, and then grab the latest revision.
+	// contract, and then grab the latest host settings.
+	var hostSettings modules.HostExternalSettings
 	c.mu.RLock()
 	e, eok := c.editors[id]
 	d, dok := c.downloaders[id]
@@ -669,16 +674,19 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.mu.RUnlock()
 	if eok {
 		c.log.Debugln("Waiting for editor invalidation")
+		hostSettings = e.HostSettings()
 		e.invalidate()
 		c.log.Debugln("Got editor invalidation")
 	}
 	if dok {
 		c.log.Debugln("Waiting for downloader invalidation")
+		hostSettings = d.HostSettings()
 		d.invalidate()
 		c.log.Debugln("Got downloader invalidation")
 	}
 	if sok {
 		c.log.Debugln("Waiting for session invalidation")
+		hostSettings = s.HostSettings()
 		s.invalidate()
 		c.log.Debugln("Got session invalidation")
 	}
@@ -708,7 +716,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// row and reached its second half of the renew window, we give up
 	// on renewing it and set goodForRenew to false.
 	c.log.Debugln("calling managedRenew on contract", id)
-	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight)
+	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight, hostSettings)
 	c.log.Debugln("managedRenew has returned with error:", errRenew)
 	if errRenew != nil {
 		// Increment the number of failed renews for the contract if it
