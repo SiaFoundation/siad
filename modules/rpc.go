@@ -77,6 +77,7 @@ func RPCRead(r io.Reader, obj interface{}) error {
 		return err
 	}
 	if resp.err != nil {
+		// must wrap the error here, for more info see: https://www.pixelstech.net/article/1554553347-Be-careful-about-nil-check-on-interface-in-GoLang
 		return errors.New(resp.err.Error())
 	}
 	return nil
