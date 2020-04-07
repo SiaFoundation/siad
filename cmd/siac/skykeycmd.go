@@ -56,16 +56,17 @@ func skykeycmd(cmd *cobra.Command, args []string) {
 	os.Exit(exitCodeUsage)
 }
 
-// skykeycreatecmd creates a new Skykey with the given name and cipher type
-// as set by flag.
+// skykeycreatecmd is a wrapper for skykeyCreate used to handle skykey creation.
 func skykeycreatecmd(name string) {
 	skykeyStr, err := skykeyCreate(name)
 	if err != nil {
-		die(err)
+		die(errors.AddContext(err, "Failed to create new skykey"))
 	}
 	fmt.Printf("Created new skykey: %v\n", skykeyStr)
 }
 
+// skykeyCreate creates a new Skykey with the given name and cipher type
+// as set by flag.
 func skykeyCreate(name string) (string, error) {
 	var cipherType crypto.CipherType
 	err := cipherType.FromString(skykeyCipherType)
@@ -80,19 +81,20 @@ func skykeyCreate(name string) (string, error) {
 	return sk.ToString()
 }
 
-// skykeyaddcmd adds the given skykey to the renter's skykey manager.
+// skykeyaddcmd is a wrapper for skykeyAdd used to handle the addition of new skykeys.
 func skykeyaddcmd(skykeyString string) {
 	err := skykeyAdd(skykeyString)
 	if strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
 		die("Skykey name already used. Try using the --rename-as parameter with a different name.")
 	}
 	if err != nil {
-		die(err)
+		die(errors.AddContext(err, "Failed to add skykey"))
 	}
 
 	fmt.Printf("Successfully added new skykey: %v\n", skykeyString)
 }
 
+// skykeyAdd adds the given skykey to the renter's skykey manager.
 func skykeyAdd(skykeyString string) error {
 	var sk skykey.Skykey
 	err := sk.FromString(skykeyString)
@@ -113,7 +115,7 @@ func skykeyAdd(skykeyString string) error {
 	return nil
 }
 
-// skykeygetcmd retrieves the skykey using a name or id flag.
+// skykeygetcmd is a wrapper for skykeyGet that handles skykey get commands.
 func skykeygetcmd() {
 	skykeyStr, err := skykeyGet(skykeyName, skykeyID)
 	if err != nil {
@@ -123,6 +125,7 @@ func skykeygetcmd() {
 	fmt.Printf("Found skykey: %v\n", skykeyStr)
 }
 
+// skykeyGet retrieves the skykey using a name or id flag.
 func skykeyGet(name, id string) (string, error) {
 	if name == "" && id == "" {
 		return "", errors.New("Cannot get skykey without using --name or --id flag")
@@ -139,7 +142,7 @@ func skykeyGet(name, id string) (string, error) {
 		var skykeyID skykey.SkykeyID
 		err = skykeyID.FromString(id)
 		if err != nil {
-			return "", errors.New("Could not decode skykey ID")
+			return "", errors.AddContext(err, "Could not decode skykey ID")
 		}
 
 		sk, err = httpClient.SkykeyGetByID(skykeyID)
