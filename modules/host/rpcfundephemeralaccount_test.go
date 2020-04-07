@@ -101,7 +101,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	hostFunc := func(stream siamux.Stream) error {
 		err := ht.host.managedRPCFundEphemeralAccount(stream, pt)
 		if err != nil {
-			modules.RPCWriteError(stream, err)
+			return modules.RPCWriteError(stream, err)
 		}
 		return nil
 	}
@@ -247,6 +247,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// expect error when we corrupt the renter's revision signature
 	recent = recentSO()
 	rStream, hStream := NewTestStreams()
+	var rErr, hErr error
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -254,17 +255,20 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		defer rStream.Close()
 		sig := revisionSignature(rev, bh, sk)
 		fastrand.Read(sig[:4]) // corrupt the signature
-		_, _, err = renterFunc(rStream, rev, sig)
+		_, _, rErr = renterFunc(rStream, rev, sig)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer hStream.Close()
-		_ = hostFunc(hStream)
+		hErr = hostFunc(hStream)
 	}()
 	wg.Wait()
-	if err == nil || !strings.Contains(err.Error(), "invalid signature") {
+	if rErr == nil || !strings.Contains(rErr.Error(), "invalid signature") {
 		t.Fatalf("Unexpected renter err, expected 'invalid signature' but got '%v'", err)
+	}
+	if hErr != nil {
+		t.Fatal(err)
 	}
 
 	// expect error when we run 2 revisions in parallel with the same revision
