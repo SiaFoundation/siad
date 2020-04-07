@@ -106,6 +106,7 @@ func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemove
 // for every operation/rpc.
 func newTestPriceTable() modules.RPCPriceTable {
 	return modules.RPCPriceTable{
+		CollateralCost:        types.SiacoinPrecision,
 		Expiry:                time.Now().Add(time.Minute).Unix(),
 		UpdatePriceTableCost:  types.SiacoinPrecision,
 		InitBaseCost:          types.SiacoinPrecision,
