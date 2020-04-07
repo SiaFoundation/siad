@@ -172,6 +172,13 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
 	}
 
+	// copy the transaction signature
+	var sig crypto.Signature
+	if len(txn.HostSignature().Signature) != len(sig) {
+		return types.ZeroCurrency, errors.AddContext(err, fmt.Sprintf("Invalid transaction signature, expected a crypto.Signature but received a signature with length %v", len(txn.HostSignature().Signature)))
+	}
+	copy(sig[:], txn.HostSignature().Signature[:])
+
 	// extract the payment
 	if amount.Cmp(cost) < 0 {
 		return types.ZeroCurrency, errors.New("Could not fund, the amount that was deposited did not cover the cost of the RPC")
@@ -201,8 +208,6 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	close(syncChan) // signal FC fsync by closing the sync channel
 
 	// send the response
-	var sig crypto.Signature
-	copy(sig[:], txn.HostSignature().Signature[:])
 	err = modules.RPCWrite(stream, modules.PayByContractResponse{
 		Signature: sig,
 	})
