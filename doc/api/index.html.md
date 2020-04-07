@@ -4444,6 +4444,7 @@ This is the hash that is encoded into the skylink.
 This is the bitfield that gets encoded into the skylink. The bitfield contains a
 version, an offset and a length in a heavily compressed and optimized format.
 
+
 ## /skynet/stats [GET]
 > curl example
 
@@ -4484,6 +4485,117 @@ Version is the siad version the node is running.
 
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build said.
+
+
+## /skynet/addskykey [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "skykey=BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a" "localhost:9980/skynet/addskykey"
+```
+
+Stores the given skykey with the renter's skykey manager.
+
+### Path Parameters
+### REQUIRED
+**skykey** | string  
+base-64 encoded skykey
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+
+## /skynet/createskykey [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/createskykey"
+```
+
+Returns a new skykey created and stored under that name.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+desired name of the skykey
+
+### JSON Response
+> JSON Response Example
+
+ 
+```go
+{
+  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+}
+```
+
+**skykey** | string  
+base-64 encoded skykey
+
+
+## /skynet/skykey [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/skykey"
+curl -A "Sia-Agent"  -u "":<apipassword> --data "id=gi5z8cf5NWbcvPBaBn0DFQ==" "localhost:9980/skynet/skykey"
+```
+
+Returns the base-64 encoded skykey stored under that name, or with that ID.
+
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+name of the skykey being queried
+
+or
+
+**id** | string  
+base-64 encoded ID of the skykey being queried
+
+
+### JSON Response ```json
+{
+  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+}
+```
+
+**skykey** | string  
+base-64 encoded skykey
+
+
+## /skynet/skykeyid [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/skykeyid"
+```
+
+Returns the base-64 encoded ID of the skykey stored under that name.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+name of the skykey being queried
+
+
+### JSON Response
+> JSON Response Example
+
+ 
+```go
+{
+  "skykeyid": "gi5z8cf5NWbcvPBaBn0DFQ=="
+}
+```
+
+**skykeyid** | string  
+base-64 encoded skykey ID
+
+
 
 # Transaction Pool
 
