@@ -78,32 +78,6 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	var atomicNumRecoveries uint64
 	var atomicNumSuccessfulIterations uint64
 
-	// Keeps applying a random number of operations on the refcounter until
-	// an error occurs.
-	performUpdates := func(rcLocal *RefCounter, st *status, testTimeoutChan <-chan struct{}) error {
-		for {
-			err := preformUpdateOperations(rcLocal, st)
-			if err != nil {
-				// we have an error, fake or not we should return
-				return err
-			}
-			st.Lock()
-			if st.crashed {
-				st.Unlock()
-				return nil
-			}
-			st.Unlock()
-
-			atomic.AddUint64(&atomicNumSuccessfulIterations, 1)
-
-			select {
-			case <-testTimeoutChan:
-				return nil
-			default:
-			}
-		}
-	}
-
 	// testTimeoutChan will signal to all goroutines that it's time to wrap up and exit
 	testTimeoutChan := make(chan struct{})
 	// we close the testTimeoutChan instead of sending on it so we can notify all
@@ -121,7 +95,7 @@ OUTER:
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				errLocal := performUpdates(rc, statusTracker, testTimeoutChan)
+				errLocal := performUpdates(rc, statusTracker, &atomicNumSuccessfulIterations, testTimeoutChan)
 				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
 					// We have a real error - fail the test
 					t.Error(errLocal)
@@ -209,6 +183,32 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 		}
 	}
 	return newWal, f.Sync()
+}
+
+// performUpdates keeps applying a random number of operations on the refcounter
+// until an error occurs.
+func performUpdates(rcLocal *RefCounter, st *status, atomicNumSuccessfulIterations *uint64, testTimeoutChan <-chan struct{}) error {
+	for {
+		err := preformUpdateOperations(rcLocal, st)
+		if err != nil {
+			// we have an error, fake or not we should return
+			return err
+		}
+		st.Lock()
+		if st.crashed {
+			st.Unlock()
+			return nil
+		}
+		st.Unlock()
+
+		atomic.AddUint64(atomicNumSuccessfulIterations, 1)
+
+		select {
+		case <-testTimeoutChan:
+			return nil
+		default:
+		}
+	}
 }
 
 // preformUpdateOperations executes a randomised set of updates within an
