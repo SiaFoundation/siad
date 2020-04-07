@@ -259,7 +259,7 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 	return newRenterHostPairCustomHostTester(ht)
 }
 
-// newRenterHostPair returns a renter host pair, this pair is a helper struct
+// newRenterHostPairCustomHostTester returns a renter host pair, this pair is a helper struct
 // that contains both the host and renter, represented by its secret key. This
 // helper will create a storage obligation emulating a file contract between
 // them. This method requires the caller to pass a hostTester opposed to
