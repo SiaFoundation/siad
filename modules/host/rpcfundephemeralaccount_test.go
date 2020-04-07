@@ -262,4 +262,21 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected failure when running 2 in parallel because they are using the same revision number, instead err was nil")
 	}
+
+	// verify happy flow again to make sure the error'ed out calls don't mess
+	// anything up
+	recent = recentSO()
+	rev, err = recent.PaymentRevision(funding.Add(pt.FundAccountCost))
+	if err != nil {
+		t.Fatal(err)
+	}
+	balance = getAccountBalance(ht.host.staticAccountManager, accountID)
+	resp, err = runWithRevision(rev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyResponse(resp, balance, funding)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
