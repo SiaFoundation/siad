@@ -84,7 +84,7 @@ func skykeyCreate(name string) (string, error) {
 // skykeyaddcmd is a wrapper for skykeyAdd used to handle the addition of new skykeys.
 func skykeyaddcmd(skykeyString string) {
 	err := skykeyAdd(skykeyString)
-	if strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
+	if strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		die("Skykey name already used. Try using the --rename-as parameter with a different name.")
 	}
 	if err != nil {

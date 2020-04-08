@@ -31,7 +31,7 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 
 	err = skykeyAdd(testSkykeyString)
-	if err == nil || strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
+	if err == nil || strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected non duplicate name error", err)
 	}
 
@@ -50,7 +50,7 @@ func TestSkykeyCommands(t *testing.T) {
 
 	// This should return a duplicate name error.
 	err = skykeyAdd(skString)
-	if !strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
+	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected duplicate name error", err)
 	}
 
@@ -61,7 +61,7 @@ func TestSkykeyCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = skykeyCreate(keyName)
-	if !strings.Contains(err.Error(), skykey.ErrSkykeyNameAlreadyUsed.Error()) {
+	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
 	}
 

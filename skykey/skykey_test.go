@@ -74,7 +74,7 @@ func TestSkykeyManager(t *testing.T) {
 
 	// Check duplicate name errors.
 	_, err = keyMan.CreateKey("test_key1", cipherType)
-	if !errors.Contains(err, ErrSkykeyNameAlreadyUsed) {
+	if !errors.Contains(err, ErrSkykeyWithNameAlreadyExists) {
 		t.Fatal("Expected skykey name to already exist", err)
 	}
 

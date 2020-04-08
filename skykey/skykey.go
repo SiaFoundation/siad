@@ -45,9 +45,9 @@ var (
 	// SkykeyFileMagic is the first piece of data found in a Skykey file.
 	SkykeyFileMagic = types.NewSpecifier("SkykeyFile")
 
-	// ErrSkykeyNameAlreadyUsed indicates that a key cannot be created or added
+	// ErrSkykeyWithNameAlreadyExists indicates that a key cannot be created or added
 	// because a key with the same name is already being stored.
-	ErrSkykeyNameAlreadyUsed       = errors.New("Skykey name already used by another key.")
+	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key.")
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
 	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
 	errNoSkykeysWithThatID         = errors.New("No Skykey is assocated with that ID")
@@ -187,7 +187,7 @@ func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (S
 	defer sm.mu.Unlock()
 	_, ok := sm.idsByName[name]
 	if ok {
-		return Skykey{}, ErrSkykeyNameAlreadyUsed
+		return Skykey{}, ErrSkykeyWithNameAlreadyExists
 	}
 
 	// Generate the new key.
@@ -213,7 +213,7 @@ func (sm *SkykeyManager) AddKey(sk Skykey) error {
 
 	_, ok = sm.idsByName[sk.Name]
 	if ok {
-		return ErrSkykeyNameAlreadyUsed
+		return ErrSkykeyWithNameAlreadyExists
 	}
 
 	return sm.saveKey(sk)
