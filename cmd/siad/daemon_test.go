@@ -1,11 +1,7 @@
 package main
 
 import (
-	"os"
 	"testing"
-
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/cmd"
 )
 
 // TestUnitProcessNetAddr probes the 'processNetAddr' function.
@@ -154,41 +150,39 @@ func TestUnitProcessConfig(t *testing.T) {
 	}
 }
 
-// TestAPIPassword tests the 'apiPassword' function.
-func TestAPIPassword(t *testing.T) {
+// TestLoadAPIPassword tests the 'loadAPIPassword' function.
+func TestLoadAPIPassword(t *testing.T) {
+	// Not a short test because it loads env variables from disk. Don't run in
+	// parallel since it chances env variables
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// If config.Siad.AuthenticateAPI is false, no password should be set
 	var config Config
-	dir := build.TempDir("siad", t.Name())
 
-	config, err := loadAPIPassword(config, dir)
+	config, err := loadAPIPassword(config)
 	if err != nil {
 		t.Fatal(err)
 	} else if config.APIPassword != "" {
 		t.Fatal("loadAPIPassword should not set a password if config.Siad.AuthenticateAPI is false")
 	}
 	config.Siad.AuthenticateAPI = true
-	// On first invocation, loadAPIPassword should generate a new random password
-	config2, err := loadAPIPassword(config, dir)
+	// On first invocation, loadAPIPassword should generate a new random
+	// password
+	config2, err := loadAPIPassword(config)
 	if err != nil {
 		t.Fatal(err)
 	} else if config2.APIPassword == "" {
 		t.Fatal("loadAPIPassword should have generated a random password")
 	}
-	// On subsequent invocations, loadAPIPassword should use the previously-generated password
-	config3, err := loadAPIPassword(config, dir)
+	// On subsequent invocations, loadAPIPassword should use the
+	// previously-generated password
+	config3, err := loadAPIPassword(config)
 	if err != nil {
 		t.Fatal(err)
 	} else if config3.APIPassword != config2.APIPassword {
 		t.Fatal("loadAPIPassword should have used previously-generated password")
-	}
-	// If the environment variable is set, loadAPIPassword should use that
-	defer os.Setenv(cmd.SiaAPIPassword, os.Getenv(cmd.SiaAPIPassword))
-	os.Setenv(cmd.SiaAPIPassword, "foobar")
-	config4, err := loadAPIPassword(config, dir)
-	if err != nil {
-		t.Fatal(err)
-	} else if config4.APIPassword != "foobar" {
-		t.Fatal("loadAPIPassword should use environment variable")
 	}
 }
 
