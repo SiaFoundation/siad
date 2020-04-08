@@ -85,7 +85,7 @@ type (
 	// pruning fingerprints of withdrawals that have expired, so memory does not
 	// build up.
 	accountManager struct {
-		accounts                map[string]*account
+		accounts                map[modules.AccountID]*account
 		fingerprints            *fingerprintMap
 		staticAccountsPersister *accountsPersister
 
@@ -129,7 +129,7 @@ type (
 	// account contains all data related to an ephemeral account
 	account struct {
 		index              uint32
-		id                 string
+		id                 modules.AccountID
 		balance            types.Currency
 		blockedWithdrawals blockedWithdrawalHeap
 
@@ -172,7 +172,7 @@ type (
 	// blockedDeposit represents a deposit call that is pending to be
 	// executed but is stalled because maxRisk is reached.
 	blockedDeposit struct {
-		id            string
+		id            modules.AccountID
 		amount        types.Currency
 		persistResult chan error
 		syncResult    chan struct{}
@@ -229,7 +229,7 @@ func (bwh blockedWithdrawalHeap) Value() types.Currency {
 // newAccountManager returns a new account manager ready for use by the host
 func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	am := &accountManager{
-		accounts:           make(map[string]*account),
+		accounts:           make(map[modules.AccountID]*account),
 		fingerprints:       newFingerprintMap(),
 		blockedDeposits:    make([]*blockedDeposit, 0),
 		blockedWithdrawals: make([]*blockedWithdrawal, 0),
@@ -314,7 +314,7 @@ func newFingerprintMap() *fingerprintMap {
 // 5. Failure after RPC calls deposit, after EA is updated, after AM returns,
 // after FC sync: EA is updated, FC is updated, there is no risk to the host at
 // this point
-func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan chan struct{}) error {
+func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
 	his := am.h.InternalSettings()
@@ -398,7 +398,7 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 
 // managedDeposit performs a couple of steps in preparation of the
 // deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
+func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -489,7 +489,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 
 // managedAccountPersistInfo is a helper method that will collect all of the
 // necessary data to perform the persist.
-func (am *accountManager) managedAccountPersistInfo(id string) *accountPersistInfo {
+func (am *accountManager) managedAccountPersistInfo(id modules.AccountID) *accountPersistInfo {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -545,7 +545,7 @@ func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, sy
 //
 // Note that the caller adds this thread to the threadgroup. If the add is done
 // inside the goroutine, the host risks losing money even on graceful shutdowns.
-func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
+func (am *accountManager) threadedSaveAccount(id modules.AccountID) (waiting int) {
 	// Gather all information required to persist and process it afterwards
 	accInfo := am.managedAccountPersistInfo(id)
 	if accInfo == nil {
@@ -881,7 +881,7 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 
 // openAccount will return an account object. If the account does not exist it
 // will be created.
-func (am *accountManager) openAccount(id string) *account {
+func (am *accountManager) openAccount(id modules.AccountID) *account {
 	acc, exists := am.accounts[id]
 	if exists {
 		return acc
@@ -935,7 +935,7 @@ func (ab *accountBitfield) releaseIndex(index uint32) {
 // Upon account expiry, its index will be freed up by unsetting the
 // corresponding bit. When a new account is opened, it will grab the first
 // available index, effectively recycling the expired account indexes.
-func (ab *accountBitfield) buildIndex(accounts map[string]*account) {
+func (ab *accountBitfield) buildIndex(accounts map[modules.AccountID]*account) {
 	var maxIndex uint32
 	for _, acc := range accounts {
 		if acc.index > maxIndex {

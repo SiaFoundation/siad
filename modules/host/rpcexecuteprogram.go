@@ -49,6 +49,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to get storage obligation snapshot")
 	}
 
+	// Get the remaining unallocated collateral.
+	collateralBudget := sos.UnallocatedCollateral()
+
 	// Get a context that can be used to interrupt the program.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -61,7 +64,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Execute the program.
-	finalize, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, amountPaid, sos, dataLength, stream)
+	finalize, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, amountPaid, collateralBudget, sos, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}

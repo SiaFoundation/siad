@@ -67,7 +67,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// Fetch the price table.
-	pt, err := negotiatePriceTable(ht.host)
+	pt, err := ht.negotiatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,16 +78,13 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    soid,
-		PriceTableID:      pt.UUID,
+		PriceTableID:      pt.UID,
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
 
 	// Get a stream to the host.
-	stream, err := createTestStream(ht.host)
-	if err != nil {
-		t.Fatal(err)
-	}
+	stream := ht.newStream()
 	defer stream.Close()
 
 	// Write the specifier.

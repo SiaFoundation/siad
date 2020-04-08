@@ -33,7 +33,6 @@ package host
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"strconv"
 	"time"
 
@@ -45,6 +44,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
@@ -204,22 +204,16 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 		return StorageObligationSnapshot{}, err
 	}
 
+	rev, err := so.recentRevision()
+	if err != nil {
+		return StorageObligationSnapshot{}, err
+	}
 	return StorageObligationSnapshot{
-		staticContractSize: so.fileSize(),
-		staticMerkleRoot:   so.merkleRoot(),
-		staticSectorRoots:  so.SectorRoots,
+		staticContractSize:        so.fileSize(),
+		staticMerkleRoot:          so.merkleRoot(),
+		staticRemainingCollateral: rev.MissedHostPayout(),
+		staticSectorRoots:         so.SectorRoots,
 	}, nil
-}
-
-// managedGetStorageObligation fetches a storage obligation from the database.
-func (h *Host) managedGetStorageObligation(soid types.FileContractID) (so storageObligation, err error) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = h.getStorageObligation(tx, soid)
-		return err
-	})
-	return
 }
 
 // getStorageObligation fetches a storage obligation from the database tx.
@@ -253,9 +247,10 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 // snapshot only contains the properties required by the MDM to execute a
 // program. This can be extended in the future to support other use cases.
 type StorageObligationSnapshot struct {
-	staticContractSize uint64
-	staticMerkleRoot   crypto.Hash
-	staticSectorRoots  []crypto.Hash
+	staticContractSize        uint64
+	staticMerkleRoot          crypto.Hash
+	staticRemainingCollateral types.Currency
+	staticSectorRoots         []crypto.Hash
 }
 
 // ContractSize returns the size of the underlying contract, which is static and
@@ -276,11 +271,22 @@ func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 	return sos.staticSectorRoots
 }
 
+// UnallocatedCollateral returns the remaining collateral within the contract
+// that hasn't been allocated yet. This means it is not yet moved to the void in
+// case of a missed storage proof.
+func (sos StorageObligationSnapshot) UnallocatedCollateral() types.Currency {
+	return sos.staticRemainingCollateral
+}
+
 // Update will take a list of sector changes and update the database to account
 // for all of it.
-func (so storageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
+func (so storageObligation) Update(sectorRoots []crypto.Hash, sectorsRemoved map[crypto.Hash]struct{}, sectorsGained map[crypto.Hash][]byte) error {
 	so.SectorRoots = sectorRoots
-	return so.h.managedModifyStorageObligation(so, sectorsRemoved, sectorsGained)
+	sr := make([]crypto.Hash, 0, len(sectorsRemoved))
+	for sector := range sectorsRemoved {
+		sr = append(sr, sector)
+	}
+	return so.h.managedModifyStorageObligation(so, sr, sectorsGained)
 }
 
 // expiration returns the height at which the storage obligation expires.
@@ -369,7 +375,7 @@ func (so storageObligation) merkleRoot() crypto.Hash {
 // the latest revision for the storage obligation.
 func (so storageObligation) payouts() (valid []types.SiacoinOutput, missed []types.SiacoinOutput) {
 	valid = make([]types.SiacoinOutput, 2)
-	missed = make([]types.SiacoinOutput, 2)
+	missed = make([]types.SiacoinOutput, 3)
 	if len(so.RevisionTransactionSet) > 0 {
 		copy(valid, so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewValidProofOutputs)
 		copy(missed, so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewMissedProofOutputs)
@@ -398,6 +404,29 @@ func (so storageObligation) transactionID() types.TransactionID {
 // value returns the value of fulfilling the storage obligation to the host.
 func (so storageObligation) value() types.Currency {
 	return so.ContractCost.Add(so.PotentialDownloadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialUploadRevenue).Add(so.RiskedCollateral)
+}
+
+// recentRevision returns the most recent file contract revision in this storage
+// obligation.
+func (so storageObligation) recentRevision() (types.FileContractRevision, error) {
+	numRevisions := len(so.RevisionTransactionSet)
+	if numRevisions == 0 {
+		return types.FileContractRevision{}, errors.New("Could not get recent revision, there are no revision in the txn set")
+	}
+	revisionTxn := so.RevisionTransactionSet[numRevisions-1]
+	return revisionTxn.FileContractRevisions[0], nil
+}
+
+// managedGetStorageObligation fetches a storage obligation from the database.
+func (h *Host) managedGetStorageObligation(fcid types.FileContractID) (so storageObligation, err error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, fcid)
+		return err
+	})
+	return
 }
 
 // deleteStorageObligations deletes obligations from the database.
@@ -850,7 +879,6 @@ func (h *Host) resetFinancialMetrics() error {
 					fm.LostStorageCollateral = fm.LostStorageCollateral.Add(so.RiskedCollateral)
 				}
 			}
-
 		}
 		return nil
 	})

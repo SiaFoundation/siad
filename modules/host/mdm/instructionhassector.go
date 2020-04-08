@@ -51,6 +51,11 @@ func (p *Program) staticDecodeHasSectorInstruction(instruction modules.Instructi
 	}, nil
 }
 
+// Collateral is zero for the HasSector instruction.
+func (i *instructionHasSector) Collateral() types.Currency {
+	return modules.MDMHasSectorCollateral()
+}
+
 // Cost returns the cost of executing this instruction.
 func (i *instructionHasSector) Cost() (types.Currency, types.Currency, error) {
 	cost, refund := modules.MDMHasSectorCost(i.staticState.priceTable)

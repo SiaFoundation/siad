@@ -83,6 +83,28 @@ const (
 	priceFloor = 0.1
 )
 
+// basePriceAdjustments will adjust the weight of the entry according to the prices
+// that it has set for BaseRPCPrice and SectorAccessPrice
+func (hdb *HostDB) basePriceAdjustments(entry modules.HostDBEntry) float64 {
+	// Check for BaseRPCPrice violations
+	maxBaseRPCPrice := entry.MaxBaseRPCPrice()
+	baseRPCPrice := entry.HostExternalSettings.BaseRPCPrice
+	if baseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
+		hdb.staticLog.Debugf("Host getting 0 score for BaseRPCPrice: Host %v, BaseRPCPrice %v, MaxBaseRPCPrice %v", entry.PublicKey.String(), baseRPCPrice.HumanString(), maxBaseRPCPrice.HumanString())
+		return math.SmallestNonzeroFloat64
+	}
+
+	// Check for SectorAccessPrice violations
+	maxSectorAccessPrice := entry.MaxSectorAccessPrice()
+	sectorAccessPrice := entry.HostExternalSettings.SectorAccessPrice
+	if sectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
+		hdb.staticLog.Debugf("Host getting 0 score for SectorAccessPrice: Host %v, SectorAccessPrice %v, MaxSectorAccessPrice %v", entry.PublicKey.String(), sectorAccessPrice.HumanString(), maxSectorAccessPrice.HumanString())
+		return math.SmallestNonzeroFloat64
+	}
+
+	return 1
+}
+
 // collateralAdjustments improves the host's weight according to the amount of
 // collateral that they have provided.
 func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance modules.Allowance) float64 {
@@ -365,11 +387,14 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	// we give the current version a very tiny penalty is so that the test suite
 	// complains if we forget to update this file when we bump the version next
 	// time. The value compared against must be higher than the current version.
-	if build.VersionCmp(entry.Version, "1.4.7") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.8") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
 
 	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
+	if build.VersionCmp(entry.Version, "1.4.7") < 0 {
+		base = base * 0.99 // Slight penalty against slightly out of date hosts.
+	}
 	if build.VersionCmp(entry.Version, "1.4.6") < 0 {
 		base = base * 0.95 // Slight penalty against slightly out of date hosts.
 	}
@@ -388,6 +413,7 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
 		base = base * 0.85 // Slight penalty against slightly out of date hosts.
 	}
+
 	// Penalty for hosts that are below version v1.4.1.2 because there were
 	// transaction pool updates which reduces overall network congestion.
 	if build.VersionCmp(entry.Version, "1.4.1.2") < 0 {
@@ -551,11 +577,12 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 	// Create the weight function.
 	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
 		return hosttree.HostAdjustments{
+			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
+			BasePriceAdjustment:        hdb.basePriceAdjustments(entry),
 			BurnAdjustment:             1,
 			CollateralAdjustment:       hdb.collateralAdjustments(entry, allowance),
 			DurationAdjustment:         hdb.durationAdjustments(entry, allowance),
 			InteractionAdjustment:      hdb.interactionAdjustments(entry),
-			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 			PriceAdjustment:            hdb.priceAdjustments(entry, allowance, txnFees),
 			StorageRemainingAdjustment: hdb.storageRemainingAdjustments(entry, allowance),
 			UptimeAdjustment:           hdb.uptimeAdjustments(entry),

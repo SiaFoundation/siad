@@ -152,7 +152,6 @@ func (pd *programData) managedBytes(offset, length uint64) ([]byte, error) {
 		err := errors.New("requested data was out of bounds even though there was no readErr")
 		build.Critical(err)
 		return nil, err
-
 	} else if outOfBounds && pd.readErr != nil {
 		return nil, pd.readErr
 	}

@@ -89,6 +89,11 @@ func (i *instructionAppend) Execute(prevOutput output) output {
 	}
 }
 
+// Collateral returns the collateral cost of adding one full sector.
+func (i *instructionAppend) Collateral() types.Currency {
+	return modules.MDMAppendCollateral(i.staticState.priceTable)
+}
+
 // Cost returns the Cost of this append instruction.
 func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
 	cost, refund := modules.MDMAppendCost(i.staticState.priceTable)

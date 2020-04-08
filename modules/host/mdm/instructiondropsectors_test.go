@@ -40,7 +40,7 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 
 	time := TimeDropSingleSector * numSectorsDropped
 	cost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
-	return i, cost, refund, DropSectorsMemory(), time
+	return i, cost, refund, modules.MDMDropSectorsMemory(), time
 }
 
 // TestProgramWithDropSectors tests executing a program with multiple append and swap
@@ -57,37 +57,38 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	pt := newTestPriceTable()
 	initCost := modules.MDMInitCost(pt, dataLen)
 
-	instruction1, cost, refund, memory, time := newAppendInstruction(false, 0, pt)
-	cost1, refund1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, 0, cost, refund, memory, time)
+	instruction1, cost, refund, collateral, memory, time := newAppendInstruction(false, 0, pt)
+	cost1, refund1, collateral1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, 0, cost, refund, collateral, memory, time)
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[:modules.SectorSize], sectorData1)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
-	instruction2, cost, refund, memory, time := newAppendInstruction(false, modules.SectorSize, pt)
-	cost2, refund2, memory2 := updateRunningCosts(pt, cost1, refund1, memory1, cost, refund, memory, time)
+	instruction2, cost, refund, collateral, memory, time := newAppendInstruction(false, modules.SectorSize, pt)
+	cost2, refund2, collateral2, memory2 := updateRunningCosts(pt, cost1, refund1, collateral1, memory1, cost, refund, collateral, memory, time)
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[modules.SectorSize:2*modules.SectorSize], sectorData2)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
-	instruction3, cost, refund, memory, time := newAppendInstruction(false, 2*modules.SectorSize, pt)
-	cost3, refund3, memory3 := updateRunningCosts(pt, cost2, refund2, memory2, cost, refund, memory, time)
+	instruction3, cost, refund, collateral, memory, time := newAppendInstruction(false, 2*modules.SectorSize, pt)
+	cost3, refund3, collateral3, memory3 := updateRunningCosts(pt, cost2, refund2, collateral2, memory2, cost, refund, collateral, memory, time)
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[2*modules.SectorSize:3*modules.SectorSize], sectorData3)
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
 	instruction4, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize, 0, pt)
-	cost4, refund4, memory4 := updateRunningCosts(pt, cost3, refund3, memory3, cost, refund, memory, time)
+	cost4, refund4, collateral4, memory4 := updateRunningCosts(pt, cost3, refund3, collateral3, memory3, cost, refund, collateral, memory, time)
 
 	// Drop one sector.
 	instruction5, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, pt)
-	cost5, refund5, memory5 := updateRunningCosts(pt, cost4, refund4, memory4, cost, refund, memory, time)
+	cost5, refund5, collateral5, memory5 := updateRunningCosts(pt, cost4, refund4, collateral4, memory4, cost, refund, collateral, memory, time)
 
 	// Drop two remaining sectors.
 	instruction6, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
-	cost6, refund6, memory6 := updateRunningCosts(pt, cost5, refund5, memory5, cost, refund, memory, time)
+	cost6, refund6, collateral6, memory6 := updateRunningCosts(pt, cost5, refund5, collateral5, memory5, cost, refund, collateral, memory, time)
 
-	cost = cost6.Add(MemoryCost(pt, memory6, TimeCommit))
+	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, TimeCommit))
+	collateral = collateral6
 
 	// Construct the inputs and expected outputs.
 	instructions := []modules.Instruction{
@@ -104,6 +105,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost1,
+			collateral1,
 			refund1,
 		},
 		{
@@ -113,6 +115,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost2,
+			collateral2,
 			refund2,
 		},
 		{
@@ -122,6 +125,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost3,
+			collateral3,
 			refund3,
 		},
 		// 0 sectors dropped.
@@ -132,6 +136,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost4,
+			collateral4,
 			refund4,
 		},
 		// 1 sector dropped.
@@ -142,6 +147,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{cachedMerkleRoot(merkleRoots2)},
 			},
 			cost5,
+			collateral5,
 			refund5,
 		},
 		// 2 remaining sectors dropped.
@@ -152,13 +158,14 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				Proof:         []crypto.Hash{},
 			},
 			cost6,
+			collateral6,
 			refund6,
 		},
 	}
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

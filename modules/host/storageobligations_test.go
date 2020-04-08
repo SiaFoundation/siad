@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestStorageObligationID checks that the return function of the storage
@@ -118,6 +119,9 @@ func TestStorageObligationSnapshot(t *testing.T) {
 			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
 		}},
 	}}
+	// Set a random missed host payout.
+	fcr := so.RevisionTransactionSet[0].FileContractRevisions[0]
+	fcr.SetMissedHostPayout(types.NewCurrency64(fastrand.Uint64n(100)))
 
 	// Insert the SO
 	ht.host.managedLockStorageObligation(so.id())
@@ -140,6 +144,9 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	}
 	if snapshot.SectorRoots()[0] != sectorRoot {
 		t.Fatalf("Unexpected sector root, expected %v but received %v", sectorRoot, snapshot.SectorRoots()[0])
+	}
+	if !snapshot.UnallocatedCollateral().Equals(fcr.MissedHostPayout()) {
+		t.Fatalf("Unexpected unallocated collateral, expected %v but was %v", fcr.MissedHostPayout().HumanString(), snapshot.UnallocatedCollateral().HumanString())
 	}
 
 	// Update the SO with new data

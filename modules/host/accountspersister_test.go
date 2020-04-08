@@ -26,26 +26,22 @@ func TestAccountsReload(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Generate couple of accounts and deposit some coins into them
-	accounts := make(map[string]types.Currency)
+	accounts := make(map[modules.AccountID]types.Currency)
 	var i uint64
 	for i = 1; i <= 10; i++ {
-		_, pk := crypto.GenerateKeyPair()
-		id := types.SiaPublicKey{
-			Algorithm: types.SignatureEd25519,
-			Key:       pk[:],
-		}
+		_, accountID := prepareAccount()
 		expected := types.NewCurrency64(i)
-		err = callDeposit(am, id.String(), expected)
+		err = callDeposit(am, accountID, expected)
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual := getAccountBalance(am, id.String())
+		actual := getAccountBalance(am, accountID)
 		if !expected.Equals(actual) {
 			t.Log("Expected:", expected.String())
 			t.Log("Actual:", actual.String())
 			t.Fatal("Deposit was unsuccessful")
 		}
-		accounts[id.String()] = expected
+		accounts[accountID] = expected
 	}
 
 	// Reload the host
@@ -82,22 +78,21 @@ func TestFingerprintsReload(t *testing.T) {
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
-	sk, spk := prepareAccount()
-	id := spk.String()
-	err = callDeposit(am, id, types.NewCurrency64(10))
+	sk, accountID := prepareAccount()
+	err = callDeposit(am, accountID, types.NewCurrency64(10))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Prepare a withdrawal message
 	amount := types.NewCurrency64(1)
-	msg1, sig1 := prepareWithdrawal(id, amount, am.h.blockHeight+10, sk)
+	msg1, sig1 := prepareWithdrawal(accountID, amount, am.h.blockHeight+10, sk)
 	err = callWithdraw(am, msg1, sig1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	msg2, sig2 := prepareWithdrawal(id, amount, am.h.blockHeight+10, sk)
+	msg2, sig2 := prepareWithdrawal(accountID, amount, am.h.blockHeight+10, sk)
 	err = callWithdraw(am, msg2, sig2)
 	if err != nil {
 		t.Fatal(err)
@@ -157,9 +152,8 @@ func TestFingerprintsRotate(t *testing.T) {
 	}
 
 	// Prepare account
-	sk, pk := prepareAccount()
-	id := pk.String()
-	err = callDeposit(am, id, types.NewCurrency64(2))
+	sk, accountID := prepareAccount()
+	err = callDeposit(am, accountID, types.NewCurrency64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,8 +161,8 @@ func TestFingerprintsRotate(t *testing.T) {
 	// Prepare 2 withdrawal messages, one that will end up in the current
 	// bucket, and one that'll end up in the next fingerprints bucket
 	cbh := ht.host.BlockHeight()
-	msg1, sig1 := prepareWithdrawal(id, types.NewCurrency64(1), cbh+1, sk)
-	msg2, sig2 := prepareWithdrawal(id, types.NewCurrency64(1), cbh+bucketBlockRange, sk)
+	msg1, sig1 := prepareWithdrawal(accountID, types.NewCurrency64(1), cbh+1, sk)
+	msg2, sig2 := prepareWithdrawal(accountID, types.NewCurrency64(1), cbh+bucketBlockRange, sk)
 	if err = errors.Compose(
 		callWithdraw(am, msg1, sig1),
 		callWithdraw(am, msg2, sig2),
@@ -269,7 +263,7 @@ func reloadHost(ht *hostTester) error {
 }
 
 // getAccountBalance will return the balance for given account
-func getAccountBalance(am *accountManager, id string) types.Currency {
+func getAccountBalance(am *accountManager, id modules.AccountID) types.Currency {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 

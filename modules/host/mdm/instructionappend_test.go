@@ -12,22 +12,23 @@ import (
 
 // newAppendInstruction is a convenience method for creating a single
 // Append instruction.
-func newAppendInstruction(merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+func newAppendInstruction(merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	i := NewAppendInstruction(dataOffset, merkleProof)
 	cost, refund := modules.MDMAppendCost(pt)
-	return i, cost, refund, AppendMemory(), TimeAppend
+	collateral := modules.MDMAppendCollateral(pt)
+	return i, cost, refund, collateral, modules.MDMAppendMemory(), TimeAppend
 }
 
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
-func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
+func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)))
-	i, cost, refund, memory, time := newAppendInstruction(merkleProof, 0, pt)
-	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, 0, cost, refund, memory, time)
+	i, cost, refund, collateral, memory, time := newAppendInstruction(merkleProof, 0, pt)
+	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, 0, cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
 	cost = cost.Add(modules.MDMMemoryCost(pt, memory, TimeCommit))
-	return instructions, sectorData, cost, refund, memory
+	return instructions, sectorData, cost, refund, collateral, memory
 }
 
 // TestInstructionAppend tests executing a program with a single
@@ -41,11 +42,11 @@ func TestInstructionAppend(t *testing.T) {
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, usedMemory := newAppendProgram(appendData1, true, pt)
+	instructions, programData, cost, refund, collateral, usedMemory := newAppendProgram(appendData1, true, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +70,9 @@ func TestInstructionAppend(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.AdditionalCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
@@ -106,11 +110,11 @@ func TestInstructionAppend(t *testing.T) {
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	instructions, programData, cost, refund, usedMemory = newAppendProgram(appendData2, true, pt)
+	instructions, programData, cost, refund, collateral, usedMemory = newAppendProgram(appendData2, true, pt)
 	dataLen = uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,6 +140,9 @@ func TestInstructionAppend(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.AdditionalCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())

@@ -75,6 +75,11 @@ var (
 	// ErrMDMInsufficientBudget is the error returned if the remaining budget of
 	// an MDM program is not sufficient to execute the next instruction.
 	ErrMDMInsufficientBudget = errors.New("remaining budget is insufficient")
+
+	// ErrMDMInsufficientCollateralBudget is the error returned if the remaining
+	// collateral budget of an MDM program is not sufficient to execute the next
+	// instruction.
+	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
 )
 
 // RPCHasSectorInstruction creates an Instruction from arguments.
@@ -166,6 +171,12 @@ func MDMAppendMemory() uint64 {
 	return SectorSize // A full sector is added to the program's memory until the program is finalized.
 }
 
+// MDMDropSectorsMemory returns the additional memory consumption of a
+// `DropSectors` instruction
+func MDMDropSectorsMemory() uint64 {
+	return 0 // 'DropSectors' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
 // MDMHasSectorMemory returns the additional memory consumption of a 'HasSector'
 // instruction.
 func MDMHasSectorMemory() uint64 {
@@ -180,6 +191,30 @@ func MDMReadMemory() uint64 {
 // MDMMemoryCost computes the memory cost given a price table, memory and time.
 func MDMMemoryCost(pt *RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
+}
+
+// MDMAppendCollateral returns the additional collateral a 'Append' instruction
+// requires the host to put up.
+func MDMAppendCollateral(pt *RPCPriceTable) types.Currency {
+	return pt.CollateralCost.Mul64(SectorSize)
+}
+
+// MDMDropSectorsCollateral returns the additional collateral a 'DropSectors'
+// instruction requires the host to put up.
+func MDMDropSectorsCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMHasSectorCollateral returns the additional collateral a 'HasSector'
+// instruction requires the host to put up.
+func MDMHasSectorCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMReadCollateral returns the additional collateral a 'Read' instruction
+// requires the host to put up.
+func MDMReadCollateral() types.Currency {
+	return types.ZeroCurrency
 }
 
 // ReadOnly returns true if the program consists of no write instructions.
