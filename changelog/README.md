@@ -168,7 +168,7 @@ If in `release-scripts/generate-changelog.sh` is the following setting
 Also 1 upcoming minor level version `v1.5.0` directory will be created
 if it doesn't exist. All created upcoming versions are created with
 sub-directories `key-updates`, `bugs-fixed` and `other` and `.init` items
-in them, so they can be commited to git.
+in them, so they can be committed to git.
 
 When the automatically generated upcoming version (e.g. `v1.4.6`) doesn't
 match what is wanted (e.g. `v1.5.0`) then the generated directory name can be
