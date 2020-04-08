@@ -304,6 +304,53 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal("Expected failure when running 2 in parallel because they are using the same revision number, instead err was nil")
 	}
 
+	// expect error when revision moves collateral
+
+	// update the host collateral
+	collateral := types.NewCurrency64(5)
+	so, err = ht.host.managedGetStorageObligation(recent.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	numRevisions := len(so.RevisionTransactionSet)
+	so.RevisionTransactionSet[numRevisions-1].FileContractRevisions[0].SetMissedHostPayout(collateral)
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// create a revision and move some collateral
+	recent = recentSO()
+	rev, err = recent.PaymentRevision(funding.Add(pt.FundAccountCost))
+	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
+	voidOutput, err := rev.MissedVoidOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(collateral))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = runWithRevision(rev)
+	if err == nil || !strings.Contains(err.Error(), "host not expecting to post any collateral") {
+		t.Fatalf("Expected error '%v', instead error was '%v'", "host not expecting to post any collateral", err)
+	}
+
+	// undo host collateral update
+	so, err = ht.host.managedGetStorageObligation(recent.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	so.RevisionTransactionSet[numRevisions-1].FileContractRevisions[0].SetMissedHostPayout(types.ZeroCurrency)
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
 	// verify happy flow again to make sure the error'ed out calls don't mess
 	// anything up
 	recent = recentSO()
