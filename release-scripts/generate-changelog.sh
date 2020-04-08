@@ -30,12 +30,12 @@ fi
 #   Writes item to changelog file
 ######################################
 function add_items {
-    items_header="$1"
-    items_folder="$2"
+    local items_header="$1"
+    local items_folder="$2"
     
-    section_has_items=false
-    items_list=$(find ./"$version" -wholename "*/$items_folder/*.md" | sort)
-    new_line=false
+    local section_has_items=false
+    local items_list=$(find ./"$version" -wholename "*/$items_folder/*.md" | sort)
+    local new_line=false
     for item in $items_list
     do
         if [ "$section_has_items" == false ]
@@ -58,6 +58,42 @@ function add_items {
     fi
 }
 
+######################################
+# Create new version directory structure
+# if the version is not found
+# Globals:
+#   upcoming_version_list
+# Arguments:
+#   version to check and create
+# Outputs:
+#   Writes version directory
+#   Writes version's categories
+#   Writes version's init files
+######################################
+function create_version_if_not_present {
+    local upcoming_version="$1"
+
+    for version in ${upcoming_version_list[@]}
+    do
+        if [ "$version" == "$upcoming_version" ]
+        then
+            # version already exists
+            return
+        fi
+    done
+
+    echo "generating directory structure for upcoming version $upcoming_version ..."
+
+    for section in 'key-updates' 'bugs-fixed' 'other'
+    do
+        # create section directory
+        mkdir -p "$upcoming_version/$section"
+
+        # create dummy files for git commit to catch empty section directories
+        touch "$upcoming_version/$section/.init"
+    done
+}
+
 # get script location
 pushd $(dirname "$0") > /dev/null
 
@@ -75,7 +111,7 @@ touch $mid_filename
 version_list=$(find * -maxdepth 1 -name "v*" | sort -r --version-sort)
 
 # Write versions and add changelog items to the changelog
-upcoming_version_found=false
+upcoming_version_list=()
 for version in $version_list
 do
     versions_compare="$version
@@ -101,26 +137,25 @@ $generate_till_version"
         fi
     else
         echo "version $version WILL NOT be included to changelog file"
-        upcoming_version_found=true
+        upcoming_version_list+=("$version")
     fi
 done
 
-# Generate upcoming version directory structure
-if [ "$upcoming_version_found" == false ]
-then
-    # Calculate new version from current version
-    upcoming_version=$(echo "$generate_till_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
-    echo "generating directory structure for upcoming version $upcoming_version ..."
+# Generate 2 patch level upcoming versions
 
-    for section in 'key-updates' 'bugs-fixed' 'other'
-    do
-        # create section directory
-        mkdir -p "$upcoming_version/$section"
+# Calculate and create new patch version from current version
+upcoming_version=$(echo "$generate_till_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
+create_version_if_not_present "$upcoming_version"
 
-        # create dummy files for git commit to catch empty section directories
-        touch "$upcoming_version/$section/.init"
-    done
-fi
+# Calculate and create second new patch version from current version
+upcoming_version_2=$(echo "$upcoming_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
+create_version_if_not_present "$upcoming_version_2"
+
+# Calculate and create new minor version from current version
+current_minor_version=${generate_till_version%.*}
+upcoming_minor_version=$(echo "$current_minor_version" | awk -F. -v OFS=. 'NF==1{print ++$NF}; NF>1{$NF=sprintf("%0*d", length($NF), ($NF+1)); print}')
+upcoming_minor_version="$upcoming_minor_version.0"
+create_version_if_not_present "$upcoming_minor_version"
 
 if [ "$final_version" == "true" ]
 then
