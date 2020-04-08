@@ -74,8 +74,7 @@ func TestLoadExistingMerkleRoots(t *testing.T) {
 	}
 
 	// Create sector roots.
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < 200; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -83,9 +82,9 @@ func TestLoadExistingMerkleRoots(t *testing.T) {
 	}
 
 	// Load the existing file using LoadExistingMerkleRoots
-	merkleRoots2, applyTxns, err := loadExistingMerkleRoots(rootSection)
+	merkleRoots2, applyTxns, err := loadExistingMerkleRoots(file)
 	if err != nil || applyTxns {
-		t.Fatal(applyTxns, err)
+		t.Fatal(err)
 	}
 	if merkleRoots2.len() != merkleRoots.len() {
 		t.Errorf("expected len %v but was %v", merkleRoots.len(), merkleRoots2.len())
@@ -129,8 +128,7 @@ func TestInsertMerkleRoot(t *testing.T) {
 	}
 
 	// Create sector roots.
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < 200; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -159,7 +157,7 @@ func TestInsertMerkleRoot(t *testing.T) {
 	}
 	// Reload the roots. The in-memory structure and the roots on disk should
 	// still be consistent.
-	loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+	loadedRoots, applyTxns, err := loadExistingMerkleRootsFromSection(merkleRoots.rootsFile)
 	if err != nil || applyTxns {
 		t.Fatal("failed to load existing roots", err)
 	}
@@ -184,7 +182,7 @@ func TestInsertMerkleRoot(t *testing.T) {
 	}
 	// Reload the roots. The in-memory structure and the roots on disk should
 	// still be consistent.
-	loadedRoots, applyTxns, err = loadExistingMerkleRoots(merkleRoots.rootsFile)
+	loadedRoots, applyTxns, err = loadExistingMerkleRootsFromSection(merkleRoots.rootsFile)
 	if err != nil || applyTxns {
 		t.Fatal("failed to load existing roots", err)
 	}
@@ -212,8 +210,7 @@ func TestDeleteLastRoot(t *testing.T) {
 	// makes the first delete remove a uncached root and the second delete has
 	// to remove a cached tree.
 	numMerkleRoots := merkleRootsPerCache + 1
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < numMerkleRoots; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -279,7 +276,7 @@ func TestDeleteLastRoot(t *testing.T) {
 
 	// Reload the roots. The in-memory structure and the roots on disk should
 	// still be consistent.
-	loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+	loadedRoots, applyTxns, err := loadExistingMerkleRootsFromSection(merkleRoots.rootsFile)
 	if err != nil || applyTxns {
 		t.Fatal("failed to load existing roots", err)
 	}
@@ -306,8 +303,7 @@ func TestDelete(t *testing.T) {
 
 	// Create many sector roots.
 	numMerkleRoots := 1000
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < numMerkleRoots; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -317,7 +313,7 @@ func TestDelete(t *testing.T) {
 	for merkleRoots.numMerkleRoots > 0 {
 		// 1% chance to reload the roots and check if they are consistent.
 		if fastrand.Intn(100) == 0 {
-			loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+			loadedRoots, applyTxns, err := loadExistingMerkleRootsFromSection(merkleRoots.rootsFile)
 			if err != nil || applyTxns {
 				t.Fatal("failed to load existing roots", err)
 			}
@@ -400,8 +396,7 @@ func TestMerkleRootsRandom(t *testing.T) {
 
 	// Create many sector roots.
 	numMerkleRoots := 10000
-	rootSection := newFileSection(file, 0, -1)
-	merkleRoots := newMerkleRoots(rootSection)
+	merkleRoots := newMerkleRoots(file)
 	for i := 0; i < numMerkleRoots; i++ {
 		hash := crypto.Hash{}
 		copy(hash[:], fastrand.Bytes(crypto.HashSize)[:])
@@ -412,7 +407,7 @@ func TestMerkleRootsRandom(t *testing.T) {
 	for i := 0; i < numMerkleRoots; i++ {
 		// 1% chance to reload the roots and check if they are consistent.
 		if fastrand.Intn(100) == 0 {
-			loadedRoots, applyTxns, err := loadExistingMerkleRoots(merkleRoots.rootsFile)
+			loadedRoots, applyTxns, err := loadExistingMerkleRootsFromSection(merkleRoots.rootsFile)
 			if err != nil || applyTxns {
 				t.Fatal("failed to load existing roots")
 			}

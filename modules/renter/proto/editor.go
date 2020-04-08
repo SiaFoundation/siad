@@ -92,8 +92,8 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	if contract.RenterFunds().Cmp(sectorPrice) < 0 {
 		return modules.RenterContract{}, crypto.Hash{}, errors.New("contract has insufficient funds to support upload")
 	}
-	if contract.LastRevision().NewMissedProofOutputs[1].Value.Cmp(sectorCollateral) < 0 {
-		sectorCollateral = contract.LastRevision().NewMissedProofOutputs[1].Value
+	if contract.LastRevision().MissedHostOutput().Value.Cmp(sectorCollateral) < 0 {
+		sectorCollateral = contract.LastRevision().MissedHostOutput().Value
 	}
 
 	// calculate the new Merkle root

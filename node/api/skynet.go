@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -78,6 +79,11 @@ type (
 	SkynetVersion struct {
 		Version     string `json:"version"`
 		GitRevision string `json:"gitrevision"`
+	}
+
+	// SkykeyGET contains a base64 encoded Skykey.
+	SkykeyGET struct {
+		Skykey string `json:"skykey"` // base64 encoded Skykey
 	}
 )
 
@@ -419,6 +425,17 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Parse whether the upload should be performed as a dry-run.
+	var dryRun bool
+	dryRunStr := queryForm.Get("dryrun")
+	if dryRunStr != "" {
+		dryRun, err = strconv.ParseBool(dryRunStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'dryrun' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse whether the siapath should be from root or from the skynet folder.
 	var root bool
 	rootStr := queryForm.Get("root")
@@ -473,6 +490,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Verify the dry-run and force parameter are not combined
+	if allowForce && force && dryRun {
+		WriteError(w, Error{"'dryRun' and 'force' can not be combined"}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
@@ -496,6 +519,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Build the upload parameters
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
+		DryRun:              dryRun,
 		Force:               force,
 		BaseChunkRedundancy: redundancy,
 	}
@@ -750,4 +774,115 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		offset += uint64(fh.Size)
 	}
 	return subfiles, io.MultiReader(readers...), nil
+}
+
+// skykeyHandlerGET handles the API call to get a Skykey and its ID using its
+// name or ID.
+func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse Skykey id and name.
+	name := req.FormValue("name")
+	idString := req.FormValue("id")
+
+	if idString == "" && name == "" {
+		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusInternalServerError)
+		return
+	}
+	if idString != "" && name != "" {
+		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusInternalServerError)
+		return
+	}
+
+	var sk skykey.Skykey
+	var err error
+	if name != "" {
+		sk, err = api.renter.SkykeyByName(name)
+	} else if idString != "" {
+		var id skykey.SkykeyID
+		err = id.FromString(idString)
+		if err != nil {
+			WriteError(w, Error{"failed to decode ID string: "}, http.StatusInternalServerError)
+			return
+		}
+		sk, err = api.renter.SkykeyByID(id)
+	}
+	if err != nil {
+		WriteError(w, Error{"failed to retrieve skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	skString, err := sk.ToString()
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteJSON(w, SkykeyGET{
+		Skykey: skString,
+	})
+}
+
+// skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
+// skykey manager.
+func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse skykey name and ciphertype
+	name := req.FormValue("name")
+	ctString := req.FormValue("ciphertype")
+
+	if name == "" {
+		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	if ctString == "" {
+		WriteError(w, Error{"you must specify the desited ciphertype for the skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	var ct crypto.CipherType
+	err := ct.FromString(ctString)
+	if err != nil {
+		WriteError(w, Error{"failed to decode ciphertype" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	sk, err := api.renter.CreateSkykey(name, ct)
+	if err != nil {
+		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	keyString, err := sk.ToString()
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteJSON(w, SkykeyGET{
+		Skykey: keyString,
+	})
+}
+
+// skykeyAddKeyHandlerPost handles the API call to add a skykey to the renter's
+// skykey manager.
+func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse skykey.
+	skString := req.FormValue("skykey")
+	if skString == "" {
+		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	var sk skykey.Skykey
+	err := sk.FromString(skString)
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	err = api.renter.AddSkykey(sk)
+	if err != nil {
+		WriteError(w, Error{"failed to add skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
 }

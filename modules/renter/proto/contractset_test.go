@@ -1,14 +1,21 @@
 package proto
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -29,6 +36,7 @@ func TestContractSet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// create contract set
 	testDir := build.TempDir(t.Name())
 	cs, err := NewContractSet(testDir, modules.ProdDependencies)
@@ -148,4 +156,192 @@ func TestContractSet(t *testing.T) {
 		}(fn)
 	}
 	wg.Wait()
+}
+
+// TestCompatV146SplitContracts tests the compat code for converting single file
+// contracts into split contracts.
+func TestCompatV146SplitContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// get the dir of the contractset.
+	testDir := build.TempDir(t.Name())
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
+		t.Fatal(err)
+	}
+	// manually create a legacy contract.
+	var id types.FileContractID
+	fastrand.Read(id[:])
+	contractHeader := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber:    1,
+				NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+				ParentID:             id,
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoot := crypto.Hash{1}
+	// Place the legacy contract in the dir.
+	pathNoExt := filepath.Join(testDir, id.String())
+	legacyPath := pathNoExt + v146ContractExtension
+	file, err := os.Create(legacyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headerBytes := encoding.Marshal(contractHeader)
+	rootsBytes := initialRoot[:]
+	_, err1 := file.WriteAt(headerBytes, 0)
+	_, err2 := file.WriteAt(rootsBytes, 4088)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// load contract set
+	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The legacy file should be gone.
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatal("legacy contract still exists")
+	}
+	// The new files should exist.
+	if _, err := os.Stat(pathNoExt + contractHeaderExtension); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(pathNoExt + contractRootsExtension); err != nil {
+		t.Fatal(err)
+	}
+	// Acquire the contract.
+	sc, ok := cs.Acquire(id)
+	if !ok {
+		t.Fatal("failed to acquire contract")
+	}
+	// Make sure the header and roots match.
+	if !bytes.Equal(encoding.Marshal(sc.header), headerBytes) {
+		t.Fatal("header doesn't match")
+	}
+	roots, err := sc.merkleRoots.merkleRoots()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(roots, []crypto.Hash{initialRoot}) {
+		t.Fatal("roots don't match")
+	}
+}
+
+// TestContractSetApplyInsertUpdateAtStartup makes sure that a valid insert
+// update gets applied at startup and an invalid one won't.
+func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Prepare a header for the test.
+	header := contractHeader{Transaction: types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{{
+			ParentID:             types.FileContractID{1},
+			NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+			UnlockConditions: types.UnlockConditions{
+				PublicKeys: []types.SiaPublicKey{{}, {}},
+			},
+		}},
+	}}
+	initialRoots := []crypto.Hash{{}, {}, {}}
+	// Prepare a valid and one invalid update.
+	validUpdate, err := makeUpdateInsertContract(header, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidUpdate, err := makeUpdateInsertContract(header, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidUpdate.Name = "invalidname"
+	// create contract set and close it.
+	testDir := build.TempDir(t.Name())
+	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Prepare the insertion of the invalid contract.
+	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{invalidUpdate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = <-txn.SignalSetupComplete()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Close the contract set.
+	if err := cs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Load the set again. This should ignore the invalid update and succeed.
+	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure we can't acquire the contract.
+	_, ok := cs.Acquire(header.ID())
+	if ok {
+		t.Fatal("shouldn't be able to acquire the contract")
+	}
+	// Prepare the insertion of 2 valid contracts within a single txn. This
+	// should be ignored at startup.
+	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = <-txn.SignalSetupComplete()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Close the contract set.
+	if err := cs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Load the set again. This should apply the invalid update and fail at
+	// startup.
+	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure we can't acquire the contract.
+	_, ok = cs.Acquire(header.ID())
+	if ok {
+		t.Fatal("shouldn't be able to acquire the contract")
+	}
+	// Prepare the insertion of a valid contract by writing the change to the
+	// wal but not applying it.
+	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = <-txn.SignalSetupComplete()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Close the contract set.
+	if err := cs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Load the set again. This should apply the valid update and not return an
+	// error.
+	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure we can acquire the contract.
+	_, ok = cs.Acquire(header.ID())
+	if !ok {
+		t.Fatal("failed to acquire contract after applying valid update")
+	}
 }

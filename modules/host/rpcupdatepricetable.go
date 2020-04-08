@@ -6,17 +6,17 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// managedRPCUpdatePriceTable returns a copy of the host's current rpc price
+// staticRPCUpdatePriceTable returns a copy of the host's current rpc price
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
-func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
-	// copy the host's price table
-	h.staticPriceTables.mu.RLock()
-	pt := h.staticPriceTables.current
-	h.staticPriceTables.mu.RUnlock()
+func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
+	// copy the host's price table and give it a random UID
+	pt := h.staticPriceTables.managedCurrent()
+	fastrand.Read(pt.UID[:])
 
 	// update the epxiry to ensure prices are guaranteed for the duration of the
 	// rpcPriceGuaranteePeriod
@@ -40,14 +40,17 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// been added to the map, which means that the renter has to pay for it in
 	// order for it to became active and accepted by the host.
 
-	// TODO process payment
+	payment, err := h.ProcessPayment(stream)
+	if err != nil {
+		return errors.AddContext(err, "Failed to process payment")
+	}
+	if payment.Amount().Cmp(pt.UpdatePriceTableCost) < 0 {
+		return modules.ErrInsufficientPaymentForRPC
+	}
 
 	// after payment has been received, track the price table in the host's list
 	// of price tables
-	h.staticPriceTables.mu.Lock()
-	h.staticPriceTables.guaranteed[pt.UUID] = &pt
-	h.staticPriceTables.mu.Unlock()
-	h.staticPriceTables.staticMinHeap.Push(&pt)
+	h.staticPriceTables.managedTrack(&pt)
 
 	return nil
 }

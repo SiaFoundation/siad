@@ -27,10 +27,10 @@ var Analyzer = &analysis.Analyzer{
 
 // VisitorFunc is an adapter for the ast.Visitor interface. It allows passing in
 // anonymous functions that adhere to the Visitor interface.
-type VistorFunc func(n ast.Node) ast.Visitor
+type VisitorFunc func(n ast.Node) ast.Visitor
 
 // Visit implements ast.Visitor by calling f.
-func (f VistorFunc) Visit(n ast.Node) ast.Visitor {
+func (f VisitorFunc) Visit(n ast.Node) ast.Visitor {
 	return f(n)
 }
 
@@ -64,7 +64,7 @@ func runFunc(pass *analysis.Pass, fd *ast.FuncDecl, responseWriter *types.Var) {
 	// Find all expression staments that use the http.ResponseWriter
 	var usages []ast.Node
 	var v ast.Visitor
-	v = VistorFunc(func(node ast.Node) ast.Visitor {
+	v = VisitorFunc(func(node ast.Node) ast.Visitor {
 		if passesArgument(pass.TypesInfo, node, responseWriter) {
 			usages = append(usages, node)
 		}
@@ -192,7 +192,6 @@ func passesArgument(info *types.Info, n ast.Node, v *types.Var) bool {
 		if info.Uses[ident] == v {
 			return true
 		}
-
 	}
 
 	return false

@@ -85,8 +85,8 @@ func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
 }
 
 // Update implements the StorageObligation interface.
-func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
-	for _, removedSector := range sectorsRemoved {
+func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemoved map[crypto.Hash]struct{}, sectorsGained map[crypto.Hash][]byte) error {
+	for removedSector := range sectorsRemoved {
 		if _, exists := so.sectorMap[removedSector]; !exists {
 			return errors.New("sector doesn't exist")
 		}
@@ -106,6 +106,7 @@ func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Has
 // for every operation/rpc.
 func newTestPriceTable() modules.RPCPriceTable {
 	return modules.RPCPriceTable{
+		CollateralCost:        types.SiacoinPrecision,
 		Expiry:                time.Now().Add(time.Minute).Unix(),
 		UpdatePriceTableCost:  types.SiacoinPrecision,
 		InitBaseCost:          types.SiacoinPrecision,

@@ -748,6 +748,18 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}
 	c.log.Printf("Renewed contract %v\n", id)
 
+	// Skip the deletion of the old contract if required and delete the new
+	// contract to make sure we keep using the old one even though it has been
+	// finalized.
+	if c.staticDeps.Disrupt("SkipContractDeleteAfterRenew") {
+		c.staticContracts.Return(oldContract)
+		newSC, ok := c.staticContracts.Acquire(newContract.ID)
+		if ok {
+			c.staticContracts.Delete(newSC)
+		}
+		return amount, nil
+	}
+
 	// Update the utility values for the new contract, and for the old
 	// contract.
 	newUtility := modules.ContractUtility{
@@ -1291,6 +1303,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("A new contract has been formed with a host:", newContract.ID)
 			c.log.Println("Score:    ", sb.Score)
 			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.log.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
 			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
 			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
 			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)
