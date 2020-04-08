@@ -2724,48 +2724,37 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		return
 	}
 
-	// walk the target directory, count the files/dirs, and confirm with the
-	// user that they want to upload all of them
-	var cf uint32
+	// Walk the target directory and collect all files that are going to be
+	// uploaded.
+	filesToUpload := make([]string, 0)
 	err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return errors.AddContext(err, fmt.Sprintf("Failed to process path %s: ", path))
+			fmt.Println("Warning: skipping file:", err)
+			return nil
 		}
 		if !info.IsDir() {
-			cf++
+			filesToUpload = append(filesToUpload, path)
 		}
 		return nil
 	})
 	if err != nil {
 		die(err)
 	}
-	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", cf))
+	// Confirm with the user that they want to upload all of them.
+	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", len(filesToUpload)))
 	if !ok {
 		die() // no message needed
 	}
-
+	// Queue all files for upload.
 	filesChan := make(chan string)
 	go func() {
 		defer close(filesChan)
-		// Collect all filenames under this directory with their relative paths
-		// and pipe them into a channel to be uploaded
-		err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return errors.AddContext(err, fmt.Sprintf("Failed to process path %s: ", path))
-			}
-			if info.IsDir() {
-				return nil
-			}
+		for _, path := range filesToUpload {
 			filesChan <- path
-			return nil
-		})
-		if err != nil {
-			die(err)
 		}
 	}()
 
-	var numUploadedSkyfiles uint32
-	// start the workers that will upload the files in parallel
+	// Start the workers that will upload the files in parallel.
 	var wg sync.WaitGroup
 	for i := 0; i < SimultaneousSkynetUploads; i++ {
 		wg.Add(1)
@@ -2776,13 +2765,12 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 				// in order to figure out where to put the file
 				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
 				skynetUploadFileWithProgressBar(filename, newDestSiaPath, pbs)
-				atomic.AddUint32(&numUploadedSkyfiles, 1)
 			}
 		}()
 	}
 	wg.Wait()
 	pbs.Wait()
-	fmt.Printf("Successfully uploaded %d skyfiles!\n", numUploadedSkyfiles)
+	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
 // skynetUploadFile uploads a file to Skynet without any visual indication to
