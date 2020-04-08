@@ -33,15 +33,17 @@ func TestCostForAppendProgram(t *testing.T) {
 	numInstructions := uint64(math.Ceil(float64(tib) / float64(modules.SectorSizeStandard)))
 	runningCost := modules.MDMInitCost(pt, tib, numInstructions)
 	runningRefund := types.ZeroCurrency
+	runningCollateral := types.ZeroCurrency
 	runningMemory := modules.MDMInitMemory()
 	runningSize := uint64(0)
 
 	// Simulate running a program to append 1 TiB of data.
 	for runningSize < tib {
 		cost, refund := appendTrueCost(pt)
+		collateral := modules.MDMAppendCollateral(pt)
 		memory := modules.SectorSizeStandard // override MDMAppendMemory()
 		time := uint64(modules.MDMTimeAppend)
-		runningCost, runningRefund, runningMemory = updateRunningCosts(pt, runningCost, runningRefund, runningMemory, cost, refund, memory, time)
+		runningCost, runningRefund, runningCollateral, runningMemory = updateRunningCosts(pt, runningCost, runningRefund, runningCollateral, runningMemory, cost, refund, collateral, memory, time)
 		runningSize += modules.SectorSizeStandard
 	}
 	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))

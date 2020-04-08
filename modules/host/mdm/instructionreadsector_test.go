@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"io"
 	"reflect"
 	"testing"
 
@@ -15,26 +14,27 @@ import (
 
 // newReadSectorInstruction is a convenience method for creating a single
 // 'ReadSector' instruction.
-func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	i := NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
 	cost, refund := modules.MDMReadCost(pt, length)
-	return i, cost, refund, modules.MDMReadMemory(), modules.MDMTimeReadSector
+	collateral := modules.MDMReadCollateral()
+	return i, cost, refund, collateral, modules.MDMReadMemory(), modules.MDMTimeReadSector
 }
 
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, io.Reader, uint64, types.Currency, types.Currency, uint64) {
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	data := make([]byte, 8+8+crypto.HashSize)
 	binary.LittleEndian.PutUint64(data[:8], length)
 	binary.LittleEndian.PutUint64(data[8:16], offset)
 	copy(data[16:], merkleRoot[:])
 	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	i, cost, refund, memory, time := newReadSectorInstruction(length, true, 0, pt)
-	cost, refund, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, memory, time)
+	i, cost, refund, collateral, memory, time := newReadSectorInstruction(length, true, 0, pt)
+	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
 	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
-	return instructions, bytes.NewReader(data), uint64(len(data)), cost, refund, memory
+	return instructions, data, cost, refund, collateral, memory
 }
 
 // TestInstructionReadSector tests executing a program with a single
@@ -50,11 +50,13 @@ func TestInstructionReadSector(t *testing.T) {
 	// Execute it.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(10)
-	instructions, r, dataLen, cost, refund, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
+	instructions, programData, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
+	r := bytes.NewReader(programData)
+	dataLen := uint64(len(programData))
 	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +82,9 @@ func TestInstructionReadSector(t *testing.T) {
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
+		if !output.AdditionalCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
+		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
 		}
@@ -96,9 +101,11 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, r, dataLen, cost, refund, usedMemory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
+	instructions, programData, cost, refund, collateral, usedMemory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
+	r = bytes.NewReader(programData)
+	dataLen = uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, so, dataLen, r)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +132,9 @@ func TestInstructionReadSector(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.AdditionalCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())

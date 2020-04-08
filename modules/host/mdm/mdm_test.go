@@ -110,6 +110,7 @@ func newTestPriceTable() modules.RPCPriceTable {
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
+		CollateralCost:       types.NewCurrency64(1),
 
 		DropSectorsBaseCost: types.NewCurrency64(1),
 		DropSectorsUnitCost: types.NewCurrency64(1),

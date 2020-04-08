@@ -373,6 +373,18 @@ type (
 	}
 )
 
+// MaxBaseRPCPrice returns the maximum value for the BaseRPCPrice based on the
+// DownloadBandwidthPrice
+func (hes HostExternalSettings) MaxBaseRPCPrice() types.Currency {
+	return hes.DownloadBandwidthPrice.Mul64(MaxBaseRPCPriceVsBandwidth)
+}
+
+// MaxSectorAccessPrice returns the maximum value for the SectorAccessPrice
+// based on the DownloadBandwidthPrice
+func (hes HostExternalSettings) MaxSectorAccessPrice() types.Currency {
+	return hes.DownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
+}
+
 // New RPC IDs
 var (
 	RPCLoopEnter              = types.NewSpecifier("LoopEnter")

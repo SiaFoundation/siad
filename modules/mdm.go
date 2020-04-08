@@ -82,6 +82,11 @@ var (
 	// ErrMDMInsufficientBudget is the error returned if the remaining budget of
 	// an MDM program is not sufficient to execute the next instruction.
 	ErrMDMInsufficientBudget = errors.New("remaining budget is insufficient")
+
+	// ErrMDMInsufficientCollateralBudget is the error returned if the remaining
+	// collateral budget of an MDM program is not sufficient to execute the next
+	// instruction.
+	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
 )
 
 // MDMAppendCost is the cost of executing an 'Append' instruction.
@@ -182,4 +187,28 @@ func MDMMemoryCost(pt RPCPriceTable, usedMemory, time uint64) types.Currency {
 // `numSectorsDropped`.
 func MDMDropSectorsTime(numSectorsDropped uint64) uint64 {
 	return MDMTimeDropSectorsBase + MDMTimeDropSingleSector*numSectorsDropped
+}
+
+// MDMAppendCollateral returns the additional collateral a 'Append' instruction
+// requires the host to put up.
+func MDMAppendCollateral(pt RPCPriceTable) types.Currency {
+	return pt.CollateralCost.Mul64(SectorSize)
+}
+
+// MDMDropSectorsCollateral returns the additional collateral a 'DropSectors'
+// instruction requires the host to put up.
+func MDMDropSectorsCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMHasSectorCollateral returns the additional collateral a 'HasSector'
+// instruction requires the host to put up.
+func MDMHasSectorCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMReadCollateral returns the additional collateral a 'Read' instruction
+// requires the host to put up.
+func MDMReadCollateral() types.Currency {
+	return types.ZeroCurrency
 }
