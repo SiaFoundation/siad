@@ -124,6 +124,9 @@ func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
 	if err := d.Decode(&resp.err); err != nil {
 		return err
 	}
+	if resp.err != nil {
+		return nil
+	}
 	return d.Decode(resp.data)
 }
 
