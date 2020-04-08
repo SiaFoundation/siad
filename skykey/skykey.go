@@ -48,10 +48,15 @@ var (
 	// ErrSkykeyWithNameAlreadyExists indicates that a key cannot be created or added
 	// because a key with the same name is already being stored.
 	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key.")
+
+	// ErrSkykeyWithIDAlreadyExists indicates that a key cannot be created or
+	// added because a key with the same ID (and therefore same key entropy) is
+	// already being stored.
+	ErrSkykeyWithIDAlreadyExists = errors.New("Skykey ID already exists.")
+
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
 	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
 	errNoSkykeysWithThatID         = errors.New("No Skykey is assocated with that ID")
-	errSkykeyWithIDAlreadyExists   = errors.New("Skykey ID already exists.")
 	errSkykeyNameToolong           = errors.New("Skykey name exceeds max length")
 
 	// SkykeyPersistFilename is the name of the skykey persistence file.
@@ -208,7 +213,7 @@ func (sm *SkykeyManager) AddKey(sk Skykey) error {
 	defer sm.mu.Unlock()
 	_, ok := sm.keysByID[sk.ID()]
 	if ok {
-		return errSkykeyWithIDAlreadyExists
+		return ErrSkykeyWithIDAlreadyExists
 	}
 
 	_, ok = sm.idsByName[sk.Name]

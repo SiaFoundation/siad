@@ -186,7 +186,7 @@ func TestSkykeyManager(t *testing.T) {
 	// shown.
 	for _, key := range keyMan.keysByID {
 		err := addKeyMan.AddKey(key)
-		if !errors.Contains(err, errSkykeyWithIDAlreadyExists) {
+		if !errors.Contains(err, ErrSkykeyWithIDAlreadyExists) {
 			t.Fatal(err)
 		}
 	}

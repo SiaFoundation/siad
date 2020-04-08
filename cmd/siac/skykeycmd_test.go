@@ -4,7 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -16,6 +19,9 @@ import (
 func TestSkykeyCommands(t *testing.T) {
 	// Create a node for the test
 	n, err := siatest.NewNode(node.AllModules(build.TempDir(t.Name())))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Set global HTTP client to the node's client.
 	httpClient = n.Client
@@ -31,8 +37,8 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 
 	err = skykeyAdd(testSkykeyString)
-	if err == nil || strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
-		t.Fatal("Expected non duplicate name error", err)
+	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithIDAlreadyExists.Error()) {
+		t.Fatal("Unexpected duplicate name error", err)
 	}
 
 	// Change the key entropy, but keep the same name.
@@ -68,7 +74,7 @@ func TestSkykeyCommands(t *testing.T) {
 	// Check that invalid cipher types are caught.
 	skykeyCipherType = "InvalidCipherType"
 	_, err = skykeyCreate("createkey2")
-	if err == nil {
+	if !errors.Contains(err, crypto.ErrInvalidCipherType) {
 		t.Fatal("Expected error when creating key with invalid ciphertype")
 	}
 	skykeyCipherType = "XChaCha20" //reset the ciphertype
