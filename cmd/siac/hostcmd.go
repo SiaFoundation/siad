@@ -448,7 +448,7 @@ func hostcontractcmd() {
 	case "value":
 		fmt.Fprintf(w, "Obligation Id\tObligation Status\tContract Cost\tLocked Collateral\tRisked Collateral\tPotential Revenue\tExpiration Height\tTransaction Fees\n")
 		for _, so := range cg.Contracts {
-			potentialRevenue := so.PotentialDownloadRevenue.Add(so.PotentialUploadRevenue).Add(so.PotentialStorageRevenue).Add(so.AccountFunding)
+			potentialRevenue := so.PotentialDownloadRevenue.Add(so.PotentialUploadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialAccountFunding)
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n", so.ObligationId, strings.TrimPrefix(so.ObligationStatus, "obligation"), currencyUnits(so.ContractCost), currencyUnits(so.LockedCollateral),
 				currencyUnits(so.RiskedCollateral), currencyUnits(potentialRevenue), so.ExpirationHeight, currencyUnits(so.TransactionFeesAdded))
 		}

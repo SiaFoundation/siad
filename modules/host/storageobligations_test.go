@@ -188,8 +188,8 @@ func TestAccountFundingTracking(t *testing.T) {
 	}
 	defer ht.Close()
 
-	// expectDelta is a helper that asserts the delta between the host's
-	// potential account funding, and account funding metric before and after
+	// expectDelta is a helper that asserts the deltas, with regards to the
+	// account funding fields, in the host's financial metrics before and after
 	// executing the given function f.
 	expectDelta := func(pafDelta, afDelta int64, action string, f func() error) error {
 		bkp := ht.host.FinancialMetrics()
@@ -246,7 +246,7 @@ func TestAccountFundingTracking(t *testing.T) {
 
 	// add the storage obligation (expect PAF to increase - AF remain same)
 	rd1 := rand.Int63n(10) + 1
-	so.AccountFunding = so.AccountFunding.Add64(uint64(rd1))
+	so.PotentialAccountFunding = so.PotentialAccountFunding.Add64(uint64(rd1))
 	if err = expectDelta(rd1, 0, "add SO", func() error {
 		return ht.host.managedAddStorageObligation(so, false)
 	}); err != nil {
@@ -255,7 +255,7 @@ func TestAccountFundingTracking(t *testing.T) {
 
 	// modify the storage obligation (expect PAF to increase - AF remain same)
 	rd2 := rand.Int63n(10) + 1
-	so.AccountFunding = so.AccountFunding.Add64(uint64(rd2))
+	so.PotentialAccountFunding = so.PotentialAccountFunding.Add64(uint64(rd2))
 	if err = expectDelta(int64(rd2), 0, "modify SO", func() error {
 		return ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte, 0))
 	}); err != nil {

@@ -200,8 +200,8 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 	}}
 
-	// track the fund account revenue
-	so.AccountFunding = so.AccountFunding.Add(deposit)
+	// track the account funding
+	so.PotentialAccountFunding = so.PotentialAccountFunding.Add(deposit)
 
 	// update the storage obligation
 	err = h.managedModifyStorageObligation(so, nil, nil)

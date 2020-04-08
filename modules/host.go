@@ -172,11 +172,11 @@ type (
 	// StorageObligation contains information about a storage obligation that
 	// the host has accepted.
 	StorageObligation struct {
-		AccountFunding           types.Currency       `json:"accountfunding"`
 		ContractCost             types.Currency       `json:"contractcost"`
 		DataSize                 uint64               `json:"datasize"`
 		LockedCollateral         types.Currency       `json:"lockedcollateral"`
 		ObligationId             types.FileContractID `json:"obligationid"`
+		PotentialAccountFunding  types.Currency       `json:"potentialaccountfunding"`
 		PotentialDownloadRevenue types.Currency       `json:"potentialdownloadrevenue"`
 		PotentialStorageRevenue  types.Currency       `json:"potentialstoragerevenue"`
 		PotentialUploadRevenue   types.Currency       `json:"potentialuploadrevenue"`

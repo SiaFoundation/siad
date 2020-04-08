@@ -139,7 +139,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		return
 	}
 
-	verifyResponse := func(rev types.FileContractRevision, payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, prevBalance, prevAccountFunding, funding types.Currency) error {
+	verifyResponse := func(rev types.FileContractRevision, payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, prevBalance, prevPotAccFunding, funding types.Currency) error {
 		// verify the host signature
 		if err := crypto.VerifyHash(crypto.HashAll(rev), hcpk, payByResponse.Signature); err != nil {
 			return errors.New("could not verify host signature")
@@ -167,9 +167,9 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		}
 
 		// verify the funding get added to the host's financial metrics
-		currAccountFunding := ht.host.FinancialMetrics().PotentialAccountFunding
-		if !currAccountFunding.Equals(prevAccountFunding.Add(funding)) {
-			t.Fatalf("Unexpected account funding, expected %v but received %v", prevAccountFunding.Add(funding).HumanString(), currAccountFunding.HumanString())
+		currPotAccFunding := ht.host.FinancialMetrics().PotentialAccountFunding
+		if !currPotAccFunding.Equals(prevPotAccFunding.Add(funding)) {
+			t.Fatalf("Unexpected account funding, expected %v but received %v", prevPotAccFunding.Add(funding).HumanString(), currPotAccFunding.HumanString())
 		}
 		return nil
 	}
@@ -189,7 +189,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// verify happy flow
 	recent := recentSO()
 	funding := types.NewCurrency64(100)
-	accountFunding := ht.host.FinancialMetrics().PotentialAccountFunding
+	fmPAF := ht.host.FinancialMetrics().PotentialAccountFunding
 	rev, err := recent.PaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = verifyResponse(rev, pbcResp, fundAccResp, balance, accountFunding, funding)
+	err = verifyResponse(rev, pbcResp, fundAccResp, balance, fmPAF, funding)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +307,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// verify happy flow again to make sure the error'ed out calls don't mess
 	// anything up
 	recent = recentSO()
-	accountFunding = ht.host.FinancialMetrics().PotentialAccountFunding
+	fmPAF = ht.host.FinancialMetrics().PotentialAccountFunding
 	rev, err = recent.PaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +317,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyResponse(rev, pbcResp, fundAccResp, balance, accountFunding, funding)
+	err = verifyResponse(rev, pbcResp, fundAccResp, balance, fmPAF, funding)
 	if err != nil {
 		t.Fatal(err)
 	}
