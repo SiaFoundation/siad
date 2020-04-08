@@ -187,6 +187,9 @@ func TestAccountFundingTracking(t *testing.T) {
 	}
 	defer ht.Close()
 
+	// expectDelta is a helper that takes a function, that influences the
+	// account funding metric, and an amount. It expects the account funding
+	// delta to be equal to the given amount after executing the function.
 	expectDelta := func(amount int64, action string, f func() error) error {
 		before := ht.host.FinancialMetrics().AccountFunding
 		if err := f(); err != nil {
