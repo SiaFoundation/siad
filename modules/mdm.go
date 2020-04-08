@@ -26,19 +26,18 @@ const (
 	MDMTimeCommit = 50e3
 
 	// MDMTimeDropSectorsBase is the base time for executing a 'DropSectors'
-	// instruction. It includes the time for initializing and validating the
 	// instruction.
-	MDMTimeDropSectorsBase = 10
+	MDMTimeDropSectorsBase = 1
 
 	// MDMTimeDropSingleSector is the time for dropping a single sector.
 	MDMTimeDropSingleSector = 1
 
-	// MDMTimeHasSector is the time for executing a 'HasSector' instruction. It
-	// includes the time for initializing and validating the instruction.
-	MDMTimeHasSector = 10
+	// MDMTimeHasSector is the time for executing a 'HasSector' instruction.
+	MDMTimeHasSector = 1
 
-	// MDMTimeInitProgramBase is the base time for initializing a program.
-	MDMTimeInitProgramBase = 10
+	// MDMTimeInitProgram is the base time for initializing a program. `1`
+	// because no disk IO is involved.
+	MDMTimeInitProgram = 1
 
 	// MDMTimeInitSingleInstruction is the time it takes to initialize a single
 	// instruction.
@@ -109,7 +108,7 @@ func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Curre
 // 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time, where Time is
 // `TimeInitProgramBase` + `TimeInitSingleInstruction` * `numInstructions`
 func MDMInitCost(pt RPCPriceTable, programLen, numInstructions uint64) types.Currency {
-	time := MDMTimeInitProgramBase + MDMTimeInitSingleInstruction*numInstructions
+	time := MDMTimeInitProgram + MDMTimeInitSingleInstruction*numInstructions
 	return pt.MemoryTimeCost.Mul64(programLen).Mul64(time).Add(pt.InitBaseCost)
 }
 
