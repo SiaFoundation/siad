@@ -2,6 +2,7 @@ package skynetportals
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -20,17 +22,12 @@ func testDir(name string) string {
 
 // checkNumPersistedPortals checks that the expected number of portals has been
 // persisted on disk by attempting to read that amount of data from disk
-func checkNumPersistedPortals(testdir string, numPortals int) error {
-	f, err := os.Open(filepath.Join(testdir, persistFile))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	buf := make([]byte, numPortals*int(persistPortalSize))
-	_, err = f.ReadAt(buf, metadataPageSize)
-	if err != nil {
-		return err
+func checkNumPersistedPortals(portalPath string, numPortals int) error {
+	expectedSize := numPortals*int(persistPortalSize) + int(metadataPageSize)
+	if fi, err := os.Stat(portalPath); err != nil {
+		return errors.AddContext(err, "failed to get portal filesize")
+	} else if fi.Size() != int64(expectedSize) {
+		return fmt.Errorf("expected %v portals to have a filesize of %v but was %v", numPortals, expectedSize, fi.Size())
 	}
 	return nil
 }
@@ -63,10 +60,6 @@ func TestPersist(t *testing.T) {
 	}
 	minNumBytes := int(metadataPageSize)
 	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +254,7 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer f.Close()
 
 	// Create empty struct of a skynet portals list and set the length. Not
 	// using the New method to avoid overwriting the persist file on disk.
@@ -359,10 +353,5 @@ func TestMarshalMetadata(t *testing.T) {
 	err = sp.unmarshalMetadata(mdBytes)
 	if err != errWrongHeader {
 		t.Fatalf("Expected %v got %v", errWrongHeader, err)
-	}
-
-	err = f.Close()
-	if err != nil {
-		t.Fatal(err)
 	}
 }

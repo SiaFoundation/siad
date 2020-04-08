@@ -1685,8 +1685,8 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(spg.Portals) != 1 {
-		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
+	if len(spg.Portals) != 2 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 2, len(spg.Portals))
 	}
 }
 

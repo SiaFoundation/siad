@@ -2,6 +2,7 @@ package skynetblacklist
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -20,17 +22,12 @@ func testDir(name string) string {
 
 // checkNumPersistedLinks checks that the expected number of links has been
 // persisted on disk by attempting to read that amount of data from disk
-func checkNumPersistedLinks(testdir string, numLinks int) error {
-	f, err := os.Open(filepath.Join(testdir, persistFile))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	buf := make([]byte, numLinks*int(persistMerkleRootSize))
-	_, err = f.ReadAt(buf, metadataPageSize)
-	if err != nil {
-		return err
+func checkNumPersistedLinks(blacklistPath string, numLinks int) error {
+	expectedSize := numLinks*int(persistMerkleRootSize) + int(metadataPageSize)
+	if fi, err := os.Stat(blacklistPath); err != nil {
+		return errors.AddContext(err, "failed to get portal filesize")
+	} else if fi.Size() != int64(expectedSize) {
+		return fmt.Errorf("expected %v portals to have a filesize of %v but was %v", numLinks, expectedSize, fi.Size())
 	}
 	return nil
 }
@@ -61,13 +58,12 @@ func TestPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 	minNumBytes := int(metadataPageSize)
 	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = f.Sync()
+	err = f.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

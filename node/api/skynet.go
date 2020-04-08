@@ -192,12 +192,12 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Update the list of known skynet portals.
 	err = api.renter.UpdateSkynetPortals(params.Add, params.Remove)
-	// If validation fails, return a bad request status.
-	errStatus := http.StatusInternalServerError
-	if strings.Contains(err.Error(), skynetportals.ErrSkynetPortalsValidation.Error()) {
-		errStatus = http.StatusBadRequest
-	}
 	if err != nil {
+		// If validation fails, return a bad request status.
+		errStatus := http.StatusInternalServerError
+		if strings.Contains(err.Error(), skynetportals.ErrSkynetPortalsValidation.Error()) {
+			errStatus = http.StatusBadRequest
+		}
 		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, errStatus)
 		return
 	}
