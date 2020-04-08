@@ -2724,6 +2724,26 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		return
 	}
 
+	// walk the target directory, count the files/dirs, and confirm with the
+	// user that they want to upload all of them
+	var cf uint32
+	err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return errors.AddContext(err, fmt.Sprintf("Failed to process path %s: ", path))
+		}
+		if !info.IsDir() {
+			cf++
+		}
+		return nil
+	})
+	if err != nil {
+		die(err)
+	}
+	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", cf))
+	if !ok {
+		die() // no message needed
+	}
+
 	filesChan := make(chan string)
 	go func() {
 		defer close(filesChan)
