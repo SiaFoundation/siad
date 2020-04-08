@@ -1,14 +1,17 @@
 package host
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestAccountsReload verifies that an account is properly saved to disk and
@@ -246,19 +249,93 @@ func TestFingerprintsRotate(t *testing.T) {
 	}
 }
 
+// TestFingerprintBucketsRotate verifies the rotation of the fingerprint buckets
+//on disk when the host goes out of sync or is reloaded.
+func TestFingerprintBucketsRotate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// verifyFPBuckets is a function that if the fingerprint buckets are on disk
+	verifyFPBuckets := func(h *Host) error {
+		var err1, err2 error
+		curr, nxt := fingerprintsFilenames(h.blockHeight)
+		_, err1 = os.Stat(filepath.Join(h.persistDir, curr))
+		_, err2 = os.Stat(filepath.Join(h.persistDir, nxt))
+		return errors.Compose(err1, err2)
+	}
+
+	// create a host
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyFPBuckets(ht.host)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// remember the current blockheight
+	oldBlockHeight := ht.host.blockHeight
+
+	// close the host and mine at minimum twice the bucketBlockRange blocks
+	err = ht.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2*bucketBlockRange+fastrand.Intn(bucketBlockRange); i++ {
+		_, err = ht.miner.AddBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// reopen the host
+	err = reopenHost(ht)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(10, 100*time.Millisecond, func() error {
+		err := verifyFPBuckets(ht.host)
+		if err != nil && !ht.host.staticAccountManager.withdrawalsInactive {
+			t.Fatal("Withdrawals are active without fingerprint buckets on disk. This is a critical error and should never happen.")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ht.host.staticAccountManager.withdrawalsInactive {
+		t.Fatal("Expected withdrawals to be active")
+	}
+
+	// reset the host's blockheight and run verifyFPBuckets again - this time we
+	// expect it to fail because we expect those files to be cleaned up when the
+	// buckets rotated
+	ht.host.blockHeight = oldBlockHeight
+	err = verifyFPBuckets(ht.host)
+	if err == nil {
+		t.Fatal("Expected old buckets to be removed from disk")
+	}
+}
+
 // reloadHost will close the given host and reload it on the given host tester
 func reloadHost(ht *hostTester) error {
 	err := ht.host.Close()
 	if err != nil {
 		return err
 	}
+	return reopenHost(ht)
+}
 
+// reopenHost will create a new host and set it on the given host tester
+func reopenHost(ht *hostTester) error {
 	host, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		return err
 	}
 	ht.host = host
-
 	return nil
 }
 

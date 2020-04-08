@@ -375,7 +375,19 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 		am.mu.Unlock()
 		return
 	}
-	am.withdrawalsInactive = false
+
+	// If the host becomes synced due to the consensus change it means we are
+	// going to enable withdrawals. To ensure the fingerprint buckets are
+	// present we rotate them at this point.
+	if am.withdrawalsInactive {
+		err := am.staticAccountsPersister.callRotateFingerprintBuckets()
+		if err != nil {
+			am.h.log.Critical("Could not rotate fingerprints on disk", err)
+		}
+		am.withdrawalsInactive = false
+		am.mu.Unlock()
+		return
+	}
 
 	// Rotate only if the new block height is larger than the old block height,
 	// and the min height is between the old and new blockheight. We have to
