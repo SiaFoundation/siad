@@ -1,1 +1,0 @@
-- Add whitespace lint to catch extraneous whitespace and newlines.

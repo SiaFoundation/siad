@@ -1,1 +1,0 @@
-- Add getters and setter to `FileContract` and `FileContractRevision` types to prevent index-out-of-bounds panics after a `RenewAndClear`.

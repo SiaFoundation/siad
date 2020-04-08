@@ -1,1 +1,0 @@
-- `siac renter delete` now accepts a list of files.
