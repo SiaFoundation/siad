@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -16,11 +17,19 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	defer stream.Close()
 	// Process payment.
 	// TODO: change once payment MR is merged
-	amountPaid := types.ZeroCurrency
+	pd, err := h.ProcessPayment(stream)
+	if err != nil {
+		return errors.AddContext(err, "failed to process paymnet")
+	}
+	if !pd.AddedCollateral().Equals(types.ZeroCurrency) {
+		return fmt.Errorf("no collateral should be moved but got %v", pd.AddedCollateral().HumanString())
+	}
+	refundAccount := pd.AccountID()
+	amountPaid := pd.Amount()
 
 	// Read request
 	var epr modules.RPCExecuteProgramRequest
-	err := modules.RPCRead(stream, &epr)
+	err = modules.RPCRead(stream, &epr)
 	if err != nil {
 		return errors.AddContext(err, "Failed to read RPCExecuteProgramRequest")
 	}
@@ -69,7 +78,15 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
-	// Charge the peer accordingly.
+	// Charge the peer accordingly. Add another thread to the ThreadGroup. This
+	// one will be closed when the refund is done.
+	// NOTE: Make sure we don't return early between adding to the group and
+	// calling 'defer h.tg.Done()'. This will cause a deadlock on shutdown.
+	err = h.tg.Add()
+	if err != nil {
+		return err
+	}
+
 	cost := types.ZeroCurrency
 	executionFailed := false
 	refund := amountPaid
@@ -80,7 +97,21 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			// reason, refund the peer.
 			toCharge = toCharge.Sub(refund)
 		}
-		// TODO: Update EA balance.
+		// No need to update the contract so close this channel right away.
+		syncChan := make(chan struct{})
+		close(syncChan)
+		// Set 'force' to true. When we refund the account we don't want to be
+		// limited by the max balance in case the user has refilled the balance
+		// between withdrawing the budget and refunding.
+		// We also don't wait for callDeposit since we don't need the refund to
+		// be ACID.
+		go func() {
+			defer h.tg.Done()
+			depositErr := h.staticAccountManager.callDeposit(refundAccount, refund, true, syncChan)
+			if depositErr != nil {
+				h.log.Print("ERROR: failed to refund renter", depositErr)
+			}
+		}()
 	}()
 
 	// Handle outputs.
@@ -106,7 +137,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 		// Update cost and refund.
 		cost = output.ExecutionCost
-		refund = output.PotentialRefund
+		refund = amountPaid.Add(output.PotentialRefund).Sub(cost)
 		// Remember that the execution wasn't successful.
 		executionFailed = resp.Error != nil
 		// Send the response to the peer.
@@ -146,8 +177,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// TODO: finalize spending for readonly programs once the MR is ready.
 	}
 	// Set the refund to 0. The program was finalized and we don't want to
-	// refund the renter in the deferred statement anymore. This is a
-	// precaution in case we extend the code after this point.
-	refund = types.ZeroCurrency
+	// refund the renter beyond the difference between the paid amount and
+	// execution cost in the deferred statement anymore. This is a precaution in
+	// case we extend the code after this point.
+	refund = amountPaid.Sub(cost)
 	return nil
 }

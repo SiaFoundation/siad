@@ -189,7 +189,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	// fsynced we'll close this so the account manager can properly lower the
 	// host's outstanding risk induced by the (immediate) deposit.
 	syncChan := make(chan struct{})
-	err = h.staticAccountManager.callDeposit(request.Account, deposit, syncChan)
+	err = h.staticAccountManager.callDeposit(request.Account, deposit, false, syncChan)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not deposit funds")
 	}

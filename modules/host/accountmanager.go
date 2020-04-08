@@ -314,7 +314,7 @@ func newFingerprintMap() *fingerprintMap {
 // 5. Failure after RPC calls deposit, after EA is updated, after AM returns,
 // after FC sync: EA is updated, FC is updated, there is no risk to the host at
 // this point
-func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
+func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, force bool, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
 	his := am.h.InternalSettings()
@@ -323,7 +323,7 @@ func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currenc
 
 	// Initiate the deposit.
 	persistResultChan := make(chan error)
-	err := am.managedDeposit(id, amount, maxRisk, maxBalance, bh, persistResultChan, syncChan)
+	err := am.managedDeposit(id, amount, maxRisk, maxBalance, bh, force, persistResultChan, syncChan)
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
@@ -398,7 +398,7 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 
 // managedDeposit performs a couple of steps in preparation of the
 // deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
+func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, force bool, persistResultChan chan error, syncChan chan struct{}) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -406,7 +406,7 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, 
 	acc := am.openAccount(id)
 
 	// Verify if the deposit does not exceed the maximum
-	if acc.depositExceedsMaxBalance(amount, maxBalance) {
+	if !force && acc.depositExceedsMaxBalance(amount, maxBalance) {
 		return ErrBalanceMaxExceeded
 	}
 

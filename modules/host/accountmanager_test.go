@@ -1111,7 +1111,7 @@ func callDeposit(am *accountManager, id modules.AccountID, amount types.Currency
 	go func() {
 		defer wg.Done()
 		<-startChan
-		err = am.callDeposit(id, amount, syncChan)
+		err = am.callDeposit(id, amount, false, syncChan)
 	}()
 	go func() {
 		defer wg.Done()
