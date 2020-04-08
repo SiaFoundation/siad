@@ -1,6 +1,7 @@
 package host
 
 import (
+	"math/rand"
 	"testing"
 
 	"fmt"
@@ -187,24 +188,42 @@ func TestAccountFundingTracking(t *testing.T) {
 	}
 	defer ht.Close()
 
-	// expectDelta is a helper that takes a function, that influences the
-	// account funding metric, and an amount. It expects the account funding
-	// delta to be equal to the given amount after executing the function.
-	expectDelta := func(amount int64, action string, f func() error) error {
-		before := ht.host.FinancialMetrics().AccountFunding
+	// expectDelta is a helper that asserts the delta between the host's
+	// potential account funding, and account funding metric before and after
+	// executing the given function f.
+	expectDelta := func(pafDelta, afDelta int64, action string, f func() error) error {
+		bkp := ht.host.FinancialMetrics()
 		if err := f(); err != nil {
 			return err
 		}
 
-		if amount > 0 {
-			delta := ht.host.FinancialMetrics().AccountFunding.Sub(before)
-			if !delta.Equals64(uint64(amount)) {
-				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '%v'", action, amount, delta.HumanString())
+		fm := ht.host.FinancialMetrics()
+		af := fm.AccountFunding
+		paf := fm.PotentialAccountFunding
+
+		// verify potential account funding delta
+		if pafDelta >= 0 {
+			delta := paf.Sub(bkp.PotentialAccountFunding)
+			if !delta.Equals64(uint64(pafDelta)) {
+				return fmt.Errorf("Unexpected potential account funding delta after %s, expected '%vH' actual '%vH'", action, pafDelta, delta)
 			}
 		} else {
-			delta := before.Sub(ht.host.FinancialMetrics().AccountFunding)
-			if !delta.Equals64(uint64(amount * -1)) {
-				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '-%v'", action, amount, delta.HumanString())
+			delta := bkp.PotentialAccountFunding.Sub(paf)
+			if !delta.Equals64(uint64(pafDelta * -1)) {
+				return fmt.Errorf("Unexpected potential account funding delta after %s, expected '%vH' actual '-%vH'", action, pafDelta, delta)
+			}
+		}
+
+		// verify account funding delta
+		if afDelta >= 0 {
+			delta := af.Sub(bkp.AccountFunding)
+			if !delta.Equals64(uint64(afDelta)) {
+				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '%vH'", action, afDelta, delta)
+			}
+		} else {
+			delta := bkp.AccountFunding.Sub(af)
+			if !delta.Equals64(uint64(afDelta * -1)) {
+				return fmt.Errorf("Unexpected account funding delta after %s, expected '%vH' actual '-%vH'", action, afDelta, delta)
 			}
 		}
 
@@ -225,31 +244,34 @@ func TestAccountFundingTracking(t *testing.T) {
 	ht.host.managedLockStorageObligation(so.id())
 	defer ht.host.managedUnlockStorageObligation(so.id())
 
-	// add the storage obligation
-	so.AccountFunding = so.AccountFunding.Add64(1)
-	if err = expectDelta(1, "add SO", func() error {
+	// add the storage obligation (expect PAF to increase - AF remain same)
+	rd1 := rand.Int63n(10) + 1
+	so.AccountFunding = so.AccountFunding.Add64(uint64(rd1))
+	if err = expectDelta(rd1, 0, "add SO", func() error {
 		return ht.host.managedAddStorageObligation(so, false)
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// modify the storage obligation
-	so.AccountFunding = so.AccountFunding.Add64(2)
-	if err = expectDelta(2, "modify SO", func() error {
+	// modify the storage obligation (expect PAF to increase - AF remain same)
+	rd2 := rand.Int63n(10) + 1
+	so.AccountFunding = so.AccountFunding.Add64(uint64(rd2))
+	if err = expectDelta(int64(rd2), 0, "modify SO", func() error {
 		return ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte, 0))
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// delete the storage obligation
-	if err = expectDelta(0, "delete SO", func() error {
+	// delete the storage obligation (expect PAF to decreate - AF increase)
+	total := rd1 + rd2
+	if err = expectDelta(-1*total, total, "delete SO", func() error {
 		return ht.host.removeStorageObligation(so, obligationSucceeded)
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// reset the host's financial metrics
-	if err = expectDelta(0, "reset FM", func() error {
+	// reset the host's financial metrics (expect PAF and AF to remain the same)
+	if err = expectDelta(0, 0, "reset FM", func() error {
 		return ht.host.resetFinancialMetrics()
 	}); err != nil {
 		t.Fatal(err)
@@ -258,8 +280,8 @@ func TestAccountFundingTracking(t *testing.T) {
 	// prune stale obligations - note that we will fake the SO being deleted
 	// from the database instead of mocking the conditions for it to be pruned.
 	// This to avoid having to manually delete the transaction after it have
-	// being confirmed
-	if err = expectDelta(-3, "prune stale SOs", func() error {
+	// being confirmed (expect PAF to remain the same, but AF to decrease)
+	if err = expectDelta(0, -1*total, "prune stale SOs", func() error {
 		return errors.Compose(ht.host.deleteStorageObligations([]types.FileContractID{so.id()}), ht.host.PruneStaleStorageObligations())
 	}); err != nil {
 		t.Fatal(err)
