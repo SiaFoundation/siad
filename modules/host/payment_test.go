@@ -235,6 +235,34 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	}
 }
 
+// balanceTracker is a helper struct to track ephemeral account balances and
+// return when they need to be refilled.
+type balanceTracker struct {
+	balances  map[modules.AccountID]int64
+	threshold int64
+	mu        sync.Mutex
+}
+
+// TrackDeposit deposits the given amount into the specified account
+func (bt *balanceTracker) TrackDeposit(id modules.AccountID, deposit int64) {
+	bt.mu.Lock()
+	defer bt.mu.Unlock()
+	bt.balances[id] += deposit
+}
+
+// TrackWithdrawal withdraws the given amount from the account with specified
+// id. Returns whether the account should be refilled or not depending on the
+// balance tracker's threshold.
+func (bt *balanceTracker) TrackWithdrawal(id modules.AccountID, withdrawal int64) (refill bool) {
+	bt.mu.Lock()
+	defer bt.mu.Unlock()
+	bt.balances[id] -= withdrawal
+	if bt.balances[id] < bt.threshold {
+		return true
+	}
+	return
+}
+
 // TestProcessParallelPayments tests the behaviour of the ProcessPayment method
 // when multiple threads use multiple contracts and ephemeral accounts at the
 // same time to perform payments.
@@ -257,6 +285,16 @@ func TestProcessParallelPayments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	am := ht.host.staticAccountManager
+
+	var refillAmount uint64 = 100
+	var maxWithdrawalAmount uint64 = 10
+
+	// setup a balance tracker
+	bt := &balanceTracker{
+		balances:  make(map[modules.AccountID]int64),
+		threshold: int64(maxWithdrawalAmount),
+	}
 
 	// setup multiple renters and SOs
 	pairs := make([]*renterHostPair, runtime.NumCPU())
@@ -267,18 +305,11 @@ func TestProcessParallelPayments(t *testing.T) {
 		}
 		pairs[i] = pair
 
-		// create the sia publickey from its secret key
-		rpk := pair.renter.PublicKey()
-		spk := types.SiaPublicKey{
-			Algorithm: types.SignatureEd25519,
-			Key:       rpk[:],
-		}
-
-		// fund the ephemeral account
-		err = callDeposit(pair.host.staticAccountManager, modules.AccountID(spk.String()), ht.host.InternalSettings().MaxEphemeralAccountBalance)
-		if err != nil {
+		if err := callDeposit(am, pair.eaid, types.NewCurrency64(refillAmount)); err != nil {
+			t.Log("failed deposit", err)
 			t.Fatal(err)
 		}
+		bt.TrackDeposit(pair.eaid, int64(refillAmount))
 	}
 
 	// setup a lock guarding the filecontracts seeing as we are concurrently
@@ -316,13 +347,20 @@ func TestProcessParallelPayments(t *testing.T) {
 
 				// generate random pair and amount
 				rp := pairs[fastrand.Intn(len(pairs))]
-				ra := types.NewCurrency64(fastrand.Uint64n(10) + 1)
+				rw := fastrand.Uint64n(maxWithdrawalAmount) + 1
+				ra := types.NewCurrency64(rw)
+
+				// pay by contract 5% of time
+				var payByFC bool
+				if fastrand.Intn(100) < 5 {
+					payByFC = true
+				}
 
 				// randomly pick a flow and run it
 				var failed bool
 				var pd modules.PaymentDetails
 				var err error
-				if fastrand.Intn(100) < 5 { // pay by contract 5% of time
+				if payByFC {
 					fcLocks[rp.fcid].Lock()
 					if pd, failed, err = runPayByContractFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&fcFailures, 1)
@@ -330,6 +368,16 @@ func TestProcessParallelPayments(t *testing.T) {
 					atomic.AddUint64(&fcPayments, 1)
 					fcLocks[rp.fcid].Unlock()
 				} else {
+					refill := bt.TrackWithdrawal(rp.eaid, int64(rw))
+					if refill {
+						go func(id modules.AccountID) {
+							time.Sleep(100 * time.Millisecond) // make it slow
+							if err := callDeposit(am, id, types.NewCurrency64(refillAmount)); err != nil {
+								t.Error(err)
+							}
+							bt.TrackDeposit(id, int64(refillAmount))
+						}(rp.eaid)
+					}
 					if pd, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&eaFailures, 1)
 					}
