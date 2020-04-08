@@ -2830,7 +2830,7 @@ func skynetUploadFile(sourcePath, destSiaPath string, _ *mpb.Progress) (skylink 
 	}
 	_, filename := filepath.Split(sourcePath)
 	skylink = skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
-	fmt.Println("%s -> %s", sourcePath, skylink)
+	fmt.Printf("%s -> %s\n", sourcePath, skylink)
 	return skylink
 }
 
