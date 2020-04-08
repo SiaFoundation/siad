@@ -685,6 +685,9 @@ func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uin
 	if err := ReadRPCMessage(r, aead, &response, maxLen); err != nil {
 		return err
 	}
+
+	// Note: this nil check is important, we can not simply return response.err
+	// here because of it being a pointer, doing so leads to 'bad access' error
 	if response.err != nil {
 		return response.err
 	}

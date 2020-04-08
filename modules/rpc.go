@@ -125,6 +125,9 @@ func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
 		return err
 	}
 	if resp.err != nil {
+		// rpc response data is not decoded in the event of an error, we return
+		// nil here because unmarshaling was successful and is unrelated from
+		// the error in the rpc response
 		return nil
 	}
 	return d.Decode(resp.data)
