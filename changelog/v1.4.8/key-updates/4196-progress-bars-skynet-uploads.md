@@ -1,0 +1,2 @@
+- Add progress bars to Skynet uploads
+- Add `--silent` flag to Skynet uploads

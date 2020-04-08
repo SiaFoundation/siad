@@ -2782,6 +2782,14 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		}
 	}()
 
+	// If the --silent flag is not set output pretty progress bars
+	uploadFunc := skynetUploadFileWithProgressBar
+	if skynetUploadSilent {
+		// If the --silent flag is set output only the file path and the
+		// corresponding skylink
+		uploadFunc = skynetUploadFile
+	}
+
 	// Start the workers that will upload the files in parallel.
 	var wg sync.WaitGroup
 	for i := 0; i < SimultaneousSkynetUploads; i++ {
@@ -2792,7 +2800,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 				// get only the filename and path, relative to the original destSiaPath
 				// in order to figure out where to put the file
 				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-				skynetUploadFileWithProgressBar(filename, newDestSiaPath, pbs)
+				uploadFunc(filename, newDestSiaPath, pbs)
 			}
 		}()
 	}
@@ -2802,8 +2810,9 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 }
 
 // skynetUploadFile uploads a file to Skynet without any visual indication to
-// the user. To be used for tests.
-func skynetUploadFile(sourcePath, destSiaPath string) (skylink string) {
+// the user. To be used for tests or when the user prefers not the be updated
+// about the progress of the uploads.
+func skynetUploadFile(sourcePath, destSiaPath string, _ *mpb.Progress) (skylink string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
 	if err != nil {
@@ -2820,7 +2829,9 @@ func skynetUploadFile(sourcePath, destSiaPath string) (skylink string) {
 		die("Could not parse destination siapath:", err)
 	}
 	_, filename := filepath.Split(sourcePath)
-	return skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
+	skylink = skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
+	fmt.Println("%s -> %s", sourcePath, skylink)
+	return skylink
 }
 
 // skynetUploadFileWithProgressBar uploads a file to Skynet and displays a

@@ -179,11 +179,12 @@ if you have multiple downloads happening simultaneously.
   money is spent on file contracts.
 
 #### Skynet tasks
-* `siac skynet upload [source filepath] [destination siapath]` uploads a file or
-  directory to Skynet. A skylink will be produced for each file. The link can be
-  shared and used to retrieve the file. The file(s) that get uploaded will be
-  pinned to this Sia node, meaning that this node will pay for storage and 
-  repairs until the file(s) are manually deleted.
+* `siac skynet upload [--silent/-s] [source filepath] [destination siapath]` 
+  uploads a file or directory to Skynet. A skylink will be produced for each 
+  file. The link can be shared and used to retrieve the file. The file(s) that 
+  get uploaded will be pinned to this Sia node, meaning that this node will pay 
+  for storage and repairs until the file(s) are manually deleted. If the 
+  `silent` flag is provided, `siac` will not output progress bars during upload.
 
 * `siac skynet ls` lists all skyfiles that the user has pinned along with the
   corresponding skylinks. By default, only files in var/skynet/ will be
