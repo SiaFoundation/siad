@@ -23,11 +23,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-var testWAL *writeaheadlog.WAL
-
-func init() {
-	testWAL, _ = newTestWAL()
-}
+// testWAL is the WAL instance we're going to across this test. This would
+// typically come from the calling functions.
+var testWAL, _ = newTestWAL()
 
 // TestRefCounter_Count tests that the Count method always returns the correct
 // counter value, either from disk or from in-mem storage.
