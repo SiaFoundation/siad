@@ -25,9 +25,9 @@ import (
 
 var testWAL = newTestWAL()
 
-// TestRefCounter_Count tests that the Count method always returns the correct
+// TestRefCounterCount tests that the Count method always returns the correct
 // counter value, either from disk or from in-mem storage.
-func TestRefCounter_Count(t *testing.T) {
+func TestRefCounterCount(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -73,8 +73,8 @@ func TestRefCounter_Count(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Append tests that the Decrement method behaves correctly
-func TestRefCounter_Append(t *testing.T) {
+// TestRefCounterAppend tests that the Decrement method behaves correctly
+func TestRefCounterAppend(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -135,8 +135,8 @@ func TestRefCounter_Append(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Decrement tests that the Decrement method behaves correctly
-func TestRefCounter_Decrement(t *testing.T) {
+// TestRefCounterDecrement tests that the Decrement method behaves correctly
+func TestRefCounterDecrement(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -190,8 +190,8 @@ func TestRefCounter_Decrement(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Delete tests that the Delete method behaves correctly
-func TestRefCounter_Delete(t *testing.T) {
+// TestRefCounterDelete tests that the Delete method behaves correctly
+func TestRefCounterDelete(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -227,9 +227,9 @@ func TestRefCounter_Delete(t *testing.T) {
 	}
 }
 
-// TestRefCounter_DropSectors tests that the DropSectors method behaves
+// TestRefCounterDropSectors tests that the DropSectors method behaves
 // correctly and the file's size is properly adjusted
-func TestRefCounter_DropSectors(t *testing.T) {
+func TestRefCounterDropSectors(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -310,8 +310,8 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Increment tests that the Increment method behaves correctly
-func TestRefCounter_Increment(t *testing.T) {
+// TestRefCounterIncrement tests that the Increment method behaves correctly
+func TestRefCounterIncrement(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -365,8 +365,8 @@ func TestRefCounter_Increment(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Load specifically tests refcounter's Load method
-func TestRefCounter_Load(t *testing.T) {
+// TestRefCounterLoad specifically tests refcounter's Load method
+func TestRefCounterLoad(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -388,9 +388,9 @@ func TestRefCounter_Load(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Load_InvalidHeader checks that loading a refcounters file with
+// TestRefCounterLoadInvalidHeader checks that loading a refcounters file with
 // invalid header fails.
-func TestRefCounter_Load_InvalidHeader(t *testing.T) {
+func TestRefCounterLoadInvalidHeader(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -427,9 +427,9 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Load_InvalidVersion checks that loading a refcounters file
+// TestRefCounterLoadInvalidVersion checks that loading a refcounters file
 // with invalid version fails.
-func TestRefCounter_Load_InvalidVersion(t *testing.T) {
+func TestRefCounterLoadInvalidVersion(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -465,8 +465,8 @@ func TestRefCounter_Load_InvalidVersion(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Swap tests that the Swap method results in correct values
-func TestRefCounter_Swap(t *testing.T) {
+// TestRefCounterSwap tests that the Swap method results in correct values
+func TestRefCounterSwap(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -535,9 +535,9 @@ func TestRefCounter_Swap(t *testing.T) {
 	}
 }
 
-// TestRefCounter_UpdateApplied tests that the UpdateApplied method cleans up
+// TestRefCounterUpdateApplied tests that the UpdateApplied method cleans up
 // after itself
-func TestRefCounter_UpdateApplied(t *testing.T) {
+func TestRefCounterUpdateApplied(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -578,9 +578,9 @@ func TestRefCounter_UpdateApplied(t *testing.T) {
 	}
 }
 
-// TestRefCounter_UpdateSessionConstraints ensures that StartUpdate() and UpdateApplied()
+// TestRefCounterUpdateSessionConstraints ensures that StartUpdate() and UpdateApplied()
 // enforce all applicable restrictions to update creation and execution
-func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
+func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -644,9 +644,9 @@ func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
 	}
 }
 
-// TestRefCounter_WALFunctions tests RefCounter's functions for creating and
+// TestRefCounterWALFunctions tests RefCounter's functions for creating and
 // reading WAL updates
-func TestRefCounter_WALFunctions(t *testing.T) {
+func TestRefCounterWALFunctions(t *testing.T) {
 	t.Parallel()
 
 	// test creating and reading updates
@@ -672,10 +672,10 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 	}
 }
 
-// TestRefCounter_numSectorsUnderflow tests for and guards against an NDF that
+// TestRefCounterNumSectorsUnderflow tests for and guards against an NDF that
 // can happen in various methods when numSectors is zero and we check the sector
 // index to be read against numSectors-1.
-func TestRefCounter_numSectorsUnderflow(t *testing.T) {
+func TestRefCounterNumSectorsUnderflow(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
