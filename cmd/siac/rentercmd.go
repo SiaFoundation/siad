@@ -2746,9 +2746,8 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	pbs := mpb.New(mpb.WithWidth(40))
 
 	if !fi.IsDir() {
-		skylink := skynetUploadFileWithProgressBar(sourcePath, destSiaPath, pbs)
+		skynetUploadFile(sourcePath, destSiaPath, pbs)
 		fmt.Printf("Successfully uploaded skyfile!\n")
-		fmt.Printf("%v => %v\n", sourcePath, skylink)
 		return
 	}
 
@@ -2771,24 +2770,14 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Confirm with the user that they want to upload all of them.
 	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", len(filesToUpload)))
 	if !ok {
-		die() // no message needed
+		os.Exit(0)
 	}
 	// Queue all files for upload.
-	filesChan := make(chan string)
-	go func() {
-		defer close(filesChan)
-		for _, path := range filesToUpload {
-			filesChan <- path
-		}
-	}()
-
-	// If the --silent flag is not set output pretty progress bars
-	uploadFunc := skynetUploadFileWithProgressBar
-	if skynetUploadSilent {
-		// If the --silent flag is set output only the file path and the
-		// corresponding skylink
-		uploadFunc = skynetUploadFile
+	filesChan := make(chan string, len(filesToUpload))
+	for _, path := range filesToUpload {
+		filesChan <- path
 	}
+	close(filesChan)
 
 	// Start the workers that will upload the files in parallel.
 	var wg sync.WaitGroup
@@ -2800,7 +2789,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 				// get only the filename and path, relative to the original destSiaPath
 				// in order to figure out where to put the file
 				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-				uploadFunc(filename, newDestSiaPath, pbs)
+				skynetUploadFile(filename, newDestSiaPath, pbs)
 			}
 		}()
 	}
@@ -2809,10 +2798,15 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
-// skynetUploadFile uploads a file to Skynet without any visual indication to
-// the user. To be used for tests or when the user prefers not the be updated
-// about the progress of the uploads.
-func skynetUploadFile(sourcePath, destSiaPath string, _ *mpb.Progress) (skylink string) {
+// skynetUploadFile uploads a file to Skynet
+func skynetUploadFile(sourcePath string, destSiaPath string, pbs *mpb.Progress) (skylink string) {
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+	_, filename := filepath.Split(sourcePath)
+
 	// Open the source file.
 	file, err := os.Open(sourcePath)
 	if err != nil {
@@ -2823,47 +2817,28 @@ func skynetUploadFile(sourcePath, destSiaPath string, _ *mpb.Progress) (skylink 
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
-	if err != nil {
-		die("Could not parse destination siapath:", err)
+
+	if skynetUploadSilent {
+		// Silently upload the file and print a simple source -> skylink
+		// matching after it's done.
+		skylink = skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
+		fmt.Printf("%s -> %s\n", sourcePath, skylink)
+	} else {
+		// Display progress bars while uploading and processing the file.
+		var pUpload *mpb.Bar
+		var pSpinner *mpb.Bar
+		var rc io.ReadCloser
+		rc = file
+		// Wrap the file reader in a progress bar reader
+		pUpload, rc = newProgressReader(pbs, fi.Size(), filename, rc)
+		// Set a spinner to start after the upload is finished
+		pSpinner = newProgressSpinner(pbs, pUpload, filename)
+		// Perform the upload
+		skylink = skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
+		// Replace the spinner with the skylink and stop it
+		newProgressSkylink(pbs, pSpinner, filename, skylink)
 	}
-	_, filename := filepath.Split(sourcePath)
-	skylink = skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
-	fmt.Printf("%s -> %s\n", sourcePath, skylink)
 	return skylink
-}
-
-// skynetUploadFileWithProgressBar uploads a file to Skynet and displays a
-// progress bar that tracks the upload
-func skynetUploadFileWithProgressBar(sourcePath, destSiaPath string, pbs *mpb.Progress) (skylink string) {
-	// Open the source file.
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		die("Unable to open source path:", err)
-	}
-	defer file.Close()
-	fi, err := file.Stat()
-	if err != nil {
-		die("Unable to fetch source fileinfo:", err)
-	}
-	_, filename := filepath.Split(sourcePath)
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
-	if err != nil {
-		die("Could not parse destination siapath:", err)
-	}
-
-	// Wrap the file reader in a progress bar reader
-	pUpload, pReader := newProgressReader(pbs, fi.Size(), filename, file)
-	// Set a spinner to start after the upload is finished
-	pSpinner := newProgressSpinner(pbs, pUpload, filename)
-
-	skylink = skynetUploadFileFromReader(pReader, filename, siaPath, fi.Mode())
-
-	// we have the skylink - replace the spinner with the skylink and stop it
-	newProgressSkylink(pbs, pSpinner, filename, skylink)
-	return
 }
 
 // skynetUploadFileFromReader is a helper method that uploads a file to Skynet
