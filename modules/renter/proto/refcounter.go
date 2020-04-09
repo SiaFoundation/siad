@@ -29,7 +29,7 @@ var (
 	// read does not match the current RefCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
 
-	// ErrTimeoutOnLock is returned when we timeout on getting as lock
+	// ErrTimeoutOnLock is returned when we timeout on getting a lock
 	ErrTimeoutOnLock = errors.New("timeout while acquiring a lock ")
 
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
