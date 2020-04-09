@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -464,6 +465,42 @@ func TestRefCounter_Load_InvalidVersion(t *testing.T) {
 	_, err = LoadRefCounter(path, testWAL)
 	if !errors.Contains(err, ErrInvalidVersion) {
 		t.Fatal(fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()), err)
+	}
+}
+
+// TestRefCounter_StartUpdate tests that the StartUpdate method respects the
+// timeout limits set for it.
+func TestRefCounter_StartUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare a refcounter for the tests
+	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
+	err := rc.StartUpdate(-1)
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
+
+	// try to lock again with a timeout and see the timout trigger
+	locked := make(chan error)
+	timeout := time.After(time.Second)
+	go func() {
+		locked <- rc.StartUpdate(500 * time.Millisecond)
+	}()
+	select {
+	case err = <-locked:
+		if !errors.Contains(err, ErrTimeoutOnLock) {
+			t.Fatal("Failed to timeout, expected ErrTimeoutOnLock, got:", err)
+		}
+	case <-timeout:
+		t.Fatal("Failed to timeout, missed the deadline.")
+	}
+
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
 	}
 }
 

@@ -153,7 +153,7 @@ OUTER:
 						 TODO: Uncomment once we enable partial chunks again
 							_, err = loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
 							if err != nil {
-								if errors.Contains(err, ErrDiskFault) {
+								if errors.Contains(err, dependencies.ErrDiskFault) {
 									numRecoveries++
 									continue // try again
 								} else {

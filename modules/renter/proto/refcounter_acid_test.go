@@ -25,14 +25,35 @@ import (
 // not a real error in the sense that it doesn't cause the test to fail.
 var ErrTestTimeout = errors.New("test timeout has run out")
 
-// status allows us to manually keep track of all the changes that happen to a
+// statusTracker allows us to manually keep track of all the changes that happen to a
 // refcounter in order to validate them
-type status struct {
+type statusTracker struct {
 	counts []uint16
 	// denotes whether we can create new updates or we first need to reload from
 	// disk
 	crashed bool
 	sync.Mutex
+}
+
+// ClearCrashed clears the crashed status from the statusTracker
+func (st *statusTracker) ClearCrashed() {
+	st.Lock()
+	defer st.Unlock()
+	st.crashed = false
+}
+
+// Crash marks the statusTracker as crashed
+func (st *statusTracker) Crash() {
+	st.Lock()
+	defer st.Unlock()
+	st.crashed = true
+}
+
+// IsCrashed checks if the statusTracker is marked as crashed
+func (st *statusTracker) IsCrashed() bool {
+	st.Lock()
+	defer st.Unlock()
+	return st.crashed
 }
 
 // TestRefCounterFaultyDisk simulates interacting with a SiaFile on a faulty disk.
@@ -67,12 +88,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// Create a struct to monitor all changes happening to the test refcounter.
 	// At the end we'll use it to validate all changes.
-	statusTracker := &status{
-		counts: make([]uint16, rc.numSectors),
-	}
-	for i := uint64(0); i < rc.numSectors; i++ {
-		statusTracker.counts[i] = 1
-	}
+	statTrack := newStatusTracker(rc.numSectors)
 
 	// stat counters
 	var atomicNumRecoveries uint64
@@ -80,8 +96,6 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// testTimeoutChan will signal to all goroutines that it's time to wrap up and exit
 	testTimeoutChan := make(chan struct{})
-	// we close the testTimeoutChan instead of sending on it so we can notify all
-	// goroutines listening on it and not just one
 	time.AfterFunc(testTimeout, func() {
 		close(testTimeoutChan)
 	})
@@ -95,7 +109,7 @@ OUTER:
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				errLocal := performUpdates(rc, statusTracker, &atomicNumSuccessfulIterations, testTimeoutChan)
+				errLocal := performUpdates(rc, statTrack, &atomicNumSuccessfulIterations, testTimeoutChan)
 				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
 					// We have a real error - fail the test
 					t.Error(errLocal)
@@ -117,12 +131,9 @@ OUTER:
 			if err != nil {
 				t.Fatal("Failed to reload wal from disk:", err)
 			}
-			// clear the "crashed" flag
-			statusTracker.Lock()
-			statusTracker.crashed = false
-			statusTracker.Unlock()
+			statTrack.ClearCrashed()
 			// we only assign it when there is no error because we need the
-			// latest reference for the sanity check we do against the status
+			// latest reference for the sanity check we do against the statusTracker
 			// struct at the end
 			rc = rcFromDisk
 		}
@@ -141,19 +152,13 @@ OUTER:
 	}
 
 	// Load the refcounter from disk.
-	// Try until successful.
-	for err != nil {
-		rc, err = LoadRefCounter(rcFilePath, wal)
-		if errors.Contains(err, dependencies.ErrDiskFault) {
-			continue
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
+	rc, err = LoadRefCounter(rcFilePath, wal)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Validate changes
-	if err = validateStatusAfterAllTests(rc, statusTracker); err != nil {
+	if err = validateStatusAfterAllTests(rc, statTrack); err != nil {
 		t.Fatal(err)
 	}
 
@@ -185,21 +190,30 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 	return newWal, f.Sync()
 }
 
+// newStatusTracker creates a statusTracker instance and initialises its counts
+// slice
+func newStatusTracker(numSec uint64) *statusTracker {
+	st := &statusTracker{
+		counts: make([]uint16, numSec),
+	}
+	for i := uint64(0); i < numSec; i++ {
+		st.counts[i] = 1
+	}
+	return st
+}
+
 // performUpdates keeps applying a random number of operations on the refcounter
 // until an error occurs.
-func performUpdates(rcLocal *RefCounter, st *status, atomicNumSuccessfulIterations *uint64, testTimeoutChan <-chan struct{}) error {
+func performUpdates(rcLocal *RefCounter, st *statusTracker, atomicNumSuccessfulIterations *uint64, testTimeoutChan <-chan struct{}) error {
 	for {
 		err := preformUpdateOperations(rcLocal, st)
 		if err != nil {
 			// we have an error, fake or not we should return
 			return err
 		}
-		st.Lock()
-		if st.crashed {
-			st.Unlock()
+		if st.IsCrashed() {
 			return nil
 		}
-		st.Unlock()
 
 		atomic.AddUint64(atomicNumSuccessfulIterations, 1)
 
@@ -213,7 +227,7 @@ func performUpdates(rcLocal *RefCounter, st *status, atomicNumSuccessfulIteratio
 
 // preformUpdateOperations executes a randomised set of updates within an
 // update session.
-func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
+func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 	err = rc.StartUpdate(100 * time.Millisecond)
 	if err != nil {
 		// don't fail the test on a timeout on the lock
@@ -227,7 +241,7 @@ func preformUpdateOperations(rc *RefCounter, st *status) (err error) {
 	// On error we need to crash anyway, so it's OK as well.
 	defer rc.UpdateApplied()
 
-	// We can afford to lock the status tracker because only one goroutine is
+	// We can afford to lock the statusTracker tracker because only one goroutine is
 	// allowed to make changes at any given time anyway.
 	st.Lock()
 	defer func() {
@@ -359,7 +373,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 	}
 }
 
-// validateDecrement is a helper method that returns false if the counter is 0.
+// validateDecrement is a helper method that ensures the counter is above 0.
 // This allows us to avoid a counter underflow.
 func validateDecrement(rc *RefCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
@@ -374,9 +388,8 @@ func validateDecrement(rc *RefCounter, secNum uint64) error {
 	return nil
 }
 
-// validateDropSectors is a helper method that returns false if the number of
-// sectors in the refcounter is smaller than the number of sectors we want to
-// drop.
+// validateDropSectors is a helper method that ensures the number of sectors we
+// want to drop does not exceed the number of sectors in the refcounter.
 func validateDropSectors(rc *RefCounter, secNum uint64) error {
 	if rc.numSectors < secNum {
 		return errors.New("Cannot drop more sectors than the total")
@@ -384,7 +397,7 @@ func validateDropSectors(rc *RefCounter, secNum uint64) error {
 	return nil
 }
 
-// validateDecrement is a helper method that returns false if the counter has
+// validateDecrement is a helper method that ensures the counter has not
 // reached its maximum value. This allows us to avoid a counter overflow.
 func validateIncrement(rc *RefCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
@@ -401,7 +414,7 @@ func validateIncrement(rc *RefCounter, secNum uint64) error {
 
 // validateStatusAfterAllTests does the final validation of the test by
 // comparing the state of the refcounter after all the test updates are applied.
-func validateStatusAfterAllTests(rc *RefCounter, st *status) error {
+func validateStatusAfterAllTests(rc *RefCounter, st *statusTracker) error {
 	if rc.numSectors != uint64(len(st.counts)) {
 		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(st.counts)), rc.numSectors)
 	}
