@@ -78,6 +78,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	// fetch some host variables
 	pt := ht.host.staticPriceTables.managedCurrent()
+	ht.host.staticPriceTables.managedTrack(&pt)
 	bh := ht.host.BlockHeight()
 	hpk := ht.host.PublicKey()
 	his := ht.host.InternalSettings()
@@ -114,9 +115,15 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	_, accountID := prepareAccount()
 
 	renterFunc := func(stream siamux.Stream, revision types.FileContractRevision, signature crypto.Signature) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
+		// send price table uid
+		err := modules.RPCWrite(stream, pt.UID)
+		if err != nil {
+			return nil, nil, err
+		}
+
 		// send fund account request
 		req := modules.FundAccountRequest{Account: accountID}
-		err := modules.RPCWrite(stream, req)
+		err = modules.RPCWrite(stream, req)
 		if err != nil {
 			return nil, nil, err
 		}

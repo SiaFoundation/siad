@@ -67,7 +67,7 @@ var (
 	// RPCExecuteProgram specifier
 	RPCExecuteProgram = types.NewSpecifier("ExecuteProgram")
 
-	// RPCFundEphemeralAccount specifier
+	// RPCFundAccount specifier
 	RPCFundAccount = types.NewSpecifier("FundAccount")
 )
 
