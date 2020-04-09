@@ -1303,6 +1303,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("A new contract has been formed with a host:", newContract.ID)
 			c.log.Println("Score:    ", sb.Score)
 			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.log.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
 			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
 			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
 			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)

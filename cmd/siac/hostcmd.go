@@ -211,8 +211,8 @@ func hostcmd() {
 
 Host Internal Settings:
 	acceptingcontracts:   %v
-	maxduration:          %v Weeks
 	maxdownloadbatchsize: %v
+	maxduration:          %v Weeks
 	maxrevisebatchsize:   %v
 	netaddress:           %v
 	windowsize:           %v Hours
@@ -221,8 +221,10 @@ Host Internal Settings:
 	collateralbudget: %v
 	maxcollateral:    %v Per Contract
 
+	minbaserpcprice:           %v
 	mincontractprice:          %v
 	mindownloadbandwidthprice: %v / TB
+	minsectoraccessprice:      %v
 	minstorageprice:           %v / TB / Month
 	minuploadbandwidthprice:   %v / TB
 
@@ -260,17 +262,21 @@ RPC Stats:
 			connectabilityString,
 			es.Version,
 
-			yesNo(is.AcceptingContracts), periodUnits(is.MaxDuration),
+			yesNo(is.AcceptingContracts),
 			modules.FilesizeUnits(is.MaxDownloadBatchSize),
-			modules.FilesizeUnits(is.MaxReviseBatchSize), netaddr,
+			periodUnits(is.MaxDuration),
+			modules.FilesizeUnits(is.MaxReviseBatchSize),
+			netaddr,
 			is.WindowSize/6,
 
 			currencyUnits(is.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.CollateralBudget),
 			currencyUnits(is.MaxCollateral),
 
+			currencyUnits(is.MinBaseRPCPrice),
 			currencyUnits(is.MinContractPrice),
 			currencyUnits(is.MinDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
+			currencyUnits(is.MinSectorAccessPrice),
 			currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.MinUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 

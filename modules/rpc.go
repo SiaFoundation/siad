@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/siamux"
@@ -25,6 +26,10 @@ type RPCPriceTable struct {
 	// from the host.
 	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`
 
+	// FundAccountCost refers to the cost of funding an ephemeral account on the
+	// host.
+	FundAccountCost types.Currency `json:"fundaccountcost"`
+
 	// MDM related costs
 	//
 	// InitBaseCost is the amount of cost that is incurred when an MDM program
@@ -36,6 +41,10 @@ type RPCPriceTable struct {
 	// MemoryTimeCost is the amount of cost per byte per time that is incurred
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
+
+	// CollateralCost is the amount of money per byte the host is promising to
+	// lock away as collateral when adding new data to a contract.
+	CollateralCost types.Currency `json:"collateralcost"`
 
 	// Cost values specific to the DropSectors instruction.
 	DropSectorsBaseCost   types.Currency `json:"dropsectorsbasecost"`
@@ -57,6 +66,18 @@ var (
 )
 
 type (
+	// FundAccountRequest specifies the ephemeral account id that gets funded.
+	FundAccountRequest struct {
+		Account AccountID
+	}
+
+	// FundAccountResponse contains the signature. This signature is a
+	// signed receipt, and can be used as proof of funding.
+	FundAccountResponse struct {
+		Receipt   Receipt
+		Signature crypto.Signature
+	}
+
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
