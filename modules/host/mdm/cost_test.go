@@ -14,6 +14,8 @@ import (
 func newTestWriteStorePriceTable() modules.RPCPriceTable {
 	pt := modules.RPCPriceTable{}
 	pt.Expiry = time.Now().Add(time.Minute).Unix()
+	pt.WriteBaseCost = types.ZeroCurrency
+	pt.WriteLengthCost = types.ZeroCurrency
 	pt.WriteStoreCost = host.DefaultStoragePrice
 	return pt
 }
@@ -48,7 +50,7 @@ func TestCostForAppendProgram(t *testing.T) {
 	}
 	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))
 
-	expectedCost := host.DefaultStoragePrice.Mul64(modules.SectorSizeStandard)
+	expectedCost := host.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
 	if !aboutEquals(expectedCost, runningCost) {
 		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
 	}
@@ -82,20 +84,20 @@ func TestCosts(t *testing.T) {
 	pt := newTestWriteStorePriceTable()
 
 	// Define helper variables.
-	perTB := modules.BytesPerTerabyte
+	sectorsPerTB := modules.BytesPerTerabyte.Div64(modules.SectorSizeStandard)
 
 	// Append
 	cost, refund := appendTrueCost(pt)
 	// Scale the cost from a single, production-sized sector up to a TB of data.
-	costPerTB := cost.Div64(modules.SectorSizeStandard).Mul(perTB)
-	expectedCostPerTB := host.DefaultStoragePrice.Mul64(modules.SectorSizeStandard)
+	costPerTB := cost.Mul(sectorsPerTB)
+	expectedCostPerTB := host.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
 	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}
 	// cost == refund because we are testing the storage costs, and the refund
 	// comprises only the storage cost.
 	expectedRefundPerTB := expectedCostPerTB
-	refundPerTB := refund.Div64(modules.SectorSizeStandard).Mul(perTB)
+	refundPerTB := refund.Mul(sectorsPerTB)
 	if !aboutEquals(refundPerTB, expectedRefundPerTB) {
 		t.Errorf("expected append refund %v, got %v", expectedRefundPerTB.HumanString(), refundPerTB.HumanString())
 	}
