@@ -191,7 +191,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	hostFunc := func(stream siamux.Stream, mock modules.RPCPriceTable) error {
 		defer stream.Close()
 		ht.host.staticPriceTables.managedUpdate(mock)
-		err := ht.host.staticRPCUpdatePriceTable(stream)
+		err := ht.host.managedRPCUpdatePriceTable(stream)
 		if err != nil {
 			modules.RPCWriteError(stream, err)
 		}

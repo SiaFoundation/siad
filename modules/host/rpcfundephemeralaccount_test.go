@@ -99,7 +99,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	hostFunc := func(stream siamux.Stream) error {
-		err := ht.host.managedRPCFundEphemeralAccount(stream, pt)
+		err := ht.host.managedRPCFundEphemeralAccount(stream, &pt)
 		if err != nil {
 			return modules.RPCWriteError(stream, err)
 		}

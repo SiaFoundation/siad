@@ -212,6 +212,14 @@ type hostPrices struct {
 	mu            sync.RWMutex
 }
 
+// managedGet returns the price table with given uid
+func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTable, exists bool) {
+	hp.mu.RLock()
+	defer hp.mu.RUnlock()
+	pt, exists = hp.guaranteed[uid]
+	return
+}
+
 // managedCurrent returns the host's current price table
 func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
 	hp.mu.RLock()

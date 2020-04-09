@@ -243,6 +243,7 @@ type renterHostPair struct {
 	host   *Host
 	renter crypto.SecretKey
 	fcid   types.FileContractID
+	eaid   modules.AccountID
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -283,6 +284,7 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 		host:   ht.host,
 		renter: sk,
 		fcid:   so.id(),
+		eaid:   modules.AccountID(renterPK.String()),
 	}
 	return ht, pair, nil
 }
