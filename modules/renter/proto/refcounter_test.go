@@ -35,7 +35,7 @@ func TestRefCounter_Count(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	sec := uint64(2)
+	sec := uint64(1)
 	val := uint16(21)
 
 	// set up the expected value on disk
@@ -669,6 +669,73 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 	}
 	if wpath != rpath || wsec != rsec {
 		t.Fatalf("wrong values read from Truncate update. Expected %s, %d found %s, %d", wpath, wsec, rpath, rsec)
+	}
+}
+
+// TestRefCounter_numSectorsUnderflow tests for and guards against an NDF that
+// can happen in various methods when numSectors is zero and we check the sector
+// index to be read against numSectors-1.
+func TestRefCounter_numSectorsUnderflow(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare a refcounter with zero sectors for the tests
+	rc := testPrepareRefCounter(0, t)
+
+	// try to read the nonexistent sector with index 0
+	_, err := rc.readCount(0)
+	// when checking if the sector we want to read is valid we compare it to
+	// numSectors. If we do it by comparing `secNum > numSectors - 1` we will
+	// hit an underflow which will result in the check passing and us getting
+	// an EOF error instead of the correct ErrInvalidSectorNumber
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	// we should get an ErrInvalidSectorNumber
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	err = rc.StartUpdate()
+	if err != nil {
+		t.Fatal("Failed to initiate an update session:", err)
+	}
+
+	// check for the same underflow during Decrement
+	_, err = rc.Decrement(0)
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	// check for the same underflow during Increment
+	_, err = rc.Increment(0)
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	// check for the same underflow during Swap
+	_, err1 := rc.Swap(0, 1)
+	_, err2 := rc.Swap(1, 0)
+	err = errors.Compose(err1, err2)
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	// cleanup the update session
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to wrap up an empty update session:", err)
 	}
 }
 
