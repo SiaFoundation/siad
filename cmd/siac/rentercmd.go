@@ -20,10 +20,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/vbauerster/mpb/v5/decor"
-
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
+	"github.com/vbauerster/mpb/v5/decor"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -36,9 +35,10 @@ import (
 const (
 	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
 
-	pBarJobProcess = "\x1b[34;1mprocessing\x1b[0m"
-	pBarJobUpload  = "\x1b[33;1muploading \x1b[0m"
-	pBarJobDone    = "\x1b[32;1mdone!     \x1b[0m"
+	// colourful strings for the console UI
+	pBarJobProcess = "\x1b[34;1mpinning   \x1b[0m" // blue
+	pBarJobUpload  = "\x1b[33;1muploading \x1b[0m" // yellow
+	pBarJobDone    = "\x1b[32;1mpinned!   \x1b[0m" // green
 )
 
 var (
@@ -2830,13 +2830,13 @@ func skynetUploadFile(sourcePath string, destSiaPath string, pbs *mpb.Progress) 
 		var rc io.ReadCloser
 		rc = file
 		// Wrap the file reader in a progress bar reader
-		pUpload, rc = newProgressReader(pbs, fi.Size(), filename, rc)
+		pUpload, rc = newProgressReader(pbs, fi.Size(), sourcePath, rc)
 		// Set a spinner to start after the upload is finished
-		pSpinner = newProgressSpinner(pbs, pUpload, filename)
+		pSpinner = newProgressSpinner(pbs, pUpload, sourcePath)
 		// Perform the upload
 		skylink = skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
 		// Replace the spinner with the skylink and stop it
-		newProgressSkylink(pbs, pSpinner, filename, skylink)
+		newProgressSkylink(pbs, pSpinner, sourcePath, skylink)
 	}
 	return skylink
 }

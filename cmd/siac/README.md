@@ -179,7 +179,7 @@ if you have multiple downloads happening simultaneously.
   money is spent on file contracts.
 
 #### Skynet tasks
-* `siac skynet upload [--silent/-s] [source filepath] [destination siapath]` 
+* `siac skynet upload [source filepath] [destination siapath]` 
   uploads a file or directory to Skynet. A skylink will be produced for each 
   file. The link can be shared and used to retrieve the file. The file(s) that 
   get uploaded will be pinned to this Sia node, meaning that this node will pay 
