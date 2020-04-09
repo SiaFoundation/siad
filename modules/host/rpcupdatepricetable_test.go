@@ -100,19 +100,17 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	}
 
 	// verify the price table is being tracked
-	ht.host.staticPriceTables.mu.RLock()
-	_, tracked := ht.host.staticPriceTables.guaranteed[pt.UID]
-	ht.host.staticPriceTables.mu.RUnlock()
+	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
+		t.Log("UID:", pt.UID)
+		t.Log("Guaranteed:", ht.host.staticPriceTables.guaranteed)
 		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
 	// sleep for the duration of the expiry frequency, seeing as that is greater
 	// than the price guarantee period, it is the worst case
 	err = build.Retry(3, pruneExpiredRPCPriceTableFrequency, func() error {
-		ht.host.staticPriceTables.mu.RLock()
-		_, exists := ht.host.staticPriceTables.guaranteed[pt.UID]
-		ht.host.staticPriceTables.mu.RUnlock()
+		_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
 		if exists {
 			return errors.New("Expected RPC price table to be pruned because it should have expired")
 		}
@@ -277,6 +275,30 @@ func (pair *renterHostPair) negotiatePriceTable() (*modules.RPCPriceTable, error
 	// unmarshal the JSON into a price table
 	var pt modules.RPCPriceTable
 	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
+		return nil, err
+	}
+
+	// Send the payment request.
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the payment details.
+	rev, sig, err := pair.paymentRevision(pt.UpdatePriceTableCost)
+	if err != nil {
+		return nil, err
+	}
+	pbcr := newPayByContractRequest(rev, sig)
+	err = modules.RPCWrite(stream, pbcr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Receive payment confirmation.
+	var pc modules.PayByContractResponse
+	err = modules.RPCRead(stream, &pc)
+	if err != nil {
 		return nil, err
 	}
 	return &pt, nil

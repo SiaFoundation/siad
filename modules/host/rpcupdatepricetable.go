@@ -17,7 +17,6 @@ func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table and give it a random UID
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
-
 	// update the epxiry to ensure prices are guaranteed for the duration of the
 	// rpcPriceGuaranteePeriod
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
@@ -51,6 +50,5 @@ func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	// after payment has been received, track the price table in the host's list
 	// of price tables
 	h.staticPriceTables.managedTrack(&pt)
-
 	return nil
 }
