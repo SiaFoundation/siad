@@ -5,15 +5,15 @@ siad instance can support fees from multiple applications running on top of it.
 
 There are two types of fees that are supported by the FeeManager:
  - One Time Fees
- - Reoccurring Fees
+ - Recurring Fees
 
 **One Time Fees**  
 The One Time Fees will charge the user a fixed amount once. Applications can use
 this as a setup fee or can use this to charge for various actions as the
 application is used.
 
-**Reoccurring Fees**  
-The Reoccurring Charge Fee will charge the user a fix amount each payout period.
+**Recurring Fees**  
+The Recurring Fees will charge the user a fixed amount each payout period.
 
 The payout period is one month and all fees are paid out at the end of the
 payout period. During the month, any one time or recurring fees will accrue.
@@ -43,9 +43,10 @@ managed.
   - `NewCustomFeeManager` creates a new FeeManager with custom dependencies
   - `CancelFee` cancels a fee 
   - `Close` closes the FeeManager
-  - `Fees` returns a list of all the fees being managed by the FeeManager
-  - `SetFee` sets a fee 
-  - `Setting` returns the settings of the FeeManager 
+  - `PaidFees` returns a list of fees that have been paid out by the FeeManager
+  - `PendingFees` returns a list of pending fees being managed by the FeeManager
+  - `SetFee` sets a fee for the FeeManager to manage
+  - `Settings` returns the settings of the FeeManager 
 
 **Outbound Complexities**
   - The persist subsystem's `callCancelFee` method is called from `CancelFee` to
@@ -53,6 +54,8 @@ managed.
   - The persist subsystem's `callInitPersist` method is called from
     `NewCustomeFeeManager` to initialize the persistence files and/or load the
     persistence from disk
+  - The persist subsystem's `callLoadAllFees` method is called from `PaidFees`
+    to load all the persisted fees from disk
   - The persist subsystem's `callSetFee` method is called from `SetFee` to add
     the fee to the FeeManager and persist the change on disk
 
@@ -75,6 +78,8 @@ settings, and another file that contains a record of all the historical fees.
     remove a fee from the FeeManager and persists the change on disk
   - `callInitPersist` initializes the persistence by creating or loading a
     persist file and initializing the logger
+  - The feemanager subsystem's `PaidFees` method calls `callLoadAllFees` to load
+    all the persisted fees from disk
   - The feemanager subsystem's `SetFee` method calls `callSetFee` to add a fee
     to the FeeManager and persists the change on disk
   - The process fees subsystem's `threadedProcessFess` method calls `save` to

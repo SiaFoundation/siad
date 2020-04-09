@@ -29,21 +29,27 @@ func TestFeeManager(t *testing.T) {
 		}
 	}()
 
-	// Get the FeeManager.
+	// Check for initial values
 	fmg, err := fm.FeeManagerGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// There should be no fees associated with the FeeManager
-	if len(fmg.PendingFees) != 0 {
-		t.Errorf("Expected 0 PendingFees but got %v", len(fmg.PendingFees))
-	}
-	if len(fmg.PaidFees) != 0 {
-		t.Errorf("Expected 0 PaidFees but got %v", len(fmg.PaidFees))
-	}
 	if !fmg.Settings.CurrentPayout.IsZero() {
 		t.Errorf("Current Payout should be zero but was %v", fmg.Settings.CurrentPayout.HumanString())
+	}
+	fmPaidGet, err := fm.FeeManagerPaidFeesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fmPaidGet.PaidFees) != 0 {
+		t.Errorf("Expected 0 PaidFees but got %v", len(fmPaidGet.PaidFees))
+	}
+	fmPendingGet, err := fm.FeeManagerPendingFeesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fmPendingGet.PendingFees) != 0 {
+		t.Errorf("Expected 0 PendingFees but got %v", len(fmPendingGet.PendingFees))
 	}
 
 	// Set a Fee
@@ -61,17 +67,25 @@ func TestFeeManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fmg.PendingFees) != 1 {
-		t.Errorf("Expected 1 PendingFee but got %v", len(fmg.PendingFees))
-	}
-	if len(fmg.PaidFees) != 0 {
-		t.Errorf("Expected 0 PaidFees but got %v", len(fmg.PaidFees))
-	}
 	if fmg.Settings.CurrentPayout.Cmp(amount) != 0 {
 		t.Errorf("Current Payout should be %v but was %v", amount.HumanString(), fmg.Settings.CurrentPayout.HumanString())
 	}
+	fmPaidGet, err = fm.FeeManagerPaidFeesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fmPaidGet.PaidFees) != 0 {
+		t.Errorf("Expected 0 PaidFees but got %v", len(fmPaidGet.PaidFees))
+	}
+	fmPendingGet, err = fm.FeeManagerPendingFeesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fmPendingGet.PendingFees) != 1 {
+		t.Errorf("Expected 1 PendingFees but got %v", len(fmPendingGet.PendingFees))
+	}
 
-	fee := fmg.PendingFees[0]
+	fee := fmPendingGet.PendingFees[0]
 	expectedFee := modules.AppFee{
 		Address:   address,
 		Amount:    amount,
@@ -96,14 +110,22 @@ func TestFeeManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fmg.PendingFees) != 0 {
-		t.Errorf("Expected 0 PendingFees but got %v", len(fmg.PendingFees))
-	}
-	if len(fmg.PaidFees) != 0 {
-		t.Errorf("Expected 0 PaidFees but got %v", len(fmg.PaidFees))
-	}
 	if !fmg.Settings.CurrentPayout.IsZero() {
 		t.Errorf("Current Payout should be zero but was %v", fmg.Settings.CurrentPayout.HumanString())
+	}
+	fmPaidGet, err = fm.FeeManagerPaidFeesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fmPaidGet.PaidFees) != 0 {
+		t.Errorf("Expected 0 PaidFees but got %v", len(fmPaidGet.PaidFees))
+	}
+	fmPendingGet, err = fm.FeeManagerPendingFeesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fmPendingGet.PendingFees) != 0 {
+		t.Errorf("Expected 0 PendingFees but got %v", len(fmPendingGet.PendingFees))
 	}
 }
 

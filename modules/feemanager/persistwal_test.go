@@ -2,7 +2,6 @@ package feemanager
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -74,7 +73,7 @@ func testApply(t *testing.T, fm *FeeManager, apply func(...writeaheadlog.Update)
 	}
 
 	// Check the Fee Persist File
-	readFees, err := fm.loadAllFees()
+	readFees, err := fm.callLoadAllFees()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +190,7 @@ func randomFee() modules.AppFee {
 	return modules.AppFee{
 		Address:   types.UnlockHash{},
 		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
-		AppUID:    modules.AppUID(hex.EncodeToString(fastrand.Bytes(20))),
+		AppUID:    modules.AppUID(uniqueID()),
 		Cancelled: fastrand.Intn(100)%2 == 0,
 		Offset:    int64(fastrand.Intn(1000)),
 		Recurring: fastrand.Intn(100)%2 == 0,

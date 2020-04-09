@@ -13,12 +13,20 @@ type (
 	FeeManagerGET struct {
 		// Settings are the current settings of the FeeManager
 		Settings modules.FeeManagerSettings `json:"settings"`
+	}
 
-		// This is the list of current pending Fees
-		PendingFees []modules.AppFee `json:"pendingfees"`
-
+	// FeeManagerPaidFeesGET is the object returned as a response to a GET
+	// request to /feemanager/paidfees
+	FeeManagerPaidFeesGET struct {
 		// This is a full historical list of Fees that have been Paid
 		PaidFees []modules.AppFee `json:"paidfees"`
+	}
+
+	// FeeManagerPendingFeesGET is the object returned as a response to a GET
+	// request to /feemanager/pendingfees
+	FeeManagerPendingFeesGET struct {
+		// This is the list of current pending Fees
+		PendingFees []modules.AppFee `json:"pendingfees"`
 	}
 )
 
@@ -29,15 +37,32 @@ func (api *API) feemanagerHandlerGET(w http.ResponseWriter, _ *http.Request, _ h
 		WriteError(w, Error{"could not get the settings of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	pending, paid, err := api.feemanager.Fees()
+	WriteJSON(w, FeeManagerGET{
+		Settings: settings,
+	})
+}
+
+// feemanagerPaidFeesHandlerGET handles API calls to /feemanager/paidfees
+func (api *API) feemanagerPaidFeesHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	paidFees, err := api.feemanager.PaidFees()
 	if err != nil {
-		WriteError(w, Error{"could not get the fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"could not get the paid fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-	WriteJSON(w, FeeManagerGET{
-		Settings:    settings,
-		PendingFees: pending,
-		PaidFees:    paid,
+	WriteJSON(w, FeeManagerPaidFeesGET{
+		PaidFees: paidFees,
+	})
+}
+
+// feemanagerPendingFeesHandlerGET handles API calls to /feemanager/pendingfees
+func (api *API) feemanagerPendingFeesHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	pendingFees, err := api.feemanager.PendingFees()
+	if err != nil {
+		WriteError(w, Error{"could not get the pending fees of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteJSON(w, FeeManagerPendingFeesGET{
+		PendingFees: pendingFees,
 	})
 }
 

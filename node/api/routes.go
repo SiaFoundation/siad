@@ -49,6 +49,8 @@ func (api *API) buildHTTPRoutes() {
 	if api.feemanager != nil {
 		router.GET("/feemanager", api.feemanagerHandlerGET)
 		router.POST("/feemanager/cancel", RequirePassword(api.feemanagerCancelHandlerPOST, requiredPassword))
+		router.GET("/feemanager/paidfees", api.feemanagerPaidFeesHandlerGET)
+		router.GET("/feemanager/pendingfees", api.feemanagerPendingFeesHandlerGET)
 		router.POST("/feemanager/set", RequirePassword(api.feemanagerSetHandlerPOST, requiredPassword))
 	}
 

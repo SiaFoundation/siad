@@ -104,12 +104,11 @@ func (fm *FeeManager) applyUpdates(updates ...writeaheadlog.Update) error {
 	}
 	defer func() {
 		if err == nil {
-			// If no error occurred we sync and close the file.
-			err = errors.Compose(persistFile.Sync(), persistFile.Close(), feeFile.Sync(), feeFile.Close())
-		} else {
-			// Otherwise we still need to close the file.
-			err = errors.Compose(err, persistFile.Close(), feeFile.Close())
+			// If no error occurred we sync the files.
+			err = errors.Compose(persistFile.Sync(), feeFile.Sync())
 		}
+		// Close files
+		err = errors.Compose(err, persistFile.Close(), feeFile.Close())
 	}()
 
 	// Apply updates.
@@ -163,12 +162,9 @@ func (fm *FeeManager) readAndApplyInsertUpdate(file modules.File, update writeah
 	}
 
 	// Write to the file
-	n, err := file.WriteAt(data, offset)
+	_, err = file.WriteAt(data, offset)
 	if err != nil {
 		return err
-	}
-	if n < len(data) {
-		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
 	}
 	return nil
 }
@@ -177,12 +173,9 @@ func (fm *FeeManager) readAndApplyInsertUpdate(file modules.File, update writeah
 func (fm *FeeManager) readAndApplyPersistUpdate(file modules.File, update writeaheadlog.Update) error {
 	// Write to the file
 	data := update.Instructions
-	n, err := file.Write(data)
+	_, err := file.Write(data)
 	if err != nil {
 		return err
-	}
-	if n < len(data) {
-		return fmt.Errorf("update was only applied partially - %v / %v", n, len(data))
 	}
 	return nil
 }

@@ -73,8 +73,13 @@ type FeeManager interface {
 	// CancelFee cancels the fee associated with the FeeUID
 	CancelFee(feeUID FeeUID) error
 
-	// Fees returns all the fees that are being tracked by the FeeManager
-	Fees() (pending []AppFee, paid []AppFee, err error)
+	// PaidFees returns all the paid fees that are being tracked by the
+	// FeeManager
+	PaidFees() ([]AppFee, error)
+
+	// PendingFees returns all the pending fees that are being tracked by the
+	// FeeManager
+	PendingFees() ([]AppFee, error)
 
 	// SetFee sets a fee for the FeeManager to manage
 	SetFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) error

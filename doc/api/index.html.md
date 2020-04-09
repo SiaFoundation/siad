@@ -740,17 +740,55 @@ returns information about the feemanager.
     "maxpayout": "10000000000000000000000000000", // Hastings
     "payoutheight":249854                         // blockheight
   },
-  "pendingfees": [
-    {
-      "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
-      "amount":"1000",         // hastings
-      "appuid":"supercoolapp", // string
-      "cancelled":false,       // bool
-      "offset":1000,           // int64
-      "recurring":true,       // bool
-      "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
-    }
-  ],
+}
+
+```
+
+**settings** | FeeManagerSettings  
+List of current settings of the FeeManager.
+
+**currentpayout** | hastings  
+Amount in hastings that the feemanager expects to pay out this period.
+
+**maxpayout** | hastings  
+Maximum amount in hastings that the feemanager will payout this period.
+
+**payoutheight** | blockheight  
+Height at which the FeeManager will payout the pending fees.
+
+## /feemanager/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "feeuid=9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" "localhost:9980/feemanager/cancel"
+```
+
+cancels a fee.
+
+### Query String Parameters
+### REQUIRED
+**feeuid** | string  
+The unique identifier for the fee.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /feemanager/paidfees [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager/paidfees"
+```
+
+returns the paid fees that the feemanager managed.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
   "paidfees": [
     {
       "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
@@ -765,21 +803,6 @@ returns information about the feemanager.
 }
 
 ```
-
-**settings** | FeeManagerSettings  
-List of current settings of the FeeManager.
-
-**currentpayout** | hastings  
-Amount in hastings that the feemanager expects to payout this period.
-
-**maxpayout** | hastings  
-Maximum amount in hastings that the feemanager will payout this period.
-
-**payoutheight** | blockheight  
-Height at which the FeeManager will payout the pending fees.
-
-**pendingfees** | []AppFee
-List of the fees that are currently pending for this period. 
 
 **paidfees** | []AppFee  
 List of historical fees that have been paid out by the FeeManager. 
@@ -805,24 +828,59 @@ Indicates whether or not this fee will be a recurring fee.
 **uid** | string  
 This is the unique identifier for the fee
 
-## /feemanager/cancel [POST]
-> curl example  
+## /feemanager/pendingfees [GET]
+> curl example
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data "feeuid=9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" "localhost:9980/feemanager/cancel"
+curl -A "Sia-Agent" "localhost:9980/feemanager/pendingfees"
 ```
 
-cancels a fee.
+returns the pending fees that the feemanager is managing.
 
-### Query String Parameters
-### REQUIRED
-**feeuid** | string  
-The unique identifier for the fee.
+### JSON Response
+> JSON Response Example
 
-### Response
+```go
+{
+  "pendingfees": [
+    {
+      "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
+      "amount":"1000",     // hastings
+      "appuid":"okapp",    // string
+      "cancelled":false,   // bool
+      "offset":1000,       // int64
+      "recurring":false,  // bool
+      "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+    }
+  ]
+}
 
-standard success or error response. See [standard
-responses](#standard-responses).
+```
+
+**pendingfees** | []AppFee  
+List of pending fees that the FeeManager is managing that will pay out this
+period. 
+
+**address** | address  
+The application developer's wallet address that the fee should be paid out to.
+
+**amount** | hastings  
+The number of hastings the fee will charge the user.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+**cancelled** | bool  
+Indicates whether or not this fee has been cancelled. 
+
+**offset** | int64  
+Offset of the fee within the fee persist file.
+
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+**uid** | string  
+This is the unique identifier for the fee
 
 ## /feemanager/set [POST]
 > curl example  

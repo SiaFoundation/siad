@@ -25,6 +25,20 @@ func (c *Client) FeeManagerCancelPost(feeUID modules.FeeUID) (err error) {
 	return
 }
 
+// FeeManagerPaidFeesGet uses the /feemanager/paidfees GET endpoint to return
+// the paid fees the FeeManager is tracking
+func (c *Client) FeeManagerPaidFeesGet() (pfg api.FeeManagerPaidFeesGET, err error) {
+	err = c.get("/feemanager/paidfees", &pfg)
+	return
+}
+
+// FeeManagerPendingFeesGet uses the /feemanager/pendingfees GET endpoint to
+// return the pending fees the FeeManager is tracking
+func (c *Client) FeeManagerPendingFeesGet() (pfg api.FeeManagerPendingFeesGET, err error) {
+	err = c.get("/feemanager/pendingfees", &pfg)
+	return
+}
+
 // FeeManagerSetPost use the /feemanager/set POST endpoint to set a fee for the
 // FeeManager to manage
 func (c *Client) FeeManagerSetPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (err error) {

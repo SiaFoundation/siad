@@ -30,8 +30,11 @@ const (
 )
 
 var (
+	// ErrFeeNotFound is returned if a fee is not found in the FeeManager
+	ErrFeeNotFound = errors.New("fee not found")
+
 	// logFile is the filename of the FeeManager logger
-	logFile = modules.FeeManagerDir + ".staticLog"
+	logFile = modules.FeeManagerDir + ".log"
 
 	// PayoutInterval is the interval at which the payoutheight is set in the
 	// future
@@ -60,8 +63,7 @@ func (fm *FeeManager) callCancelFee(feeUID modules.FeeUID) error {
 	defer fm.mu.Unlock()
 	fee, ok := fm.fees[feeUID]
 	if !ok {
-		// Fee has already been removed, just return
-		return nil
+		return ErrFeeNotFound
 	}
 
 	// Negative Currency check
@@ -150,6 +152,33 @@ func (fm *FeeManager) callInitPersist() error {
 	return nil
 }
 
+// callLoadAllFees loads all the fees from the Fee Persist file
+func (fm *FeeManager) callLoadAllFees() ([]modules.AppFee, error) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	// Open the Fee Persist file
+	fileName := filepath.Join(fm.staticPersistDir, feePersistFilename)
+	file, err := fm.staticDeps.Open(fileName)
+	if err != nil {
+		return []modules.AppFee{}, errors.AddContext(err, "unable to load fee persist file")
+	}
+	defer file.Close()
+
+	// Read the file
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return []modules.AppFee{}, errors.AddContext(err, "unable to read data from file")
+	}
+
+	// Unmarshal the fees.
+	fees, err := modules.UnmarshalFees(bytes)
+	if err != nil {
+		return []modules.AppFee{}, errors.AddContext(err, "unable to unmarshal data")
+	}
+	return fees, nil
+}
+
 // callSetFee sets a fee for the FeeManager to manage
 func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) error {
 	// Acquire Lock
@@ -218,30 +247,6 @@ func (fm *FeeManager) load() error {
 	return fm.loadPersistData(persistData)
 }
 
-// loadAllFees loads all the fees from the Fee Persist file
-func (fm *FeeManager) loadAllFees() ([]modules.AppFee, error) {
-	// Open the Fee Persist file
-	fileName := filepath.Join(fm.staticPersistDir, feePersistFilename)
-	file, err := fm.staticDeps.Open(fileName)
-	if err != nil {
-		return []modules.AppFee{}, errors.AddContext(err, "unable to load fee persist file")
-	}
-	defer file.Close()
-
-	// Read the file
-	bytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		return []modules.AppFee{}, errors.AddContext(err, "unable to read data from file")
-	}
-
-	// Unmarshal the fees.
-	fees, err := modules.UnmarshalFees(bytes)
-	if err != nil {
-		return []modules.AppFee{}, errors.AddContext(err, "unable to unmarshal data")
-	}
-	return fees, nil
-}
-
 // loadPersistData loads the persisted data into the FeeManager
 func (fm *FeeManager) loadPersistData(persistData persistence) error {
 	// Load initial values
@@ -302,7 +307,7 @@ func (fm *FeeManager) saveFeeAndUpdate(fee modules.AppFee) error {
 		return errors.AddContext(err, "unable to create fee update")
 	}
 
-	// Update the FeeManager's nextFeeOffset and create the peristence update
+	// Update the FeeManager's nextFeeOffset and create the persistence update
 	fm.nextFeeOffset += int64(buf.Len())
 	persistUpdate, err := createPersistUpdate(fm.persistData())
 	if err != nil {

@@ -130,9 +130,7 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir, 
 		return nil, err
 	}
 
-	// Subscribe to the consensus set in a separate goroutine.
-	done := make(chan struct{})
-	defer close(done)
+	// Subscribe to the consensus set.
 	err = cs.ConsensusSetSubscribe(fm, modules.ConsensusChangeRecent, fm.staticTG.StopChan())
 	if err != nil {
 		return nil, err
@@ -167,38 +165,27 @@ func (fm *FeeManager) Close() error {
 	return fm.staticTG.Stop()
 }
 
-// Fees returns all the fees that are being tracked by the FeeManager
-func (fm *FeeManager) Fees() (pending []modules.AppFee, paid []modules.AppFee, err error) {
+// PaidFees returns all the paid fees that are being tracked by the FeeManager
+func (fm *FeeManager) PaidFees() ([]modules.AppFee, error) {
 	// Add thread group
 	if err := fm.staticTG.Add(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer fm.staticTG.Done()
 
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
+	return fm.managedPaidFees()
+}
 
-	// Get all fees from disk
-	allFees, err := fm.loadAllFees()
-	if err != nil {
-		return nil, nil, err
+// PendingFees returns all the pending fees that are being tracked by the
+// FeeManager
+func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
+	// Add thread group
+	if err := fm.staticTG.Add(); err != nil {
+		return nil, err
 	}
+	defer fm.staticTG.Done()
 
-	// Sort in pending and paid
-	for _, fee := range allFees {
-		// Skip any cancelled fees
-		if fee.Cancelled {
-			continue
-		}
-		_, ok := fm.fees[fee.UID]
-		if ok {
-			pending = append(pending, fee)
-		} else {
-			paid = append(pending, fee)
-		}
-	}
-
-	return pending, paid, nil
+	return fm.managedPendingFees(), nil
 }
 
 // SetFee sets a fee for the FeeManager to manage
@@ -225,4 +212,46 @@ func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
 		MaxPayout:     fm.maxPayout,
 		PayoutHeight:  fm.payoutHeight,
 	}, nil
+}
+
+// managedPaidFees returns all the paid fees that are being tracked by the
+// FeeManager
+func (fm *FeeManager) managedPaidFees() ([]modules.AppFee, error) {
+	// Get all fees from disk
+	allFees, err := fm.callLoadAllFees()
+	if err != nil {
+		return nil, err
+	}
+
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	// Sort out any cancelled or pending fees
+	var paid []modules.AppFee
+	for _, fee := range allFees {
+		// Skip any cancelled fees
+		if fee.Cancelled {
+			continue
+		}
+		// Skip any pending fees
+		_, ok := fm.fees[fee.UID]
+		if ok {
+			continue
+		}
+		paid = append(paid, fee)
+	}
+	return paid, nil
+}
+
+// managedPendingFees returns all the pending fees that are being tracked by the
+// FeeManager
+func (fm *FeeManager) managedPendingFees() []modules.AppFee {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+
+	var pendingFees []modules.AppFee
+	for _, fee := range fm.fees {
+		pendingFees = append(pendingFees, *fee)
+	}
+	return pendingFees
 }
