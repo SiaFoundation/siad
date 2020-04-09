@@ -35,13 +35,19 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (mod
 // returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, programData []byte, accountID modules.AccountID, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, _ error) {
+func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, ptID modules.UniqueID, programData []byte, accountID modules.AccountID, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, _ error) {
 	// create stream
 	stream := rhp.newStream()
 	defer stream.Close()
 
 	// Write the specifier.
 	err := modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, ptID)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +146,6 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
-		PriceTableID:      pt.UID,
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -154,7 +159,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Execute program.
-	resps, err := rhp.executeProgram(epr, data, accountID, types.ZeroCurrency)
+	resps, err := rhp.executeProgram(epr, pt.UID, data, accountID, types.ZeroCurrency)
 	if err != nil {
 		t.Fatal(err)
 	}

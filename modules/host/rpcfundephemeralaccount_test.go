@@ -146,7 +146,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	hostFunc := func(stream siamux.Stream) error {
-		err := ht.host.managedRPCFundEphemeralAccount(stream, pt)
+		err := ht.host.managedRPCFundEphemeralAccount(stream)
 		if err != nil {
 			return modules.RPCWriteError(stream, err)
 		}
@@ -157,7 +157,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	addBlock := func() {
 		mu.Lock()
 		defer mu.Unlock()
-		bh += 1
+		bh++
 	}
 
 	runWithRevision := func(rev types.FileContractRevision) (payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, err error) {

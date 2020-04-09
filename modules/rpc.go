@@ -66,6 +66,9 @@ var (
 
 	// RPCExecuteProgram specifier
 	RPCExecuteProgram = types.NewSpecifier("ExecuteProgram")
+
+	// RPCFundEphemeralAccount specifier
+	RPCFundAccount = types.NewSpecifier("FundAccount")
 )
 
 type (
@@ -88,8 +91,6 @@ type (
 		FileContractID types.FileContractID
 		// Instructions to be executed as a program.
 		Program Program
-		// PriceTableID is the id of the price table to use for this request.
-		PriceTableID UniqueID
 		// ProgramDataLength is the length of the programData following this
 		// request.
 		ProgramDataLength uint64

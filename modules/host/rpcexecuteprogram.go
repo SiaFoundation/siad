@@ -14,9 +14,13 @@ import (
 
 // managedRPCExecuteProgram handles incoming ExecuteProgram RPCs.
 func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
-	defer stream.Close()
+	// read the price table
+	pt, err := h.staticReadPriceTable(stream)
+	if err != nil {
+		return errors.AddContext(err, "Failed to read price table")
+	}
+
 	// Process payment.
-	// TODO: change once payment MR is merged
 	pd, err := h.ProcessPayment(stream)
 	if err != nil {
 		return errors.AddContext(err, "failed to process paymnet")
@@ -35,11 +39,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Extract the arguments.
-	fcid, program, ptid, dataLength := epr.FileContractID, epr.Program, epr.PriceTableID, epr.ProgramDataLength
+	fcid, program, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
 
 	// Get price table.
 	h.staticPriceTables.mu.RLock()
-	pt, valid := h.staticPriceTables.guaranteed[ptid]
+	pt, valid := h.staticPriceTables.guaranteed[pt.UID]
 	h.staticPriceTables.mu.RUnlock()
 	if !valid || pt.Expiry < time.Now().Unix() {
 		return errors.New("invalid price table")
