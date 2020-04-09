@@ -249,6 +249,10 @@ func TestHostAndRentVanilla(t *testing.T) {
 	if !(cts.Contracts[0].PotentialDownloadRevenue.IsZero() && cts.Contracts[0].PotentialUploadRevenue.IsZero() && cts.Contracts[0].PotentialStorageRevenue.IsZero()) {
 		t.Error("Potential values not zero in new contract.")
 	}
+	// Check if potential account funding is zero
+	if !cts.Contracts[0].PotentialAccountFunding.IsZero() {
+		t.Error("Account funding not zero in new contract.")
+	}
 
 	// Create a file.
 	path := filepath.Join(st.dir, "test.dat")
@@ -386,6 +390,10 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// There should be some potential revenues in this contract
 	if cts.Contracts[0].PotentialDownloadRevenue.IsZero() || cts.Contracts[0].PotentialUploadRevenue.IsZero() || cts.Contracts[0].PotentialStorageRevenue.IsZero() {
 		t.Error("Potential revenue value is zero for used obligation.")
+	}
+	// Potential account funding should still be zero
+	if !cts.Contracts[0].PotentialAccountFunding.IsZero() {
+		t.Error("Potential account funding is not zero for used obligation, even though it was not used to fund an ephemeral account with.")
 	}
 
 	// Mine blocks until the host should have submitted a storage proof.
@@ -1690,7 +1698,6 @@ func TestUploadedBytesReporting(t *testing.T) {
 		t.Fatalf("api reports having uploaded %v bytes when upload progress is 100%%, but the actual fully redundant file size is %v\n",
 			rf.File.UploadedBytes, fullyRedundantSize(rf.File.CipherType))
 	}
-
 }
 
 // TestRepairLoopBlocking checks if the repair loop blocks operations while a

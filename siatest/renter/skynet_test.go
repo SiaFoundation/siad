@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -20,12 +21,16 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -49,6 +54,7 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
 		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
@@ -57,9 +63,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 	}
 
 	// Run tests
@@ -1655,6 +1662,113 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetDryRunUpload verifies the --dry-run flag when uploading a Skyfile.
+func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	siaPath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify we can perform a skyfile upload (note that we need this to trigger
+	// contracts being created, this issue only surfaces when commenting out all
+	// other skynet tets)
+	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRun",
+			Mode:     0640,
+		},
+	})
+	if err != nil {
+		t.Fatal("Expected skynet upload to be successful, instead received err:", err)
+	}
+
+	// verify you can't perform a dry-run using the force parameter
+	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
+		SiaPath:             siaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRun",
+			Mode:     0640,
+		},
+		Force:  true,
+		DryRun: true,
+	})
+	if err == nil {
+		t.Fatal("Expected failure when both 'force' and 'dryrun' parameter are given")
+	}
+
+	verifyDryRun := func(sup modules.SkyfileUploadParameters, dataSize int) {
+		data := fastrand.Bytes(dataSize)
+
+		sup.DryRun = true
+		sup.Reader = bytes.NewReader(data)
+		skylinkDry, _, err := r.SkynetSkyfilePost(sup)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// verify the skylink can't be found after a dry run
+		status, _, _ := r.SkynetSkylinkHead(skylinkDry, 0)
+		if status != http.StatusNotFound {
+			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
+		}
+
+		// verify the skfyile got deleted properly
+		skyfilePath, err := modules.SkynetFolder.Join(sup.SiaPath.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.RenterFileRootGet(skyfilePath)
+		if err == nil || !strings.Contains(err.Error(), "path does not exist") {
+			t.Fatal(errors.New("Skyfile not deleted after dry run."))
+		}
+
+		sup.DryRun = false
+		sup.Reader = bytes.NewReader(data)
+		skylink, _, err := r.SkynetSkyfilePost(sup)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if skylinkDry != skylink {
+			t.Log("Expected:", skylink)
+			t.Log("Actual:  ", skylinkDry)
+			t.Fatalf("VerifyDryRun failed for data size %db, skylink received during the dry-run is not identical to the skylink received when performing the actual upload.", dataSize)
+		}
+	}
+
+	// verify dry-run of small file
+	uploadSiaPath, err := modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "S"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyDryRun(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRunUploadSmall",
+			Mode:     0640,
+		},
+	}, 100)
+
+	// verify dry-run of large file
+	uploadSiaPath, err = modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "L"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifyDryRun(modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testSkynetDryRunUploadLarge",
+			Mode:     0640,
+		},
+	}, int(modules.SectorSize*2)+siatest.Fuzz())
+}
+
 // testSkynetRequestTimeout verifies that the Skylink routes timeout when a
 // timeout query string parameter has been passed.
 func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
@@ -1823,5 +1937,107 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err := r.SkynetSkyfilePost(sup)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
 		t.Fatal("Should fail due to ErrMetadataTooBig", err)
+	}
+}
+
+// testSkynetSkykey tests basic Skykey manager functionality.
+func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	sk, err := r.SkykeyCreateKeyPost("testkey1", crypto.TypeXChaCha20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Adding the same key should return an error.
+	err = r.SkykeyAddKeyPost(sk)
+	if err == nil {
+		t.Fatal("Expected error", err)
+	}
+
+	// Create a testkey from a hard-coded skykey string.
+	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	var testSkykey skykey.Skykey
+	err = testSkykey.FromString(testSkykeyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Adding an unknown key should succeed.
+	err = r.SkykeyAddKeyPost(testSkykey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sk2, err := r.SkykeyGetByName("testkey1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skStr, err := sk.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk2Str, err := sk2.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk2Str {
+		t.Fatal("Expected same Skykey string")
+	}
+
+	// Check byte equality and string equality.
+	skID := sk.ID()
+	sk2ID := sk2.ID()
+	if !bytes.Equal(skID[:], sk2ID[:]) {
+		t.Fatal("Expected byte level equality in IDs")
+	}
+	if sk2.ID().ToString() != sk.ID().ToString() {
+		t.Fatal("Expected to get same key")
+	}
+
+	// Check the GetByID endpoint
+	sk3, err := r.SkykeyGetByID(sk.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk3Str, err := sk3.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk3Str {
+		t.Fatal("Expected same Skykey string")
+	}
+
+	// Test misuse of the /skynet/skykey endpoint using an UnsafeClient.
+	uc := client.NewUnsafeClient(r.Client)
+
+	// Passing in 0 params shouild return an error.
+	baseQuery := "/skynet/skykey"
+	var skykeyGet api.SkykeyGET
+	err = uc.Get(baseQuery, &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Passing in 2 params shouild return an error.
+	values := url.Values{}
+	values.Set("name", "testkey1")
+	values.Set("id", skID.ToString())
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Sanity check: uc.Get should return the same value as the safe client
+	// method.
+	values = url.Values{}
+	values.Set("name", "testkey1")
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skykeyGet.Skykey != sk2Str {
+		t.Fatal("Expected same result from  unsafe client")
 	}
 }

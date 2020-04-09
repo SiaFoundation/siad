@@ -8,6 +8,9 @@ import (
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
+	// Collateral returns the amount of additional collateral the host is
+	// expected to put up for this instruction after execution.
+	Collateral() (collateral types.Currency)
 	// Cost returns the cost of executing the instruction and the potential
 	// refund should the program not be committed.
 	Cost() (cost types.Currency, refund types.Currency, _ error)
@@ -29,8 +32,9 @@ type instruction interface {
 // Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
 	output
-	ExecutionCost   types.Currency
-	PotentialRefund types.Currency
+	ExecutionCost        types.Currency
+	AdditionalCollateral types.Currency
+	PotentialRefund      types.Currency
 }
 
 // output is the type returned by all instructions when being executed.

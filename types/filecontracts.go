@@ -4,9 +4,8 @@ package types
 // contracts.
 
 import (
-	"errors"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -16,6 +15,15 @@ var (
 	// ProofValid indicates that a valid StorageProof was submitted within the
 	// proof window.
 	ProofValid ProofStatus = true
+
+	// ErrRevisionCostTooHigh indicates that a new revision can't be created
+	// because the cost is higher than the available funds.
+	ErrRevisionCostTooHigh = errors.New("Can't create new revision with this cost. Not enough funds remaining to cover it")
+
+	// ErrRevisionCollateralTooLow indicates that a new revision can't be created
+	// because the available collateral is too low.
+	ErrRevisionCollateralTooLow = errors.New("Can't create new revision with this collateral. Not enough funds remaining to cover it")
+
 	// ErrMissingVoidOutput is the error returned when the void output of a
 	// contract or revision is accessed that no longer has one.
 	ErrMissingVoidOutput = errors.New("void output is missing")
@@ -111,6 +119,43 @@ func (fcr FileContractRevision) ID() FileContractID {
 // will panic if called on an incomplete revision.
 func (fcr FileContractRevision) HostPublicKey() SiaPublicKey {
 	return fcr.UnlockConditions.PublicKeys[1]
+}
+
+// PaymentRevision returns a copy of the revision with incremented revision
+// number where the given amount has moved from renter to the host.
+func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRevision, error) {
+	rev := fcr
+
+	// need to manually copy slice memory
+	rev.NewValidProofOutputs = append([]SiacoinOutput{}, fcr.NewValidProofOutputs...)
+	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, fcr.NewMissedProofOutputs...)
+
+	// Check that there are enough funds to pay this cost.
+	if fcr.ValidRenterPayout().Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "valid proof output smaller than cost")
+	}
+	if fcr.MissedRenterOutput().Value.Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "missed proof output smaller than cost")
+	}
+
+	// move valid payout from renter to host
+	rev.SetValidRenterPayout(fcr.ValidRenterPayout().Sub(amount))
+	rev.SetValidHostPayout(fcr.ValidHostPayout().Add(amount))
+
+	// move missed payout from renter to void
+	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
+	voidOutput, err := fcr.MissedVoidOutput()
+	if err != nil {
+		return FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
+	}
+	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(amount))
+	if err != nil {
+		return FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
+	}
+
+	// increment revision number
+	rev.NewRevisionNumber++
+	return rev, nil
 }
 
 // EndHeight returns the height at which the host is no longer obligated to

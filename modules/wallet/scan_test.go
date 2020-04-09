@@ -43,7 +43,6 @@ func TestScanLargeIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 	}
 
 	// send money to ourselves so that we sweep a real output (instead of just

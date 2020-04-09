@@ -46,6 +46,21 @@ var (
 
 	// BytesPerTerabyte is the conversion rate between bytes and terabytes.
 	BytesPerTerabyte = types.NewCurrency64(1e12)
+
+	// MaxBaseRPCPriceVsBandwidth is the max ratio for sane pricing between the
+	// MinBaseRPCPrice and the MinDownloadBandwidthPrice. This ensures that 1
+	// million base RPC charges are at most 1% of the cost to download 4TB. This
+	// ratio should be used by checking that the MinBaseRPCPrice is less than or
+	// equal to the MinDownloadBandwidthPrice multiplied by this constant
+	MaxBaseRPCPriceVsBandwidth = uint64(40e3)
+
+	// MaxSectorAccessPriceVsBandwidth is the max ratio for sane pricing between
+	// the MinSectorAccessPrice and the MinDownloadBandwidthPrice. This ensures
+	// that 1 million base accesses are at most 10% of the cost to download 4TB.
+	// This ratio should be used by checking that the MinSectorAccessPrice is
+	// less than or equal to the MinDownloadBandwidthPrice multiplied by this
+	// constant
+	MaxSectorAccessPriceVsBandwidth = uint64(400e3)
 )
 
 var (
@@ -87,6 +102,13 @@ type (
 	// Potential revenue refers to revenue that is available in a file
 	// contract for which the file contract window has not yet closed.
 	HostFinancialMetrics struct {
+		// Metrics related to ephemeral accounts. Account funding represents all
+		// funds used to fund ephemeral acccounts with for storage obligations
+		// that were successful. Potential account funding represents the same
+		// but for storage obligations that have not been confirmed yet.
+		AccountFunding          types.Currency `json:"accountfunding"`
+		PotentialAccountFunding types.Currency `json:"potentialaccountfunding"`
+
 		// Every time a renter forms a contract with a host, a contract fee is
 		// paid by the renter. These stats track the total contract fees.
 		ContractCount                 uint64         `json:"contractcount"`
@@ -154,6 +176,7 @@ type (
 		DataSize                 uint64               `json:"datasize"`
 		LockedCollateral         types.Currency       `json:"lockedcollateral"`
 		ObligationId             types.FileContractID `json:"obligationid"`
+		PotentialAccountFunding  types.Currency       `json:"potentialaccountfunding"`
 		PotentialDownloadRevenue types.Currency       `json:"potentialdownloadrevenue"`
 		PotentialStorageRevenue  types.Currency       `json:"potentialstoragerevenue"`
 		PotentialUploadRevenue   types.Currency       `json:"potentialuploadrevenue"`
@@ -260,6 +283,8 @@ type (
 		// have been made to the host.
 		NetworkMetrics() HostNetworkMetrics
 
+		PaymentProcessor
+
 		// PruneStaleStorageObligations will delete storage obligations from the
 		// host that, for whatever reason, did not make it on the block chain.
 		// As these stale storage obligations have an impact on the host
@@ -327,3 +352,15 @@ type (
 		WorkingStatus() HostWorkingStatus
 	}
 )
+
+// MaxBaseRPCPrice returns the maximum value for the MinBaseRPCPrice based on
+// the MinDownloadBandwidthPrice
+func (his HostInternalSettings) MaxBaseRPCPrice() types.Currency {
+	return his.MinDownloadBandwidthPrice.Mul64(MaxBaseRPCPriceVsBandwidth)
+}
+
+// MaxSectorAccessPrice returns the maximum value for the MinSectorAccessPrice
+// based on the MinDownloadBandwidthPrice
+func (his HostInternalSettings) MaxSectorAccessPrice() types.Currency {
+	return his.MinDownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
+}

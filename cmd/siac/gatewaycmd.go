@@ -182,7 +182,6 @@ func gatewayblacklistcmd() {
 	for _, ip := range gbg.Blacklist {
 		fmt.Println(ip)
 	}
-
 }
 
 // gatewayblacklistappendcmd is the handler for the command
