@@ -98,13 +98,14 @@ type (
 
 	// RPCExecuteProgramResponse todo missing docstring
 	RPCExecuteProgramResponse struct {
-		Output          []byte
-		NewMerkleRoot   crypto.Hash
-		NewSize         uint64
-		Proof           []crypto.Hash
-		Error           error
-		TotalCost       types.Currency
-		PotentialRefund types.Currency
+		AdditionalCollateral types.Currency
+		Output               []byte
+		NewMerkleRoot        crypto.Hash
+		NewSize              uint64
+		Proof                []crypto.Hash
+		Error                error
+		TotalCost            types.Currency
+		PotentialRefund      types.Currency
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
@@ -119,6 +120,42 @@ type (
 		data interface{}
 	}
 )
+
+// MarshalSia implements the SiaMarshaler interface.
+func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
+	var errStr string
+	if epr.Error != nil {
+		errStr = epr.Error.Error()
+	}
+	ec := encoding.NewEncoder(w)
+	_ = ec.Encode(epr.AdditionalCollateral)
+	_ = ec.Encode(epr.Output)
+	_ = ec.Encode(epr.NewMerkleRoot)
+	_ = ec.Encode(epr.NewSize)
+	_ = ec.Encode(epr.Proof)
+	_ = ec.Encode(errStr)
+	_ = ec.Encode(epr.TotalCost)
+	_ = ec.Encode(epr.PotentialRefund)
+	return ec.Err()
+}
+
+// UnmarshalSia implements the SiaMarshaler interface.
+func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
+	var errStr string
+	dc := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
+	_ = dc.Decode(&epr.AdditionalCollateral)
+	_ = dc.Decode(&epr.Output)
+	_ = dc.Decode(&epr.NewMerkleRoot)
+	_ = dc.Decode(&epr.NewSize)
+	_ = dc.Decode(&epr.Proof)
+	_ = dc.Decode(&errStr)
+	_ = dc.Decode(&epr.TotalCost)
+	_ = dc.Decode(&epr.PotentialRefund)
+	if errStr != "" {
+		epr.Error = errors.New(errStr)
+	}
+	return dc.Err()
+}
 
 // RPCRead tries to read the given object from the stream.
 func RPCRead(stream io.Reader, obj interface{}) error {

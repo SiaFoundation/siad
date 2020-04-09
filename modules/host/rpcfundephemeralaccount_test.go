@@ -16,15 +16,29 @@ import (
 
 // fundEphemeralAccount funds an account with a certain amount of money.
 // TODO: change this to create a new stream
-func (rhp *renterHostPair) fundEphemeralAccount(account modules.AccountID, amount types.Currency) (modules.FundAccountResponse, error) {
+func (rhp *renterHostPair) fundEphemeralAccount(ptid modules.UniqueID, account modules.AccountID, amount types.Currency) (modules.FundAccountResponse, error) {
 	// create stream
 	stream := rhp.newStream()
 	defer stream.Close()
+
+	// Write RPC ID.
+	err := modules.RPCWrite(stream, modules.RPCFundAccount)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// Write price table id.
+	err = modules.RPCWrite(stream, ptid)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
 	// create the revision.
 	revision, sig, err := rhp.paymentRevision(amount)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
+
 	// send fund account request
 	req := modules.FundAccountRequest{Account: account}
 	err = modules.RPCWrite(stream, req)

@@ -35,7 +35,7 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (mod
 // returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, ptID modules.UniqueID, programData []byte, accountID modules.AccountID, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, _ error) {
+func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, ptID modules.UniqueID, programData []byte, accountID modules.AccountID, accountKey crypto.SecretKey, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, _ error) {
 	// create stream
 	stream := rhp.newStream()
 	defer stream.Close()
@@ -59,7 +59,7 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	}
 
 	// Send the payment details.
-	pbear := newPayByEphemeralAccountRequest(accountID, rhp.ht.host.BlockHeight()+6, budget, rhp.renter)
+	pbear := newPayByEphemeralAccountRequest(accountID, rhp.ht.host.BlockHeight()+6, budget, accountKey)
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
 		return nil, err
@@ -125,6 +125,12 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	defer rhp.Close()
 	ht := rhp.ht
 
+	// get a snapshot of the SO before running the program.
+	sos, err := rhp.ht.host.managedGetStorageObligationSnapshot(rhp.fcid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Add a sector to the host but not the storage obligation or contract. This
 	// instruction should also work for foreign sectors.
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
@@ -151,15 +157,15 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Fund an account.
-	fundingAmt := types.SiacoinPrecision.Mul64(100)
-	_, accountID := prepareAccount()
-	_, err = rhp.fundEphemeralAccount(accountID, fundingAmt)
+	fundingAmt := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
+	accountKey, accountID := prepareAccount()
+	_, err = rhp.fundEphemeralAccount(pt.UID, accountID, fundingAmt)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Execute program.
-	resps, err := rhp.executeProgram(epr, pt.UID, data, accountID, types.ZeroCurrency)
+	resps, err := rhp.executeProgram(epr, pt.UID, data, accountID, accountKey, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,8 +179,11 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if resp.NewMerkleRoot != sectorRoot {
-		t.Fatalf("wrong NewMerkleRoot")
+	if !resp.AdditionalCollateral.Equals(types.ZeroCurrency) {
+		t.Fatal("wrong AdditionalCollateral")
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot: %v != %v", sectorRoot, resp.NewMerkleRoot)
 	}
 	if resp.NewSize != 0 {
 		t.Fatal("wrong NewSize")

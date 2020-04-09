@@ -131,19 +131,20 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 		// Prepare the RPC response.
 		resp := modules.RPCExecuteProgramResponse{
-			Error:           output.Error,
-			NewMerkleRoot:   output.NewMerkleRoot,
-			NewSize:         output.NewSize,
-			Output:          output.Output,
-			PotentialRefund: output.PotentialRefund,
-			Proof:           output.Proof,
-			TotalCost:       output.ExecutionCost,
+			AdditionalCollateral: output.AdditionalCollateral,
+			Error:                output.Error,
+			NewMerkleRoot:        output.NewMerkleRoot,
+			NewSize:              output.NewSize,
+			Output:               output.Output,
+			PotentialRefund:      output.PotentialRefund,
+			Proof:                output.Proof,
+			TotalCost:            output.ExecutionCost,
 		}
 		// Update cost and refund.
 		cost = output.ExecutionCost
 		refund = amountPaid.Add(output.PotentialRefund).Sub(cost)
 		// Remember that the execution wasn't successful.
-		executionFailed = resp.Error != nil
+		executionFailed = output.Error != nil
 		// Send the response to the peer.
 		err = modules.RPCWrite(stream, resp)
 		if err != nil {
