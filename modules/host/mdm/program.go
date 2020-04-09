@@ -15,6 +15,9 @@ import (
 )
 
 var (
+	// ErrEmptyProgram is returned if the program doesn't contain any instructions.
+	ErrEmptyProgram = errors.New("can't execute program without instructions")
+
 	// ErrInterrupted indicates that the program was interrupted during
 	// execution and couldn't finish.
 	ErrInterrupted = errors.New("execution of program was interrupted")
@@ -97,7 +100,7 @@ func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
 func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, program modules.Program, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	// Sanity check program length.
 	if len(program) == 0 {
-		return nil, nil, errors.New("can't execute program without instructions")
+		return nil, nil, ErrEmptyProgram
 	}
 	// Build program.
 	p := &Program{
