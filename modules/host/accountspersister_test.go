@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -266,6 +267,22 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 		return errors.Compose(err1, err2)
 	}
 
+	// unsyncHost is a function that closes the host and then mines the given
+	// amount of blocks, effectively rendering the host unsynced
+	unsyncHost := func(h *Host, m modules.TestMiner, blocks int) error {
+		err := h.Close()
+		if err != nil {
+			return err
+		}
+		for i := 0; i < blocks; i++ {
+			_, err = m.AddBlock()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	// create a host
 	ht, err := newHostTester(t.Name())
 	if err != nil {
@@ -280,16 +297,8 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	oldBlockHeight := ht.host.blockHeight
 
 	// close the host and mine at minimum twice the bucketBlockRange blocks
-	err = ht.host.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < 2*bucketBlockRange+fastrand.Intn(bucketBlockRange); i++ {
-		_, err = ht.miner.AddBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+	numBlocks := 2*bucketBlockRange + fastrand.Intn(bucketBlockRange)
+	err = unsyncHost(ht.host, ht.miner, numBlocks)
 
 	// reopen the host
 	err = reopenHost(ht)
@@ -318,6 +327,55 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected old buckets to be removed from disk")
 	}
+
+	// close the host and make sure it's out of sync by mining some blocks
+	numBlocks = bucketBlockRange
+	err = unsyncHost(ht.host, ht.miner, numBlocks)
+
+	// reopen the host but do it with a dependency that disables rotation of the
+	// fingerprint buckets on disk. This should have as effect that the
+	// withdrawals never become active.
+	err = reopenHostCustom(ht, new(dependencies.DependencyDisableRotateFingerprintBuckets))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(10, 100*time.Millisecond, func() error {
+		err := verifyFPBuckets(ht.host)
+		if err != nil && !ht.host.staticAccountManager.withdrawalsInactive {
+			t.Fatal("Withdrawals are active without fingerprint buckets on disk. This is a critical error and should never happen.")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ht.host.staticAccountManager.withdrawalsInactive {
+		t.Fatal("Expected withdrawals to remain inactive")
+	}
+
+	// close the host and make sure it's out of sync by mining some blocks
+	numBlocks = bucketBlockRange
+	err = unsyncHost(ht.host, ht.miner, numBlocks)
+
+	// reopen the host again without the dependency and verify withdrawals are
+	// enabled again
+	err = reopenHost(ht)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(10, 100*time.Millisecond, func() error {
+		err := verifyFPBuckets(ht.host)
+		if err != nil && !ht.host.staticAccountManager.withdrawalsInactive {
+			t.Fatal("Withdrawals are active without fingerprint buckets on disk. This is a critical error and should never happen.")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ht.host.staticAccountManager.withdrawalsInactive {
+		t.Fatal("Expected withdrawals to be active")
+	}
 }
 
 // reloadHost will close the given host and reload it on the given host tester
@@ -331,7 +389,13 @@ func reloadHost(ht *hostTester) error {
 
 // reopenHost will create a new host and set it on the given host tester
 func reopenHost(ht *hostTester) error {
-	host, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	return reopenHostCustom(ht, new(modules.ProductionDependencies))
+}
+
+// reopenHostCustom will create a new host and set it on the given host tester,
+// this function allows to pass custom dependencies
+func reopenHostCustom(ht *hostTester, deps modules.Dependencies) error {
+	host, err := NewCustomHost(deps, ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		return err
 	}

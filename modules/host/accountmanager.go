@@ -376,36 +376,43 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 		return
 	}
 
-	// If the host becomes synced due to the consensus change it means we are
-	// going to enable withdrawals. To ensure the fingerprint buckets are
-	// present we rotate them at this point.
-	if am.withdrawalsInactive {
-		err := am.staticAccountsPersister.callRotateFingerprintBuckets()
-		if err != nil {
-			am.h.log.Critical("Could not rotate fingerprints on disk", err)
+	// Defer a function here that potentially disables withdrawals in case we
+	// failed to rotate the buckets on disk.
+	withdrawalsActive := !am.withdrawalsInactive
+	var errRotate error
+	defer func() {
+		if withdrawalsActive && errRotate == nil {
+			return // no action needed
 		}
-		am.withdrawalsInactive = false
-		am.mu.Unlock()
-		return
-	}
+		am.mu.Lock()
+		defer am.mu.Unlock()
+		if errRotate != nil {
+			am.withdrawalsInactive = true
+			am.h.log.Println("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactived", errRotate)
+		} else {
+			am.withdrawalsInactive = false
+		}
+	}()
 
-	// Rotate only if the new block height is larger than the old block height,
-	// and the min height is between the old and new blockheight. We have to
-	// take into account the old and new height due to blockchain reorgs that
-	// could cause the blockheight to increase (or decrease) by multiple blocks
-	// at a time, potentially skipping over the min height of the bucket.
+	// If withdrawals were already active (meaning the host was synced) and if
+	// the new blockheight is not one at which we expect to rotate, we can
+	// return early. In all other cases we rotate the buckets both in memory and
+	// on disk. We rotate when the new height crosses over the new current
+	// bucket range. We have to take into account the old and new height due to
+	// blockchain reorgs that could cause the blockheight to increase (or
+	// decrease) by multiple blocks at a time, potentially skipping over the min
+	// height of the bucket.
 	min, _ := currentBucketRange(newHeight)
-	if !(oldHeight < newHeight && oldHeight < min && min <= newHeight) {
+	shouldRotate := oldHeight < newHeight && oldHeight < min && min <= newHeight
+	if withdrawalsActive && !shouldRotate {
 		am.mu.Unlock()
 		return
 	}
-
 	am.fingerprints.rotate()
 	am.mu.Unlock()
-	err := am.staticAccountsPersister.callRotateFingerprintBuckets()
-	if err != nil {
-		am.h.log.Critical("Could not rotate fingerprints on disk", err)
-	}
+
+	// Rotate fingerprint buckets on disk
+	errRotate = am.staticAccountsPersister.callRotateFingerprintBuckets()
 }
 
 // managedDeposit performs a couple of steps in preparation of the

@@ -281,6 +281,10 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 
 // callRotateFingerprintBuckets will rotate the fingerprint buckets
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
+	if ap.h.dependencies.Disrupt("DisableRotateFingerprintBuckets") {
+		return errors.New("RotateFingerprintBuckets is disabled")
+	}
+
 	fm := ap.staticFingerprintManager
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
