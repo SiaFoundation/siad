@@ -86,14 +86,15 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	t.Parallel()
 
 	// create a blank host tester
-	ht, err := blankHostTester(t.Name())
+	rhp, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	ht := rhp.ht
+	defer rhp.Close()
 
 	// negotiate a price table.
-	pt, err := ht.negotiatePriceTable()
+	pt, err := rhp.negotiatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,11 +132,12 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	t.Parallel()
 
 	// setup a host and renter pair with an emulated file contract between them
-	ht, pair, err := newRenterHostPair(t.Name())
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	ht := pair.ht
+	defer pair.Close()
 
 	errMockRenterPriceGougingTooLow := errors.New("Cost too low")
 	errMockRenterPriceGougingTooHigh := errors.New("Cost too high")
@@ -255,9 +257,9 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 }
 
 // negotiatePriceTable gets a new price table from the host.
-func (ht *hostTester) negotiatePriceTable() (*modules.RPCPriceTable, error) {
+func (pair *renterHostPair) negotiatePriceTable() (*modules.RPCPriceTable, error) {
 	// create a test stream
-	stream := ht.newStream()
+	stream := pair.newStream()
 	defer stream.Close()
 
 	// write the rpc id
@@ -281,8 +283,8 @@ func (ht *hostTester) negotiatePriceTable() (*modules.RPCPriceTable, error) {
 }
 
 // newStream creates a stream which can be used to talk to the host.
-func (ht *hostTester) newStream() siamux.Stream {
-	stream, err := ht.host.staticMux.NewStream(modules.HostSiaMuxSubscriberName, ht.host.staticMux.Address().String(), ht.host.staticMux.PublicKey())
+func (pair *renterHostPair) newStream() siamux.Stream {
+	stream, err := pair.ht.host.staticMux.NewStream(modules.HostSiaMuxSubscriberName, pair.ht.host.staticMux.Address().String(), pair.ht.host.staticMux.PublicKey())
 	if err != nil {
 		panic(err)
 	}

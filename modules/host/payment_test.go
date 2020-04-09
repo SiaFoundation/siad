@@ -241,11 +241,11 @@ func TestProcessPayment(t *testing.T) {
 	t.Parallel()
 
 	// setup a host and renter pair with an emulated file contract between them
-	ht, pair, err := newRenterHostPair(t.Name())
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer pair.Close()
 
 	// test both payment methods
 	testPayByContract(t, pair)
@@ -255,7 +255,7 @@ func TestProcessPayment(t *testing.T) {
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, pair *renterHostPair) {
-	host, renterSK := pair.host, pair.renter
+	host, renterSK := pair.ht.host, pair.renter
 	amount := types.SiacoinPrecision
 	amountStr := amount.HumanString()
 
@@ -361,7 +361,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 // testPayByEphemeralAccount verifies payment is processed correctly in the case
 // of the PayByEphemeralAccount payment method.
 func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
-	host := pair.host
+	host := pair.ht.host
 	amount := types.NewCurrency64(5)
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 

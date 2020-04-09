@@ -1,6 +1,7 @@
 package host
 
 import (
+	"fmt"
 	"io"
 	"testing"
 
@@ -30,6 +31,78 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (mod
 	return instructions, data, cost, refund, usedMemory
 }
 
+// executeProgram executes an MDM program on the host using an EA payment and
+// returns the responses received by the host. A failure to execute an
+// instruction won't result in an error. Instead the returned responses need to
+// be inspected for that depending on the testcase.
+func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, programData []byte, accountID modules.AccountID, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, _ error) {
+	// create stream
+	stream := rhp.newStream()
+	defer stream.Close()
+
+	// Write the specifier.
+	err := modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the payment request.
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the payment details.
+	pbear := newPayByEphemeralAccountRequest(accountID, rhp.ht.host.BlockHeight()+6, budget, rhp.renter)
+	err = modules.RPCWrite(stream, pbear)
+	if err != nil {
+		return nil, err
+	}
+
+	// Receive payment confirmation.
+	var pc modules.PayByContractResponse
+	err = modules.RPCRead(stream, &pc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the execute program request.
+	err = modules.RPCWrite(stream, epr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send the programData.
+	_, err = stream.Write(programData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Read the responses.
+	var resp modules.RPCExecuteProgramResponse
+	for range epr.Program {
+		// Read the response.
+		err = modules.RPCRead(stream, &resp)
+		if err != nil {
+			return nil, err
+		}
+		// Append response to resps.
+		resps = append(resps, resp)
+		// If the response contains an error we are done.
+		if resp.Error != nil {
+			return
+		}
+	}
+
+	// The next read should return io.EOF since the host closes the connection
+	// after the RPC is done.
+	err = modules.RPCRead(stream, &resp)
+	if !errors.Contains(err, io.EOF) {
+		return nil, fmt.Errorf("expected %v but got %v", io.EOF, err)
+	}
+	return
+}
+
 // TestExecuteProgram tests the managedRPCExecuteProgram with a valid
 // 'HasSector' program.
 func TestExecuteHasSectorProgram(t *testing.T) {
@@ -39,13 +112,15 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	t.Parallel()
 
 	// create a blank host tester
-	ht, err := newHostTester(t.Name())
+	rhp, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer rhp.Close()
+	ht := rhp.ht
 
-	// Add a sector.
+	// Add a sector to the host but not the storage obligation or contract. This
+	// instruction should also work for foreign sectors.
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
 	err = ht.host.AddSector(sectorRoot, sectorData)
@@ -53,21 +128,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add a storage obligation for testing.
-	so, err := ht.newTesterStorageObligation()
-	if err != nil {
-		t.Fatal(err)
-	}
-	soid := so.id()
-	ht.host.managedLockStorageObligation(soid)
-	err = ht.host.managedAddStorageObligation(so, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(so.id())
-
 	// Fetch the price table.
-	pt, err := ht.negotiatePriceTable()
+	pt, err := rhp.negotiatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,43 +139,30 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    soid,
+		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
 		PriceTableID:      pt.UID,
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
 
-	// Get a stream to the host.
-	stream := ht.newStream()
-	defer stream.Close()
-
-	// Write the specifier.
-	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	// Fund an account.
+	fundingAmt := types.SiacoinPrecision.Mul64(100)
+	_, accountID := prepareAccount()
+	_, err = rhp.fundEphemeralAccount(accountID, fundingAmt)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// TODO: send payment
-
-	// Send the request.
-	err = modules.RPCWrite(stream, epr)
+	// Execute program.
+	resps, err := rhp.executeProgram(epr, data, accountID, types.ZeroCurrency)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Send the programData.
-	_, err = stream.Write(data)
-	if err != nil {
-		t.Fatal(err)
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
 	}
-
-	// Read the response. There should only be one since there was only one
-	// instruction.
-	var resp modules.RPCExecuteProgramResponse
-	err = modules.RPCRead(stream, &resp)
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp := resps[0]
 
 	// Check response.
 	if resp.Error != nil {
@@ -136,12 +185,5 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 	if !resp.PotentialRefund.Equals(refund) {
 		t.Fatal("wrong PotentialRefund")
-	}
-
-	// The next read should return io.EOF since the host closes the connection
-	// after the RPC is done.
-	err = modules.RPCRead(stream, &resp)
-	if !errors.Contains(err, io.EOF) {
-		t.Fatal(err)
 	}
 }

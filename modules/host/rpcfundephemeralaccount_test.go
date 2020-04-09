@@ -14,6 +14,53 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
+// fundEphemeralAccount funds an account with a certain amount of money.
+// TODO: change this to create a new stream
+func (rhp *renterHostPair) fundEphemeralAccount(account modules.AccountID, amount types.Currency) (modules.FundAccountResponse, error) {
+	// create stream
+	stream := rhp.newStream()
+	defer stream.Close()
+	// create the revision.
+	revision, sig, err := rhp.paymentRevision(amount)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+	// send fund account request
+	req := modules.FundAccountRequest{Account: account}
+	err = modules.RPCWrite(stream, req)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// send PaymentRequest & PayByContractRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+	pbcRequest := newPayByContractRequest(revision, sig)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// verify the host signature
+	if err := crypto.VerifyHash(crypto.HashAll(revision), rhp.ht.host.secretKey.PublicKey(), payByResponse.Signature); err != nil {
+		return modules.FundAccountResponse{}, errors.New("could not verify host signature")
+	}
+
+	// receive FundAccountResponse
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+	return resp, nil
+}
+
 // TestFundEphemeralAccountRPC tests the FundEphemeralAccountRPC by manually
 // calling the RPC handler.
 func TestFundEphemeralAccountRPC(t *testing.T) {

@@ -240,7 +240,7 @@ func (ht *hostTester) Close() error {
 // renterHostPair is a helper struct that contains a secret key, symbolizing the
 // renter, a host and the id of the file contract they share.
 type renterHostPair struct {
-	host   *Host
+	ht     *hostTester
 	renter crypto.SecretKey
 	fcid   types.FileContractID
 }
@@ -249,11 +249,11 @@ type renterHostPair struct {
 // this pair is a helper struct that contains both the host and renter,
 // represented by its secret key. This helper will create a storage
 // obligation emulating a file contract between them.
-func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
+func newRenterHostPair(name string) (*renterHostPair, error) {
 	// setup host
 	ht, err := newHostTester(name)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// create a renter key pair
@@ -266,32 +266,37 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 	// setup storage obligationn (emulating a renter creating a contract)
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	so, err = ht.addNoOpRevision(so, renterPK)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedAddStorageObligation(so, false)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	pair := &renterHostPair{
-		host:   ht.host,
+		ht:     ht,
 		renter: sk,
 		fcid:   so.id(),
 	}
-	return ht, pair, nil
+	return pair, nil
+}
+
+// Close closes the underlying host tester.
+func (p *renterHostPair) Close() error {
+	return p.ht.Close()
 }
 
 // paymentRevision returns a new revision that transfer the given amount to the
 // host. Returns the payment revision together with a signature signed by the
 // pair's renter.
 func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
-	updated, err := p.host.managedGetStorageObligation(p.fcid)
+	updated, err := p.ht.host.managedGetStorageObligation(p.fcid)
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
@@ -306,7 +311,7 @@ func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContr
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
 
-	sig := revisionSignature(rev, p.host.BlockHeight(), p.renter)
+	sig := revisionSignature(rev, p.ht.host.BlockHeight(), p.renter)
 	return rev, sig, nil
 }
 
