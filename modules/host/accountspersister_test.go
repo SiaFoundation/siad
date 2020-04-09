@@ -389,12 +389,12 @@ func reloadHost(ht *hostTester) error {
 
 // reopenHost will create a new host and set it on the given host tester
 func reopenHost(ht *hostTester) error {
-	return reopenHostCustom(ht, new(modules.ProductionDependencies))
+	return reopenCustomHost(ht, new(modules.ProductionDependencies))
 }
 
-// reopenHostCustom will create a new host and set it on the given host tester,
+// reopenCustomHost will create a new host and set it on the given host tester,
 // this function allows to pass custom dependencies
-func reopenHostCustom(ht *hostTester, deps modules.Dependencies) error {
+func reopenCustomHost(ht *hostTester, deps modules.Dependencies) error {
 	host, err := NewCustomHost(deps, ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		return err
