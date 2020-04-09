@@ -262,7 +262,7 @@ func TestAccountFundingTracking(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// delete the storage obligation (expect PAF to decreate - AF increase)
+	// delete the storage obligation (expect PAF to decrease - AF increase)
 	total := rd1 + rd2
 	if err = expectDelta(-1*total, total, "delete SO", func() error {
 		return ht.host.removeStorageObligation(so, obligationSucceeded)
