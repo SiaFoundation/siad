@@ -9,7 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
@@ -92,19 +91,28 @@ type (
 )
 
 // RPCRead tries to read the given object from the stream.
-func RPCRead(stream siamux.Stream, obj interface{}) error {
-	return encoding.ReadObject(stream, &rpcResponse{nil, obj}, uint64(RPCMinLen))
+func RPCRead(r io.Reader, obj interface{}) error {
+	resp := rpcResponse{nil, obj}
+	err := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
+	if err != nil {
+		return err
+	}
+	if resp.err != nil {
+		// must wrap the error here, for more info see: https://www.pixelstech.net/article/1554553347-Be-careful-about-nil-check-on-interface-in-GoLang
+		return errors.New(resp.err.Error())
+	}
+	return nil
 }
 
 // RPCWrite writes the given object to the stream.
-func RPCWrite(stream siamux.Stream, obj interface{}) error {
-	return encoding.WriteObject(stream, &rpcResponse{nil, obj})
+func RPCWrite(w io.Writer, obj interface{}) error {
+	return encoding.WriteObject(w, &rpcResponse{nil, obj})
 }
 
 // RPCWriteAll writes the given objects to the stream.
-func RPCWriteAll(stream siamux.Stream, objs ...interface{}) error {
+func RPCWriteAll(w io.Writer, objs ...interface{}) error {
 	for _, obj := range objs {
-		err := encoding.WriteObject(stream, &rpcResponse{nil, obj})
+		err := encoding.WriteObject(w, &rpcResponse{nil, obj})
 		if err != nil {
 			return err
 		}
@@ -113,12 +121,12 @@ func RPCWriteAll(stream siamux.Stream, objs ...interface{}) error {
 }
 
 // RPCWriteError writes the given error to the stream.
-func RPCWriteError(stream siamux.Stream, err error) error {
+func RPCWriteError(w io.Writer, err error) error {
 	re, ok := err.(*RPCError)
 	if err != nil && !ok {
 		re = &RPCError{Description: err.Error()}
 	}
-	return encoding.WriteObject(stream, &rpcResponse{re, nil})
+	return encoding.WriteObject(w, &rpcResponse{re, nil})
 }
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
@@ -136,8 +144,12 @@ func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, 0)
 	if err := d.Decode(&resp.err); err != nil {
 		return err
-	} else if resp.err != nil {
-		return resp.err
+	}
+	if resp.err != nil {
+		// rpc response data is not decoded in the event of an error, we return
+		// nil here because unmarshaling was successful and is unrelated from
+		// the error in the rpc response
+		return nil
 	}
 	return d.Decode(resp.data)
 }
