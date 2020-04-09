@@ -2901,9 +2901,8 @@ func newProgressSpinner(pbs *mpb.Progress, afterBar *mpb.Bar, filename string) *
 
 // newProgressSkylink creates a static progress bar that starts after `afterBar`
 // and displays the skylink. The bar is stopped immediately.
-func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink string) {
-	afterBar.Increment()
-	pbs.AddBar(
+func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink string) *mpb.Bar {
+	bar := pbs.AddBar(
 		1, // we'll increment it once to stop it
 		mpb.BarQueueAfter(afterBar),
 		mpb.BarFillerClearOnComplete(),
@@ -2914,7 +2913,10 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 		mpb.AppendDecorators(
 			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
 		),
-	).Increment()
+	)
+	afterBar.Increment()
+	bar.Increment()
+	return bar
 }
 
 // skynetunpincmd will unpin and delete the file from the Renter.
