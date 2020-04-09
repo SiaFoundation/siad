@@ -109,6 +109,11 @@ func dropSectorsVerify(numSectorsDropped, oldNumSectors uint64) error {
 	return nil
 }
 
+// Collateral is zero for the DropSectors instruction.
+func (i *instructionDropSectors) Collateral() types.Currency {
+	return modules.MDMDropSectorsCollateral()
+}
+
 // Cost returns the Cost of the DropSectors instruction.
 func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
@@ -122,7 +127,7 @@ func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) 
 // Memory returns the memory allocated by the 'DropSectors' instruction beyond
 // the lifetime of the instruction.
 func (i *instructionDropSectors) Memory() uint64 {
-	return DropSectorsMemory()
+	return modules.MDMDropSectorsMemory()
 }
 
 // ReadOnly for the 'DropSectors' instruction is 'false'.

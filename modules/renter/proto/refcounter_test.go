@@ -28,9 +28,9 @@ import (
 // typically come from the calling functions.
 var testWAL, _ = newTestWAL()
 
-// TestRefCounter_Count tests that the Count method always returns the correct
+// TestRefCounterCount tests that the Count method always returns the correct
 // counter value, either from disk or from in-mem storage.
-func TestRefCounter_Count(t *testing.T) {
+func TestRefCounterCount(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -38,7 +38,7 @@ func TestRefCounter_Count(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	sec := uint64(2)
+	sec := uint64(1)
 	val := uint16(21)
 
 	// set up the expected value on disk
@@ -76,8 +76,8 @@ func TestRefCounter_Count(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Append tests that the Decrement method behaves correctly
-func TestRefCounter_Append(t *testing.T) {
+// TestRefCounterAppend tests that the Decrement method behaves correctly
+func TestRefCounterAppend(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -138,8 +138,8 @@ func TestRefCounter_Append(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Decrement tests that the Decrement method behaves correctly
-func TestRefCounter_Decrement(t *testing.T) {
+// TestRefCounterDecrement tests that the Decrement method behaves correctly
+func TestRefCounterDecrement(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -193,8 +193,8 @@ func TestRefCounter_Decrement(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Delete tests that the Delete method behaves correctly
-func TestRefCounter_Delete(t *testing.T) {
+// TestRefCounterDelete tests that the Delete method behaves correctly
+func TestRefCounterDelete(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -230,9 +230,9 @@ func TestRefCounter_Delete(t *testing.T) {
 	}
 }
 
-// TestRefCounter_DropSectors tests that the DropSectors method behaves
+// TestRefCounterDropSectors tests that the DropSectors method behaves
 // correctly and the file's size is properly adjusted
-func TestRefCounter_DropSectors(t *testing.T) {
+func TestRefCounterDropSectors(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -313,8 +313,8 @@ func TestRefCounter_DropSectors(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Increment tests that the Increment method behaves correctly
-func TestRefCounter_Increment(t *testing.T) {
+// TestRefCounterIncrement tests that the Increment method behaves correctly
+func TestRefCounterIncrement(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -368,8 +368,8 @@ func TestRefCounter_Increment(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Load specifically tests refcounter's Load method
-func TestRefCounter_Load(t *testing.T) {
+// TestRefCounterLoad specifically tests refcounter's Load method
+func TestRefCounterLoad(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -391,9 +391,9 @@ func TestRefCounter_Load(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Load_InvalidHeader checks that loading a refcounters file with
+// TestRefCounterLoadInvalidHeader checks that loading a refcounters file with
 // invalid header fails.
-func TestRefCounter_Load_InvalidHeader(t *testing.T) {
+func TestRefCounterLoadInvalidHeader(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -430,9 +430,9 @@ func TestRefCounter_Load_InvalidHeader(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Load_InvalidVersion checks that loading a refcounters file
+// TestRefCounterLoadInvalidVersion checks that loading a refcounters file
 // with invalid version fails.
-func TestRefCounter_Load_InvalidVersion(t *testing.T) {
+func TestRefCounterLoadInvalidVersion(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -468,9 +468,9 @@ func TestRefCounter_Load_InvalidVersion(t *testing.T) {
 	}
 }
 
-// TestRefCounter_StartUpdate tests that the StartUpdate method respects the
+// TestRefCounterStartUpdate tests that the StartUpdate method respects the
 // timeout limits set for it.
-func TestRefCounter_StartUpdate(t *testing.T) {
+func TestRefCounterStartUpdate(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -504,8 +504,8 @@ func TestRefCounter_StartUpdate(t *testing.T) {
 	}
 }
 
-// TestRefCounter_Swap tests that the Swap method results in correct values
-func TestRefCounter_Swap(t *testing.T) {
+// TestRefCounterSwap tests that the Swap method results in correct values
+func TestRefCounterSwap(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -574,9 +574,9 @@ func TestRefCounter_Swap(t *testing.T) {
 	}
 }
 
-// TestRefCounter_UpdateApplied tests that the UpdateApplied method cleans up
+// TestRefCounterUpdateApplied tests that the UpdateApplied method cleans up
 // after itself
-func TestRefCounter_UpdateApplied(t *testing.T) {
+func TestRefCounterUpdateApplied(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -617,9 +617,9 @@ func TestRefCounter_UpdateApplied(t *testing.T) {
 	}
 }
 
-// TestRefCounter_UpdateSessionConstraints ensures that StartUpdate() and UpdateApplied()
+// TestRefCounterUpdateSessionConstraints ensures that StartUpdate() and UpdateApplied()
 // enforce all applicable restrictions to update creation and execution
-func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
+func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -682,9 +682,9 @@ func TestRefCounter_UpdateSessionConstraints(t *testing.T) {
 	}
 }
 
-// TestRefCounter_WALFunctions tests RefCounter's functions for creating and
+// TestRefCounterWALFunctions tests RefCounter's functions for creating and
 // reading WAL updates
-func TestRefCounter_WALFunctions(t *testing.T) {
+func TestRefCounterWALFunctions(t *testing.T) {
 	t.Parallel()
 
 	// test creating and reading updates
@@ -707,6 +707,73 @@ func TestRefCounter_WALFunctions(t *testing.T) {
 	}
 	if wpath != rpath || wsec != rsec {
 		t.Fatalf("wrong values read from Truncate update. Expected %s, %d found %s, %d", wpath, wsec, rpath, rsec)
+	}
+}
+
+// TestRefCounterNumSectorsUnderflow tests for and guards against an NDF that
+// can happen in various methods when numSectors is zero and we check the sector
+// index to be read against numSectors-1.
+func TestRefCounterNumSectorsUnderflow(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare a refcounter with zero sectors for the tests
+	rc := testPrepareRefCounter(0, t)
+
+	// try to read the nonexistent sector with index 0
+	_, err := rc.readCount(0)
+	// when checking if the sector we want to read is valid we compare it to
+	// numSectors. If we do it by comparing `secNum > numSectors - 1` we will
+	// hit an underflow which will result in the check passing and us getting
+	// an EOF error instead of the correct ErrInvalidSectorNumber
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	// we should get an ErrInvalidSectorNumber
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	err = rc.StartUpdate(-1)
+	if err != nil {
+		t.Fatal("Failed to initiate an update session:", err)
+	}
+
+	// check for the same underflow during Decrement
+	_, err = rc.Decrement(0)
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	// check for the same underflow during Increment
+	_, err = rc.Increment(0)
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	// check for the same underflow during Swap
+	_, err1 := rc.Swap(0, 1)
+	_, err2 := rc.Swap(1, 0)
+	err = errors.Compose(err1, err2)
+	if errors.Contains(err, io.EOF) {
+		t.Fatal("Unexpected EOF error instead of ErrInvalidSectorNumber. Underflow!")
+	}
+	if !errors.Contains(err, ErrInvalidSectorNumber) {
+		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
+	}
+
+	// cleanup the update session
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to wrap up an empty update session:", err)
 	}
 }
 

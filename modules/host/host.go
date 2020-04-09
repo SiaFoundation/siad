@@ -371,6 +371,7 @@ func (h *Host) managedUpdatePriceTable() {
 		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 
 		// TODO: hardcoded cost should be updated to use a better value.
+		FundAccountCost:      his.MinBaseRPCPrice,
 		UpdatePriceTableCost: his.MinBaseRPCPrice,
 
 		// TODO: hardcoded MDM costs should be updated to use better values.

@@ -102,6 +102,13 @@ type (
 	// Potential revenue refers to revenue that is available in a file
 	// contract for which the file contract window has not yet closed.
 	HostFinancialMetrics struct {
+		// Metrics related to ephemeral accounts. Account funding represents all
+		// funds used to fund ephemeral acccounts with for storage obligations
+		// that were successful. Potential account funding represents the same
+		// but for storage obligations that have not been confirmed yet.
+		AccountFunding          types.Currency `json:"accountfunding"`
+		PotentialAccountFunding types.Currency `json:"potentialaccountfunding"`
+
 		// Every time a renter forms a contract with a host, a contract fee is
 		// paid by the renter. These stats track the total contract fees.
 		ContractCount                 uint64         `json:"contractcount"`
@@ -169,6 +176,7 @@ type (
 		DataSize                 uint64               `json:"datasize"`
 		LockedCollateral         types.Currency       `json:"lockedcollateral"`
 		ObligationId             types.FileContractID `json:"obligationid"`
+		PotentialAccountFunding  types.Currency       `json:"potentialaccountfunding"`
 		PotentialDownloadRevenue types.Currency       `json:"potentialdownloadrevenue"`
 		PotentialStorageRevenue  types.Currency       `json:"potentialstoragerevenue"`
 		PotentialUploadRevenue   types.Currency       `json:"potentialuploadrevenue"`

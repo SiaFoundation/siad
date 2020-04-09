@@ -36,6 +36,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -798,6 +799,55 @@ func (r *Renter) Mount(mountPoint string, sp modules.SiaPath, opts modules.Mount
 // Unmount unmounts the fuse filesystem currently mounted at mountPoint.
 func (r *Renter) Unmount(mountPoint string) error {
 	return r.staticFuseManager.Unmount(mountPoint)
+}
+
+// AddSkykey adds the skykey with the given name, cipher type, and entropy to
+// the renter's skykey manager.
+func (r *Renter) AddSkykey(sk skykey.Skykey) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.AddKey(sk)
+}
+
+// SkykeyByName gets the Skykey with the given name from the renter's skykey
+// manager if it exists.
+func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.KeyByName(name)
+}
+
+// CreateSkykey creates a new Skykey with the given name and ciphertype.
+func (r *Renter) CreateSkykey(name string, ct crypto.CipherType) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.CreateKey(name, ct)
+}
+
+// SkykeyByID gets the Skykey with the given ID from the renter's skykey
+// manager if it exists.
+func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.KeyByID(id)
+}
+
+// SkykeyIDByName gets the SkykeyID of the key with the given name if it
+// exists.
+func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.SkykeyID{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.IDByName(name)
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.
