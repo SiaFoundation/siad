@@ -258,7 +258,8 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	}
 	t.Parallel()
 
-	// verifyFPBuckets is a function that if the fingerprint buckets are on disk
+	// verifyFPBuckets is a function that verifies if the (correct) fingerprint
+	// buckets are on disk
 	verifyFPBuckets := func(h *Host) error {
 		var err1, err2 error
 		curr, nxt := fingerprintsFilenames(h.blockHeight)
@@ -335,7 +336,7 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	// reopen the host but do it with a dependency that disables rotation of the
 	// fingerprint buckets on disk. This should have as effect that the
 	// withdrawals never become active.
-	err = reopenHostCustom(ht, new(dependencies.DependencyDisableRotateFingerprintBuckets))
+	err = reopenCustomHost(ht, new(dependencies.DependencyDisableRotateFingerprintBuckets))
 	if err != nil {
 		t.Fatal(err)
 	}
