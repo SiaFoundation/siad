@@ -23,7 +23,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// testWAL is the WAL instance we're going to across this test. This would
+// testWAL is the WAL instance we're going to use across this test. This would
 // typically come from the calling functions.
 var testWAL, _ = newTestWAL()
 
