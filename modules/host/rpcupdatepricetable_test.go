@@ -172,7 +172,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(rev, sig)
+		pbcRequest := newPayByContractRequest(rev, sig, "someaccount")
 		err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 		if err != nil {
 			return

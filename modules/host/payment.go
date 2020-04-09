@@ -71,6 +71,11 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	fcid := pbcr.ContractID
 	accountID := pbcr.RefundAccount
 
+	// sanity check accountID. Should always be provded.
+	if accountID == "" {
+		return nil, errors.New("no account id provided for refunds")
+	}
+
 	// lock the storage obligation
 	h.managedLockStorageObligation(fcid)
 	defer h.managedUnlockStorageObligation(fcid)
@@ -106,9 +111,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 
 	// get account balance before adding funds.
 	// TODO: add managedOpenAccount
-	h.staticAccountManager.mu.Lock()
 	accBalance := h.staticAccountManager.callAccountBalance(accountID)
-	h.staticAccountManager.mu.Unlock()
 
 	// prepare funding the EA.
 	syncChan := make(chan struct{})
@@ -159,6 +162,11 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 		return types.ZeroCurrency, errors.AddContext(err, "Could not read PayByContractRequest")
 	}
 	fcid := pbcr.ContractID
+
+	// can't provide a refund address when funding an account.
+	if pbcr.RefundAccount != "" {
+		return types.ZeroCurrency, errors.New("can't provide a refund account on a fund account rpc")
+	}
 
 	// lock the storage obligation
 	h.managedLockStorageObligation(fcid)

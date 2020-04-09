@@ -256,6 +256,7 @@ func TestProcessPayment(t *testing.T) {
 // PayByContract payment method.
 func testPayByContract(t *testing.T, pair *renterHostPair) {
 	host, renterSK := pair.host, pair.renter
+	_, refundAccount := prepareAccount()
 	amount := types.SiacoinPrecision
 	amountStr := amount.HumanString()
 
@@ -276,7 +277,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	renterFunc := func() error {
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(rev, sig)
+		pbcRequest := newPayByContractRequest(rev, sig, refundAccount)
 		err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 		if err != nil {
 			return err
@@ -336,6 +337,13 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatalf("Unexpected collateral added, expected 0H actual %v", payment.AddedCollateral())
 	}
 
+	// verify that the refund account exists and contains the right amound of
+	// money.
+	balance := host.staticAccountManager.callAccountBalance(refundAccount)
+	if !balance.Equals(amount) {
+		t.Fatalf("expected refund account balance %v but got %v", amount.HumanString(), balance.HumanString())
+	}
+
 	// prepare a set of payouts that do not deduct payment from the renter
 	validPayouts, missedPayouts := updated.payouts()
 	validPayouts[1].Value = validPayouts[1].Value.Add(amount)
@@ -355,6 +363,14 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	err = run(renterFunc, hostFunc)
 	if err == nil || !strings.Contains(err.Error(), "Invalid payment revision") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
+	}
+
+	//  Run the code again. This time it should fail due to no refund account
+	//  being provided.
+	refundAccount = ""
+	err = run(renterFunc, hostFunc)
+	if err == nil || !strings.Contains(err.Error(), "no account id provided for refunds") {
+		t.Fatal("Unexpected error occurred", err.Error())
 	}
 }
 
@@ -416,8 +432,8 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	}
 
 	// verify the response contains the amount that got withdrawn
-	if !payByResponse.Amount.Equals(amount) {
-		t.Fatalf("Unexpected payment amount, expected %s, but received %s", amount.HumanString(), payByResponse.Amount.HumanString())
+	if !payByResponse.Amount.Equals(deposit) {
+		t.Fatalf("Unexpected payment amount, expected %s, but received %s", deposit.HumanString(), payByResponse.Amount.HumanString())
 	}
 
 	// verify the payment got withdrawn from the ephemeral account
@@ -437,12 +453,13 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 
 // newPayByContractRequest uses a revision and signature to build the
 // PayBycontractRequest
-func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature) modules.PayByContractRequest {
+func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
 	var req modules.PayByContractRequest
 
 	req.ContractID = rev.ID()
 	req.NewRevisionNumber = rev.NewRevisionNumber
 	req.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
+	req.RefundAccount = refundAccount
 	for i, o := range rev.NewValidProofOutputs {
 		req.NewValidProofValues[i] = o.Value
 	}

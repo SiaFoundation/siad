@@ -66,6 +66,9 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// prepare an ephemeral account
 	_, accountID := prepareAccount()
 
+	// specify a refund account. Needs to be empty string for funding.
+	refundAccount := modules.AccountID("")
+
 	renterFunc := func(stream siamux.Stream, revision types.FileContractRevision, signature crypto.Signature) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
 		// send fund account request
 		req := modules.FundAccountRequest{Account: accountID}
@@ -76,7 +79,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(revision, signature)
+		pbcRequest := newPayByContractRequest(revision, signature, refundAccount)
 		err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 		if err != nil {
 			return nil, nil, err
@@ -110,7 +113,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	addBlock := func() {
 		mu.Lock()
 		defer mu.Unlock()
-		bh += 1
+		bh++
 	}
 
 	runWithRevision := func(rev types.FileContractRevision) (payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, err error) {
@@ -196,6 +199,14 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// expect error when refund account id is provided for funding account.
+	refundAccount = "non-empty-account"
+	_, _, err = runWithRevision(rev)
+	if err == nil || !strings.Contains(err.Error(), "can't provide a refund account on a fund account rpc") {
+		t.Fatal("Expected error indicating that no refund account can be provided")
+	}
+	refundAccount = "" // reset account to be valid
 
 	// expect error when we move funds back to the renter
 	recent = recentSO()
