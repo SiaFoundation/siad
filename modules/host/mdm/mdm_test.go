@@ -112,6 +112,7 @@ func newTestPriceTable() modules.RPCPriceTable {
 		MemoryTimeCost:       types.NewCurrency64(1),
 		CollateralCost:       types.NewCurrency64(1),
 
+		// Instruction costs
 		DropSectorsBaseCost: types.NewCurrency64(1),
 		DropSectorsUnitCost: types.NewCurrency64(1),
 		ReadBaseCost:        types.NewCurrency64(1),

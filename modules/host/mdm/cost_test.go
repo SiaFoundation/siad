@@ -10,7 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// newCustomPriceTable returns a custom price table for the cost tests.
+// newTestWriteStorePriceTable returns a custom price table for the cost tests.
 func newTestWriteStorePriceTable() modules.RPCPriceTable {
 	pt := modules.RPCPriceTable{}
 	pt.Expiry = time.Now().Add(time.Minute).Unix()
@@ -53,8 +53,9 @@ func TestCostForAppendProgram(t *testing.T) {
 		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
 	}
 
-	// cost == refund because we are testing the storage costs, and the refund
-	// comprises only the storage cost.
+	// The expected refund is equal to the expected cost because we are testing
+	// the cost of storage. When we refund an append, we give back only the full
+	// cost of storage.
 	expectedRefund := expectedCost
 	if !aboutEquals(expectedRefund, runningRefund) {
 		t.Errorf("expected refund for appending 1 TiB to be %v, got refund %v", expectedRefund.HumanString(), runningRefund.HumanString())

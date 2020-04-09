@@ -109,9 +109,7 @@ func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Curre
 	return cost, refund
 }
 
-// MDMInitCost is the cost of instantiatine the MDM. It is defined as:
-// 'InitBaseCost' + 'MemoryTimeCost' * 'programLen' * Time, where Time is
-// `TimeInitProgramBase` + `TimeInitSingleInstruction` * `numInstructions`
+// MDMInitCost is the cost of instantiating the MDM.
 func MDMInitCost(pt RPCPriceTable, programLen, numInstructions uint64) types.Currency {
 	time := MDMTimeInitProgram + MDMTimeInitSingleInstruction*numInstructions
 	return pt.MemoryTimeCost.Mul64(programLen).Mul64(time).Add(pt.InitBaseCost)
