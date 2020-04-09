@@ -93,11 +93,11 @@ func TestSkykeyCommands(t *testing.T) {
 	// Using both name and id params should return an error
 	_, err = skykeyGet("name", "id")
 	if err == nil {
-		t.Fatal(err)
+		t.Fatal("Expected error when using both name and id")
 	}
 	// Using neither name or id param should return an error
 	_, err = skykeyGet("", "")
 	if err == nil {
-		t.Fatal(err)
+		t.Fatal("Expected error when using neither name or id params")
 	}
 }
