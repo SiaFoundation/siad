@@ -455,7 +455,7 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if !settings.MinDownloadBandwidthPrice.Equals(defaultDownloadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinStoragePrice.Equals(defaultStoragePrice) {
+	if !settings.MinStoragePrice.Equals(DefaultStoragePrice) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {
