@@ -43,13 +43,16 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 		return nil, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
 	}
 
+	// get the current account balance.
+	accountBalance := h.staticAccountManager.callAccountBalance(req.Message.Account)
+
 	// process the request
 	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority); err != nil {
 		return nil, errors.AddContext(err, "Withdraw failed")
 	}
 
 	// send the response
-	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: req.Message.Amount}); err != nil {
+	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: accountBalance}); err != nil {
 		return nil, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
@@ -66,6 +69,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not read PayByContractRequest")
 	}
 	fcid := pbcr.ContractID
+	accountID := pbcr.RefundAccount
 
 	// lock the storage obligation
 	h.managedLockStorageObligation(fcid)
@@ -100,6 +104,19 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not create revision signature")
 	}
 
+	// get account balance before adding funds.
+	// TODO: add managedOpenAccount
+	h.staticAccountManager.mu.Lock()
+	accBalance := h.staticAccountManager.callAccountBalance(accountID)
+	h.staticAccountManager.mu.Unlock()
+
+	// prepare funding the EA.
+	syncChan := make(chan struct{})
+	err = h.staticAccountManager.callDeposit(accountID, amount, syncChan)
+	if err != nil {
+		return nil, errors.AddContext(err, "Could not deposit funds in refund account")
+	}
+
 	// extract the payment output & update the storage obligation with the
 	// host's signature
 	so.RevisionTransactionSet = []types.Transaction{{
@@ -113,17 +130,21 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not modify storage obligation")
 	}
 
+	// signal that the contract was updated.
+	close(syncChan)
+
 	// send the response
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
 	err = modules.RPCWrite(stream, modules.PayByContractResponse{
+		Amount:    accBalance,
 		Signature: sig,
 	})
 	if err != nil {
 		return nil, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return newPaymentDetails("", amount, collateral), nil
+	return newPaymentDetails(accountID, amount, collateral), nil
 }
 
 // managedFundAccount processes a PayByContractRequest coming in over the given

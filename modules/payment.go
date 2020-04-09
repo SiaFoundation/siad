@@ -94,7 +94,7 @@ type (
 	// PayByEphemeralAccountResponse is the object sent in response to the
 	// PayByEphemeralAccountRequest
 	PayByEphemeralAccountResponse struct {
-		Amount types.Currency
+		Amount types.Currency // balance of the account before withdrawal
 	}
 
 	// PayByContractRequest holds all payment details to pay from a file
@@ -104,12 +104,14 @@ type (
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
 		NewMissedProofValues []types.Currency
+		RefundAccount        AccountID
 		Signature            []byte
 	}
 
 	// PayByContractResponse is the object sent in response to the
 	// PayByContractRequest
 	PayByContractResponse struct {
+		Amount    types.Currency // balance of the account before withdrawal
 		Signature crypto.Signature
 	}
 

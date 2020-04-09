@@ -879,6 +879,15 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 	return deleted
 }
 
+// callAccountBalance will return the balance of an account. If the account
+// doesn't exist it will be created an return a balance of 0.
+func (am *accountManager) callAccountBalance(id modules.AccountID) types.Currency {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	account := am.openAccount(id)
+	return account.balance
+}
+
 // openAccount will return an account object. If the account does not exist it
 // will be created.
 func (am *accountManager) openAccount(id modules.AccountID) *account {
