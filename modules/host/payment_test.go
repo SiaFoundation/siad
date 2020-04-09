@@ -257,7 +257,7 @@ func TestProcessPayment(t *testing.T) {
 func testPayByContract(t *testing.T, pair *renterHostPair) {
 	host, renterSK := pair.host, pair.renter
 	_, refundAccount := prepareAccount()
-	amount := types.SiacoinPrecision
+	amount := types.SiacoinPrecision.Div64(2)
 	amountStr := amount.HumanString()
 
 	// prepare an updated revision that pays the host
@@ -314,6 +314,11 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatal("could not verify host's signature")
 	}
 
+	// Verify the amount in the response.
+	if !payByResponse.Amount.Equals(types.ZeroCurrency) {
+		t.Fatal("account should have been empty before")
+	}
+
 	// verify the host updated the storage obligation
 	updated, err := host.managedGetStorageObligation(pair.fcid)
 	if err != nil {
@@ -363,6 +368,20 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	err = run(renterFunc, hostFunc)
 	if err == nil || !strings.Contains(err.Error(), "Invalid payment revision") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
+	}
+
+	// Run the code again.
+	rev, sig, err = pair.paymentRevision(amount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = run(renterFunc, hostFunc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify the amount in the response.
+	if !payByResponse.Amount.Equals(amount) {
+		t.Fatalf("amount should have been %v but was %v", amount.HumanString(), payByResponse.Amount.HumanString())
 	}
 
 	//  Run the code again. This time it should fail due to no refund account
