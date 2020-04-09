@@ -301,7 +301,7 @@ maintaining the file in your renter.`,
 		Short: "Unpin a pinned skyfile.",
 		Long: `Unpin the pinned skyfile at the given siapath. The file will continue to be
 available on Skynet if other nodes have pinned the file.`,
-		Run: wrap(skynetunpincmd),
+		Run: skynetunpincmd,
 	}
 
 	skynetLsCmd = &cobra.Command{
@@ -2722,7 +2722,7 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
 }
 
-// skynetuploadcmd will upload a file to Skynet.
+// skynetuploadcmd will upload a file or directory to Skynet.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
@@ -2823,33 +2823,45 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 	fmt.Printf("%v\n -> Skylink: sia://%v\n", skypath, skylink)
 }
 
-// skynetunpincmd will unpin and delete the file from the Renter.
-func skynetunpincmd(siaPathStr string) {
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(siaPathStr)
-	if err != nil {
-		die("Could not parse siapath:", err)
-	}
-
-	// Parse out the intended siapath.
-	if !skynetUnpinRoot {
-		siaPath, err = modules.SkynetFolder.Join(siaPath.String())
+// skynetunpincmd will unpin and delete either a single or multiple files or
+// directories from the Renter.
+func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
+	for _, skyPathStr := range skyPathStrs {
+		// Create the skypath.
+		skyPath, err := modules.NewSiaPath(skyPathStr)
 		if err != nil {
-			die("could not build siapath:", err)
+			die("Could not parse skypath:", err)
 		}
-	}
 
-	// Try to delete file.
-	errFile := httpClient.RenterFileDeleteRootPost(siaPath)
-	if errFile == nil {
-		fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
-		return
-	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
-		die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
-	}
+		// Parse out the intended siapath.
+		var siaPath modules.SiaPath
+		if !skynetUnpinRoot {
+			siaPath, err = modules.SkynetFolder.Join(skyPath.String())
+			if err != nil {
+				die("could not build siapath:", err)
+			}
+		}
 
-	// Unknown file/folder.
-	die(fmt.Sprintf("Unknown path '%v'", siaPath))
+		// Try to delete file.
+		errFile := httpClient.RenterFileDeleteRootPost(siaPath)
+		if errFile == nil {
+			fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
+			continue
+		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
+			die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
+		}
+		// Try to delete folder.
+		errDir := httpClient.RenterDirDeleteRootPost(siaPath)
+		if errDir == nil {
+			fmt.Printf("Unpinned Skynet directory '%v'\n", siaPath)
+			continue
+		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
+			die(fmt.Sprintf("Failed to unpin Skynet directory %v: %v", siaPath, errDir))
+		}
+
+		// Unknown file/folder.
+		die(fmt.Sprintf("Unknown path '%v'", siaPath))
+	}
 }
 
 // skynetconvertcmd will convert an existing siafile to a skyfile and skylink on
