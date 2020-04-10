@@ -68,7 +68,7 @@ func (h *Host) establishDefaults() error {
 		MinContractPrice:          defaultContractPrice,
 		MinDownloadBandwidthPrice: defaultDownloadBandwidthPrice,
 		MinSectorAccessPrice:      defaultSectorAccessPrice,
-		MinStoragePrice:           defaultStoragePrice,
+		MinStoragePrice:           DefaultStoragePrice,
 		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
 
 		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,

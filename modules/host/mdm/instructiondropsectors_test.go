@@ -34,17 +34,18 @@ func TestDropSectorsVerify(t *testing.T) {
 
 // newDropSectorsInstruction is a convenience method for creating a single
 // DropSectors instruction.
-func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, uint64, uint64) {
+func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	i := NewDropSectorsInstruction(dataOffset, true)
 	binary.LittleEndian.PutUint64(programData[dataOffset:dataOffset+8], numSectorsDropped)
 
-	time := TimeDropSingleSector * numSectorsDropped
+	time := modules.MDMDropSectorsTime(numSectorsDropped)
 	cost, refund := modules.MDMDropSectorsCost(pt, numSectorsDropped)
-	return i, cost, refund, modules.MDMDropSectorsMemory(), time
+	collateral := modules.MDMDropSectorsCollateral()
+	return i, cost, refund, collateral, modules.MDMDropSectorsMemory(), time
 }
 
-// TestProgramWithDropSectors tests executing a program with multiple append and swap
-// instructions.
+// TestProgramWithDropSectors tests executing a program with multiple Append and
+// DropSectors instructions.
 func TestInstructionAppendAndDropSectors(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
@@ -52,13 +53,16 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Construct the program.
 
-	dataLen := 3*modules.SectorSize + 8*3
+	numAppend, instrLenAppend := uint64(3), modules.SectorSize
+	numDropSectors, instrLenDropSectors := uint64(3), uint64(8)
+	numInstructions := numAppend + numDropSectors
+	dataLen := numAppend*instrLenAppend + numDropSectors*instrLenDropSectors
 	programData := make([]byte, dataLen)
 	pt := newTestPriceTable()
-	initCost := modules.MDMInitCost(pt, dataLen)
+	initCost := modules.MDMInitCost(pt, dataLen, numInstructions)
 
 	instruction1, cost, refund, collateral, memory, time := newAppendInstruction(false, 0, pt)
-	cost1, refund1, collateral1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, 0, cost, refund, collateral, memory, time)
+	cost1, refund1, collateral1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[:modules.SectorSize], sectorData1)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
@@ -76,18 +80,18 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
-	instruction4, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize, 0, pt)
+	instruction4, cost, refund, collateral, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize, 0, pt)
 	cost4, refund4, collateral4, memory4 := updateRunningCosts(pt, cost3, refund3, collateral3, memory3, cost, refund, collateral, memory, time)
 
 	// Drop one sector.
-	instruction5, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, pt)
+	instruction5, cost, refund, collateral, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, pt)
 	cost5, refund5, collateral5, memory5 := updateRunningCosts(pt, cost4, refund4, collateral4, memory4, cost, refund, collateral, memory, time)
 
 	// Drop two remaining sectors.
-	instruction6, cost, refund, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
+	instruction6, cost, refund, collateral, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
 	cost6, refund6, collateral6, memory6 := updateRunningCosts(pt, cost5, refund5, collateral5, memory5, cost, refund, collateral, memory, time)
 
-	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, TimeCommit))
+	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, modules.MDMTimeCommit))
 	collateral = collateral6
 
 	// Construct the inputs and expected outputs.
