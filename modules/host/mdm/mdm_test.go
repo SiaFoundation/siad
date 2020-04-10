@@ -22,8 +22,9 @@ type (
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
 	TestStorageObligation struct {
-		sectorMap   map[crypto.Hash][]byte
-		sectorRoots []crypto.Hash
+		expirationHeight types.BlockHeight
+		sectorMap        map[crypto.Hash][]byte
+		sectorRoots      []crypto.Hash
 	}
 )
 
@@ -33,15 +34,15 @@ func newTestHost() *TestHost {
 	}
 }
 
-func newTestStorageObligation(locked bool) *TestStorageObligation {
+func newTestStorageObligation(expirationHeight types.BlockHeight, locked bool) *TestStorageObligation {
 	return &TestStorageObligation{
-		sectorMap: make(map[crypto.Hash][]byte),
+		expirationHeight: expirationHeight,
+		sectorMap:        make(map[crypto.Hash][]byte),
 	}
 }
 
-// BlockHeight returns an incremented blockheight every time it's called.
+// BlockHeight returns the current blockheight.
 func (h *TestHost) BlockHeight() types.BlockHeight {
-	h.blockHeight++
 	return h.blockHeight
 }
 
@@ -50,6 +51,11 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 	_, exists := h.sectors[sectorRoot]
 	return exists
+}
+
+// IncrementHeight increments the blockheight.
+func (h *TestHost) IncrementHeight() {
+	h.blockHeight++
 }
 
 // ReadSector implements the Host interface by returning a random sector for
@@ -69,6 +75,11 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 // ContractSize implements the StorageObligation interface.
 func (so *TestStorageObligation) ContractSize() uint64 {
 	return uint64(len(so.sectorRoots)) * modules.SectorSize
+}
+
+// ExpirationHeight implements the StorageObligation interface.
+func (so *TestStorageObligation) ExpirationHeight() types.BlockHeight {
+	return so.expirationHeight
 }
 
 // MerkleRoot implements the StorageObligation interface.
@@ -110,6 +121,7 @@ func newTestPriceTable() modules.RPCPriceTable {
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
+		StoreLengthCost:      types.NewCurrency64(1),
 		CollateralCost:       types.NewCurrency64(1),
 
 		// Instruction costs

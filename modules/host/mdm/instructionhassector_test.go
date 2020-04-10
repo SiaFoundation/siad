@@ -47,7 +47,7 @@ func TestInstructionHasSector(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create a program to check for a sector on the host.
-	so := newTestStorageObligation(true)
+	so := newTestStorageObligation(types.BlockHeight(1), true)
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()

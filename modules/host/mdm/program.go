@@ -18,6 +18,10 @@ var (
 	// ErrInterrupted indicates that the program was interrupted during
 	// execution and couldn't finish.
 	ErrInterrupted = errors.New("execution of program was interrupted")
+
+	// ErrExpiredContract indicates that the contract expired before the program
+	// could finish.
+	ErrExpiredContract = errors.New("current block height exceeds expiration height")
 )
 
 // programState contains some fields needed for the execution of instructions.
@@ -25,8 +29,9 @@ var (
 // same during the execution of the program.
 type programState struct {
 	// host related fields
-	blockHeight types.BlockHeight
-	host        Host
+	blockHeight      types.BlockHeight
+	expirationHeight types.BlockHeight
+	host             Host
 
 	// program cache
 	sectors sectors
@@ -95,13 +100,22 @@ func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+	// TODO: Put this check elsewhere, preferably with concurrency controls,
+	// currently can finalize multiple expired programs.
+	blockHeight := mdm.host.BlockHeight()
+	expirationHeight := sos.ExpirationHeight()
+	if expirationHeight <= blockHeight {
+		return nil, nil, ErrExpiredContract
+	}
+
 	p := &Program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
-			blockHeight: mdm.host.BlockHeight(),
-			host:        mdm.host,
-			priceTable:  pt,
-			sectors:     newSectors(sos.SectorRoots()),
+			blockHeight:      blockHeight,
+			expirationHeight: expirationHeight,
+			host:             mdm.host,
+			priceTable:       pt,
+			sectors:          newSectors(sos.SectorRoots()),
 		},
 		staticBudget:           budget,
 		usedMemory:             modules.MDMInitMemory(),
@@ -241,6 +255,7 @@ func (p *Program) managedFinalize(so StorageObligation) error {
 	// Commit the changes to the storage obligation.
 	s := p.staticProgramState.sectors
 	err = so.Update(s.merkleRoots, s.sectorsRemoved, s.sectorsGained)
+	p.staticProgramState.host.IncrementHeight()
 	if err != nil {
 		return err
 	}

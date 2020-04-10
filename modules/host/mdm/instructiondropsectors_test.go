@@ -48,6 +48,7 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 // DropSectors instructions.
 func TestInstructionAppendAndDropSectors(t *testing.T) {
 	host := newTestHost()
+	so := newTestStorageObligation(types.BlockHeight(2), true)
 	mdm := New(host)
 	defer mdm.Stop()
 
@@ -59,21 +60,22 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	dataLen := numAppend*instrLenAppend + numDropSectors*instrLenDropSectors
 	programData := make([]byte, dataLen)
 	pt := newTestPriceTable()
+	duration := so.expirationHeight - host.BlockHeight()
 	initCost := modules.MDMInitCost(pt, dataLen, numInstructions)
 
-	instruction1, cost, refund, collateral, memory, time := newAppendInstruction(false, 0, pt)
+	instruction1, cost, refund, collateral, memory, time := newAppendInstruction(false, 0, pt, duration)
 	cost1, refund1, collateral1, memory1 := updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[:modules.SectorSize], sectorData1)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
-	instruction2, cost, refund, collateral, memory, time := newAppendInstruction(false, modules.SectorSize, pt)
+	instruction2, cost, refund, collateral, memory, time := newAppendInstruction(false, modules.SectorSize, pt, duration)
 	cost2, refund2, collateral2, memory2 := updateRunningCosts(pt, cost1, refund1, collateral1, memory1, cost, refund, collateral, memory, time)
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[modules.SectorSize:2*modules.SectorSize], sectorData2)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
-	instruction3, cost, refund, collateral, memory, time := newAppendInstruction(false, 2*modules.SectorSize, pt)
+	instruction3, cost, refund, collateral, memory, time := newAppendInstruction(false, 2*modules.SectorSize, pt, duration)
 	cost3, refund3, collateral3, memory3 := updateRunningCosts(pt, cost2, refund2, collateral2, memory2, cost, refund, collateral, memory, time)
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[2*modules.SectorSize:3*modules.SectorSize], sectorData3)
@@ -168,7 +170,6 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Execute the program.
-	so := newTestStorageObligation(true)
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)

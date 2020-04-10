@@ -89,11 +89,15 @@ var (
 	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
 )
 
-// MDMAppendCost is the cost of executing an 'Append' instruction.
-func MDMAppendCost(pt RPCPriceTable) (types.Currency, types.Currency) {
+// MDMAppendCost is the cost of executing an 'Append' instruction for the given
+// `duration`.
+func MDMAppendCost(pt RPCPriceTable, duration types.BlockHeight) (types.Currency, types.Currency) {
 	writeCost := pt.WriteLengthCost.Mul64(SectorSize).Add(pt.WriteBaseCost)
 	storeCost := pt.WriteStoreCost.Mul64(SectorSize) // potential refund
-	return writeCost.Add(storeCost), storeCost
+	// Cost of storing for the duration. Not factored into refunds since we
+	// don't have partial refunds.
+	storeLengthCost := pt.StoreLengthCost.Mul64(uint64(duration))
+	return writeCost.Add(storeCost).Add(storeLengthCost), storeCost
 }
 
 // MDMCopyCost is the cost of executing a 'Copy' instruction.

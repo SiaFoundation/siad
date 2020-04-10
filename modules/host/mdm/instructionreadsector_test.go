@@ -48,7 +48,7 @@ func TestInstructionReadSector(t *testing.T) {
 	pt := newTestPriceTable()
 	readLen := modules.SectorSize
 	// Execute it.
-	so := newTestStorageObligation(true)
+	so := newTestStorageObligation(types.BlockHeight(1), true)
 	so.sectorRoots = randomSectorRoots(10)
 	instructions, programData, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
 	r := bytes.NewReader(programData)
