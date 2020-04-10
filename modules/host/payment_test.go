@@ -255,7 +255,6 @@ func TestProcessPayment(t *testing.T) {
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, pair *renterHostPair) {
-	host, renterSK := pair.host, pair.renter
 	amount := types.SiacoinPrecision
 	amountStr := amount.HumanString()
 
@@ -291,7 +290,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	hostFunc := func() error {
 		// process payment request
-		payment, err = host.ProcessPayment(hStream)
+		payment, err = pair.host.ProcessPayment(hStream)
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 		}
@@ -307,14 +306,14 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	// verify the host's signature
 	hash := crypto.HashAll(rev)
 	var hpk crypto.PublicKey
-	copy(hpk[:], host.PublicKey().Key)
+	copy(hpk[:], pair.host.PublicKey().Key)
 	err = crypto.VerifyHash(hash, hpk, payByResponse.Signature)
 	if err != nil {
 		t.Fatal("could not verify host's signature")
 	}
 
 	// verify the host updated the storage obligation
-	updated, err := host.managedGetStorageObligation(pair.fcid)
+	updated, err := pair.host.managedGetStorageObligation(pair.fcid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +348,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	rev.NewValidProofOutputs = validPayouts
 	rev.NewMissedProofOutputs = missedPayouts
-	sig = revisionSignature(rev, host.blockHeight, renterSK)
+	sig = pair.sign(rev)
 
 	// verify err is not nil
 	err = run(renterFunc, hostFunc)
@@ -517,21 +516,6 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	}
 	so.RevisionTransactionSet = tSet
 	return so, nil
-}
-
-// revisionSignature is a helper function that signs the given revision with the
-// given key
-func revisionSignature(rev types.FileContractRevision, blockHeight types.BlockHeight, secretKey crypto.SecretKey) crypto.Signature {
-	signedTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{rev},
-		TransactionSignatures: []types.TransactionSignature{{
-			ParentID:       crypto.Hash(rev.ParentID),
-			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
-			PublicKeyIndex: 0,
-		}},
-	}
-	hash := signedTxn.SigHash(0, blockHeight)
-	return crypto.SignHash(hash, secretKey)
 }
 
 // run is a helper function that runs the given functions in separate goroutines

@@ -2,6 +2,8 @@ package host
 
 import (
 	// "errors"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -243,7 +245,8 @@ type renterHostPair struct {
 	host   *Host
 	renter crypto.SecretKey
 	fcid   types.FileContractID
-	eaid   modules.AccountID
+	eaid   modules.AccountID // id of the ephemeral account on the host
+	pt     modules.RPCPriceTable
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -286,7 +289,28 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 		fcid:   so.id(),
 		eaid:   modules.AccountID(renterPK.String()),
 	}
+
+	// fetch a price table
+	err = pair.updatePriceTable()
+	if err != nil {
+		return nil, nil, err
+	}
 	return ht, pair, nil
+}
+
+// newHostStream opens a stream to the pair's host and returns it
+func (p *renterHostPair) newStream() siamux.Stream {
+	hes := p.host.ExternalSettings()
+
+	pk := modules.SiaPKToMuxPK(p.host.publicKey)
+	address := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+	subscriber := modules.HostSiaMuxSubscriberName
+
+	stream, err := p.host.staticMux.NewStream(subscriber, address, pk)
+	if err != nil {
+		panic(err)
+	}
+	return stream
 }
 
 // paymentRevision returns a new revision that transfer the given amount to the
@@ -308,8 +332,80 @@ func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContr
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
 
-	sig := revisionSignature(rev, p.host.BlockHeight(), p.renter)
-	return rev, sig, nil
+	return rev, p.sign(rev), nil
+}
+
+// sign returns the renter's signature of the given revision
+func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
+	signedTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{{
+			ParentID:       crypto.Hash(rev.ParentID),
+			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+			PublicKeyIndex: 0,
+		}},
+	}
+	hash := signedTxn.SigHash(0, p.host.BlockHeight())
+	return crypto.SignHash(hash, p.renter)
+}
+
+// updatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
+// table on the pair
+func (p *renterHostPair) updatePriceTable() error {
+	stream := p.newStream()
+	defer stream.Close()
+
+	// initiate the RPC
+	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		return err
+	}
+
+	// receive the price table response
+	var pt modules.RPCPriceTable
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
+		return err
+	}
+
+	// prepare an updated revision that pays the host
+	rev, sig, err := p.paymentRevision(pt.UpdatePriceTableCost)
+	if err != nil {
+		return err
+	}
+
+	// send PaymentRequest & PayByContractRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+	pbcRequest := newPayByContractRequest(rev, sig)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return err
+	}
+
+	err = p.verify(crypto.HashObject(rev), payByResponse.Signature)
+	if err != nil {
+		return err
+	}
+	p.pt = pt
+	return nil
+}
+
+// verify verifies the given signature was made by the host
+func (p *renterHostPair) verify(hash crypto.Hash, signature crypto.Signature) error {
+	var hpk crypto.PublicKey
+	copy(hpk[:], p.host.PublicKey().Key)
+	return crypto.VerifyHash(hash, hpk, signature)
 }
 
 // TestHostInitialization checks that the host initializes to sensible default

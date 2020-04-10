@@ -376,10 +376,7 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	case modules.RPCUpdatePriceTable:
 		err = h.managedRPCUpdatePriceTable(stream)
 	case modules.RPCFundAccount:
-		var pt *modules.RPCPriceTable
-		if pt, err = h.staticReadPriceTable(stream); err == nil {
-			err = h.managedRPCFundEphemeralAccount(stream, pt)
-		}
+		err = h.managedRPCFundEphemeralAccount(stream)
 	default:
 		h.log.Debugf("WARN: incoming stream %v requested unknown RPC \"%v\"", stream.RemoteAddr().String(), rpcID)
 		err = errors.New(fmt.Sprintf("Unrecognized RPC id %v", rpcID))
@@ -404,10 +401,14 @@ func (h *Host) staticReadPriceTable(stream siamux.Stream) (*modules.RPCPriceTabl
 	}
 
 	// check if we know the uid, if we do return it
-	var found bool
-	pt, found := h.staticPriceTables.managedGet(uid)
-	if !found {
+	pt, exists := h.staticPriceTables.managedGet(uid)
+	if !exists {
 		return nil, errors.New("Price table not found, it might be expired")
+	}
+
+	// check if it's still valid or if it has expired
+	if pt.Expiry < time.Now().Unix() {
+		return nil, errors.New("Price table expired")
 	}
 	return pt, nil
 }

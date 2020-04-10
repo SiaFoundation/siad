@@ -3,8 +3,9 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
+	"io"
 	"reflect"
-	"sync"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // TestPriceTableMarshaling tests a PriceTable can be marshaled and unmarshaled
@@ -137,119 +137,77 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	}
 	defer ht.Close()
 
-	errMockRenterPriceGougingTooLow := errors.New("Cost too low")
-	errMockRenterPriceGougingTooHigh := errors.New("Cost too high")
-
 	// renter-side logic
-	renterFunc := func(stream siamux.Stream) (pt modules.RPCPriceTable, err error) {
+	runWithRequest := func(pbcRequest modules.PayByContractRequest) (*modules.RPCPriceTable, error) {
+		stream := pair.newStream()
 		defer stream.Close()
-		var update modules.RPCUpdatePriceTableResponse
-		if err = modules.RPCRead(stream, &update); err != nil {
-			err = errors.AddContext(err, "Failed to read updated price table from the stream")
-			return
-		}
 
-		if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
-			err = errors.AddContext(err, "Failed to unmarshal the JSON encoded RPC price table")
-			return
-		}
-		ptc := pt.UpdatePriceTableCost
-
-		// mock of what is going to be price gouging on the renter
-		if ptc.Equals(types.ZeroCurrency) {
-			err = errMockRenterPriceGougingTooLow
-			return
-		} else if ptc.Cmp(types.SiacoinPrecision) > 0 {
-			err = errMockRenterPriceGougingTooHigh
-			return
-		}
-
-		// prepare an updated revision that pays the host
-		rev, sig, err := pair.paymentRevision(ptc)
+		// initiate the RPC
+		err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 		if err != nil {
-			return
+			return nil, err
+		}
+
+		// receive the price table response
+		var pt modules.RPCPriceTable
+		var update modules.RPCUpdatePriceTableResponse
+		err = modules.RPCRead(stream, &update)
+		if err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
+			return nil, err
 		}
 
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(rev, sig)
 		err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 		if err != nil {
-			return
+			return nil, err
 		}
 
 		// receive PayByContractResponse
 		var payByResponse modules.PayByContractResponse
 		err = modules.RPCRead(stream, &payByResponse)
 		if err != nil {
-			return
+			return nil, err
 		}
-		return
-	}
 
-	// host-side logic
-	hostFunc := func(stream siamux.Stream, mock modules.RPCPriceTable) error {
-		defer stream.Close()
-		ht.host.staticPriceTables.managedUpdate(mock)
-		err := ht.host.managedRPCUpdatePriceTable(stream)
-		if err != nil {
-			modules.RPCWriteError(stream, err)
+		// expect clean stream close
+		err = modules.RPCRead(stream, &payByResponse)
+		if err != io.EOF {
+			return nil, err
 		}
-		return nil
-	}
-
-	runRPC := func(mockedHostPriceTable modules.RPCPriceTable) (pt modules.RPCPriceTable, rErr, hErr error) {
-		rStream, hStream := NewTestStreams()
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			pt, rErr = renterFunc(rStream)
-			wg.Done()
-		}()
-		wg.Add(1)
-		go func() {
-			hErr = hostFunc(hStream, mockedHostPriceTable)
-			wg.Done()
-		}()
-		wg.Wait()
-		return
+		return &pt, nil
 	}
 
 	// verify happy flow
 	current := ht.host.staticPriceTables.managedCurrent()
-	fastrand.Read(current.UID[:]) // overwrite to avoid critical during prune
-	update, rErr, hErr := runRPC(current)
-	if err := errors.Compose(rErr, hErr); err != nil {
-		t.Fatal("Update price table failed")
+	rev, sig, err := pair.paymentRevision(current.UpdatePriceTableCost)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// verify the price table is tracked
-	ht.host.staticPriceTables.mu.Lock()
-	_, tracked := ht.host.staticPriceTables.guaranteed[update.UID]
-	ht.host.staticPriceTables.mu.Unlock()
+	pt, err := runWithRequest(newPayByContractRequest(rev, sig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ensure the price table is tracked by the host
+	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
-		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", update.UID[:])
+		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", pt.UID)
+	}
+	// ensure its expiry is in the future
+	if pt.Expiry <= time.Now().Unix() {
+		t.Fatal("Expected price table expiry to be in the future")
 	}
 
-	// expect error if the rpc costs nothing
-	invalidPT := current
-	fastrand.Read(invalidPT.UID[:]) // overwrite to avoid critical during prune
-	invalidPT.UpdatePriceTableCost = types.ZeroCurrency
-	_, rErr, hErr = runRPC(invalidPT)
-	if rErr != errMockRenterPriceGougingTooLow {
-		t.Fatalf("Expected err '%v', received '%v'", errMockRenterPriceGougingTooLow, err)
+	// expect failure if the payment revision does not cover the RPC cost
+	rev, sig, err = pair.paymentRevision(types.ZeroCurrency)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if hErr != nil {
-		t.Fatalf("Expected no err, received '%v'", hErr)
-	}
-
-	// expect error if the rpc costs an insane amount
-	invalidPT.UpdatePriceTableCost = types.SiacoinPrecision.Add64(1)
-	_, rErr, hErr = runRPC(invalidPT)
-	if rErr != errMockRenterPriceGougingTooHigh {
-		t.Fatalf("Expected err '%v', received '%v'", errMockRenterPriceGougingTooHigh, err)
-	}
-	if hErr != nil {
-		t.Fatalf("Expected no err, received '%v'", hErr)
+	_, err = runWithRequest(newPayByContractRequest(rev, sig))
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientPaymentForRPC.Error()) {
+		t.Fatalf("Expected error '%v', instead error was '%v'", modules.ErrInsufficientPaymentForRPC, err)
 	}
 }
