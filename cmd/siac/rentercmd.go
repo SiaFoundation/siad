@@ -2746,7 +2746,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	pbs := mpb.New(mpb.WithWidth(40))
 
 	if !fi.IsDir() {
-		skynetUploadFile(sourcePath, destSiaPath, pbs)
+		skynetUploadFile(sourcePath, sourcePath, destSiaPath, pbs)
 		fmt.Printf("Successfully uploaded skyfile!\n")
 		return
 	}
@@ -2789,7 +2789,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 				// get only the filename and path, relative to the original destSiaPath
 				// in order to figure out where to put the file
 				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-				skynetUploadFile(filename, newDestSiaPath, pbs)
+				skynetUploadFile(sourcePath, filename, newDestSiaPath, pbs)
 			}
 		}()
 	}
@@ -2799,7 +2799,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 }
 
 // skynetUploadFile uploads a file to Skynet
-func skynetUploadFile(sourcePath string, destSiaPath string, pbs *mpb.Progress) (skylink string) {
+func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.Progress) (skylink string) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
 	if err != nil {
@@ -2828,15 +2828,23 @@ func skynetUploadFile(sourcePath string, destSiaPath string, pbs *mpb.Progress) 
 		var pUpload *mpb.Bar
 		var pSpinner *mpb.Bar
 		var rc io.ReadCloser
+		var relPath string
+		if strings.Compare(sourcePath, basePath) == 0 {
+			// when uploading a single file we only use the filename
+			relPath = filename
+		} else {
+			// when uploading multiple files we strip the common basePath
+			relPath = strings.TrimPrefix(sourcePath, basePath)
+		}
 		rc = file
 		// Wrap the file reader in a progress bar reader
-		pUpload, rc = newProgressReader(pbs, fi.Size(), sourcePath, rc)
+		pUpload, rc = newProgressReader(pbs, fi.Size(), relPath, rc)
 		// Set a spinner to start after the upload is finished
-		pSpinner = newProgressSpinner(pbs, pUpload, sourcePath)
+		pSpinner = newProgressSpinner(pbs, pUpload, relPath)
 		// Perform the upload
 		skylink = skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
 		// Replace the spinner with the skylink and stop it
-		newProgressSkylink(pbs, pSpinner, sourcePath, skylink)
+		newProgressSkylink(pbs, pSpinner, relPath, skylink)
 	}
 	return skylink
 }
