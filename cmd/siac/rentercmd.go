@@ -2835,6 +2835,8 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 		} else {
 			// when uploading multiple files we strip the common basePath
 			relPath = strings.TrimPrefix(sourcePath, basePath)
+			// this may or may not be there, that's why we trim it separately
+			relPath = strings.TrimPrefix(relPath, "/")
 		}
 		rc = file
 		// Wrap the file reader in a progress bar reader
