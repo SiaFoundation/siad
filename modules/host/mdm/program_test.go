@@ -34,7 +34,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	// Execute the program.
 	pt := newTestPriceTable()
 	initCost := modules.MDMInitCost(pt, 0, 0)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, initCost, types.ZeroCurrency, newTestStorageObligation(types.BlockHeight(0), true), 0, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, initCost, types.ZeroCurrency, newTestStorageObligation(types.BlockHeight(1), true), 0, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestNewEmptyProgramLowBudget(t *testing.T) {
 	var r io.Reader
 	// Execute the program.
 	pt := newTestPriceTable()
-	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, types.ZeroCurrency, types.ZeroCurrency, newTestStorageObligation(types.BlockHeight(0), true), 0, r)
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, types.ZeroCurrency, types.ZeroCurrency, newTestStorageObligation(types.BlockHeight(1), true), 0, r)
 	if !errors.Contains(err, modules.ErrMDMInsufficientBudget) {
 		t.Fatal("missing error")
 	}
