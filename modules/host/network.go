@@ -391,7 +391,14 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 }
 
 // staticReadPriceTable receives a stream and reads the price table's UID from
-// it, if it's a known UID we return the price table
+// it, if it's a known UID we return the price table.
+//
+// NOTE: the price table UID is sent on every RPC call, this to ensure both
+// renter and host use the same pricing. If we were to keep the price table
+// related to the incoming stream (and thus its mux) as state, we would
+// introduce race conditions where host and renter use different price tables
+// within the context of a single RPC request. Having the renter specify it on
+// every request avoids the possiblity of these race conditions.
 func (h *Host) staticReadPriceTable(stream siamux.Stream) (*modules.RPCPriceTable, error) {
 	// read the price table uid
 	var uid modules.UniqueID
