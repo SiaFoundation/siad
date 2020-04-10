@@ -224,7 +224,7 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	if rc.isDeleted {
 		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-	if secIdx > rc.numSectors-1 {
+	if secIdx >= rc.numSectors {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to decrement")
 	}
 	count, err := rc.readCount(secIdx)
@@ -283,7 +283,7 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	if rc.isDeleted {
 		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-	if secIdx > rc.numSectors-1 {
+	if secIdx >= rc.numSectors {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to increment")
 	}
 	count, err := rc.readCount(secIdx)
@@ -322,7 +322,7 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	if rc.isDeleted {
 		return []writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-	if firstIdx > rc.numSectors-1 || secondIdx > rc.numSectors-1 {
+	if firstIdx >= rc.numSectors || secondIdx >= rc.numSectors {
 		return []writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to swap sectors")
 	}
 	firstVal, err := rc.readCount(firstIdx)
@@ -366,7 +366,7 @@ func (rc *RefCounter) UpdateApplied() error {
 func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 	// check if the secIdx is a valid sector index based on the number of
 	// sectors in the file
-	if secIdx > rc.numSectors-1 {
+	if secIdx >= rc.numSectors {
 		return 0, errors.AddContext(ErrInvalidSectorNumber, "failed to read count")
 	}
 	// check if the value is being changed by a pending update
