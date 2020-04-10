@@ -99,6 +99,9 @@ type (
 		// Offset is the fee's offset in the persist file on disk
 		Offset int64 `json:"offset"`
 
+		// PayoutHeight is the blockheight at which the fee will be submitted
+		PayoutHeight types.BlockHeight `json:"payoutheight"`
+
 		// Recurring indicates whether or not this fee is a recurring fee and
 		// will be charged in the next period as well
 		Recurring bool `json:"recurring"`

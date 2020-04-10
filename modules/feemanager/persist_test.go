@@ -7,31 +7,13 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestAppFeeEncoding probes the encoding of the AppFees
 func TestAppFeeEncoding(t *testing.T) {
 	// Create fees
-	fee1 := appFee{
-		Address:   types.UnlockHash{},
-		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
-		AppUID:    modules.AppUID(uniqueID()),
-		Cancelled: fastrand.Intn(100)%2 == 0,
-		Offset:    int64(fastrand.Intn(1000)),
-		Recurring: fastrand.Intn(100)%2 == 0,
-		UID:       modules.FeeUID("fee1"),
-	}
-	fee2 := appFee{
-		Address:   types.UnlockHash{},
-		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
-		AppUID:    modules.AppUID(uniqueID()),
-		Cancelled: fastrand.Intn(100)%2 == 0,
-		Offset:    int64(fastrand.Intn(1000)),
-		Recurring: fastrand.Intn(100)%2 == 0,
-		UID:       modules.FeeUID("fee2"),
-	}
+	fee1 := randomFee()
+	fee2 := randomFee()
 
 	// Marshal Fees
 	var buf1, buf2 bytes.Buffer

@@ -188,13 +188,14 @@ func TestIsFeeManagerUpdate(t *testing.T) {
 // conditions
 func randomFee() appFee {
 	return appFee{
-		Address:   types.UnlockHash{},
-		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
-		AppUID:    modules.AppUID(uniqueID()),
-		Cancelled: fastrand.Intn(100)%2 == 0,
-		Offset:    int64(fastrand.Intn(1000)),
-		Recurring: fastrand.Intn(100)%2 == 0,
-		UID:       uniqueID(),
+		Address:      types.UnlockHash{},
+		Amount:       types.NewCurrency64(fastrand.Uint64n(100)),
+		AppUID:       modules.AppUID(uniqueID()),
+		Cancelled:    fastrand.Intn(100)%2 == 0,
+		Offset:       int64(fastrand.Intn(1000)),
+		PayoutHeight: types.BlockHeight(fastrand.Uint64n(100)),
+		Recurring:    fastrand.Intn(100)%2 == 0,
+		UID:          uniqueID(),
 	}
 }
 

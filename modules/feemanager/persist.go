@@ -195,12 +195,13 @@ func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency
 
 	// Create Fee
 	fee := &appFee{
-		Address:   address,
-		Amount:    amount,
-		AppUID:    appUID,
-		Offset:    fm.nextFeeOffset,
-		Recurring: recurring,
-		UID:       uniqueID(),
+		Address:      address,
+		Amount:       amount,
+		AppUID:       appUID,
+		Offset:       fm.nextFeeOffset,
+		PayoutHeight: fm.payoutHeight,
+		Recurring:    recurring,
+		UID:          uniqueID(),
 	}
 
 	// Add fee to FeeManager
@@ -327,6 +328,7 @@ func (fee *appFee) marshalSia(w io.Writer) error {
 	e.Encode(fee.AppUID)
 	e.WriteBool(fee.Cancelled)
 	e.Encode(fee.Offset)
+	e.Encode(fee.PayoutHeight)
 	e.WriteBool(fee.Recurring)
 	e.Encode(fee.UID)
 	return e.Err()
@@ -340,6 +342,7 @@ func (fee *appFee) unmarshalSia(r io.Reader) error {
 	d.Decode(&fee.AppUID)
 	fee.Cancelled = d.NextBool()
 	d.Decode(&fee.Offset)
+	d.Decode(&fee.PayoutHeight)
 	fee.Recurring = d.NextBool()
 	d.Decode(&fee.UID)
 	return d.Err()

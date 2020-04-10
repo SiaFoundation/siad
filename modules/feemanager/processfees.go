@@ -19,6 +19,7 @@ func (fm *FeeManager) ProcessConsensusChange(cc modules.ConsensusChange) {
 	if !cc.Synced {
 		return
 	}
+
 	// Process fees
 	go fm.threadedProcessFees()
 	return
@@ -36,14 +37,14 @@ func (fm *FeeManager) threadedProcessFees() {
 	// Get the current blockheight
 	bh := fm.staticCS.Height()
 
-	// Check to see if the payoutHeight has been reached
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	if fm.payoutHeight == 0 {
+	// If there are no fees, bump out the payoutHeight
+	if len(fm.fees) == 0 {
 		fm.payoutHeight = bh + PayoutInterval
 	}
-	if fm.payoutHeight < bh {
-		// It is not time to process any fees yet
+	// Check to see if the payoutHeight has been reached.
+	if fm.payoutHeight > bh {
 		return
 	}
 	fm.staticLog.Printf("Processing fees; Blockheight %v, PayoutHeight %v", bh, fm.payoutHeight)
@@ -51,6 +52,11 @@ func (fm *FeeManager) threadedProcessFees() {
 	// Process the fees
 	var processErrors error
 	for _, fee := range fm.fees {
+		// Check for any recurring fees that have already been paid for this period
+		if fee.Recurring && fee.PayoutHeight > bh {
+			continue
+		}
+
 		// Process the fee
 		err := fm.processFee(fee)
 		if err != nil {
@@ -59,17 +65,22 @@ func (fm *FeeManager) threadedProcessFees() {
 			continue
 		}
 
-		// Remove any non-recurring fees
+		// Remove any non-recurring fees and reduce the payout
 		if !fee.Recurring {
+			fm.currentPayout = fm.currentPayout.Sub(fee.Amount)
 			delete(fm.fees, fee.UID)
+			continue
 		}
+
+		// Increment the PayoutHeight of Recurring fees to avoid double payouts
+		// due to errors with other fees.
+		fee.PayoutHeight += PayoutInterval
 	}
 
 	// Increment the payoutHeight and reset the currentPayout if we successfully
 	// processed all the fees
 	if processErrors == nil {
 		fm.payoutHeight += PayoutInterval
-		fm.currentPayout = types.ZeroCurrency
 		fm.staticLog.Println("All fees processed, new PayoutHeight is", fm.payoutHeight)
 	}
 
@@ -84,6 +95,10 @@ func (fm *FeeManager) threadedProcessFees() {
 // processFee will submit txns to split the PayOut between the application
 // developer and Nebulous
 func (fm *FeeManager) processFee(fee *appFee) error {
+	if fm.staticDeps.Disrupt("ProcessFeeFail") {
+		return errors.New("processFee failed due to dependency")
+	}
+
 	// Split PayOut between Application Developer Address and Nebulous Address
 	appDevFeePayOut := fee.Amount.Mul64(7).Div64(10)
 	nebulousFeePayOut := fee.Amount.Mul64(3).Div64(10)
