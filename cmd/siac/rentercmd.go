@@ -2859,7 +2859,7 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 		if errFile == nil {
 			fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
 			continue
-		} else if !(errors.Contains(errFile, filesystem.ErrNotExist) || errors.Contains(errFile, filesystem.ErrDeleteFileIsDir)) {
+		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
 			die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
 		}
 		// Try to delete dir.
@@ -2867,7 +2867,7 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 		if errDir == nil {
 			fmt.Printf("Unpinned Skynet directory '%v'\n", siaPath)
 			continue
-		} else if !errors.Contains(errDir, filesystem.ErrNotExist) {
+		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 			die(fmt.Sprintf("Failed to unpin Skynet directory %v: %v", siaPath, errDir))
 		}
 
