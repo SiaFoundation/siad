@@ -1784,7 +1784,13 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
+
 		// Try to delete file.
+		//
+		// In the case where the path points to a dir, this will fail and we
+		// silently move on to deleting it as a dir. This is more efficient than
+		// querying the renter first to see if it is a file or a dir, as that is
+		// guaranteed to always be two renter calls.
 		var errFile error
 		if renterDeleteRoot {
 			errFile = httpClient.RenterFileDeleteRootPost(siaPath)
@@ -1797,7 +1803,7 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
 			die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 		}
-		// Try to delete folder.
+		// Try to delete dir.
 		var errDir error
 		if renterDeleteRoot {
 			errDir = httpClient.RenterDirDeleteRootPost(siaPath)
@@ -1810,7 +1816,8 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 			die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
 		}
-		// Unknown file/folder.
+
+		// Unknown file/dir.
 		die(fmt.Sprintf("Unknown path '%v'", path))
 	}
 	return
@@ -2843,23 +2850,28 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 		}
 
 		// Try to delete file.
+		//
+		// In the case where the path points to a dir, this will fail and we
+		// silently move on to deleting it as a dir. This is more efficient than
+		// querying the renter first to see if it is a file or a dir, as that is
+		// guaranteed to always be two renter calls.
 		errFile := httpClient.RenterFileDeleteRootPost(siaPath)
 		if errFile == nil {
 			fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
 			continue
-		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
+		} else if !(errors.Contains(errFile, filesystem.ErrNotExist) || errors.Contains(errFile, filesystem.ErrDeleteFileIsDir)) {
 			die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
 		}
-		// Try to delete folder.
+		// Try to delete dir.
 		errDir := httpClient.RenterDirDeleteRootPost(siaPath)
 		if errDir == nil {
 			fmt.Printf("Unpinned Skynet directory '%v'\n", siaPath)
 			continue
-		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
+		} else if !errors.Contains(errDir, filesystem.ErrNotExist) {
 			die(fmt.Sprintf("Failed to unpin Skynet directory %v: %v", siaPath, errDir))
 		}
 
-		// Unknown file/folder.
+		// Unknown file/dir.
 		die(fmt.Sprintf("Unknown path '%v'", siaPath))
 	}
 }
