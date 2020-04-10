@@ -52,7 +52,7 @@ type (
 	// being charged to this siad instance
 	FeeManager struct {
 		// fees are all the fees that are currently charging this siad instance
-		fees map[modules.FeeUID]*modules.AppFee
+		fees map[modules.FeeUID]*appFee
 
 		// currentPayout is how much the payout is going to be for this period
 		currentPayout types.Currency
@@ -80,6 +80,32 @@ type (
 
 		mu sync.RWMutex
 	}
+
+	// appFee is the struct that contains information about a fee submitted by
+	// an application to the FeeManager
+	appFee struct {
+		// Address of the developer wallet
+		Address types.UnlockHash `json:"address"`
+
+		// Amount of SC that the Fee is for
+		Amount types.Currency `json:"amount"`
+
+		// AppUID is a unique Application ID that the fee is for
+		AppUID modules.AppUID `json:"appuid"`
+
+		// Cancelled indicates whether or not this fee was cancelled
+		Cancelled bool `json:"cancelled"`
+
+		// Offset is the fee's offset in the persist file on disk
+		Offset int64 `json:"offset"`
+
+		// Recurring indicates whether or not this fee is a recurring fee and
+		// will be charged in the next period as well
+		Recurring bool `json:"recurring"`
+
+		// UID is a unique identifier for the Fee
+		UID modules.FeeUID `json:"uid"`
+	}
 )
 
 // New creates a new FeeManager
@@ -101,7 +127,7 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir, 
 	// Create FeeManager
 	fm := &FeeManager{
 		// Initialize map
-		fees: make(map[modules.FeeUID]*modules.AppFee),
+		fees: make(map[modules.FeeUID]*appFee),
 
 		// Set defaults
 		maxPayout: defaultMaxPayout,
@@ -238,7 +264,13 @@ func (fm *FeeManager) managedPaidFees() ([]modules.AppFee, error) {
 		if ok {
 			continue
 		}
-		paid = append(paid, fee)
+		paid = append(paid, modules.AppFee{
+			Address:   fee.Address,
+			Amount:    fee.Amount,
+			AppUID:    fee.AppUID,
+			Recurring: fee.Recurring,
+			UID:       fee.UID,
+		})
 	}
 	return paid, nil
 }
@@ -251,7 +283,13 @@ func (fm *FeeManager) managedPendingFees() []modules.AppFee {
 
 	var pendingFees []modules.AppFee
 	for _, fee := range fm.fees {
-		pendingFees = append(pendingFees, *fee)
+		pendingFees = append(pendingFees, modules.AppFee{
+			Address:   fee.Address,
+			Amount:    fee.Amount,
+			AppUID:    fee.AppUID,
+			Recurring: fee.Recurring,
+			UID:       fee.UID,
+		})
 	}
 	return pendingFees
 }

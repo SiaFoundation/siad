@@ -794,8 +794,6 @@ returns the paid fees that the feemanager managed.
       "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
       "amount":"1000",     // hastings
       "appuid":"okapp",    // string
-      "cancelled":false,   // bool
-      "offset":1000,       // int64
       "recurring":false,  // bool
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
@@ -812,12 +810,6 @@ The application developer's wallet address that the fee should be paid out to.
 
 **amount** | hastings  
 The number of hastings the fee will charge the user.
-
-**appuid** | string  
-The unique application identifier for the application that set the fee.
-
-**cancelled** | bool  
-Indicates whether or not this fee has been cancelled. 
 
 **offset** | int64  
 Offset of the fee within the fee persist file.
@@ -847,8 +839,6 @@ returns the pending fees that the feemanager is managing.
       "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
       "amount":"1000",     // hastings
       "appuid":"okapp",    // string
-      "cancelled":false,   // bool
-      "offset":1000,       // int64
       "recurring":false,  // bool
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
@@ -869,12 +859,6 @@ The number of hastings the fee will charge the user.
 
 **appuid** | string  
 The unique application identifier for the application that set the fee.
-
-**cancelled** | bool  
-Indicates whether or not this fee has been cancelled. 
-
-**offset** | int64  
-Offset of the fee within the fee persist file.
 
 **recurring** | bool  
 Indicates whether or not this fee will be a recurring fee. 

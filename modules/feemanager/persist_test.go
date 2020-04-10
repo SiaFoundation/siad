@@ -1,12 +1,70 @@
 package feemanager
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// TestAppFeeEncoding probes the encoding of the AppFees
+func TestAppFeeEncoding(t *testing.T) {
+	// Create fees
+	fee1 := appFee{
+		Address:   types.UnlockHash{},
+		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
+		AppUID:    modules.AppUID(uniqueID()),
+		Cancelled: fastrand.Intn(100)%2 == 0,
+		Offset:    int64(fastrand.Intn(1000)),
+		Recurring: fastrand.Intn(100)%2 == 0,
+		UID:       modules.FeeUID("fee1"),
+	}
+	fee2 := appFee{
+		Address:   types.UnlockHash{},
+		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
+		AppUID:    modules.AppUID(uniqueID()),
+		Cancelled: fastrand.Intn(100)%2 == 0,
+		Offset:    int64(fastrand.Intn(1000)),
+		Recurring: fastrand.Intn(100)%2 == 0,
+		UID:       modules.FeeUID("fee2"),
+	}
+
+	// Marshal Fees
+	var buf1, buf2 bytes.Buffer
+	err := fee1.marshalSia(&buf1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fee2.marshalSia(&buf2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Unmarshal fees
+	fees, err := unmarshalFees(append(buf1.Bytes(), buf2.Bytes()...))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check Fees
+	if len(fees) != 2 {
+		t.Fatalf("Expected 2 fees but found %v", len(fees))
+	}
+	if !reflect.DeepEqual(fees[0], fee1) {
+		t.Log("Fees Before", fee1)
+		t.Log("Fees After", fees[0])
+		t.Fatal("Fees not equal after encoding")
+	}
+	if !reflect.DeepEqual(fees[1], fee2) {
+		t.Log("Fees Before", fee2)
+		t.Log("Fees After", fees[1])
+		t.Fatal("Fees not equal after encoding")
+	}
+}
 
 // TestLoadPersistData verifies that the persist data is loaded into the
 // FeeManager properly
@@ -19,7 +77,7 @@ func TestLoadPersistData(t *testing.T) {
 
 	// Load into FeeManager
 	fm := &FeeManager{
-		fees: make(map[modules.FeeUID]*modules.AppFee),
+		fees: make(map[modules.FeeUID]*appFee),
 	}
 	err = fm.loadPersistData(persistData)
 	if err != nil {

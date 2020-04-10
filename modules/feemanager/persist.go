@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -54,7 +56,7 @@ type persistence struct {
 	PayoutHeight  types.BlockHeight `json:"payoutheight"`
 
 	// List of current pending fees
-	Fees []modules.AppFee `json:"fees"`
+	Fees []appFee `json:"fees"`
 }
 
 // callCancelFee cancels a fee by removing it from the FeeManager's map
@@ -153,7 +155,7 @@ func (fm *FeeManager) callInitPersist() error {
 }
 
 // callLoadAllFees loads all the fees from the Fee Persist file
-func (fm *FeeManager) callLoadAllFees() ([]modules.AppFee, error) {
+func (fm *FeeManager) callLoadAllFees() ([]appFee, error) {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
@@ -161,20 +163,20 @@ func (fm *FeeManager) callLoadAllFees() ([]modules.AppFee, error) {
 	fileName := filepath.Join(fm.staticPersistDir, feePersistFilename)
 	file, err := fm.staticDeps.Open(fileName)
 	if err != nil {
-		return []modules.AppFee{}, errors.AddContext(err, "unable to load fee persist file")
+		return []appFee{}, errors.AddContext(err, "unable to load fee persist file")
 	}
 	defer file.Close()
 
 	// Read the file
 	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
-		return []modules.AppFee{}, errors.AddContext(err, "unable to read data from file")
+		return []appFee{}, errors.AddContext(err, "unable to read data from file")
 	}
 
 	// Unmarshal the fees.
-	fees, err := modules.UnmarshalFees(bytes)
+	fees, err := unmarshalFees(bytes)
 	if err != nil {
-		return []modules.AppFee{}, errors.AddContext(err, "unable to unmarshal data")
+		return []appFee{}, errors.AddContext(err, "unable to unmarshal data")
 	}
 	return fees, nil
 }
@@ -192,7 +194,7 @@ func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency
 	}
 
 	// Create Fee
-	fee := &modules.AppFee{
+	fee := &appFee{
 		Address:   address,
 		Amount:    amount,
 		AppUID:    appUID,
@@ -270,7 +272,7 @@ func (fm *FeeManager) loadPersistData(persistData persistence) error {
 
 // persistData returns the persisted data in the format to be stored on disk
 func (fm *FeeManager) persistData() persistence {
-	var fees []modules.AppFee
+	var fees []appFee
 	for _, fee := range fm.fees {
 		fees = append(fees, *fee)
 	}
@@ -294,11 +296,11 @@ func (fm *FeeManager) save() error {
 
 // saveFeeAndUpdate creates the insert update for the fee, updates the
 // nextFeeOffset of the FeeManager, and saves all changes to disk
-func (fm *FeeManager) saveFeeAndUpdate(fee modules.AppFee) error {
+func (fm *FeeManager) saveFeeAndUpdate(fee appFee) error {
 	// Marshal the fee and create update
 	// Create a buffer.
 	var buf bytes.Buffer
-	err := fee.MarshalSia(&buf)
+	err := fee.marshalSia(&buf)
 	if err != nil {
 		return errors.AddContext(err, "unable to marshal fee")
 	}
@@ -315,4 +317,47 @@ func (fm *FeeManager) saveFeeAndUpdate(fee modules.AppFee) error {
 	}
 	updates := []writeaheadlog.Update{feeUpdate, persistUpdate}
 	return fm.createAndApplyTransaction(updates...)
+}
+
+// marshalSia implements the encoding.SiaMarshaler interface.
+func (fee *appFee) marshalSia(w io.Writer) error {
+	e := encoding.NewEncoder(w)
+	e.Encode(fee.Address)
+	e.Encode(fee.Amount)
+	e.Encode(fee.AppUID)
+	e.WriteBool(fee.Cancelled)
+	e.Encode(fee.Offset)
+	e.WriteBool(fee.Recurring)
+	e.Encode(fee.UID)
+	return e.Err()
+}
+
+// unmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (fee *appFee) unmarshalSia(r io.Reader) error {
+	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
+	d.Decode(&fee.Address)
+	d.Decode(&fee.Amount)
+	d.Decode(&fee.AppUID)
+	fee.Cancelled = d.NextBool()
+	d.Decode(&fee.Offset)
+	fee.Recurring = d.NextBool()
+	d.Decode(&fee.UID)
+	return d.Err()
+}
+
+// unmarshalFees unmarshals the sia encoded fees.
+func unmarshalFees(raw []byte) (fees []appFee, err error) {
+	// Create the buffer.
+	r := bytes.NewBuffer(raw)
+	// Unmarshal the fees one by one until EOF or a different error occur.
+	for {
+		var fee appFee
+		if err = fee.unmarshalSia(r); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, errors.AddContext(err, "unable to unmarshal fee")
+		}
+		fees = append(fees, fee)
+	}
+	return fees, nil
 }

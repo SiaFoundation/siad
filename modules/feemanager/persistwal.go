@@ -26,11 +26,11 @@ const (
 
 // createInsertUpdate creates a writeaheadlog update for inserting a fee to the
 // fee persist file
-func createInsertUpdate(fee modules.AppFee) (writeaheadlog.Update, error) {
+func createInsertUpdate(fee appFee) (writeaheadlog.Update, error) {
 	// Marshal the fee
 	// Create a buffer.
 	var buf bytes.Buffer
-	err := fee.MarshalSia(&buf)
+	err := fee.marshalSia(&buf)
 	if err != nil {
 		return writeaheadlog.Update{}, errors.AddContext(err, "unable to marshal fee")
 	}

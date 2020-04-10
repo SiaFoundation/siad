@@ -83,7 +83,7 @@ func (fm *FeeManager) threadedProcessFees() {
 
 // processFee will submit txns to split the PayOut between the application
 // developer and Nebulous
-func (fm *FeeManager) processFee(fee *modules.AppFee) error {
+func (fm *FeeManager) processFee(fee *appFee) error {
 	// Split PayOut between Application Developer Address and Nebulous Address
 	appDevFeePayOut := fee.Amount.Mul64(7).Div64(10)
 	nebulousFeePayOut := fee.Amount.Mul64(3).Div64(10)

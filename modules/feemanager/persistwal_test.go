@@ -119,7 +119,7 @@ func TestCreateAndReadUpdates(t *testing.T) {
 		}
 
 		// Check the read data
-		readFees, err := modules.UnmarshalFees(data)
+		readFees, err := unmarshalFees(data)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -181,13 +181,13 @@ func TestIsFeeManagerUpdate(t *testing.T) {
 	}
 }
 
-// randomFee returns a random AppFee
+// randomFee returns a random appFee
 //
 // NOTE: This random information is intended to test edge cases, values like
-// Offset and Cancelled should be expected to not line up with normal operating
+// offset and cancelled should be expected to not line up with normal operating
 // conditions
-func randomFee() modules.AppFee {
-	return modules.AppFee{
+func randomFee() appFee {
+	return appFee{
 		Address:   types.UnlockHash{},
 		Amount:    types.NewCurrency64(fastrand.Uint64n(100)),
 		AppUID:    modules.AppUID(uniqueID()),
@@ -200,16 +200,16 @@ func randomFee() modules.AppFee {
 
 // randomFees returns a random number for fees between 0-4. It ensures the
 // offset as valid and returns the next offset
-func randomFees() ([]modules.AppFee, int64, error) {
-	var fees []modules.AppFee
+func randomFees() ([]appFee, int64, error) {
+	var fees []appFee
 	var nextOffset int64
 	for i := 0; i < fastrand.Intn(5); i++ {
 		fee := randomFee()
 		fee.Offset = nextOffset
 		var buf bytes.Buffer
-		err := fee.MarshalSia(&buf)
+		err := fee.marshalSia(&buf)
 		if err != nil {
-			return []modules.AppFee{}, 0, err
+			return []appFee{}, 0, err
 		}
 		nextOffset += int64(buf.Len())
 		fees = append(fees, fee)
@@ -228,7 +228,7 @@ func randomPersistence() (persistence, error) {
 
 // randomPersistence returns a persistence struct filled in with the provided
 // fees and random info.
-func randomPersistenceWithFees(fees []modules.AppFee, offset int64) persistence {
+func randomPersistenceWithFees(fees []appFee, offset int64) persistence {
 	var currentPayout types.Currency
 	for _, fee := range fees {
 		currentPayout = currentPayout.Add(fee.Amount)
