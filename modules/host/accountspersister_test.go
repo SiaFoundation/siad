@@ -306,7 +306,7 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = build.Retry(10, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		err := verifyFPBuckets(ht.host)
 		if err != nil && !ht.host.staticAccountManager.withdrawalsInactive {
 			t.Fatal("Withdrawals are active without fingerprint buckets on disk. This is a critical error and should never happen.")
@@ -340,7 +340,7 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = build.Retry(10, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		err := verifyFPBuckets(ht.host)
 		if err != nil && !ht.host.staticAccountManager.withdrawalsInactive {
 			t.Fatal("Withdrawals are active without fingerprint buckets on disk. This is a critical error and should never happen.")

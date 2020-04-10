@@ -388,7 +388,9 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 		defer am.mu.Unlock()
 		if errRotate != nil {
 			am.withdrawalsInactive = true
-			am.h.log.Println("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactived", errRotate)
+			if errRotate != errRotationDisabled {
+				am.h.log.Critical("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactived", errRotate)
+			}
 		} else {
 			am.withdrawalsInactive = false
 		}
@@ -408,11 +410,16 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 		am.mu.Unlock()
 		return
 	}
-	am.fingerprints.rotate()
 	am.mu.Unlock()
 
-	// Rotate fingerprint buckets on disk
+	// Rotate fingerprint buckets on disk, if that succeeded rotate the
+	// fingerprints in memory
 	errRotate = am.staticAccountsPersister.callRotateFingerprintBuckets()
+	if errRotate == nil {
+		am.mu.Lock()
+		am.fingerprints.rotate()
+		am.mu.Unlock()
+	}
 }
 
 // managedDeposit performs a couple of steps in preparation of the
