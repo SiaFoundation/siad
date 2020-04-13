@@ -36,6 +36,7 @@ type (
 		id         types.FileContractID
 		amount     types.Currency
 		hostPubKey types.SiaPublicKey
+		endHeight  types.BlockHeight
 	}
 )
 
@@ -1028,6 +1029,7 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:         contract.ID,
 				amount:     renewAmount,
 				hostPubKey: contract.HostPublicKey,
+				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
@@ -1062,6 +1064,7 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:         contract.ID,
 				amount:     contract.TotalCost.Mul64(2),
 				hostPubKey: contract.HostPublicKey,
+				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {
@@ -1112,14 +1115,20 @@ func (c *Contractor) threadedContractMaintenance() {
 	// formation.
 	var registerLowFundsAlert bool
 	var renewErr error
+	var renewErrDuringSecondHalf bool // set to true if a renew fails during the second half of the renew window
 	defer func() {
 		if registerLowFundsAlert {
 			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, AlertCauseInsufficientAllowanceFunds, modules.SeverityWarning)
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterAllowanceLowFunds)
 		}
+
+		alertSeverity := modules.SeverityError
+		if renewErrDuringSecondHalf {
+			alertSeverity = modules.SeverityCritical
+		}
 		if renewErr != nil {
-			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.SeverityError)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.AlertSeverity(alertSeverity))
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
 		}
@@ -1166,6 +1175,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		} else if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
+			renewErrDuringSecondHalf = renewErrDuringSecondHalf || (blockHeight+allowance.RenewWindow/2) >= renewal.endHeight
 		} else {
 			c.log.Println("Renewal completed without error")
 		}
@@ -1205,6 +1215,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
+			renewErrDuringSecondHalf = renewErrDuringSecondHalf || (blockHeight+allowance.RenewWindow/2) >= renewal.endHeight
 		} else {
 			c.log.Println("Refresh completed without error")
 		}
