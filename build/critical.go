@@ -6,12 +6,16 @@ import (
 	"runtime/debug"
 )
 
+// buildInfoString is used to include information about the current build when
+// Critical or Severe are called.
+var buildInfoString = "(Sia v" + Version + ", Release: " + Release + ") "
+
 // Critical should be called if a sanity check has failed, indicating developer
 // error. Critical is called with an extended message guiding the user to the
 // issue tracker on Github. If the program does not panic, the call stack for
 // the running goroutine is printed to help determine the error.
 func Critical(v ...interface{}) {
-	s := "Critical error: " + fmt.Sprintln(v...) + "Please submit a bug report here: https://gitlab.com/NebulousLabs/Sia/issues\n"
+	s := "Critical error: " + buildInfoString + fmt.Sprintln(v...) + "Please submit a bug report here: https://gitlab.com/NebulousLabs/Sia/issues\n"
 	if Release != "testing" {
 		debug.PrintStack()
 		os.Stderr.WriteString(s)
@@ -27,7 +31,7 @@ func Critical(v ...interface{}) {
 // generation failure), but where crashing is not strictly required to preserve
 // integrity.
 func Severe(v ...interface{}) {
-	s := "Severe error: " + fmt.Sprintln(v...)
+	s := "Severe error: " + buildInfoString + fmt.Sprintln(v...)
 	if Release != "testing" {
 		debug.PrintStack()
 		os.Stderr.WriteString(s)
