@@ -533,8 +533,8 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	}
 	// The directory should be the root directory as that is where we created
 	// the test file
-	if !d.siaPath.Equals(modules.RootSiaPath()) {
-		t.Fatal("Expected Directory siapath to be the root siaPath but was", d.siaPath.String())
+	if !d.staticSiaPath.Equals(modules.RootSiaPath()) {
+		t.Fatal("Expected Directory siapath to be the root siaPath but was", d.staticSiaPath.String())
 	}
 	// The directory health should be that of the file since none of the chunks
 	// were added

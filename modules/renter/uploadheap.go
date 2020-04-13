@@ -677,20 +677,15 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 			return siaPaths, nil
 		}
 
-		// Grab health and siaPath of the directory
-		dir.mu.Lock()
-		dirHealth := dir.health
-		dirSiaPath := dir.siaPath
-		dir.mu.Unlock()
-
 		// If the directory that was just popped is healthy then return
-		if dirHealth < RepairThreshold {
+		heapHealth, _ := dir.managedHeapHealth()
+		if heapHealth < RepairThreshold {
 			r.repairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return siaPaths, nil
 		}
 
 		// Add chunks from the directory to the uploadHeap.
-		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
+		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks)
 
 		// Check to see if we are still adding chunks
 		heapLen := r.uploadHeap.managedLen()
@@ -703,11 +698,11 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
-		err = siaPaths.callAdd(dirSiaPath)
+		err = siaPaths.callAdd(dir.staticSiaPath)
 		if err != nil {
 			r.repairLog.Println("WARN: error adding siapath to tracked paths to bubble:", err)
 		}
-		r.repairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dirSiaPath)
+		r.repairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dir.staticSiaPath)
 	}
 
 	return siaPaths, nil
@@ -768,7 +763,8 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// temporary heap
 	var unfinishedChunkHeap uploadChunkHeap
 	var worstIgnoredHealth float64
-	dirHeapHealth := r.directoryHeap.managedPeekHealth()
+	// SeveyTODO - need to review logic for remote files now
+	dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
 	for _, file := range files {
 		// For normal repairs check if file is a worse health than the directory
 		// heap
@@ -898,10 +894,11 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// unexplored directory exists on the directory heap, we need to make sure
 	// that the worst known health is represented in the aggregate value.
 	d := &directory{
+		// SeveyTODO - need to work remote health into this
 		aggregateHealth: worstIgnoredHealth,
 		health:          worstIgnoredHealth,
 		explored:        true,
-		siaPath:         dirSiaPath,
+		staticSiaPath:   dirSiaPath,
 	}
 	// Add the directory to the heap. If there is a conflict because the
 	// directory is already in the heap (for example, added by another thread or
@@ -1084,7 +1081,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 	// heap size. We want to process all of the chunks if the rest of the
 	// directory heap is in good health and there are no more chunks that could
 	// be added to the heap.
-	smallRepair := r.directoryHeap.managedPeekHealth() < RepairThreshold
+	dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+	smallRepair := dirHeapHealth < RepairThreshold
 
 	// Limit the amount of time spent in each iteration of the repair loop so
 	// that changes to the directory heap take effect sooner rather than later.
@@ -1284,7 +1282,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Check if there is work to do. If the filesystem is healthy and the
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
-		if r.uploadHeap.managedLen() == 0 && r.directoryHeap.managedPeekHealth() < RepairThreshold {
+		dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+		if r.uploadHeap.managedLen() == 0 && dirHeapHealth < RepairThreshold {
 			// TODO: This has a tiny window where it might be dumping out chunks
 			// that need health, if the upload call is appending to the
 			// directory heap because there is a new upload.

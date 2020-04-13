@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 )
 
 // directory is a helper struct that represents a siadir in the
@@ -17,13 +18,49 @@ type directory struct {
 	// Heap controlled fields
 	index int // The index of the item in the heap
 
+	staticSiaPath modules.SiaPath
+
 	// mu controlled fields
-	aggregateHealth float64
-	health          float64
-	explored        bool
-	siaPath         modules.SiaPath
+	aggregateHealth       float64
+	aggregateRemoteHealth float64
+	explored              bool
+	health                float64
+	remoteHealth          float64
 
 	mu sync.Mutex
+}
+
+// managedHeapHealth returns the health that should be used to prioritize the
+// directory in the heap. It also returns a boolean indicating if that health is
+// from remote files.
+//
+//  If a directory is explored then we should use the Health of the Directory. If
+//  a directory is unexplored then we should use the AggregateHealth of the
+//  Directory. This will ensure we are following the path of lowest health as
+//  well as evaluating each directory on its own merit.
+//
+// If either the RemoteHealth or the AggregateRemoteHealth are above the
+// RepairThreshold we should use that health in order to prioritize remote files
+func (d *directory) managedHeapHealth() (heapHealth float64, remote bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.explored {
+		if d.remoteHealth >= RepairThreshold {
+			heapHealth = d.remoteHealth
+			remote = true
+		} else {
+			heapHealth = d.health
+		}
+	} else {
+		if d.aggregateRemoteHealth >= RepairThreshold {
+			heapHealth = d.aggregateRemoteHealth
+			remote = true
+		} else {
+			heapHealth = d.aggregateHealth
+		}
+	}
+	return
 }
 
 // directoryHeap contains a priority sorted heap of directories that are being
@@ -45,31 +82,24 @@ type repairDirectoryHeap []*directory
 // Implementation of heap.Interface for repairDirectoryHeap.
 func (rdh repairDirectoryHeap) Len() int { return len(rdh) }
 func (rdh repairDirectoryHeap) Less(i, j int) bool {
-	// Prioritization: If a directory is explored then we should use the Health
-	// of the Directory. If a directory is unexplored then we should use the
-	// AggregateHealth of the Directory. This will ensure we are following the
-	// path of lowest health as well as evaluating each directory on its own
-	// merit.
+	// Get the health of each directory and whether or not they have remote
+	// files
+	iHealth, iRemote := rdh[i].managedHeapHealth()
+	jHealth, jRemote := rdh[j].managedHeapHealth()
+
+	// Prioritize based on Remote first
+	if iRemote && !jRemote {
+		return true
+	}
+	if !iRemote && jRemote {
+		return false
+	}
+
+	// Directories are prioritized based on their heapHealth
 	//
 	// Note: we are using the > operator and not >= which means that the element
 	// added to the heap first will be prioritized in the event that the healths
 	// are equal
-
-	// Determine health of each element to used based on whether or not the
-	// element is explored
-	var iHealth, jHealth float64
-	if rdh[i].explored {
-		iHealth = rdh[i].health
-	} else {
-		iHealth = rdh[i].aggregateHealth
-	}
-	if rdh[j].explored {
-		jHealth = rdh[j].health
-	} else {
-		jHealth = rdh[j].aggregateHealth
-	}
-
-	// Prioritize higher health
 	return iHealth > jHealth
 }
 func (rdh repairDirectoryHeap) Swap(i, j int) {
@@ -99,27 +129,21 @@ func (dh *directoryHeap) managedLen() int {
 }
 
 // managedPeekHealth returns the current worst health of the directory heap
-func (dh *directoryHeap) managedPeekHealth() float64 {
+func (dh *directoryHeap) managedPeekHealth() (float64, bool) {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
 
 	// If the heap is empty return 0 as that is the max health
 	if dh.heap.Len() == 0 {
-		return 0
+		return 0, false
 	}
 
 	// Pop off and then push back the top directory. We are not using the
 	// managed methods here as to avoid removing the directory from the map and
 	// having another thread push the directory onto the heap in between locks
-	var health float64
 	d := heap.Pop(&dh.heap).(*directory)
-	if d.explored {
-		health = d.health
-	} else {
-		health = d.aggregateHealth
-	}
-	heap.Push(&dh.heap, d)
-	return health
+	defer heap.Push(&dh.heap, d)
+	return d.managedHeapHealth()
 }
 
 // managedPop will return the top directory from the heap
@@ -128,7 +152,7 @@ func (dh *directoryHeap) managedPop() (d *directory) {
 	defer dh.mu.Unlock()
 	if dh.heap.Len() > 0 {
 		d = heap.Pop(&dh.heap).(*directory)
-		delete(dh.heapDirectories, d.siaPath)
+		delete(dh.heapDirectories, d.staticSiaPath)
 	}
 	return d
 }
@@ -143,7 +167,7 @@ func (dh *directoryHeap) managedPush(d *directory) {
 	defer dh.mu.Unlock()
 
 	// If the directory exists already in the heap, update that directory.
-	_, exists := dh.heapDirectories[d.siaPath]
+	_, exists := dh.heapDirectories[d.staticSiaPath]
 	if exists {
 		if !dh.update(d) {
 			build.Critical("update should succeed because the directory is known to exist in the heap")
@@ -153,7 +177,7 @@ func (dh *directoryHeap) managedPush(d *directory) {
 
 	// If the directory does not exist in the heap, add it to the heap.
 	heap.Push(&dh.heap, d)
-	dh.heapDirectories[d.siaPath] = d
+	dh.heapDirectories[d.staticSiaPath] = d
 }
 
 // managedReset clears the directory heap by recreating the heap and
@@ -175,14 +199,16 @@ func (dh *directoryHeap) managedReset() {
 // unexplored, the new dir will be marked as unexplored to ensure that all
 // subdirs of the dir get added to the heap.
 func (dh *directoryHeap) update(d *directory) bool {
-	heapDir, exists := dh.heapDirectories[d.siaPath]
+	heapDir, exists := dh.heapDirectories[d.staticSiaPath]
 	if !exists {
 		return false
 	}
 	// Update the health fields of the directory in the heap.
 	heapDir.mu.Lock()
 	heapDir.aggregateHealth = math.Max(heapDir.aggregateHealth, d.aggregateHealth)
+	heapDir.aggregateRemoteHealth = math.Max(heapDir.aggregateRemoteHealth, d.aggregateRemoteHealth)
 	heapDir.health = math.Max(heapDir.health, d.health)
+	heapDir.remoteHealth = math.Max(heapDir.remoteHealth, d.remoteHealth)
 	if !heapDir.explored || !d.explored {
 		heapDir.explored = false
 	}
@@ -192,12 +218,14 @@ func (dh *directoryHeap) update(d *directory) bool {
 }
 
 // managedPushDirectory adds a directory to the directory heap
-func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, aggregateHealth, health float64, explored bool) {
+func (dh *directoryHeap) managedPushDirectory(siaPath modules.SiaPath, metadata siadir.Metadata, explored bool) {
 	d := &directory{
-		aggregateHealth: aggregateHealth,
-		health:          health,
-		explored:        explored,
-		siaPath:         siaPath,
+		aggregateHealth:       metadata.AggregateHealth,
+		aggregateRemoteHealth: metadata.AggregateRemoteHealth,
+		explored:              explored,
+		health:                metadata.Health,
+		remoteHealth:          metadata.RemoteHealth,
+		staticSiaPath:         siaPath,
 	}
 	dh.managedPush(d)
 }
@@ -248,7 +276,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 // managedPushSubDirectories adds unexplored directory elements to the heap for
 // all of the directory's sub directories
 func (r *Renter) managedPushSubDirectories(d *directory) error {
-	subDirs, err := r.managedSubDirectories(d.siaPath)
+	subDirs, err := r.managedSubDirectories(d.staticSiaPath)
 	if err != nil {
 		return err
 	}
@@ -276,6 +304,6 @@ func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
 	}
 
 	// Push unexplored directory onto heap.
-	r.directoryHeap.managedPushDirectory(siaPath, metadata.AggregateHealth, metadata.Health, false)
+	r.directoryHeap.managedPushDirectory(siaPath, metadata, false)
 	return nil
 }
