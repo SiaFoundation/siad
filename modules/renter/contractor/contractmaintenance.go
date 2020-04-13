@@ -686,7 +686,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}
 	if sok {
 		c.log.Debugln("Waiting for session invalidation")
-		hostSettings = s.HostSettings()
+		hostSettings, err = s.Settings()
+		if err != nil {
+			err = errors.AddContext(err, "Unable to get host settings")
+			return
+		}
+
 		s.invalidate()
 		c.log.Debugln("Got session invalidation")
 	}
