@@ -42,10 +42,11 @@ type unfinishedUploadChunk struct {
 	memoryReleased         uint64 // memory that has been returned of memoryNeeded
 	minimumPieces          int    // number of pieces required to recover the file.
 	offset                 int64  // Offset of the chunk within the file.
-	piecesNeeded           int    // number of pieces to achieve a 100% complete upload
-	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
-	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
-	priority               bool   // indicates if the chunks is supposed to be repaired asap
+	onDisk                 bool
+	piecesNeeded           int  // number of pieces to achieve a 100% complete upload
+	stuck                  bool // indicates if the chunk was marked as stuck during last repair
+	stuckRepair            bool // indicates if the chunk was identified for repair by the stuck loop
+	priority               bool // indicates if the chunks is supposed to be repaired asap
 
 	// Cache the siapath of the underlying file.
 	staticSiaPath string

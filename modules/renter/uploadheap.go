@@ -70,7 +70,11 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	//  3) Stuck Chunks
 	//    - These are chunks added by the stuck loop
 	//
-	//  4) Worst Health Chunk
+	//  4) Remote Chunks
+	//    - These are chunks of a siafile that does not have a local file to repair
+	//    from
+	//
+	//  5) Worst Health Chunk
 	//    - The base priority of chunks in the heap is by the worst health
 
 	// Check for Priority chunks
@@ -105,6 +109,14 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	}
 	// If chunk j is stuck, return true to prioritize it.
 	if !uch[i].stuck && uch[j].stuck {
+		return false
+	}
+
+	// Check for Remote Chunks
+	if !uch[i].onDisk && uch[j].onDisk {
+		return true
+	}
+	if uch[i].onDisk && !uch[j].onDisk {
 		return false
 	}
 
@@ -394,6 +406,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		r.log.Println("WARN: unable to get 'stuck' status:", err)
 		return nil, errors.AddContext(err, "unable to get 'stuck' status")
 	}
+	_, err = os.Stat(entryCopy.LocalPath())
+	onDisk := err == nil
 	uuc := &unfinishedUploadChunk{
 		fileEntry: entryCopy,
 
@@ -405,6 +419,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		index:    chunkIndex,
 		length:   entry.ChunkSize(),
 		offset:   int64(chunkIndex * entry.ChunkSize()),
+		onDisk:   onDisk,
 		priority: priority,
 
 		staticSiaPath: entryCopy.SiaFilePath(),
@@ -581,9 +596,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// accessed without error. If there is an error accessing the file then
 		// it is likely that we can not read the file in which case it can not
 		// be used for repair.
-		_, err := os.Stat(chunk.fileEntry.LocalPath())
-		onDisk := err == nil
-		repairable := chunk.health <= 1 || onDisk
+		repairable := chunk.health <= 1 || chunk.onDisk
 		needsRepair := chunk.health >= RepairThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
@@ -596,7 +609,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// If a chunk is not able to be repaired, mark it as stuck.
 		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being repairable")
-			err = r.managedSetStuckAndClose(chunk, true)
+			err := r.managedSetStuckAndClose(chunk, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 			}
@@ -604,7 +617,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Close entry of completed chunk
-		err = r.managedSetStuckAndClose(chunk, false)
+		err := r.managedSetStuckAndClose(chunk, false)
 		if err != nil {
 			r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}

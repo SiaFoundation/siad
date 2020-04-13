@@ -176,7 +176,7 @@ func TestBuildChunkHeap(t *testing.T) {
 
 // addChunksOfDifferentHealth is a helper function for TestUploadHeap to add
 // numChunks number of chunks that each have different healths to the uploadHeap
-func addChunksOfDifferentHealth(r *Renter, numChunks int, stuck, fileRecentlySuccessful, priority bool) error {
+func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecentlySuccessful, stuck, remote bool) error {
 	var UID siafile.SiafileUID
 	if priority {
 		UID = "priority"
@@ -184,6 +184,8 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, stuck, fileRecentlySuc
 		UID = "fileRecentlySuccessful"
 	} else if stuck {
 		UID = "stuck"
+	} else if remote {
+		UID = "remote"
 	} else {
 		UID = "unstuck"
 	}
@@ -201,6 +203,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, stuck, fileRecentlySuc
 			fileRecentlySuccessful: fileRecentlySuccessful,
 			priority:               priority,
 			health:                 float64(i),
+			onDisk:                 !remote,
 			availableChan:          make(chan struct{}),
 		}
 		if !r.uploadHeap.managedPush(chunk) {
@@ -230,25 +233,29 @@ func TestUploadHeap(t *testing.T) {
 	//
 	// Add 2 chunks of each type to confirm the type and the health is
 	// prioritized properly
-	err = addChunksOfDifferentHealth(rt.renter, 2, true, false, false)
+	err = addChunksOfDifferentHealth(rt.renter, 2, true, false, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = addChunksOfDifferentHealth(rt.renter, 2, false, true, false)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, true, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, true)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, false)
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = addChunksOfDifferentHealth(rt.renter, 2, false, false, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should be 8 chunks in the heap
-	if rt.renter.uploadHeap.managedLen() != 8 {
+	if rt.renter.uploadHeap.managedLen() != 10 {
 		t.Fatalf("Expected %v chunks in heap found %v",
 			8, rt.renter.uploadHeap.managedLen())
 	}
@@ -257,6 +264,7 @@ func TestUploadHeap(t *testing.T) {
 	//  - First 2 chunks should be priority
 	//  - Second 2 chunks should be fileRecentlyRepair
 	//  - Third 2 chunks should be stuck
+	//  - Fourth 2 chunks should be remote (ie !onDisk)
 	//  - Last 2 chunks should be unstuck
 	chunk1 := rt.renter.uploadHeap.managedPop()
 	chunk2 := rt.renter.uploadHeap.managedPop()
@@ -283,6 +291,16 @@ func TestUploadHeap(t *testing.T) {
 	if !chunk1.stuck || !chunk2.stuck {
 		t.Fatalf("Expected chunks to be stuck, got stuck %v and %v",
 			chunk1.stuck, chunk2.stuck)
+	}
+	if chunk1.health < chunk2.health {
+		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
+			chunk1.health, chunk2.health)
+	}
+	chunk1 = rt.renter.uploadHeap.managedPop()
+	chunk2 = rt.renter.uploadHeap.managedPop()
+	if chunk1.onDisk || chunk2.onDisk {
+		t.Fatalf("Expected chunks to be remote and no onDisk, got onDisk %v and %v",
+			chunk1.onDisk, chunk2.onDisk)
 	}
 	if chunk1.health < chunk2.health {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
