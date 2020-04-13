@@ -43,7 +43,7 @@ func APIPassword() (string, error) {
 	}
 
 	// Try to read the password from disk.
-	path := apiPasswordFile()
+	path := apiPasswordFilePath()
 	pwFile, err := ioutil.ReadFile(path)
 	if err == nil {
 		// This is the "normal" case, so don't print anything.
@@ -54,12 +54,8 @@ func APIPassword() (string, error) {
 
 	// No password file; generate a secure one.
 	// Generate a password file.
-	err = createAPIPasswordFile()
+	pw, err = createAPIPasswordFile()
 	if err != nil {
-		return "", err
-	}
-	pw = hex.EncodeToString(fastrand.Bytes(16))
-	if err := ioutil.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
 		return "", err
 	}
 	fmt.Println("A secure API password has been written to", path)
@@ -79,8 +75,11 @@ func SetAPIPassword(pw string) error {
 // the default.
 func SiaDir() string {
 	siaDir := os.Getenv(siaDataDir)
-	if siaDir == "" {
+	if siaDir != "" {
+		fmt.Println("Using SIA_DATA_DIR environment variable")
+	} else {
 		siaDir = defaultSiaDir()
+		fmt.Println("Using default Sia Data Directory")
 	}
 	return siaDir
 }
@@ -88,8 +87,11 @@ func SiaDir() string {
 // SkynetDir returns the Skynet data directory.
 func SkynetDir() string {
 	skynetDir := os.Getenv(skynetDataDir)
-	if skynetDir == "" {
+	if skynetDir != "" {
+		fmt.Println("Using SKYNET_DATA_DIR environment variable")
+	} else {
 		skynetDir = defaultSkynetDir()
+		fmt.Println("Using default Skynet Data Directory")
 	}
 	return skynetDir
 }
@@ -99,15 +101,25 @@ func WalletPassword() string {
 	return os.Getenv(siaWalletPassword)
 }
 
-// apiPasswordFile returns the path to the API's password file. The password
+// apiPasswordFilePath returns the path to the API's password file. The password
 // file is stored in the Sia data directory.
-func apiPasswordFile() string {
+func apiPasswordFilePath() string {
 	return filepath.Join(SiaDir(), "apipassword")
 }
 
 // createAPIPasswordFile creates an api password file in the Sia data directory
-func createAPIPasswordFile() error {
-	return os.Mkdir(SiaDir(), 0700)
+// and returns the newly created password
+func createAPIPasswordFile() (string, error) {
+	err := os.Mkdir(SiaDir(), 0700)
+	if err != nil {
+		return "", err
+	}
+	pw := hex.EncodeToString(fastrand.Bytes(16))
+	err = ioutil.WriteFile(apiPasswordFilePath(), []byte(pw+"\n"), 0600)
+	if err != nil {
+		return "", err
+	}
+	return pw, nil
 }
 
 // defaultSiaDir returns the default data directory of siad. The values for

@@ -345,15 +345,17 @@ func main() {
 	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
-	// Set the API Password
-	pw, err := build.APIPassword()
-	if err != nil {
-		fmt.Println("Exiting: Error getting API Password:", err)
-		os.Exit(exitCodeGeneral)
+	// Check if the API Password is set
+	if httpClient.Password == "" {
+		pw, err := build.APIPassword()
+		if err != nil {
+			fmt.Println("Exiting: Error getting API Password:", err)
+			os.Exit(exitCodeGeneral)
+		}
+		httpClient.Password = pw
 	}
-	httpClient.Password = pw
 
-	// Check is the siaDir is set.
+	// Check if the siaDir is set.
 	if siaDir == "" {
 		siaDir = build.SiaDir()
 	}

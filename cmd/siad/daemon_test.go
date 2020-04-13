@@ -152,12 +152,6 @@ func TestUnitProcessConfig(t *testing.T) {
 
 // TestLoadAPIPassword tests the 'loadAPIPassword' function.
 func TestLoadAPIPassword(t *testing.T) {
-	// Not a short test because it loads env variables from disk. Don't run in
-	// parallel since it chances env variables
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	// If config.Siad.AuthenticateAPI is false, no password should be set
 	var config Config
 

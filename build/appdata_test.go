@@ -5,37 +5,16 @@ import (
 	"testing"
 )
 
-// resetEnvVar is a helper function to reset an environment variable to its
-// original state after testing
-func resetEnvVar(env, value string) error {
-	if value == "" {
-		return os.Unsetenv(env)
-	}
-	return os.Setenv(env, value)
-}
-
 // TestAPIPassword tests getting and setting the API Password
 func TestAPIPassword(t *testing.T) {
-	// Not a short test because it loads env variables from disk. Don't run in
-	// parallel since it chances env variables
-	if testing.Short() {
-		t.SkipNow()
-	}
-
-	// Record any defaults
-	originalPW := os.Getenv(siaAPIPassword)
-	defer func() {
-		err := resetEnvVar(siaAPIPassword, originalPW)
-		if err != nil {
-			t.Fatal("Error resetting env variable to:", originalPW)
-		}
-	}()
+	// Unset any defaults, this only affects in memory state. Any Env Vars will
+	// remain intact on disk
 	err := os.Unsetenv(siaAPIPassword)
 	if err != nil {
 		t.Error(err)
 	}
 
-	// Calling APIPassword should return a none blank password if the env
+	// Calling APIPassword should return a non-blank password if the env
 	// variable isn't set
 	pw, err := APIPassword()
 	if err != nil {
@@ -66,20 +45,8 @@ func TestAPIPassword(t *testing.T) {
 
 // TestSiaDir tests getting and setting the Sia data directory
 func TestSiaDir(t *testing.T) {
-	// Not a short test because it loads env variables from disk. Don't run in
-	// parallel since it chances env variables
-	if testing.Short() {
-		t.SkipNow()
-	}
-
-	// Record any defaults
-	originalSiaDir := os.Getenv(siaDataDir)
-	defer func() {
-		err := resetEnvVar(siaDataDir, originalSiaDir)
-		if err != nil {
-			t.Fatal("Error resetting env variable to:", originalSiaDir)
-		}
-	}()
+	// Unset any defaults, this only affects in memory state. Any Env Vars will
+	// remain intact on disk
 	err := os.Unsetenv(siaDataDir)
 	if err != nil {
 		t.Error(err)
@@ -105,20 +72,8 @@ func TestSiaDir(t *testing.T) {
 
 // TestSiaWalletPassword tests getting and setting the Sia Wallet Password
 func TestSiaWalletPassword(t *testing.T) {
-	// Not a short test because it loads env variables from disk. Don't run in
-	// parallel since it chances env variables
-	if testing.Short() {
-		t.SkipNow()
-	}
-
-	// Record any defaults
-	originalSiaWalletPassword := os.Getenv(siaWalletPassword)
-	defer func() {
-		err := resetEnvVar(siaWalletPassword, originalSiaWalletPassword)
-		if err != nil {
-			t.Fatal("Error resetting env variable to:", originalSiaWalletPassword)
-		}
-	}()
+	// Unset any defaults, this only affects in memory state. Any Env Vars will
+	// remain intact on disk
 	err := os.Unsetenv(siaWalletPassword)
 	if err != nil {
 		t.Error(err)
@@ -144,20 +99,8 @@ func TestSiaWalletPassword(t *testing.T) {
 
 // TestSkynetDir tests getting and setting the Skynet data directory
 func TestSkynetDir(t *testing.T) {
-	// Not a short test because it loads env variables from disk. Don't run in
-	// parallel since it chances env variables
-	if testing.Short() {
-		t.SkipNow()
-	}
-
-	// Record any defaults
-	originalSkeynetDir := os.Getenv(skynetDataDir)
-	defer func() {
-		err := resetEnvVar(skynetDataDir, originalSkeynetDir)
-		if err != nil {
-			t.Fatal("Error resetting env variable to:", originalSkeynetDir)
-		}
-	}()
+	// Unset any defaults, this only affects in memory state. Any Env Vars will
+	// remain intact on disk
 	err := os.Unsetenv(skynetDataDir)
 	if err != nil {
 		t.Error(err)
