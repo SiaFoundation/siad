@@ -85,7 +85,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// Create a struct to monitor all changes happening to the test refcounter.
 	// At the end we'll use it to validate all changes.
-	track := newTracker(rc.numSectors)
+	track := newTracker(rc)
 
 	// testTimeoutChan will signal to all goroutines that it's time to wrap up and exit
 	testTimeoutChan := make(chan struct{})
@@ -184,12 +184,16 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 
 // newTracker creates a tracker instance and initialises its counts
 // slice
-func newTracker(numSec uint64) *tracker {
+func newTracker(rc *RefCounter) *tracker {
 	t := &tracker{
-		counts: make([]uint16, numSec),
+		counts: make([]uint16, rc.numSectors),
 	}
-	for i := uint64(0); i < numSec; i++ {
-		t.counts[i] = 1
+	for i := uint64(0); i < rc.numSectors; i++ {
+		c, err := rc.Count(i)
+		if err != nil {
+			panic("Failed to read count from refcounter.")
+		}
+		t.counts[i] = c
 	}
 	return t
 }
