@@ -1,8 +1,6 @@
 package siatest
 
 import (
-	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -11,7 +9,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -422,87 +419,6 @@ func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, pari
 	// Wait until upload reaches a certain health
 	err = tn.WaitForUploadHealth(remoteFile)
 	return remoteFile, err
-}
-
-// UploadRandomSkyfileBlocking uploads a Skyfile using UploadSkyfileBlocking
-// with randomized input.
-func (tn *TestNode) UploadRandomSkyfileBlocking() (skylink string, err error) {
-	// generate random filename
-	filename := hex.EncodeToString(fastrand.Bytes(16))
-
-	// generate random filesize (between 100 and twice the sector size to
-	// randomize between small and large skyfiles)
-	filesize := uint64(fastrand.Intn(int(2*modules.SectorSize-100)) + 100)
-
-	skylink, _, _, err = tn.UploadSkyfileBlocking(filename, filesize, false)
-	return
-}
-
-// UploadSkyfileBlocking attempts to upload a skyfile of given size. After it
-// has successfully performed the upload, it will verify the file can be
-// downloaded using its Skylink. Returns the skylink, the parameters used for
-// the upload and potentially an error.
-func (tn *TestNode) UploadSkyfileBlocking(filename string, filesize uint64, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	// create the siapath
-	siapath, err := modules.NewSiaPath(filename)
-	if err != nil {
-		errors.AddContext(err, "Failed to create siapath")
-		return
-	}
-
-	// create random data and wrap it in a reader
-	reader := bytes.NewReader(fastrand.Bytes(int(filesize)))
-	sup = modules.SkyfileUploadParameters{
-		SiaPath:             siapath,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     modules.DefaultFilePerm,
-		},
-		Reader: reader,
-		Force:  force,
-	}
-
-	// upload a skyfile
-	skylink, sshp, err = tn.SkynetSkyfilePost(sup)
-	if err != nil {
-		errors.AddContext(err, "Failed to upload skyfile")
-		return
-	}
-
-	// verify the redundancy on the file
-	uploadpath, err := modules.SkynetFolder.Join(sup.SiaPath.String())
-	if err != nil {
-		errors.AddContext(err, "Failed to create the upload path")
-		return
-	}
-	err = build.Retry(10, 100*time.Millisecond, func() error {
-		f, err := tn.RenterFileRootGet(uploadpath)
-		if err != nil {
-			return err
-		}
-		if f.File.Redundancy != float64(sup.BaseChunkRedundancy) {
-			return fmt.Errorf("bad redundancy, expected %v but was %v", sup.BaseChunkRedundancy, f.File.Redundancy)
-		}
-		return nil
-	})
-	if err != nil {
-		errors.AddContext(err, "Failed to verify skyfile redundancy")
-		return
-	}
-
-	// verify it can be downloaded
-	if err = build.Retry(10, 100*time.Millisecond, func() error {
-		_, _, err := tn.SkynetSkylinkGet(skylink)
-		if err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
-		errors.AddContext(err, "Failed to download skyfile after it got uploaded")
-		return
-	}
-	return
 }
 
 // WaitForDecreasingRedundancy waits until the redundancy decreases to a

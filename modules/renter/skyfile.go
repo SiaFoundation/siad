@@ -508,6 +508,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
+	fmt.Println("UPLOAD Extended", siaPath)
 	fup := modules.FileUploadParams{
 		SiaPath:             siaPath,
 		ErasureCode:         ec,
@@ -570,7 +571,7 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 		return errors.AddContext(err, "failed to stream upload small skyfile")
 	}
 	defer fileNode.Close()
-
+	fmt.Println("UPLOAD small", fileNode.SiaFilePath())
 	// Add the skylink to the Siafile.
 	err = fileNode.AddSkylink(skylink)
 	return errors.AddContext(err, "unable to add skylink to siafile")
