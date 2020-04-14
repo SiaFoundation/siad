@@ -136,5 +136,5 @@ func (i *instructionDropSectors) Time() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return TimeDropSingleSector * numDropped, nil
+	return modules.MDMDropSectorsTime(numDropped), nil
 }

@@ -32,7 +32,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	var r io.Reader
 	// Shouldn't be able to execute empty program.
 	pt := newTestPriceTable()
-	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.MDMInitCost(pt, 0), types.ZeroCurrency, newTestStorageObligation(true), 0, r)
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.MDMInitCost(pt, 0, 0), types.ZeroCurrency, newTestStorageObligation(true), 0, r)
 	if !errors.Contains(err, ErrEmptyProgram) {
 		t.Fatal("expected ErrEmptyProgram", err)
 	}
@@ -64,7 +64,8 @@ func TestNewProgramLowBudget(t *testing.T) {
 	dataLen := uint64(len(programData))
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen), collateral, newTestStorageObligation(true), dataLen, r)
+	cost := modules.MDMInitCost(pt, dataLen, 1)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, newTestStorageObligation(true), dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}

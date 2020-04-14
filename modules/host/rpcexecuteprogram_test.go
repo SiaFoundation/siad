@@ -25,8 +25,8 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (mod
 	// Compute cost and used memory.
 	cost, refund := modules.MDMHasSectorCost(pt)
 	usedMemory := modules.MDMHasSectorMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, mdm.TimeHasSector+mdm.TimeCommit)
-	initCost := modules.MDMInitCost(pt, uint64(len(data)))
+	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeHasSector+modules.MDMTimeCommit)
+	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
 	cost = cost.Add(memoryCost).Add(initCost)
 	return instructions, data, cost, refund, usedMemory
 }

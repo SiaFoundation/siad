@@ -1,0 +1,1 @@
+- Fix bug in converting siafile to skyfile and enable testing.

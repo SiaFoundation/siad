@@ -160,9 +160,12 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
 	// verify the payment revision
-	amount, _, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
+	amount, collateral, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision")
+	}
+	if !collateral.IsZero() {
+		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision, collateral was not zero")
 	}
 
 	// sign the revision
@@ -199,6 +202,9 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 		FileContractRevisions: []types.FileContractRevision{paymentRevision},
 		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
 	}}
+
+	// track the account funding
+	so.PotentialAccountFunding = so.PotentialAccountFunding.Add(deposit)
 
 	// update the storage obligation
 	err = h.managedModifyStorageObligation(so, nil, nil)

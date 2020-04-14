@@ -96,7 +96,7 @@ var (
 	// defaultContractPrice defines the default price of creating a contract
 	// with the host. The current default is 0.1. This was chosen since it is
 	// the minimum fee estimation of the transactionpool for a filecontract
-	// transaction..
+	// transaction.
 	defaultContractPrice = types.SiacoinPrecision.Div64(100).Div64(1e3).Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
 
 	// defaultDownloadBandwidthPrice defines the default price of upload
@@ -131,23 +131,6 @@ var (
 	// with a number like 65 MiB.
 	defaultMaxReviseBatchSize = 17 * (1 << 20)
 
-	// defaultSectorAccessPrice defines the default price of a sector access. It
-	// is roughly equal to the cost of downloading 64 KiB.
-	defaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
-
-	// defaultStoragePrice defines the starting price for hosts selling
-	// storage. We try to match a number that is both reasonably profitable and
-	// reasonably competitive.
-	defaultStoragePrice = types.SiacoinPrecision.Mul64(50).Div(modules.BlockBytesPerMonthTerabyte) // 50 SC / TB / Month
-
-	// defaultUploadBandwidthPrice defines the default price of upload
-	// bandwidth. The default is set to 1 siacoin per GB, because the host is
-	// presumed to have a large amount of downstream bandwidth. Furthermore,
-	// the host is typically only downloading data if it is planning to store
-	// the data, meaning that the host serves to profit from accepting the
-	// data.
-	defaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
-
 	// defaultEphemeralAccountExpiry defines the default maximum amount of
 	// time an ephemeral account can be inactive before it expires and gets
 	// deleted.
@@ -164,6 +147,10 @@ var (
 	// prevent the host from having too much money at risk.
 	defaultMaxEphemeralAccountRisk = types.SiacoinPrecision.Mul64(5)
 
+	// defaultSectorAccessPrice defines the default price of a sector access. It
+	// is roughly equal to the cost of downloading 64 KiB.
+	defaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
+
 	// defaultWindowSize is the size of the proof of storage window requested
 	// by the host. The host will not delete any obligations until the window
 	// has closed and buried under several confirmations. For release builds,
@@ -177,6 +164,14 @@ var (
 		Standard: types.BlockHeight(144), // 1 day.
 		Testing:  types.BlockHeight(5),   // 5 seconds.
 	}).(types.BlockHeight)
+
+	// defaultUploadBandwidthPrice defines the default price of upload
+	// bandwidth. The default is set to 1 siacoin per GB, because the host is
+	// presumed to have a large amount of downstream bandwidth. Furthermore,
+	// the host is typically only downloading data if it is planning to store
+	// the data, meaning that the host serves to profit from accepting the
+	// data.
+	defaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(modules.BytesPerTerabyte) // 1 SC / TB
 
 	// logAllLimit is the number of errors of each type that the host will log
 	// before switching to probabilistic logging. If there are not many errors,
