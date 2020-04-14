@@ -33,8 +33,9 @@ var (
 type (
 	// fileContractRenewal is an instruction to renew a file contract.
 	fileContractRenewal struct {
-		id     types.FileContractID
-		amount types.Currency
+		id         types.FileContractID
+		amount     types.Currency
+		hostPubKey types.SiaPublicKey
 	}
 )
 
@@ -650,6 +651,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Pull the variables out of the renewal.
 	id := renewInstructions.id
 	amount := renewInstructions.amount
+	hostPubKey := renewInstructions.hostPubKey
 
 	// Mark the contract as being renewed, and defer logic to unmark it
 	// once renewing is complete.
@@ -674,16 +676,27 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.mu.RUnlock()
 	if eok {
 		c.log.Debugln("Waiting for editor invalidation")
-		hostSettings = e.HostSettings()
 		e.invalidate()
 		c.log.Debugln("Got editor invalidation")
 	}
 	if dok {
 		c.log.Debugln("Waiting for downloader invalidation")
-		hostSettings = d.HostSettings()
 		d.invalidate()
 		c.log.Debugln("Got downloader invalidation")
 	}
+
+	// If we don't have any sessions available, make a new one.
+	if !sok {
+		var hs Session
+		hs, err = c.Session(hostPubKey, c.tg.StopChan())
+		if err != nil {
+			err = errors.AddContext(err, "Unable to estable session with host")
+			return
+		}
+		s = hs.(*hostSession)
+		sok = true
+	}
+
 	if sok {
 		c.log.Debugln("Waiting for session invalidation")
 		hostSettings, err = s.Settings()
@@ -691,7 +704,6 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 			err = errors.AddContext(err, "Unable to get host settings")
 			return
 		}
-
 		s.invalidate()
 		c.log.Debugln("Got session invalidation")
 	}
@@ -1007,8 +1019,9 @@ func (c *Contractor) threadedContractMaintenance() {
 				continue
 			}
 			renewSet = append(renewSet, fileContractRenewal{
-				id:     contract.ID,
-				amount: renewAmount,
+				id:         contract.ID,
+				amount:     renewAmount,
+				hostPubKey: contract.HostPublicKey,
 			})
 			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
@@ -1040,8 +1053,9 @@ func (c *Contractor) threadedContractMaintenance() {
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
 			refreshSet = append(refreshSet, fileContractRenewal{
-				id:     contract.ID,
-				amount: contract.TotalCost.Mul64(2),
+				id:         contract.ID,
+				amount:     contract.TotalCost.Mul64(2),
+				hostPubKey: contract.HostPublicKey,
 			})
 			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {
