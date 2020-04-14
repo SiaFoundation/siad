@@ -347,6 +347,7 @@ func main() {
 
 	// Check if the API Password is set
 	if httpClient.Password == "" {
+		// No password passed in, fetch the API Password
 		pw, err := build.APIPassword()
 		if err != nil {
 			fmt.Println("Exiting: Error getting API Password:", err)
@@ -357,6 +358,7 @@ func main() {
 
 	// Check if the siaDir is set.
 	if siaDir == "" {
+		// No siaDir passed in, fetch the siaDir
 		siaDir = build.SiaDir()
 	}
 

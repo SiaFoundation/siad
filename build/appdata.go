@@ -2,8 +2,6 @@ package build
 
 import (
 	"encoding/hex"
-	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -25,10 +23,6 @@ var (
 	// siaWalletPassword is the environment variable that can be set to enable
 	// auto unlocking the wallet
 	siaWalletPassword = "SIA_WALLET_PASSWORD"
-
-	// skynetDataDir is the environment variable that tells siad where to put
-	// the miscellaneous skynet data
-	skynetDataDir = "SKYNET_DATA_DIR"
 )
 
 // APIPassword returns the Sia API Password either from the environment variable
@@ -38,7 +32,6 @@ func APIPassword() (string, error) {
 	// Check the environment variable.
 	pw := os.Getenv(siaAPIPassword)
 	if pw != "" {
-		fmt.Println("Using SIA_API_PASSWORD environment variable")
 		return pw, nil
 	}
 
@@ -58,42 +51,22 @@ func APIPassword() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fmt.Println("A secure API password has been written to", path)
-	fmt.Println("This password will be used automatically the next time you run siad.")
 	return pw, nil
-}
-
-// SetAPIPassword sets the SiaAPIPassword environment variable
-func SetAPIPassword(pw string) error {
-	if pw == "" {
-		return errors.New("Cannot set blank password")
-	}
-	return os.Setenv(siaAPIPassword, pw)
 }
 
 // SiaDir returns the Sia data directory either from the environment variable or
 // the default.
 func SiaDir() string {
 	siaDir := os.Getenv(siaDataDir)
-	if siaDir != "" {
-		fmt.Println("Using SIA_DATA_DIR environment variable")
-	} else {
+	if siaDir == "" {
 		siaDir = defaultSiaDir()
-		fmt.Println("Using default Sia Data Directory")
 	}
 	return siaDir
 }
 
 // SkynetDir returns the Skynet data directory.
 func SkynetDir() string {
-	skynetDir := os.Getenv(skynetDataDir)
-	if skynetDir != "" {
-		fmt.Println("Using SKYNET_DATA_DIR environment variable")
-	} else {
-		skynetDir = defaultSkynetDir()
-		fmt.Println("Using default Skynet Data Directory")
-	}
-	return skynetDir
+	return defaultSkynetDir()
 }
 
 // WalletPassword returns the SiaWalletPassword environment variable.

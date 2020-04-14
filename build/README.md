@@ -18,7 +18,7 @@ The build package contains high level helper functions.
  - [appdata.go](./appdata.go)
  - [appdata_test.go](./appdata_test.go)
 
-The Appdata subsystem is responsible for providing information about various sia
+The Appdata subsystem is responsible for providing information about various Sia
 application data. This subsystem is used to interact with any environment
 variables that are set by the user.
 
@@ -32,19 +32,25 @@ variables that are set by the user.
  - `SKYNET_DATA_DIR` is the skynetDataDir environment variable that tells siad
    where to put the miscellaneous skynet data
 
+## Build Flags
+### Key Files
+ - [debug_off.go](./debug_off.go)
+ - [debug_on.go](./debug_on.go)
+ - [release_dev.go](./release_dev.go)
+ - [release_standard.go](./release_standard.go)
+ - [release_testing.go](./release_testing.go)
+ - [vlong_off.go](./vlong_off.go)
+ - [vlong_on.go](./vlong_on.go)
+
+TODO...
+
 ## Commit
 TODO...
 
 ## Critical
 TODO...
 
-## Debug
-TODO...
-
 ## Errors
-TODO...
-
-## Release
 TODO...
 
 ## Testing
@@ -54,7 +60,4 @@ TODO...
 TODO...
 
 ## Version
-TODO...
-
-## VLong
 TODO...
