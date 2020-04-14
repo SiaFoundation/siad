@@ -81,7 +81,8 @@ var ZeroAccountID = AccountID("")
 
 type (
 	// AccountID is the unique identifier of an ephemeral account on the host.
-	// It is the string representation of a SiaPublicKey.
+	// It should always be a valid representation of types.SiaPublicKey or an
+	// empty string.
 	AccountID string
 
 	// PaymentRequest identifies the payment method. This can be either
