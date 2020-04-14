@@ -160,6 +160,7 @@ OUTER:
 							}
 			*/
 			sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
+			sf.deps = fdd
 			if err != nil {
 				if errors.Contains(err, errDiskFault) {
 					numRecoveries++
@@ -175,7 +176,6 @@ OUTER:
 							uint64(fastrand.Intn(math.MaxInt32)),
 						}
 			*/
-			sf.deps = fdd
 			//sf = dummyEntry(siafile)
 			sf.SetPartialsSiaFile(nil)
 			break
