@@ -403,7 +403,10 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, 
 	defer am.mu.Unlock()
 
 	// Open the account, if the account does not exist yet, it will be created.
-	acc := am.openAccount(id)
+	acc, err := am.openAccount(id)
+	if err != nil {
+		return errors.AddContext(err, "failed to open account for deposit")
+	}
 
 	// Verify if the deposit does not exceed the maximum
 	if acc.depositExceedsMaxBalance(amount, maxBalance) {
@@ -458,7 +461,10 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	am.fingerprints.add(fp, expiry, blockHeight)
 
 	// Open the account, create if it does not exist yet
-	acc := am.openAccount(id)
+	acc, err := am.openAccount(id)
+	if err != nil {
+		return errors.AddContext(err, "failed to open account for withdrawal")
+	}
 
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
@@ -893,10 +899,13 @@ func (am *accountManager) callAccountBalance(id modules.AccountID) types.Currenc
 
 // openAccount will return an account object. If the account does not exist it
 // will be created.
-func (am *accountManager) openAccount(id modules.AccountID) *account {
+func (am *accountManager) openAccount(id modules.AccountID) (*account, error) {
+	if id.IsZeroAccount() {
+		return nil, errors.New("can't open an account with an invalid or empty account id")
+	}
 	acc, exists := am.accounts[id]
 	if exists {
-		return acc
+		return acc, nil
 	}
 	acc = &account{
 		id:                 id,
@@ -905,7 +914,7 @@ func (am *accountManager) openAccount(id modules.AccountID) *account {
 		persistResultChans: make([]chan error, 0),
 	}
 	am.accounts[id] = acc
-	return acc
+	return acc, nil
 }
 
 // assignFreeIndex will return the next available account index
