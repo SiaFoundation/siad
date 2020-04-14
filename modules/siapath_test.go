@@ -33,6 +33,16 @@ func TestGlobalSiaPath(t *testing.T) {
 	}
 }
 
+// TestRandomSiaPath tests that RandomSiaPath always returns a valid SiaPath
+func TestRandomSiaPath(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		err := RandomSiaPath().Validate(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestSiapathValidate verifies that the validate function correctly validates
 // SiaPaths.
 func TestSiapathValidate(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -315,5 +316,11 @@ func (sp SiaPath) Validate(isRoot bool) error {
 		}
 		prevElem = pathElem
 	}
+
+	// Final check for a valid utf8
+	if !utf8.ValidString(sp.Path) {
+		return errors.New("SiaPath is not a valid utf8 path")
+	}
+
 	return nil
 }
