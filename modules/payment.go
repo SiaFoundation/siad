@@ -76,13 +76,15 @@ var (
 )
 
 // ZeroAccountID is the only account id that is allowed to be invalid.
-var ZeroAccountID = AccountID("")
+var ZeroAccountID = AccountID{""}
 
 type (
 	// AccountID is the unique identifier of an ephemeral account on the host.
 	// It should always be a valid representation of types.SiaPublicKey or an
 	// empty string.
-	AccountID string
+	AccountID struct {
+		spk string
+	}
 
 	// PaymentRequest identifies the payment method. This can be either
 	// PayByContract or PayByEphemeralAccount
@@ -147,10 +149,10 @@ func (aid *AccountID) FromSPK(spk types.SiaPublicKey) {
 		*aid = ZeroAccountID
 		return
 	}
-	*aid = AccountID(spk.String())
+	*aid = AccountID{spk.String()}
 }
 
-// IsZeroAccount returns whether or not the account id matche the empty string.
+// IsZeroAccount returns whether or not the account id matches the empty string.
 func (aid AccountID) IsZeroAccount() bool {
 	return aid == ZeroAccountID
 }
@@ -200,7 +202,7 @@ func (aid AccountID) SPK() (spk types.SiaPublicKey) {
 	if aid.IsZeroAccount() {
 		build.Critical("should never use the zero account")
 	}
-	err := spk.LoadString(string(aid))
+	err := spk.LoadString(aid.spk)
 	if err != nil {
 		build.Critical("account id should never fail to be loaded as a SiaPublicKey")
 	}

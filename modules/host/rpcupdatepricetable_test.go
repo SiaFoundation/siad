@@ -170,9 +170,15 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return
 		}
 
+		var aid modules.AccountID
+		err = aid.LoadString("prefix:deadbeef")
+		if err != nil {
+			return
+		}
+
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(rev, sig, "someaccount")
+		pbcRequest := newPayByContractRequest(rev, sig, aid)
 		err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 		if err != nil {
 			return

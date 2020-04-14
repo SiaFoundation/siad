@@ -386,7 +386,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 
 	//  Run the code again. This time it should fail due to no refund account
 	//  being provided.
-	refundAccount = ""
+	refundAccount = modules.ZeroAccountID
 	err = run(renterFunc, hostFunc)
 	if err == nil || !strings.Contains(err.Error(), "no account id provided for refunds") {
 		t.Fatal("Unexpected error occurred", err.Error())

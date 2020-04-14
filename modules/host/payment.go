@@ -72,7 +72,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	accountID := pbcr.RefundAccount
 
 	// sanity check accountID. Should always be provided.
-	if accountID == "" {
+	if accountID.IsZeroAccount() {
 		return nil, errors.New("no account id provided for refunds")
 	}
 

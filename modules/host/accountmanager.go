@@ -47,6 +47,9 @@ var (
 	// verification of when max risk is reached in tests. Used only in tests.
 	errMaxRiskReached = errors.New("errMaxRiskReached")
 
+	// errZeroAccountID occurs when an account is opened with the ZeroAccountID.
+	errZeroAccountID = errors.New("can't open an account with an empty account id")
+
 	// pruneExpiredAccountsFrequency is the frequency at which the account
 	// manager checks if it can expire accounts which have been inactive for too
 	// long.
@@ -900,7 +903,7 @@ func (am *accountManager) callAccountBalance(id modules.AccountID) types.Currenc
 // will be created.
 func (am *accountManager) openAccount(id modules.AccountID) (*account, error) {
 	if id.IsZeroAccount() {
-		return nil, errors.New("can't open an account with an invalid or empty account id")
+		return nil, errZeroAccountID
 	}
 	acc, exists := am.accounts[id]
 	if exists {

@@ -201,11 +201,15 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	// expect error when refund account id is provided for funding account.
-	_, _, err = runWithRevision(rev, modules.AccountID("prefix:deadbeef"))
-	if err == nil || !strings.Contains(err.Error(), "can't provide a refund account on a fund account rpc") {
-		t.Fatal("Expected error indicating that no refund account can be provided", err)
+	var aid modules.AccountID
+	err = aid.LoadString("prefix:deadbeef")
+	if err != nil {
+		t.Fatal(err)
 	}
-	refundAccount = "" // reset account to be valid
+	_, _, err = runWithRevision(rev, aid)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// expect error when we move funds back to the renter
 	recent = recentSO()

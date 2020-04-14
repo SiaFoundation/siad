@@ -20,7 +20,7 @@ func TestAccountID_FromSPK(t *testing.T) {
 	}
 	var aid AccountID
 	aid.FromSPK(spk)
-	if string(aid) != spk.String() {
+	if aid.spk != spk.String() {
 		t.Fatalf("AccountID should be %v but was %v", spk.String(), aid)
 	}
 }
@@ -37,7 +37,7 @@ func TestAccountID_LoadString(t *testing.T) {
 	if err := aid.LoadString(spk.String()); err != nil {
 		t.Fatal(err)
 	}
-	if string(aid) != spk.String() {
+	if aid.spk != spk.String() {
 		t.Fatalf("AccountID should be %v but was %v", spk.String(), aid)
 	}
 	// Load invalid string.
