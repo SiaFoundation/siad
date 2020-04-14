@@ -47,7 +47,7 @@ func addDirectoriesToHeap(r *Renter, numDirs int, explored, remote bool) {
 		aggregateHealth := float64(fastrand.Intn(100)) + 0.25
 
 		// If remote then set the remote healths to be non zero and make sure
-		// that the cooresponding healths are worse
+		// that the coresponding healths are worse
 		if remote {
 			remoteHealth = float64(fastrand.Intn(100)) + 0.25
 			aggregateRemoteHealth = float64(fastrand.Intn(100)) + 0.25
@@ -74,7 +74,6 @@ func addDirectoriesToHeap(r *Renter, numDirs int, explored, remote bool) {
 		}
 		r.directoryHeap.managedPush(d)
 	}
-
 }
 
 // TestDirectoryHeap probes the directory heap implementation
@@ -188,7 +187,7 @@ func TestDirectoryHeap(t *testing.T) {
 	d4.explored = false
 	rt.renter.directoryHeap.managedPush(d4)
 
-	// Check that top direcotry is directory 4
+	// Check that top directory is directory 4
 	d = rt.renter.directoryHeap.managedPop()
 	if !reflect.DeepEqual(d, d4) {
 		t.Log(d)
@@ -204,7 +203,7 @@ func TestDirectoryHeap(t *testing.T) {
 		t.Fatal("heap should empty but has length of", rt.renter.directoryHeap.managedLen())
 	}
 
-	// Test pushing an unexplored direcotry
+	// Test pushing an unexplored directory
 	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
@@ -487,7 +486,7 @@ func TestDirectoryHeapHealth(t *testing.T) {
 	// RepairThreshold
 	heapHealth, remote := d.managedHeapHealth()
 	if !remote {
-		t.Fatal("direcotry should be considered remote")
+		t.Fatal("directory should be considered remote")
 	}
 	if heapHealth != d.aggregateRemoteHealth {
 		t.Errorf("Expected heapHealth to be %v but was %v", d.aggregateRemoteHealth, heapHealth)
@@ -498,7 +497,7 @@ func TestDirectoryHeapHealth(t *testing.T) {
 	d.aggregateRemoteHealth = 0
 	heapHealth, remote = d.managedHeapHealth()
 	if remote {
-		t.Fatal("direcotry should not be considered remote")
+		t.Fatal("directory should not be considered remote")
 	}
 	if heapHealth != d.aggregateHealth {
 		t.Errorf("Expected heapHealth to be %v but was %v", d.aggregateHealth, heapHealth)
@@ -509,7 +508,7 @@ func TestDirectoryHeapHealth(t *testing.T) {
 	d.explored = true
 	heapHealth, remote = d.managedHeapHealth()
 	if !remote {
-		t.Fatal("direcotry should be considered remote")
+		t.Fatal("directory should be considered remote")
 	}
 	if heapHealth != d.remoteHealth {
 		t.Errorf("Expected heapHealth to be %v but was %v", d.remoteHealth, heapHealth)
@@ -517,7 +516,7 @@ func TestDirectoryHeapHealth(t *testing.T) {
 	d.remoteHealth = 0
 	heapHealth, remote = d.managedHeapHealth()
 	if remote {
-		t.Fatal("direcotry should not be considered remote")
+		t.Fatal("directory should not be considered remote")
 	}
 	if heapHealth != d.health {
 		t.Errorf("Expected heapHealth to be %v but was %v", d.health, heapHealth)

@@ -763,14 +763,33 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// temporary heap
 	var unfinishedChunkHeap uploadChunkHeap
 	var worstIgnoredHealth float64
-	// SeveyTODO - need to review logic for remote files now
-	dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+	var worstHealthRemote bool
+	dirHeapHealth, dirHeapRemote := r.directoryHeap.managedPeekHealth()
 	for _, file := range files {
 		// For normal repairs check if file is a worse health than the directory
-		// heap
-		fileHealth := file.Metadata().CachedHealth
-		if fileHealth < dirHeapHealth && target == targetUnstuckChunks {
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
+		// heap or if the directory heap is tracking remote files and the file
+		// is not remote
+		fileMetadata := file.Metadata()
+		fileHealth := fileMetadata.CachedHealth
+		remoteFile := fileMetadata.LocalPath == ""
+		if (fileHealth < dirHeapHealth || !remoteFile && dirHeapRemote) && target == targetUnstuckChunks {
+			// Track the health
+			if remoteFile && worstHealthRemote {
+				// If the file is remote and we are already tracking the health
+				// of other remote files then we want to keep track of the worst
+				// health.
+				worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
+			} else if remoteFile && !worstHealthRemote {
+				// If the file is remote and we haven't been tracking the health
+				// of any remote files then we want to track the health of this
+				// file and set the worstHealthRemote to true
+				worstHealthRemote = true
+				worstIgnoredHealth = fileHealth
+			} else if !worstHealthRemote {
+				// If we aren't tracking the health of any remote files yet,
+				// then track the health of this file
+				worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
+			}
 			continue
 		}
 
@@ -792,7 +811,23 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// directory heap
 			if chunk.health < dirHeapHealth && target == targetUnstuckChunks {
 				// Track the health
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+				if !chunk.onDisk && worstHealthRemote {
+					// If the chunk is remote and we are already tracking the health
+					// of other remote chunks then we want to keep track of the worst
+					// health.
+					worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+				} else if !chunk.onDisk && !worstHealthRemote {
+					// If the chunk is remote and we haven't been tracking the health of
+					// any remote chunks then we want to track the health of this chunk
+					// and set the worstHealthRemote to true
+					worstHealthRemote = true
+					worstIgnoredHealth = chunk.health
+				} else if !worstHealthRemote {
+					// If we aren't tracking the health of any remote chunks yet, then
+					// track the health of this chunk
+					worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+				}
+
 				// Close the file entry
 				chunk.fileEntry.Close()
 				continue
@@ -817,7 +852,23 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 
 			// Check health of next chunk
 			chunk = heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+			if !chunk.onDisk && worstHealthRemote {
+				// If the chunk is remote and we are already tracking the health
+				// of other remote chunks then we want to keep track of the worst
+				// health.
+				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+			} else if !chunk.onDisk && !worstHealthRemote {
+				// If the chunk is remote and we haven't been tracking the health of
+				// any remote chunks then we want to track the health of this chunk
+				// and set the worstHealthRemote to true
+				worstHealthRemote = true
+				worstIgnoredHealth = chunk.health
+			} else if !worstHealthRemote {
+				// If we aren't tracking the health of any remote chunks yet, then
+				// track the health of this chunk
+				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+			}
+
 			// Close the file entry
 			chunk.fileEntry.Close()
 
@@ -855,7 +906,22 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// health of the next chunk
 	if len(unfinishedChunkHeap) > 0 {
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-		worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+		if !chunk.onDisk && worstHealthRemote {
+			// If the chunk is remote and we are already tracking the health
+			// of other remote chunks then we want to keep track of the worst
+			// health.
+			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+		} else if !chunk.onDisk && !worstHealthRemote {
+			// If the chunk is remote and we haven't been tracking the health of
+			// any remote chunks then we want to track the health of this chunk
+			// and set the worstHealthRemote to true
+			worstHealthRemote = true
+			worstIgnoredHealth = chunk.health
+		} else if !worstHealthRemote {
+			// If we aren't tracking the health of any remote chunks yet, then
+			// track the health of this chunk
+			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+		}
 		// Close the chunk's file
 		chunk.fileEntry.Close()
 	}
@@ -894,12 +960,18 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// unexplored directory exists on the directory heap, we need to make sure
 	// that the worst known health is represented in the aggregate value.
 	d := &directory{
-		// SeveyTODO - need to work remote health into this
 		aggregateHealth: worstIgnoredHealth,
 		health:          worstIgnoredHealth,
 		explored:        true,
 		staticSiaPath:   dirSiaPath,
 	}
+	// Update the RemoteHealths as well if we were tracking the health of remote
+	// files and chunks
+	if worstHealthRemote {
+		d.aggregateRemoteHealth = worstIgnoredHealth
+		d.remoteHealth = worstIgnoredHealth
+	}
+
 	// Add the directory to the heap. If there is a conflict because the
 	// directory is already in the heap (for example, added by another thread or
 	// process), then the worst of the values between this dir and the one

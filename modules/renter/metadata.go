@@ -63,6 +63,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateNumFiles:            uint64(0),
 		AggregateNumStuckChunks:      uint64(0),
 		AggregateNumSubDirs:          uint64(0),
+		AggregateRemoteHealth:        siadir.DefaultDirHealth,
 		AggregateSize:                uint64(0),
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
 
@@ -73,6 +74,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		NumFiles:            uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
+		RemoteHealth:        siadir.DefaultDirHealth,
 		Size:                uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 	}
@@ -93,7 +95,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		}
 
 		// Aggregate Fields
-		var aggregateHealth, aggregateStuckHealth, aggregateMinRedundancy float64
+		var aggregateHealth, aggregateRemoteHealth, aggregateStuckHealth, aggregateMinRedundancy float64
 		var aggregateLastHealthCheckTime, aggregateModTime time.Time
 		var fileMetadata siafile.BubbledMetadata
 		ext := filepath.Ext(fi.Name())
@@ -129,6 +131,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			aggregateMinRedundancy = fileMetadata.Redundancy
 			aggregateLastHealthCheckTime = fileMetadata.LastHealthCheckTime
 			aggregateModTime = fileMetadata.ModTime
+			if !fileMetadata.OnDisk {
+				aggregateRemoteHealth = fileMetadata.Health
+			}
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles++
@@ -148,6 +153,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			}
 			metadata.NumFiles++
 			metadata.NumStuckChunks += fileMetadata.NumStuckChunks
+			if !fileMetadata.OnDisk {
+				metadata.RemoteHealth = math.Max(metadata.RemoteHealth, fileMetadata.Health)
+			}
 			metadata.Size += fileMetadata.Size
 			metadata.StuckHealth = math.Max(metadata.StuckHealth, fileMetadata.StuckHealth)
 		} else if fi.IsDir() {
@@ -182,6 +190,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		}
 		// Track the max value of AggregateHealth and Aggregate StuckHealth
 		metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
+		metadata.AggregateRemoteHealth = math.Max(metadata.AggregateRemoteHealth, aggregateRemoteHealth)
 		metadata.AggregateStuckHealth = math.Max(metadata.AggregateStuckHealth, aggregateStuckHealth)
 		// Track the min value for AggregateMinRedundancy
 		if aggregateMinRedundancy != -1 {
@@ -243,7 +252,9 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	if err != nil {
 		return siafile.BubbledMetadata{}, err
 	}
-	if _, err := os.Stat(sf.LocalPath()); os.IsNotExist(err) && redundancy < 1 {
+	_, err = os.Stat(sf.LocalPath())
+	onDisk := err == nil
+	if !onDisk && redundancy < 1 {
 		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
 	}
 
@@ -252,6 +263,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 		LastHealthCheckTime: sf.LastHealthCheckTime(),
 		ModTime:             sf.ModTime(),
 		NumStuckChunks:      numStuckChunks,
+		OnDisk:              onDisk,
 		Redundancy:          redundancy,
 		Size:                sf.Size(),
 		StuckHealth:         stuckHealth,
