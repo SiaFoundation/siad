@@ -166,7 +166,7 @@ func (aid *AccountID) LoadString(s string) error {
 // MarshalSia implements the SiaMarshaler interface.
 func (aid AccountID) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
-	_, _ = e.Write([]byte(aid))
+	_ = e.WritePrefixedBytes([]byte(aid))
 	return e.Err()
 }
 
