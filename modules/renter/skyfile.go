@@ -61,12 +61,16 @@ const (
 )
 
 var (
-	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
-	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
-
 	// ErrMetadataTooBig is the error returned when the metadata exceeds a
 	// sectorsize.
 	ErrMetadataTooBig = errors.New("metadata exceeds sectorsize")
+
+	// ErrRedundancyNotSupported is the error returned while Skynet only
+	// supports 1-N redundancy
+	ErrRedundancyNotSupported = errors.New("skylinks currently only support 1-of-N redundancy, other redundancies will be supported in a later version")
+
+	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
+	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
 
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
@@ -266,7 +270,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	// cannot download them, but because it is currently inefficient to download
 	// them.
 	if ec.MinPieces() != 1 {
-		return modules.Skylink{}, errors.New("skylinks currently only support 1-of-N redundancy, other redundancies will be supported in a later version")
+		return modules.Skylink{}, ErrRedundancyNotSupported
 	}
 
 	// Create the metadata for this siafile.

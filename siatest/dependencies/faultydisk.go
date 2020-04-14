@@ -55,6 +55,25 @@ func NewFaultyDiskDependency(writeLimit int) *DependencyFaultyDisk {
 	}
 }
 
+// disabled allows the caller to temporarily disable the dependency
+func (d *DependencyFaultyDisk) disable() {
+	d.mu.Lock()
+	d.disabled = true
+	d.mu.Unlock()
+}
+func (d *DependencyFaultyDisk) enable() {
+	d.mu.Lock()
+	d.disabled = false
+	d.mu.Unlock()
+}
+
+// Disrupt returns true if the faulty disk dependency is enabled to make sure we
+// don't panic when updates can't be applied but instead are able to handle the
+// error gracefully during testing.
+func (d *DependencyFaultyDisk) Disrupt(s string) bool {
+	return s == "faultyFile"
+}
+
 // tryFail will check if the disk has failed yet, and if not, it'll rng to see
 // if the disk should fail now. Returns 'true' if the disk has failed.
 func (d *DependencyFaultyDisk) tryFail() bool {
