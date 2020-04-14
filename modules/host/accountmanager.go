@@ -465,7 +465,6 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	if err != nil {
 		return errors.AddContext(err, "failed to open account for withdrawal")
 	}
-
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
 		acc.blockedWithdrawals.Push(blockedWithdrawal{

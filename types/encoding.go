@@ -570,10 +570,11 @@ func (spk *SiaPublicKey) LoadString(s string) error {
 		spk.Key = nil
 		return errors.AddContext(err, "LoadString failed due to invalid hex encoding")
 	}
-	if len(spk.Algorithm) != len(parts[0]) {
+	specifierBytes := parts[0]
+	if len(spk.Algorithm) < len(specifierBytes) {
 		return errors.New("LoadString failed due to specifier having invalid length")
 	}
-	copy(spk.Algorithm[:], []byte(parts[0]))
+	copy(spk.Algorithm[:], specifierBytes)
 	return nil
 }
 
