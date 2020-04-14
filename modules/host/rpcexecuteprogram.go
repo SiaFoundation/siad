@@ -3,7 +3,6 @@ package host
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -40,14 +39,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 	// Extract the arguments.
 	fcid, program, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
-
-	// Get price table.
-	h.staticPriceTables.mu.RLock()
-	pt, valid := h.staticPriceTables.guaranteed[pt.UID]
-	h.staticPriceTables.mu.RUnlock()
-	if !valid || pt.Expiry < time.Now().Unix() {
-		return errors.New("invalid price table")
-	}
 
 	// If the program isn't readonly we need to acquire the storage obligation.
 	readonly := program.ReadOnly()
@@ -92,26 +83,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	cost := types.ZeroCurrency
-	executionFailed := false
 	refund := amountPaid
 	defer func() {
-		toCharge := cost
-		if executionFailed || err != nil {
-			// If the program execution failed or the RPC aborted for a different
-			// reason, refund the peer.
-			toCharge = toCharge.Sub(refund)
-		}
-		// No need to update the contract so close this channel right away.
-		syncChan := make(chan struct{})
-		close(syncChan)
-		// Set 'force' to true. When we refund the account we don't want to be
-		// limited by the max balance in case the user has refilled the balance
-		// between withdrawing the budget and refunding.
-		// We also don't wait for callDeposit since we don't need the refund to
-		// be ACID.
 		go func() {
 			defer h.tg.Done()
-			depositErr := h.staticAccountManager.callDeposit(refundAccount, refund, true, syncChan)
+			depositErr := h.staticAccountManager.callRefund(refundAccount, refund)
 			if depositErr != nil {
 				h.log.Print("ERROR: failed to refund renter", depositErr)
 			}
@@ -119,6 +95,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Handle outputs.
+	executionFailed := false
 	numOutputs := 0
 	for output := range outputs {
 		// Remember number of returned outputs.

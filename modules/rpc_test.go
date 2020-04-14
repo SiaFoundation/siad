@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -84,5 +88,32 @@ func TestUniqueID_LoadString(t *testing.T) {
 	err = uidLoaded.LoadString(uidStr + "a")
 	if err == nil || !strings.Contains(err.Error(), "incorrect length") {
 		t.Fatalf("Expected 'incorrect length' error, instead error was '%v'", err)
+	}
+}
+
+// TestRPCExecuteProgramResponseMarshalSia tests the custom SiaMarshaler
+// implementation of RPCExecuteProgramResponse.
+func TestRPCExecuteProgramResponseMarshalsia(t *testing.T) {
+	epr := RPCExecuteProgramResponse{
+		AdditionalCollateral: types.SiacoinPrecision,
+		Output:               fastrand.Bytes(10),
+		NewMerkleRoot:        crypto.Hash{1},
+		NewSize:              100,
+		Proof:                []crypto.Hash{{1}, {2}, {3}},
+		Error:                errors.New("some error"),
+		TotalCost:            types.SiacoinPrecision.Mul64(10),
+		PotentialRefund:      types.SiacoinPrecision.Mul64(100),
+	}
+	// Marshal
+	b := encoding.Marshal(epr)
+	// Unmarshal
+	var epr2 RPCExecuteProgramResponse
+	err := encoding.Unmarshal(b, &epr2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compare
+	if !reflect.DeepEqual(epr, epr2) {
+		t.Fatal("responses don't match")
 	}
 }

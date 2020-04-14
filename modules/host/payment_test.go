@@ -365,7 +365,7 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	amount := types.NewCurrency64(5)
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
-	// prepare an ephmeral account and fund it
+	// prepare an ephemeral account and fund it
 	sk, accountID := prepareAccount()
 	err := callDeposit(host.staticAccountManager, accountID, deposit)
 	if err != nil {

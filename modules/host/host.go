@@ -221,12 +221,12 @@ func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
 	return hp.current
 }
 
-// managedGet returns the price table with the specified id.
-func (hp *hostPrices) managedGet(ptID modules.UniqueID) (*modules.RPCPriceTable, bool) {
+// managedGet returns the price table with given uid
+func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTable, found bool) {
 	hp.mu.RLock()
 	defer hp.mu.RUnlock()
-	pt, found := hp.guaranteed[ptID]
-	return pt, found
+	pt, found = hp.guaranteed[uid]
+	return
 }
 
 // managedUpdate overwrites the current price table with the one that's given

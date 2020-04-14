@@ -78,6 +78,11 @@ func TestAccountMaxBalance(t *testing.T) {
 	if !errors.Contains(err, ErrBalanceMaxExceeded) {
 		t.Fatal(err)
 	}
+	// A refund should ignore the max account balance.
+	err = am.callRefund(accountID, exceedingBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestAccountCallWithdraw verifies we can withdraw from an ephemeral account.
@@ -1111,7 +1116,7 @@ func callDeposit(am *accountManager, id modules.AccountID, amount types.Currency
 	go func() {
 		defer wg.Done()
 		<-startChan
-		err = am.callDeposit(id, amount, false, syncChan)
+		err = am.callDeposit(id, amount, syncChan)
 	}()
 	go func() {
 		defer wg.Done()
