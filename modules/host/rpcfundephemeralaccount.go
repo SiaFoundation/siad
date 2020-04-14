@@ -12,8 +12,8 @@ import (
 // managedRPCFundEphemeralAccount handles the RPC request from the renter to
 // fund its ephemeral account.
 func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream) error {
-	// read the RPC price table
-	pt, err := h.staticReadPriceTable(stream)
+	// get the RPC price table
+	pt, err := h.staticGetPriceTable(stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to receive a valid RPC price table")
 	}
