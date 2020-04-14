@@ -140,6 +140,76 @@ func TestRefCounterAppend(t *testing.T) {
 	}
 }
 
+// TestRefCounterCreateAndApplyTransaction test that CreateAndApplyTransaction
+// panics and restores the original in-memory structures on a failure to apply
+// updates.
+func TestRefCounterCreateAndApplyTransaction(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare a refcounter for the tests
+	numSec := 2 + fastrand.Uint64n(10)
+	rc := testPrepareRefCounter(numSec, t)
+	err := rc.StartUpdate(NO_TIMEOUT)
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
+
+	// add some valid updates
+	updates := make([]writeaheadlog.Update, 0)
+	u, err := rc.Append()
+	if err != nil {
+		t.Fatal("Failed to create an append update", err)
+	}
+	updates = append(updates, u)
+	expectNumSec := numSec + 1
+	u, err = rc.Increment(0)
+	if err != nil {
+		t.Fatal("Failed to create an increment update", err)
+	}
+	updates = append(updates, u)
+
+	// add an invalid update that will cause an error
+	u = writeaheadlog.Update{
+		Name: "InvalidUpdate",
+	}
+	updates = append(updates, u)
+
+	// add another valid update that will change the rc.numSectors, which change
+	// must be reverted when we recover from the panic when applying the updates
+	u, err = rc.DropSectors(1)
+	if err != nil {
+		t.Fatal("Failed to create a drop sectors update", err)
+	}
+	updates = append(updates, u)
+
+	// make sure we panic because of the invalid update and that we restore the
+	// count of sector number to the right value
+	defer func() {
+		// recover from a panic
+		if r := recover(); r == nil {
+			t.Fatal("Did not panic on an invalid update")
+		}
+		// make sure the number of sectors in memory is the expected one
+		if rc.numSectors != expectNumSec {
+			t.Fatal("Wrong number of sectors in memory after a panic")
+		}
+		if len(rc.newSectorCounts) != 0 {
+			t.Fatal("Failed to drop the in-mem cache of new sector counts")
+		}
+	}()
+
+	// apply the updates
+	err = rc.CreateAndApplyTransaction(updates...)
+	if err != nil {
+		t.Fatal("Did not panic on invalid update, only returned an err:", err)
+	} else {
+		t.Fatal("Applied an invalid update without panicking or an error")
+	}
+}
+
 // TestRefCounterDecrement tests that the Decrement method behaves correctly
 func TestRefCounterDecrement(t *testing.T) {
 	if testing.Short() {

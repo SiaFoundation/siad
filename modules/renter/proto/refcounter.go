@@ -8,6 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -98,7 +102,8 @@ type (
 		// are allowed to be created and applied
 		isUpdateInProgress bool
 		// newSectorCounts holds the new values of sector counters during an
-		// update session, so we can use them even before they are store on disk
+		// update session, so we can use them even before they are stored on
+		// disk
 		newSectorCounts map[uint64]uint16
 		// muUpdates controls who can create and apply updates
 		muUpdate siasync.TryMutex
@@ -203,7 +208,7 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 
 // CreateAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
+func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) (err error) {
 	rc.Lock()
 	defer rc.Unlock()
 	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
@@ -223,6 +228,23 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the disk.
+	// This means we need to panic in case applying the updates fails in order
+	// to avoid data corruption.
+	defer func() {
+		// Don't panic on errors injected by the faulty disk dependency.
+		if err != nil && !rc.staticDeps.Disrupt(dependencies.DISRUPT_SIG) {
+			// Before panicking, restore the previous in-mem data, so in case we
+			// recover from the panic we'll have valid in-mem data.
+			rc.newSectorCounts = make(map[uint64]uint16)
+			fi, e := os.Stat(rc.filepath)
+			if e != nil {
+				build.Critical("Failed to read refcounter stats from disk on panic, cannot restore the valid number of sectors in memory.")
+			}
+			rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := applyUpdates(f, updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
