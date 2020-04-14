@@ -5,7 +5,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
@@ -144,6 +143,10 @@ type (
 // FromSPK creates an AccountID from a SiaPublicKey. This assumes that the
 // provided key is valid and won't perform additional checks.
 func (aid *AccountID) FromSPK(spk types.SiaPublicKey) {
+	if spk.Equals(types.SiaPublicKey{}) {
+		*aid = ZeroAccountID
+		return
+	}
 	*aid = AccountID(spk.String())
 }
 
@@ -165,23 +168,21 @@ func (aid *AccountID) LoadString(s string) error {
 
 // MarshalSia implements the SiaMarshaler interface.
 func (aid AccountID) MarshalSia(w io.Writer) error {
-	e := encoding.NewEncoder(w)
-	_ = e.WritePrefixedBytes([]byte(aid))
-	return e.Err()
+	if aid.IsZeroAccount() {
+		return types.SiaPublicKey{}.MarshalSia(w)
+	}
+	return aid.SPK().MarshalSia(w)
 }
 
 // UnmarshalSia implements the SiaMarshaler interface.
 func (aid *AccountID) UnmarshalSia(r io.Reader) error {
-	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	idBytes := d.ReadPrefixedBytes()
-	if d.Err() != nil {
-		return d.Err()
+	var spk types.SiaPublicKey
+	err := spk.UnmarshalSia(r)
+	if err != nil {
+		return err
 	}
-	if len(idBytes) == 0 {
-		*aid = ZeroAccountID
-		return nil
-	}
-	return aid.LoadString(string(idBytes))
+	aid.FromSPK(spk)
+	return err
 }
 
 // PK returns the id as a crypto.PublicKey.

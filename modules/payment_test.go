@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 
@@ -142,5 +143,26 @@ func TestAccountID_MarshalSia(t *testing.T) {
 	}
 	if !reflect.DeepEqual(aid, aid2) {
 		t.Fatal("id's don't match")
+	}
+}
+
+// TestAccountIDCompatSiaMarshal makes sure that the persistence data of a
+// SiaPublicKey matches the data of a AccountID.
+func TestAccountIDCompatSiaMarhsal(t *testing.T) {
+	t.Parallel()
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       fastrand.Bytes(32),
+	}
+	// Load key.
+	var aid AccountID
+	aid.FromSPK(spk)
+	// Marshal und Unmarshal
+	b := encoding.Marshal(aid)
+	b2 := encoding.Marshal(spk)
+	if !bytes.Equal(b, b2) {
+		t.Log(b)
+		t.Log(b2)
+		t.Fatal("persistence doesn't match")
 	}
 }
