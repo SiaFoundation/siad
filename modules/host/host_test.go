@@ -243,6 +243,7 @@ type renterHostPair struct {
 	host   *Host
 	renter crypto.SecretKey
 	fcid   types.FileContractID
+	eaid   modules.AccountID
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -255,7 +256,16 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return newRenterHostPairCustomHostTester(ht)
+}
 
+// newRenterHostPairCustomHostTester returns a renter host pair, this pair is a helper struct
+// that contains both the host and renter, represented by its secret key. This
+// helper will create a storage obligation emulating a file contract between
+// them. This method requires the caller to pass a hostTester opposed to
+// creating one, which allows setting up multiple renters which each have a
+// contract with the one host.
+func newRenterHostPairCustomHostTester(ht *hostTester) (*hostTester, *renterHostPair, error) {
 	// create a renter key pair
 	sk, pk := crypto.GenerateKeyPair()
 	renterPK := types.SiaPublicKey{
@@ -283,6 +293,7 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 		host:   ht.host,
 		renter: sk,
 		fcid:   so.id(),
+		eaid:   modules.AccountID(renterPK.String()),
 	}
 	return ht, pair, nil
 }
