@@ -21,39 +21,36 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
-// ErrTestTimeout is returned when the time allotted for testing runs out. It's
+// errTestTimeout is returned when the time allotted for testing runs out. It's
 // not a real error in the sense that it doesn't cause the test to fail.
-var ErrTestTimeout = errors.New("test timeout has run out")
+var errTestTimeout = errors.New("test timeout has run out")
 
-// statusTracker allows us to manually keep track of all the changes that happen to a
+// tracker allows us to manually keep track of all the changes that happen to a
 // refcounter in order to validate them
-type statusTracker struct {
+type tracker struct {
 	counts []uint16
 	// denotes whether we can create new updates or we first need to reload from
 	// disk
 	crashed bool
 	sync.Mutex
+
+	// stat counters
+	atomicNumRecoveries           uint64
+	atomicNumSuccessfulIterations uint64
 }
 
-// ClearCrashed clears the crashed status from the statusTracker
-func (st *statusTracker) ClearCrashed() {
-	st.Lock()
-	defer st.Unlock()
-	st.crashed = false
+// Crash marks the tracker as crashed
+func (t *tracker) Crash() {
+	t.Lock()
+	defer t.Unlock()
+	t.crashed = true
 }
 
-// Crash marks the statusTracker as crashed
-func (st *statusTracker) Crash() {
-	st.Lock()
-	defer st.Unlock()
-	st.crashed = true
-}
-
-// IsCrashed checks if the statusTracker is marked as crashed
-func (st *statusTracker) IsCrashed() bool {
-	st.Lock()
-	defer st.Unlock()
-	return st.crashed
+// IsCrashed checks if the tracker is marked as crashed
+func (t *tracker) IsCrashed() bool {
+	t.Lock()
+	defer t.Unlock()
+	return t.crashed
 }
 
 // TestRefCounterFaultyDisk simulates interacting with a SiaFile on a faulty disk.
@@ -88,11 +85,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 
 	// Create a struct to monitor all changes happening to the test refcounter.
 	// At the end we'll use it to validate all changes.
-	statTrack := newStatusTracker(rc.numSectors)
-
-	// stat counters
-	var atomicNumRecoveries uint64
-	var atomicNumSuccessfulIterations uint64
+	track := newTracker(rc.numSectors)
 
 	// testTimeoutChan will signal to all goroutines that it's time to wrap up and exit
 	testTimeoutChan := make(chan struct{})
@@ -109,7 +102,7 @@ OUTER:
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				errLocal := performUpdates(rc, statTrack, &atomicNumSuccessfulIterations, testTimeoutChan)
+				errLocal := performUpdates(rc, track, testTimeoutChan)
 				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
 					// We have a real error - fail the test
 					t.Error(errLocal)
@@ -124,16 +117,15 @@ OUTER:
 			break OUTER
 		default:
 			// there is still time, load the wal from disk and re-run the test
-			rcFromDisk, err := reloadRefCounter(rcFilePath, walPath, fdd, &atomicNumRecoveries, testTimeoutChan)
-			if errors.Contains(err, ErrTestTimeout) {
+			rcFromDisk, err := reloadRefCounter(rcFilePath, walPath, fdd, track, testTimeoutChan)
+			if errors.Contains(err, errTestTimeout) {
 				break OUTER
 			}
 			if err != nil {
 				t.Fatal("Failed to reload wal from disk:", err)
 			}
-			statTrack.ClearCrashed()
 			// we only assign it when there is no error because we need the
-			// latest reference for the sanity check we do against the statusTracker
+			// latest reference for the sanity check we do against the tracker
 			// struct at the end
 			rc = rcFromDisk
 		}
@@ -158,12 +150,12 @@ OUTER:
 	}
 
 	// Validate changes
-	if err = validateStatusAfterAllTests(rc, statTrack); err != nil {
+	if err = validateStatusAfterAllTests(rc, track); err != nil {
 		t.Fatal(err)
 	}
 
-	t.Logf("\nRecovered from %v disk failures\n", atomicNumRecoveries)
-	t.Logf("Inner loop %v iterations without failures\n", atomicNumSuccessfulIterations)
+	t.Logf("\nRecovered from %v disk failures\n", track.atomicNumRecoveries)
+	t.Logf("Inner loop %v iterations without failures\n", track.atomicNumSuccessfulIterations)
 }
 
 // loadWal reads the wal from disk and applies all outstanding transactions
@@ -190,32 +182,32 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 	return newWal, f.Sync()
 }
 
-// newStatusTracker creates a statusTracker instance and initialises its counts
+// newTracker creates a tracker instance and initialises its counts
 // slice
-func newStatusTracker(numSec uint64) *statusTracker {
-	st := &statusTracker{
+func newTracker(numSec uint64) *tracker {
+	t := &tracker{
 		counts: make([]uint16, numSec),
 	}
 	for i := uint64(0); i < numSec; i++ {
-		st.counts[i] = 1
+		t.counts[i] = 1
 	}
-	return st
+	return t
 }
 
 // performUpdates keeps applying a random number of operations on the refcounter
 // until an error occurs.
-func performUpdates(rcLocal *RefCounter, st *statusTracker, atomicNumSuccessfulIterations *uint64, testTimeoutChan <-chan struct{}) error {
+func performUpdates(rcLocal *RefCounter, t *tracker, testTimeoutChan <-chan struct{}) error {
 	for {
-		err := preformUpdateOperations(rcLocal, st)
+		err := performUpdateOperations(rcLocal, t)
 		if err != nil {
 			// we have an error, fake or not we should return
 			return err
 		}
-		if st.IsCrashed() {
+		if t.IsCrashed() {
 			return nil
 		}
 
-		atomic.AddUint64(atomicNumSuccessfulIterations, 1)
+		atomic.AddUint64(&t.atomicNumSuccessfulIterations, 1)
 
 		select {
 		case <-testTimeoutChan:
@@ -225,9 +217,9 @@ func performUpdates(rcLocal *RefCounter, st *statusTracker, atomicNumSuccessfulI
 	}
 }
 
-// preformUpdateOperations executes a randomised set of updates within an
+// performUpdateOperations executes a randomised set of updates within an
 // update session.
-func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
+func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 	err = rc.StartUpdate(100 * time.Millisecond)
 	if err != nil {
 		// don't fail the test on a timeout on the lock
@@ -241,18 +233,18 @@ func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 	// On error we need to crash anyway, so it's OK as well.
 	defer rc.UpdateApplied()
 
-	// We can afford to lock the statusTracker tracker because only one goroutine is
+	// We can afford to lock the tracker because only one goroutine is
 	// allowed to make changes at any given time anyway.
-	st.Lock()
+	t.Lock()
 	defer func() {
 		// If we're returning a disk error we need to crash in order to avoid
 		// data corruption.
 		if errors.Contains(err, dependencies.ErrDiskFault) {
-			st.crashed = true
+			t.crashed = true
 		}
-		st.Unlock()
+		t.Unlock()
 	}()
-	if st.crashed {
+	if t.crashed {
 		return nil
 	}
 
@@ -271,7 +263,7 @@ func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 			if u, err = rc.Increment(secIdx); err != nil {
 				return
 			}
-			st.counts[secIdx]++
+			t.counts[secIdx]++
 			updates = append(updates, u)
 		}
 	}
@@ -288,7 +280,7 @@ func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 			if u, err = rc.Decrement(secIdx); err != nil {
 				return
 			}
-			st.counts[secIdx]--
+			t.counts[secIdx]--
 			updates = append(updates, u)
 		}
 	}
@@ -298,7 +290,7 @@ func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 		if u, err = rc.Append(); err != nil {
 			return
 		}
-		st.counts = append(st.counts, 1)
+		t.counts = append(t.counts, 1)
 		updates = append(updates, u)
 	}
 
@@ -311,7 +303,7 @@ func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 			if u, err = rc.DropSectors(secNum); err != nil {
 				return
 			}
-			st.counts = st.counts[:len(st.counts)-int(secNum)]
+			t.counts = t.counts[:len(t.counts)-int(secNum)]
 			updates = append(updates, u)
 		}
 	}
@@ -324,7 +316,7 @@ func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 		if us, err = rc.Swap(secIdx1, secIdx2); err != nil {
 			return
 		}
-		st.counts[secIdx1], st.counts[secIdx2] = st.counts[secIdx2], st.counts[secIdx1]
+		t.counts[secIdx1], t.counts[secIdx2] = t.counts[secIdx2], t.counts[secIdx1]
 		updates = append(updates, us...)
 	}
 
@@ -335,12 +327,12 @@ func preformUpdateOperations(rc *RefCounter, st *statusTracker) (err error) {
 }
 
 // reloadRefCounter tries to reload the file. This simulates failures during recovery.
-func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, atomicNumRecoveries *uint64, doneChan <-chan struct{}) (*RefCounter, error) {
+func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, t *tracker, doneChan <-chan struct{}) (*RefCounter, error) {
 	// Try to reload the file. This simulates failures during recovery.
 	for tries := 1; ; tries++ {
 		select {
 		case <-doneChan:
-			return nil, ErrTestTimeout
+			return nil, errTestTimeout
 		default:
 		}
 
@@ -357,7 +349,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 		// Reload the wal from disk and apply unfinished txns
 		newWal, err := loadWal(rcFilePath, walPath, fdd)
 		if errors.Contains(err, dependencies.ErrDiskFault) {
-			atomic.AddUint64(atomicNumRecoveries, 1)
+			atomic.AddUint64(&t.atomicNumRecoveries, 1)
 			continue // try again
 		} else if err != nil {
 			// an actual error occurred, the test must fail
@@ -369,6 +361,9 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 			return nil, err
 		}
 		newRc.staticDeps = fdd
+		t.Lock()
+		t.crashed = false
+		t.Unlock()
 		return newRc, nil
 	}
 }
@@ -397,7 +392,7 @@ func validateDropSectors(rc *RefCounter, secNum uint64) error {
 	return nil
 }
 
-// validateDecrement is a helper method that ensures the counter has not
+// validateIncrement is a helper method that ensures the counter has not
 // reached its maximum value. This allows us to avoid a counter overflow.
 func validateIncrement(rc *RefCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
@@ -414,9 +409,9 @@ func validateIncrement(rc *RefCounter, secNum uint64) error {
 
 // validateStatusAfterAllTests does the final validation of the test by
 // comparing the state of the refcounter after all the test updates are applied.
-func validateStatusAfterAllTests(rc *RefCounter, st *statusTracker) error {
-	if rc.numSectors != uint64(len(st.counts)) {
-		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(st.counts)), rc.numSectors)
+func validateStatusAfterAllTests(rc *RefCounter, t *tracker) error {
+	if rc.numSectors != uint64(len(t.counts)) {
+		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(t.counts)), rc.numSectors)
 	}
 	errorList := make([]error, 0)
 	for i := uint64(0); i < rc.numSectors; i++ {
@@ -424,9 +419,11 @@ func validateStatusAfterAllTests(rc *RefCounter, st *statusTracker) error {
 		if err != nil {
 			return errors.AddContext(err, "failed to read count")
 		}
-		if n != st.counts[i] {
-			errorList = append(errorList, fmt.Errorf("Expected counter value for sector %d to be %d, got %d", i, st.counts[i], n))
+		t.Lock()
+		if n != t.counts[i] {
+			errorList = append(errorList, fmt.Errorf("expected counter value for sector %d to be %d, got %d", i, t.counts[i], n))
 		}
+		t.Unlock()
 	}
 	if len(errorList) > 0 {
 		return errors.AddContext(errors.Compose(errorList...), "sector counter values do not match expectations")

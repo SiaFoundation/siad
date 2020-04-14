@@ -28,6 +28,8 @@ import (
 // typically come from the calling functions.
 var testWAL, _ = newTestWAL()
 
+const NO_TIMEOUT = -1
+
 // TestRefCounterCount tests that the Count method always returns the correct
 // counter value, either from disk or from in-mem storage.
 func TestRefCounterCount(t *testing.T) {
@@ -90,7 +92,7 @@ func TestRefCounterAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
 	}
-	err = rc.StartUpdate(-1)
+	err = rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -147,7 +149,7 @@ func TestRefCounterDecrement(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(-1)
+	err := rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -202,7 +204,7 @@ func TestRefCounterDelete(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(-1)
+	err := rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -245,7 +247,7 @@ func TestRefCounterDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
 	}
-	err = rc.StartUpdate(-1)
+	err = rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -322,7 +324,7 @@ func TestRefCounterIncrement(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(-1)
+	err := rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -478,7 +480,7 @@ func TestRefCounterStartUpdate(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(-1)
+	err := rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -514,7 +516,7 @@ func TestRefCounterSwap(t *testing.T) {
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	updates := make([]writeaheadlog.Update, 0)
-	err := rc.StartUpdate(-1)
+	err := rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -585,7 +587,7 @@ func TestRefCounterUpdateApplied(t *testing.T) {
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
 	updates := make([]writeaheadlog.Update, 0)
-	err := rc.StartUpdate(-1)
+	err := rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -644,7 +646,7 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// start an update session
-	err := rc.StartUpdate(-1)
+	err := rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -677,7 +679,7 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// make sure we cannot start an update session on a deleted counter
-	if err = rc.StartUpdate(-1); err != ErrUpdateAfterDelete {
+	if err = rc.StartUpdate(NO_TIMEOUT); err != ErrUpdateAfterDelete {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
 	}
 }
@@ -736,7 +738,7 @@ func TestRefCounterNumSectorsUnderflow(t *testing.T) {
 		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
 	}
 
-	err = rc.StartUpdate(-1)
+	err = rc.StartUpdate(NO_TIMEOUT)
 	if err != nil {
 		t.Fatal("Failed to initiate an update session:", err)
 	}
