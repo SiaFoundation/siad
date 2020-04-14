@@ -1845,7 +1845,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
 	}
-	die(fmt.Sprintf("Unknown file '%v'", path))
+	die(fmt.Sprintf("Unknown path '%v'", path))
 }
 
 // renterfilesdownload downloads the file at the specified path from the Sia
@@ -2841,7 +2841,7 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 		}
 
 		// Parse out the intended siapath.
-		var siaPath modules.SiaPath
+		siaPath := skyPath
 		if !skynetUnpinRoot {
 			siaPath, err = modules.SkynetFolder.Join(skyPath.String())
 			if err != nil {
