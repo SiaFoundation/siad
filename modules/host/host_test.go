@@ -298,7 +298,7 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 	return ht, pair, nil
 }
 
-// newHostStream opens a stream to the pair's host and returns it
+// newStream opens a stream to the pair's host and returns it
 func (p *renterHostPair) newStream() siamux.Stream {
 	hes := p.host.ExternalSettings()
 
