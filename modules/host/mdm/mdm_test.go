@@ -85,8 +85,8 @@ func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
 }
 
 // Update implements the StorageObligation interface.
-func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
-	for _, removedSector := range sectorsRemoved {
+func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemoved map[crypto.Hash]struct{}, sectorsGained map[crypto.Hash][]byte) error {
+	for removedSector := range sectorsRemoved {
 		if _, exists := so.sectorMap[removedSector]; !exists {
 			return errors.New("sector doesn't exist")
 		}
@@ -106,16 +106,20 @@ func (so *TestStorageObligation) Update(sectorRoots, sectorsRemoved []crypto.Has
 // for every operation/rpc.
 func newTestPriceTable() modules.RPCPriceTable {
 	return modules.RPCPriceTable{
-		Expiry:                time.Now().Add(time.Minute).Unix(),
-		UpdatePriceTableCost:  types.SiacoinPrecision,
-		InitBaseCost:          types.SiacoinPrecision,
-		MemoryTimeCost:        types.SiacoinPrecision,
-		DropSectorsBaseCost:   types.SiacoinPrecision,
-		DropSectorsLengthCost: types.SiacoinPrecision,
-		ReadBaseCost:          types.SiacoinPrecision,
-		ReadLengthCost:        types.SiacoinPrecision,
-		WriteBaseCost:         types.SiacoinPrecision,
-		WriteLengthCost:       types.SiacoinPrecision,
+		Expiry:               time.Now().Add(time.Minute).Unix(),
+		UpdatePriceTableCost: types.NewCurrency64(1),
+		InitBaseCost:         types.NewCurrency64(1),
+		MemoryTimeCost:       types.NewCurrency64(1),
+		CollateralCost:       types.NewCurrency64(1),
+
+		// Instruction costs
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
+		ReadBaseCost:        types.NewCurrency64(1),
+		ReadLengthCost:      types.NewCurrency64(1),
+		WriteBaseCost:       types.NewCurrency64(1),
+		WriteLengthCost:     types.NewCurrency64(1),
+		WriteStoreCost:      types.NewCurrency64(1),
 	}
 }
 

@@ -419,7 +419,6 @@ func (uc *unfinishedUploadChunk) staticEncryptAndCheckIntegrity() error {
 				failures[i] = true
 			}
 		}(i)
-
 	}
 	wg.Wait()
 

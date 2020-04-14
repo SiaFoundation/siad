@@ -1,0 +1,1 @@
+- Split up contract files into a .header and .roots file. Causes contract insertion to be ACID and fixes a rare panic when loading the contractset.

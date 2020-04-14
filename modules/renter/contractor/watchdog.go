@@ -248,7 +248,6 @@ func (w *watchdog) archiveContract(fcID types.FileContractID, doubleSpendHeight 
 	contractData, ok := w.contracts[fcID]
 	if !ok {
 		return
-
 	}
 	for oid := range contractData.parentOutputs {
 		w.removeOutputDependency(oid, fcID)

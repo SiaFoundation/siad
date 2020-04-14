@@ -1577,6 +1577,7 @@ based on their needs.
       "datasize":                 500000,             // bytes
       "lockedcollateral":         "1234",             // hastings
       "obligationid": "fff48010dcbbd6ba7ffd41bc4b25a3634ee58bbf688d2f06b7d5a0c837304e13", // hash
+      "potentialaccountfunding":  "1234",             // hastings
       "potentialdownloadrevenue": "1234",             // hastings
       "potentialstoragerevenue":  "1234",             // hastings
       "potentialuploadrevenue":   "1234",             // hastings
@@ -1608,6 +1609,9 @@ Amount that is locked as collateral for this storage obligation.
 **obligationid** | hash  
 Id of the storageobligation, which is defined by the file contract id of the
 file contract that governs the storage obligation.
+
+**potentialaccountfunding** | hastings  
+Amount in hastings that went to funding ephemeral accounts with.
 
 **potentialdownloadrevenue** | hastings  
 Potential revenue for downloaded data that the host will receive upon successful
@@ -2161,11 +2165,12 @@ ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
   },
   "scorebreakdown": {
     "score":                      1,        // big int
-    "conversionrate":             9.12345,  // float64
     "ageadjustment":              0.1234,   // float64
+    "basepriceadjustment":        1,        // float64
     "burnadjustment":             0.1234,   // float64
     "collateraladjustment":       23.456,   // float64
-  "durationadjustment":         1,        // float64
+    "conversionrate":             9.12345,  // float64
+    "durationadjustment":         1,        // float64
     "interactionadjustment":      0.1234,   // float64
     "priceadjustment":            0.1234,   // float64
     "storageremainingadjustment": 0.1234,   // float64
@@ -2193,13 +2198,13 @@ be off by many orders of magnitude. When displaying to a human, some form of
 normalization with respect to the other hosts (for example, divide all scores by
 the median score of the hosts) is recommended.  
 
-**conversionrate** | float64  
-conversionrate is the likelihood that the host will be selected by renters
-forming contracts.  
-
 **ageadjustment** | float64  
 The multiplier that gets applied to the host based on how long it has been a
 host. Older hosts typically have a lower penalty.  
+
+**basepriceadjustment** | float64  
+The multiplier that gets applied to the host based on if the `BaseRPCPRice` and
+the `SectorAccessPrice` are reasonable.  
 
 **burnadjustment** | float64  
 The multiplier that gets applied to the host based on how much proof-of-burn the
@@ -2209,6 +2214,10 @@ host has performed. More burn causes a linear increase in score.
 The multiplier that gets applied to a host based on how much collateral the host
 is offering. More collateral is typically better, though above a point it can be
 detrimental.  
+
+**conversionrate** | float64  
+conversionrate is the likelihood that the host will be selected by renters
+forming contracts.  
 
 **durationadjustment** | float64  
 The multiplier that gets applied to a host based on the max duration it accepts
@@ -4329,6 +4338,10 @@ The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
 well.
 
+**dryrun** | bool  
+If dryrun is set to true, the request will return the Skylink of the file
+without uploading the actual file to the Sia network.
+
 **force** | bool  
 If there is already a file that exists at the provided siapath, setting this
 flag will cause the new file to overwrite/delete the existing file. If this flag
@@ -4384,6 +4397,7 @@ This is the hash that is encoded into the skylink.
 This is the bitfield that gets encoded into the skylink. The bitfield contains a
 version, an offset and a length in a heavily compressed and optimized format.
 
+
 ## /skynet/stats [GET]
 > curl example
 
@@ -4424,6 +4438,117 @@ Version is the siad version the node is running.
 
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build said.
+
+
+## /skynet/addskykey [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "skykey=BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a" "localhost:9980/skynet/addskykey"
+```
+
+Stores the given skykey with the renter's skykey manager.
+
+### Path Parameters
+### REQUIRED
+**skykey** | string  
+base-64 encoded skykey
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+
+## /skynet/createskykey [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/createskykey"
+```
+
+Returns a new skykey created and stored under that name.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+desired name of the skykey
+
+### JSON Response
+> JSON Response Example
+
+ 
+```go
+{
+  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+}
+```
+
+**skykey** | string  
+base-64 encoded skykey
+
+
+## /skynet/skykey [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/skykey"
+curl -A "Sia-Agent"  -u "":<apipassword> --data "id=gi5z8cf5NWbcvPBaBn0DFQ==" "localhost:9980/skynet/skykey"
+```
+
+Returns the base-64 encoded skykey stored under that name, or with that ID.
+
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+name of the skykey being queried
+
+or
+
+**id** | string  
+base-64 encoded ID of the skykey being queried
+
+
+### JSON Response ```json
+{
+  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+}
+```
+
+**skykey** | string  
+base-64 encoded skykey
+
+
+## /skynet/skykeyid [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/skykeyid"
+```
+
+Returns the base-64 encoded ID of the skykey stored under that name.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+name of the skykey being queried
+
+
+### JSON Response
+> JSON Response Example
+
+ 
+```go
+{
+  "skykeyid": "gi5z8cf5NWbcvPBaBn0DFQ=="
+}
+```
+
+**skykeyid** | string  
+base-64 encoded skykey ID
+
+
 
 # Transaction Pool
 

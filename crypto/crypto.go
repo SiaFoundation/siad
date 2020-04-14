@@ -82,7 +82,7 @@ func (ct CipherType) String() string {
 	case TypeXChaCha20:
 		return "XChaCha20"
 	default:
-		panic(ErrInvalidCipherType)
+		return ""
 	}
 }
 

@@ -138,7 +138,6 @@ func TestMapHeapSize(t *testing.T) {
 		if minPop.set.size != uint64(100*i) {
 			t.Error("Unexpected set size in result from min-heap pop.")
 		}
-
 	}
 }
 

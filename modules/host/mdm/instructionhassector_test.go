@@ -10,22 +10,27 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// newHasSectorInstruction is a convenience method for creating a single
+// 'HasSector' instruction.
+func newHasSectorInstruction(dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
+	i := NewHasSectorInstruction(dataOffset)
+	cost, refund := modules.MDMHasSectorCost(pt)
+	collateral := modules.MDMHasSectorCollateral()
+	return i, cost, refund, collateral, modules.MDMHasSectorMemory(), modules.MDMTimeHasSector
+}
+
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, uint64) {
-	i := NewHasSectorInstruction(0)
-	instructions := []modules.Instruction{i}
+func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
-
-	// Compute cost and used memory.
-	cost, refund := modules.MDMHasSectorCost(pt)
-	usedMemory := modules.MDMHasSectorMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, TimeHasSector+TimeCommit)
-	initCost := modules.MDMInitCost(pt, uint64(len(data)))
-	cost = cost.Add(memoryCost).Add(initCost)
-	return instructions, data, cost, refund, usedMemory
+	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
+	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
+	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
+	instructions := []modules.Instruction{i}
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
+	return instructions, data, cost, refund, collateral, memory
 }
 
 // TestInstructionHasSector tests executing a program with a single
@@ -46,10 +51,10 @@ func TestInstructionHasSector(t *testing.T) {
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, usedMemory := newHasSectorProgram(sectorRoot, pt)
+	instructions, programData, cost, refund, collateral, usedMemory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, modules.MDMInitCost(pt, dataLen).Add(cost), so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +79,9 @@ func TestInstructionHasSector(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !output.AdditionalCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
 		if !output.PotentialRefund.Equals(refund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())

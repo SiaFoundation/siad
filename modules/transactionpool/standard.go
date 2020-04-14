@@ -134,7 +134,6 @@ func isStandardTransactionSet(ts []types.Transaction) (uint64, error) {
 		if totalSize > modules.TransactionSetSizeLimit {
 			return 0, modules.ErrLargeTransactionSet
 		}
-
 	}
 	return totalSize, nil
 }

@@ -175,10 +175,11 @@ func (sp SiaPath) IsRoot() bool {
 // Join joins the string to the end of the SiaPath with a "/" and returns the
 // new SiaPath.
 func (sp SiaPath) Join(s string) (SiaPath, error) {
-	if s == "" {
+	cleanStr := clean(s)
+	if s == "" || cleanStr == "" {
 		return SiaPath{}, errors.New("cannot join an empty string to a siapath")
 	}
-	return newSiaPath(sp.Path + "/" + clean(s))
+	return newSiaPath(sp.Path + "/" + cleanStr)
 }
 
 // LoadString sets the path of the SiaPath to the provided string
@@ -311,6 +312,9 @@ func (sp SiaPath) Validate(isRoot bool) error {
 		}
 		if prevElem == "/" || pathElem == "/" {
 			return errors.New("siapath cannot contain //")
+		}
+		if strings.Contains(pathElem, `\`) {
+			return errors.New(`siapath cannot contain \`)
 		}
 		prevElem = pathElem
 	}
