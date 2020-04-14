@@ -52,7 +52,7 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 	}
 
 	// send the response
-	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: accountBalance}); err != nil {
+	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Balance: accountBalance}); err != nil {
 		return nil, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
@@ -110,7 +110,6 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	}
 
 	// get account balance before adding funds.
-	// TODO: add managedOpenAccount
 	accBalance := h.staticAccountManager.callAccountBalance(accountID)
 
 	// prepare funding the EA.
@@ -140,7 +139,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
 	err = modules.RPCWrite(stream, modules.PayByContractResponse{
-		Amount:    accBalance,
+		Balance:   accBalance,
 		Signature: sig,
 	})
 	if err != nil {
@@ -164,7 +163,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	fcid := pbcr.ContractID
 
 	// can't provide a refund address when funding an account.
-	if pbcr.RefundAccount != "" {
+	if !pbcr.RefundAccount.IsZeroAccount() {
 		return types.ZeroCurrency, errors.New("can't provide a refund account on a fund account rpc")
 	}
 

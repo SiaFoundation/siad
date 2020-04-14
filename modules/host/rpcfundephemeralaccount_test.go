@@ -66,10 +66,10 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// prepare an ephemeral account
 	_, accountID := prepareAccount()
 
-	// specify a refund account. Needs to be empty string for funding.
-	refundAccount := modules.AccountID("")
+	// specify a refund account. Needs to be zero account string for funding.
+	refundAccount := modules.ZeroAccountID
 
-	renterFunc := func(stream siamux.Stream, revision types.FileContractRevision, signature crypto.Signature) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
+	renterFunc := func(stream siamux.Stream, revision types.FileContractRevision, signature crypto.Signature, refundAccount modules.AccountID) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
 		// send fund account request
 		req := modules.FundAccountRequest{Account: accountID}
 		err := modules.RPCWrite(stream, req)
@@ -116,7 +116,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		bh++
 	}
 
-	runWithRevision := func(rev types.FileContractRevision) (payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, err error) {
+	runWithRevision := func(rev types.FileContractRevision, refundAccount modules.AccountID) (payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, err error) {
 		// create streams
 		rStream, hStream := NewTestStreams()
 		defer rStream.Close()
@@ -127,7 +127,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
-			payByResponse, fundResponse, rErr = renterFunc(rStream, rev, sig)
+			payByResponse, fundResponse, rErr = renterFunc(rStream, rev, sig, refundAccount)
 			wg.Done()
 		}()
 
@@ -191,7 +191,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	balance := getAccountBalance(ht.host.staticAccountManager, accountID)
-	pbcResp, fundAccResp, err := runWithRevision(rev)
+	pbcResp, fundAccResp, err := runWithRevision(rev, refundAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,8 +201,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	// expect error when refund account id is provided for funding account.
-	refundAccount = "non-empty-account"
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRevision(rev, modules.AccountID("non-empty-account-id"))
 	if err == nil || !strings.Contains(err.Error(), "can't provide a refund account on a fund account rpc") {
 		t.Fatal("Expected error indicating that no refund account can be provided")
 	}
@@ -215,7 +214,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	rev.SetValidRenterPayout(rev.ValidRenterPayout().Add64(1))
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRevision(rev, refundAccount)
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
@@ -227,7 +226,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	rev.SetValidHostPayout(rev.ValidHostPayout().Sub64(1))
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRevision(rev, refundAccount)
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
@@ -238,7 +237,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRevision(rev, refundAccount)
 	if err == nil || !strings.Contains(err.Error(), "amount that was deposited did not cover the cost of the RPC") {
 		t.Fatalf("Expected error indicating the lack of funds, instead error was: '%v'", err)
 	}
@@ -250,7 +249,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRevision(rev, refundAccount)
 	if err == nil || !strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", ErrBalanceMaxExceeded, err)
 	}
@@ -266,7 +265,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		defer rStream.Close()
 		sig := revisionSignature(rev, bh, sk)
 		fastrand.Read(sig[:4]) // corrupt the signature
-		_, _, rErr = renterFunc(rStream, rev, sig)
+		_, _, rErr = renterFunc(rStream, rev, sig, refundAccount)
 	}()
 	wg.Add(1)
 	go func() {
@@ -293,12 +292,12 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	wg.Add(1)
 	go func() {
-		_, _, err1 = runWithRevision(rev1)
+		_, _, err1 = runWithRevision(rev1, refundAccount)
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
-		_, _, err2 = runWithRevision(rev2)
+		_, _, err2 = runWithRevision(rev2, refundAccount)
 		wg.Done()
 	}()
 	wg.Wait()
@@ -315,7 +314,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	balance = getAccountBalance(ht.host.staticAccountManager, accountID)
-	pbcResp, fundAccResp, err = runWithRevision(rev)
+	pbcResp, fundAccResp, err = runWithRevision(rev, refundAccount)
 	if err != nil {
 		t.Fatal(err)
 	}

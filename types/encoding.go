@@ -12,6 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
@@ -558,18 +559,22 @@ func (spk *SiaPublicKey) UnmarshalSia(r io.Reader) error {
 }
 
 // LoadString is the inverse of SiaPublicKey.String().
-func (spk *SiaPublicKey) LoadString(s string) {
+func (spk *SiaPublicKey) LoadString(s string) error {
 	parts := strings.Split(s, ":")
 	if len(parts) != 2 {
-		return
+		return errors.New("LoadString failed due to missing specifier")
 	}
 	var err error
 	spk.Key, err = hex.DecodeString(parts[1])
 	if err != nil {
 		spk.Key = nil
-		return
+		return errors.AddContext(err, "LoadString failed due to invalid hex encoding")
+	}
+	if len(spk.Algorithm) != len(parts[0]) {
+		return errors.New("LoadString failed due to specifier having invalid length")
 	}
 	copy(spk.Algorithm[:], []byte(parts[0]))
+	return nil
 }
 
 // String defines how to print a SiaPublicKey - hex is used to keep things

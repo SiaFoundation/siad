@@ -884,7 +884,10 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 func (am *accountManager) callAccountBalance(id modules.AccountID) types.Currency {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	account := am.openAccount(id)
+	account, exists := am.accounts[id]
+	if !exists {
+		return types.ZeroCurrency
+	}
 	return account.balance
 }
 

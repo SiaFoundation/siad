@@ -315,7 +315,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 
 	// Verify the amount in the response.
-	if !payByResponse.Amount.Equals(types.ZeroCurrency) {
+	if !payByResponse.Balance.Equals(types.ZeroCurrency) {
 		t.Fatal("account should have been empty before")
 	}
 
@@ -380,8 +380,8 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatal(err)
 	}
 	// Verify the amount in the response.
-	if !payByResponse.Amount.Equals(amount) {
-		t.Fatalf("amount should have been %v but was %v", amount.HumanString(), payByResponse.Amount.HumanString())
+	if !payByResponse.Balance.Equals(amount) {
+		t.Fatalf("amount should have been %v but was %v", amount.HumanString(), payByResponse.Balance.HumanString())
 	}
 
 	//  Run the code again. This time it should fail due to no refund account
@@ -451,8 +451,8 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	}
 
 	// verify the response contains the amount that got withdrawn
-	if !payByResponse.Amount.Equals(deposit) {
-		t.Fatalf("Unexpected payment amount, expected %s, but received %s", deposit.HumanString(), payByResponse.Amount.HumanString())
+	if !payByResponse.Balance.Equals(deposit) {
+		t.Fatalf("Unexpected payment amount, expected %s, but received %s", deposit.HumanString(), payByResponse.Balance.HumanString())
 	}
 
 	// verify the payment got withdrawn from the ephemeral account
