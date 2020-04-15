@@ -431,7 +431,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 			}
 			// send PaymentRequest & PayByContractRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-			pbcRequest := newPayByContractRequest(rev, sig)
+			pbcRequest := newPayByContractRequest(rev, sig, pair.eaid)
 			err = modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 			if err != nil {
 				return err

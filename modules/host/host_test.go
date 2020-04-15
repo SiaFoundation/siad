@@ -289,11 +289,14 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*hostTester, *renterHost
 	}
 	ht.host.managedUnlockStorageObligation(so.id())
 
+	var eaid modules.AccountID
+	eaid.FromSPK(renterPK)
+
 	pair := &renterHostPair{
 		host:   ht.host,
 		renter: sk,
 		fcid:   so.id(),
-		eaid:   modules.AccountID(renterPK.String()),
+		eaid:   eaid,
 	}
 	return ht, pair, nil
 }

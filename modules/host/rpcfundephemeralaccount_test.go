@@ -215,8 +215,8 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err = runWithRevision(rev, aid)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected error when refund account is is provided for funding account")
 	}
 
 	// expect error when we move funds back to the renter
@@ -347,7 +347,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRevision(rev, refundAccount)
 	if err == nil || !strings.Contains(err.Error(), "host not expecting to post any collateral") {
 		t.Fatalf("Expected error '%v', instead error was '%v'", "host not expecting to post any collateral", err)
 	}
