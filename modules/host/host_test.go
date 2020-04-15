@@ -240,9 +240,12 @@ func (ht *hostTester) Close() error {
 // renterHostPair is a helper struct that contains a secret key, symbolizing the
 // renter, a host and the id of the file contract they share.
 type renterHostPair struct {
-	ht     *hostTester
-	renter crypto.SecretKey
-	fcid   types.FileContractID
+	accountID  modules.AccountID
+	accountKey crypto.SecretKey
+	ht         *hostTester
+	latestPT   *modules.RPCPriceTable
+	renter     crypto.SecretKey
+	fcid       types.FileContractID
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -279,10 +282,15 @@ func newRenterHostPair(name string) (*renterHostPair, error) {
 	}
 	ht.host.managedUnlockStorageObligation(so.id())
 
+	// prepare an EA without funding it.
+	accountKey, accountID := prepareAccount()
+
 	pair := &renterHostPair{
-		ht:     ht,
-		renter: sk,
-		fcid:   so.id(),
+		accountID:  accountID,
+		accountKey: accountKey,
+		ht:         ht,
+		renter:     sk,
+		fcid:       so.id(),
 	}
 	return pair, nil
 }

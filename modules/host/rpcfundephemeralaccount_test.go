@@ -14,9 +14,40 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
+// payByContract is a helper that creates a payment revision and uses it to pay
+// the specified amount. It will also verify the signature of the returned
+// response.
+func (rhp *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency) error {
+	// create the revision.
+	revision, sig, err := rhp.paymentRevision(amount)
+	if err != nil {
+		return err
+	}
+
+	// send PaymentRequest & PayByContractRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+	pbcRequest := newPayByContractRequest(revision, sig)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return err
+	}
+
+	// verify the host signature
+	if err := crypto.VerifyHash(crypto.HashAll(revision), rhp.ht.host.secretKey.PublicKey(), payByResponse.Signature); err != nil {
+		return errors.New("could not verify host signature")
+	}
+	return nil
+}
+
 // fundEphemeralAccount funds an account with a certain amount of money.
-// TODO: change this to create a new stream
-func (rhp *renterHostPair) fundEphemeralAccount(ptid modules.UniqueID, account modules.AccountID, amount types.Currency) (modules.FundAccountResponse, error) {
+func (rhp *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
 	// create stream
 	stream := rhp.newStream()
 	defer stream.Close()
@@ -28,42 +59,22 @@ func (rhp *renterHostPair) fundEphemeralAccount(ptid modules.UniqueID, account m
 	}
 
 	// Write price table id.
-	err = modules.RPCWrite(stream, ptid)
-	if err != nil {
-		return modules.FundAccountResponse{}, err
-	}
-
-	// create the revision.
-	revision, sig, err := rhp.paymentRevision(amount)
+	err = modules.RPCWrite(stream, rhp.latestPT.UID)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
 
 	// send fund account request
-	req := modules.FundAccountRequest{Account: account}
+	req := modules.FundAccountRequest{Account: rhp.accountID}
 	err = modules.RPCWrite(stream, req)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
 
-	// send PaymentRequest & PayByContractRequest
-	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(revision, sig)
-	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	// Pay by contract.
+	err = rhp.payByContract(stream, amount)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
-	}
-
-	// receive PayByContractResponse
-	var payByResponse modules.PayByContractResponse
-	err = modules.RPCRead(stream, &payByResponse)
-	if err != nil {
-		return modules.FundAccountResponse{}, err
-	}
-
-	// verify the host signature
-	if err := crypto.VerifyHash(crypto.HashAll(revision), rhp.ht.host.secretKey.PublicKey(), payByResponse.Signature); err != nil {
-		return modules.FundAccountResponse{}, errors.New("could not verify host signature")
 	}
 
 	// receive FundAccountResponse

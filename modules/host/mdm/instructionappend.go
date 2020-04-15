@@ -32,7 +32,7 @@ func NewAppendInstruction(dataOffset uint64, merkleProof bool) modules.Instructi
 
 // staticDecodeAppendInstruction creates a new 'Append' instruction from the
 // provided generic instruction.
-func (p *Program) staticDecodeAppendInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeAppendInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierAppend {
 		return nil, fmt.Errorf("expected specifier %v but got %v",

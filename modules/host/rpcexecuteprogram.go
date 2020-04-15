@@ -40,7 +40,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Extract the arguments.
 	fcid, program, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
 
-	// If the program isn't readonly we need to acquire the storage obligation.
+	// If the program isn't readonly we need to acquire a lock on the storage
+	// obligation.
 	readonly := program.ReadOnly()
 	if !readonly {
 		h.managedLockStorageObligation(fcid)
@@ -73,17 +74,13 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
-	// Charge the peer accordingly. Add another thread to the ThreadGroup. This
-	// one will be closed when the refund is done.
-	// NOTE: Make sure we don't return early between adding to the group and
-	// calling 'defer h.tg.Done()'. This will cause a deadlock on shutdown.
+	// Charge the peer accordingly.
+	cost := types.ZeroCurrency
+	refund := amountPaid
 	err = h.tg.Add()
 	if err != nil {
 		return err
 	}
-
-	cost := types.ZeroCurrency
-	refund := amountPaid
 	defer func() {
 		go func() {
 			defer h.tg.Done()

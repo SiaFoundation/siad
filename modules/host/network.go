@@ -350,12 +350,15 @@ func (h *Host) staticReadPriceTable(stream siamux.Stream) (*modules.RPCPriceTabl
 	if err != nil {
 		return nil, errors.AddContext(err, "Failed to read price table UID")
 	}
-
 	// check if we know the uid, if we do return it
 	var found bool
 	pt, found := h.staticPriceTables.managedGet(uid)
 	if !found {
 		return nil, errors.New("Price table not found, it might be expired")
+	}
+	// make sure the table isn't expired.
+	if pt.Expiry < time.Now().Unix() {
+		return nil, errors.New("Price table requested is expired")
 	}
 	return pt, nil
 }

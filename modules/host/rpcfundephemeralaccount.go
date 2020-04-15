@@ -15,7 +15,7 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream) error {
 	// read the price table
 	pt, err := h.staticReadPriceTable(stream)
 	if err != nil {
-		return errors.AddContext(err, "Failed to read price table")
+		return errors.AddContext(err, "Failed to negotiate a valid price table")
 	}
 
 	// read the FundAccountRequest

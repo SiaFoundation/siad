@@ -33,7 +33,7 @@ func NewDropSectorsInstruction(numSectorsOffset uint64, merkleProof bool) module
 
 // staticDecodeDropSectorsInstruction creates a new 'DropSectors' instruction from the
 // provided generic instruction.
-func (p *Program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierDropSectors {
 		return nil, fmt.Errorf("expected specifier %v but got %v",

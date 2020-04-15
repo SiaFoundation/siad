@@ -43,11 +43,11 @@ type programState struct {
 	priceTable *modules.RPCPriceTable
 }
 
-// Program is a collection of instructions. Within a program, each instruction
+// program is a collection of instructions. Within a program, each instruction
 // will potentially modify the size and merkle root of a file contract. After the
 // final instruction is executed, the MDM will create an updated revision of the
 // FileContract which has to be signed by the renter and the host.
-type Program struct {
+type program struct {
 	instructions       []instruction
 	staticData         *programData
 	staticProgramState *programState
@@ -80,7 +80,7 @@ func outputFromError(err error, collateral, cost, refund types.Currency) Output 
 
 // decodeInstruction creates a specific instance of an instruction from a
 // specified generic instruction.
-func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
+func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 	switch i.Specifier {
 	case modules.SpecifierAppend:
 		return p.staticDecodeAppendInstruction(i)
@@ -97,14 +97,14 @@ func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, program modules.Program, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	// Sanity check program length.
-	if len(program) == 0 {
+	if len(p) == 0 {
 		return nil, nil, ErrEmptyProgram
 	}
 	// Build program.
-	p := &Program{
-		outputChan: make(chan Output, len(program)),
+	program := &program{
+		outputChan: make(chan Output, len(p)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
@@ -120,39 +120,39 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 
 	// Convert the instructions.
 	var err error
-	for _, i := range program {
-		instruction, err := decodeInstruction(p, i)
+	for _, i := range p {
+		instruction, err := decodeInstruction(program, i)
 		if err != nil {
-			return nil, nil, errors.Compose(err, p.staticData.Close())
+			return nil, nil, errors.Compose(err, program.staticData.Close())
 		}
-		p.instructions = append(p.instructions, instruction)
+		program.instructions = append(program.instructions, instruction)
 	}
 	// Increment the execution cost of the program.
-	err = p.addCost(modules.MDMInitCost(pt, p.staticData.Len(), uint64(len(p.instructions))))
+	err = program.addCost(modules.MDMInitCost(pt, program.staticData.Len(), uint64(len(program.instructions))))
 	if err != nil {
-		return nil, nil, errors.Compose(err, p.staticData.Close())
+		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}
 	// Execute all the instructions.
-	if err := p.tg.Add(); err != nil {
-		return nil, nil, errors.Compose(err, p.staticData.Close())
+	if err := program.tg.Add(); err != nil {
+		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}
 	go func() {
-		defer p.staticData.Close()
-		defer p.tg.Done()
-		defer close(p.outputChan)
-		p.outputErr = p.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
+		defer program.staticData.Close()
+		defer program.tg.Done()
+		defer close(program.outputChan)
+		program.outputErr = program.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
 	}()
 	// If the program is readonly there is no need to finalize it.
-	if program.ReadOnly() {
-		return nil, p.outputChan, nil
+	if p.ReadOnly() {
+		return nil, program.outputChan, nil
 	}
-	return p.managedFinalize, p.outputChan, nil
+	return program.managedFinalize, program.outputChan, nil
 }
 
 // addCollateral increases the collateral of the program by 'collateral'. If as
 // a result the collateral becomes larger than the collateral budget of the
 // program, an error is returned.
-func (p *Program) addCollateral(collateral types.Currency) error {
+func (p *program) addCollateral(collateral types.Currency) error {
 	additionalCollateral := p.additionalCollateral.Add(collateral)
 	if p.staticCollateralBudget.Cmp(additionalCollateral) < 0 {
 		return modules.ErrMDMInsufficientCollateralBudget
@@ -164,7 +164,7 @@ func (p *Program) addCollateral(collateral types.Currency) error {
 // addCost increases the cost of the program by 'cost'. If as a result the cost
 // becomes larger than the budget of the program, ErrInsufficientBudget is
 // returned.
-func (p *Program) addCost(cost types.Currency) error {
+func (p *program) addCost(cost types.Currency) error {
 	newExecutionCost := p.executionCost.Add(cost)
 	if p.staticBudget.Cmp(newExecutionCost) < 0 {
 		return modules.ErrMDMInsufficientBudget
@@ -175,7 +175,7 @@ func (p *Program) addCost(cost types.Currency) error {
 
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
-func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) error {
+func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) error {
 	output := output{
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
@@ -235,7 +235,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
-func (p *Program) managedFinalize(so StorageObligation) error {
+func (p *program) managedFinalize(so StorageObligation) error {
 	// Prevent finalizing the program when it was aborted due to a failure.
 	if p.outputErr != nil {
 		return errors.Compose(p.outputErr, errors.New("can't call finalize on program that was aborted due to an error"))

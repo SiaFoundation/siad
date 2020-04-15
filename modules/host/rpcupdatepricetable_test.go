@@ -94,12 +94,13 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	defer rhp.Close()
 
 	// negotiate a price table.
-	pt, err := rhp.negotiatePriceTable()
+	err = rhp.negotiatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// verify the price table is being tracked
+	pt := rhp.latestPT
 	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
 		t.Log("UID:", pt.UID)
@@ -164,23 +165,8 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return
 		}
 
-		// prepare an updated revision that pays the host
-		rev, sig, err := pair.paymentRevision(ptc)
-		if err != nil {
-			return
-		}
-
-		// send PaymentRequest & PayByContractRequest
-		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(rev, sig)
-		err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
-		if err != nil {
-			return
-		}
-
-		// receive PayByContractResponse
-		var payByResponse modules.PayByContractResponse
-		err = modules.RPCRead(stream, &payByResponse)
+		// pay using a contract.
+		err = pair.payByContract(stream, ptc)
 		if err != nil {
 			return
 		}
@@ -255,7 +241,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 }
 
 // negotiatePriceTable gets a new price table from the host.
-func (pair *renterHostPair) negotiatePriceTable() (*modules.RPCPriceTable, error) {
+func (pair *renterHostPair) negotiatePriceTable() error {
 	// create a test stream
 	stream := pair.newStream()
 	defer stream.Close()
@@ -263,45 +249,46 @@ func (pair *renterHostPair) negotiatePriceTable() (*modules.RPCPriceTable, error
 	// write the rpc id
 	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// read the updated RPC price table
 	var update modules.RPCUpdatePriceTableResponse
 	if err = modules.RPCRead(stream, &update); err != nil {
-		return nil, err
+		return err
 	}
 
 	// unmarshal the JSON into a price table
 	var pt modules.RPCPriceTable
 	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Send the payment request.
 	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Send the payment details.
 	rev, sig, err := pair.paymentRevision(pt.UpdatePriceTableCost)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	pbcr := newPayByContractRequest(rev, sig)
 	err = modules.RPCWrite(stream, pbcr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Receive payment confirmation.
 	var pc modules.PayByContractResponse
 	err = modules.RPCRead(stream, &pc)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &pt, nil
+	pair.latestPT = &pt
+	return nil
 }
 
 // newStream creates a stream which can be used to talk to the host.

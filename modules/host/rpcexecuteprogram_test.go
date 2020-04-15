@@ -35,7 +35,7 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (mod
 // returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, ptID modules.UniqueID, programData []byte, accountID modules.AccountID, accountKey crypto.SecretKey, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, _ error) {
+func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, _ error) {
 	// create stream
 	stream := rhp.newStream()
 	defer stream.Close()
@@ -47,7 +47,7 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	}
 
 	// Write the pricetable uid.
-	err = modules.RPCWrite(stream, ptID)
+	err = modules.RPCWrite(stream, rhp.latestPT.UID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	}
 
 	// Send the payment details.
-	pbear := newPayByEphemeralAccountRequest(accountID, rhp.ht.host.BlockHeight()+6, budget, accountKey)
+	pbear := newPayByEphemeralAccountRequest(rhp.accountID, rhp.ht.host.BlockHeight()+6, budget, rhp.accountKey)
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
 		return nil, err
@@ -141,13 +141,13 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Fetch the price table.
-	pt, err := rhp.negotiatePriceTable()
+	err = rhp.negotiatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create the 'HasSector' program.
-	program, data, cost, refund, _ := newHasSectorProgram(sectorRoot, pt)
+	program, data, cost, refund, _ := newHasSectorProgram(sectorRoot, rhp.latestPT)
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -157,15 +157,14 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Fund an account.
-	fundingAmt := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
-	accountKey, accountID := prepareAccount()
-	_, err = rhp.fundEphemeralAccount(pt.UID, accountID, fundingAmt)
+	fundingAmt := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(rhp.latestPT.FundAccountCost)
+	_, err = rhp.fundEphemeralAccount(fundingAmt)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Execute program.
-	resps, err := rhp.executeProgram(epr, pt.UID, data, accountID, accountKey, cost)
+	resps, err := rhp.executeProgram(epr, data, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
