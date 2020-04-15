@@ -49,7 +49,7 @@ func TestInstructionReadSector(t *testing.T) {
 	readLen := modules.SectorSize
 	// Execute it.
 	so := newTestStorageObligation(true)
-	so.sectorRoots = randomSectorRoots(10)
+	so.sectorRoots = randomSectorRoots(initialContractSectors)
 	instructions, programData, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
