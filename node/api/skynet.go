@@ -524,8 +524,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		BaseChunkRedundancy: redundancy,
 	}
 
-	fmt.Println("POST Skyfile", lup.SiaPath)
-
 	// Build the Skyfile metadata from the request
 	if strings.HasPrefix(mediaType, "multipart/form-data") {
 		subfiles, reader, err := skyfileParseMultiPartRequest(req)

@@ -53,21 +53,21 @@ func TestSkynet(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		// {Name: "TestSkynetBasic", Test: testSkynetBasic},
-		// {Name: "TestConvertSiaFile", Test: testConvertSiaFile},
-		// {Name: "TestSkynetSkykey", Test: testSkynetSkykey},
-		// {Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
-		// {Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
-		// {Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
-		// {Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
-		// {Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
-		// {Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
-		// {Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
+		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
+		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
+		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
+		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
+		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
+		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
-		// {Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
-		// {Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
-		// {Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		// {Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
+		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
+		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 	}
 
 	// Run tests
@@ -160,31 +160,13 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("bad filename")
 	}
 
-	// Try to download the file using the ReaderGet method.
+	// Try to download the file explicitly using the ReaderGet method with the
+	// no formatter.
 	skylinkReader, err := r.SkynetSkylinkReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
 	readerData, err := ioutil.ReadAll(skylinkReader)
-	if err != nil {
-		err = errors.Compose(err, skylinkReader.Close())
-		t.Fatal(err)
-	}
-	err = skylinkReader.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(readerData, data) {
-		t.Fatal("reader data doesn't match data")
-	}
-
-	// Try to download the file explicitly using the ReaderGet method with the
-	// no formatter.
-	skylinkReader, err = r.SkynetSkylinkReaderGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	readerData, err = ioutil.ReadAll(skylinkReader)
 	if err != nil {
 		err = errors.Compose(err, skylinkReader.Close())
 		t.Fatal(err)
@@ -833,7 +815,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033
-	// files["statfile2"] = modules.SectorSize + 123
+	files["statfsile2"] = modules.SectorSize + 123
 
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64

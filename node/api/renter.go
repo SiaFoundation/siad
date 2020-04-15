@@ -1378,7 +1378,6 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 	}
 
 	// Fetch the file.
-	fmt.Println("FETCHING FILE AT", siaPath)
 	file, err := api.renter.File(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
