@@ -815,7 +815,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033
-	files["statfsile2"] = modules.SectorSize + 123
+	files["statfile2"] = modules.SectorSize + 123
 
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
