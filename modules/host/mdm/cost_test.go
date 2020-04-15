@@ -38,7 +38,7 @@ func TestCostForAppendProgram(t *testing.T) {
 	initCollateral := types.ZeroCurrency
 	initMemory := modules.MDMInitMemory()
 	runningSize := uint64(0)
-	costCalculator := costCalculator{pt, initCost, initRefund, initCollateral, initMemory}
+	costCalculator := costCalculator{pt, initCost, initRefund, initCollateral, initMemory, 0}
 
 	// Simulate running a single program to append 1 TiB of data.
 	for runningSize < tib {
@@ -49,7 +49,7 @@ func TestCostForAppendProgram(t *testing.T) {
 		costCalculator.update(cost, refund, collateral, memory, time)
 		runningSize += modules.SectorSizeStandard
 	}
-	finalCost, finalRefund, _, finalMemory := costCalculator.getCosts()
+	finalCost, finalRefund, _, finalMemory, _ := costCalculator.getCosts()
 	finalCost = finalCost.Add(modules.MDMMemoryCost(pt, finalMemory, modules.MDMTimeCommit))
 
 	expectedCost := host.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)

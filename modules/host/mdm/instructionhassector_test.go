@@ -22,15 +22,15 @@ func newHasSectorInstruction(dataOffset uint64, pt modules.RPCPriceTable) (modul
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
+func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
 	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
 	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
+	cost, refund, collateral, memory, time = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), 0, cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
 	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
-	return instructions, data, cost, refund, collateral, memory
+	return instructions, data, cost, refund, collateral, memory, time
 }
 
 // TestInstructionHasSector tests executing a program with a single
@@ -51,10 +51,20 @@ func TestInstructionHasSector(t *testing.T) {
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, collateral, memory := newHasSectorProgram(sectorRoot, pt)
+	instructions, programData, cost, refund, collateral, memory, time := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
+
+	// Verify the costs.
+	expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime, err := EstimateProgramCosts(pt, instructions, dataLen, bytes.NewReader(programData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testCompareCosts(cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Expected outputs.
 	expectedOutputs := []Output{

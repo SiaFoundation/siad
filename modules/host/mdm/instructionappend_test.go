@@ -25,7 +25,7 @@ func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPri
 func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)), 1)
 	i, cost, refund, collateral, memory, time := newAppendInstruction(merkleProof, 0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
+	cost, refund, collateral, memory, time = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), 0, cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
 	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
 	return instructions, sectorData, cost, refund, collateral, memory, time
@@ -42,12 +42,18 @@ func TestInstructionAppend(t *testing.T) {
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, collateral, memory, _ := newAppendProgram(appendData1, true, pt)
+	instructions, programData, cost, refund, collateral, memory, time := newAppendProgram(appendData1, true, pt)
 	dataLen := uint64(len(programData))
 
 	// Verify the costs.
-	// expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime := EstimateProgramCosts(pt, instructions)
-	// testCompareCosts(t, cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime, err := EstimateProgramCosts(pt, instructions, dataLen, bytes.NewReader(programData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testCompareCosts(cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Expected outputs.
 	expectedOutputs := []Output{
@@ -109,8 +115,14 @@ func TestInstructionAppend(t *testing.T) {
 	ics := so.ContractSize()
 
 	// Verify the costs.
-	// expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime = EstimateProgramCosts(pt, instructions)
-	// testCompareCosts(t, cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime, err = EstimateProgramCosts(pt, instructions, dataLen, bytes.NewReader(programData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testCompareCosts(cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Expected outputs.
 	expectedOutputs = []Output{

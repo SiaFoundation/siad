@@ -60,41 +60,41 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	programData := make([]byte, dataLen)
 	pt := newTestPriceTable()
 	initCost := modules.MDMInitCost(pt, dataLen, numInstructions)
-	costCalculator := costCalculator{pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory()}
+	costCalculator := costCalculator{pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), 0}
 
 	instruction1, cost, refund, collateral, memory, time := newAppendInstruction(false, 0, pt)
 	// Store intermediate costs for comparison at each output step.
-	cost1, refund1, collateral1, _ := costCalculator.update(cost, refund, collateral, memory, time)
+	cost1, refund1, collateral1, _, _ := costCalculator.update(cost, refund, collateral, memory, time)
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[:modules.SectorSize], sectorData1)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
 	instruction2, cost, refund, collateral, memory, time := newAppendInstruction(false, modules.SectorSize, pt)
-	cost2, refund2, collateral2, _ := costCalculator.update(cost, refund, collateral, memory, time)
+	cost2, refund2, collateral2, _, _ := costCalculator.update(cost, refund, collateral, memory, time)
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[modules.SectorSize:2*modules.SectorSize], sectorData2)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
 	instruction3, cost, refund, collateral, memory, time := newAppendInstruction(false, 2*modules.SectorSize, pt)
-	cost3, refund3, collateral3, _ := costCalculator.update(cost, refund, collateral, memory, time)
+	cost3, refund3, collateral3, _, _ := costCalculator.update(cost, refund, collateral, memory, time)
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
 	copy(programData[2*modules.SectorSize:3*modules.SectorSize], sectorData3)
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
 	instruction4, cost, refund, collateral, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize, 0, pt)
-	cost4, refund4, collateral4, _ := costCalculator.update(cost, refund, collateral, memory, time)
+	cost4, refund4, collateral4, _, _ := costCalculator.update(cost, refund, collateral, memory, time)
 
 	// Drop one sector.
 	instruction5, cost, refund, collateral, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+8, 1, pt)
-	cost5, refund5, collateral5, _ := costCalculator.update(cost, refund, collateral, memory, time)
+	cost5, refund5, collateral5, _, _ := costCalculator.update(cost, refund, collateral, memory, time)
 
 	// Drop two remaining sectors.
 	instruction6, cost, refund, collateral, memory, time := newDropSectorsInstruction(programData, 3*modules.SectorSize+16, 2, pt)
-	cost6, refund6, collateral6, memory6 := costCalculator.update(cost, refund, collateral, memory, time)
+	cost6, refund6, collateral6, memory6, time6 := costCalculator.update(cost, refund, collateral, memory, time)
 
-	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, modules.MDMTimeCommit))
-	collateral = collateral6
+	finalCost := cost6.Add(modules.MDMMemoryCost(pt, memory6, modules.MDMTimeCommit))
+	finalRefund, finalCollateral, finalMemory, finalTime := refund6, collateral6, memory6, time6
 
 	// Construct the program.
 	instructions := []modules.Instruction{
@@ -105,8 +105,14 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Verify the costs.
-	// expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime = EstimateProgramCosts(pt, instructions)
-	// testCompareCosts(t, cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime, err := EstimateProgramCosts(pt, instructions, dataLen, bytes.NewReader(programData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testCompareCosts(finalCost, finalRefund, finalCollateral, finalMemory, finalTime, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Expected outputs.
 	expectedOutputs := []Output{
@@ -177,7 +183,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, finalCost, finalCollateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

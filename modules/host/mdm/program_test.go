@@ -63,7 +63,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, programData, _, _, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
+	instructions, programData, _, _, collateral, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
 	// Execute the program with enough money to init the mdm but not enough

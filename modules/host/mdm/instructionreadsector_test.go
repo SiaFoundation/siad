@@ -23,17 +23,17 @@ func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	data := make([]byte, 8+8+crypto.HashSize)
 	binary.LittleEndian.PutUint64(data[:8], length)
 	binary.LittleEndian.PutUint64(data[8:16], offset)
 	copy(data[16:], merkleRoot[:])
 	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
 	i, cost, refund, collateral, memory, time := newReadSectorInstruction(length, true, 0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
+	cost, refund, collateral, memory, time = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), 0, cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
 	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
-	return instructions, data, cost, refund, collateral, memory
+	return instructions, data, cost, refund, collateral, memory, time
 }
 
 // TestInstructionReadSector tests executing a program with a single
@@ -49,11 +49,21 @@ func TestInstructionReadSector(t *testing.T) {
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(10)
 	root := so.sectorRoots[0]
-	instructions, programData, cost, refund, collateral, memory := newReadSectorProgram(readLen, 0, root, pt)
+	instructions, programData, cost, refund, collateral, memory, time := newReadSectorProgram(readLen, 0, root, pt)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
+
+	// Verify the costs.
+	expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime, err := EstimateProgramCosts(pt, instructions, dataLen, bytes.NewReader(programData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testCompareCosts(cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Expected outputs.
 	outputData, err := host.ReadSector(root)
@@ -95,9 +105,19 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, programData, cost, refund, collateral, memory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
+	instructions, programData, cost, refund, collateral, memory, time = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
 	r = bytes.NewReader(programData)
 	dataLen = uint64(len(programData))
+
+	// Verify the costs.
+	expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime, err = EstimateProgramCosts(pt, instructions, dataLen, bytes.NewReader(programData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testCompareCosts(cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Expected outputs.
 	proofStart := int(offset) / crypto.SegmentSize
