@@ -67,6 +67,13 @@ func (d *dependencyFaultyDisk) enable() {
 	d.mu.Unlock()
 }
 
+// Disrupt returns true if the faulty disk dependency is enabled to make sure we
+// don't panic when updates can't be applied but instead are able to handle the
+// error gracefully during testing.
+func (d *dependencyFaultyDisk) Disrupt(s string) bool {
+	return s == "faultyFile"
+}
+
 // tryFail will check if the disk has failed yet, and if not, it'll rng to see
 // if the disk should fail now. Returns 'true' if the disk has failed.
 func (d *dependencyFaultyDisk) tryFail() bool {

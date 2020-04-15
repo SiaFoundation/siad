@@ -1,0 +1,1 @@
+- Fix decode bug for the rpcResponse object

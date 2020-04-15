@@ -565,12 +565,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Ensure we have a filename
-	if lup.FileMetadata.Filename == "" {
-		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
-		return
-	}
-
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -579,6 +573,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// streaming upload.
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
+		// Ensure we have a filename
+		if lup.FileMetadata.Filename == "" {
+			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+			return
+		}
+
 		skylink, err := api.renter.UploadSkyfile(lup)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)

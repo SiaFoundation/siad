@@ -1,6 +1,7 @@
 package siafile
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -79,7 +80,7 @@ func LoadSiaFileMetadata(path string) (Metadata, error) {
 // new chunk to the partial SiaFile if necessary. At the end it applies the
 // updates of the partial chunk set, the SiaFile and the partial SiaFile
 // atomically.
-func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updates []writeaheadlog.Update) error {
+func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updates []writeaheadlog.Update) (err error) {
 	// SavePartialChunk can only be called when there is no partial chunk yet.
 	if !sf.staticMetadata.HasPartialChunk || len(sf.staticMetadata.PartialChunks) > 0 {
 		return fmt.Errorf("can't call SetPartialChunk unless file has a partial chunk and doesn't have combined chunks assigned to it yet: %v %v",
@@ -98,6 +99,15 @@ func (sf *SiaFile) SetPartialChunks(combinedChunks []modules.PartialChunk, updat
 	if totalLength != expectedLength {
 		return fmt.Errorf("expect partial chunk length to be %v but was %v", expectedLength, totalLength)
 	}
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldNumChunks := sf.numChunks
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+			sf.numChunks = oldNumChunks
+		}
+	}(sf.staticMetadata.backup())
 	// Lock both the SiaFile and partials SiaFile. We need to atomically update
 	// both of them.
 	sf.mu.Lock()
@@ -470,6 +480,8 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 				return sf.readAndApplyInsertUpdate(f, u)
 			case updateDeletePartialName:
 				return readAndApplyDeleteUpdate(sf.deps, u)
+			case writeaheadlog.NameTruncateUpdate:
+				return sf.readAndApplyTruncateUpdate(f, u)
 			default:
 				return errUnknownSiaFileUpdate
 			}
@@ -585,7 +597,7 @@ func (sf *SiaFile) chunkOffset(chunkIndex int) int64 {
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) (err error) {
 	// Sanity check that file hasn't been deleted.
 	if sf.deleted {
 		return errors.New("can't call createAndApplyTransaction on deleted file")
@@ -602,6 +614,13 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) er
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the WAL.
+	// This means we need to panic in case applying the updates fails.
+	defer func() {
+		if err != nil && !sf.deps.Disrupt("faultyFile") {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := sf.applyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
@@ -695,12 +714,33 @@ func (sf *SiaFile) readAndApplyInsertUpdate(f modules.File, update writeaheadlog
 	return nil
 }
 
+// ApplyTruncateUpdate parses and applies a truncate update.
+func (sf *SiaFile) readAndApplyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
+	if u.Name != writeaheadlog.NameTruncateUpdate {
+		return fmt.Errorf("applyTruncateUpdate called on update of type %v", u.Name)
+	}
+	// Decode update.
+	if len(u.Instructions) < 8 {
+		return errors.New("instructions slice of update is too short to contain the size and path")
+	}
+	size := int64(binary.LittleEndian.Uint64(u.Instructions[:8]))
+	// Truncate file.
+	return f.Truncate(size)
+}
+
 // saveFile saves the SiaFile's header and the provided chunks atomically.
-func (sf *SiaFile) saveFile(chunks []chunk) error {
+func (sf *SiaFile) saveFile(chunks []chunk) (err error) {
 	// Sanity check that file hasn't been deleted.
 	if sf.deleted {
 		return errors.New("can't call saveFile on deleted file")
 	}
+	// Restore metadata on failure.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+	// Update header and chunks.
 	headerUpdates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return errors.AddContext(err, "failed to to create save header updates")
@@ -725,7 +765,7 @@ func (sf *SiaFile) saveChunkUpdate(chunk chunk) writeaheadlog.Update {
 // pubKeyTable of the SiaFile to disk using the writeaheadlog. If the metadata
 // and overlap due to growing too large and would therefore corrupt if they
 // were written to disk, a new page is allocated.
-func (sf *SiaFile) saveHeaderUpdates() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) saveHeaderUpdates() (_ []writeaheadlog.Update, err error) {
 	// Create a list of updates which need to be applied to save the metadata.
 	var updates []writeaheadlog.Update
 

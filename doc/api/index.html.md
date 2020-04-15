@@ -1577,6 +1577,7 @@ based on their needs.
       "datasize":                 500000,             // bytes
       "lockedcollateral":         "1234",             // hastings
       "obligationid": "fff48010dcbbd6ba7ffd41bc4b25a3634ee58bbf688d2f06b7d5a0c837304e13", // hash
+      "potentialaccountfunding":  "1234",             // hastings
       "potentialdownloadrevenue": "1234",             // hastings
       "potentialstoragerevenue":  "1234",             // hastings
       "potentialuploadrevenue":   "1234",             // hastings
@@ -1608,6 +1609,9 @@ Amount that is locked as collateral for this storage obligation.
 **obligationid** | hash  
 Id of the storageobligation, which is defined by the file contract id of the
 file contract that governs the storage obligation.
+
+**potentialaccountfunding** | hastings  
+Amount in hastings that went to funding ephemeral accounts with.
 
 **potentialdownloadrevenue** | hastings  
 Potential revenue for downloaded data that the host will receive upon successful
