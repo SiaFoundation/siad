@@ -12,7 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// Skyfile returns the file at given path
+// Skyfile returns the file at the given path
 func (tn *TestNode) Skyfile(path modules.SiaPath) (modules.FileInfo, error) {
 	rfile, err := tn.RenterFileRootGet(path)
 	if err != nil {
@@ -59,7 +59,7 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 	if !sup.Root {
 		skyfilePath, err = modules.SkynetFolder.Join(skyfilePath.String())
 		if err != nil {
-			err = errors.AddContext(err, "Failed to create siapath")
+			err = errors.AddContext(err, "Failed to rebase siapath")
 			return
 		}
 	}
