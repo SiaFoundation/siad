@@ -179,20 +179,16 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 			break
 		default:
 		}
+		// Get all costs for the instruction.
+		instructionCost, refund, collateral, memory, time, err := instructionCosts(i)
+		if err != nil {
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+		}
 		// Add the memory the next instruction is going to allocate to the
 		// total.
-		p.usedMemory += i.Memory()
-		time, err := i.Time()
-		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
-		}
+		p.usedMemory += memory
 		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
-		// Get the instruction cost and refund.
-		instructionCost, refund, err := i.Cost()
-		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
-			return err
-		}
+		// Get the full cost.
 		cost := memoryCost.Add(instructionCost)
 		// Increment the cost.
 		err = p.addCost(cost)
@@ -203,7 +199,6 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		// Add the instruction's potential refund to the total.
 		p.potentialRefund = p.potentialRefund.Add(refund)
 		// Increment collateral.
-		collateral := i.Collateral()
 		err = p.addCollateral(collateral)
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)

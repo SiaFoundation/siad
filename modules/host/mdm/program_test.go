@@ -13,18 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// updateRunningCosts is a testing helper function for updating the running
-// costs of a program after adding an instruction.
-func updateRunningCosts(pt modules.RPCPriceTable, runningCost, runningRefund, runningCollateral types.Currency, runningMemory uint64, cost, refund, collateral types.Currency, memory, time uint64) (types.Currency, types.Currency, types.Currency, uint64) {
-	runningMemory = runningMemory + memory
-	memoryCost := modules.MDMMemoryCost(pt, runningMemory, time)
-	runningCost = runningCost.Add(memoryCost).Add(cost)
-	runningRefund = runningRefund.Add(refund)
-	runningCollateral = runningCollateral.Add(collateral)
-
-	return runningCost, runningRefund, runningCollateral, runningMemory
-}
-
 // TestNewEmptyProgram runs a program without instructions.
 func TestNewEmptyProgram(t *testing.T) {
 	// Create MDM

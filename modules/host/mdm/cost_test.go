@@ -33,11 +33,12 @@ func TestCostForAppendProgram(t *testing.T) {
 
 	// Initialize starting values.
 	numInstructions := uint64(math.Ceil(float64(tib) / float64(modules.SectorSizeStandard)))
-	runningCost := modules.MDMInitCost(pt, tib, numInstructions)
-	runningRefund := types.ZeroCurrency
-	runningCollateral := types.ZeroCurrency
-	runningMemory := modules.MDMInitMemory()
+	initCost := modules.MDMInitCost(pt, tib, numInstructions)
+	initRefund := types.ZeroCurrency
+	initCollateral := types.ZeroCurrency
+	initMemory := modules.MDMInitMemory()
 	runningSize := uint64(0)
+	costCalculator := costCalculator{pt, initCost, initRefund, initCollateral, initMemory}
 
 	// Simulate running a single program to append 1 TiB of data.
 	for runningSize < tib {
@@ -45,27 +46,28 @@ func TestCostForAppendProgram(t *testing.T) {
 		collateral := modules.MDMAppendCollateral(pt)
 		memory := modules.SectorSizeStandard // override MDMAppendMemory()
 		time := uint64(modules.MDMTimeAppend)
-		runningCost, runningRefund, runningCollateral, runningMemory = updateRunningCosts(pt, runningCost, runningRefund, runningCollateral, runningMemory, cost, refund, collateral, memory, time)
+		costCalculator.update(cost, refund, collateral, memory, time)
 		runningSize += modules.SectorSizeStandard
 	}
-	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))
+	finalCost, finalRefund, _, finalMemory := costCalculator.getCosts()
+	finalCost = finalCost.Add(modules.MDMMemoryCost(pt, finalMemory, modules.MDMTimeCommit))
 
 	expectedCost := host.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
-	if !aboutEquals(expectedCost, runningCost) {
-		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
+	if !aboutEquals(expectedCost, finalCost) {
+		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), finalCost.HumanString())
 	}
 
 	// The expected refund is equal to the expected cost because we are testing
 	// the cost of storage. When we refund an append, we give back only the full
 	// cost of storage.
 	expectedRefund := expectedCost
-	if !aboutEquals(expectedRefund, runningRefund) {
-		t.Errorf("expected refund for appending 1 TiB to be %v, got refund %v", expectedRefund.HumanString(), runningRefund.HumanString())
+	if !aboutEquals(expectedRefund, finalRefund) {
+		t.Errorf("expected refund for appending 1 TiB to be %v, got refund %v", expectedRefund.HumanString(), finalRefund.HumanString())
 	}
 
 	expectedMemory := runningSize + modules.MDMInitMemory() // 1 TiB + 1 MiB
-	if expectedMemory != runningMemory {
-		t.Errorf("expected memory for appending 1 TiB to be %v, got %v", expectedMemory, runningMemory)
+	if expectedMemory != finalMemory {
+		t.Errorf("expected memory for appending 1 TiB to be %v, got %v", expectedMemory, finalMemory)
 	}
 }
 

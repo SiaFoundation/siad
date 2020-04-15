@@ -29,6 +29,18 @@ type instruction interface {
 	Time() (uint64, error)
 }
 
+// instructionCosts returns all costs for the instruction.
+func instructionCosts(i instruction) (cost, refund, collateral types.Currency, memory, time uint64, err error) {
+	cost, refund, err = i.Cost()
+	if err != nil {
+		return
+	}
+	collateral = i.Collateral()
+	memory = i.Memory()
+	time, err = i.Time()
+	return
+}
+
 // Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
 	output
