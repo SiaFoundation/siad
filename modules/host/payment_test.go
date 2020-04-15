@@ -3,11 +3,14 @@ package host
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -230,6 +233,283 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	if err != errLowHostMissedOutput {
 		t.Fatalf("Expected errLowHostMissedOutput but received '%v'", err)
 	}
+}
+
+// balanceTracker is a helper struct to track ephemeral account balances and
+// return when they need to be refilled.
+type balanceTracker struct {
+	balances  map[modules.AccountID]int64
+	threshold int64
+	mu        sync.Mutex
+}
+
+// TrackDeposit deposits the given amount into the specified account
+func (bt *balanceTracker) TrackDeposit(id modules.AccountID, deposit int64) {
+	bt.mu.Lock()
+	defer bt.mu.Unlock()
+	bt.balances[id] += deposit
+}
+
+// TrackWithdrawal withdraws the given amount from the account with specified
+// id. Returns whether the account should be refilled or not depending on the
+// balance tracker's threshold.
+func (bt *balanceTracker) TrackWithdrawal(id modules.AccountID, withdrawal int64) (refill bool) {
+	bt.mu.Lock()
+	defer bt.mu.Unlock()
+	bt.balances[id] -= withdrawal
+	if bt.balances[id] < bt.threshold {
+		return true
+	}
+	return
+}
+
+// TestProcessParallelPayments tests the behaviour of the ProcessPayment method
+// when multiple threads use multiple contracts and ephemeral accounts at the
+// same time to perform payments.
+func TestProcessParallelPayments(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// determine a reasonable timeout
+	var timeout time.Duration
+	if build.VLONG {
+		timeout = time.Minute
+	} else {
+		timeout = 10 * time.Second
+	}
+
+	// setup the host
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	am := ht.host.staticAccountManager
+
+	var refillAmount uint64 = 100
+	var maxWithdrawalAmount uint64 = 10
+
+	// setup a balance tracker
+	bt := &balanceTracker{
+		balances:  make(map[modules.AccountID]int64),
+		threshold: int64(maxWithdrawalAmount),
+	}
+
+	// setup multiple renters and SOs
+	pairs := make([]*renterHostPair, runtime.NumCPU())
+	for i := range pairs {
+		_, pair, err := newRenterHostPairCustomHostTester(ht)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pairs[i] = pair
+
+		if err := callDeposit(am, pair.eaid, types.NewCurrency64(refillAmount)); err != nil {
+			t.Log("failed deposit", err)
+			t.Fatal(err)
+		}
+		bt.TrackDeposit(pair.eaid, int64(refillAmount))
+	}
+
+	// setup a lock guarding the filecontracts seeing as we are concurrently
+	// accessing them and generating revisions for them
+	fcLocks := make(map[types.FileContractID]*sync.Mutex)
+	for _, pair := range pairs {
+		fcLocks[pair.fcid] = new(sync.Mutex)
+	}
+
+	var fcPayments uint64
+	var eaPayments uint64
+	var fcFailures uint64
+	var eaFailures uint64
+
+	// start the timer
+	finished := make(chan struct{})
+	time.AfterFunc(timeout, func() {
+		close(finished)
+	})
+
+	for range pairs {
+		go func() {
+			// create two streams
+			rs, hs := NewTestStreams()
+			defer rs.Close()
+			defer hs.Close()
+
+		LOOP:
+			for {
+				select {
+				case <-finished:
+					break LOOP
+				default:
+				}
+
+				// generate random pair and amount
+				rp := pairs[fastrand.Intn(len(pairs))]
+				rw := fastrand.Uint64n(maxWithdrawalAmount) + 1
+				ra := types.NewCurrency64(rw)
+
+				// pay by contract 5% of time
+				var payByFC bool
+				if fastrand.Intn(100) < 5 {
+					payByFC = true
+				}
+
+				// randomly pick a flow and run it
+				var failed bool
+				var pd modules.PaymentDetails
+				var err error
+				if payByFC {
+					fcLocks[rp.fcid].Lock()
+					if pd, failed, err = runPayByContractFlow(rp, rs, hs, ra); failed {
+						atomic.AddUint64(&fcFailures, 1)
+					}
+					atomic.AddUint64(&fcPayments, 1)
+					fcLocks[rp.fcid].Unlock()
+				} else {
+					refill := bt.TrackWithdrawal(rp.eaid, int64(rw))
+					if refill {
+						go func(id modules.AccountID) {
+							time.Sleep(100 * time.Millisecond) // make it slow
+							if err := callDeposit(am, id, types.NewCurrency64(refillAmount)); err != nil {
+								t.Error(err)
+							}
+							bt.TrackDeposit(id, int64(refillAmount))
+						}(rp.eaid)
+					}
+					if pd, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
+						atomic.AddUint64(&eaFailures, 1)
+					}
+					atomic.AddUint64(&eaPayments, 1)
+				}
+
+				// compare amount paid to what we expect
+				if !failed && err == nil && !pd.Amount().Equals(ra) {
+					err = fmt.Errorf("Unexpected amount paid, expected %v actual %v", ra, pd.Amount())
+				}
+
+				if err != nil {
+					t.Error(err)
+					break LOOP
+				}
+			}
+		}()
+	}
+	<-finished
+
+	t.Logf("\n\nIn %.f seconds, on %d cores, the following payments completed successfully\nPayByContract: %d (%v expected failures)\nPayByEphemeralAccount: %d (%v expected failures)\n\n", timeout.Seconds(), runtime.NumCPU(), atomic.LoadUint64(&fcPayments), atomic.LoadUint64(&fcFailures), atomic.LoadUint64(&eaPayments), atomic.LoadUint64(&eaFailures))
+}
+
+// runPayByContractFlow is a helper function that runs the 'PayByContract' flow
+// and returns the result of running it.
+func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, fail bool, err error) {
+	if fastrand.Intn(100) < 5 { // fail 5% of time
+		fail = true
+	}
+
+	defer func() {
+		if fail && err == nil {
+			err = errors.AddContext(err, "Expected failure but error was nil")
+			return
+		}
+		if fail && err != nil && strings.Contains(err.Error(), "Invalid payment revision") {
+			err = nil
+		}
+	}()
+
+	err = run(
+		func() error {
+			// prepare an updated revision that pays the host
+			rev, sig, err := pair.paymentRevision(amount)
+			if err != nil {
+				return err
+			}
+			// corrupt the revision if we're expected to fail
+			if fail {
+				rev.SetValidRenterPayout(rev.ValidRenterPayout().Add64(1))
+			}
+			// send PaymentRequest & PayByContractRequest
+			pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+			pbcRequest := newPayByContractRequest(rev, sig)
+			err = modules.RPCWriteAll(rStream, pRequest, pbcRequest)
+			if err != nil {
+				return err
+			}
+			// receive PayByContractResponse
+			var payByResponse modules.PayByContractResponse
+			err = modules.RPCRead(rStream, &payByResponse)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// process payment request
+			var pErr error
+			payment, pErr = pair.host.ProcessPayment(hStream)
+			if pErr != nil {
+				modules.RPCWriteError(hStream, pErr)
+			}
+			return nil
+		},
+	)
+	return
+}
+
+// runPayByContractFlow is a helper function that runs the
+// 'PayByEphemeralAccount' flow and returns the result of running it.
+func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.Stream, amount types.Currency) (payment modules.PaymentDetails, fail bool, err error) {
+	if fastrand.Intn(100) < 5 { // fail 5% of time
+		fail = true
+	}
+
+	defer func() {
+		if fail && err == nil {
+			err = errors.AddContext(err, "Expected failure but error was nil")
+			return
+		}
+		if fail && err != nil && strings.Contains(err.Error(), modules.ErrWithdrawalInvalidSignature.Error()) {
+			err = nil
+		}
+	}()
+
+	err = run(
+		func() error {
+			// create the request
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter)
+
+			if fail {
+				// this induces failure because the nonce will be different and
+				// this the signature will be invalid
+				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter).Signature
+			}
+
+			// send PaymentRequest & PayByEphemeralAccountRequest
+			pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
+			err := modules.RPCWriteAll(rStream, pRequest, pbeaRequest)
+			if err != nil {
+				return err
+			}
+
+			// receive PayByEphemeralAccountResponse
+			var payByResponse modules.PayByEphemeralAccountResponse
+			err = modules.RPCRead(rStream, &payByResponse)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+		func() error {
+			// process payment request
+			payment, err = pair.host.ProcessPayment(hStream)
+			if err != nil {
+				modules.RPCWriteError(hStream, err)
+			}
+			return nil
+		},
+	)
+	return
 }
 
 // TestProcessPayment verifies the host's ProcessPayment method. It covers both
