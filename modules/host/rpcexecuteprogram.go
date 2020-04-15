@@ -69,7 +69,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Execute the program.
-	finalize, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, amountPaid, collateralBudget, sos, dataLength, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, amountPaid, collateralBudget, sos, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
@@ -144,14 +144,17 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// TODO: The program was not readonly which means the merkle root
 		// changed. Sign a new revision with the correct root.
 		// TODO: The revision needs to update the collateral if necessary.
-		so, err := h.managedGetStorageObligation(fcid)
-		if err != nil {
-			return errors.AddContext(err, "Failed to get storage obligation for finalizing the program")
-		}
-		err = finalize(so)
-		if err != nil {
-			return errors.AddContext(err, "Failed to finalize the program")
-		}
+		// TODO: The revision needs to update the storage payment.
+		//
+		//		so, err := h.managedGetStorageObligation(fcid)
+		//		if err != nil {
+		//			return errors.AddContext(err, "Failed to get storage obligation for finalizing the program")
+		//		}
+		//		err = finalize(so)
+		//		if err != nil {
+		//			return errors.AddContext(err, "Failed to finalize the program")
+		//		}
+		return errors.New("only readonly programs are supported right now")
 	} else {
 		// TODO: finalize spending for readonly programs once the MR is ready.
 	}
