@@ -251,7 +251,7 @@ func TestFingerprintsRotate(t *testing.T) {
 }
 
 // TestFingerprintBucketsRotate verifies the rotation of the fingerprint buckets
-//on disk when the host goes out of sync or is reloaded.
+// on disk when the host goes out of sync or is reloaded.
 func TestFingerprintBucketsRotate(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
