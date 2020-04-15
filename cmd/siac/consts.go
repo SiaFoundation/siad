@@ -13,6 +13,10 @@ const (
 	// the download command gives up on finding a download in the download list.
 	RenterDownloadTimeout = time.Minute
 
+	// SimultaneousSkynetUploads limits the number of files being concurrently
+	// uploaded to Skynet.
+	SimultaneousSkynetUploads = 8
+
 	// SpeedEstimationWindow is the size of the window which we use to
 	// determine download speeds.
 	SpeedEstimationWindow = 60 * time.Second
