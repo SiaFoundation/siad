@@ -477,12 +477,12 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 	err = run(
 		func() error {
 			// create the request
-			pbeaRequest := newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.renter)
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey)
 
 			if fail {
 				// this induces failure because the nonce will be different and
 				// this the signature will be invalid
-				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.renter).Signature
+				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey).Signature
 			}
 
 			// send PaymentRequest & PayByEphemeralAccountRequest
