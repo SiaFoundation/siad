@@ -227,3 +227,9 @@ type SkyfilePinParameters struct {
 	Root                bool    `json:"root"`
 	BaseChunkRedundancy uint8   `json:"basechunkredundancy"`
 }
+
+// SkynetPortal contains information identifying a Skynet portal.
+type SkynetPortal struct {
+	Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
+	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
+}

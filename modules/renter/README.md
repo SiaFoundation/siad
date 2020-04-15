@@ -22,6 +22,7 @@ README files should be reviewed.
  - HostDB
  - Proto
  - Skynet Blacklist
+ - Skynet Portals
 
 ### Contractor
 The Contractor manages the Renter's contracts and is responsible for all
@@ -49,8 +50,13 @@ module whose functionality is largely wrapped by the Contractor.
 
 ### Skynet Blacklist
 The Skynet Blacklist module manages the list of skylinks that the Renter wants
-blacklisted. It also manages persisting the blacklist in a ACID and performant
+blacklisted. It also manages persisting the blacklist in an ACID and performant
 manner.
+
+### Skynet Portals
+The Skynet Portals module manages the list of known Skynet portals that the
+Renter wants to keep track of. It also manages persisting the list in an ACID
+and performant manner.
 
 ## Subsystems
 The Renter has the following subsystems that help carry out its
