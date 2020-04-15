@@ -403,7 +403,7 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 
 // UploadBlocking attempts to upload an existing file with the option to
 // overwrite if exists and waits for the upload to reach 100% progress and
-// redundancy.
+// full health.
 func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file, creating a parity piece for each host in the group
 	remoteFile, err := tn.Upload(localFile, tn.SiaPath(localFile.path), dataPieces, parityPieces, force)
