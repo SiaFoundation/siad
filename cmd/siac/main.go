@@ -2,15 +2,12 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -350,37 +347,22 @@ func main() {
 	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
-	// Check if the api password environment variable is set.
-	apiPassword := os.Getenv(cmd.SiaAPIPassword)
-	if apiPassword != "" {
-		httpClient.Password = apiPassword
-		fmt.Println("Using SIA_API_PASSWORD environment variable")
+	// Check if the API Password is set
+	if httpClient.Password == "" {
+		// No password passed in, fetch the API Password
+		pw, err := build.APIPassword()
+		if err != nil {
+			fmt.Println("Exiting: Error getting API Password:", err)
+			os.Exit(exitCodeGeneral)
+		}
+		httpClient.Password = pw
 	}
 
-	// If siaDir is not set, use the environment variable provided.
+	// Check if the siaDir is set.
 	if siaDir == "" {
-		siaDir = os.Getenv(cmd.SiaDataDir)
-		if siaDir != "" {
-			fmt.Println("Using SIA_DATA_DIR environment variable")
-		} else {
-			siaDir = build.DefaultSiaDir()
-		}
+		// No siaDir passed in, fetch the siaDir
+		siaDir = build.SiaDir()
 	}
-
-	// If the API password wasn't set we try to read it from the file. This must
-	// be done only *after* we parse the sia-directory flag, which is why we do
-	// it inside OnInitialize.
-	cobra.OnInitialize(func() {
-		if httpClient.Password == "" {
-			pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
-			if err != nil {
-				fmt.Println("Could not read API password file:", err)
-				httpClient.Password = ""
-			} else {
-				httpClient.Password = strings.TrimSpace(string(pw))
-			}
-		}
-	})
 
 	// Check for Critical Alerts
 	alerts, err := httpClient.DaemonAlertsGet()
