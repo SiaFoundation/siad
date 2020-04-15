@@ -59,7 +59,7 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 	if !sup.Root {
 		skyfilePath, err = modules.SkynetFolder.Join(skyfilePath.String())
 		if err != nil {
-			err = errors.AddContext(err, "Failed to create siapath")
+			err = errors.AddContext(err, "Failed to rebase siapath")
 			return
 		}
 	}
