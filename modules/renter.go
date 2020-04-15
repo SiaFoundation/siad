@@ -515,6 +515,7 @@ type HostScoreBreakdown struct {
 	ConversionRate float64        `json:"conversionrate"`
 
 	AgeAdjustment              float64 `json:"ageadjustment"`
+	BasePriceAdjustment        float64 `json:"basepriceadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
 	CollateralAdjustment       float64 `json:"collateraladjustment"`
 	DurationAdjustment         float64 `json:"durationadjustment"`
@@ -979,6 +980,12 @@ type Renter interface {
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.
 	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
+
+	// Portals returns the list of known skynet portals.
+	Portals() ([]SkynetPortal, error)
+
+	// UpdateSkynetPortals updates the list of known skynet portals.
+	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

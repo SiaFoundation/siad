@@ -92,11 +92,11 @@ func (na NetAddress) IsLocal() bool {
 	return false
 }
 
-// IsValid is an extension to IsStdValid that also forbids the loopback
-// address. IsValid is being phased out in favor of allowing the loopback
-// address but verifying through other means that the connection is not to
-// yourself (which is the original reason that the loopback address was
-// banned).
+// IsValid is an extension to IsStdValid that also forbids the loopback address.
+//
+// NOTE: IsValid is being phased out in favor of allowing the loopback address
+// but verifying through other means that the connection is not to yourself
+// (which is the original reason that the loopback address was banned).
 func (na NetAddress) IsValid() error {
 	// Check the loopback address.
 	if na.IsLoopback() && build.Release != "testing" {
@@ -107,9 +107,9 @@ func (na NetAddress) IsValid() error {
 
 // IsStdValid returns an error if the NetAddress is invalid. A valid NetAddress
 // is of the form "host:port", such that "host" is either a valid IPv4/IPv6
-// address or a valid hostname, and "port" is an integer in the range
-// [1,65535]. Valid IPv4 addresses, IPv6 addresses, and hostnames are detailed
-// in RFCs 791, 2460, and 952, respectively.
+// address or a valid hostname, and "port" is an integer in the range [1,65535].
+// Valid IPv4 addresses, IPv6 addresses, and hostnames are detailed in RFCs 791,
+// 2460, and 952, respectively. Loopback addresses are allowed.
 func (na NetAddress) IsStdValid() error {
 	// Verify the port number.
 	host, port, err := net.SplitHostPort(string(na))

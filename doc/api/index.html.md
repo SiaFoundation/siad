@@ -1577,6 +1577,7 @@ based on their needs.
       "datasize":                 500000,             // bytes
       "lockedcollateral":         "1234",             // hastings
       "obligationid": "fff48010dcbbd6ba7ffd41bc4b25a3634ee58bbf688d2f06b7d5a0c837304e13", // hash
+      "potentialaccountfunding":  "1234",             // hastings
       "potentialdownloadrevenue": "1234",             // hastings
       "potentialstoragerevenue":  "1234",             // hastings
       "potentialuploadrevenue":   "1234",             // hastings
@@ -1608,6 +1609,9 @@ Amount that is locked as collateral for this storage obligation.
 **obligationid** | hash  
 Id of the storageobligation, which is defined by the file contract id of the
 file contract that governs the storage obligation.
+
+**potentialaccountfunding** | hastings  
+Amount in hastings that went to funding ephemeral accounts with.
 
 **potentialdownloadrevenue** | hastings  
 Potential revenue for downloaded data that the host will receive upon successful
@@ -2161,11 +2165,12 @@ ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
   },
   "scorebreakdown": {
     "score":                      1,        // big int
-    "conversionrate":             9.12345,  // float64
     "ageadjustment":              0.1234,   // float64
+    "basepriceadjustment":        1,        // float64
     "burnadjustment":             0.1234,   // float64
     "collateraladjustment":       23.456,   // float64
-  "durationadjustment":         1,        // float64
+    "conversionrate":             9.12345,  // float64
+    "durationadjustment":         1,        // float64
     "interactionadjustment":      0.1234,   // float64
     "priceadjustment":            0.1234,   // float64
     "storageremainingadjustment": 0.1234,   // float64
@@ -2193,13 +2198,13 @@ be off by many orders of magnitude. When displaying to a human, some form of
 normalization with respect to the other hosts (for example, divide all scores by
 the median score of the hosts) is recommended.  
 
-**conversionrate** | float64  
-conversionrate is the likelihood that the host will be selected by renters
-forming contracts.  
-
 **ageadjustment** | float64  
 The multiplier that gets applied to the host based on how long it has been a
 host. Older hosts typically have a lower penalty.  
+
+**basepriceadjustment** | float64  
+The multiplier that gets applied to the host based on if the `BaseRPCPRice` and
+the `SectorAccessPrice` are reasonable.  
 
 **burnadjustment** | float64  
 The multiplier that gets applied to the host based on how much proof-of-burn the
@@ -2209,6 +2214,10 @@ host has performed. More burn causes a linear increase in score.
 The multiplier that gets applied to a host based on how much collateral the host
 is offering. More collateral is typically better, though above a point it can be
 detrimental.  
+
+**conversionrate** | float64  
+conversionrate is the likelihood that the host will be selected by renters
+forming contracts.  
 
 **durationadjustment** | float64  
 The multiplier that gets applied to a host based on the max duration it accepts
@@ -4174,10 +4183,66 @@ endpoint can be used to both add and remove skylinks from the blacklist.
 At least one of the following fields needs to be non empty.
 
 **add** | array of strings  
-add is an array of skylinks that should be added to the blacklisted
+add is an array of skylinks that should be added to the blacklist.
 
 **remove** | array of strings  
-remove is an array of skylinks that should be removed from the blacklist
+remove is an array of skylinks that should be removed from the blacklist.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /skynet/portals [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/portals"
+```
+
+returns the list of known Skynet portals.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "portals": [ // []SkynetPortal | null
+    {
+      "address": "siasky.net:443", // string
+      "public":  true              // bool
+    }
+  ]
+}
+```
+**address** | string  
+The IP or domain name and the port of the portal. Must be a valid network address.
+
+**public** | bool  
+Indicates whether the portal can be accessed publicly or not.
+
+## /skynet/portals [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : [{"address":"siasky.net:443","public":true}]}' "localhost:9980/skynet/portals"
+
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["siasky.net:443"]}' "localhost:9980/skynet/portals"
+```
+
+updates the list of known Skynet portals. This endpoint can be used to both add
+and remove portals from the list.
+
+### Path Parameters
+### REQUIRED
+At least one of the following fields needs to be non empty.
+
+**add** | array of SkynetPortal  
+add is an array of portal info that should be added to the list of portals.
+
+**remove** | array of string  
+remove is an array of portal network addresses that should be removed from the
+list of portals.
 
 ### Response
 
@@ -4269,11 +4334,11 @@ supplied, this metadata will be relative to the given path.
 
 ```go
 {
-"mode":               // os.FileMode
+"mode":     640,      // os.FileMode
 "filename": "folder", // string
 "subfiles": [         // []SkyfileSubfileMetadata | null
   {
-  "mode":         640                 // os.FileMode
+  "mode":         640,                // os.FileMode
   "filename":     "folder/file1.txt", // string
   "contenttype":  "text/plain",       // string
   "offset":       0,                  // uint64
@@ -4466,7 +4531,6 @@ desired name of the skykey
 ### JSON Response
 > JSON Response Example
 
- 
 ```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
@@ -4499,7 +4563,9 @@ or
 base-64 encoded ID of the skykey being queried
 
 
-### JSON Response ```json
+### JSON Response
+
+```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
 }
@@ -4526,7 +4592,6 @@ name of the skykey being queried
 
 ### JSON Response
 > JSON Response Example
-
  
 ```go
 {

@@ -193,10 +193,16 @@ func TestHostDBHostsHandler(t *testing.T) {
 	if hh.ScoreBreakdown.AgeAdjustment == 0 {
 		t.Error("Zero value in host score breakdown")
 	}
+	if hh.ScoreBreakdown.BasePriceAdjustment == 0 {
+		t.Error("Zero value in host score breakdown")
+	}
 	if hh.ScoreBreakdown.BurnAdjustment == 0 {
 		t.Error("Zero value in host score breakdown")
 	}
 	if hh.ScoreBreakdown.CollateralAdjustment == 0 {
+		t.Error("Zero value in host score breakdown")
+	}
+	if hh.ScoreBreakdown.DurationAdjustment == 0 {
 		t.Error("Zero value in host score breakdown")
 	}
 	if hh.ScoreBreakdown.PriceAdjustment == 0 {
@@ -236,6 +242,16 @@ func TestHostDBHostsHandler(t *testing.T) {
 		t.Error("One value in host score breakdown")
 	}
 	if hh.ScoreBreakdown.VersionAdjustment == 1 {
+		t.Error("One value in host score breakdown")
+	}
+
+	// Check that the simple score adjustments do equal 1. These adjustments
+	// have 1 or two checks for violations but then return 1 as to not impact
+	// the overall score.
+	if hh.ScoreBreakdown.BasePriceAdjustment != 1 {
+		t.Error("One value in host score breakdown")
+	}
+	if hh.ScoreBreakdown.DurationAdjustment != 1 {
 		t.Error("One value in host score breakdown")
 	}
 }

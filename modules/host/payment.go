@@ -43,13 +43,16 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 		return nil, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
 	}
 
+	// get the current account balance.
+	accountBalance := h.staticAccountManager.callAccountBalance(req.Message.Account)
+
 	// process the request
 	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority); err != nil {
 		return nil, errors.AddContext(err, "Withdraw failed")
 	}
 
 	// send the response
-	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: req.Message.Amount}); err != nil {
+	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Balance: accountBalance}); err != nil {
 		return nil, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
@@ -66,6 +69,12 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not read PayByContractRequest")
 	}
 	fcid := pbcr.ContractID
+	accountID := pbcr.RefundAccount
+
+	// sanity check accountID. Should always be provided.
+	if accountID.IsZeroAccount() {
+		return nil, errors.New("no account id provided for refunds")
+	}
 
 	// lock the storage obligation
 	h.managedLockStorageObligation(fcid)
@@ -100,6 +109,16 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not create revision signature")
 	}
 
+	// get account balance before adding funds.
+	accBalance := h.staticAccountManager.callAccountBalance(accountID)
+
+	// prepare funding the EA.
+	syncChan := make(chan struct{})
+	err = h.staticAccountManager.callDeposit(accountID, amount, syncChan)
+	if err != nil {
+		return nil, errors.AddContext(err, "Could not deposit funds in refund account")
+	}
+
 	// extract the payment output & update the storage obligation with the
 	// host's signature
 	so.RevisionTransactionSet = []types.Transaction{{
@@ -113,17 +132,124 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not modify storage obligation")
 	}
 
+	// signal that the contract was updated.
+	close(syncChan)
+
 	// send the response
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
 	err = modules.RPCWrite(stream, modules.PayByContractResponse{
+		Balance:   accBalance,
 		Signature: sig,
 	})
 	if err != nil {
 		return nil, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return newPaymentDetails("", amount, collateral), nil
+	return newPaymentDetails(accountID, amount, collateral), nil
+}
+
+// managedFundAccount processes a PayByContractRequest coming in over the given
+// stream, intended to pay for the given FundAccountRequest. Note that this
+// method is very similar to managedPayByContract, however it has to be separate
+// due to the orchestration required to both fund the ephemeral account and
+// fsync the storage obligation to disk. See `callDeposit` for more details.
+func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAccountRequest, cost types.Currency) (types.Currency, error) {
+	// read the PayByContractRequest
+	var pbcr modules.PayByContractRequest
+	if err := modules.RPCRead(stream, &pbcr); err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not read PayByContractRequest")
+	}
+	fcid := pbcr.ContractID
+
+	// can't provide a refund address when funding an account.
+	if !pbcr.RefundAccount.IsZeroAccount() {
+		return types.ZeroCurrency, errors.New("can't provide a refund account on a fund account rpc")
+	}
+
+	// lock the storage obligation
+	h.managedLockStorageObligation(fcid)
+	defer h.managedUnlockStorageObligation(fcid)
+
+	// get the storage obligation
+	so, err := h.managedGetStorageObligation(fcid)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not fetch storage obligation")
+	}
+
+	// get the current blockheight
+	bh := h.BlockHeight()
+
+	// extract the proposed revision
+	currentRevision, err := so.recentRevision()
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not get the latest revision")
+	}
+	paymentRevision := revisionFromRequest(currentRevision, pbcr)
+
+	// verify the payment revision
+	amount, collateral, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision")
+	}
+	if !collateral.IsZero() {
+		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision, collateral was not zero")
+	}
+
+	// sign the revision
+	renterSignature := signatureFromRequest(currentRevision, pbcr)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
+	}
+
+	// copy the transaction signature
+	var sig crypto.Signature
+	if len(txn.HostSignature().Signature) != len(sig) {
+		return types.ZeroCurrency, errors.AddContext(err, fmt.Sprintf("Invalid transaction signature, expected a crypto.Signature but received a signature with length %v", len(txn.HostSignature().Signature)))
+	}
+	copy(sig[:], txn.HostSignature().Signature[:])
+
+	// extract the payment
+	if amount.Cmp(cost) < 0 {
+		return types.ZeroCurrency, errors.New("Could not fund, the amount that was deposited did not cover the cost of the RPC")
+	}
+	deposit := amount.Sub(cost)
+
+	// create a sync chan to pass to the account manager, once the FC is fully
+	// fsynced we'll close this so the account manager can properly lower the
+	// host's outstanding risk induced by the (immediate) deposit.
+	syncChan := make(chan struct{})
+	err = h.staticAccountManager.callDeposit(request.Account, deposit, syncChan)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not deposit funds")
+	}
+
+	// update the storage obligation with the host's signature
+	so.RevisionTransactionSet = []types.Transaction{{
+		FileContractRevisions: []types.FileContractRevision{paymentRevision},
+		TransactionSignatures: []types.TransactionSignature{renterSignature, txn.TransactionSignatures[1]},
+	}}
+
+	// track the account funding
+	so.PotentialAccountFunding = so.PotentialAccountFunding.Add(deposit)
+
+	// update the storage obligation
+	err = h.managedModifyStorageObligation(so, nil, nil)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not modify storage obligation")
+	}
+	close(syncChan) // signal FC fsync by closing the sync channel
+
+	// send the response
+	err = modules.RPCWrite(stream, modules.PayByContractResponse{
+		Signature: sig,
+	})
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not send PayByContractResponse")
+	}
+
+	return deposit, nil
 }
 
 // revisionFromRequest is a helper function that creates a copy of the recent

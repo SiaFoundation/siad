@@ -2,6 +2,7 @@ package skynetblacklist
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -19,35 +21,155 @@ func testDir(name string) string {
 }
 
 // checkNumPersistedLinks checks that the expected number of links has been
-// persisted on disk by attempting to read that amount of data from disk
-func checkNumPersistedLinks(testdir string, numLinks int) error {
-	f, err := os.Open(filepath.Join(testdir, persistFile))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	buf := make([]byte, numLinks*int(persistMerkleRootSize))
-	_, err = f.ReadAt(buf, metadataPageSize)
-	if err != nil {
-		return err
+// persisted on disk by checking the size of the persistence file.
+func checkNumPersistedLinks(blacklistPath string, numLinks int) error {
+	expectedSize := numLinks*int(persistMerkleRootSize) + int(metadataPageSize)
+	if fi, err := os.Stat(blacklistPath); err != nil {
+		return errors.AddContext(err, "failed to get blacklist filesize")
+	} else if fi.Size() != int64(expectedSize) {
+		return fmt.Errorf("expected %v links and to have a filesize of %v but was %v", numLinks, expectedSize, fi.Size())
 	}
 	return nil
 }
 
-// TestPersist tests the persistence of the SkynetBlacklist
+// TestPersist tests the persistence of the Skynet blacklist.
 func TestPersist(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// Creat a new SkynetBlacklist
+	// Create a new SkynetBlacklist
 	testdir := testDir(t.Name())
 	sb, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	filename := filepath.Join(sb.staticPersistDir, persistFile)
+
+	// There should be no skylinks in the blacklist
+	if len(sb.merkleroots) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
+	}
+
+	// Update blacklist
+	var skylink modules.Skylink
+	add := []modules.Skylink{skylink}
+	remove := []modules.Skylink{skylink}
+	err = sb.UpdateSkynetBlacklist(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Blacklist should be empty because we added and then removed the same
+	// skylink
+	if len(sb.merkleroots) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
+	}
+
+	// Verify that the correct number of links were persisted to verify no links
+	// are being truncated
+	if err := checkNumPersistedLinks(filename, 2); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
+	}
+
+	// Add the skylink again
+	err = sb.UpdateSkynetBlacklist(add, []modules.Skylink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 1 element in the blacklist now
+	if len(sb.merkleroots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(sb.merkleroots))
+	}
+	_, ok := sb.merkleroots[skylink.MerkleRoot()]
+	if !ok {
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
+	}
+
+	// Load a new Skynet Blacklist to verify the contents from disk get loaded
+	// properly
+	sb2, err := New(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the correct number of links were persisted to verify no links
+	// are being truncated
+	if err := checkNumPersistedLinks(filename, 3); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
+	}
+
+	// There should be 1 element in the blacklist
+	if len(sb2.merkleroots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
+	}
+	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	if !ok {
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
+	}
+
+	// Add the skylink again
+	err = sb2.UpdateSkynetBlacklist(add, []modules.Skylink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should still only be 1 element in the blacklist
+	if len(sb2.merkleroots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
+	}
+	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	if !ok {
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
+	}
+
+	// Load another new Skynet Blacklist to verify the contents from disk get loaded
+	// properly
+	sb3, err := New(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the correct number of links were persisted to verify no links
+	// are being truncated
+	if err := checkNumPersistedLinks(filename, 4); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
+	}
+
+	// There should be 1 element in the blacklist
+	if len(sb3.merkleroots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(sb3.merkleroots))
+	}
+	_, ok = sb3.merkleroots[skylink.MerkleRoot()]
+	if !ok {
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
+	}
+}
+
+// TestPersistCorruption tests the persistence of the Skynet blacklist when corruption occurs.
+func TestPersistCorruption(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a new SkynetBlacklist
+	testdir := testDir(t.Name())
+	sb, err := New(testdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the starting filesize.
+	filename := filepath.Join(sb.staticPersistDir, persistFile)
+	fi, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataSize := fi.Size()
 
 	// There should be no skylinks in the blacklist
 	if len(sb.merkleroots) != 0 {
@@ -56,13 +178,13 @@ func TestPersist(t *testing.T) {
 
 	// Append a bunch of random data to the end of the blacklist file to test
 	// corruption
-	filename := filepath.Join(sb.staticPersistDir, persistFile)
 	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, modules.DefaultFilePerm)
 	if err != nil {
 		t.Fatal(err)
 	}
 	minNumBytes := int(metadataPageSize)
-	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
+	corruptionSize := minNumBytes + fastrand.Intn(minNumBytes)
+	_, err = f.Write(fastrand.Bytes(corruptionSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,9 +218,9 @@ func TestPersist(t *testing.T) {
 	if len(sb.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb.merkleroots))
 	}
-	mr, ok := sb.merkleroots[skylink.MerkleRoot()]
+	_, ok := sb.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load a new Skynet Blacklist to verify the contents from disk get loaded
@@ -108,19 +230,13 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify that the correct number of links were persisted to verify no links
-	// are being truncated
-	if err := checkNumPersistedLinks(testdir, 3); err != nil {
-		t.Fatalf("error verifying correct number of links: %v", err)
-	}
-
 	// There should be 1 element in the blacklist
 	if len(sb2.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
 	}
-	mr, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Add the skylink again
@@ -133,9 +249,9 @@ func TestPersist(t *testing.T) {
 	if len(sb2.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
 	}
-	mr, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load another new Skynet Blacklist to verify the contents from disk get loaded
@@ -145,19 +261,24 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify that the correct number of links were persisted to verify no links
-	// are being truncated
-	if err := checkNumPersistedLinks(testdir, 4); err != nil {
-		t.Fatalf("error verifying correct number of links: %v", err)
-	}
-
 	// There should be 1 element in the blacklist
 	if len(sb3.merkleroots) != 1 {
 		t.Fatal("Expected 1 element in the blacklist but found:", len(sb3.merkleroots))
 	}
-	mr, ok = sb3.merkleroots[skylink.MerkleRoot()]
+	_, ok = sb3.merkleroots[skylink.MerkleRoot()]
 	if !ok {
-		t.Fatalf("Expected merkleroot listed in blacklist to be %v but found %v", skylink.MerkleRoot(), mr)
+		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
+	}
+
+	// The final filesize should be metadata + corruption size.
+	fi, err = os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesize := fi.Size()
+	expectedSize := metadataSize + int64(corruptionSize)
+	if filesize != expectedSize {
+		t.Fatalf("Expected file size %v, got %v", expectedSize, filesize)
 	}
 }
 
@@ -194,7 +315,7 @@ func TestMarshalSia(t *testing.T) {
 		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, mr)
 	}
 	if bl {
-		t.Fatal("expected persisted link to be blacklisted")
+		t.Fatal("expected persisted link to not be blacklisted")
 	}
 	mr, bl, err = unmarshalSia(r)
 	if err != nil {
@@ -225,7 +346,7 @@ func TestMarshalSia(t *testing.T) {
 	}
 }
 
-// TestMarshalMetadata verifies that the marshalling and unmarshaling of the
+// TestMarshalMetadata verifies that the marshaling and unmarshaling of the
 // metadata and length provides the expected results
 func TestMarshalMetadata(t *testing.T) {
 	if testing.Short() {
@@ -247,7 +368,7 @@ func TestMarshalMetadata(t *testing.T) {
 	defer f.Close()
 
 	// Create empty struct of a skynet blacklist and set the length. Not using
-	// the New method to avoid overwritten persist file on disk
+	// the New method to avoid overwriting the persist file on disk.
 	sb := SkynetBlacklist{}
 	sb.persistLength = metadataPageSize
 
@@ -345,3 +466,5 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatalf("Expected %v got %v", errWrongHeader, err)
 	}
 }
+
+//  LocalWords:  badheader

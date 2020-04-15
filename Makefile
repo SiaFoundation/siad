@@ -44,6 +44,7 @@ pkgs = ./build \
 	./modules/renter/hostdb/hosttree \
 	./modules/renter/proto \
 	./modules/renter/skynetblacklist \
+	./modules/renter/skynetportals \
 	./modules/transactionpool \
 	./modules/wallet \
 	./node \
@@ -150,7 +151,19 @@ release-race:
 # clean removes all directories that get automatically created during
 # development.
 clean:
+ifneq ("$(OS)","Windows_NT")
+# Linux
 	rm -rf cover doc/whitepaper.aux doc/whitepaper.log doc/whitepaper.pdf fullcover release
+else
+# Windows
+# Ignore errors if file doesn't exist
+	- RD /S /Q cover
+	- RD /S /Q doc\whitepaper.aux
+	- RD /S /Q doc\whitepaper.log
+	- RD /S /Q doc\whitepaper.pdf
+	- RD /S /Q fullcover
+	- RD /S /Q release
+endif
 
 test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
@@ -159,9 +172,17 @@ test-v:
 test-long: clean fmt vet lint-ci
 	@mkdir -p cover
 	go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+
 test-vlong: clean fmt vet lint-ci
+ifneq ("$(OS)","Windows_NT")
+# Linux
 	@mkdir -p cover
+else
+# Windows
+	MD cover
+endif
 	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
+
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
 test-mem:

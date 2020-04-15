@@ -400,6 +400,25 @@ Files: %v
 	}
 }
 
+// askForConfirmation prints a question and waits for confirmation until the
+// user gives a valid answer ("y", "yes", "n", "no" with any capitalization).
+func askForConfirmation(s string) bool {
+	r := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Printf("%s [y/n]: ", s)
+		answer, err := r.ReadString('\n')
+		if err != nil {
+			log.Fatal(err)
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer == "y" || answer == "yes" {
+			return true
+		} else if answer == "n" || answer == "no" {
+			return false
+		}
+	}
+}
+
 // calculateAverageUint64 calculates the average of a uint64 slice and returns the average as a uint64
 func calculateAverageUint64(input []uint64) uint64 {
 	total := uint64(0)

@@ -54,6 +54,7 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
 		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
 		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
@@ -61,6 +62,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		{Name: "TestSkynetPortals", Test: testSkynetPortals},
 		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
 		{Name: "TestSkynetStats", Test: testSkynetStats},
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
@@ -527,47 +529,6 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	// the old files and then churning the hosts over, and checking that the
 	// renter does a repair operation to keep everyone alive.
 
-	// Upload a siafile that will then be converted to a skyfile. The siafile
-	// needs at least 2 sectors.
-	/*
-		localFile, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize*2)+siatest.Fuzz(), 2, 1, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		localData, err := localFile.Data()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		filename2 := "testTwo"
-		uploadSiaPath2, err := modules.NewSiaPath("testTwoPath")
-		if err != nil {
-			t.Fatal(err)
-		}
-		sup = modules.SkyfileUploadParameters{
-			SiaPath:             uploadSiaPath2,
-			Force:               !force,
-			BaseChunkRedundancy: 2,
-			FileMetadata: modules.SkyfileMetadata{
-				Executable: true,
-				Filename:   filename2,
-			},
-		}
-
-		skylink2, err := r.RenterConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Try to download the skylink.
-		fetchedData, err = r.RenterSkylinkGet(skylink2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(fetchedData, localData) {
-			t.Error("upload and download doesn't match")
-		}
-	*/
-
 	// TODO: Fetch both the skyfile and the siafile that was uploaded, make sure
 	// that they both have the new skylink added to their metadata.
 
@@ -579,6 +540,75 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	// Maybe this can be accomplished by tagging a flag to the API which has the
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
+}
+
+// testConvertSiaFile tests converting a siafile to a skyfile. This test checks
+// for 1-of-N redundancies and N-of-M redundancies.
+func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a siafile that will then be converted to a skyfile. The siafile
+	// needs at least 2 sectors.
+	//
+	// Set 2 as the datapieces to check for N-of-M redundancy conversions
+	filesize := int(modules.SectorSize*2) + siatest.Fuzz()
+	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Skyfile Upload Parameters
+	skyFilePath, err := modules.NewSiaPath("newskyfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath: skyFilePath,
+	}
+
+	// Try and convert to a Skyfile, this should fail due to the the original
+	// siafile being a N-of-M redundancy
+	skylink, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
+		t.Fatalf("Expected Error to contrain %v but got %v", renter.ErrRedundancyNotSupported, err)
+	}
+
+	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
+	localFile, remoteFile, err = r.UploadNewFileBlocking(filesize, 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the local and remote data for comparison
+	localData, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, remoteData, err := r.DownloadByStream(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Convert to a Skyfile
+	skylink, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the skylink.
+	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare the data fetched from the Skylink to the local data and the
+	// previously uploaded data
+	if !bytes.Equal(fetchedData, localData) {
+		t.Error("converted skylink data doesn't match local data")
+	}
+	if !bytes.Equal(fetchedData, remoteData) {
+		t.Error("converted skylink data doesn't match remote data")
+	}
 }
 
 // testSkynetMultipartUpload tests you can perform a multipart upload. It will
@@ -1389,7 +1419,7 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	data := fastrand.Bytes(int(modules.SectorSize) + 100 + siatest.Fuzz())
 	reader := bytes.NewReader(data)
 	filename := "skyfile"
-	uploadSiaPath, err := modules.NewSiaPath("testskyfile")
+	uploadSiaPath, err := modules.NewSiaPath("testblacklist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1538,6 +1568,154 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	err = r.SkynetSkylinkPinPost(skylink, pinlup)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetPortals tests the skynet portals module.
+func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	portal1 := modules.SkynetPortal{
+		Address: modules.NetAddress("siasky.net:9980"),
+		Public:  true,
+	}
+	// loopback address
+	portal2 := modules.SkynetPortal{
+		Address: "localhost:9980",
+		Public:  true,
+	}
+	// address without a port
+	portal3 := modules.SkynetPortal{
+		Address: modules.NetAddress("siasky.net"),
+		Public:  true,
+	}
+
+	// Add portal.
+	add := []modules.SkynetPortal{portal1}
+	remove := []modules.NetAddress{}
+	err := r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the portal has been added.
+	spg, err := r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
+	}
+	if !reflect.DeepEqual(spg.Portals[0], portal1) {
+		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
+	}
+
+	// Remove the portal.
+	add = []modules.SkynetPortal{}
+	remove = []modules.NetAddress{portal1.Address}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm that the portal has been removed.
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 0 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 0, len(spg.Portals))
+	}
+
+	// Try removing a portal that's not there.
+	add = []modules.SkynetPortal{}
+	remove = []modules.NetAddress{portal1.Address}
+	err = r.SkynetPortalsPost(add, remove)
+	if !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
+		t.Fatal("portal should fail to be removed")
+	}
+
+	// Try to add and remove a portal at the same time.
+	add = []modules.SkynetPortal{portal2}
+	remove = []modules.NetAddress{portal2.Address}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the portal was not added.
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 0 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 0, len(spg.Portals))
+	}
+
+	// Test updating a portal's public status.
+	portal1.Public = false
+	add = []modules.SkynetPortal{portal1}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
+	}
+	if !reflect.DeepEqual(spg.Portals[0], portal1) {
+		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
+	}
+
+	portal1.Public = true
+	add = []modules.SkynetPortal{portal1}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 1 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 1, len(spg.Portals))
+	}
+	if !reflect.DeepEqual(spg.Portals[0], portal1) {
+		t.Fatalf("Portals don't match, expected %v got %v", portal1, spg.Portals[0])
+	}
+
+	// Test an invalid network address.
+	add = []modules.SkynetPortal{portal3}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	if !strings.Contains(err.Error(), "missing port in address") {
+		t.Fatal("expected 'missing port' error")
+	}
+
+	// Test adding an existing portal with an uppercase address.
+	portalUpper := portal1
+	portalUpper.Address = modules.NetAddress(strings.ToUpper(string(portalUpper.Address)))
+	add = []modules.SkynetPortal{portalUpper}
+	remove = []modules.NetAddress{}
+	err = r.SkynetPortalsPost(add, remove)
+	// This does not currently return an error.
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	spg, err = r.SkynetPortalsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spg.Portals) != 2 {
+		t.Fatalf("Incorrect number of portals, expected %v got %v", 2, len(spg.Portals))
 	}
 }
 
