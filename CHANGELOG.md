@@ -10,7 +10,7 @@ Version History
 
 Latest:
 
-## Apr 09, 2020:
+## Apr 2, 2020:
 ### v1.4.7
 **Key Updates**
 - Add `--dry-run` parameter to Skynet upload
@@ -29,13 +29,13 @@ Latest:
 - Add whitespace lint to catch extraneous whitespace and newlines.
 - Expand `SiaPath` unit testing to address more edge cases.
 
-## Apr 09, 2020:
+## Mar 25, 2020:
 ### v1.4.6
 **Bugs Fixed**
 - Fix panic when metadata of skyfile upload exceeds modules.SectorSize
 - Fix curl example for `/skynet/skyfile/` post
 
-## Apr 09, 2020:
+## Mar 24, 2020:
 ### v1.4.5
 **Key Updates**
 - Alerts returned by /daemon/alerts route are sorted by severity
@@ -68,7 +68,7 @@ Latest:
 - Add version information to the stats endpoint
 - Extract environment variables to constants and add to API docs.
 
-## Mar 2020:
+## Mar 17, 2020:
 ### v1.4.4
 **Key Updates**
 - Add a delay when modifying large contracts on hosts to prevent hosts from

@@ -106,16 +106,20 @@ func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemove
 // for every operation/rpc.
 func newTestPriceTable() modules.RPCPriceTable {
 	return modules.RPCPriceTable{
-		Expiry:                time.Now().Add(time.Minute).Unix(),
-		UpdatePriceTableCost:  types.SiacoinPrecision,
-		InitBaseCost:          types.SiacoinPrecision,
-		MemoryTimeCost:        types.SiacoinPrecision,
-		DropSectorsBaseCost:   types.SiacoinPrecision,
-		DropSectorsLengthCost: types.SiacoinPrecision,
-		ReadBaseCost:          types.SiacoinPrecision,
-		ReadLengthCost:        types.SiacoinPrecision,
-		WriteBaseCost:         types.SiacoinPrecision,
-		WriteLengthCost:       types.SiacoinPrecision,
+		Expiry:               time.Now().Add(time.Minute).Unix(),
+		UpdatePriceTableCost: types.NewCurrency64(1),
+		InitBaseCost:         types.NewCurrency64(1),
+		MemoryTimeCost:       types.NewCurrency64(1),
+		CollateralCost:       types.NewCurrency64(1),
+
+		// Instruction costs
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
+		ReadBaseCost:        types.NewCurrency64(1),
+		ReadLengthCost:      types.NewCurrency64(1),
+		WriteBaseCost:       types.NewCurrency64(1),
+		WriteLengthCost:     types.NewCurrency64(1),
+		WriteStoreCost:      types.NewCurrency64(1),
 	}
 }
 

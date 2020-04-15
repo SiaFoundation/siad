@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -20,12 +21,16 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -49,6 +54,8 @@ func TestSkynet(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
 		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
@@ -521,47 +528,6 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	// the old files and then churning the hosts over, and checking that the
 	// renter does a repair operation to keep everyone alive.
 
-	// Upload a siafile that will then be converted to a skyfile. The siafile
-	// needs at least 2 sectors.
-	/*
-		localFile, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize*2)+siatest.Fuzz(), 2, 1, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		localData, err := localFile.Data()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		filename2 := "testTwo"
-		uploadSiaPath2, err := modules.NewSiaPath("testTwoPath")
-		if err != nil {
-			t.Fatal(err)
-		}
-		sup = modules.SkyfileUploadParameters{
-			SiaPath:             uploadSiaPath2,
-			Force:               !force,
-			BaseChunkRedundancy: 2,
-			FileMetadata: modules.SkyfileMetadata{
-				Executable: true,
-				Filename:   filename2,
-			},
-		}
-
-		skylink2, err := r.RenterConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Try to download the skylink.
-		fetchedData, err = r.RenterSkylinkGet(skylink2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(fetchedData, localData) {
-			t.Error("upload and download doesn't match")
-		}
-	*/
-
 	// TODO: Fetch both the skyfile and the siafile that was uploaded, make sure
 	// that they both have the new skylink added to their metadata.
 
@@ -573,6 +539,75 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	// Maybe this can be accomplished by tagging a flag to the API which has the
 	// layout and metadata streamed as the first bytes? Maybe there is some
 	// easier way.
+}
+
+// testConvertSiaFile tests converting a siafile to a skyfile. This test checks
+// for 1-of-N redundancies and N-of-M redundancies.
+func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a siafile that will then be converted to a skyfile. The siafile
+	// needs at least 2 sectors.
+	//
+	// Set 2 as the datapieces to check for N-of-M redundancy conversions
+	filesize := int(modules.SectorSize*2) + siatest.Fuzz()
+	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Skyfile Upload Parameters
+	skyFilePath, err := modules.NewSiaPath("newskyfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath: skyFilePath,
+	}
+
+	// Try and convert to a Skyfile, this should fail due to the the original
+	// siafile being a N-of-M redundancy
+	skylink, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
+		t.Fatalf("Expected Error to contrain %v but got %v", renter.ErrRedundancyNotSupported, err)
+	}
+
+	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
+	localFile, remoteFile, err = r.UploadNewFileBlocking(filesize, 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the local and remote data for comparison
+	localData, err := localFile.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, remoteData, err := r.DownloadByStream(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Convert to a Skyfile
+	skylink, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the skylink.
+	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare the data fetched from the Skylink to the local data and the
+	// previously uploaded data
+	if !bytes.Equal(fetchedData, localData) {
+		t.Error("converted skylink data doesn't match local data")
+	}
+	if !bytes.Equal(fetchedData, remoteData) {
+		t.Error("converted skylink data doesn't match remote data")
+	}
 }
 
 // testSkynetMultipartUpload tests you can perform a multipart upload. It will
@@ -1931,5 +1966,107 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err := r.SkynetSkyfilePost(sup)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
 		t.Fatal("Should fail due to ErrMetadataTooBig", err)
+	}
+}
+
+// testSkynetSkykey tests basic Skykey manager functionality.
+func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	sk, err := r.SkykeyCreateKeyPost("testkey1", crypto.TypeXChaCha20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Adding the same key should return an error.
+	err = r.SkykeyAddKeyPost(sk)
+	if err == nil {
+		t.Fatal("Expected error", err)
+	}
+
+	// Create a testkey from a hard-coded skykey string.
+	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	var testSkykey skykey.Skykey
+	err = testSkykey.FromString(testSkykeyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Adding an unknown key should succeed.
+	err = r.SkykeyAddKeyPost(testSkykey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sk2, err := r.SkykeyGetByName("testkey1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skStr, err := sk.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk2Str, err := sk2.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk2Str {
+		t.Fatal("Expected same Skykey string")
+	}
+
+	// Check byte equality and string equality.
+	skID := sk.ID()
+	sk2ID := sk2.ID()
+	if !bytes.Equal(skID[:], sk2ID[:]) {
+		t.Fatal("Expected byte level equality in IDs")
+	}
+	if sk2.ID().ToString() != sk.ID().ToString() {
+		t.Fatal("Expected to get same key")
+	}
+
+	// Check the GetByID endpoint
+	sk3, err := r.SkykeyGetByID(sk.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk3Str, err := sk3.ToString()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skStr != sk3Str {
+		t.Fatal("Expected same Skykey string")
+	}
+
+	// Test misuse of the /skynet/skykey endpoint using an UnsafeClient.
+	uc := client.NewUnsafeClient(r.Client)
+
+	// Passing in 0 params shouild return an error.
+	baseQuery := "/skynet/skykey"
+	var skykeyGet api.SkykeyGET
+	err = uc.Get(baseQuery, &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Passing in 2 params shouild return an error.
+	values := url.Values{}
+	values.Set("name", "testkey1")
+	values.Set("id", skID.ToString())
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err == nil {
+		t.Fatal("Expected an error")
+	}
+
+	// Sanity check: uc.Get should return the same value as the safe client
+	// method.
+	values = url.Values{}
+	values.Set("name", "testkey1")
+	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skykeyGet.Skykey != sk2Str {
+		t.Fatal("Expected same result from  unsafe client")
 	}
 }

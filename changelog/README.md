@@ -142,6 +142,15 @@ The script creates the changelog by executing the following steps:
 Once generated, the new `CHANGELOG.md` should be pushed as a new merge request
 to be merged with master.
 
+### Updating and saving changelog tail
+To create the updated `CHANGELOG.md` file and to save generated versions
+to `changelog-tail.md` use `final` argument while generating the changelog:
+`generate-changelog.sh final`.
+
+The script executes the same steps as without `final` argument and does also:
+- saves all active versions to the `changelog-tail.md` in correct order
+- deletes all active versions directories with their items
+
 ### Editing
 The Changelog generator can have multiple versions in the `changelog` directory.
 Editing any version that currently has a directory in the `/changelog` directory

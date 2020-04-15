@@ -124,7 +124,7 @@ $generate_till_version"
         
         # echo current date month (in English), day and year in format
         # '## Mar 30, 2020:'
-        echo "## $(LC_ALL=C date +%b) $(date +%d), $(date +%Y):" >> "$mid_filename"
+        echo "## $(LC_ALL=C date +%b) $(date +%-d), $(date +%Y):" >> "$mid_filename"
         echo "### $version" >> "$mid_filename"
         
         add_items "Key Updates" "key-updates"
