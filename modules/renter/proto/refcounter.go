@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"sync"
-	"time"
 
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 
@@ -28,9 +27,6 @@ var (
 	// ErrInvalidVersion is returned when the version of the file we are trying to
 	// read does not match the current RefCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
-
-	// ErrTimeoutOnLock is returned when we timeout on getting a lock
-	ErrTimeoutOnLock = errors.New("timeout while acquiring a lock ")
 
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
 	// called without an open update session
@@ -75,7 +71,7 @@ type (
 		filepath   string // where the refcounter is persisted on disk
 		numSectors uint64 // used for sanity checks before we attempt mutation operations
 		staticWal  *writeaheadlog.WAL
-		sync.Mutex
+		mu         sync.Mutex
 
 		// utility fields
 		staticDeps modules.Dependencies
@@ -181,8 +177,8 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCoun
 // Append appends one counter to the end of the refcounter file and
 // initializes it with `1`
 func (rc *RefCounter) Append() (writeaheadlog.Update, error) {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
@@ -196,16 +192,16 @@ func (rc *RefCounter) Append() (writeaheadlog.Update, error) {
 
 // Count returns the number of references to the given sector
 func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	return rc.readCount(secIdx)
 }
 
 // CreateAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
 func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
@@ -238,8 +234,8 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
@@ -263,8 +259,8 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 
 // DeleteRefCounter deletes the counter's file from disk
 func (rc *RefCounter) DeleteRefCounter() (writeaheadlog.Update, error) {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
@@ -278,8 +274,8 @@ func (rc *RefCounter) DeleteRefCounter() (writeaheadlog.Update, error) {
 
 // DropSectors removes the last numSec sector counts from the refcounter file
 func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
@@ -297,8 +293,8 @@ func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
 func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
@@ -321,31 +317,16 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 }
 
 // StartUpdate acquires a lock, ensuring the caller is the only one currently
-// allowed to perform updates on this refcounter file. Timeout is ignored if it
-// is negative.
-func (rc *RefCounter) StartUpdate(timeout time.Duration) error {
-	if timeout < 0 {
-		rc.muUpdate.Lock()
-	} else {
-		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
-			return ErrTimeoutOnLock
-		}
-	}
-
-	rc.Lock()
-	defer rc.Unlock()
-	if rc.isDeleted {
-		return ErrUpdateAfterDelete
-	}
-	// open an update session
-	rc.isUpdateInProgress = true
-	return nil
+// allowed to perform updates on this refcounter file.
+func (rc *RefCounter) StartUpdate() error {
+	rc.muUpdate.Lock()
+	return rc.managedStartUpdate()
 }
 
 // Swap swaps the two sectors at the given indices
 func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, error) {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
 		return []writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
 	}
@@ -374,8 +355,8 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 // UpdateApplied cleans up temporary data and releases the update lock, thus
 // allowing other actors to acquire it in order to update the refcounter.
 func (rc *RefCounter) UpdateApplied() error {
-	rc.Lock()
-	defer rc.Unlock()
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 
 	// this method cannot be called if there is no active update session
 	if !rc.isUpdateInProgress {
@@ -388,6 +369,19 @@ func (rc *RefCounter) UpdateApplied() error {
 	rc.isUpdateInProgress = false
 	// release the update lock
 	rc.muUpdate.Unlock()
+	return nil
+}
+
+// managedStartUpdate does everything StartUpdate needs, aside from acquiring a
+// lock
+func (rc *RefCounter) managedStartUpdate() error {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if rc.isDeleted {
+		return ErrUpdateAfterDelete
+	}
+	// open an update session
+	rc.isUpdateInProgress = true
 	return nil
 }
 

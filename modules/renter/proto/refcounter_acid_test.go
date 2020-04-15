@@ -103,7 +103,7 @@ OUTER:
 			go func(n int) {
 				defer wg.Done()
 				errLocal := performUpdates(rc, track, testTimeoutChan)
-				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, ErrTimeoutOnLock) {
+				if errLocal != nil && !errors.Contains(errLocal, dependencies.ErrDiskFault) && !errors.Contains(errLocal, errTimeoutOnLock) {
 					// We have a real error - fail the test
 					t.Error(errLocal)
 				}
@@ -224,10 +224,10 @@ func performUpdates(rcLocal *RefCounter, t *tracker, testTimeoutChan <-chan stru
 // performUpdateOperations executes a randomised set of updates within an
 // update session.
 func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
-	err = rc.StartUpdate(100 * time.Millisecond)
+	err = rc.StartUpdateWithTimeout(100 * time.Millisecond)
 	if err != nil {
 		// don't fail the test on a timeout on the lock
-		if errors.Contains(err, ErrTimeoutOnLock) {
+		if errors.Contains(err, errTimeoutOnLock) {
 			err = nil
 		}
 		return
