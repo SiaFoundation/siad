@@ -44,19 +44,11 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 		return
 	}
 
-	// rebase the siapath if necessary
-	if !sup.Root {
-		skyfilePath, err = modules.SkynetFolder.Join(skyfilePath.String())
-		if err != nil {
-			err = errors.AddContext(err, "Failed to rebase siapath")
-			return
-		}
-	}
-
 	rf := &RemoteFile{
-		checksum:     crypto.HashBytes(data),
-		siaPath:      skyfilePath,
-		absolutePath: true, // the path of a skyfile should be treated as an absolute path
+		checksum: crypto.HashBytes(data),
+		siaPath:  skyfilePath,
+		skyfile:  true,
+		root:     sup.Root,
 	}
 
 	// Wait until upload reached the specified progress

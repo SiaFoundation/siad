@@ -211,20 +211,18 @@ func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disa
 }
 
 // File returns the file queried by the user
-func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
-	if rf.absolutePath {
-		rfile, err := tn.RenterFileRootGet(rf.SiaPath())
-		if err != nil {
-			return modules.FileInfo{}, err
-		}
-		return rfile.File, nil
+func (tn *TestNode) File(rf *RemoteFile) (fi modules.FileInfo, err error) {
+	var rfile api.RenterFile
+	if rf.Skyfile() {
+		rfile, err = tn.RenterSkyfileGet(rf.SiaPath(), rf.Root())
+	} else {
+		rfile, err = tn.RenterFileGet(rf.SiaPath())
 	}
-
-	rfile, err := tn.RenterFileGet(rf.SiaPath())
 	if err != nil {
-		return modules.FileInfo{}, err
+		return
 	}
-	return rfile.File, nil
+	fi = rfile.File
+	return
 }
 
 // Files lists the files tracked by the renter
