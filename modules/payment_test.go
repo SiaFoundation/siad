@@ -23,6 +23,10 @@ func TestAccountID_FromSPK(t *testing.T) {
 	if aid.spk != spk.String() {
 		t.Fatalf("AccountID should be %v but was %v", spk.String(), aid)
 	}
+	aid.FromSPK(types.SiaPublicKey{})
+	if !aid.IsZeroAccount() {
+		t.Fatal("AccountID should be ZeroAccount")
+	}
 }
 
 // TestAccountID_LoadString tests the LoadString method.
@@ -120,15 +124,6 @@ func TestAccountID_MarshalSia(t *testing.T) {
 	aid.FromSPK(spk)
 	// Marshal und Unmarshal
 	b := encoding.Marshal(aid)
-	if err := encoding.Unmarshal(b, &aid2); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(aid, aid2) {
-		t.Fatal("id's don't match")
-	}
-	// Marshal und Unmarshal zero id.
-	aid = ZeroAccountID
-	b = encoding.Marshal(aid)
 	if err := encoding.Unmarshal(b, &aid2); err != nil {
 		t.Fatal(err)
 	}
