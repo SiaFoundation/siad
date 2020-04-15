@@ -275,7 +275,7 @@ func (pair *renterHostPair) negotiatePriceTable() error {
 	if err != nil {
 		return err
 	}
-	pbcr := newPayByContractRequest(rev, sig)
+	pbcr := newPayByContractRequest(rev, sig, pair.accountID)
 	err = modules.RPCWrite(stream, pbcr)
 	if err != nil {
 		return err
