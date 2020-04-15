@@ -40,6 +40,7 @@ var (
 	skykeyCipherType          string // CipherType used to create a Skykey.
 	skykeyName                string // Name used to identify a Skykey.
 	skykeyID                  string // ID used to identify a Skykey.
+	skykeyRenameAs            string // Optional parameter to rename a Skykey while adding it.
 	skynetBlacklistRemove     bool   // Remove a skylink from the Skynet Blacklist.
 	skynetUnpinRoot           bool   // Use root as the base instead of the Skynet folder.
 	skynetDownloadPortal      string // Portal to use when trying to download a skylink.
@@ -310,6 +311,7 @@ func main() {
 
 	root.AddCommand(skykeyCmd)
 	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd)
+	skykeyAddCmd.Flags().StringVar(&skykeyRenameAs, "rename-as", "", "The new name for the skykey being added")
 	skykeyCreateCmd.Flags().StringVar(&skykeyCipherType, "cipher-type", "XChaCha20", "The cipher type of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")

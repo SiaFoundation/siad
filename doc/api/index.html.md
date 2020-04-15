@@ -4477,7 +4477,6 @@ desired name of the skykey
 ### JSON Response
 > JSON Response Example
 
- 
 ```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
@@ -4510,7 +4509,9 @@ or
 base-64 encoded ID of the skykey being queried
 
 
-### JSON Response ```json
+### JSON Response
+
+```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
 }
@@ -4537,7 +4538,6 @@ name of the skykey being queried
 
 ### JSON Response
 > JSON Response Example
-
  
 ```go
 {
