@@ -95,7 +95,7 @@ func TestSiapath(t *testing.T) {
 	}{
 		{`\\some\\windows\\path`, true, `\\some\\windows\\path`}, // if the os is not windows this will not update the separators
 		{"valid/siapath", true, "valid/siapath"},
-		{`\some\back\slashes\path`, true, `\some\back\slashes\path`}, // invalid OS separators
+		{`\some\back\slashes\path`, true, `\some\back\slashes\path`},
 		{"../../../directory/traversal", false, ""},
 		{"testpath", true, "testpath"},
 		{"valid/siapath/../with/directory/traversal", false, ""},
