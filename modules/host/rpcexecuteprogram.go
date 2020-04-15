@@ -155,9 +155,10 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		//			return errors.AddContext(err, "Failed to finalize the program")
 		//		}
 		return errors.New("only readonly programs are supported right now")
-	} else {
-		// TODO: finalize spending for readonly programs once the MR is ready.
 	}
+	//	else {
+	//		// TODO: finalize spending for readonly programs once the MR is ready.
+	//	}
 	// Set the refund to 0. The program was finalized and we don't want to
 	// refund the renter beyond the difference between the paid amount and
 	// execution cost in the deferred statement anymore. This is a precaution in
