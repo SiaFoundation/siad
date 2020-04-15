@@ -51,47 +51,38 @@ func TestInstructionHasSector(t *testing.T) {
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, collateral, usedMemory := newHasSectorProgram(sectorRoot, pt)
+	instructions, programData, cost, refund, collateral, memory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
+	ics := so.ContractSize()
+	imr := so.MerkleRoot()
+
+	// Expected outputs.
+	expectedOutputs := []Output{
+		{
+			output{
+				NewSize:       ics,
+				NewMerkleRoot: imr,
+				Proof:         []crypto.Hash{},
+				Output:        []byte{1},
+			},
+			cost.Sub(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit)),
+			collateral,
+			refund,
+		},
+	}
+
 	// Execute it.
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Check outputs.
-	numOutputs := 0
-	for output := range outputs {
-		if err := output.Error; err != nil {
-			t.Fatal(err)
-		}
-		if output.NewSize != so.ContractSize() {
-			t.Fatalf("expected contract size to stay the same: %v != %v", so.ContractSize(), output.NewSize)
-		}
-		if output.NewMerkleRoot != so.MerkleRoot() {
-			t.Fatalf("expected merkle root to stay the same: %v != %v", so.MerkleRoot(), output.NewMerkleRoot)
-		}
-		// Verify proof was created correctly.
-		if len(output.Proof) != 0 {
-			t.Fatalf("expected proof to have len %v but was %v", 0, len(output.Proof))
-		}
-		if !bytes.Equal(output.Output, []byte{1}) {
-			t.Fatalf("expected returned value to be [1] for 'true' but was %v", output.Output)
-		}
-		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
-		}
-		if !output.AdditionalCollateral.Equals(collateral) {
-			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
-		}
-		if !output.PotentialRefund.Equals(refund) {
-			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
-		}
-		numOutputs++
+	_, err = testCompareOutputs(outputs, expectedOutputs)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// There should be one output since there was one instruction.
-	if numOutputs != 1 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
-	}
+
 	// No need to finalize the program since this program is readonly.
 	if finalize != nil {
 		t.Fatal("finalize callback should be nil for readonly program")

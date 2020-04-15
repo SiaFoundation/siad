@@ -39,7 +39,7 @@ func TestCostForAppendProgram(t *testing.T) {
 	runningMemory := modules.MDMInitMemory()
 	runningSize := uint64(0)
 
-	// Simulate running a program to append 1 TiB of data.
+	// Simulate running a single program to append 1 TiB of data.
 	for runningSize < tib {
 		cost, refund := appendTrueCost(pt)
 		collateral := modules.MDMAppendCollateral(pt)
@@ -70,8 +70,8 @@ func TestCostForAppendProgram(t *testing.T) {
 }
 
 // appendTrueCost returns the true, production cost of an append. This is
-// necessary because in tests the sector size is only 4 KiB and the append cost
-// is misleading.
+// necessary because in tests the sector size is only 4 KiB which leads to
+// misleading costs.
 func appendTrueCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
 	writeCost := pt.WriteLengthCost.Mul64(modules.SectorSizeStandard).Add(pt.WriteBaseCost)
 	storeCost := pt.WriteStoreCost.Mul64(modules.SectorSizeStandard) // potential refund

@@ -115,7 +115,7 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, programData, cost, _, _, _ := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt)
+	instructions, programData, cost, _, _, _, _ := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt)
 	// Execute the program with no collateral budget.
 	so := newTestStorageObligation(true)
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, so, uint64(len(programData)), bytes.NewReader(programData))

@@ -94,14 +94,20 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	cost = cost6.Add(modules.MDMMemoryCost(pt, memory6, modules.MDMTimeCommit))
 	collateral = collateral6
 
-	// Construct the inputs and expected outputs.
+	// Construct the program.
 	instructions := []modules.Instruction{
 		// Append
 		instruction1, instruction2, instruction3,
 		// DropSectors
 		instruction4, instruction5, instruction6,
 	}
-	testOutputs := []Output{
+
+	// Verify the costs.
+	// expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime = EstimateProgramCosts(pt, instructions)
+	// testCompareCosts(t, cost, refund, collateral, memory, time, expectedCost, expectedRefund, expectedCollateral, expectedMemory, expectedTime)
+
+	// Expected outputs.
+	expectedOutputs := []Output{
 		{
 			output{
 				NewSize:       modules.SectorSize,
@@ -174,45 +180,10 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	numOutputs := 0
-	var lastOutput Output
-	for output := range outputs {
-		testOutput := testOutputs[numOutputs]
-
-		if output.Error != testOutput.Error {
-			t.Fatalf("expected err %v, got %v", testOutput.Error, output.Error)
-		}
-		if output.NewSize != testOutput.NewSize {
-			t.Fatalf("expected contract size %v, got %v", testOutput.NewSize, output.NewSize)
-		}
-		if output.NewMerkleRoot != testOutput.NewMerkleRoot {
-			t.Fatalf("expected merkle root %v, got %v", testOutput.NewMerkleRoot, output.NewMerkleRoot)
-		}
-		// Check proof.
-		if len(output.Proof) != len(testOutput.Proof) {
-			t.Fatalf("expected proof to have length %v but was %v", len(testOutput.Proof), len(output.Proof))
-		}
-		for i, proof := range output.Proof {
-			if proof != testOutput.Proof[i] {
-				t.Fatalf("expected proof %v, got %v", proof, output.Proof[i])
-			}
-		}
-		// Check data.
-		if len(output.Output) != len(testOutput.Output) {
-			t.Fatalf("expected returned data to have length %v but was %v", len(testOutput.Output), len(output.Output))
-		}
-		if !output.ExecutionCost.Equals(testOutput.ExecutionCost) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost, testOutput.ExecutionCost)
-		}
-		if !output.PotentialRefund.Equals(testOutput.PotentialRefund) {
-			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund, testOutput.PotentialRefund)
-		}
-
-		numOutputs++
-		lastOutput = output
-	}
-	if numOutputs != len(testOutputs) {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, len(testOutputs))
+	// Check outputs.
+	lastOutput, err := testCompareOutputs(outputs, expectedOutputs)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// The storage obligation should be unchanged before finalizing the program.
