@@ -11,7 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// Skyfile returns the skyfile queried by the user
+// Skyfile returns the file at given path
 func (tn *TestNode) Skyfile(path modules.SiaPath) (modules.FileInfo, error) {
 	rfile, err := tn.RenterFileRootGet(path)
 	if err != nil {
@@ -54,7 +54,7 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 		return
 	}
 
-	// rebase the siapath if it was uploaded at root
+	// rebase the siapath if necessary
 	if !sup.Root {
 		skyfilePath, err = modules.SkynetFolder.Join(skyfilePath.String())
 		if err != nil {
@@ -91,14 +91,4 @@ func (tn *TestNode) WaitForSkyfileRedundancy(path modules.SiaPath, redundancy fl
 		}
 		return nil
 	})
-}
-
-// rebaseSkyfileSiaPath rebases the given sia path depending on whether the root
-// param was set to true or not. If set, we prepend the path with the skynet
-// folder.
-func rebaseSkyfileSiaPath(siaPath modules.SiaPath, root bool) (modules.SiaPath, error) {
-	if root {
-		return siaPath, nil
-	}
-	return modules.SkynetFolder.Join(siaPath.String())
 }
