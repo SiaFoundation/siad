@@ -1,1 +1,0 @@
-- Add benchmark test for bubble metadata
