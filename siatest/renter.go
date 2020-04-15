@@ -212,11 +212,19 @@ func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disa
 
 // File returns the file queried by the user
 func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
+	if rf.absolutePath {
+		rfile, err := tn.RenterFileRootGet(rf.SiaPath())
+		if err != nil {
+			return modules.FileInfo{}, err
+		}
+		return rfile.File, nil
+	}
+
 	rfile, err := tn.RenterFileGet(rf.SiaPath())
 	if err != nil {
-		return rfile.File, err
+		return modules.FileInfo{}, err
 	}
-	return rfile.File, err
+	return rfile.File, nil
 }
 
 // Files lists the files tracked by the renter
@@ -541,12 +549,12 @@ func (tn *TestNode) WaitForStuckChunksToRepair() error {
 // RepairThreshold.
 func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 	// Check if file is tracked by renter at all
-	if _, err := rf.File(tn); err != nil {
+	if _, err := tn.File(rf); err != nil {
 		return ErrFileNotTracked
 	}
 	// Wait until the file is viewed as healthy by the renter
 	err := Retry(1000, 100*time.Millisecond, func() error {
-		file, err := rf.File(tn)
+		file, err := tn.File(rf)
 		if err != nil {
 			return ErrFileNotTracked
 		}
@@ -573,12 +581,12 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 
 // WaitForUploadProgress waits for a file to reach a certain upload progress.
 func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) error {
-	if _, err := rf.File(tn); err != nil {
+	if _, err := tn.File(rf); err != nil {
 		return ErrFileNotTracked
 	}
 	// Wait until it reaches the progress
 	return Retry(1000, 100*time.Millisecond, func() error {
-		file, err := rf.File(tn)
+		file, err := tn.File(rf)
 		if err != nil {
 			return ErrFileNotTracked
 		}
