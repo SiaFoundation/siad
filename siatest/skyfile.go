@@ -12,7 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// Skyfile returns the file at given path
+// Skyfile returns the file at the given path
 func (tn *TestNode) Skyfile(path modules.SiaPath) (modules.FileInfo, error) {
 	rfile, err := tn.RenterFileRootGet(path)
 	if err != nil {
