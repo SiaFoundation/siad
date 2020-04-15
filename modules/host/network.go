@@ -341,9 +341,9 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 }
 
-// staticReadPriceTable receives a stream and reads the price table's UID from
+// staticReadPriceTableID receives a stream and reads the price table's UID from
 // it, if it's a known UID we return the price table
-func (h *Host) staticReadPriceTable(stream siamux.Stream) (*modules.RPCPriceTable, error) {
+func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTable, error) {
 	// read the price table uid
 	var uid modules.UniqueID
 	err := modules.RPCRead(stream, &uid)

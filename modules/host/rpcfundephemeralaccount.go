@@ -13,7 +13,7 @@ import (
 // fund its ephemeral account.
 func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream) error {
 	// read the price table
-	pt, err := h.staticReadPriceTable(stream)
+	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to negotiate a valid price table")
 	}
