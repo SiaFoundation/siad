@@ -13,22 +13,39 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// updateRunningCosts is a testing helper function for updating the running
+// costs of a program after adding an instruction.
+func updateRunningCosts(pt *modules.RPCPriceTable, runningCost, runningRefund, runningCollateral types.Currency, runningMemory uint64, cost, refund, collateral types.Currency, memory, time uint64) (types.Currency, types.Currency, types.Currency, uint64) {
+	runningMemory = runningMemory + memory
+	memoryCost := modules.MDMMemoryCost(pt, runningMemory, time)
+	runningCost = runningCost.Add(memoryCost).Add(cost)
+	runningRefund = runningRefund.Add(refund)
+	runningCollateral = runningCollateral.Add(collateral)
+
+	return runningCost, runningRefund, runningCollateral, runningMemory
+}
+
+// newHasSectorInstruction is a convenience method for creating a single
+// 'HasSector' instruction.
+func newHasSectorInstruction(dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
+	i := mdm.NewHasSectorInstruction(dataOffset)
+	cost, refund := modules.MDMHasSectorCost(pt)
+	collateral := modules.MDMHasSectorCollateral()
+	return i, cost, refund, collateral, modules.MDMHasSectorMemory(), modules.MDMTimeHasSector
+}
+
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (modules.Program, []byte, types.Currency, types.Currency, uint64) {
-	i := mdm.NewHasSectorInstruction(0)
-	instructions := []modules.Instruction{i}
+func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	data := make([]byte, crypto.HashSize)
 	copy(data[:crypto.HashSize], merkleRoot[:])
-
-	// Compute cost and used memory.
-	cost, refund := modules.MDMHasSectorCost(pt)
-	usedMemory := modules.MDMHasSectorMemory()
-	memoryCost := modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeHasSector+modules.MDMTimeCommit)
 	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	cost = cost.Add(memoryCost).Add(initCost)
-	return instructions, data, cost, refund, usedMemory
+	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
+	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
+	instructions := []modules.Instruction{i}
+	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
+	return instructions, data, cost, refund, collateral, memory
 }
 
 // executeProgram executes an MDM program on the host using an EA payment and
@@ -147,7 +164,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Create the 'HasSector' program.
-	program, data, cost, refund, _ := newHasSectorProgram(sectorRoot, rhp.latestPT)
+	program, data, cost, refund, collateral, _ := newHasSectorProgram(sectorRoot, rhp.latestPT)
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -178,7 +195,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if !resp.AdditionalCollateral.Equals(types.ZeroCurrency) {
+	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatal("wrong AdditionalCollateral")
 	}
 	if resp.NewMerkleRoot != sos.MerkleRoot() {
