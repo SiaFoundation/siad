@@ -541,12 +541,12 @@ func (tn *TestNode) WaitForStuckChunksToRepair() error {
 // RepairThreshold.
 func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 	// Check if file is tracked by renter at all
-	if _, err := tn.File(rf); err != nil {
+	if _, err := rf.File(tn); err != nil {
 		return ErrFileNotTracked
 	}
 	// Wait until the file is viewed as healthy by the renter
 	err := Retry(1000, 100*time.Millisecond, func() error {
-		file, err := tn.File(rf)
+		file, err := rf.File(tn)
 		if err != nil {
 			return ErrFileNotTracked
 		}
@@ -573,12 +573,12 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 
 // WaitForUploadProgress waits for a file to reach a certain upload progress.
 func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) error {
-	if _, err := tn.File(rf); err != nil {
+	if _, err := rf.File(tn); err != nil {
 		return ErrFileNotTracked
 	}
 	// Wait until it reaches the progress
 	return Retry(1000, 100*time.Millisecond, func() error {
-		file, err := tn.File(rf)
+		file, err := rf.File(tn)
 		if err != nil {
 			return ErrFileNotTracked
 		}

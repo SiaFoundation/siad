@@ -13,6 +13,7 @@ type (
 	RemoteFile struct {
 		checksum crypto.Hash
 		siaPath  modules.SiaPath
+		skyfile  bool
 		mu       sync.Mutex
 	}
 )
@@ -29,4 +30,12 @@ func (rf *RemoteFile) SiaPath() modules.SiaPath {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	return rf.siaPath
+}
+
+// File returns the file at the remote file's siapath.
+func (rf *RemoteFile) File(tn *TestNode) (modules.FileInfo, error) {
+	if rf.skyfile {
+		return tn.Skyfile(rf.siaPath)
+	}
+	return tn.File(rf)
 }

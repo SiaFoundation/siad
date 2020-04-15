@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/errors"
@@ -63,26 +64,42 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 		}
 	}
 
+	rf := &RemoteFile{
+		checksum: crypto.HashBytes(data),
+		siaPath:  skyfilePath,
+		skyfile:  true,
+	}
+
+	// Wait until upload reached the specified progress
+	if err = tn.WaitForUploadProgress(rf, 1); err != nil {
+		err = errors.AddContext(err, "Skyfile upload failed, progress did not reach a value of 1")
+		return
+	}
+
+	// wait until upload reaches a certain health
+	if err = tn.WaitForUploadHealth(rf); err != nil {
+		err = errors.AddContext(err, "Skyfile upload failed, health did not reach the repair threshold")
+		return
+	}
+
 	// wait until upload reached the specified redundancy
-	if err = tn.WaitForSkyfileRedundancy(skyfilePath, 2); err != nil {
-		err = errors.AddContext(err, "Skyfile upload not complete, redundancy did not reach a value of 2")
+	if err = tn.WaitForRedundancy(rf, 2); err != nil {
+		err = errors.AddContext(err, "Skyfile upload failed, redundancy did not reach a value of 2")
 		return
 	}
 
 	return
 }
 
-// WaitForSkyfileRedundancy waits until the file at given path reaches the given
-// redundancy threshold. Note that we specify the given path must be the path of
-// a Skyfile because we call `tn.Skyfile` and not `tn.File`.
-func (tn *TestNode) WaitForSkyfileRedundancy(path modules.SiaPath, redundancy float64) error {
+// WaitForRedundancy waits until the file reaches the given redundancy
+func (tn *TestNode) WaitForRedundancy(rf *RemoteFile, redundancy float64) error {
 	// Check if file is tracked by renter at all
-	if _, err := tn.Skyfile(path); err != nil {
+	if _, err := rf.File(tn); err != nil {
 		return ErrFileNotTracked
 	}
 	// Wait until it reaches the redundancy
 	return Retry(1000, 100*time.Millisecond, func() error {
-		file, err := tn.Skyfile(path)
+		file, err := rf.File(tn)
 		if err != nil {
 			return ErrFileNotTracked
 		}
