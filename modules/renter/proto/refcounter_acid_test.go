@@ -28,11 +28,11 @@ var errTestTimeout = errors.New("test timeout has run out")
 // tracker allows us to manually keep track of all the changes that happen to a
 // refcounter in order to validate them
 type tracker struct {
-	counts []uint16
 	// denotes whether we can create new updates or we first need to reload from
 	// disk
 	crashed bool
-	sync.Mutex
+	counts  []uint16
+	mu      sync.Mutex
 
 	// stat counters
 	atomicNumRecoveries           uint64
@@ -41,15 +41,15 @@ type tracker struct {
 
 // Crash marks the tracker as crashed
 func (t *tracker) Crash() {
-	t.Lock()
-	defer t.Unlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.crashed = true
 }
 
 // IsCrashed checks if the tracker is marked as crashed
 func (t *tracker) IsCrashed() bool {
-	t.Lock()
-	defer t.Unlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.crashed
 }
 
@@ -133,7 +133,7 @@ OUTER:
 
 	// Load the WAL from disk and apply all outstanding txns.
 	// Try until successful.
-	for err != nil {
+	for {
 		wal, err = loadWal(rcFilePath, walPath, fdd)
 		if errors.Contains(err, dependencies.ErrDiskFault) {
 			continue
@@ -141,6 +141,7 @@ OUTER:
 		if err != nil {
 			t.Fatal(err)
 		}
+		break // successful
 	}
 
 	// Load the refcounter from disk.
@@ -239,20 +240,20 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 
 	// We can afford to lock the tracker because only one goroutine is
 	// allowed to make changes at any given time anyway.
-	t.Lock()
+	t.mu.Lock()
 	defer func() {
 		// If we're returning a disk error we need to crash in order to avoid
 		// data corruption.
 		if errors.Contains(err, dependencies.ErrDiskFault) {
 			t.crashed = true
 		}
-		t.Unlock()
+		t.mu.Unlock()
 	}()
 	if t.crashed {
 		return nil
 	}
 
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 	var u writeaheadlog.Update
 
 	// 50% chance to increment, 2 chances
@@ -345,8 +346,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 			fdd.Reset()
 		}
 
-		// Every 10 times, we reset the dependency to avoid getting
-		// stuck here.
+		// Every 10 times, we reset the dependency to avoid getting stuck here.
 		if tries%10 == 0 {
 			fdd.Reset()
 		}
@@ -365,9 +365,9 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 			return nil, err
 		}
 		newRc.staticDeps = fdd
-		t.Lock()
+		t.mu.Lock()
 		t.crashed = false
-		t.Unlock()
+		t.mu.Unlock()
 		return newRc, nil
 	}
 }
@@ -414,20 +414,23 @@ func validateIncrement(rc *RefCounter, secNum uint64) error {
 // validateStatusAfterAllTests does the final validation of the test by
 // comparing the state of the refcounter after all the test updates are applied.
 func validateStatusAfterAllTests(rc *RefCounter, t *tracker) error {
-	if rc.numSectors != uint64(len(t.counts)) {
-		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(t.counts)), rc.numSectors)
+	rc.mu.Lock()
+	numSec := rc.numSectors
+	rc.mu.Unlock()
+	if numSec != uint64(len(t.counts)) {
+		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(t.counts)), numSec)
 	}
-	errorList := make([]error, 0)
-	for i := uint64(0); i < rc.numSectors; i++ {
+	var errorList []error
+	for i := uint64(0); i < numSec; i++ {
 		n, err := rc.Count(i)
 		if err != nil {
 			return errors.AddContext(err, "failed to read count")
 		}
-		t.Lock()
+		t.mu.Lock()
 		if n != t.counts[i] {
 			errorList = append(errorList, fmt.Errorf("expected counter value for sector %d to be %d, got %d", i, t.counts[i], n))
 		}
-		t.Unlock()
+		t.mu.Unlock()
 	}
 	if len(errorList) > 0 {
 		return errors.AddContext(errors.Compose(errorList...), "sector counter values do not match expectations")

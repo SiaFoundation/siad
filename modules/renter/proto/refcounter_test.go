@@ -267,7 +267,7 @@ func TestRefCounterDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 	// update both counters we intend to drop
 	secIdx1 := rc.numSectors - 1
 	secIdx2 := rc.numSectors - 2
@@ -531,7 +531,7 @@ func TestRefCounterSwap(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
@@ -602,7 +602,7 @@ func TestRefCounterUpdateApplied(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
