@@ -21,10 +21,6 @@ type instruction interface {
 	// sticks around beyond the scope of the instruction until the program gets
 	// committed/canceled.
 	Memory() uint64
-	// ReadOnly indicates whether or not the instruction is just readonly. A
-	// readonly instruction doesn't cause the contract's merkle root to change
-	// and can therefore be executed parallel to other readonly instructions.
-	ReadOnly() bool
 	// Time returns the amount of time the execution of the instruction takes.
 	Time() (uint64, error)
 }

@@ -280,11 +280,31 @@ func newFingerprintMap() *fingerprintMap {
 	}
 }
 
-// callDeposit will deposit the amount into the ephemeral account with given id.
-// This will increase the host's current risk by the deposit amount. This is
+// callDeposit calls managedDeposit with refund set to 'false'.
+func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
+	return am.managedDeposit(id, amount, false, syncChan)
+}
+
+// callRefund calls managedDeposit with refund set to 'true' and a closed
+// syncChan.
+func (am *accountManager) callRefund(id modules.AccountID, amount types.Currency) error {
+	// Nothing to refund.
+	if amount.IsZero() {
+		return nil
+	}
+	syncChan := make(chan struct{})
+	close(syncChan)
+	return am.managedDeposit(id, amount, true, syncChan)
+}
+
+// managedDeposit will deposit the amount into the ephemeral account with given
+// id. This will increase the host's current risk by the deposit amount. This is
 // because until the file contract has been fsynced, the host is at risk to
 // losing money. The caller passes in a channel that gets closed when the file
 // contract is fsynced. When that happens, the current risk is lowered.
+//
+// calling managedDeposit with refund = true will ignore the max EA balance
+// restriction.
 //
 // The deposit is subject to maintaining ACID properties between the file
 // contract (FC) and the ephemeral account (EA). In order to document the model,
@@ -317,7 +337,7 @@ func newFingerprintMap() *fingerprintMap {
 // 5. Failure after RPC calls deposit, after EA is updated, after AM returns,
 // after FC sync: EA is updated, FC is updated, there is no risk to the host at
 // this point
-func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
+func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Currency, refund bool, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
 	his := am.h.InternalSettings()
@@ -326,7 +346,9 @@ func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currenc
 
 	// Initiate the deposit.
 	persistResultChan := make(chan error)
-	err := am.managedDeposit(id, amount, maxRisk, maxBalance, bh, persistResultChan, syncChan)
+	am.mu.Lock()
+	err := am.deposit(id, amount, maxRisk, maxBalance, bh, refund, persistResultChan, syncChan)
+	am.mu.Unlock()
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
@@ -411,12 +433,9 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 	am.withdrawalsInactive = errRotate != nil
 }
 
-// managedDeposit performs a couple of steps in preparation of the
+// deposit performs a couple of steps in preparation of the
 // deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-
+func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, refund bool, persistResultChan chan error, syncChan chan struct{}) error {
 	// Open the account, if the account does not exist yet, it will be created.
 	acc, err := am.openAccount(id)
 	if err != nil {
@@ -424,7 +443,7 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, 
 	}
 
 	// Verify if the deposit does not exceed the maximum
-	if acc.depositExceedsMaxBalance(amount, maxBalance) {
+	if !refund && acc.depositExceedsMaxBalance(amount, maxBalance) {
 		return ErrBalanceMaxExceeded
 	}
 

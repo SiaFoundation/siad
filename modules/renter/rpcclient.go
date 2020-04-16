@@ -12,17 +12,17 @@ import (
 
 // RPCClient interface lists all possible RPC that can be called on the host
 type RPCClient interface {
+	// UpdatePriceTable updates the price table.
 	UpdatePriceTable() error
+	// FundEphemeralAccount funds the given ephemeral account by given amount.
 	FundEphemeralAccount(id string, amount types.Currency) error
 }
 
 // MockRPCClient mocks the RPC Client
 type MockRPCClient struct{}
 
-// UpdatePriceTable updates the price table
-func (m *MockRPCClient) UpdatePriceTable() error { return nil }
+// FundEphemeralAccount funds the given ephemeral account by given amount.
+func (m *MockRPCClient) FundEphemeralAccount(id string, amount types.Currency) error { return nil }
 
-// FundEphemeralAccount funds the given ephemeral account by given amount
-func (m *MockRPCClient) FundEphemeralAccount(id string, amount types.Currency) error {
-	return nil
-}
+// UpdatePriceTable updates the price table.
+func (m *MockRPCClient) UpdatePriceTable() error { return nil }
