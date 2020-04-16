@@ -264,12 +264,11 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// verifyFPBuckets is a helper that verifies the FP buckets for the current
-	// ranges are on disk, this is dependant on the current block height
-	verifyFPBuckets := func(bh types.BlockHeight) error {
+	// verifyFPBuckets verifies the correct FP buckets are on disk
+	verifyFPBuckets := func() error {
 		return build.Retry(100, 100*time.Millisecond, func() error {
 			var err1, err2 error
-			curr, nxt := fingerprintsFilenames(bh)
+			curr, nxt := fingerprintsFilenames(ht.host.blockHeight)
 			_, err1 = os.Stat(filepath.Join(ht.host.persistDir, curr))
 			_, err2 = os.Stat(filepath.Join(ht.host.persistDir, nxt))
 			if err := errors.Compose(err1, err2); err != nil {
@@ -300,7 +299,7 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	}
 
 	// verify withdrawals are active and that the FP buckets are in place
-	err = verifyFPBuckets(ht.host.blockHeight)
+	err = verifyFPBuckets()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +323,7 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	}
 
 	// verify that the host syncs up after a while and buckets are in place
-	err = verifyFPBuckets(ht.host.blockHeight)
+	err = verifyFPBuckets()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +348,10 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = verifyFPBuckets(ht.host.blockHeight)
+	err = verifyFPBuckets()
+	if err == nil {
+		t.Fatal("Expected FP buckets error")
+	}
 	if !ht.host.staticAccountManager.withdrawalsInactive {
 		t.Fatal("Expected withdrawals to remain inactive")
 	}
@@ -364,7 +366,7 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyFPBuckets(ht.host.blockHeight)
+	err = verifyFPBuckets()
 	if err != nil {
 		t.Fatal(err)
 	}
