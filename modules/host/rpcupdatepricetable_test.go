@@ -181,13 +181,21 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		return &pt, nil
 	}
 
+	// create an account id
+	var aid modules.AccountID
+	err = aid.LoadString("prefix:deadbeef")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// verify happy flow
 	current := ht.host.staticPriceTables.managedCurrent()
 	rev, sig, err := pair.paymentRevision(current.UpdatePriceTableCost)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pt, err := runWithRequest(newPayByContractRequest(rev, sig))
+
+	pt, err := runWithRequest(newPayByContractRequest(rev, sig, aid))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +214,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = runWithRequest(newPayByContractRequest(rev, sig))
+	_, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientPaymentForRPC.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", modules.ErrInsufficientPaymentForRPC, err)
 	}

@@ -36,6 +36,9 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	var hcpk crypto.PublicKey
 	copy(hcpk[:], hpk.Key)
 
+	// specify a refund account. Needs to be zero account string for funding.
+	refundAccount := modules.ZeroAccountID
+
 	// runWithRequest is a helper function that runs the fundEphemeralAccountRPC
 	// with the given pay by contract reuqest
 	runWithRequest := func(req modules.PayByContractRequest) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
@@ -86,6 +89,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		if err != io.EOF {
 			return nil, nil, err
 		}
+
 		return &payByResponse, &resp, nil
 	}
 
@@ -132,7 +136,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	balance := getAccountBalance(ht.host.staticAccountManager, pair.eaid)
-	pbcResp, fundAccResp, err := runWithRequest(newPayByContractRequest(rev, sig))
+	pbcResp, fundAccResp, err := runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +152,8 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	rev.SetValidRenterPayout(rev.ValidRenterPayout().Add64(1))
-	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev)))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev), refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
@@ -159,7 +164,8 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	rev.SetValidHostPayout(rev.ValidHostPayout().Sub64(1))
-	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev)))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev), refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
@@ -169,7 +175,8 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRequest(newPayByContractRequest(rev, sig))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "amount that was deposited did not cover the cost of the RPC") {
 		t.Fatalf("Expected error indicating the lack of funds, instead error was: '%v'", err)
 	}
@@ -180,7 +187,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRequest(newPayByContractRequest(rev, sig))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err == nil || !strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", ErrBalanceMaxExceeded, err)
 	}
@@ -191,13 +198,23 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	fastrand.Read(sig[:4]) // corrupt the signature
-	_, _, err = runWithRequest(newPayByContractRequest(rev, sig))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err == nil || !strings.Contains(err.Error(), "invalid signature") {
 		t.Fatalf("Unexpected renter err, expected 'invalid signature' but got '%v'", err)
 	}
 
-	// expect error when revision moves collateral
+	// expect error when refund account id is provided for funding account.
+	var aid modules.AccountID
+	err = aid.LoadString("prefix:deadbeef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
+	if err == nil {
+		t.Fatal("expected error when refund account is is provided for funding account")
+	}
 
+	// expect error when revision moves collateral
 	// update the host collateral
 	collateral := types.NewCurrency64(5)
 	so, err := ht.host.managedGetStorageObligation(pair.fcid)
@@ -224,7 +241,8 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev)))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev), refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "host not expecting to post any collateral") {
 		t.Fatalf("Expected error '%v', instead error was '%v'", "host not expecting to post any collateral", err)
 	}
@@ -249,8 +267,9 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	balance = getAccountBalance(ht.host.staticAccountManager, pair.eaid)
-	pbcResp, fundAccResp, err = runWithRequest(newPayByContractRequest(rev, sig))
+	pbcResp, fundAccResp, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -165,6 +165,13 @@ func TestHostStreamHandler(t *testing.T) {
 	}
 	defer ht.Close()
 
+	// create a refund account id
+	var refundAccount modules.AccountID
+	err = refundAccount.LoadString("prefix:deadbeef")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// we recreate this on every error seeing as the host will have closed it
 	stream := newHostStream(ht.host)
 
@@ -251,7 +258,7 @@ func TestHostStreamHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(rev, sig)
+	pbcRequest := newPayByContractRequest(rev, sig, refundAccount)
 	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +295,7 @@ func TestHostStreamHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	pRequest = modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest = newPayByContractRequest(rev, sig)
+	pbcRequest = newPayByContractRequest(rev, sig, refundAccount)
 	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 	if err != nil {
 		t.Fatal(err)

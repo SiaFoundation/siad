@@ -292,11 +292,14 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*hostTester, *renterHost
 	}
 	ht.host.managedUnlockStorageObligation(so.id())
 
+	var eaid modules.AccountID
+	eaid.FromSPK(renterPK)
+
 	pair := &renterHostPair{
 		host:   ht.host,
 		renter: sk,
 		fcid:   so.id(),
-		eaid:   modules.AccountID(renterPK.String()),
+		eaid:   eaid,
 	}
 
 	// fetch a price table
@@ -364,8 +367,14 @@ func (p *renterHostPair) updatePriceTable() error {
 	stream := p.newStream()
 	defer stream.Close()
 
+	var refundAccount modules.AccountID
+	err := refundAccount.LoadString("prefix:deadbeef")
+	if err != nil {
+		return err
+	}
+
 	// initiate the RPC
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return err
 	}
@@ -389,7 +398,7 @@ func (p *renterHostPair) updatePriceTable() error {
 
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(rev, sig)
+	pbcRequest := newPayByContractRequest(rev, sig, refundAccount)
 	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 	if err != nil {
 		return err
