@@ -22,7 +22,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Process payment.
 	pd, err := h.ProcessPayment(stream)
 	if err != nil {
-		return errors.AddContext(err, "failed to process paymnet")
+		return errors.AddContext(err, "failed to process payment")
 	}
 	// Refund all the money we didn't use at the end of the RPC.
 	refundAccount := pd.AccountID()

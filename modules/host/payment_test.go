@@ -624,13 +624,6 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatalf("Unexpected collateral added, expected 0H actual %v", payment.AddedCollateral())
 	}
 
-	// verify that the refund account exists and contains the right amound of
-	// money.
-	balance := host.staticAccountManager.callAccountBalance(refundAccount)
-	if !balance.Equals(amount) {
-		t.Fatalf("expected refund account balance %v but got %v", amount.HumanString(), balance.HumanString())
-	}
-
 	// prepare a set of payouts that do not deduct payment from the renter
 	validPayouts, missedPayouts := updated.payouts()
 	validPayouts[1].Value = validPayouts[1].Value.Add(amount)
@@ -652,7 +645,15 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
 
-	// Run the code again.
+	// Manually add money to the refund account.
+	refund := types.NewCurrency64(fastrand.Uint64n(100))
+	err = pair.ht.host.staticAccountManager.callRefund(pair.accountID, refund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the code again. This time since we funded the account, the
+	// payByResponse would report the funded amount instead of 0.
 	rev, sig, err = pair.paymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
@@ -662,7 +663,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatal(err)
 	}
 	// Verify the amount in the response.
-	if !payByResponse.Balance.Equals(amount) {
+	if !payByResponse.Balance.Equals(refund) {
 		t.Fatalf("amount should have been %v but was %v", amount.HumanString(), payByResponse.Balance.HumanString())
 	}
 

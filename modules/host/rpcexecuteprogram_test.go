@@ -183,6 +183,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Execute program.
 	resps, err := rhp.executeProgram(epr, data, cost)
 	if err != nil {
+		t.Log("cost", cost.HumanString())
+		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
 		t.Fatal(err)
 	}
 	// There should only be a single response.
