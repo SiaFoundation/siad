@@ -33,6 +33,16 @@ func TestGlobalSiaPath(t *testing.T) {
 	}
 }
 
+// TestRandomSiaPath tests that RandomSiaPath always returns a valid SiaPath
+func TestRandomSiaPath(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		err := RandomSiaPath().Validate(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestSiapathValidate verifies that the validate function correctly validates
 // SiaPaths.
 func TestSiapathValidate(t *testing.T) {
@@ -83,9 +93,9 @@ func TestSiapath(t *testing.T) {
 		valid bool
 		out   string
 	}{
-		{`\\some\\windows\\path`, false, ""}, // if the os is not windows this should be invalid
+		{`\\some\\windows\\path`, true, `\\some\\windows\\path`}, // if the os is not windows this will not update the separators
 		{"valid/siapath", true, "valid/siapath"},
-		{`\some\wrong\slashes\path`, false, ""}, // invalid OS separators
+		{`\some\back\slashes\path`, true, `\some\back\slashes\path`},
 		{"../../../directory/traversal", false, ""},
 		{"testpath", true, "testpath"},
 		{"valid/siapath/../with/directory/traversal", false, ""},
@@ -101,11 +111,11 @@ func TestSiapath(t *testing.T) {
 		{"/leading/slash", true, "leading/slash"}, // clean will trim leading slashes so this is a valid input
 		{"foo/./bar", false, ""},
 		{"", false, ""},
-		{`\`, false, ""},
-		{`\\`, false, ""},
-		{`\\\`, false, ""},
-		{`\\\\`, false, ""},
-		{`\\\\\\`, false, ""},
+		{`\`, true, `\`},
+		{`\\`, true, `\\`},
+		{`\\\`, true, `\\\`},
+		{`\\\\`, true, `\\\\`},
+		{`\\\\\`, true, `\\\\\`},
 		{"/", false, ""},
 		{"//", false, ""},
 		{"///", false, ""},
