@@ -376,20 +376,20 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	his := h.managedInternalSettings()
+	_ = h.managedInternalSettings()
 	priceTable := modules.RPCPriceTable{
 		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 
 		// TODO: hardcoded cost should be updated to use a better value.
-		FundAccountCost:      his.MinBaseRPCPrice,
-		UpdatePriceTableCost: his.MinBaseRPCPrice,
+		FundAccountCost:      types.NewCurrency64(1),
+		UpdatePriceTableCost: types.NewCurrency64(1),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		HasSectorBaseCost: his.MinBaseRPCPrice,
-		InitBaseCost:      his.MinBaseRPCPrice,
-		MemoryTimeCost:    his.MinBaseRPCPrice,
-		ReadBaseCost:      his.MinBaseRPCPrice,
-		ReadLengthCost:    his.MinBaseRPCPrice,
+		HasSectorBaseCost: types.NewCurrency64(1),
+		InitBaseCost:      types.NewCurrency64(1),
+		MemoryTimeCost:    types.NewCurrency64(1),
+		ReadBaseCost:      types.NewCurrency64(1),
+		ReadLengthCost:    types.NewCurrency64(1),
 	}
 	fastrand.Read(priceTable.UID[:])
 

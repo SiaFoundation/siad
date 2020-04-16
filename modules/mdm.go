@@ -140,7 +140,7 @@ func MDMDropSectorsCost(pt *RPCPriceTable, numSectorsDropped uint64) (types.Curr
 // MDMInitCost is the cost of instantiating the MDM.
 func MDMInitCost(pt *RPCPriceTable, programLen, numInstructions uint64) types.Currency {
 	time := MDMTimeInitProgram + MDMTimeInitSingleInstruction*numInstructions
-	return pt.MemoryTimeCost.Mul64(programLen).Mul64(time).Add(pt.InitBaseCost)
+	return MDMMemoryCost(pt, programLen, time).Add(pt.InitBaseCost)
 }
 
 // MDMHasSectorCost is the cost of executing a 'HasSector' instruction.
