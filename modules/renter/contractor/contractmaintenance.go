@@ -19,6 +19,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// MaxCriticalRenewFailThreshold is the maximum number of contracts failing to renew as
+// fraction of the total hosts in the allowance before renew alerts are made
+// critical.
+const MaxCriticalRenewFailThreshold = 0.2
+
 var (
 	// ErrInsufficientAllowance indicates that the renter's allowance is less
 	// than the amount necessary to store at least one sector
@@ -827,6 +832,9 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.renewedTo[id] = newContract.ID
 	// Store the contract in the record of historic contracts.
 	c.oldContracts[id] = oldContract.Metadata()
+	// Delete it from the numRenewedFails map to prevent overcounting the number
+	// of contracts failing to renew.
+	delete(c.numFailedRenews, id)
 	// Save the contractor.
 	err = c.save()
 	if err != nil {
@@ -989,6 +997,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, contract := range c.staticContracts.ViewAll() {
 		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
 		// Skip any host that does not match our whitelist/blacklist filter
+
 		// settings.
 		host, _, err := c.hdb.Host(contract.HostPublicKey)
 		if err != nil {
@@ -1111,11 +1120,13 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("Remaining funds in allowance:", fundsRemaining.HumanString())
 
+	// Keep track of the total number of renews that failed for any reason.
+	var numRenewFails int
+
 	// Register or unregister and alerts related to contract renewal or
 	// formation.
 	var registerLowFundsAlert bool
 	var renewErr error
-	var renewErrDuringSecondHalf bool // set to true if a renew fails during the second half of the renew window
 	defer func() {
 		if registerLowFundsAlert {
 			c.staticAlerter.RegisterAlert(modules.AlertIDRenterAllowanceLowFunds, AlertMSGAllowanceLowFunds, AlertCauseInsufficientAllowanceFunds, modules.SeverityWarning)
@@ -1124,7 +1135,9 @@ func (c *Contractor) threadedContractMaintenance() {
 		}
 
 		alertSeverity := modules.SeverityError
-		if renewErrDuringSecondHalf {
+		// Increase the alert severity for renewal fails to critical if the number of
+		// contracts which failed to renew is more than 20% of the number of hosts.
+		if float64(numRenewFails) > float64(allowance.Hosts)*MaxCriticalRenewFailThreshold {
 			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
@@ -1175,7 +1188,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		} else if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
-			renewErrDuringSecondHalf = renewErrDuringSecondHalf || (blockHeight+allowance.RenewWindow/2) >= renewal.endHeight
+			numRenewFails += 1
 		} else {
 			c.log.Println("Renewal completed without error")
 		}
@@ -1215,7 +1228,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
-			renewErrDuringSecondHalf = renewErrDuringSecondHalf || (blockHeight+allowance.RenewWindow/2) >= renewal.endHeight
+			numRenewFails += 1
 		} else {
 			c.log.Println("Refresh completed without error")
 		}

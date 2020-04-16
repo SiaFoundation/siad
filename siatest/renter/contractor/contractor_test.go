@@ -153,7 +153,7 @@ func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGrou
 	// The renter should have 1 alert once we have mined enough blocks to trigger a
 	// renewal.
 	expectedAlert := modules.Alert{
-		Severity: modules.SeverityWarning,
+		Severity: modules.SeverityCritical,
 		Msg:      contractor.AlertMSGWalletLockedDuringMaintenance,
 		Cause:    modules.ErrLockedWallet.Error(),
 		Module:   "contractor",
@@ -2187,10 +2187,10 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 
 	// Check for alert
 	expectedAlert := modules.Alert{
+		Severity: modules.SeverityCritical,
 		Cause:    "Renew failure due to dependency",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
-		Severity: modules.SeverityError,
 	}
 	m := tg.Miners()[0]
 	numTries := 0
@@ -2216,7 +2216,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 		return errors.New("alert is not registered")
 	})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	// Disable the Dependency
@@ -2318,79 +2318,6 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 			}
 		}
 		return nil
-	})
-	if err != nil {
-		t.Error(err)
-	}
-
-	// Now we will check that renew errors triggered in the second half of the renew window
-	// create a higher severity-level alert.
-
-	// Wait for active contracts
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 2, 0, len(tg.Hosts()), 0)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Enable the dependency
-	deps.Enable()
-
-	// Now mine into the 2nd half of the window.
-	rg, err := r.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	cg, err := r.ConsensusGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	rc, err := r.RenterContractsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rc.ActiveContracts) == 0 {
-		t.Fatal("No ActiveContracts")
-	}
-	blocksToMine := rc.ActiveContracts[0].EndHeight - (rg.Settings.Allowance.RenewWindow / 2) - cg.Height
-	for i := 0; i < int(blocksToMine); i++ {
-		if err = m.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// Waiting for nodes to sync
-	if err = tg.Sync(); err != nil {
-		t.Fatal(err)
-	}
-
-	moreSevereAlert := modules.Alert{
-		Cause:    "Renew failure due to dependency",
-		Msg:      contractor.AlertMSGFailedContractRenewal,
-		Module:   "contractor",
-		Severity: modules.SeverityCritical,
-	}
-	numTries = 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		numTries++
-		if numTries%3 == 0 {
-			err = m.MineBlock()
-			if err != nil {
-				return err
-			}
-		}
-		// Since this alert cause can be multiple composed errors it can not use
-		// the IsAlertRegistered helper method
-		dag, err := r.DaemonAlertsGet()
-		if err != nil {
-			return err
-		}
-		for _, alert := range dag.Alerts {
-			if alert.EqualsWithErrorCause(moreSevereAlert, moreSevereAlert.Cause) {
-				return nil
-			}
-		}
-		return errors.New("alert is not registered")
 	})
 	if err != nil {
 		t.Error(err)
