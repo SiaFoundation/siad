@@ -644,6 +644,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 // managedRenewContract will use the renew instructions to renew a contract,
 // returning the amount of money that was put into the contract for renewal.
 func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal, currentPeriod types.BlockHeight, allowance modules.Allowance, blockHeight, endHeight types.BlockHeight) (fundsSpent types.Currency, err error) {
+	c.log.Println("managedRenew: ")
 	if c.staticDeps.Disrupt("ContractRenewFail") {
 		err = errors.New("Renew failure due to dependency")
 		return
@@ -652,6 +653,14 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	id := renewInstructions.id
 	amount := renewInstructions.amount
 	hostPubKey := renewInstructions.hostPubKey
+
+	// Get a session with the host, before marking it as being renewed.
+	hs, err := c.Session(hostPubKey, c.tg.StopChan())
+	if err != nil {
+		err = errors.AddContext(err, "Unable to establish session with host")
+		return
+	}
+	s := hs.(*hostSession)
 
 	// Mark the contract as being renewed, and defer logic to unmark it
 	// once renewing is complete.
@@ -672,7 +681,6 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.mu.RLock()
 	e, eok := c.editors[id]
 	d, dok := c.downloaders[id]
-	s, sok := c.sessions[id]
 	c.mu.RUnlock()
 	if eok {
 		c.log.Debugln("Waiting for editor invalidation")
@@ -685,28 +693,15 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.log.Debugln("Got downloader invalidation")
 	}
 
-	// If we don't have any sessions available, make a new one.
-	if !sok {
-		var hs Session
-		hs, err = c.Session(hostPubKey, c.tg.StopChan())
-		if err != nil {
-			err = errors.AddContext(err, "Unable to estable session with host")
-			return
-		}
-		s = hs.(*hostSession)
-		sok = true
+	// Use the Settings RPC with the host and then invalidate the session.
+	hostSettings, err = s.Settings()
+	if err != nil {
+		err = errors.AddContext(err, "Unable to get host settings")
+		return
 	}
-
-	if sok {
-		c.log.Debugln("Waiting for session invalidation")
-		hostSettings, err = s.Settings()
-		if err != nil {
-			err = errors.AddContext(err, "Unable to get host settings")
-			return
-		}
-		s.invalidate()
-		c.log.Debugln("Got session invalidation")
-	}
+	c.log.Debugln("Waiting for session invalidation")
+	s.invalidate()
+	c.log.Debugln("Got session invalidation")
 
 	// Fetch the contract that we are renewing.
 	c.log.Debugln("Acquiring contract from the contract set", id)
