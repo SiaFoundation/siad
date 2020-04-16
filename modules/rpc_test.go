@@ -152,7 +152,6 @@ func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 		t.Log(epr.Output)
 		t.Log(epr2.Output)
 		t.Fatal("field doesn't match")
-
 	}
 	if !bytes.Equal(epr.NewMerkleRoot[:], epr2.NewMerkleRoot[:]) {
 		t.Log(epr.NewMerkleRoot)
