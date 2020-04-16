@@ -295,7 +295,7 @@ func TestHostStreamHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	pRequest = modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest = newPayByContractRequest(rev, sig, refundAccount)
+	pbcRequest = newPayByContractRequest(rev, sig, modules.ZeroAccountID)
 	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 	if err != nil {
 		t.Fatal(err)
