@@ -1141,13 +1141,14 @@ func prepareWithdrawal(id modules.AccountID, amount types.Currency, expiry types
 
 // prepareAccount will create an account and return its secret key alonside it's
 // sia public key
-func prepareAccount() (crypto.SecretKey, modules.AccountID) {
+func prepareAccount() (_ crypto.SecretKey, aid modules.AccountID) {
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	return sk, modules.AccountID(spk.String())
+	aid.FromSPK(spk)
+	return sk, aid
 }
 
 // randuint64 generates a random uint64

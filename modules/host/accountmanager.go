@@ -47,6 +47,9 @@ var (
 	// verification of when max risk is reached in tests. Used only in tests.
 	errMaxRiskReached = errors.New("errMaxRiskReached")
 
+	// errZeroAccountID occurs when an account is opened with the ZeroAccountID.
+	errZeroAccountID = errors.New("can't open an account with an empty account id")
+
 	// pruneExpiredAccountsFrequency is the frequency at which the account
 	// manager checks if it can expire accounts which have been inactive for too
 	// long.
@@ -367,33 +370,45 @@ func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypt
 // callConsensusChanged is called by the host whenever it processed a change to
 // the consensus. We use it to remove fingerprints which have been expired.
 func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHeight, newHeight types.BlockHeight) {
-	// If the host is not synced, withdrawals are disabled. In this case we also
-	// do not want to rotate the fingerprints.
 	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	// If the host is not synced, withdrawals are disabled. In this case we
+	// also do not want to rotate the fingerprints.
 	if !cc.Synced {
 		am.withdrawalsInactive = true
-		am.mu.Unlock()
 		return
 	}
-	am.withdrawalsInactive = false
 
-	// Rotate only if the new block height is larger than the old block height,
-	// and the min height is between the old and new blockheight. We have to
-	// take into account the old and new height due to blockchain reorgs that
-	// could cause the blockheight to increase (or decrease) by multiple blocks
-	// at a time, potentially skipping over the min height of the bucket.
+	// If withdrawals were already active (meaning the host was synced) and
+	// if the new blockheight is not one at which we expect to rotate, we
+	// can return early. In all other cases we rotate the buckets both in
+	// memory and on disk. We rotate when the new height crosses over the
+	// new current bucket range. We have to take into account the old and
+	// new height due to blockchain reorgs that could cause the blockheight
+	// to increase (or decrease) by multiple blocks at a time, potentially
+	// skipping over the min height of the bucket.
 	min, _ := currentBucketRange(newHeight)
-	if !(oldHeight < newHeight && oldHeight < min && min <= newHeight) {
-		am.mu.Unlock()
+	withdrawalsActive := !am.withdrawalsInactive
+	shouldRotate := oldHeight < newHeight && oldHeight < min && min <= newHeight
+	if withdrawalsActive && !shouldRotate {
 		return
 	}
 
-	am.fingerprints.rotate()
+	// Rotate fingerprint buckets on disk
 	am.mu.Unlock()
-	err := am.staticAccountsPersister.callRotateFingerprintBuckets()
-	if err != nil {
-		am.h.log.Critical("Could not rotate fingerprints on disk", err)
+	errRotate := am.staticAccountsPersister.callRotateFingerprintBuckets()
+	am.mu.Lock()
+
+	// Rotate in memory only if the on-disk rotation succeeded
+	if errRotate == nil {
+		am.fingerprints.rotate()
+	} else if errRotate != errRotationDisabled {
+		am.h.log.Critical("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactived", errRotate)
 	}
+
+	// Disable withdrawals on failed rotation
+	am.withdrawalsInactive = errRotate != nil
 }
 
 // managedDeposit performs a couple of steps in preparation of the
@@ -403,7 +418,10 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, 
 	defer am.mu.Unlock()
 
 	// Open the account, if the account does not exist yet, it will be created.
-	acc := am.openAccount(id)
+	acc, err := am.openAccount(id)
+	if err != nil {
+		return errors.AddContext(err, "failed to open account for deposit")
+	}
 
 	// Verify if the deposit does not exceed the maximum
 	if acc.depositExceedsMaxBalance(amount, maxBalance) {
@@ -458,8 +476,10 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	am.fingerprints.add(fp, expiry, blockHeight)
 
 	// Open the account, create if it does not exist yet
-	acc := am.openAccount(id)
-
+	acc, err := am.openAccount(id)
+	if err != nil {
+		return errors.AddContext(err, "failed to open account for withdrawal")
+	}
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
@@ -879,12 +899,26 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 	return deleted
 }
 
+// callAccountBalance will return the balance of an account.
+func (am *accountManager) callAccountBalance(id modules.AccountID) types.Currency {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	account, exists := am.accounts[id]
+	if !exists {
+		return types.ZeroCurrency
+	}
+	return account.balance
+}
+
 // openAccount will return an account object. If the account does not exist it
 // will be created.
-func (am *accountManager) openAccount(id modules.AccountID) *account {
+func (am *accountManager) openAccount(id modules.AccountID) (*account, error) {
+	if id.IsZeroAccount() {
+		return nil, errZeroAccountID
+	}
 	acc, exists := am.accounts[id]
 	if exists {
-		return acc
+		return acc, nil
 	}
 	acc = &account{
 		id:                 id,
@@ -893,7 +927,7 @@ func (am *accountManager) openAccount(id modules.AccountID) *account {
 		persistResultChans: make([]chan error, 0),
 	}
 	am.accounts[id] = acc
-	return acc
+	return acc, nil
 }
 
 // assignFreeIndex will return the next available account index

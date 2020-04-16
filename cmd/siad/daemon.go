@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -14,11 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/server"
 	"gitlab.com/NebulousLabs/Sia/profile"
@@ -114,44 +110,9 @@ func processConfig(config Config) (Config, error) {
 	return config, nil
 }
 
-// apiPassword discovers the API password, which may be specified in an
-// environment variable, stored in a file on disk, or supplied by the user via
-// stdin.
-func apiPassword(siaDir string) (string, error) {
-	// Check the environment variable.
-	pw := os.Getenv(cmd.SiaAPIPassword)
-	if pw != "" {
-		fmt.Println("Using SIA_API_PASSWORD environment variable")
-		return pw, nil
-	}
-
-	// Try to read the password from disk.
-	path := build.APIPasswordFile(siaDir)
-	pwFile, err := ioutil.ReadFile(path)
-	if err == nil {
-		// This is the "normal" case, so don't print anything.
-		return strings.TrimSpace(string(pwFile)), nil
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-
-	// No password file; generate a secure one.
-	// Generate a password file.
-	if err := os.MkdirAll(siaDir, 0700); err != nil {
-		return "", err
-	}
-	pw = hex.EncodeToString(fastrand.Bytes(16))
-	if err := ioutil.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
-		return "", err
-	}
-	fmt.Println("A secure API password has been written to", path)
-	fmt.Println("This password will be used automatically the next time you run siad.")
-	return pw, nil
-}
-
 // loadAPIPassword determines whether to use an API password from disk or a
 // temporary one entered by the user according to the provided config.
-func loadAPIPassword(config Config, siaDir string) (_ Config, err error) {
+func loadAPIPassword(config Config) (_ Config, err error) {
 	if config.Siad.AuthenticateAPI {
 		if config.Siad.TempPassword {
 			config.APIPassword, err = passwordPrompt("Enter API password: ")
@@ -162,7 +123,7 @@ func loadAPIPassword(config Config, siaDir string) (_ Config, err error) {
 			}
 		} else {
 			// load API password from environment variable or file.
-			config.APIPassword, err = apiPassword(siaDir)
+			config.APIPassword, err = build.APIPassword()
 			if err != nil {
 				return Config{}, err
 			}
@@ -210,7 +171,7 @@ func installKillSignalHandler() chan os.Signal {
 // tryAutoUnlock will try to automatically unlock the server's wallet if the
 // environment variable is set.
 func tryAutoUnlock(srv *server.Server) {
-	if password := os.Getenv(cmd.SiaWalletPassword); password != "" {
+	if password := build.WalletPassword(); password != "" {
 		fmt.Println("Sia Wallet Password found, attempting to auto-unlock wallet")
 		if err := srv.Unlock(password); err != nil {
 			fmt.Println("Auto-unlock failed:", err)
@@ -231,7 +192,7 @@ func startDaemon(config Config) (err error) {
 	}
 
 	// Load API password.
-	config, err = loadAPIPassword(config, build.DefaultSiaDir())
+	config, err = loadAPIPassword(config)
 	if err != nil {
 		return errors.AddContext(err, "failed to get API password")
 	}
