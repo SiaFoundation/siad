@@ -24,11 +24,27 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to process paymnet")
 	}
+	// Refund all the money we didn't use at the end of the RPC.
+	refundAccount := pd.AccountID()
+	amountPaid := pd.Amount()
+	refund := amountPaid
+	err = h.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		go func() {
+			defer h.tg.Done()
+			depositErr := h.staticAccountManager.callRefund(refundAccount, refund)
+			if depositErr != nil {
+				h.log.Print("ERROR: failed to refund renter", depositErr)
+			}
+		}()
+	}()
+	// Don't expect any added collateral.
 	if !pd.AddedCollateral().IsZero() {
 		return fmt.Errorf("no collateral should be moved but got %v", pd.AddedCollateral().HumanString())
 	}
-	refundAccount := pd.AccountID()
-	amountPaid := pd.Amount()
 
 	// Read request
 	var epr modules.RPCExecuteProgramRequest
@@ -73,22 +89,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
-
-	// Charge the peer accordingly.
-	refund := amountPaid
-	err = h.tg.Add()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		go func() {
-			defer h.tg.Done()
-			depositErr := h.staticAccountManager.callRefund(refundAccount, refund)
-			if depositErr != nil {
-				h.log.Print("ERROR: failed to refund renter", depositErr)
-			}
-		}()
-	}()
 
 	// Handle outputs.
 	executionFailed := false

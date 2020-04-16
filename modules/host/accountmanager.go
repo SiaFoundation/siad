@@ -288,6 +288,10 @@ func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currenc
 // callRefund calls managedDeposit with refund set to 'true' and a closed
 // syncChan.
 func (am *accountManager) callRefund(id modules.AccountID, amount types.Currency) error {
+	// Nothing to refund.
+	if amount.IsZero() {
+		return nil
+	}
 	syncChan := make(chan struct{})
 	close(syncChan)
 	return am.managedDeposit(id, amount, true, syncChan)
