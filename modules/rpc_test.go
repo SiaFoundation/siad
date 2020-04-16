@@ -94,6 +94,13 @@ func TestUniqueID_LoadString(t *testing.T) {
 // TestRPCExecuteProgramResponseMarshalSia tests the custom SiaMarshaler
 // implementation of RPCExecuteProgramResponse.
 func TestRPCExecuteProgramResponseMarshalsia(t *testing.T) {
+	// helper to create random error
+	randomError := func() error {
+		if fastrand.Intn(2) == 0 {
+			return nil
+		}
+		return errors.New(string(fastrand.Bytes(100)))
+	}
 	// helper to create random hash
 	randomHash := func() (h crypto.Hash) {
 		fastrand.Read(h[:])
@@ -122,7 +129,7 @@ func TestRPCExecuteProgramResponseMarshalsia(t *testing.T) {
 		NewMerkleRoot:        randomHash(),
 		NewSize:              fastrand.Uint64n(100),
 		Proof:                randomProof(),
-		Error:                errors.New(string(fastrand.Bytes(100))),
+		Error:                randomError(),
 		TotalCost:            types.NewCurrency64(fastrand.Uint64n(100)),
 		PotentialRefund:      types.NewCurrency64(fastrand.Uint64n(100)),
 	}
@@ -136,6 +143,8 @@ func TestRPCExecuteProgramResponseMarshalsia(t *testing.T) {
 	}
 	// Compare
 	if !reflect.DeepEqual(epr, epr2) {
+		t.Log(epr)
+		t.Log(epr2)
 		t.Fatal("responses don't match")
 	}
 }
