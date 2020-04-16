@@ -623,10 +623,16 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	// Check for a convertpath input
+	convertPathStr := queryForm.Get("convertpath")
+	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
+		WriteError(w, Error{fmt.Sprintf("cannot set both a convertpath and a filename")}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
-	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
 		// Ensure we have a filename
 		if lup.FileMetadata.Filename == "" {
