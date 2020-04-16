@@ -202,7 +202,10 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		defer hStream.Close()
 
 		var rErr, hErr error
-		sig := revisionSignature(rev, bh, sk)
+		mu.Lock()
+		height := bh
+		mu.Unlock()
+		sig := revisionSignature(rev, height, sk)
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
@@ -354,7 +357,10 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer rStream.Close()
-		sig := revisionSignature(rev, bh, sk)
+		mu.Lock()
+		height := bh
+		mu.Unlock()
+		sig := revisionSignature(rev, height, sk)
 		fastrand.Read(sig[:4]) // corrupt the signature
 		_, _, rErr = renterFunc(rStream, rev, sig, refundAccount)
 	}()
