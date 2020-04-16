@@ -2,6 +2,7 @@ package modules
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -93,13 +94,13 @@ func TestUniqueID_LoadString(t *testing.T) {
 
 // TestRPCExecuteProgramResponseMarshalSia tests the custom SiaMarshaler
 // implementation of RPCExecuteProgramResponse.
-func TestRPCExecuteProgramResponseMarshalsia(t *testing.T) {
+func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 	// helper to create random error
 	randomError := func() error {
 		if fastrand.Intn(2) == 0 {
 			return nil
 		}
-		return errors.New(string(fastrand.Bytes(100)))
+		return errors.New(hex.EncodeToString(fastrand.Bytes(100)))
 	}
 	// helper to create random hash
 	randomHash := func() (h crypto.Hash) {
@@ -142,9 +143,48 @@ func TestRPCExecuteProgramResponseMarshalsia(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Compare
-	if !reflect.DeepEqual(epr, epr2) {
-		t.Log(epr)
-		t.Log(epr2)
-		t.Fatal("responses don't match")
+	if !epr.AdditionalCollateral.Equals(epr2.AdditionalCollateral) {
+		t.Log(epr.AdditionalCollateral)
+		t.Log(epr2.AdditionalCollateral)
+		t.Fatal("field doesn't match")
+	}
+	if !bytes.Equal(epr.Output, epr2.Output) {
+		t.Log(epr.Output)
+		t.Log(epr2.Output)
+		t.Fatal("field doesn't match")
+
+	}
+	if !bytes.Equal(epr.NewMerkleRoot[:], epr2.NewMerkleRoot[:]) {
+		t.Log(epr.NewMerkleRoot)
+		t.Log(epr2.NewMerkleRoot)
+		t.Fatal("field doesn't match")
+	}
+	if epr.NewSize != epr2.NewSize {
+		t.Log(epr.NewSize)
+		t.Log(epr2.NewSize)
+		t.Fatal("field doesn't match")
+	}
+	if !(len(epr.Proof) == 0 && len(epr2.Proof) == 0) && !reflect.DeepEqual(epr.Proof, epr2.Proof) {
+		t.Log(epr.Proof)
+		t.Log(epr2.Proof)
+		println("ep", epr.Proof, epr2.Proof)
+		t.Fatal("field doesn't match")
+	}
+	bothNil := epr.Error == nil && epr2.Error == nil
+	strMatch := epr.Error != nil && epr2.Error != nil && epr.Error.Error() == epr2.Error.Error()
+	if !bothNil && !strMatch {
+		t.Log(epr.Error)
+		t.Log(epr2.Error)
+		t.Fatal("field doesn't match")
+	}
+	if !epr.TotalCost.Equals(epr2.TotalCost) {
+		t.Log(epr.TotalCost)
+		t.Log(epr2.TotalCost)
+		t.Fatal("field doesn't match")
+	}
+	if !epr.PotentialRefund.Equals(epr2.PotentialRefund) {
+		t.Log(epr.PotentialRefund)
+		t.Log(epr2.PotentialRefund)
+		t.Fatal("field doesn't match")
 	}
 }
