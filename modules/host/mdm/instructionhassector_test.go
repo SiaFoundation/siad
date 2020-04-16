@@ -29,7 +29,6 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]m
 	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
 	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
-	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
 	return instructions, data, cost, refund, collateral, memory
 }
 
@@ -51,7 +50,7 @@ func TestInstructionHasSector(t *testing.T) {
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, collateral, usedMemory := newHasSectorProgram(sectorRoot, pt)
+	instructions, programData, cost, refund, collateral, _ := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
@@ -77,7 +76,7 @@ func TestInstructionHasSector(t *testing.T) {
 		if !bytes.Equal(output.Output, []byte{1}) {
 			t.Fatalf("expected returned value to be [1] for 'true' but was %v", output.Output)
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
+		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !output.AdditionalCollateral.Equals(collateral) {

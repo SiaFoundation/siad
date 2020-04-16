@@ -115,7 +115,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			TotalCost:            output.ExecutionCost,
 		}
 		// Update cost and refund.
-		if output.PotentialRefund.Cmp(output.ExecutionCost) < 0 {
+		if output.ExecutionCost.Cmp(output.PotentialRefund) < 0 {
 			err = errors.New("executionCost can never be smaller than the refund")
 			build.Critical(err)
 			return err

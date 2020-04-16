@@ -44,7 +44,6 @@ func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]m
 	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
 	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
-	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
 	return instructions, data, cost, refund, collateral, memory
 }
 
