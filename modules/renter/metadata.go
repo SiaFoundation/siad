@@ -175,6 +175,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			aggregateMinRedundancy = dirMetadata.AggregateMinRedundancy
 			aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
 			aggregateModTime = dirMetadata.AggregateModTime
+			aggregateRemoteHealth = dirMetadata.AggregateRemoteHealth
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
@@ -188,7 +189,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// Ignore everything that is not a SiaFile or a directory
 			continue
 		}
-		// Track the max value of AggregateHealth and Aggregate StuckHealth
+		// Track the max value of aggregate health values
 		metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
 		metadata.AggregateRemoteHealth = math.Max(metadata.AggregateRemoteHealth, aggregateRemoteHealth)
 		metadata.AggregateStuckHealth = math.Max(metadata.AggregateStuckHealth, aggregateStuckHealth)

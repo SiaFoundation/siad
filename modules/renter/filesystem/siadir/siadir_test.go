@@ -22,7 +22,7 @@ func checkMetadataInit(md Metadata) error {
 		return errors.New("ModTime not initialized")
 	}
 
-	// All the reset of the metadata should be default values
+	// All the rest of the metadata should be default values
 	initMetadata := Metadata{
 		AggregateHealth:        DefaultDirHealth,
 		AggregateMinRedundancy: DefaultDirRedundancy,

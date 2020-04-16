@@ -34,33 +34,33 @@ type directory struct {
 // directory in the heap. It also returns a boolean indicating if that health is
 // from remote files.
 //
-//  If a directory is explored then we should use the Health of the Directory. If
-//  a directory is unexplored then we should use the AggregateHealth of the
-//  Directory. This will ensure we are following the path of lowest health as
-//  well as evaluating each directory on its own merit.
+// If a directory is explored then we should use the Health of the Directory. If
+// a directory is unexplored then we should use the AggregateHealth of the
+// Directory. This will ensure we are following the path of lowest health as
+// well as evaluating each directory on its own merit.
 //
 // If either the RemoteHealth or the AggregateRemoteHealth are above the
 // RepairThreshold we should use that health in order to prioritize remote files
-func (d *directory) managedHeapHealth() (heapHealth float64, remote bool) {
+func (d *directory) managedHeapHealth() (float64, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.explored {
-		if d.remoteHealth >= RepairThreshold {
-			heapHealth = d.remoteHealth
-			remote = true
-		} else {
-			heapHealth = d.health
-		}
-	} else {
-		if d.aggregateRemoteHealth >= RepairThreshold {
-			heapHealth = d.aggregateRemoteHealth
-			remote = true
-		} else {
-			heapHealth = d.aggregateHealth
-		}
+	// Grab the directory level health values
+	remoteHealth := d.remoteHealth
+	health := d.health
+
+	// If the directory hasn't been explored yet, grab the aggregate health
+	// values
+	if !d.explored {
+		remoteHealth = d.aggregateRemoteHealth
+		health = d.aggregateHealth
 	}
-	return
+
+	// Use the remoteHealth if it is at or worse than the RepairThreshold
+	if remoteHealth >= RepairThreshold {
+		return remoteHealth, true
+	}
+	return health, false
 }
 
 // directoryHeap contains a priority sorted heap of directories that are being

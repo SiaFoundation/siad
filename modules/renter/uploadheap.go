@@ -71,7 +71,7 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	//    - These are chunks added by the stuck loop
 	//
 	//  4) Remote Chunks
-	//    - These are chunks of a siafile that does not have a local file to repair
+	//    - These are chunks of a siafile that do not have a local file to repair
 	//    from
 	//
 	//  5) Worst Health Chunk
@@ -774,22 +774,21 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		remoteFile := fileMetadata.LocalPath == ""
 		if (fileHealth < dirHeapHealth || !remoteFile && dirHeapRemote) && target == targetUnstuckChunks {
 			// Track the health
-			if remoteFile && worstHealthRemote {
-				// If the file is remote and we are already tracking the health
-				// of other remote files then we want to keep track of the worst
-				// health.
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
-			} else if remoteFile && !worstHealthRemote {
+			if !remoteFile && worstHealthRemote {
+				// Nothing to do as we are tracking the health of at least one
+				// remote file
+				continue
+			}
+			if remoteFile && !worstHealthRemote {
 				// If the file is remote and we haven't been tracking the health
 				// of any remote files then we want to track the health of this
 				// file and set the worstHealthRemote to true
 				worstHealthRemote = true
 				worstIgnoredHealth = fileHealth
-			} else if !worstHealthRemote {
-				// If we aren't tracking the health of any remote files yet,
-				// then track the health of this file
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
+				continue
 			}
+			// Update the worstIgnoredHealth
+			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
 			continue
 		}
 
@@ -801,7 +800,10 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// Check to see the chunk is already in the upload heap
 			if r.uploadHeap.managedExists(chunk.id) {
 				// Close the file entry
-				chunk.fileEntry.Close()
+				err := chunk.fileEntry.Close()
+				if err != nil {
+					r.log.Println("Error closing file entry:", err)
+				}
 				// Since the chunk is already in the heap we do not need to
 				// track the health of the chunk
 				continue
@@ -811,25 +813,25 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// directory heap
 			if chunk.health < dirHeapHealth && target == targetUnstuckChunks {
 				// Track the health
-				if !chunk.onDisk && worstHealthRemote {
-					// If the chunk is remote and we are already tracking the health
-					// of other remote chunks then we want to keep track of the worst
-					// health.
-					worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+				if chunk.onDisk && worstHealthRemote {
+					// Nothing to do as we are tracking the health of at least one
+					// remote chunk
 				} else if !chunk.onDisk && !worstHealthRemote {
-					// If the chunk is remote and we haven't been tracking the health of
-					// any remote chunks then we want to track the health of this chunk
-					// and set the worstHealthRemote to true
+					// If the chunk is remote and we haven't been tracking the health
+					// of any remote chunks then we want to track the health of this
+					// chunk and set the worstHealthRemote to true
 					worstHealthRemote = true
 					worstIgnoredHealth = chunk.health
-				} else if !worstHealthRemote {
-					// If we aren't tracking the health of any remote chunks yet, then
-					// track the health of this chunk
+				} else {
+					// Update the worstIgnoredHealth
 					worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
 				}
 
 				// Close the file entry
-				chunk.fileEntry.Close()
+				err := chunk.fileEntry.Close()
+				if err != nil {
+					r.log.Println("Error closing file entry:", err)
+				}
 				continue
 			}
 
@@ -852,28 +854,28 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 
 			// Check health of next chunk
 			chunk = heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-			if !chunk.onDisk && worstHealthRemote {
-				// If the chunk is remote and we are already tracking the health
-				// of other remote chunks then we want to keep track of the worst
-				// health.
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+			if chunk.onDisk && worstHealthRemote {
+				// Nothing to do as we are tracking the health of at least one
+				// remote chunk
 			} else if !chunk.onDisk && !worstHealthRemote {
-				// If the chunk is remote and we haven't been tracking the health of
-				// any remote chunks then we want to track the health of this chunk
-				// and set the worstHealthRemote to true
+				// If the chunk is remote and we haven't been tracking the health
+				// of any remote chunks then we want to track the health of this
+				// chunk and set the worstHealthRemote to true
 				worstHealthRemote = true
 				worstIgnoredHealth = chunk.health
-			} else if !worstHealthRemote {
-				// If we aren't tracking the health of any remote chunks yet, then
-				// track the health of this chunk
+			} else {
+				// Update the worstIgnoredHealth
 				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
 			}
 
 			// Close the file entry
-			chunk.fileEntry.Close()
+			err := chunk.fileEntry.Close()
+			if err != nil {
+				r.log.Println("Error closing file entry:", err)
+			}
 
 			// Reset temp heap to release memory
-			err := unfinishedChunkHeap.reset()
+			err = unfinishedChunkHeap.reset()
 			if err != nil {
 				r.log.Println("WARN: error resetting the temporary upload heap:", err)
 			}
@@ -898,7 +900,10 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// We don't track the health of this chunk since the only reason it
 			// wouldn't be added to the heap is if it is already in the heap or
 			// is currently being repaired. Close the file.
-			chunk.fileEntry.Close()
+			err := chunk.fileEntry.Close()
+			if err != nil {
+				r.log.Println("Error closing file entry:", err)
+			}
 		}
 	}
 
@@ -906,24 +911,25 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// health of the next chunk
 	if len(unfinishedChunkHeap) > 0 {
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-		if !chunk.onDisk && worstHealthRemote {
-			// If the chunk is remote and we are already tracking the health
-			// of other remote chunks then we want to keep track of the worst
-			// health.
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+		if chunk.onDisk && worstHealthRemote {
+			// Nothing to do as we are tracking the health of at least one
+			// remote chunk
 		} else if !chunk.onDisk && !worstHealthRemote {
-			// If the chunk is remote and we haven't been tracking the health of
-			// any remote chunks then we want to track the health of this chunk
-			// and set the worstHealthRemote to true
+			// If the chunk is remote and we haven't been tracking the health
+			// of any remote chunks then we want to track the health of this
+			// chunk and set the worstHealthRemote to true
 			worstHealthRemote = true
 			worstIgnoredHealth = chunk.health
-		} else if !worstHealthRemote {
-			// If we aren't tracking the health of any remote chunks yet, then
-			// track the health of this chunk
+		} else {
+			// Update the worstIgnoredHealth
 			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
 		}
-		// Close the chunk's file
-		chunk.fileEntry.Close()
+
+		// Close the file entry
+		err := chunk.fileEntry.Close()
+		if err != nil {
+			r.log.Println("Error closing file entry:", err)
+		}
 	}
 
 	// We are done with the temporary heap so reset it to help release the

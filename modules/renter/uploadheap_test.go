@@ -299,7 +299,7 @@ func TestUploadHeap(t *testing.T) {
 	chunk1 = rt.renter.uploadHeap.managedPop()
 	chunk2 = rt.renter.uploadHeap.managedPop()
 	if chunk1.onDisk || chunk2.onDisk {
-		t.Fatalf("Expected chunks to be remote and no onDisk, got onDisk %v and %v",
+		t.Fatalf("Expected chunks to be remote and not onDisk, got onDisk %v and %v",
 			chunk1.onDisk, chunk2.onDisk)
 	}
 	if chunk1.health < chunk2.health {
