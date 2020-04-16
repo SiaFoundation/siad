@@ -646,8 +646,8 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 
 	// Manually add money to the refund account.
-	refund := types.NewCurrency64(fastrand.Uint64n(100))
-	err = pair.ht.host.staticAccountManager.callRefund(pair.accountID, refund)
+	refund := types.NewCurrency64(fastrand.Uint64n(100) + 1)
+	err = pair.ht.host.staticAccountManager.callRefund(refundAccount, refund)
 	if err != nil {
 		t.Fatal(err)
 	}
