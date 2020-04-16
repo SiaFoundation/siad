@@ -3441,7 +3441,7 @@ func TestSiafileCompatCodeV137(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
-	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, "sub1", "sub2", "testfile.sia")
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.UserFolder.String(), "sub1", "sub2", "testfile.sia")
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
@@ -3575,11 +3575,11 @@ func TestSiafileCompatCodeV140(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the files are where we would expect them.
-	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, dummySiafile)
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.UserFolder.String(), dummySiafile)
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
-	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupRoot, dummySnapshot)
+	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupFolder.String(), dummySnapshot)
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
