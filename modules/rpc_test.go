@@ -94,15 +94,37 @@ func TestUniqueID_LoadString(t *testing.T) {
 // TestRPCExecuteProgramResponseMarshalSia tests the custom SiaMarshaler
 // implementation of RPCExecuteProgramResponse.
 func TestRPCExecuteProgramResponseMarshalsia(t *testing.T) {
+	// helper to create random hash
+	randomHash := func() (h crypto.Hash) {
+		fastrand.Read(h[:])
+		return
+	}
+	// helper to create random proof.
+	randomProof := func() (proof []crypto.Hash) {
+		switch fastrand.Intn(3) {
+		case 0:
+			// nil proof
+			return nil
+		case 1:
+			// empty proof
+			return []crypto.Hash{}
+		default:
+		}
+		// random length proof
+		for i := 0; i < fastrand.Intn(5)+1; i++ {
+			proof = append(proof, randomHash())
+		}
+		return
+	}
 	epr := RPCExecuteProgramResponse{
-		AdditionalCollateral: types.SiacoinPrecision,
+		AdditionalCollateral: types.NewCurrency64(fastrand.Uint64n(100)),
 		Output:               fastrand.Bytes(10),
-		NewMerkleRoot:        crypto.Hash{1},
-		NewSize:              100,
-		Proof:                []crypto.Hash{{1}, {2}, {3}},
-		Error:                errors.New("some error"),
-		TotalCost:            types.SiacoinPrecision.Mul64(10),
-		PotentialRefund:      types.SiacoinPrecision.Mul64(100),
+		NewMerkleRoot:        randomHash(),
+		NewSize:              fastrand.Uint64n(100),
+		Proof:                randomProof(),
+		Error:                errors.New(string(fastrand.Bytes(100))),
+		TotalCost:            types.NewCurrency64(fastrand.Uint64n(100)),
+		PotentialRefund:      types.NewCurrency64(fastrand.Uint64n(100)),
 	}
 	// Marshal
 	b := encoding.Marshal(epr)

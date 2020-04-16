@@ -196,24 +196,25 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatal(resp.Error)
 	}
 	if !resp.AdditionalCollateral.Equals(collateral) {
-		t.Fatal("wrong AdditionalCollateral")
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
 	if resp.NewMerkleRoot != sos.MerkleRoot() {
-		t.Fatalf("wrong NewMerkleRoot: %v != %v", sectorRoot, resp.NewMerkleRoot)
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
 	}
 	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
 		t.Fatal("wrong NewSize")
 	}
 	if len(resp.Proof) != 0 {
-		t.Fatal("wrong Proof")
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
 	if len(resp.Output) != 1 && resp.Output[0] != 1 {
-		t.Fatal("wrong Output")
+		t.Fatalf("wrong Output %v != %v", resp.Output, []byte{1})
 	}
 	if !resp.TotalCost.Equals(cost) {
-		t.Fatal("wrong TotalCost")
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), cost.HumanString())
 	}
 	if !resp.PotentialRefund.Equals(refund) {
-		t.Fatal("wrong PotentialRefund")
+		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
 }

@@ -75,7 +75,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Charge the peer accordingly.
-	cost := types.ZeroCurrency
 	refund := amountPaid
 	err = h.tg.Add()
 	if err != nil {
@@ -94,6 +93,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Handle outputs.
 	executionFailed := false
 	numOutputs := 0
+	cost := types.ZeroCurrency
 	for output := range outputs {
 		// Remember number of returned outputs.
 		numOutputs++
@@ -115,6 +115,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			TotalCost:            output.ExecutionCost,
 		}
 		// Update cost and refund.
+		if output.PotentialRefund.Cmp(output.ExecutionCost) < 0 {
+			err = errors.New("executionCost can never be smaller than the refund")
+			build.Critical(err)
+			return err
+		}
 		cost = output.ExecutionCost
 		refund = amountPaid.Add(output.PotentialRefund).Sub(cost)
 		// Remember that the execution wasn't successful.
@@ -159,10 +164,10 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	//	else {
 	//		// TODO: finalize spending for readonly programs once the MR is ready.
 	//	}
-	// Set the refund to 0. The program was finalized and we don't want to
-	// refund the renter beyond the difference between the paid amount and
-	// execution cost in the deferred statement anymore. This is a precaution in
-	// case we extend the code after this point.
+	// The program was finalized and we don't want to refund the renter beyond
+	// the difference between the paid amount and execution cost in the deferred
+	// statement anymore. This is a precaution in case we extend the code after
+	// this point.
 	refund = amountPaid.Sub(cost)
 	return nil
 }
