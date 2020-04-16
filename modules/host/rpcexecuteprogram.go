@@ -24,7 +24,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to process paymnet")
 	}
-	if !pd.AddedCollateral().Equals(types.ZeroCurrency) {
+	if !pd.AddedCollateral().IsZero() {
 		return fmt.Errorf("no collateral should be moved but got %v", pd.AddedCollateral().HumanString())
 	}
 	refundAccount := pd.AccountID()
