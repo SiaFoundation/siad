@@ -12,9 +12,8 @@ type (
 	// network.
 	RemoteFile struct {
 		checksum crypto.Hash
-		root     bool
 		siaPath  modules.SiaPath
-		skyfile  bool
+		root     bool
 		mu       sync.Mutex
 	}
 )
@@ -38,11 +37,4 @@ func (rf *RemoteFile) SiaPath() modules.SiaPath {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	return rf.siaPath
-}
-
-// Skyfile returns whether the RemoteFile represents a Skyfile.
-func (rf *RemoteFile) Skyfile() bool {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	return rf.skyfile
 }

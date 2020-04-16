@@ -213,8 +213,8 @@ func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disa
 // File returns the file queried by the user
 func (tn *TestNode) File(rf *RemoteFile) (fi modules.FileInfo, err error) {
 	var rfile api.RenterFile
-	if rf.Skyfile() {
-		rfile, err = tn.RenterSkyfileGet(rf.SiaPath(), rf.Root())
+	if rf.Root() {
+		rfile, err = tn.RenterFileRootGet(rf.SiaPath())
 	} else {
 		rfile, err = tn.RenterFileGet(rf.SiaPath())
 	}
