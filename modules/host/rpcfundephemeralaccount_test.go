@@ -17,7 +17,7 @@ import (
 // payByContract is a helper that creates a payment revision and uses it to pay
 // the specified amount. It will also verify the signature of the returned
 // response.
-func (rhp *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency) error {
+func (rhp *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
 	// create the revision.
 	revision, sig, err := rhp.paymentRevision(amount)
 	if err != nil {
@@ -26,7 +26,7 @@ func (rhp *renterHostPair) payByContract(stream siamux.Stream, amount types.Curr
 
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(revision, sig, rhp.accountID)
+	pbcRequest := newPayByContractRequest(revision, sig, refundAccount)
 	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 	if err != nil {
 		return err
@@ -72,7 +72,7 @@ func (rhp *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.
 	}
 
 	// Pay by contract.
-	err = rhp.payByContract(stream, amount)
+	err = rhp.payByContract(stream, amount, modules.ZeroAccountID)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}

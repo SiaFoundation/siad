@@ -166,7 +166,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		}
 
 		// pay using a contract.
-		err = pair.payByContract(stream, ptc)
+		err = pair.payByContract(stream, ptc, pair.accountID)
 		if err != nil {
 			return
 		}
