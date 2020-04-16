@@ -385,10 +385,11 @@ func (h *Host) managedUpdatePriceTable() {
 		UpdatePriceTableCost: his.MinBaseRPCPrice,
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		InitBaseCost:   his.MinBaseRPCPrice,
-		MemoryTimeCost: his.MinBaseRPCPrice,
-		ReadBaseCost:   his.MinBaseRPCPrice,
-		ReadLengthCost: his.MinBaseRPCPrice,
+		HasSectorBaseCost: his.MinBaseRPCPrice,
+		InitBaseCost:      his.MinBaseRPCPrice,
+		MemoryTimeCost:    his.MinBaseRPCPrice,
+		ReadBaseCost:      his.MinBaseRPCPrice,
+		ReadLengthCost:    his.MinBaseRPCPrice,
 	}
 	fastrand.Read(priceTable.UID[:])
 

@@ -115,6 +115,7 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		// Instruction costs
 		DropSectorsBaseCost: types.NewCurrency64(1),
 		DropSectorsUnitCost: types.NewCurrency64(1),
+		HasSectorBaseCost:   types.NewCurrency64(1),
 		ReadBaseCost:        types.NewCurrency64(1),
 		ReadLengthCost:      types.NewCurrency64(1),
 		WriteBaseCost:       types.NewCurrency64(1),

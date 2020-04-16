@@ -145,7 +145,7 @@ func MDMInitCost(pt *RPCPriceTable, programLen, numInstructions uint64) types.Cu
 
 // MDMHasSectorCost is the cost of executing a 'HasSector' instruction.
 func MDMHasSectorCost(pt *RPCPriceTable) (types.Currency, types.Currency) {
-	cost := pt.MemoryTimeCost.Mul64(1 << 20).Mul64(MDMTimeHasSector)
+	cost := pt.HasSectorBaseCost
 	refund := types.ZeroCurrency // no refund
 	return cost, refund
 }

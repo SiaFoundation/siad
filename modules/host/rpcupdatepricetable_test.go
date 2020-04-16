@@ -25,6 +25,7 @@ func TestPriceTableMarshaling(t *testing.T) {
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
 		ReadBaseCost:         types.SiacoinPrecision.Mul64(1e4),
 		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
+		HasSectorBaseCost:    types.SiacoinPrecision.Mul64(1e6),
 	}
 	fastrand.Read(pt.UID[:])
 
