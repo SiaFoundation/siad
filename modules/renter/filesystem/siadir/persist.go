@@ -2,14 +2,17 @@ package siadir
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -266,10 +269,14 @@ func (sd *SiaDir) SetPath(targetPath string) {
 	sd.path = targetPath
 }
 
-// UpdateMetadata updates the SiaDir metadata on disk
-func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
+// UpdateBubbledMetadata updates the SiaDir Metadata that is bubbled and saves
+// the changes to disk. For fields that are not bubbled, this method sets them
+// to the current values in the SiaDir metadata
+func (sd *SiaDir) UpdateBubbledMetadata(metadata Metadata) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
+	metadata.Mode = sd.metadata.Mode
+	metadata.Version = sd.metadata.Version
 	return sd.updateMetadata(metadata)
 }
 
@@ -282,6 +289,13 @@ func (sd *SiaDir) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHe
 	md.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
 	md.LastHealthCheckTime = lastHealthCheckTime
 	return sd.updateMetadata(md)
+}
+
+// UpdateMetadata updates the SiaDir metadata on disk
+func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.updateMetadata(metadata)
 }
 
 // updateMetadata updates the SiaDir metadata on disk
@@ -300,10 +314,24 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
 	sd.metadata.MinRedundancy = metadata.MinRedundancy
 	sd.metadata.ModTime = metadata.ModTime
+	sd.metadata.Mode = metadata.Mode
 	sd.metadata.NumFiles = metadata.NumFiles
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
 	sd.metadata.Size = metadata.Size
 	sd.metadata.StuckHealth = metadata.StuckHealth
+
+	sd.metadata.Version = metadata.Version
+
+	// Testing check to ensure new fields aren't missed
+	if build.Release == "testing" && !reflect.DeepEqual(sd.metadata, metadata) {
+		str := fmt.Sprintf(`Input metadata not equal to set metadata
+		metadata
+		%v
+		sd.metadata
+		%v`, metadata, sd.metadata)
+		build.Critical(str)
+	}
+
 	return sd.saveDir()
 }
