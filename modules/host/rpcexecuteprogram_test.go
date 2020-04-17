@@ -144,7 +144,7 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 		}
 		// Read the output data.
 		output := make([]byte, resp.OutputLength, resp.OutputLength)
-		err = modules.RPCRead(stream, &output)
+		_, err = stream.Read(output)
 		if err != nil {
 			return nil, nil, err
 		}

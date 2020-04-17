@@ -132,7 +132,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 		// Send the output data in case the Error is nil
 		if output.Error == nil {
-			err = modules.RPCWrite(stream, output.Output)
+			_, err = stream.Write(output.Output)
 			if err != nil {
 				return errors.AddContext(err, "failed to send output data to peer")
 			}

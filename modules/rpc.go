@@ -11,9 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// RPCMaxLen is the maximum size of an RPC message.
-const RPCMaxLen = 1 << 25 // 32 MiB
-
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
 // set its own prices for the individual MDM instructions and RPC costs.
 type RPCPriceTable struct {
@@ -165,7 +162,7 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 // RPCRead tries to read the given object from the stream.
 func RPCRead(r io.Reader, obj interface{}) error {
 	resp := rpcResponse{nil, obj}
-	err := encoding.ReadObject(r, &resp, uint64(RPCMaxLen))
+	err := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
 	if err != nil {
 		return err
 	}
