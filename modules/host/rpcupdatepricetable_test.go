@@ -25,6 +25,7 @@ func TestPriceTableMarshaling(t *testing.T) {
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
 		ReadBaseCost:         types.SiacoinPrecision.Mul64(1e4),
 		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
+		HasSectorBaseCost:    types.SiacoinPrecision.Mul64(1e6),
 	}
 	fastrand.Read(pt.UID[:])
 
@@ -86,32 +87,32 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	t.Parallel()
 
 	// create a blank host tester
-	ht, err := blankHostTester(t.Name())
+	rhp, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	ht := rhp.ht
+	defer rhp.Close()
 
-	// track a copy of the host's current price table
-	pt := ht.host.staticPriceTables.managedCurrent()
-	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
-	fastrand.Read(pt.UID[:])
-	ht.host.staticPriceTables.managedTrack(&pt)
+	// negotiate a price table.
+	err = rhp.negotiatePriceTable()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// verify the price table is being tracked
-	ht.host.staticPriceTables.mu.RLock()
-	_, tracked := ht.host.staticPriceTables.guaranteed[pt.UID]
-	ht.host.staticPriceTables.mu.RUnlock()
+	pt := rhp.latestPT
+	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
+		t.Log("UID:", pt.UID)
+		t.Log("Guaranteed:", ht.host.staticPriceTables.guaranteed)
 		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
-	// sleep for the duration of the epxiry frequency, seeing as that is greater
+	// sleep for the duration of the expiry frequency, seeing as that is greater
 	// than the price guarantee period, it is the worst case
 	err = build.Retry(3, pruneExpiredRPCPriceTableFrequency, func() error {
-		ht.host.staticPriceTables.mu.RLock()
-		_, exists := ht.host.staticPriceTables.guaranteed[pt.UID]
-		ht.host.staticPriceTables.mu.RUnlock()
+		_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
 		if exists {
 			return errors.New("Expected RPC price table to be pruned because it should have expired")
 		}
@@ -131,11 +132,12 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	t.Parallel()
 
 	// setup a host and renter pair with an emulated file contract between them
-	ht, pair, err := newRenterHostPair(t.Name())
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	ht := pair.ht
+	defer pair.Close()
 
 	errMockRenterPriceGougingTooLow := errors.New("Cost too low")
 	errMockRenterPriceGougingTooHigh := errors.New("Cost too high")
@@ -164,29 +166,8 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return
 		}
 
-		// prepare an updated revision that pays the host
-		rev, sig, err := pair.paymentRevision(ptc)
-		if err != nil {
-			return
-		}
-
-		var aid modules.AccountID
-		err = aid.LoadString("prefix:deadbeef")
-		if err != nil {
-			return
-		}
-
-		// send PaymentRequest & PayByContractRequest
-		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(rev, sig, aid)
-		err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
-		if err != nil {
-			return
-		}
-
-		// receive PayByContractResponse
-		var payByResponse modules.PayByContractResponse
-		err = modules.RPCRead(stream, &payByResponse)
+		// pay using a contract.
+		err = pair.payByContract(stream, ptc, pair.accountID)
 		if err != nil {
 			return
 		}
@@ -258,4 +239,64 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if hErr != nil {
 		t.Fatalf("Expected no err, received '%v'", hErr)
 	}
+}
+
+// negotiatePriceTable gets a new price table from the host.
+func (pair *renterHostPair) negotiatePriceTable() error {
+	// create a test stream
+	stream := pair.newStream()
+	defer stream.Close()
+
+	// write the rpc id
+	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		return err
+	}
+
+	// read the updated RPC price table
+	var update modules.RPCUpdatePriceTableResponse
+	if err = modules.RPCRead(stream, &update); err != nil {
+		return err
+	}
+
+	// unmarshal the JSON into a price table
+	var pt modules.RPCPriceTable
+	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
+		return err
+	}
+
+	// Send the payment request.
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	if err != nil {
+		return err
+	}
+
+	// Send the payment details.
+	rev, sig, err := pair.paymentRevision(pt.UpdatePriceTableCost)
+	if err != nil {
+		return err
+	}
+	pbcr := newPayByContractRequest(rev, sig, pair.accountID)
+	err = modules.RPCWrite(stream, pbcr)
+	if err != nil {
+		return err
+	}
+
+	// Receive payment confirmation.
+	var pc modules.PayByContractResponse
+	err = modules.RPCRead(stream, &pc)
+	if err != nil {
+		return err
+	}
+	pair.latestPT = &pt
+	return nil
+}
+
+// newStream creates a stream which can be used to talk to the host.
+func (pair *renterHostPair) newStream() siamux.Stream {
+	stream, err := pair.ht.host.staticMux.NewStream(modules.HostSiaMuxSubscriberName, pair.ht.host.staticMux.Address().String(), pair.ht.host.staticMux.PublicKey())
+	if err != nil {
+		panic(err)
+	}
+	return stream
 }

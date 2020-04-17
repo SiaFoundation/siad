@@ -14,6 +14,78 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
+// payByContract is a helper that creates a payment revision and uses it to pay
+// the specified amount. It will also verify the signature of the returned
+// response.
+func (rhp *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
+	// create the revision.
+	revision, sig, err := rhp.paymentRevision(amount)
+	if err != nil {
+		return err
+	}
+
+	// send PaymentRequest & PayByContractRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+	pbcRequest := newPayByContractRequest(revision, sig, refundAccount)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return err
+	}
+
+	// verify the host signature
+	if err := crypto.VerifyHash(crypto.HashAll(revision), rhp.ht.host.secretKey.PublicKey(), payByResponse.Signature); err != nil {
+		return errors.New("could not verify host signature")
+	}
+	return nil
+}
+
+// fundEphemeralAccount funds an account with a certain amount of money.
+func (rhp *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+	// create stream
+	stream := rhp.newStream()
+	defer stream.Close()
+
+	// Write RPC ID.
+	err := modules.RPCWrite(stream, modules.RPCFundAccount)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// Write price table id.
+	err = modules.RPCWrite(stream, rhp.latestPT.UID)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// send fund account request
+	req := modules.FundAccountRequest{Account: rhp.accountID}
+	err = modules.RPCWrite(stream, req)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// Pay by contract.
+	err = rhp.payByContract(stream, amount, modules.ZeroAccountID)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// receive FundAccountResponse
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+	return resp, nil
+}
+
 // TestFundEphemeralAccountRPC tests the FundEphemeralAccountRPC by manually
 // calling the RPC handler.
 func TestFundEphemeralAccountRPC(t *testing.T) {
@@ -31,6 +103,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	// fetch some host variables
 	pt := ht.host.staticPriceTables.managedCurrent()
+	ht.host.staticPriceTables.managedTrack(&pt)
 	bh := ht.host.BlockHeight()
 	hpk := ht.host.PublicKey()
 	his := ht.host.InternalSettings()
@@ -70,9 +143,15 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	refundAccount := modules.ZeroAccountID
 
 	renterFunc := func(stream siamux.Stream, revision types.FileContractRevision, signature crypto.Signature, refundAccount modules.AccountID) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
+		// send price table uid
+		err := modules.RPCWrite(stream, pt.UID)
+		if err != nil {
+			return nil, nil, err
+		}
+
 		// send fund account request
 		req := modules.FundAccountRequest{Account: accountID}
-		err := modules.RPCWrite(stream, req)
+		err = modules.RPCWrite(stream, req)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -102,7 +181,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	hostFunc := func(stream siamux.Stream) error {
-		err := ht.host.managedRPCFundEphemeralAccount(stream, pt)
+		err := ht.host.managedRPCFundEphemeralAccount(stream)
 		if err != nil {
 			return modules.RPCWriteError(stream, err)
 		}
@@ -123,7 +202,10 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		defer hStream.Close()
 
 		var rErr, hErr error
-		sig := revisionSignature(rev, bh, sk)
+		mu.Lock()
+		height := bh
+		mu.Unlock()
+		sig := revisionSignature(rev, height, sk)
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
@@ -275,7 +357,10 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer rStream.Close()
-		sig := revisionSignature(rev, bh, sk)
+		mu.Lock()
+		height := bh
+		mu.Unlock()
+		sig := revisionSignature(rev, height, sk)
 		fastrand.Read(sig[:4]) // corrupt the signature
 		_, _, rErr = renterFunc(rStream, rev, sig, refundAccount)
 	}()

@@ -33,7 +33,7 @@ func NewDropSectorsInstruction(numSectorsOffset uint64, merkleProof bool) module
 
 // staticDecodeDropSectorsInstruction creates a new 'DropSectors' instruction from the
 // provided generic instruction.
-func (p *Program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierDropSectors {
 		return nil, fmt.Errorf("expected specifier %v but got %v",
@@ -128,11 +128,6 @@ func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) 
 // the lifetime of the instruction.
 func (i *instructionDropSectors) Memory() uint64 {
 	return modules.MDMDropSectorsMemory()
-}
-
-// ReadOnly for the 'DropSectors' instruction is 'false'.
-func (i *instructionDropSectors) ReadOnly() bool {
-	return false
 }
 
 // Time returns the execution time of the 'DropSectors' instruction.

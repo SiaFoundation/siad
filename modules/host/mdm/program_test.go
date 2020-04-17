@@ -15,7 +15,7 @@ import (
 
 // updateRunningCosts is a testing helper function for updating the running
 // costs of a program after adding an instruction.
-func updateRunningCosts(pt modules.RPCPriceTable, runningCost, runningRefund, runningCollateral types.Currency, runningMemory uint64, cost, refund, collateral types.Currency, memory, time uint64) (types.Currency, types.Currency, types.Currency, uint64) {
+func updateRunningCosts(pt *modules.RPCPriceTable, runningCost, runningRefund, runningCollateral types.Currency, runningMemory uint64, cost, refund, collateral types.Currency, memory, time uint64) (types.Currency, types.Currency, types.Currency, uint64) {
 	runningMemory = runningMemory + memory
 	memoryCost := modules.MDMMemoryCost(pt, runningMemory, time)
 	runningCost = runningCost.Add(memoryCost).Add(cost)
@@ -30,41 +30,25 @@ func TestNewEmptyProgram(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
 	var r io.Reader
-	// Execute the program.
+	// Shouldn't be able to execute empty program.
 	pt := newTestPriceTable()
-	initCost := modules.MDMInitCost(pt, 0, 0)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, initCost, types.ZeroCurrency, newTestStorageObligation(true), 0, r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// There should be no outputs since there were no instructions.
-	numOutputs := 0
-	for range outputs {
-		numOutputs++
-	}
-	if numOutputs > 0 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 0)
-	}
-	// No need to finalize the progra since an empty program is readonly.
-	if finalize != nil {
-		t.Fatal("finalize callback should be nil for readonly program")
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.MDMInitCost(pt, 0, 0), types.ZeroCurrency, newTestStorageObligation(true), 0, r)
+	if !errors.Contains(err, ErrEmptyProgram) {
+		t.Fatal("expected ErrEmptyProgram", err)
 	}
 }
 
-// TestNewEmptyProgramLowBudget runs a program without instructions with
-// insufficient funds.
-func TestNewEmptyProgramLowBudget(t *testing.T) {
+// TestNewProgramLowInitBudget runs a program that doesn't even have enough funds to init the MDM.
+func TestNewProgramLowInitBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	var r io.Reader
+	program, data, _, _, _, _ := newHasSectorProgram(crypto.Hash{}, newTestPriceTable())
+	r := bytes.NewReader(data)
 	// Execute the program.
 	pt := newTestPriceTable()
-	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, types.ZeroCurrency, types.ZeroCurrency, newTestStorageObligation(true), 0, r)
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, program, types.ZeroCurrency, types.ZeroCurrency, newTestStorageObligation(true), 0, r)
 	if !errors.Contains(err, modules.ErrMDMInsufficientBudget) {
 		t.Fatal("missing error")
-	}
-	if err == nil {
-		t.Fatal("ExecuteProgram should return an error")
 	}
 }
 

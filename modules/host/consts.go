@@ -45,13 +45,6 @@ const (
 )
 
 var (
-	// DefaultStoragePrice defines the starting price for hosts selling
-	// storage. We try to match a number that is both reasonably profitable and
-	// reasonably competitive.
-	DefaultStoragePrice = types.SiacoinPrecision.Mul64(50).Div(modules.BlockBytesPerMonthTerabyte) // 50 SC / TB / Month
-)
-
-var (
 	// connectablityCheckFirstWait defines how often the host's connectability
 	// check is run.
 	connectabilityCheckFirstWait = build.Select(build.Var{

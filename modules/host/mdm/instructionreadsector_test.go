@@ -14,7 +14,7 @@ import (
 
 // newReadSectorInstruction is a convenience method for creating a single
 // 'ReadSector' instruction.
-func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
+func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	i := NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
 	cost, refund := modules.MDMReadCost(pt, length)
 	collateral := modules.MDMReadCollateral()
@@ -24,7 +24,7 @@ func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	data := make([]byte, 8+8+crypto.HashSize)
 	binary.LittleEndian.PutUint64(data[:8], length)
 	binary.LittleEndian.PutUint64(data[8:16], offset)
@@ -49,7 +49,7 @@ func TestInstructionReadSector(t *testing.T) {
 	readLen := modules.SectorSize
 	// Execute it.
 	so := newTestStorageObligation(true)
-	so.sectorRoots = randomSectorRoots(10)
+	so.sectorRoots = randomSectorRoots(initialContractSectors)
 	instructions, programData, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))

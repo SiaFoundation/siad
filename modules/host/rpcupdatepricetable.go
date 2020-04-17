@@ -2,6 +2,7 @@ package host
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -17,7 +18,6 @@ func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table and give it a random UID
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
-
 	// update the epxiry to ensure prices are guaranteed for the duration of the
 	// rpcPriceGuaranteePeriod
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
@@ -47,10 +47,20 @@ func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
 	if payment.Amount().Cmp(pt.UpdatePriceTableCost) < 0 {
 		return modules.ErrInsufficientPaymentForRPC
 	}
+	// Don't expect any added collateral.
+	if !payment.AddedCollateral().IsZero() {
+		return fmt.Errorf("no collateral should be moved but got %v", payment.AddedCollateral().HumanString())
+	}
 
 	// after payment has been received, track the price table in the host's list
 	// of price tables
 	h.staticPriceTables.managedTrack(&pt)
 
+	// refund the money we didn't use.
+	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)
+	err = h.staticAccountManager.callRefund(payment.AccountID(), refund)
+	if err != nil {
+		return errors.AddContext(err, "failed to refund client")
+	}
 	return nil
 }

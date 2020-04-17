@@ -362,20 +362,6 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 // AggregateLastHealthCheckTime fields of the directory metadata by reading all
 // the subdirs of the directory.
 func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error {
-	// Open dir and fetch current metadata.
-	entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil {
-		return err
-	}
-	metadata, err := entry.Metadata()
-	if err != nil {
-		return err
-	}
-
-	// Set the LastHealthCheckTimes to the current time.
-	metadata.LastHealthCheckTime = time.Now()
-	metadata.AggregateLastHealthCheckTime = time.Now()
-
 	// Read directory
 	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
 	if err != nil {
@@ -383,7 +369,8 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 		return err
 	}
 
-	// Iterate over directory
+	// Iterate over directory and find the oldest AggregateLastHealthCheckTime
+	aggregateLastHealthCheckTime := time.Now()
 	for _, fi := range fileinfos {
 		// Check to make sure renter hasn't been shutdown
 		select {
@@ -403,8 +390,8 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 				return err
 			}
 			// Update AggregateLastHealthCheckTime.
-			if dirMetadata.AggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
-				metadata.AggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
+			if dirMetadata.AggregateLastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
+				aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
 			}
 		} else {
 			// Ignore everything that is not a directory since files should be updated
@@ -412,8 +399,14 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 			continue
 		}
 	}
+
 	// Write changes to disk.
-	return entry.UpdateMetadata(metadata)
+	entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
+	if err != nil {
+		return err
+	}
+	defer entry.Close()
+	return entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
 }
 
 // callThreadedBubbleMetadata is the thread safe method used to call

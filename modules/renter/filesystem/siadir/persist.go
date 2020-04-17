@@ -125,34 +125,6 @@ func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) 
 	return sd, err
 }
 
-// UpdateMetadata updates the SiaDir metadata on disk
-func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-	sd.metadata.AggregateHealth = metadata.AggregateHealth
-	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
-	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
-	sd.metadata.AggregateModTime = metadata.AggregateModTime
-	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
-	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
-	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
-	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
-	sd.metadata.AggregateSize = metadata.AggregateSize
-	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
-
-	sd.metadata.Health = metadata.Health
-	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
-	sd.metadata.MinRedundancy = metadata.MinRedundancy
-	sd.metadata.ModTime = metadata.ModTime
-	sd.metadata.NumFiles = metadata.NumFiles
-	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
-	sd.metadata.NumSubDirs = metadata.NumSubDirs
-	sd.metadata.RemoteHealth = metadata.RemoteHealth
-	sd.metadata.Size = metadata.Size
-	sd.metadata.StuckHealth = metadata.StuckHealth
-	return sd.saveDir()
-}
-
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
 func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.Update, error) {
@@ -294,4 +266,48 @@ func (sd *SiaDir) SetPath(targetPath string) {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	sd.path = targetPath
+}
+
+// UpdateMetadata updates the SiaDir metadata on disk
+func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.updateMetadata(metadata)
+}
+
+// UpdateLastHealthCheckTime updates the SiaDir LastHealthCheckTime and
+// AggregateLastHealthCheckTime and saves the changes to disk
+func (sd *SiaDir) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime time.Time) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	md := sd.metadata
+	md.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
+	md.LastHealthCheckTime = lastHealthCheckTime
+	return sd.updateMetadata(md)
+}
+
+// updateMetadata updates the SiaDir metadata on disk
+func (sd *SiaDir) updateMetadata(metadata Metadata) error {
+	sd.metadata.AggregateHealth = metadata.AggregateHealth
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
+	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
+	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
+	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
+	sd.metadata.AggregateSize = metadata.AggregateSize
+	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
+
+	sd.metadata.Health = metadata.Health
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	sd.metadata.MinRedundancy = metadata.MinRedundancy
+	sd.metadata.ModTime = metadata.ModTime
+	sd.metadata.NumFiles = metadata.NumFiles
+	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
+	sd.metadata.NumSubDirs = metadata.NumSubDirs
+	sd.metadata.RemoteHealth = metadata.RemoteHealth
+	sd.metadata.Size = metadata.Size
+	sd.metadata.StuckHealth = metadata.StuckHealth
+	return sd.saveDir()
 }

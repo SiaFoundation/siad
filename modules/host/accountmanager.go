@@ -280,11 +280,31 @@ func newFingerprintMap() *fingerprintMap {
 	}
 }
 
-// callDeposit will deposit the amount into the ephemeral account with given id.
-// This will increase the host's current risk by the deposit amount. This is
+// callDeposit calls managedDeposit with refund set to 'false'.
+func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
+	return am.managedDeposit(id, amount, false, syncChan)
+}
+
+// callRefund calls managedDeposit with refund set to 'true' and a closed
+// syncChan.
+func (am *accountManager) callRefund(id modules.AccountID, amount types.Currency) error {
+	// Nothing to refund.
+	if amount.IsZero() {
+		return nil
+	}
+	syncChan := make(chan struct{})
+	close(syncChan)
+	return am.managedDeposit(id, amount, true, syncChan)
+}
+
+// managedDeposit will deposit the amount into the ephemeral account with given
+// id. This will increase the host's current risk by the deposit amount. This is
 // because until the file contract has been fsynced, the host is at risk to
 // losing money. The caller passes in a channel that gets closed when the file
 // contract is fsynced. When that happens, the current risk is lowered.
+//
+// calling managedDeposit with refund = true will ignore the max EA balance
+// restriction.
 //
 // The deposit is subject to maintaining ACID properties between the file
 // contract (FC) and the ephemeral account (EA). In order to document the model,
@@ -317,7 +337,7 @@ func newFingerprintMap() *fingerprintMap {
 // 5. Failure after RPC calls deposit, after EA is updated, after AM returns,
 // after FC sync: EA is updated, FC is updated, there is no risk to the host at
 // this point
-func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
+func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Currency, refund bool, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
 	his := am.h.InternalSettings()
@@ -326,7 +346,9 @@ func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currenc
 
 	// Initiate the deposit.
 	persistResultChan := make(chan error)
-	err := am.managedDeposit(id, amount, maxRisk, maxBalance, bh, persistResultChan, syncChan)
+	am.mu.Lock()
+	err := am.deposit(id, amount, maxRisk, maxBalance, bh, refund, persistResultChan, syncChan)
+	am.mu.Unlock()
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
@@ -370,41 +392,50 @@ func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypt
 // callConsensusChanged is called by the host whenever it processed a change to
 // the consensus. We use it to remove fingerprints which have been expired.
 func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHeight, newHeight types.BlockHeight) {
-	// If the host is not synced, withdrawals are disabled. In this case we also
-	// do not want to rotate the fingerprints.
-	am.mu.Lock()
-	if !cc.Synced {
-		am.withdrawalsInactive = true
-		am.mu.Unlock()
-		return
-	}
-	am.withdrawalsInactive = false
-
-	// Rotate only if the new block height is larger than the old block height,
-	// and the min height is between the old and new blockheight. We have to
-	// take into account the old and new height due to blockchain reorgs that
-	// could cause the blockheight to increase (or decrease) by multiple blocks
-	// at a time, potentially skipping over the min height of the bucket.
-	min, _ := currentBucketRange(newHeight)
-	if !(oldHeight < newHeight && oldHeight < min && min <= newHeight) {
-		am.mu.Unlock()
-		return
-	}
-
-	am.fingerprints.rotate()
-	am.mu.Unlock()
-	err := am.staticAccountsPersister.callRotateFingerprintBuckets()
-	if err != nil {
-		am.h.log.Critical("Could not rotate fingerprints on disk", err)
-	}
-}
-
-// managedDeposit performs a couple of steps in preparation of the
-// deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
+	// If the host is not synced, withdrawals are disabled. In this case we
+	// also do not want to rotate the fingerprints.
+	if !cc.Synced {
+		am.withdrawalsInactive = true
+		return
+	}
+
+	// If withdrawals were already active (meaning the host was synced) and
+	// if the new blockheight is not one at which we expect to rotate, we
+	// can return early. In all other cases we rotate the buckets both in
+	// memory and on disk. We rotate when the new height crosses over the
+	// new current bucket range. We have to take into account the old and
+	// new height due to blockchain reorgs that could cause the blockheight
+	// to increase (or decrease) by multiple blocks at a time, potentially
+	// skipping over the min height of the bucket.
+	min, _ := currentBucketRange(newHeight)
+	withdrawalsActive := !am.withdrawalsInactive
+	shouldRotate := oldHeight < newHeight && oldHeight < min && min <= newHeight
+	if withdrawalsActive && !shouldRotate {
+		return
+	}
+
+	// Rotate fingerprint buckets on disk
+	am.mu.Unlock()
+	errRotate := am.staticAccountsPersister.callRotateFingerprintBuckets()
+	am.mu.Lock()
+
+	// Rotate in memory only if the on-disk rotation succeeded
+	if errRotate == nil {
+		am.fingerprints.rotate()
+	} else if errRotate != errRotationDisabled {
+		am.h.log.Critical("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactived", errRotate)
+	}
+
+	// Disable withdrawals on failed rotation
+	am.withdrawalsInactive = errRotate != nil
+}
+
+// deposit performs a couple of steps in preparation of the
+// deposit. If everything checks out it will commit the deposit.
+func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, refund bool, persistResultChan chan error, syncChan chan struct{}) error {
 	// Open the account, if the account does not exist yet, it will be created.
 	acc, err := am.openAccount(id)
 	if err != nil {
@@ -412,7 +443,7 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount, maxRisk, 
 	}
 
 	// Verify if the deposit does not exceed the maximum
-	if acc.depositExceedsMaxBalance(amount, maxBalance) {
+	if !refund && acc.depositExceedsMaxBalance(amount, maxBalance) {
 		return ErrBalanceMaxExceeded
 	}
 

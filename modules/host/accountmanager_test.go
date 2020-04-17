@@ -78,6 +78,11 @@ func TestAccountMaxBalance(t *testing.T) {
 	if !errors.Contains(err, ErrBalanceMaxExceeded) {
 		t.Fatal(err)
 	}
+	// A refund should ignore the max account balance.
+	err = am.callRefund(accountID, exceedingBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestAccountCallWithdraw verifies we can withdraw from an ephemeral account.
