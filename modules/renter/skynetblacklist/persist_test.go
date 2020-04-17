@@ -329,7 +329,7 @@ func TestMarshalSia(t *testing.T) {
 
 	// Test unmarshalPersistLinks
 	r = bytes.NewBuffer(buf.Bytes())
-	blacklist, err := unmarshalBlacklist(r, 2)
+	blacklist, err := unmarshalBlacklist(r)
 	if err != nil {
 		t.Fatal(err)
 	}

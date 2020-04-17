@@ -358,7 +358,7 @@ func TestMarshalSia(t *testing.T) {
 
 	// Test unmarshalPersistPortals
 	r = bytes.NewBuffer(buf.Bytes())
-	portals, err := unmarshalPortals(r, 2)
+	portals, err := unmarshalPortals(r)
 	if err != nil {
 		t.Fatal(err)
 	}

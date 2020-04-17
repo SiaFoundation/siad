@@ -69,11 +69,14 @@ func marshalSia(w io.Writer, address modules.NetAddress, public, listed bool) er
 }
 
 // unmarshalPortals unmarshals the sia encoded portals list
-func unmarshalPortals(r io.Reader, numPortals int64) (map[modules.NetAddress]bool, error) {
-	// Unmarshal portals one by one
+func unmarshalPortals(r io.Reader) (map[modules.NetAddress]bool, error) {
 	portals := make(map[modules.NetAddress]bool)
-	for i := int64(0); i < numPortals; i++ {
+	// Unmarshal portals one by one until EOF.
+	for {
 		address, public, listed, err := unmarshalSia(r)
+		if errors.Contains(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -299,10 +302,16 @@ func (sp *SkynetPortals) load() error {
 		return errors.AddContext(err, "unable to unmarshal metadata bytes")
 	}
 
-	// Check if there is a persisted portals list after the metatdata
+	// Check if there is a persisted portals list after the metadata.
 	goodBytes := sp.persistLength - metadataPageSize
 	if goodBytes <= 0 {
 		return nil
+	}
+
+	// Truncate the file to remove any corrupted data that may have been added.
+	err = f.Truncate(sp.persistLength)
+	if err != nil {
+		return err
 	}
 
 	// Seek to the start of the persisted portals list
@@ -311,7 +320,7 @@ func (sp *SkynetPortals) load() error {
 		return errors.AddContext(err, "unable to seek to start of persisted portals list")
 	}
 	// Decode persist portals
-	portals, err := unmarshalPortals(f, goodBytes/persistPortalSize)
+	portals, err := unmarshalPortals(f)
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal persist portals")
 	}

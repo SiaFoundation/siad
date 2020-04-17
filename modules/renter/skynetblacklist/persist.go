@@ -63,11 +63,14 @@ func marshalSia(w io.Writer, merkleRoot crypto.Hash, blacklisted bool) error {
 }
 
 // unmarshalBlacklist unmarshals the sia encoded blacklist
-func unmarshalBlacklist(r io.Reader, numMerkleRoots int64) (map[crypto.Hash]struct{}, error) {
-	// Unmarshal numLinks blacklisted links one by one
+func unmarshalBlacklist(r io.Reader) (map[crypto.Hash]struct{}, error) {
 	blacklist := make(map[crypto.Hash]struct{})
-	for i := int64(0); i < numMerkleRoots; i++ {
+	// Unmarshal blacklisted links one by one until EOF.
+	for {
 		merkleRoot, blacklisted, err := unmarshalSia(r)
+		if errors.Contains(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -229,10 +232,16 @@ func (sb *SkynetBlacklist) load() error {
 		return errors.AddContext(err, "unable to unmarshal metadata bytes")
 	}
 
-	// Check if there is a persisted blacklist after the metatdata
+	// Check if there is a persisted blacklist after the metadata
 	goodBytes := sb.persistLength - metadataPageSize
 	if goodBytes <= 0 {
 		return nil
+	}
+
+	// Truncate the file to remove any corrupted data that may have been added.
+	err = f.Truncate(sb.persistLength)
+	if err != nil {
+		return err
 	}
 
 	// Seek to the start of the persisted blacklist
@@ -241,7 +250,7 @@ func (sb *SkynetBlacklist) load() error {
 		return errors.AddContext(err, "unable to seek to start of persisted blacklist")
 	}
 	// Decode persist links
-	blacklist, err := unmarshalBlacklist(f, goodBytes/persistMerkleRootSize)
+	blacklist, err := unmarshalBlacklist(f)
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal persistLinks")
 	}
