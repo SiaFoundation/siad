@@ -57,8 +57,8 @@ var (
 	// ErrParseTimeoutAmount is returned when the input is unable to be parsed
 	// into a timeout unit due to a malformed amount.
 	ErrParseTimeoutAmount = errors.New("malformed amount")
-	// errTimeoutUnits is returned when the input is unable to be parsed into a
-	// timeout unit due to missing units.
+	// ErrParseTimeoutUnits is returned when the input is unable to be parsed
+	// into a timeout unit due to missing units.
 	ErrParseTimeoutUnits = errors.New("amount is missing timeout units")
 )
 

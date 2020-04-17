@@ -35,6 +35,8 @@ func (e ErrAllocLimitExceeded) Error() string {
 }
 
 var (
+	// ErrBadPointer is returned when the given value cannot be decoded into a
+	// valid pointer
 	ErrBadPointer = errors.New("cannot decode into invalid pointer")
 )
 

@@ -11,11 +11,19 @@ import (
 )
 
 var (
-	ErrBadMinerPayouts        = errors.New("miner payout sum does not equal block subsidy")
-	ErrEarlyTimestamp         = errors.New("block timestamp is too early")
+	// ErrBadMinerPayouts is returned when the miner payout does not equal the
+	// block subsidy
+	ErrBadMinerPayouts = errors.New("miner payout sum does not equal block subsidy")
+	// ErrEarlyTimestamp is returned when the block's timestamp is too early
+	ErrEarlyTimestamp = errors.New("block timestamp is too early")
+	// ErrExtremeFutureTimestamp is returned when the block's timestamp is too
+	// far in the future
 	ErrExtremeFutureTimestamp = errors.New("block timestamp too far in future, discarded")
-	ErrFutureTimestamp        = errors.New("block timestamp too far in future, but saved for later use")
-	ErrLargeBlock             = errors.New("block is too large to be accepted")
+	// ErrFutureTimestamp is returned when the block's timestamp is too far in
+	// the future to be used now but it's saved for future use
+	ErrFutureTimestamp = errors.New("block timestamp too far in future, but saved for later use")
+	// ErrLargeBlock is returned when the block is too large to be accepted
+	ErrLargeBlock = errors.New("block is too large to be accepted")
 )
 
 // blockValidator validates a Block against a set of block validity rules.
