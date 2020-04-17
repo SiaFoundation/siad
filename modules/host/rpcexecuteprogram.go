@@ -109,7 +109,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			Error:                output.Error,
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
-			Output:               output.Output,
+			OutputLength:         uint64(len(output.Output)),
 			PotentialRefund:      output.PotentialRefund,
 			Proof:                output.Proof,
 			TotalCost:            output.ExecutionCost,
@@ -128,6 +128,14 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		err = modules.RPCWrite(stream, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
+		}
+
+		// Send the output data in case the Error is nil
+		if output.Error == nil {
+			err = modules.RPCWrite(stream, output.Output)
+			if err != nil {
+				return errors.AddContext(err, "failed to send output data to peer")
+			}
 		}
 	}
 	// Sanity check that we received at least 1 output.
