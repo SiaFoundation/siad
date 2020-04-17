@@ -8,11 +8,11 @@ import (
 )
 
 var (
-	// errObligationLocked is returned if the file contract being requested is
+	// ErrObligationLocked is returned if the file contract being requested is
 	// currently locked. The lock can be in place if there is a storage proof
 	// being submitted, if there is another renter altering the contract, or if
 	// there have been network connections with have not resolved yet.
-	errObligationLocked = errors.New("the requested file contract is currently locked")
+	ErrObligationLocked = errors.New("the requested file contract is currently locked")
 )
 
 // managedLockStorageObligation puts a storage obligation under lock in the
@@ -58,7 +58,7 @@ func (h *Host) managedTryLockStorageObligation(soid types.FileContractID, timeou
 		delete(h.lockedStorageObligations, soid)
 	}
 	h.mu.Unlock()
-	return errObligationLocked
+	return ErrObligationLocked
 }
 
 // managedUnlockStorageObligation takes a storage obligation out from under lock

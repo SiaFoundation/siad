@@ -20,46 +20,46 @@ import (
 )
 
 var (
-	// errParseCurrencyAmount is returned when the input is unable to be parsed
+	// ErrParseCurrencyAmount is returned when the input is unable to be parsed
 	// into a currency unit due to a malformed amount.
-	errParseCurrencyAmount = errors.New("malformed amount")
-	// errParseCurrencyInteger is returned when the input is unable to be parsed
+	ErrParseCurrencyAmount = errors.New("malformed amount")
+	// ErrParseCurrencyInteger is returned when the input is unable to be parsed
 	// into a currency unit due to a non-integer value.
-	errParseCurrencyInteger = errors.New("non-integer number of hastings")
-	// errParseCurrencyUnits is returned when the input is unable to be parsed
+	ErrParseCurrencyInteger = errors.New("non-integer number of hastings")
+	// ErrParseCurrencyUnits is returned when the input is unable to be parsed
 	// into a currency unit due to missing units.
-	errParseCurrencyUnits = errors.New("amount is missing currency units; run 'wallet --help' for a list of units. Currency units are case sensitive")
+	ErrParseCurrencyUnits = errors.New("amount is missing currency units; run 'wallet --help' for a list of units. Currency units are case sensitive")
 
-	// errParsePeriodAmount is returned when the input is unable to be parsed
+	// ErrParsePeriodAmount is returned when the input is unable to be parsed
 	// into a period unit due to a malformed amount.
-	errParsePeriodAmount = errors.New("malformed amount")
-	// errParsePeriodUnits is returned when the input is unable to be parsed
+	ErrParsePeriodAmount = errors.New("malformed amount")
+	// ErrParsePeriodUnits is returned when the input is unable to be parsed
 	// into a period unit due to missing units.
-	errParsePeriodUnits = errors.New("amount is missing period units")
+	ErrParsePeriodUnits = errors.New("amount is missing period units")
 
-	// errParseRateLimitAmount is returned when the input is unable to be parsed into
+	// ErrParseRateLimitAmount is returned when the input is unable to be parsed into
 	// a rate limit unit due to a malformed amount.
-	errParseRateLimitAmount = errors.New("malformed amount")
-	// errParseRateLimitNoAmount is returned when the input is unable to be
+	ErrParseRateLimitAmount = errors.New("malformed amount")
+	// ErrParseRateLimitNoAmount is returned when the input is unable to be
 	// parsed into a rate limit unit due to no amount being given.
-	errParseRateLimitNoAmount = errors.New("amount is missing")
-	// errParseRateLimitUnits is returned when the input is unable to be parsed
+	ErrParseRateLimitNoAmount = errors.New("amount is missing")
+	// ErrParseRateLimitUnits is returned when the input is unable to be parsed
 	// into a rate limit unit due to missing units.
-	errParseRateLimitUnits = errors.New("amount is missing rate limit units")
+	ErrParseRateLimitUnits = errors.New("amount is missing rate limit units")
 
-	// errParseSizeAmount is returned when the input is unable to be parsed into
+	// ErrParseSizeAmount is returned when the input is unable to be parsed into
 	// a file size unit due to a malformed amount.
-	errParseSizeAmount = errors.New("malformed amount")
-	// errParseSizeUnits is returned when the input is unable to be parsed into
+	ErrParseSizeAmount = errors.New("malformed amount")
+	// ErrParseSizeUnits is returned when the input is unable to be parsed into
 	// a file size unit due to missing units.
-	errParseSizeUnits = errors.New("amount is missing filesize units")
+	ErrParseSizeUnits = errors.New("amount is missing filesize units")
 
-	// errParseTimeoutAmount is returned when the input is unable to be parsed
+	// ErrParseTimeoutAmount is returned when the input is unable to be parsed
 	// into a timeout unit due to a malformed amount.
-	errParseTimeoutAmount = errors.New("malformed amount")
+	ErrParseTimeoutAmount = errors.New("malformed amount")
 	// errTimeoutUnits is returned when the input is unable to be parsed into a
 	// timeout unit due to missing units.
-	errParseTimeoutUnits = errors.New("amount is missing timeout units")
+	ErrParseTimeoutUnits = errors.New("amount is missing timeout units")
 )
 
 // parseFilesize converts strings of form '10GB' or '10 gb' to a size in bytes.
@@ -88,7 +88,7 @@ func parseFilesize(strSize string) (string, error) {
 			value := strings.TrimSpace(strings.TrimSuffix(strSize, unit.suffix))
 			r, ok := new(big.Rat).SetString(value)
 			if !ok {
-				return "", errParseSizeAmount
+				return "", ErrParseSizeAmount
 			}
 			r.Mul(r, new(big.Rat).SetInt(big.NewInt(unit.multiplier)))
 			if !r.IsInt() {
@@ -99,7 +99,7 @@ func parseFilesize(strSize string) (string, error) {
 		}
 	}
 
-	return "", errParseSizeUnits
+	return "", ErrParseSizeUnits
 }
 
 // periodUnits turns a period in terms of blocks to a number of weeks.
@@ -134,14 +134,14 @@ func parsePeriod(period string) (string, error) {
 			var base float64
 			_, err := fmt.Sscan(strings.TrimSuffix(period, unit.suffix), &base)
 			if err != nil {
-				return "", errParsePeriodAmount
+				return "", ErrParsePeriodAmount
 			}
 			blocks := int(base * unit.multiplier)
 			return fmt.Sprint(blocks), nil
 		}
 	}
 
-	return "", errParsePeriodUnits
+	return "", ErrParsePeriodUnits
 }
 
 // parseTimeout converts a duration specified in seconds, hours, days or weeks
@@ -172,14 +172,14 @@ func parseTimeout(duration string) (string, error) {
 			var base float64
 			_, err := fmt.Sscan(value, &base)
 			if err != nil {
-				return "", errParseTimeoutAmount
+				return "", ErrParseTimeoutAmount
 			}
 			seconds := int(base * unit.multiplier)
 			return fmt.Sprint(seconds), nil
 		}
 	}
 
-	return "", errParseTimeoutUnits
+	return "", ErrParseTimeoutUnits
 }
 
 // currencyUnits converts a types.Currency to a string with human-readable
@@ -223,7 +223,7 @@ func parseCurrency(amount string) (string, error) {
 			// scan into big.Rat
 			r, ok := new(big.Rat).SetString(value)
 			if !ok {
-				return "", errParseCurrencyAmount
+				return "", ErrParseCurrencyAmount
 			}
 			// convert units
 			exp := 24 + 3*(int64(i)-4)
@@ -231,7 +231,7 @@ func parseCurrency(amount string) (string, error) {
 			r.Mul(r, new(big.Rat).SetInt(mag))
 			// r must be an integer at this point
 			if !r.IsInt() {
-				return "", errParseCurrencyInteger
+				return "", ErrParseCurrencyInteger
 			}
 			return r.RatString(), nil
 		}
@@ -241,7 +241,7 @@ func parseCurrency(amount string) (string, error) {
 		return strings.TrimSuffix(amount, "H"), nil
 	}
 
-	return "", errParseCurrencyUnits
+	return "", ErrParseCurrencyUnits
 }
 
 // parseRatelimit converts a ratelimit input string of to an int64 representing
@@ -280,18 +280,18 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 
 		// Check for empty string meaning only the units were provided
 		if rateLimitStr == "" {
-			return 0, errParseRateLimitNoAmount
+			return 0, ErrParseRateLimitNoAmount
 		}
 
 		// convert string to float for exponation
 		rateLimitFloat, err := strconv.ParseFloat(rateLimitStr, 64)
 		if err != nil {
-			return 0, errors.Compose(errParseRateLimitAmount, err)
+			return 0, errors.Compose(ErrParseRateLimitAmount, err)
 		}
 		// Check for Bps to make sure it is greater than 8 Bps meaning that it is at
 		// least 1 B/s
 		if rateLimitFloat < 8 && rate.unit == "Bps" {
-			return 0, errors.AddContext(errParseRateLimitAmount, "Bps rate limit cannot be < 8 Bps")
+			return 0, errors.AddContext(ErrParseRateLimitAmount, "Bps rate limit cannot be < 8 Bps")
 		}
 
 		// Determine factor and convert to int64 for bps
@@ -300,7 +300,7 @@ func parseRatelimit(rateLimitStr string) (int64, error) {
 		return rateLimit, nil
 	}
 
-	return 0, errParseRateLimitUnits
+	return 0, ErrParseRateLimitUnits
 }
 
 // ratelimitUnits converts an int64 to a string with human-readable ratelimit

@@ -42,13 +42,13 @@ var (
 	// withdrawal message that has been spent already.
 	ErrWithdrawalSpent = errors.New("withdrawal message was already spent")
 
+	// ErrZeroAccountID occurs when an account is opened with the ZeroAccountID.
+	ErrZeroAccountID = errors.New("can't open an account with an empty account id")
+
 	// When the errMaxRiskReached dependency is specified this error is returned
 	// on withdraw or deposit when max risk is reached. It enables easy
 	// verification of when max risk is reached in tests. Used only in tests.
 	errMaxRiskReached = errors.New("errMaxRiskReached")
-
-	// errZeroAccountID occurs when an account is opened with the ZeroAccountID.
-	errZeroAccountID = errors.New("can't open an account with an empty account id")
 
 	// pruneExpiredAccountsFrequency is the frequency at which the account
 	// manager checks if it can expire accounts which have been inactive for too
@@ -933,7 +933,7 @@ func (am *accountManager) callAccountBalance(id modules.AccountID) types.Currenc
 // will be created.
 func (am *accountManager) openAccount(id modules.AccountID) (*account, error) {
 	if id.IsZeroAccount() {
-		return nil, errZeroAccountID
+		return nil, ErrZeroAccountID
 	}
 	acc, exists := am.accounts[id]
 	if exists {
