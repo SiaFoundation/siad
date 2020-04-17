@@ -2,7 +2,6 @@ package host
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // blockingPortForward is a dependency set that causes the host port forward
@@ -174,7 +172,7 @@ func TestHostStreamHandler(t *testing.T) {
 	}
 
 	// we recreate this on every error seeing as the host will have closed it
-	stream := newHostStream(ht.host)
+	stream := pair.newStream()
 
 	// write a random rpc id to it and expect it to fail
 	var randomRPCID types.Specifier
@@ -190,7 +188,7 @@ func TestHostStreamHandler(t *testing.T) {
 
 	// write a known rpc id to it, one that expects a price table but send a
 	// random price table uid and expect it to fail
-	stream = newHostStream(ht.host)
+	stream = pair.newStream()
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +207,7 @@ func TestHostStreamHandler(t *testing.T) {
 	// call the update price table RPC to obtain an actual price table, however
 	// try not paying for it, we expect a balance indicating this and we expect
 	// for the price table *not* to be known by the host
-	stream = newHostStream(ht.host)
+	stream = pair.newStream()
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +239,7 @@ func TestHostStreamHandler(t *testing.T) {
 	}
 
 	// do that again but now effectively pay for the price table
-	stream = newHostStream(ht.host)
+	stream = pair.newStream()
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +274,7 @@ func TestHostStreamHandler(t *testing.T) {
 
 	// now that we have a price table we can test the fund account rpc
 	// send fund account request
-	stream = newHostStream(ht.host)
+	stream = pair.newStream()
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
 		t.Fatal(err)
@@ -314,15 +312,4 @@ func TestHostStreamHandler(t *testing.T) {
 	if !balance.Equals(deposit) {
 		t.Fatalf("Unexpected account balance after fund EA RPC, expected %v actual %v", deposit.HumanString(), balance.HumanString())
 	}
-}
-
-// newHostStream opens a stream to the given host and returns it
-func newHostStream(h *Host) siamux.Stream {
-	hes := h.ExternalSettings()
-	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
-	stream, err := h.staticMux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, modules.SiaPKToMuxPK(h.publicKey))
-	if err != nil {
-		panic(err)
-	}
-	return stream
 }

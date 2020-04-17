@@ -264,12 +264,12 @@ func newRenterHostPair(name string) (*renterHostPair, error) {
 	return newRenterHostPairCustomHostTester(ht)
 }
 
-// newRenterHostPairCustomHostTester returns a renter host pair, this pair is a helper struct
-// that contains both the host and renter, represented by its secret key. This
-// helper will create a storage obligation emulating a file contract between
-// them. This method requires the caller to pass a hostTester opposed to
-// creating one, which allows setting up multiple renters which each have a
-// contract with the one host.
+// newRenterHostPairCustomHostTester returns a renter host pair, this pair is a
+// helper struct that contains both the host and renter, represented by its
+// secret key. This helper will create a storage obligation emulating a file
+// contract between them. This method requires the caller to pass a hostTester
+// opposed to creating one, which allows setting up multiple renters which each
+// have a contract with the one host.
 func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) {
 	// create a renter key pair
 	sk, pk := crypto.GenerateKeyPair()
@@ -311,6 +311,14 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		return nil, err
 	}
 
+	// sanity check to verify the refund account used to update the PT is empty
+	// to ensure the test starts with a clean slate
+	am := pair.ht.host.staticAccountManager
+	balance := am.callAccountBalance(pair.accountID)
+	if !balance.IsZero() {
+		return nil, errors.New("Account balance was not zero after initialising a renter host pair.")
+	}
+
 	return pair, nil
 }
 
@@ -321,9 +329,9 @@ func (p *renterHostPair) Close() error {
 
 // fundEphemeralAccount will deposit the given amount in the pair's ephemeral
 // account using the pair's file contract to provide payment
-func (rhp *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+func (p *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
 	// create stream
-	stream := rhp.newStream()
+	stream := p.newStream()
 	defer stream.Close()
 
 	// Write RPC ID.
@@ -333,20 +341,20 @@ func (rhp *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.
 	}
 
 	// Write price table id.
-	err = modules.RPCWrite(stream, rhp.latestPT.UID)
+	err = modules.RPCWrite(stream, p.latestPT.UID)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
 
 	// send fund account request
-	req := modules.FundAccountRequest{Account: rhp.accountID}
+	req := modules.FundAccountRequest{Account: p.accountID}
 	err = modules.RPCWrite(stream, req)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
 
 	// Pay by contract.
-	err = rhp.payByContract(stream, amount, modules.ZeroAccountID)
+	err = p.payByContract(stream, amount, modules.ZeroAccountID)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
@@ -450,14 +458,8 @@ func (p *renterHostPair) updatePriceTable() error {
 	stream := p.newStream()
 	defer stream.Close()
 
-	var refundAccount modules.AccountID
-	err := refundAccount.LoadString("prefix:deadbeef")
-	if err != nil {
-		return err
-	}
-
 	// initiate the RPC
-	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return err
 	}
@@ -481,7 +483,7 @@ func (p *renterHostPair) updatePriceTable() error {
 
 	// send PaymentRequest & PayByContractRequest
 	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(rev, sig, refundAccount)
+	pbcRequest := newPayByContractRequest(rev, sig, p.accountID)
 	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
 	if err != nil {
 		return err
