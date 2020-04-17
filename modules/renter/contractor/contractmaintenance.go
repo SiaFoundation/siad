@@ -832,9 +832,6 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	c.renewedTo[id] = newContract.ID
 	// Store the contract in the record of historic contracts.
 	c.oldContracts[id] = oldContract.Metadata()
-	// Delete it from the numRenewedFails map to prevent overcounting the number
-	// of contracts failing to renew.
-	delete(c.numFailedRenews, id)
 	// Save the contractor.
 	err = c.save()
 	if err != nil {

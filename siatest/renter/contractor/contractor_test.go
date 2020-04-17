@@ -153,7 +153,7 @@ func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGrou
 	// The renter should have 1 alert once we have mined enough blocks to trigger a
 	// renewal.
 	expectedAlert := modules.Alert{
-		Severity: modules.SeverityCritical,
+		Severity: modules.SeverityWarning,
 		Msg:      contractor.AlertMSGWalletLockedDuringMaintenance,
 		Cause:    modules.ErrLockedWallet.Error(),
 		Module:   "contractor",
