@@ -1,7 +1,6 @@
 package host
 
 import (
-	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -148,10 +147,9 @@ func TestHostConnectabilityStatus(t *testing.T) {
 	}
 }
 
-// TestHostStreamHandler verifies the host's stream handler. It ensures that the
-// individual RPC handlers are called when the appropriate objects are sent over
-// the stream.
-func TestHostStreamHandler(t *testing.T) {
+// TestUnrecognizedRPCID verifies the host's stream handler returns an error if
+// we send an random RPC id.
+func TestUnrecognizedRPCID(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -164,14 +162,6 @@ func TestHostStreamHandler(t *testing.T) {
 	ht := pair.ht
 	defer ht.Close()
 
-	// create a refund account id
-	var refundAccount modules.AccountID
-	err = refundAccount.LoadString("prefix:deadbeef")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// we recreate this on every error seeing as the host will have closed it
 	stream := pair.newStream()
 
 	// write a random rpc id to it and expect it to fail
@@ -184,132 +174,5 @@ func TestHostStreamHandler(t *testing.T) {
 	err = modules.RPCRead(stream, struct{}{})
 	if err == nil || !strings.Contains(err.Error(), randomRPCID.String()) {
 		t.Fatalf("Expected Unrecognized RPC ID error, but received '%v'", err)
-	}
-
-	// write a known rpc id to it, one that expects a price table but send a
-	// random price table uid and expect it to fail
-	stream = pair.newStream()
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var randomUID modules.UniqueID
-	fastrand.Read(randomUID[:])
-	err = modules.RPCWrite(stream, randomUID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = modules.RPCRead(stream, struct{}{})
-	if err == nil || !strings.Contains(err.Error(), "Price table not found") {
-		t.Fatalf("Expected 'Price table not found' error, but received '%v'", err)
-	}
-
-	// call the update price table RPC to obtain an actual price table, however
-	// try not paying for it, we expect a balance indicating this and we expect
-	// for the price table *not* to be known by the host
-	stream = pair.newStream()
-	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var pt modules.RPCPriceTable
-	var uptResp modules.RPCUpdatePriceTableResponse
-	err = modules.RPCRead(stream, &uptResp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = json.Unmarshal(uptResp.PriceTableJSON, &pt)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// send a payment request but specify an invalid payment method
-	pr := modules.PaymentRequest{Type: types.NewSpecifier("Invalid")}
-	err = modules.RPCWrite(stream, pr)
-	if err != nil {
-		return
-	}
-	err = modules.RPCRead(stream, struct{}{})
-	if err == nil || !strings.Contains(err.Error(), "unknown payment method") {
-		t.Fatalf("Expected 'unknown payment method' error, but received '%v'", err)
-	}
-	_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
-	if exists {
-		t.Fatal("Price table was tracked while it was not paid for")
-	}
-
-	// do that again but now effectively pay for the price table
-	stream = pair.newStream()
-	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = modules.RPCRead(stream, &uptResp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = json.Unmarshal(uptResp.PriceTableJSON, &pt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rev, sig, err := pair.paymentRevision(pt.UpdatePriceTableCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(rev, sig, refundAccount)
-	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var payByResponse modules.PayByContractResponse
-	err = modules.RPCRead(stream, &payByResponse)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, exists = ht.host.staticPriceTables.managedGet(pt.UID)
-	if !exists {
-		t.Fatal("Price table was not tracked while it was paid for")
-	}
-
-	// now that we have a price table we can test the fund account rpc
-	// send fund account request
-	stream = pair.newStream()
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = modules.RPCWrite(stream, pt.UID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := modules.FundAccountRequest{Account: pair.accountID}
-	err = modules.RPCWrite(stream, req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	deposit := types.NewCurrency64(100)
-	rev, sig, err = pair.paymentRevision(deposit.Add(pt.UpdatePriceTableCost))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pRequest = modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest = newPayByContractRequest(rev, sig, modules.ZeroAccountID)
-	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = modules.RPCRead(stream, &payByResponse)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var resp modules.FundAccountResponse
-	err = modules.RPCRead(stream, &resp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	balance := getAccountBalance(ht.host.staticAccountManager, pair.accountID)
-	if !balance.Equals(deposit) {
-		t.Fatalf("Unexpected account balance after fund EA RPC, expected %v actual %v", deposit.HumanString(), balance.HumanString())
 	}
 }

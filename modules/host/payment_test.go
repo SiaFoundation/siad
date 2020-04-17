@@ -530,6 +530,9 @@ func TestProcessPayment(t *testing.T) {
 	// test both payment methods
 	testPayByContract(t, pair)
 	testPayByEphemeralAccount(t, pair)
+
+	// test unknown payment method
+	testUnknownPaymentMethodError(t, pair)
 }
 
 // testPayByContract verifies payment is processed correctly in the case of the
@@ -750,6 +753,35 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	err = run(renterFunc, hostFunc)
 	if err == nil || !strings.Contains(err.Error(), "balance was insufficient") {
 		t.Fatalf("Expected error to mention account balance was insuficient, instead error was: '%v'", err)
+	}
+}
+
+// testUnknownPaymentMethodError verifies the host returns an error if we
+// specify an unknown payment method
+func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
+	// create two streams
+	rStream, hStream := NewTestStreams()
+	defer rStream.Close()
+	defer hStream.Close()
+
+	err := run(func() error {
+		// send PaymentRequest
+		pr := modules.PaymentRequest{Type: types.NewSpecifier("Invalid")}
+		err := modules.RPCWriteAll(rStream, modules.RPCUpdatePriceTable, pr)
+		if err != nil {
+			return err
+		}
+		return modules.RPCRead(rStream, struct{}{})
+	}, func() error {
+		// process payment request
+		_, err := pair.ht.host.ProcessPayment(hStream)
+		if err != nil {
+			modules.RPCWriteError(hStream, err)
+		}
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown payment method") {
+		t.Fatalf("Expected 'unknown payment method' error, but received '%v'", err)
 	}
 }
 
