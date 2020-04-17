@@ -411,7 +411,7 @@ func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContr
 // response.
 func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
 	// create the revision.
-	revision, sig, err := rhp.paymentRevision(amount)
+	revision, sig, err := p.paymentRevision(amount)
 	if err != nil {
 		return err
 	}
@@ -432,7 +432,7 @@ func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Curren
 	}
 
 	// verify the host signature
-	if err := crypto.VerifyHash(crypto.HashAll(revision), rhp.ht.host.secretKey.PublicKey(), payByResponse.Signature); err != nil {
+	if err := crypto.VerifyHash(crypto.HashAll(revision), p.ht.host.secretKey.PublicKey(), payByResponse.Signature); err != nil {
 		return errors.New("could not verify host signature")
 	}
 	return nil
