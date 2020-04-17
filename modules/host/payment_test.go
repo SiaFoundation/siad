@@ -299,17 +299,17 @@ func TestProcessParallelPayments(t *testing.T) {
 	// setup multiple renters and SOs
 	pairs := make([]*renterHostPair, runtime.NumCPU())
 	for i := range pairs {
-		_, pair, err := newRenterHostPairCustomHostTester(ht)
+		pair, err := newRenterHostPairCustomHostTester(ht)
 		if err != nil {
 			t.Fatal(err)
 		}
 		pairs[i] = pair
 
-		if err := callDeposit(am, pair.eaid, types.NewCurrency64(refillAmount)); err != nil {
+		if err := callDeposit(am, pair.accountID, types.NewCurrency64(refillAmount)); err != nil {
 			t.Log("failed deposit", err)
 			t.Fatal(err)
 		}
-		bt.TrackDeposit(pair.eaid, int64(refillAmount))
+		bt.TrackDeposit(pair.accountID, int64(refillAmount))
 	}
 
 	// setup a lock guarding the filecontracts seeing as we are concurrently
@@ -368,7 +368,7 @@ func TestProcessParallelPayments(t *testing.T) {
 					atomic.AddUint64(&fcPayments, 1)
 					fcLocks[rp.fcid].Unlock()
 				} else {
-					refill := bt.TrackWithdrawal(rp.eaid, int64(rw))
+					refill := bt.TrackWithdrawal(rp.accountID, int64(rw))
 					if refill {
 						go func(id modules.AccountID) {
 							time.Sleep(100 * time.Millisecond) // make it slow
@@ -376,7 +376,7 @@ func TestProcessParallelPayments(t *testing.T) {
 								t.Error(err)
 							}
 							bt.TrackDeposit(id, int64(refillAmount))
-						}(rp.eaid)
+						}(rp.accountID)
 					}
 					if pd, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&eaFailures, 1)
@@ -431,7 +431,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 			}
 			// send PaymentRequest & PayByContractRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-			pbcRequest := newPayByContractRequest(rev, sig, pair.eaid)
+			pbcRequest := newPayByContractRequest(rev, sig, pair.accountID)
 			err = modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 			if err != nil {
 				return err
@@ -447,7 +447,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 		func() error {
 			// process payment request
 			var pErr error
-			payment, pErr = pair.host.ProcessPayment(hStream)
+			payment, pErr = pair.ht.host.ProcessPayment(hStream)
 			if pErr != nil {
 				modules.RPCWriteError(hStream, pErr)
 			}
@@ -477,12 +477,12 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 	err = run(
 		func() error {
 			// create the request
-			pbeaRequest := newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter)
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey)
 
 			if fail {
 				// this induces failure because the nonce will be different and
 				// this the signature will be invalid
-				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.eaid, pair.host.blockHeight+6, amount, pair.renter).Signature
+				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey).Signature
 			}
 
 			// send PaymentRequest & PayByEphemeralAccountRequest
@@ -502,7 +502,7 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 		},
 		func() error {
 			// process payment request
-			payment, err = pair.host.ProcessPayment(hStream)
+			payment, err = pair.ht.host.ProcessPayment(hStream)
 			if err != nil {
 				modules.RPCWriteError(hStream, err)
 			}
@@ -521,11 +521,11 @@ func TestProcessPayment(t *testing.T) {
 	t.Parallel()
 
 	// setup a host and renter pair with an emulated file contract between them
-	ht, pair, err := newRenterHostPair(t.Name())
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer pair.Close()
 
 	// test both payment methods
 	testPayByContract(t, pair)
@@ -535,8 +535,7 @@ func TestProcessPayment(t *testing.T) {
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, pair *renterHostPair) {
-	host := pair.host
-	_, refundAccount := prepareAccount()
+	host := pair.ht.host
 	amount := types.SiacoinPrecision.Div64(2)
 	amountStr := amount.HumanString()
 
@@ -550,6 +549,9 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	rStream, hStream := NewTestStreams()
 	defer rStream.Close()
 	defer hStream.Close()
+
+	// create a refund account.
+	_, refundAccount := prepareAccount()
 
 	var payment modules.PaymentDetails
 	var payByResponse modules.PayByContractResponse
@@ -572,7 +574,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	hostFunc := func() error {
 		// process payment request
-		payment, err = pair.host.ProcessPayment(hStream)
+		payment, err = host.ProcessPayment(hStream)
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 		}
@@ -588,7 +590,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	// verify the host's signature
 	hash := crypto.HashAll(rev)
 	var hpk crypto.PublicKey
-	copy(hpk[:], pair.host.PublicKey().Key)
+	copy(hpk[:], host.PublicKey().Key)
 	err = crypto.VerifyHash(hash, hpk, payByResponse.Signature)
 	if err != nil {
 		t.Fatal("could not verify host's signature")
@@ -600,7 +602,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 
 	// verify the host updated the storage obligation
-	updated, err := pair.host.managedGetStorageObligation(pair.fcid)
+	updated, err := host.managedGetStorageObligation(pair.fcid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -620,13 +622,6 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	if !payment.AddedCollateral().IsZero() {
 		t.Fatalf("Unexpected collateral added, expected 0H actual %v", payment.AddedCollateral())
-	}
-
-	// verify that the refund account exists and contains the right amound of
-	// money.
-	balance := host.staticAccountManager.callAccountBalance(refundAccount)
-	if !balance.Equals(amount) {
-		t.Fatalf("expected refund account balance %v but got %v", amount.HumanString(), balance.HumanString())
 	}
 
 	// prepare a set of payouts that do not deduct payment from the renter
@@ -650,7 +645,15 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
 
-	// Run the code again.
+	// Manually add money to the refund account.
+	refund := types.NewCurrency64(fastrand.Uint64n(100) + 1)
+	err = pair.ht.host.staticAccountManager.callRefund(refundAccount, refund)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the code again. This time since we funded the account, the
+	// payByResponse would report the funded amount instead of 0.
 	rev, sig, err = pair.paymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
@@ -660,7 +663,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatal(err)
 	}
 	// Verify the amount in the response.
-	if !payByResponse.Balance.Equals(amount) {
+	if !payByResponse.Balance.Equals(refund) {
 		t.Fatalf("amount should have been %v but was %v", amount.HumanString(), payByResponse.Balance.HumanString())
 	}
 
@@ -676,11 +679,11 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 // testPayByEphemeralAccount verifies payment is processed correctly in the case
 // of the PayByEphemeralAccount payment method.
 func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
-	host := pair.host
+	host := pair.ht.host
 	amount := types.NewCurrency64(5)
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
-	// prepare an ephmeral account and fund it
+	// prepare an ephemeral account and fund it
 	sk, accountID := prepareAccount()
 	err := callDeposit(host.staticAccountManager, accountID, deposit)
 	if err != nil {

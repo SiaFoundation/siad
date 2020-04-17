@@ -159,10 +159,11 @@ func TestHostStreamHandler(t *testing.T) {
 	}
 	t.Parallel()
 
-	ht, pair, err := newRenterHostPair(t.Name())
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	ht := pair.ht
 	defer ht.Close()
 
 	// create a refund account id
@@ -284,7 +285,7 @@ func TestHostStreamHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := modules.FundAccountRequest{Account: pair.eaid}
+	req := modules.FundAccountRequest{Account: pair.accountID}
 	err = modules.RPCWrite(stream, req)
 	if err != nil {
 		t.Fatal(err)
@@ -309,7 +310,7 @@ func TestHostStreamHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	balance := getAccountBalance(ht.host.staticAccountManager, pair.eaid)
+	balance := getAccountBalance(ht.host.staticAccountManager, pair.accountID)
 	if !balance.Equals(deposit) {
 		t.Fatalf("Unexpected account balance after fund EA RPC, expected %v actual %v", deposit.HumanString(), balance.HumanString())
 	}

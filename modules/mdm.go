@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"encoding/binary"
 	"errors"
 
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -13,6 +14,8 @@ type (
 		Specifier InstructionSpecifier
 		Args      []byte
 	}
+	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
+	Program []Instruction
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
 )
@@ -89,8 +92,33 @@ var (
 	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
 )
 
+// RPCHasSectorInstruction creates an Instruction from arguments.
+func RPCHasSectorInstruction(merkleRootOffset uint64) Instruction {
+	i := Instruction{
+		Specifier: SpecifierHasSector,
+		Args:      make([]byte, RPCIHasSectorLen),
+	}
+	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
+	return i
+}
+
+// RPCIReadSector is a convenience method to create an Instruction of type 'ReadSector'.
+func RPCIReadSector(rootOff, offsetOff, lengthOff uint64, merkleProof bool) Instruction {
+	args := make([]byte, RPCIReadSectorLen)
+	binary.LittleEndian.PutUint64(args[:8], rootOff)
+	binary.LittleEndian.PutUint64(args[8:16], offsetOff)
+	binary.LittleEndian.PutUint64(args[16:24], lengthOff)
+	if merkleProof {
+		args[24] = 1
+	}
+	return Instruction{
+		Args:      args,
+		Specifier: SpecifierReadSector,
+	}
+}
+
 // MDMAppendCost is the cost of executing an 'Append' instruction.
-func MDMAppendCost(pt RPCPriceTable) (types.Currency, types.Currency) {
+func MDMAppendCost(pt *RPCPriceTable) (types.Currency, types.Currency) {
 	writeCost := pt.WriteLengthCost.Mul64(SectorSize).Add(pt.WriteBaseCost)
 	storeCost := pt.WriteStoreCost.Mul64(SectorSize) // potential refund
 	return writeCost.Add(storeCost), storeCost
@@ -103,47 +131,47 @@ func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 
 // MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction for a
 // certain number of dropped sectors.
-func MDMDropSectorsCost(pt RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
+func MDMDropSectorsCost(pt *RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
 	cost := pt.DropSectorsUnitCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
 	refund := types.ZeroCurrency
 	return cost, refund
 }
 
 // MDMInitCost is the cost of instantiating the MDM.
-func MDMInitCost(pt RPCPriceTable, programLen, numInstructions uint64) types.Currency {
+func MDMInitCost(pt *RPCPriceTable, programLen, numInstructions uint64) types.Currency {
 	time := MDMTimeInitProgram + MDMTimeInitSingleInstruction*numInstructions
-	return pt.MemoryTimeCost.Mul64(programLen).Mul64(time).Add(pt.InitBaseCost)
+	return MDMMemoryCost(pt, programLen, time).Add(pt.InitBaseCost)
 }
 
 // MDMHasSectorCost is the cost of executing a 'HasSector' instruction.
-func MDMHasSectorCost(pt RPCPriceTable) (types.Currency, types.Currency) {
-	cost := pt.MemoryTimeCost.Mul64(1 << 20).Mul64(MDMTimeHasSector)
+func MDMHasSectorCost(pt *RPCPriceTable) (types.Currency, types.Currency) {
+	cost := pt.HasSectorBaseCost
 	refund := types.ZeroCurrency // no refund
 	return cost, refund
 }
 
 // MDMReadCost is the cost of executing a 'Read' instruction. It is defined as:
 // 'readBaseCost' + 'readLengthCost' * `readLength`
-func MDMReadCost(pt RPCPriceTable, readLength uint64) (types.Currency, types.Currency) {
+func MDMReadCost(pt *RPCPriceTable, readLength uint64) (types.Currency, types.Currency) {
 	cost := pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
 	refund := types.ZeroCurrency // no refund
 	return cost, refund
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
-func MDMWriteCost(pt RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
+func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
 	storeCost := types.ZeroCurrency // no refund since we overwrite existing storage
 	return writeCost, storeCost
 }
 
 // MDMSwapCost is the cost of executing a 'Swap' instruction.
-func MDMSwapCost(pt RPCPriceTable, contractSize uint64) types.Currency {
+func MDMSwapCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
 // MDMTruncateCost is the cost of executing a 'Truncate' instruction.
-func MDMTruncateCost(pt RPCPriceTable, contractSize uint64) types.Currency {
+func MDMTruncateCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
 }
 
@@ -177,7 +205,7 @@ func MDMReadMemory() uint64 {
 }
 
 // MDMMemoryCost computes the memory cost given a price table, memory and time.
-func MDMMemoryCost(pt RPCPriceTable, usedMemory, time uint64) types.Currency {
+func MDMMemoryCost(pt *RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
 }
 
@@ -189,7 +217,7 @@ func MDMDropSectorsTime(numSectorsDropped uint64) uint64 {
 
 // MDMAppendCollateral returns the additional collateral a 'Append' instruction
 // requires the host to put up.
-func MDMAppendCollateral(pt RPCPriceTable) types.Currency {
+func MDMAppendCollateral(pt *RPCPriceTable) types.Currency {
 	return pt.CollateralCost.Mul64(SectorSize)
 }
 
@@ -209,4 +237,17 @@ func MDMHasSectorCollateral() types.Currency {
 // requires the host to put up.
 func MDMReadCollateral() types.Currency {
 	return types.ZeroCurrency
+}
+
+// ReadOnly returns true if the program consists of no write instructions.
+func (p Program) ReadOnly() bool {
+	for _, instruction := range p {
+		switch instruction.Specifier {
+		case SpecifierAppend:
+			return false
+		case SpecifierDropSectors:
+			return false
+		}
+	}
+	return true
 }

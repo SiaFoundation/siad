@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 
 	// "gitlab.com/NebulousLabs/Sia/modules/renter"
@@ -242,22 +243,23 @@ func (ht *hostTester) Close() error {
 // renterHostPair is a helper struct that contains a secret key, symbolizing the
 // renter, a host and the id of the file contract they share.
 type renterHostPair struct {
-	host   *Host
-	renter crypto.SecretKey
-	fcid   types.FileContractID
-	eaid   modules.AccountID // id of the ephemeral account on the host
-	pt     modules.RPCPriceTable
+	accountID  modules.AccountID
+	accountKey crypto.SecretKey
+	ht         *hostTester
+	latestPT   *modules.RPCPriceTable
+	renter     crypto.SecretKey
+	fcid       types.FileContractID
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
 // this pair is a helper struct that contains both the host and renter,
 // represented by its secret key. This helper will create a storage
 // obligation emulating a file contract between them.
-func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
+func newRenterHostPair(name string) (*renterHostPair, error) {
 	// setup host
 	ht, err := newHostTester(name)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	return newRenterHostPairCustomHostTester(ht)
 }
@@ -268,7 +270,7 @@ func newRenterHostPair(name string) (*hostTester, *renterHostPair, error) {
 // them. This method requires the caller to pass a hostTester opposed to
 // creating one, which allows setting up multiple renters which each have a
 // contract with the one host.
-func newRenterHostPairCustomHostTester(ht *hostTester) (*hostTester, *renterHostPair, error) {
+func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) {
 	// create a renter key pair
 	sk, pk := crypto.GenerateKeyPair()
 	renterPK := types.SiaPublicKey{
@@ -279,46 +281,95 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*hostTester, *renterHost
 	// setup storage obligationn (emulating a renter creating a contract)
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	so, err = ht.addNoOpRevision(so, renterPK)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedAddStorageObligation(so, false)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ht.host.managedUnlockStorageObligation(so.id())
 
-	var eaid modules.AccountID
-	eaid.FromSPK(renterPK)
+	// prepare an EA without funding it.
+	accountKey, accountID := prepareAccount()
 
 	pair := &renterHostPair{
-		host:   ht.host,
-		renter: sk,
-		fcid:   so.id(),
-		eaid:   eaid,
+		accountID:  accountID,
+		accountKey: accountKey,
+		ht:         ht,
+		renter:     sk,
+		fcid:       so.id(),
 	}
 
 	// fetch a price table
 	err = pair.updatePriceTable()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return ht, pair, nil
+
+	return pair, nil
+}
+
+// Close closes the underlying host tester.
+func (p *renterHostPair) Close() error {
+	return p.ht.Close()
+}
+
+// fundEphemeralAccount will deposit the given amount in the pair's ephemeral
+// account using the pair's file contract to provide payment
+func (rhp *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+	// create stream
+	stream := rhp.newStream()
+	defer stream.Close()
+
+	// Write RPC ID.
+	err := modules.RPCWrite(stream, modules.RPCFundAccount)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// Write price table id.
+	err = modules.RPCWrite(stream, rhp.latestPT.UID)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// send fund account request
+	req := modules.FundAccountRequest{Account: rhp.accountID}
+	err = modules.RPCWrite(stream, req)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// Pay by contract.
+	err = rhp.payByContract(stream, amount, modules.ZeroAccountID)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	// receive FundAccountResponse
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+	return resp, nil
 }
 
 // newStream opens a stream to the pair's host and returns it
 func (p *renterHostPair) newStream() siamux.Stream {
-	hes := p.host.ExternalSettings()
+	host := p.ht.host
+	hes := host.ExternalSettings()
 
-	pk := modules.SiaPKToMuxPK(p.host.publicKey)
+	pk := modules.SiaPKToMuxPK(host.publicKey)
 	address := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
 	subscriber := modules.HostSiaMuxSubscriberName
 
-	stream, err := p.host.staticMux.NewStream(subscriber, address, pk)
+	stream, err := host.staticMux.NewStream(subscriber, address, pk)
 	if err != nil {
 		panic(err)
 	}
@@ -329,7 +380,7 @@ func (p *renterHostPair) newStream() siamux.Stream {
 // host. Returns the payment revision together with a signature signed by the
 // pair's renter.
 func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
-	updated, err := p.host.managedGetStorageObligation(p.fcid)
+	updated, err := p.ht.host.managedGetStorageObligation(p.fcid)
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
@@ -347,6 +398,38 @@ func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContr
 	return rev, p.sign(rev), nil
 }
 
+// payByContract is a helper that creates a payment revision and uses it to pay
+// the specified amount. It will also verify the signature of the returned
+// response.
+func (rhp *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
+	// create the revision.
+	revision, sig, err := rhp.paymentRevision(amount)
+	if err != nil {
+		return err
+	}
+
+	// send PaymentRequest & PayByContractRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+	pbcRequest := newPayByContractRequest(revision, sig, refundAccount)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return err
+	}
+
+	// verify the host signature
+	if err := crypto.VerifyHash(crypto.HashAll(revision), rhp.ht.host.secretKey.PublicKey(), payByResponse.Signature); err != nil {
+		return errors.New("could not verify host signature")
+	}
+	return nil
+}
+
 // sign returns the renter's signature of the given revision
 func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 	signedTxn := types.Transaction{
@@ -357,7 +440,7 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 			PublicKeyIndex: 0,
 		}},
 	}
-	hash := signedTxn.SigHash(0, p.host.BlockHeight())
+	hash := signedTxn.SigHash(0, p.ht.host.BlockHeight())
 	return crypto.SignHash(hash, p.renter)
 }
 
@@ -415,14 +498,14 @@ func (p *renterHostPair) updatePriceTable() error {
 	if err != nil {
 		return err
 	}
-	p.pt = pt
+	p.latestPT = &pt
 	return nil
 }
 
 // verify verifies the given signature was made by the host
 func (p *renterHostPair) verify(hash crypto.Hash, signature crypto.Signature) error {
 	var hpk crypto.PublicKey
-	copy(hpk[:], p.host.PublicKey().Key)
+	copy(hpk[:], p.ht.host.PublicKey().Key)
 	return crypto.VerifyHash(hash, hpk, signature)
 }
 
@@ -571,7 +654,7 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if !settings.MinDownloadBandwidthPrice.Equals(defaultDownloadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinStoragePrice.Equals(DefaultStoragePrice) {
+	if !settings.MinStoragePrice.Equals(modules.DefaultStoragePrice) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {

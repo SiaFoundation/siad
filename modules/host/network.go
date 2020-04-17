@@ -341,6 +341,28 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 }
 
+// staticReadPriceTableID receives a stream and reads the price table's UID from
+// it, if it's a known UID we return the price table
+func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTable, error) {
+	// read the price table uid
+	var uid modules.UniqueID
+	err := modules.RPCRead(stream, &uid)
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to read price table UID")
+	}
+	// check if we know the uid, if we do return it
+	var found bool
+	pt, found := h.staticPriceTables.managedGet(uid)
+	if !found {
+		return nil, errors.New("Price table not found, it might be expired")
+	}
+	// make sure the table isn't expired.
+	if pt.Expiry < time.Now().Unix() {
+		return nil, errors.New("Price table requested is expired")
+	}
+	return pt, nil
+}
+
 // threadedHandleStream handles incoming SiaMux streams.
 func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	// close the stream when the method terminates
@@ -373,6 +395,8 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	}
 
 	switch rpcID {
+	case modules.RPCExecuteProgram:
+		err = h.managedRPCExecuteProgram(stream)
 	case modules.RPCUpdatePriceTable:
 		err = h.managedRPCUpdatePriceTable(stream)
 	case modules.RPCFundAccount:
