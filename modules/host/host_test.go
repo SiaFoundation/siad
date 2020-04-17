@@ -409,7 +409,7 @@ func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContr
 // payByContract is a helper that creates a payment revision and uses it to pay
 // the specified amount. It will also verify the signature of the returned
 // response.
-func (rhp *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
+func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
 	// create the revision.
 	revision, sig, err := rhp.paymentRevision(amount)
 	if err != nil {
