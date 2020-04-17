@@ -100,6 +100,9 @@ func (c *Contractor) managedCheckForDuplicates() {
 			// TODO: Ideally these two things would happen atomically, but I'm
 			// not completely certain that's feasible with our current
 			// architecture.
+			//
+			// TODO: This should revert the in memory state in the event of an
+			// error and continue
 			err := c.save()
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
