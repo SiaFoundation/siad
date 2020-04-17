@@ -209,7 +209,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if len(resp.Proof) != 0 {
 		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
-	if len(resp.Output) != 1 && resp.Output[0] != 1 {
+	if len(resp.Output) != 1 || resp.Output[0] != 1 {
 		t.Fatalf("wrong Output %v != %v", resp.Output, []byte{1})
 	}
 	if !resp.TotalCost.Equals(cost) {

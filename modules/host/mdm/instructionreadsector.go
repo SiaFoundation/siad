@@ -93,8 +93,7 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 		return errOutput(err)
 	}
 
-	ps := i.staticState
-	sectorData, err := ps.sectors.readSector(ps.host, sectorRoot)
+	sectorData, err := i.staticState.host.ReadSector(sectorRoot)
 	if err != nil {
 		return errOutput(err)
 	}
