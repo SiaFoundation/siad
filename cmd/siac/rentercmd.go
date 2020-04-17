@@ -298,9 +298,9 @@ maintaining the file in your renter.`,
 
 	skynetUnpinCmd = &cobra.Command{
 		Use:   "unpin [siapath]",
-		Short: "Unpin a pinned skyfile.",
-		Long: `Unpin the pinned skyfile at the given siapath. The file will continue to be
-available on Skynet if other nodes have pinned the file.`,
+		Short: "Unpin pinned skyfiles or directories.",
+		Long: `Unpin one or more pinned skyfiles or directories at the given siapaths. The
+files and directories will continue to be available on Skynet if other nodes have pinned them.`,
 		Run: skynetunpincmd,
 	}
 
@@ -2841,9 +2841,8 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 		}
 
 		// Parse out the intended siapath.
-		siaPath := skyPath
 		if !skynetUnpinRoot {
-			siaPath, err = modules.SkynetFolder.Join(skyPath.String())
+			skyPath, err = modules.SkynetFolder.Join(skyPath.String())
 			if err != nil {
 				die("could not build siapath:", err)
 			}
@@ -2855,24 +2854,24 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 		// silently move on to deleting it as a dir. This is more efficient than
 		// querying the renter first to see if it is a file or a dir, as that is
 		// guaranteed to always be two renter calls.
-		errFile := httpClient.RenterFileDeleteRootPost(siaPath)
+		errFile := httpClient.RenterFileDeleteRootPost(skyPath)
 		if errFile == nil {
-			fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
+			fmt.Printf("Unpinned skyfile '%v'\n", skyPath)
 			continue
 		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
-			die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
+			die(fmt.Sprintf("Failed to unpin skyfile %v: %v", skyPath, errFile))
 		}
 		// Try to delete dir.
-		errDir := httpClient.RenterDirDeleteRootPost(siaPath)
+		errDir := httpClient.RenterDirDeleteRootPost(skyPath)
 		if errDir == nil {
-			fmt.Printf("Unpinned Skynet directory '%v'\n", siaPath)
+			fmt.Printf("Unpinned Skynet directory '%v'\n", skyPath)
 			continue
 		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
-			die(fmt.Sprintf("Failed to unpin Skynet directory %v: %v", siaPath, errDir))
+			die(fmt.Sprintf("Failed to unpin Skynet directory %v: %v", skyPath, errDir))
 		}
 
 		// Unknown file/dir.
-		die(fmt.Sprintf("Unknown path '%v'", siaPath))
+		die(fmt.Sprintf("Unknown path '%v'", skyPath))
 	}
 }
 
