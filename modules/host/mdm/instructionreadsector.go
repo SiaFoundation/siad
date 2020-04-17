@@ -37,7 +37,7 @@ func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint6
 
 // staticDecodeReadSectorInstruction creates a new 'ReadSector' instruction from the
 // provided generic instruction.
-func (p *Program) staticDecodeReadSectorInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeReadSectorInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierReadSector {
 		return nil, fmt.Errorf("expected specifier %v but got %v",

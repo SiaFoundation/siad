@@ -6,29 +6,19 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// testCompareCosts returns an error if an actual cost does not match its
-// expected cost.
-func testCompareCosts(actualCost, actualRefund, actualCollateral types.Currency, actualMemory, actualTime uint64, expectedCost, expectedRefund, expectedCollateral types.Currency, expectedMemory, expectedTime uint64) error {
-	if actualCost.Cmp(expectedCost) != 0 {
-		return fmt.Errorf("expected cost %v, got %v", expectedCost, actualCost)
+// testCompareProgramCosts compares the costs of a program calculated during a
+// test with the expected costs returned from EstimateProgramCosts.
+func testCompareProgramCosts(pt modules.RPCPriceTable, instructions Instructions, costs Costs, programData ProgramData) error {
+	expectedCosts, err := instructions.EstimateProgramCosts(pt, uint64(len(programData)), bytes.NewReader(programData))
+	if err != nil {
+		return err
 	}
-	if actualRefund.Cmp(expectedRefund) != 0 {
-		return fmt.Errorf("expected refund %v, got %v", expectedRefund, actualRefund)
+	if !costs.Equals(expectedCosts) {
+		return fmt.Errorf("expected program costs %v, got %v", expectedCosts.HumanString(), costs.HumanString())
 	}
-	if actualCollateral.Cmp(expectedCollateral) != 0 {
-		return fmt.Errorf("expected collateral %v, got %v", expectedCollateral, actualCollateral)
-	}
-	if actualMemory != expectedMemory {
-		return fmt.Errorf("expected memory %v, got %v", expectedMemory, actualMemory)
-	}
-	if actualTime != expectedTime {
-		return fmt.Errorf("expected time %v, got %v", expectedTime, actualTime)
-	}
-
 	return nil
 }
 
@@ -71,14 +61,8 @@ func testCompareOutputs(actualOutputs <-chan Output, expectedOutputs []Output) (
 		}
 
 		// Check costs.
-		if !output.ExecutionCost.Equals(expectedOutput.ExecutionCost) {
-			return Output{}, fmt.Errorf("expected execution cost %v, got %v", output.ExecutionCost.HumanString(), expectedOutput.ExecutionCost.HumanString())
-		}
-		if !output.AdditionalCollateral.Equals(expectedOutput.AdditionalCollateral) {
-			return Output{}, fmt.Errorf("expected collateral %v, got %v", output.AdditionalCollateral.HumanString(), expectedOutput.AdditionalCollateral.HumanString())
-		}
-		if !output.PotentialRefund.Equals(expectedOutput.PotentialRefund) {
-			return Output{}, fmt.Errorf("expected refund %v, got %v", output.PotentialRefund.HumanString(), expectedOutput.PotentialRefund.HumanString())
+		if !output.costs.Equals(expectedOutput.costs) {
+			return Output{}, fmt.Errorf("expected output costs %v, got %v", output.costs.HumanString(), expectedOutput.costs.HumanString())
 		}
 
 		numOutputs++

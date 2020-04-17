@@ -28,7 +28,7 @@ func NewHasSectorInstruction(merkleRootOffset uint64) modules.Instruction {
 
 // staticDecodeHasSectorInstruction creates a new 'HasSector' instruction from
 // the provided generic instruction.
-func (p *Program) staticDecodeHasSectorInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeHasSectorInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierHasSector {
 		return nil, fmt.Errorf("expected specifier %v but got %v",

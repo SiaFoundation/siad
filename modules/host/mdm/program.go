@@ -44,7 +44,7 @@ type programState struct {
 // will potentially modify the size and merkle root of a file contract. After the
 // final instruction is executed, the MDM will create an updated revision of the
 // FileContract which has to be signed by the renter and the host.
-type Program struct {
+type program struct {
 	instructions       []instruction
 	staticData         *programData
 	staticProgramState *programState
@@ -55,6 +55,7 @@ type Program struct {
 	additionalCollateral   types.Currency // collateral the host is required to add
 	potentialRefund        types.Currency // refund if the program isn't committed
 	usedMemory             uint64
+	usedTime               uint64
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -64,20 +65,18 @@ type Program struct {
 }
 
 // outputFromError is a convenience function to wrap an error in an Output.
-func outputFromError(err error, collateral, cost, refund types.Currency) Output {
+func outputFromError(err error, costs Costs) Output {
 	return Output{
 		output: output{
 			Error: err,
 		},
-		ExecutionCost:        cost,
-		AdditionalCollateral: collateral,
-		PotentialRefund:      refund,
+		costs: costs,
 	}
 }
 
 // decodeInstruction creates a specific instance of an instruction from a
 // specified generic instruction.
-func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
+func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 	switch i.Specifier {
 	case modules.SpecifierAppend:
 		return p.staticDecodeAppendInstruction(i)
@@ -95,7 +94,8 @@ func decodeInstruction(p *Program, i modules.Instruction) (instruction, error) {
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
 func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
-	p := &Program{
+	initCosts := InitialProgramCosts(pt, programDataLen, uint64(len(instructions)))
+	p := &program{
 		outputChan: make(chan Output, len(instructions)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
@@ -104,7 +104,8 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 			sectors:     newSectors(sos.SectorRoots()),
 		},
 		staticBudget:           budget,
-		usedMemory:             modules.MDMInitMemory(),
+		usedMemory:             initCosts.Memory,
+		usedTime:               0,
 		staticCollateralBudget: collateralBudget,
 		staticData:             openProgramData(data, programDataLen),
 		tg:                     &mdm.tg,
@@ -120,7 +121,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 		p.instructions = append(p.instructions, instruction)
 	}
 	// Increment the execution cost of the program.
-	err = p.addCost(modules.MDMInitCost(pt, p.staticData.Len(), uint64(len(p.instructions))))
+	err = p.addCost(initCosts.ExecutionCost)
 	if err != nil {
 		return nil, nil, errors.Compose(err, p.staticData.Close())
 	}
@@ -144,7 +145,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 // addCollateral increases the collateral of the program by 'collateral'. If as
 // a result the collateral becomes larger than the collateral budget of the
 // program, an error is returned.
-func (p *Program) addCollateral(collateral types.Currency) error {
+func (p *program) addCollateral(collateral types.Currency) error {
 	additionalCollateral := p.additionalCollateral.Add(collateral)
 	if p.staticCollateralBudget.Cmp(additionalCollateral) < 0 {
 		return modules.ErrMDMInsufficientCollateralBudget
@@ -156,7 +157,7 @@ func (p *Program) addCollateral(collateral types.Currency) error {
 // addCost increases the cost of the program by 'cost'. If as a result the cost
 // becomes larger than the budget of the program, ErrInsufficientBudget is
 // returned.
-func (p *Program) addCost(cost types.Currency) error {
+func (p *program) addCost(cost types.Currency) error {
 	newExecutionCost := p.executionCost.Add(cost)
 	if p.staticBudget.Cmp(newExecutionCost) < 0 {
 		return modules.ErrMDMInsufficientBudget
@@ -165,9 +166,20 @@ func (p *Program) addCost(cost types.Currency) error {
 	return nil
 }
 
+// costs returns the current costs for the program.
+func (p *program) costs() Costs {
+	return Costs{
+		p.executionCost,
+		p.potentialRefund,
+		p.additionalCollateral,
+		p.usedMemory,
+		p.usedTime,
+	}
+}
+
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
-func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) error {
+func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) error {
 	output := output{
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
@@ -175,42 +187,41 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
-			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(ErrInterrupted, p.costs())
 			break
 		default:
 		}
 		// Get all costs for the instruction.
-		instructionCost, refund, collateral, memory, time, err := instructionCosts(i)
+		newCosts, err := instructionCosts(i)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.costs())
 		}
 		// Add the memory the next instruction is going to allocate to the
 		// total.
-		p.usedMemory += memory
-		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
+		p.usedMemory += newCosts.Memory
+		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, newCosts.Time)
+		p.usedTime += newCosts.Time
 		// Get the full cost.
-		cost := memoryCost.Add(instructionCost)
+		executionCost := memoryCost.Add(newCosts.ExecutionCost)
 		// Increment the cost.
-		err = p.addCost(cost)
+		err = p.addCost(executionCost)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.costs())
 			return err
 		}
 		// Add the instruction's potential refund to the total.
-		p.potentialRefund = p.potentialRefund.Add(refund)
+		p.potentialRefund = p.potentialRefund.Add(newCosts.Refund)
 		// Increment collateral.
-		err = p.addCollateral(collateral)
+		err = p.addCollateral(newCosts.Collateral)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			p.outputChan <- outputFromError(err, p.costs())
 			return err
 		}
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
-			output:               output,
-			ExecutionCost:        p.executionCost,
-			AdditionalCollateral: p.additionalCollateral,
-			PotentialRefund:      p.potentialRefund,
+			output: output,
+			costs:  p.costs(),
 		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {
@@ -222,7 +233,7 @@ func (p *Program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 
 // managedFinalize commits the changes made by the program to disk. It should
 // only be called after the channel returned by Execute is closed.
-func (p *Program) managedFinalize(so StorageObligation) error {
+func (p *program) managedFinalize(so StorageObligation) error {
 	// Prevent finalizing the program when it was aborted due to a failure.
 	if p.outputErr != nil {
 		return errors.Compose(p.outputErr, errors.New("can't call finalize on program that was aborted due to an error"))
@@ -244,7 +255,7 @@ func (p *Program) managedFinalize(so StorageObligation) error {
 
 // readOnly returns 'true' if all of the instructions executed by a program are
 // readonly.
-func (p *Program) readOnly() bool {
+func (p *program) readOnly() bool {
 	for _, i := range p.instructions {
 		if !i.ReadOnly() {
 			return false

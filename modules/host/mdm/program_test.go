@@ -63,13 +63,16 @@ func TestNewProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, programData, _, _, collateral, _, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
+	instructions, programData, _, costs, err := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, true, pt)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	cost := modules.MDMInitCost(pt, dataLen, 1)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, newTestStorageObligation(true), dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, costs.Collateral, newTestStorageObligation(true), dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,10 +106,13 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, programData, cost, _, _, _, _ := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt)
+	instructions, programData, _, costs, err := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Execute the program with no collateral budget.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, so, uint64(len(programData)), bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, costs.ExecutionCost, types.ZeroCurrency, so, uint64(len(programData)), bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +123,7 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 		if err := output.Error; errors.Contains(err, modules.ErrMDMInsufficientCollateralBudget) {
 			numInsufficientBudgetErrs++
 		} else if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%v: using budget %v", err, costs.HumanString())
 		}
 		numOutputs++
 	}

@@ -2,8 +2,12 @@ package mdm
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// Instructions contains a list of instructions.
+type Instructions []modules.Instruction
 
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
@@ -13,7 +17,7 @@ type instruction interface {
 	Collateral() (collateral types.Currency)
 	// Cost returns the cost of executing the instruction and the potential
 	// refund should the program not be committed.
-	Cost() (cost types.Currency, refund types.Currency, _ error)
+	Cost() (executionCost types.Currency, refund types.Currency, _ error)
 	// Execute executes the instruction without committing the changes to the
 	// storage obligation.
 	Execute(output) output
@@ -30,28 +34,33 @@ type instruction interface {
 }
 
 // instructionCosts returns all costs for the instruction.
-func instructionCosts(i instruction) (cost, refund, collateral types.Currency, memory, time uint64, err error) {
-	cost, refund, err = i.Cost()
+func instructionCosts(i instruction) (Costs, error) {
+	costs := Costs{}
+	var err error
+	costs.ExecutionCost, costs.Refund, err = i.Cost()
 	if err != nil {
-		return
+		return Costs{}, err
 	}
-	collateral = i.Collateral()
-	memory = i.Memory()
-	time, err = i.Time()
-	return
+	costs.Collateral = i.Collateral()
+	costs.Memory = i.Memory()
+	costs.Time, err = i.Time()
+	if err != nil {
+		return Costs{}, err
+	}
+	return costs, nil
 }
 
 // Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
 	output
-	ExecutionCost        types.Currency
-	AdditionalCollateral types.Currency
-	PotentialRefund      types.Currency
+	// costs contains the associated costs for the output including execution
+	// cost, potential refund and additional collateral.
+	costs Costs
 }
 
 // output is the type returned by all instructions when being executed.
 type output struct {
-	// The error will be set to nil unless the instruction experienced an error
+	// Error will be set to nil unless the instruction experienced an error
 	// during execution. If the instruction did experience an error during
 	// execution, the program will halt at this instruction and no changes will
 	// be committed.
@@ -68,14 +77,14 @@ type output struct {
 	// NewMerkleRoot is the merkle root after the execution of an instruction.
 	NewMerkleRoot crypto.Hash
 
-	// The output will be set to nil unless the instruction produces output for
-	// the caller. One example of such an instruction would be 'Read()'. If
-	// there was an error during execution, the output will be nil.
+	// Output will be set to nil unless the instruction produces output for the
+	// caller. One example of such an instruction would be 'Read()'. If there
+	// was an error during execution, the output will be nil.
 	Output []byte
 
-	// The proof will be set to nil if there was an error, and also if no proof
-	// was requested by the caller. Using only the proof, the caller will be
-	// able to compute the next Merkle root and size of the contract.
+	// Proof will be set to nil if there was an error, and also if no proof was
+	// requested by the caller. Using only the proof, the caller will be able to
+	// compute the next Merkle root and size of the contract.
 	Proof []crypto.Hash
 }
 

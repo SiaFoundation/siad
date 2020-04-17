@@ -2,7 +2,6 @@ package mdm
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -33,7 +32,7 @@ func NewDropSectorsInstruction(numSectorsOffset uint64, merkleProof bool) module
 
 // staticDecodeDropSectorsInstruction creates a new 'DropSectors' instruction from the
 // provided generic instruction.
-func (p *Program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierDropSectors {
 		return nil, fmt.Errorf("expected specifier %v but got %v",
@@ -63,7 +62,7 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 	// Fetch the data.
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return errOutput(errors.New("bad input: numSectorsOffset"))
+		return errOutput(fmt.Errorf("bad input: numSectorsOffset: %v", err))
 	}
 
 	// Verify input.
@@ -118,7 +117,7 @@ func (i *instructionDropSectors) Collateral() types.Currency {
 func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return types.Currency{}, types.Currency{}, errors.New("bad input: numSectorsOffset")
+		return types.Currency{}, types.Currency{}, fmt.Errorf("bad input: numSectorsOffset: %v", err)
 	}
 	cost, refund := modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
 	return cost, refund, nil

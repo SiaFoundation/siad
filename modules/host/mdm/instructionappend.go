@@ -32,7 +32,7 @@ func NewAppendInstruction(dataOffset uint64, merkleProof bool) modules.Instructi
 
 // staticDecodeAppendInstruction creates a new 'Append' instruction from the
 // provided generic instruction.
-func (p *Program) staticDecodeAppendInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeAppendInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierAppend {
 		return nil, fmt.Errorf("expected specifier %v but got %v",
@@ -94,10 +94,10 @@ func (i *instructionAppend) Collateral() types.Currency {
 	return modules.MDMAppendCollateral(i.staticState.priceTable)
 }
 
-// Cost returns the Cost of this append instruction.
+// Cost returns the Cost of this `Append` instruction.
 func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
-	cost, refund := modules.MDMAppendCost(i.staticState.priceTable)
-	return cost, refund, nil
+	executionCost, refund := modules.MDMAppendCost(i.staticState.priceTable)
+	return executionCost, refund, nil
 }
 
 // Memory returns the memory allocated by the 'Append' instruction beyond the

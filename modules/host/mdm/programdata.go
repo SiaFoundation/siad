@@ -12,11 +12,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
+// ProgramData contains the raw byte data for the program.
+type ProgramData []byte
+
 // programData is a buffer for the program data. It will read packets from r and
 // append them to data.
 type programData struct {
 	// data contains the already received data.
-	data []byte
+	data ProgramData
 
 	// staticLength is the expected length of the program data. This is the
 	// amount of data that was paid for and not more than that will be read from
@@ -47,7 +50,7 @@ type dataRequest struct {
 	c              chan struct{}
 }
 
-// openProgramData creates a new ProgramData object from the specified reader. It
+// openProgramData creates a new programData object from the specified reader. It
 // will read from the reader until dataLength is reached.
 func openProgramData(r io.Reader, dataLength uint64) *programData {
 	pd := &programData{
@@ -117,7 +120,7 @@ func (pd *programData) threadedFetchData() {
 }
 
 // managedBytes tries to fetch length bytes at offset from the underlying data
-// slice of the ProgramData. If the data is not available yet, a request will be
+// slice of the programData. If the data is not available yet, a request will be
 // queued up and the method will block for the data to be read.
 func (pd *programData) managedBytes(offset, length uint64) ([]byte, error) {
 	// Check if request is valid.
