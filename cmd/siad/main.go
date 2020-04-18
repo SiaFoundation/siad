@@ -51,7 +51,7 @@ type Config struct {
 		// going to be running out of, not the actual siadir, which is where we
 		// put the apipassword file. This variable should not be altered if it
 		// is not set by a user flag.
-		SiaDir     string
+		SiaDir string
 	}
 }
 
