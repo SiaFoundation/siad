@@ -22,7 +22,6 @@ responsibilities:
 ### FeeManager Subsystem
 **Key Files**
 - [feemanager.go](./feemanager.go)
-- [feemanager_test.go](./feemanager_test.go)
 
 The FeeManager subsystem handles the creation and shutdown of the FeeManager.
 Additionally this subsystem handles the Consensus changes and providing
@@ -53,9 +52,7 @@ managed.
 ### Persistence Subsystem
 **Key Files**
 - [persist.go](./persist.go)
-- [persist_test.go](./persist_test.go)
 - [persistwal.go](./persistwal.go)
-- [persistwal_test.go](./persistwal_test.go)
 
 The persistence subsystem handles actions that update the state of the
 FeeManager and the ACID disk interactions for the `feemanager` module. To ensure
