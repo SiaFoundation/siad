@@ -100,6 +100,14 @@ type (
 	DependencyDisableRotateFingerprintBuckets struct {
 		modules.ProductionDependencies
 	}
+
+	// DependencyDefaultRenewSettings causes the contractor to use default settings
+	// when renewing a contract.
+	DependencyDefaultRenewSettings struct {
+		modules.ProductionDependencies
+		enabled bool
+		mu      sync.Mutex
+	}
 )
 
 // NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
@@ -349,4 +357,27 @@ func (d *DependencyAddLatency) Disrupt(s string) bool {
 		return true
 	}
 	return false
+}
+
+// Disrupt causes the contractor to use default host settings
+// when renewing a contract.
+func (d *DependencyDefaultRenewSettings) Disrupt(s string) bool {
+	d.mu.Lock()
+	enabled := d.enabled
+	d.mu.Unlock()
+	return enabled && s == "DefaultRenewSettings"
+}
+
+// Enable enables the dependency.
+func (d *DependencyDefaultRenewSettings) Enable() {
+	d.mu.Lock()
+	d.enabled = true
+	d.mu.Unlock()
+}
+
+// Disable disables the dependency.
+func (d *DependencyDefaultRenewSettings) Disable() {
+	d.mu.Lock()
+	d.enabled = false
+	d.mu.Unlock()
 }

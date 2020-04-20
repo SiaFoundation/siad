@@ -546,6 +546,18 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// Use the most recent hostSettings, along with the host db entry.
 	host.HostExternalSettings = hostSettings
 
+	if c.staticDeps.Disrupt("DefaultRenewSettings") {
+		c.log.Debugln("Using default host settings")
+		host.HostExternalSettings = modules.DefaultHostExternalSettings()
+		// Reset some specific settings, not available through the default.
+		host.HostExternalSettings.NetAddress = hostSettings.NetAddress
+		host.HostExternalSettings.RemainingStorage = hostSettings.RemainingStorage
+		host.HostExternalSettings.TotalStorage = hostSettings.TotalStorage
+		host.HostExternalSettings.UnlockHash = hostSettings.UnlockHash
+		host.HostExternalSettings.RevisionNumber = hostSettings.RevisionNumber
+		host.HostExternalSettings.SiaMuxPort = hostSettings.SiaMuxPort
+	}
+
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
@@ -644,7 +656,6 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 // managedRenewContract will use the renew instructions to renew a contract,
 // returning the amount of money that was put into the contract for renewal.
 func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal, currentPeriod types.BlockHeight, allowance modules.Allowance, blockHeight, endHeight types.BlockHeight) (fundsSpent types.Currency, err error) {
-	c.log.Println("managedRenew: ")
 	if c.staticDeps.Disrupt("ContractRenewFail") {
 		err = errors.New("Renew failure due to dependency")
 		return
