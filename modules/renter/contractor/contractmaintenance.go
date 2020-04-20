@@ -6,6 +6,7 @@ package contractor
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
 	"time"
@@ -994,7 +995,6 @@ func (c *Contractor) threadedContractMaintenance() {
 	for _, contract := range c.staticContracts.ViewAll() {
 		c.log.Debugln("Examining a contract:", contract.HostPublicKey, contract.ID)
 		// Skip any host that does not match our whitelist/blacklist filter
-
 		// settings.
 		host, _, err := c.hdb.Host(contract.HostPublicKey)
 		if err != nil {
@@ -1134,7 +1134,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		alertSeverity := modules.SeverityError
 		// Increase the alert severity for renewal fails to critical if the number of
 		// contracts which failed to renew is more than 20% of the number of hosts.
-		if float64(numRenewFails) > float64(allowance.Hosts)*MaxCriticalRenewFailThreshold {
+		if float64(numRenewFails) > math.Ceil(float64(allowance.Hosts)*MaxCriticalRenewFailThreshold) {
 			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
