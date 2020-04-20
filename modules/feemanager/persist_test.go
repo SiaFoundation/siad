@@ -77,12 +77,6 @@ func TestLoadPersistData(t *testing.T) {
 // that is loaded into the FeeManager as expected
 func verifyLoadedPersistence(fm *FeeManager, persistData persistence) error {
 	// Check individual value fields
-	if fm.currentPayout.Cmp(persistData.CurrentPayout) != 0 {
-		return fmt.Errorf("Expected currentPayout to be %v but was %v", persistData.CurrentPayout, fm.currentPayout)
-	}
-	if fm.maxPayout.Cmp(persistData.MaxPayout) != 0 {
-		return fmt.Errorf("Expected maxPayout to be %v but was %v", persistData.MaxPayout, fm.maxPayout)
-	}
 	if fm.payoutHeight != persistData.PayoutHeight {
 		return fmt.Errorf("Expected payoutHeight to be %v but was %v", persistData.PayoutHeight, fm.payoutHeight)
 	}

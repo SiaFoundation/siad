@@ -15,10 +15,6 @@ import (
 )
 
 var (
-	// defaultMaxPayout is the default maximum amount that can be paid out in a
-	// given period
-	defaultMaxPayout = types.SiacoinPrecision.Mul64(10e3)
-
 	// Nil dependency errors.
 	errNilCS     = errors.New("cannot create FeeManager with nil consensus set")
 	errNilWallet = errors.New("cannot create FeeManager with nil wallet")
@@ -37,12 +33,6 @@ type (
 	FeeManager struct {
 		// fees are all the fees that are currently charging this siad instance
 		fees map[modules.FeeUID]*appFee
-
-		// currentPayout is how much the payout is going to be for this period
-		currentPayout types.Currency
-
-		// maxPayout is the maximum amount that will get paid out per period
-		maxPayout types.Currency
 
 		// payoutHeight is the blockheight at which the next payout will be
 		// submitted
@@ -115,9 +105,6 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir, 
 	fm := &FeeManager{
 		// Initialize map
 		fees: make(map[modules.FeeUID]*appFee),
-
-		// Set defaults
-		maxPayout: defaultMaxPayout,
 
 		// Set Deps
 		staticCS:     cs,
@@ -221,8 +208,6 @@ func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
 	defer fm.mu.Unlock()
 
 	return modules.FeeManagerSettings{
-		CurrentPayout: fm.currentPayout,
-		MaxPayout:     fm.maxPayout,
 		PayoutHeight:  fm.payoutHeight,
 	}, nil
 }

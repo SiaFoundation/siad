@@ -50,8 +50,6 @@ var (
 // persistence is the structure of the data persisted on disk for the FeeManager
 type persistence struct {
 	// Persisted information about the FeeManager
-	CurrentPayout types.Currency    `json:"currentpayout"`
-	MaxPayout     types.Currency    `json:"maxpayout"`
 	NextFeeOffset int64             `json:"nextfeeoffset"`
 	PayoutHeight  types.BlockHeight `json:"payoutheight"`
 
@@ -68,12 +66,6 @@ func (fm *FeeManager) callCancelFee(feeUID modules.FeeUID) error {
 		return ErrFeeNotFound
 	}
 
-	// Negative Currency check
-	if fee.Amount.Cmp(fm.currentPayout) > 0 {
-		build.Critical("fee amount is larger than the current payout, this should not happen")
-		fm.currentPayout = fee.Amount
-	}
-	fm.currentPayout = fm.currentPayout.Sub(fee.Amount)
 	delete(fm.fees, feeUID)
 	fee.Cancelled = true
 
@@ -187,12 +179,6 @@ func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
-	// Check if we are going to exceed the maxPayout
-	newPayout := fm.currentPayout.Add(amount)
-	if newPayout.Cmp(fm.maxPayout) > 0 {
-		return fmt.Errorf("Cannot set fee with amount of %v as it would cause the MaxPayout of %v to be exceeded", amount.HumanString(), fm.maxPayout.HumanString())
-	}
-
 	// Create Fee
 	fee := &appFee{
 		Address:      address,
@@ -210,7 +196,6 @@ func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency
 		return fmt.Errorf("Fee %v already exists", fee.UID)
 	}
 	fm.fees[fee.UID] = fee
-	fm.currentPayout = newPayout
 
 	// Save the FeeManager
 	err := fm.saveFeeAndUpdate(*fee)
@@ -253,8 +238,6 @@ func (fm *FeeManager) load() error {
 // loadPersistData loads the persisted data into the FeeManager
 func (fm *FeeManager) loadPersistData(persistData persistence) error {
 	// Load initial values
-	fm.currentPayout = persistData.CurrentPayout
-	fm.maxPayout = persistData.MaxPayout
 	fm.payoutHeight = persistData.PayoutHeight
 	fm.nextFeeOffset = persistData.NextFeeOffset
 
@@ -278,8 +261,6 @@ func (fm *FeeManager) persistData() persistence {
 		fees = append(fees, *fee)
 	}
 	return persistence{
-		CurrentPayout: fm.currentPayout,
-		MaxPayout:     fm.maxPayout,
 		NextFeeOffset: fm.nextFeeOffset,
 		PayoutHeight:  fm.payoutHeight,
 		Fees:          fees,

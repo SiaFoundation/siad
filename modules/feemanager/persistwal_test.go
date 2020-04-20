@@ -230,13 +230,7 @@ func randomPersistence() (persistence, error) {
 // randomPersistence returns a persistence struct filled in with the provided
 // fees and random info.
 func randomPersistenceWithFees(fees []appFee, offset int64) persistence {
-	var currentPayout types.Currency
-	for _, fee := range fees {
-		currentPayout = currentPayout.Add(fee.Amount)
-	}
 	return persistence{
-		CurrentPayout: currentPayout,
-		MaxPayout:     types.NewCurrency64(fastrand.Uint64n(1000)),
 		NextFeeOffset: offset,
 		PayoutHeight:  types.BlockHeight(fastrand.Uint64n(1000)),
 		Fees:          fees,

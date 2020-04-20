@@ -57,28 +57,17 @@ func (fm *FeeManager) threadedProcessFees() {
 			continue
 		}
 
-		// Process the fee
+		// Process the fee.
 		err := fm.processFee(fee)
 		if err != nil {
 			fm.staticLog.Printf("WARN: unable to process fee; id %v; err: %v", fee.UID, err)
 			processErrors = errors.Compose(processErrors, err)
 			continue
 		}
-
-		// Remove any non-recurring fees and reduce the payout
-		if !fee.Recurring {
-			fm.currentPayout = fm.currentPayout.Sub(fee.Amount)
-			delete(fm.fees, fee.UID)
-			continue
-		}
-
-		// Increment the PayoutHeight of Recurring fees to avoid double payouts
-		// due to errors with other fees.
-		fee.PayoutHeight += PayoutInterval
+		delete(fm.fees, fee.UID)
 	}
 
-	// Increment the payoutHeight and reset the currentPayout if we successfully
-	// processed all the fees
+	// Increment the payoutHeight.
 	if processErrors == nil {
 		fm.payoutHeight += PayoutInterval
 		fm.staticLog.Println("All fees processed, new PayoutHeight is", fm.payoutHeight)

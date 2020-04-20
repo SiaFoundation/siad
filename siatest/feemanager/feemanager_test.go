@@ -39,8 +39,8 @@ func TestFeeManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !fmg.Settings.CurrentPayout.IsZero() {
-		t.Errorf("Current Payout should be zero but was %v", fmg.Settings.CurrentPayout.HumanString())
+	if fmg.Settings.PayoutHeight == 0 {
+		t.Fatal("bad size")
 	}
 	fmPaidGet, err := fm.FeeManagerPaidFeesGet()
 	if err != nil {
@@ -71,9 +71,6 @@ func TestFeeManager(t *testing.T) {
 	fmg, err = fm.FeeManagerGet()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if fmg.Settings.CurrentPayout.Cmp(amount) != 0 {
-		t.Errorf("Current Payout should be %v but was %v", amount.HumanString(), fmg.Settings.CurrentPayout.HumanString())
 	}
 	fmPaidGet, err = fm.FeeManagerPaidFeesGet()
 	if err != nil {
@@ -114,9 +111,6 @@ func TestFeeManager(t *testing.T) {
 	fmg, err = fm.FeeManagerGet()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !fmg.Settings.CurrentPayout.IsZero() {
-		t.Errorf("Current Payout should be zero but was %v", fmg.Settings.CurrentPayout.HumanString())
 	}
 	fmPaidGet, err = fm.FeeManagerPaidFeesGet()
 	if err != nil {
@@ -220,9 +214,6 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fmg.Settings.CurrentPayout.Cmp(totalAmount) != 0 {
-		t.Errorf("Current Payout should be %v but was %v", totalAmount.HumanString(), fmg.Settings.CurrentPayout.HumanString())
-	}
 	fmPaidGet, err := fm.FeeManagerPaidFeesGet()
 	if err != nil {
 		t.Fatal(err)
@@ -238,6 +229,7 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 		t.Errorf("Expected %v PendingFees but got %v", 2, len(fmPendingGet.PendingFees))
 	}
 
+	/*
 	// Grab the Recurring fee for reference
 	var recurringFee modules.AppFee
 	for _, fee := range fmPendingGet.PendingFees {
@@ -246,6 +238,7 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 			break
 		}
 	}
+	*/
 
 	// Mine blocks to trigger the first payout period
 	m := tg.Miners()[0]
@@ -263,17 +256,14 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Process fees should have been triggered twice but neither fee should have
-	// been processed. CurrentPayout and PayoutHeight should be the same and
-	// there should be no change in the fees
+	// been processed. PayoutHeight should be the same and there should be no
+	// change in the fees
 	fmg, err = fm.FeeManagerGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fmg.Settings.PayoutHeight != payoutHeight {
 		t.Errorf("PayoutHeight should be %v but was %v", payoutHeight, fmg.Settings.PayoutHeight)
-	}
-	if fmg.Settings.CurrentPayout.Cmp(totalAmount) != 0 {
-		t.Errorf("Current Payout should be %v but was %v", totalAmount.HumanString(), fmg.Settings.CurrentPayout.HumanString())
 	}
 	fmPaidGet, err = fm.FeeManagerPaidFeesGet()
 	if err != nil {
@@ -310,19 +300,6 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 		if fmg.Settings.PayoutHeight != newPayoutHeight {
 			return fmt.Errorf("PayoutHeight should be %v but was %v", newPayoutHeight, fmg.Settings.PayoutHeight)
 		}
-		// CurrentPayout should now just be the recurring fee payout
-		if fmg.Settings.CurrentPayout.Cmp(recurringFee.Amount) != 0 {
-			return fmt.Errorf("Current Payout should be %v but was %v", recurringFee.Amount.HumanString(), fmg.Settings.CurrentPayout.HumanString())
-		}
-		// TODO: Need to enable this check once persistence of recurring fees is finalized
-		//
-		// fmPaidGet, err = fm.FeeManagerPaidFeesGet()
-		// if err != nil {
-		// 	return err
-		// }
-		// if len(fmPaidGet.PaidFees) != 2 {
-		// 	return fmt.Errorf("Expected %v PaidFees but got %v", 2, len(fmPaidGet.PaidFees))
-		// }
 		fmPendingGet, err = fm.FeeManagerPendingFeesGet()
 		if err != nil {
 			return err
@@ -330,15 +307,6 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 		if len(fmPendingGet.PendingFees) != 1 {
 			return fmt.Errorf("Expected %v PendingFees but got %v", 1, len(fmPendingGet.PendingFees))
 		}
-		// TODO: Need to enable this check once persistence of recurring fees is finalized
-		//
-		// pendingFee := fmPendingGet.PendingFees[0]
-		// if !pendingFee.Recurring {
-		// 	return errors.New("The remaining pending fee should be recurring")
-		// }
-		// if pendingFee.UID == recurringFee.UID {
-		// 	return errors.New("New pending fee should have a new UID")
-		// }
 		return nil
 	})
 	if err != nil {

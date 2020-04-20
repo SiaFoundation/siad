@@ -44,12 +44,6 @@ func TestFeeManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.CurrentPayout.Cmp(fm.currentPayout) != 0 {
-		t.Fatalf("Incorrect Settings: CurrentPayout is %v Expected %v", settings.CurrentPayout, fm.currentPayout)
-	}
-	if settings.MaxPayout.Cmp(fm.maxPayout) != 0 {
-		t.Fatalf("Incorrect Settings: MaxPayout is %v Expected %v", settings.MaxPayout, fm.maxPayout)
-	}
 	if settings.PayoutHeight != fm.payoutHeight {
 		t.Fatalf("Incorrect Settings: PayoutHeight is %v Expected %v", settings.PayoutHeight, fm.payoutHeight)
 	}
@@ -167,12 +161,6 @@ func TestFeeManagerSetAndCancel(t *testing.T) {
 	}
 	if originalNumFees-1 != len(fm2.fees) {
 		t.Fatalf("Expected %v fees in the map but found %v", originalNumFees-1, len(fm2.fees))
-	}
-
-	// Set a fee that would exceed the maxPayout to ensure that it fails
-	err = fm2.SetFee(types.UnlockHash{}, fm2.maxPayout.Add(defaultMaxPayout), modules.AppUID("expensive"), true)
-	if err == nil {
-		t.Fatal("Setting expensive fee should fail")
 	}
 }
 

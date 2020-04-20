@@ -47,13 +47,6 @@ type (
 	// FeeManagerSettings are the set of FeeManager fields that are important
 	// externally
 	FeeManagerSettings struct {
-		// CurrentPayout is how much currently will be paid out at the
-		// PayoutHeight
-		CurrentPayout types.Currency `json:"currentpayout"`
-
-		// MaxPayout is the maximum that will be paid out per payout period
-		MaxPayout types.Currency `json:"maxpayout"`
-
 		// PayoutHeight is the blockheight at which the next payout will occur
 		PayoutHeight types.BlockHeight `json:"payoutheight"`
 	}
