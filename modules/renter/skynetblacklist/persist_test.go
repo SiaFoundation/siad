@@ -163,13 +163,7 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get the starting filesize.
 	filename := filepath.Join(sb.staticPersistDir, persistFile)
-	fi, err := os.Stat(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadataSize := fi.Size()
 
 	// There should be no skylinks in the blacklist
 	if len(sb.merkleroots) != 0 {
@@ -183,7 +177,7 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	minNumBytes := int(2 * metadataPageSize)
-	corruptionSize, err := f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
+	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,15 +263,20 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
-	// The final filesize should be metadata + corruption size.
-	fi, err = os.Stat(filename)
+	// The final filesize should be equal to the persist length.
+	fi, err := os.Stat(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
 	filesize := fi.Size()
-	expectedSize := metadataSize + int64(corruptionSize)
-	if filesize != expectedSize {
-		t.Fatalf("Expected file size %v, got %v", expectedSize, filesize)
+	if filesize != sb3.persistLength {
+		t.Fatalf("Expected file size %v, got %v", sb3.persistLength, filesize)
+	}
+
+	// Verify that the correct number of links were persisted to verify no links
+	// are being truncated
+	if err = checkNumPersistedLinks(filename, 4); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
 	}
 }
 

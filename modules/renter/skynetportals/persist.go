@@ -283,7 +283,8 @@ func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortal, r
 // load loads the persisted portals list from disk.
 func (sp *SkynetPortals) load() error {
 	// Open File
-	f, err := os.Open(filepath.Join(sp.staticPersistDir, persistFile))
+	filepath := filepath.Join(sp.staticPersistDir, persistFile)
+	f, err := os.Open(filepath)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return err
@@ -309,7 +310,7 @@ func (sp *SkynetPortals) load() error {
 	}
 
 	// Truncate the file to remove any corrupted data that may have been added.
-	err = f.Truncate(sp.persistLength)
+	err = os.Truncate(filepath, sp.persistLength)
 	if err != nil {
 		return err
 	}

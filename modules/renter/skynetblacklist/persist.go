@@ -213,7 +213,8 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 // load loads the persisted blacklist from disk
 func (sb *SkynetBlacklist) load() error {
 	// Open File
-	f, err := os.Open(filepath.Join(sb.staticPersistDir, persistFile))
+	filepath := filepath.Join(sb.staticPersistDir, persistFile)
+	f, err := os.Open(filepath)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return err
@@ -239,11 +240,10 @@ func (sb *SkynetBlacklist) load() error {
 	}
 
 	// Truncate the file to remove any corrupted data that may have been added.
-	err = f.Truncate(sb.persistLength)
+	err = os.Truncate(filepath, sb.persistLength)
 	if err != nil {
 		return err
 	}
-
 	// Seek to the start of the persisted blacklist
 	_, err = f.Seek(metadataPageSize, 0)
 	if err != nil {
