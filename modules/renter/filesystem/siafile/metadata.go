@@ -174,18 +174,11 @@ type (
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
 		NumStuckChunks      uint64
+		OnDisk              bool
 		Redundancy          float64
 		Size                uint64
 		StuckHealth         float64
 		UID                 SiafileUID
-	}
-
-	// CachedHealthMetadata is a healper struct that contains the siafile health
-	// metadata fields that are cached
-	CachedHealthMetadata struct {
-		Health      float64
-		Redundancy  float64
-		StuckHealth float64
 	}
 )
 

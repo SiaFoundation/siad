@@ -144,12 +144,14 @@ func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.U
 		AggregateHealth:        DefaultDirHealth,
 		AggregateMinRedundancy: DefaultDirRedundancy,
 		AggregateModTime:       time.Now(),
+		AggregateRemoteHealth:  DefaultDirHealth,
 		AggregateStuckHealth:   DefaultDirHealth,
 
 		Health:        DefaultDirHealth,
 		MinRedundancy: DefaultDirRedundancy,
 		Mode:          mode,
 		ModTime:       time.Now(),
+		RemoteHealth:  DefaultDirHealth,
 		StuckHealth:   DefaultDirHealth,
 	}
 	update, err := createMetadataUpdate(mdPath, md)
@@ -293,6 +295,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
 	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
 	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
+	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
 	sd.metadata.AggregateSize = metadata.AggregateSize
 	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
 
@@ -303,6 +306,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.NumFiles = metadata.NumFiles
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
+	sd.metadata.RemoteHealth = metadata.RemoteHealth
 	sd.metadata.Size = metadata.Size
 	sd.metadata.StuckHealth = metadata.StuckHealth
 	return sd.saveDir()

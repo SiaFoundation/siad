@@ -40,6 +40,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	if md.AggregateNumSubDirs != md2.AggregateNumSubDirs {
 		return fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md.AggregateNumSubDirs, md2.AggregateNumSubDirs)
 	}
+	if md.AggregateRemoteHealth != md2.AggregateRemoteHealth {
+		return fmt.Errorf("AggregateRemoteHealths not equal, %v and %v", md.AggregateRemoteHealth, md2.AggregateRemoteHealth)
+	}
 	if md.AggregateSize != md2.AggregateSize {
 		return fmt.Errorf("AggregateSizes not equal, %v and %v", md.AggregateSize, md2.AggregateSize)
 	}
@@ -68,6 +71,9 @@ func equalMetadatas(md, md2 Metadata) error {
 	}
 	if md.NumSubDirs != md2.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, md2.NumSubDirs)
+	}
+	if md.RemoteHealth != md2.RemoteHealth {
+		return fmt.Errorf("RemoteHealths not equal, %v and %v", md.RemoteHealth, md2.RemoteHealth)
 	}
 	if md.Size != md2.Size {
 		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, md2.Size)
