@@ -97,7 +97,9 @@ func (w *worker) managedPerformFundAcountJob() bool {
 	}
 	defer stream.Close()
 
-	err = w.staticRPCClient.FundAccount(nil, stream, modules.RPCPriceTable{}, w.staticAccount.staticID, job.amount)
+	// TODO: handle response
+	// TODO: pass in actual PT
+	_, err = w.staticRPCClient.FundAccount(nil, stream, &modules.RPCPriceTable{}, w.staticAccount.staticID, job.amount)
 	if err != nil {
 		job.sendResult(types.ZeroCurrency, err)
 		return true

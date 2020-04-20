@@ -157,7 +157,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Fetch the price table.
-	err = rhp.negotiatePriceTable()
+	err = rhp.updatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
