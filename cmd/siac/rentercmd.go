@@ -2833,6 +2833,11 @@ func skynetuploadfile(sourcePath, destSiaPath string) {
 // skynetunpincmd will unpin and delete either a single or multiple files or
 // directories from the Renter.
 func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
+	if len(skyPathStrs) == 0 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
+	}
+
 	for _, skyPathStr := range skyPathStrs {
 		// Create the skypath.
 		skyPath, err := modules.NewSiaPath(skyPathStr)
