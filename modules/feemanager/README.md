@@ -3,23 +3,14 @@ The FeeManager is a way for developers building on top of Sia to charge a fee
 for the use of their product. The FeeManager is structured in a way that one
 siad instance can support fees from multiple applications running on top of it.
 
-There are two types of fees that are supported by the FeeManager:
- - One Time Fees
- - Recurring Fees
+An application can request that the user be charged a fixed amount once.
+Applications can use this as a setup fee or can charge the user for various
+actions as the application is used.
 
-**One Time Fees**  
-The One Time Fees will charge the user a fixed amount once. Applications can use
-this as a setup fee or can use this to charge for various actions as the
-application is used.
-
-**Recurring Fees**  
-The Recurring Fees will charge the user a fixed amount each payout period.
-
-The payout period is one month and all fees are paid out at the end of the
-payout period. During the month, any one time or recurring fees will accrue.
-There is a `MaxPayOut` field that limits the amount of money the user can be
-charged each payout period. When the fees are paid out they are split, sending
-70% of the payout to the application developer and 30% to Nebulous.
+Fees can be marked as recurring to indicate to the user that the fee will be
+charged every month. The application that is extracting the fee is still
+expected to register the fee each month, siad will not charge users for
+applications that the user is no longer using.
 
 ## Subsystems
 The following subsystems help the FeeManager module execute its
