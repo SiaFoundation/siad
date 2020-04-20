@@ -2,9 +2,12 @@ package modules
 
 import (
 	"encoding/binary"
-	"errors"
+	"sync"
+	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 type (
@@ -81,6 +84,10 @@ var (
 
 	// SpecifierReadSector is the specifier for the ReadSector instruction.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
+
+	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
+	// be paid for with the provided budget.
+	ErrInsufficientBandwidthBudget = errors.New("insufficient budget for bandwidth")
 
 	// ErrMDMInsufficientBudget is the error returned if the remaining budget of
 	// an MDM program is not sufficient to execute the next instruction.
@@ -250,4 +257,85 @@ func (p Program) ReadOnly() bool {
 		}
 	}
 	return true
+}
+
+// RPCBudget is a helper type for threadsafe budget handling.
+type RPCBudget struct {
+	budget types.Currency
+	mu     sync.Mutex
+}
+
+// NewBudget creates a new budget from a types.Currency.
+func NewBudget(budget types.Currency) *RPCBudget {
+	return &RPCBudget{
+		budget: budget,
+	}
+}
+
+// Value returns the remaining value in the budget.
+func (b *RPCBudget) Value() types.Currency {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.budget
+}
+
+// Withdraw withdraws from a budget. Returns 'true' on success and 'false'
+// otherwise.
+func (b *RPCBudget) Withdraw(c types.Currency) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.budget.Cmp(c) < 0 {
+		return false
+	}
+	b.budget.Sub(c)
+	return true
+}
+
+// BudgetLimit is an implementation of the BandwidthLimit interface which uses
+// an RPCBudget to determine whether to allow for more bandwidth consumption or
+// not.
+type BudgetLimit struct {
+	budget *RPCBudget
+	pt     *RPCPriceTable
+
+	atomicDownloaded uint64
+	atomicUploaded   uint64
+}
+
+// NewBudgetLimit creates a new limit from a budget and priceTable.
+func NewBudgetLimit(budget *RPCBudget, pt *RPCPriceTable) mux.BandwidthLimit {
+	return &BudgetLimit{
+		budget: budget,
+		pt:     pt,
+	}
+}
+
+// Downloaded implements the mux.BandwidthLimit interface.
+func (bl *BudgetLimit) Downloaded() uint64 {
+	return atomic.LoadUint64(&bl.atomicDownloaded)
+}
+
+// Uploaded implements the mux.BandwidthLimit interface.
+func (bl *BudgetLimit) Uploaded() uint64 {
+	return atomic.LoadUint64(&bl.atomicUploaded)
+}
+
+// RecordDownload implements the mux.BandwidthLimit interface.
+func (bl *BudgetLimit) RecordDownload(bytes uint64) error {
+	cost := bl.pt.DownloadBandwidthCost.Mul64(bytes)
+	if !bl.budget.Withdraw(cost) {
+		return errors.AddContext(ErrInsufficientBandwidthBudget, "insufficient budget for download")
+	}
+	atomic.AddUint64(&bl.atomicDownloaded, bytes)
+	return nil
+}
+
+// RecordUpload implements the mux.BandwidthLimit interface.
+func (bl *BudgetLimit) RecordUpload(bytes uint64) error {
+	cost := bl.pt.UploadBandwidthCost.Mul64(bytes)
+	if !bl.budget.Withdraw(cost) {
+		return errors.AddContext(ErrInsufficientBandwidthBudget, "insufficient budget for upload")
+	}
+	atomic.AddUint64(&bl.atomicUploaded, bytes)
+	return nil
 }

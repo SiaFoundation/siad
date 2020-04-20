@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 // TestVerifyPaymentRevision is a unit test covering verifyPaymentRevision
@@ -918,10 +919,12 @@ func (s testStream) Read(b []byte) (n int, err error)  { return s.c.Read(b) }
 func (s testStream) Write(b []byte) (n int, err error) { return s.c.Write(b) }
 func (s testStream) Close() error                      { return s.c.Close() }
 
-func (s testStream) LocalAddr() net.Addr            { panic("not implemented") }
-func (s testStream) RemoteAddr() net.Addr           { panic("not implemented") }
-func (s testStream) SetDeadline(t time.Time) error  { panic("not implemented") }
-func (s testStream) SetPriority(priority int) error { panic("not implemented") }
+func (s testStream) Limit() mux.BandwidthLimit           { panic("not implemented") }
+func (s testStream) SetLimit(_ mux.BandwidthLimit) error { panic("not implemented") }
+func (s testStream) LocalAddr() net.Addr                 { panic("not implemented") }
+func (s testStream) RemoteAddr() net.Addr                { panic("not implemented") }
+func (s testStream) SetDeadline(t time.Time) error       { panic("not implemented") }
+func (s testStream) SetPriority(priority int) error      { panic("not implemented") }
 
 func (s testStream) SetReadDeadline(t time.Time) error {
 	panic("not implemented")

@@ -24,10 +24,18 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to process payment")
 	}
+
+	// Add limit to the stream.
+	budget := modules.NewBudget(pd.Amount())
+	bandwidthLimit := modules.NewBudgetLimit(budget, pt)
+	err = stream.SetLimit(bandwidthLimit)
+	if err != nil {
+		return errors.AddContext(err, "failed to set budget limit on stream")
+	}
+
 	// Refund all the money we didn't use at the end of the RPC.
 	refundAccount := pd.AccountID()
-	amountPaid := pd.Amount()
-	refund := amountPaid
+	programRefund := pd.Amount()
 	err = h.tg.Add()
 	if err != nil {
 		return err
@@ -35,7 +43,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	defer func() {
 		go func() {
 			defer h.tg.Done()
-			depositErr := h.staticAccountManager.callRefund(refundAccount, refund)
+			// The total refund is the remaining value of the budget + the
+			// potential program refund.
+			depositErr := h.staticAccountManager.callRefund(refundAccount, programRefund.Add(budget.Value()))
 			if depositErr != nil {
 				h.log.Print("ERROR: failed to refund renter", depositErr)
 			}
@@ -85,7 +95,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Execute the program.
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, amountPaid, collateralBudget, sos, dataLength, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
@@ -93,7 +103,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Handle outputs.
 	executionFailed := false
 	numOutputs := 0
-	cost := types.ZeroCurrency
 	for output := range outputs {
 		// Remember number of returned outputs.
 		numOutputs++
@@ -120,8 +129,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			build.Critical(err)
 			return err
 		}
-		cost = output.ExecutionCost
-		refund = amountPaid.Add(output.PotentialRefund).Sub(cost)
+		programRefund = resp.PotentialRefund
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 		// Send the response to the peer.
@@ -164,10 +172,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	//	else {
 	//		// TODO: finalize spending for readonly programs once the MR is ready.
 	//	}
-	// The program was finalized and we don't want to refund the renter beyond
-	// the difference between the paid amount and execution cost in the deferred
-	// statement anymore. This is a precaution in case we extend the code after
-	// this point.
-	refund = amountPaid.Sub(cost)
+	// The program was finalized and we don't want to refund the programRefund
+	// anymore.
+	programRefund = types.ZeroCurrency
 	return nil
 }

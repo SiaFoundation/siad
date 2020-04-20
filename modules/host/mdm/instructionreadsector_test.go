@@ -56,7 +56,8 @@ func TestInstructionReadSector(t *testing.T) {
 	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
+	budget := modules.NewBudget(cost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +83,10 @@ func TestInstructionReadSector(t *testing.T) {
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
+		if !budget.Value().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Value().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
+		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
@@ -105,7 +110,8 @@ func TestInstructionReadSector(t *testing.T) {
 	r = bytes.NewReader(programData)
 	dataLen = uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
+	budget = modules.NewBudget(cost)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +138,10 @@ func TestInstructionReadSector(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !budget.Value().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Value().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
 		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())

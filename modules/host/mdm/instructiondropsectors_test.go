@@ -169,7 +169,8 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	budget := modules.NewBudget(cost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,6 +204,10 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(testOutput.ExecutionCost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost, testOutput.ExecutionCost)
+		}
+		if !budget.Value().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Value().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
 		}
 		if !output.PotentialRefund.Equals(testOutput.PotentialRefund) {
 			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund, testOutput.PotentialRefund)
