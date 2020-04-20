@@ -219,8 +219,11 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	}
 
 	// create a new revision
-	current := metadata.Transaction.FileContractRevisions[0]
-	rev := newPaymentRevision(current, amount)
+	current := sc.LastRevision()
+	rev, err := current.PaymentRevision(amount)
+	if err != nil {
+		return errors.AddContext(err, "Failed to create a payment revision")
+	}
 
 	// create transaction containing the revision
 	signedTxn := types.Transaction{
@@ -243,7 +246,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	// send PaymentRequest & PayByContractRequest
 	req := modules.PaymentRequest{Type: modules.PayByContract}
 	var pbcr modules.PayByContractRequest
-	pbcr.LoadArguments(rev, sig)
+	pbcr.FromArguments(rev, sig)
 	err = modules.RPCWriteAll(stream, req, pbcr)
 	if err != nil {
 		return err
@@ -588,29 +591,4 @@ func (c *Contractor) managedSynced() bool {
 	default:
 	}
 	return false
-}
-
-// newPaymentRevision will make a new revision that transfers the funds from the
-// renter to the host.
-func newPaymentRevision(current types.FileContractRevision, payment types.Currency) types.FileContractRevision {
-	rev := current
-
-	// need to manually copy slice memory
-	rev.NewValidProofOutputs = make([]types.SiacoinOutput, 2)
-	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, 3)
-	copy(rev.NewValidProofOutputs, current.NewValidProofOutputs)
-	copy(rev.NewMissedProofOutputs, current.NewMissedProofOutputs)
-
-	// move valid payout from renter to host
-	rev.NewValidProofOutputs[0].Value = current.NewValidProofOutputs[0].Value.Sub(payment)
-	rev.NewValidProofOutputs[1].Value = current.NewValidProofOutputs[1].Value.Add(payment)
-
-	// move missed payout from renter to void
-	rev.NewMissedProofOutputs[0].Value = current.NewMissedProofOutputs[0].Value.Sub(payment)
-	rev.NewMissedProofOutputs[2].Value = current.NewMissedProofOutputs[2].Value.Add(payment)
-
-	// increment revision number
-	rev.NewRevisionNumber++
-
-	return rev
 }

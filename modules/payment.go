@@ -61,14 +61,6 @@ type PaymentProcessor interface {
 	ProcessPayment(stream siamux.Stream) (PaymentDetails, error)
 }
 
-// PaymentDetails is an interface that defines method that give more information
-// about the details of a processed payment.
-type PaymentDetails interface {
-	AccountID() AccountID
-	Amount() types.Currency
-	AddedCollateral() types.Currency
-}
-
 // PaymentProvider is the interface implemented to provide payment for an RPC.
 type PaymentProvider interface {
 	// ProvidePayment takes a stream and various payment details and handles the
@@ -77,13 +69,31 @@ type PaymentProvider interface {
 	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error
 }
 
+// PaymentDetails is an interface that defines method that give more information
+// about the details of a processed payment.
+type PaymentDetails interface {
+	AccountID() AccountID
+	Amount() types.Currency
+	AddedCollateral() types.Currency
+}
+
 // Payment identifiers
 var (
 	PayByContract         = types.NewSpecifier("PayByContract")
 	PayByEphemeralAccount = types.NewSpecifier("PayByEphemAcc")
 )
 
+// ZeroAccountID is the only account id that is allowed to be invalid.
+var ZeroAccountID = AccountID{""}
+
 type (
+	// AccountID is the unique identifier of an ephemeral account on the host.
+	// It should always be a valid representation of types.SiaPublicKey or an
+	// empty string.
+	AccountID struct {
+		spk string
+	}
+
 	// PaymentRequest identifies the payment method. This can be either
 	// PayByContract or PayByEphemeralAccount
 	PaymentRequest struct {
@@ -122,6 +132,14 @@ type (
 		Signature crypto.Signature
 	}
 
+	// WithdrawalMessage contains all details to spend from an ephemeral account
+	WithdrawalMessage struct {
+		Account AccountID
+		Expiry  types.BlockHeight
+		Amount  types.Currency
+		Nonce   [WithdrawalNonceSize]byte
+	}
+
 	// Receipt is returned by the host after a successful deposit into an
 	// ephemeral account and can be used as proof of payment.
 	Receipt struct {
@@ -132,9 +150,9 @@ type (
 	}
 )
 
-// LoadArguments is a helper function that takes a revision and a signature as
+// FromArguments is a helper function that takes a revision and a signature as
 // arguments and decorates their info on a PayByContractRequest object.
-func (pbcr *PayByContractRequest) LoadArguments(rev types.FileContractRevision, sig crypto.Signature) {
+func (pbcr *PayByContractRequest) FromArguments(rev types.FileContractRevision, sig crypto.Signature) {
 	pbcr.ContractID = rev.ID()
 	pbcr.NewRevisionNumber = rev.NewRevisionNumber
 	pbcr.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
@@ -146,16 +164,6 @@ func (pbcr *PayByContractRequest) LoadArguments(rev types.FileContractRevision, 
 		pbcr.NewMissedProofValues[i] = o.Value
 	}
 	pbcr.Signature = sig[:]
-}
-
-// ZeroAccountID is the only account id that is allowed to be invalid.
-var ZeroAccountID = AccountID{""}
-
-// AccountID is the unique identifier of an ephemeral account on the host.
-// It should always be a valid representation of types.SiaPublicKey or an
-// empty string.
-type AccountID struct {
-	spk string
 }
 
 // FromSPK creates an AccountID from a SiaPublicKey. This assumes that the
@@ -223,14 +231,6 @@ func (aid AccountID) SPK() (spk types.SiaPublicKey) {
 		build.Critical("account id should never fail to be loaded as a SiaPublicKey")
 	}
 	return
-}
-
-// WithdrawalMessage contains all details to spend from an ephemeral account
-type WithdrawalMessage struct {
-	Account AccountID
-	Expiry  types.BlockHeight
-	Amount  types.Currency
-	Nonce   [WithdrawalNonceSize]byte
 }
 
 // Validate checks the WithdrawalMessage's expiry and signature. If the

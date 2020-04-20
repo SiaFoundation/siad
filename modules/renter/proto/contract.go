@@ -162,6 +162,11 @@ func (c *SafeContract) CommitPaymentIntent(t *writeaheadlog.Transaction, signedT
 	return nil
 }
 
+// LastRevision returns the most recent revision
+func (c *SafeContract) LastRevision() types.FileContractRevision {
+	return c.header.LastRevision()
+}
+
 // Metadata returns the metadata of a renter contract
 func (c *SafeContract) Metadata() modules.RenterContract {
 	c.mu.Lock()
