@@ -15,6 +15,9 @@ import (
 )
 
 var (
+	// ErrEmptyProgram is returned if the program doesn't contain any instructions.
+	ErrEmptyProgram = errors.New("can't execute program without instructions")
+
 	// ErrInterrupted indicates that the program was interrupted during
 	// execution and couldn't finish.
 	ErrInterrupted = errors.New("execution of program was interrupted")
@@ -37,10 +40,10 @@ type programState struct {
 	potentialUploadRevenue  types.Currency
 
 	// budget related fields
-	priceTable modules.RPCPriceTable
+	priceTable *modules.RPCPriceTable
 }
 
-// Program is a collection of instructions. Within a program, each instruction
+// program is a collection of instructions. Within a program, each instruction
 // will potentially modify the size and merkle root of a file contract. After the
 // final instruction is executed, the MDM will create an updated revision of the
 // FileContract which has to be signed by the renter and the host.
@@ -70,7 +73,8 @@ func outputFromError(err error, costs Costs) Output {
 		output: output{
 			Error: err,
 		},
-		costs: costs,
+
+		Costs: costs,
 	}
 }
 
@@ -93,10 +97,15 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, instructions []modules.Instruction, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
-	initCosts := InitialProgramCosts(pt, programDataLen, uint64(len(instructions)))
-	p := &program{
-		outputChan: make(chan Output, len(instructions)),
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+	initCosts := InitialProgramCosts(pt, programDataLen, uint64(len(p)))
+	// Sanity check program length.
+	if len(p) == 0 {
+		return nil, nil, ErrEmptyProgram
+	}
+	// Build program.
+	program := &program{
+		outputChan: make(chan Output, len(p)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
@@ -113,33 +122,33 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt modules.RPCPriceTable, in
 
 	// Convert the instructions.
 	var err error
-	for _, i := range instructions {
-		instruction, err := decodeInstruction(p, i)
+	for _, i := range p {
+		instruction, err := decodeInstruction(program, i)
 		if err != nil {
-			return nil, nil, errors.Compose(err, p.staticData.Close())
+			return nil, nil, errors.Compose(err, program.staticData.Close())
 		}
-		p.instructions = append(p.instructions, instruction)
+		program.instructions = append(program.instructions, instruction)
 	}
 	// Increment the execution cost of the program.
-	err = p.addCost(initCosts.ExecutionCost)
+	err = program.addCost(initCosts.ExecutionCost)
 	if err != nil {
-		return nil, nil, errors.Compose(err, p.staticData.Close())
+		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}
 	// Execute all the instructions.
-	if err := p.tg.Add(); err != nil {
-		return nil, nil, errors.Compose(err, p.staticData.Close())
+	if err := program.tg.Add(); err != nil {
+		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}
 	go func() {
-		defer p.staticData.Close()
-		defer p.tg.Done()
-		defer close(p.outputChan)
-		p.outputErr = p.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
+		defer program.staticData.Close()
+		defer program.tg.Done()
+		defer close(program.outputChan)
+		program.outputErr = program.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
 	}()
 	// If the program is readonly there is no need to finalize it.
-	if p.readOnly() {
-		return nil, p.outputChan, nil
+	if p.ReadOnly() {
+		return nil, program.outputChan, nil
 	}
-	return p.managedFinalize, p.outputChan, nil
+	return program.managedFinalize, program.outputChan, nil
 }
 
 // addCollateral increases the collateral of the program by 'collateral'. If as
@@ -221,7 +230,8 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		output = i.Execute(output)
 		p.outputChan <- Output{
 			output: output,
-			costs:  p.costs(),
+
+			Costs: p.costs(),
 		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {
@@ -251,15 +261,4 @@ func (p *program) managedFinalize(so StorageObligation) error {
 		return err
 	}
 	return nil
-}
-
-// readOnly returns 'true' if all of the instructions executed by a program are
-// readonly.
-func (p *program) readOnly() bool {
-	for _, i := range p.instructions {
-		if !i.ReadOnly() {
-			return false
-		}
-	}
-	return true
 }

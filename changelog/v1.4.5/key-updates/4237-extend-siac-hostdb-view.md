@@ -1,1 +1,0 @@
-- Extend `siac hostdb view` to include all the fields returned from the API.

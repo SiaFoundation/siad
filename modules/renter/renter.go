@@ -42,6 +42,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblacklist"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
@@ -172,6 +173,7 @@ type Renter struct {
 
 	// Skynet Management
 	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
+	staticSkynetPortals   *skynetportals.SkynetPortals
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -927,6 +929,13 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	r.staticSkynetBlacklist = sb
 
+	// Add SkynetPortals
+	sp, err := skynetportals.New(r.persistDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new skynet portal list")
+	}
+	r.staticSkynetPortals = sp
+
 	// Load all saved data.
 	err = r.managedInitPersist()
 	if err != nil {
@@ -940,7 +949,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.
-	skykeyManDir := build.DefaultSkynetDir()
+	skykeyManDir := build.SkynetDir()
 	if build.Release == "testing" {
 		skykeyManDir = persistDir
 	}

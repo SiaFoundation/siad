@@ -2,12 +2,8 @@ package mdm
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
-
-// Instructions contains a list of instructions.
-type Instructions []modules.Instruction
 
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
@@ -25,10 +21,6 @@ type instruction interface {
 	// sticks around beyond the scope of the instruction until the program gets
 	// committed/canceled.
 	Memory() uint64
-	// ReadOnly indicates whether or not the instruction is just readonly. A
-	// readonly instruction doesn't cause the contract's merkle root to change
-	// and can therefore be executed parallel to other readonly instructions.
-	ReadOnly() bool
 	// Time returns the amount of time the execution of the instruction takes.
 	Time() (uint64, error)
 }
@@ -53,9 +45,10 @@ func instructionCosts(i instruction) (Costs, error) {
 // Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
 	output
-	// costs contains the associated costs for the output including execution
+
+	// Costs contains the associated costs for the output including execution
 	// cost, potential refund and additional collateral.
-	costs Costs
+	Costs Costs
 }
 
 // output is the type returned by all instructions when being executed.

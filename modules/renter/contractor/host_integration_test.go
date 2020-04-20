@@ -429,9 +429,12 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 	defer h.Close()
 	defer c.Close()
+	defer m.Close()
 
 	// set an allowance and wait for a contract to be formed.
-	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
+	a := modules.DefaultAllowance
+	a.Hosts = 1
+	if err := c.SetAllowance(a); err != nil {
 		t.Fatal(err)
 	}
 	numRetries := 0
@@ -442,7 +445,13 @@ func TestIntegrationRenew(t *testing.T) {
 			}
 		}
 		numRetries++
-		if len(c.Contracts()) == 0 {
+		// Check for number of contracts and number of pubKeys as there is a
+		// slight delay between the contract being added to the contract set and
+		// the pubkey being added to the contractor map
+		c.mu.Lock()
+		numPubKeys := len(c.pubKeysToContractID)
+		c.mu.Unlock()
+		if len(c.Contracts()) != 1 && numPubKeys != 1 {
 			return errors.New("no contracts were formed")
 		}
 		return nil

@@ -1,6 +1,9 @@
 package modules
 
 import (
+	"io"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -72,10 +75,16 @@ var (
 	PayByEphemeralAccount = types.NewSpecifier("PayByEphemAcc")
 )
 
+// ZeroAccountID is the only account id that is allowed to be invalid.
+var ZeroAccountID = AccountID{""}
+
 type (
 	// AccountID is the unique identifier of an ephemeral account on the host.
-	// It is the string representation of a SiaPublicKey.
-	AccountID string
+	// It should always be a valid representation of types.SiaPublicKey or an
+	// empty string.
+	AccountID struct {
+		spk string
+	}
 
 	// PaymentRequest identifies the payment method. This can be either
 	// PayByContract or PayByEphemeralAccount
@@ -94,7 +103,7 @@ type (
 	// PayByEphemeralAccountResponse is the object sent in response to the
 	// PayByEphemeralAccountRequest
 	PayByEphemeralAccountResponse struct {
-		Amount types.Currency
+		Balance types.Currency // balance of the account before withdrawal
 	}
 
 	// PayByContractRequest holds all payment details to pay from a file
@@ -104,12 +113,14 @@ type (
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
 		NewMissedProofValues []types.Currency
+		RefundAccount        AccountID
 		Signature            []byte
 	}
 
 	// PayByContractResponse is the object sent in response to the
 	// PayByContractRequest
 	PayByContractResponse struct {
+		Balance   types.Currency // balance of the refund account before withdrawal
 		Signature crypto.Signature
 	}
 
@@ -130,6 +141,73 @@ type (
 		Timestamp int64
 	}
 )
+
+// FromSPK creates an AccountID from a SiaPublicKey. This assumes that the
+// provided key is valid and won't perform additional checks.
+func (aid *AccountID) FromSPK(spk types.SiaPublicKey) {
+	if spk.Equals(types.SiaPublicKey{}) {
+		*aid = ZeroAccountID
+		return
+	}
+	*aid = AccountID{spk.String()}
+}
+
+// IsZeroAccount returns whether or not the account id matches the empty string.
+func (aid AccountID) IsZeroAccount() bool {
+	return aid == ZeroAccountID
+}
+
+// LoadString loads an account id from a string.
+func (aid *AccountID) LoadString(s string) error {
+	var spk types.SiaPublicKey
+	err := spk.LoadString(s)
+	if err != nil {
+		return errors.AddContext(err, "failed to load account id from string")
+	}
+	aid.FromSPK(spk)
+	return nil
+}
+
+// MarshalSia implements the SiaMarshaler interface.
+func (aid AccountID) MarshalSia(w io.Writer) error {
+	if aid.IsZeroAccount() {
+		return types.SiaPublicKey{}.MarshalSia(w)
+	}
+	return aid.SPK().MarshalSia(w)
+}
+
+// UnmarshalSia implements the SiaMarshaler interface.
+func (aid *AccountID) UnmarshalSia(r io.Reader) error {
+	var spk types.SiaPublicKey
+	err := spk.UnmarshalSia(r)
+	if err != nil {
+		return err
+	}
+	aid.FromSPK(spk)
+	return err
+}
+
+// PK returns the id as a crypto.PublicKey.
+func (aid AccountID) PK() (pk crypto.PublicKey) {
+	spk := aid.SPK()
+	if len(spk.Key) != len(pk) {
+		panic("key len mismatch between crypto.Publickey and types.SiaPublicKey")
+	}
+	copy(pk[:], spk.Key)
+	return
+}
+
+// SPK returns the account id as a types.SiaPublicKey.
+func (aid AccountID) SPK() (spk types.SiaPublicKey) {
+	if aid.IsZeroAccount() {
+		build.Critical("should never use the zero account")
+	}
+	err := spk.LoadString(aid.spk)
+	if err != nil {
+		build.Critical("account id should never fail to be loaded as a SiaPublicKey")
+	}
+	return
+}
 
 // Validate checks the WithdrawalMessage's expiry and signature. If the
 // signature is invalid, or if the WithdrawlMessage is already expired, or it
@@ -157,12 +235,7 @@ func (wm *WithdrawalMessage) ValidateExpiry(blockHeight, expiry types.BlockHeigh
 
 // ValidateSignature returns an error if the provided signature is invalid
 func (wm *WithdrawalMessage) ValidateSignature(hash crypto.Hash, sig crypto.Signature) error {
-	var spk types.SiaPublicKey
-	spk.LoadString(string(wm.Account))
-	var pk crypto.PublicKey
-	copy(pk[:], spk.Key)
-
-	err := crypto.VerifyHash(hash, pk, sig)
+	err := crypto.VerifyHash(hash, wm.Account.PK(), sig)
 	if err != nil {
 		return errors.Extend(err, ErrWithdrawalInvalidSignature)
 	}

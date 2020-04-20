@@ -14,16 +14,16 @@ type programBuilder struct {
 	// Costs contains the current running costs in the builder.
 	Costs Costs
 
-	pt              modules.RPCPriceTable
+	pt              *modules.RPCPriceTable
 	programData     ProgramData
 	programDataLen  uint64
 	dataOffset      uint64 // the data offset for the next instruction
-	instructions    Instructions
+	instructions    modules.Program
 	numInstructions uint64 // set when creating the builder
 }
 
 // newProgramBuilder creates a new programBuilder.
-func newProgramBuilder(pt modules.RPCPriceTable, dataLen, numInstructions uint64) programBuilder {
+func newProgramBuilder(pt *modules.RPCPriceTable, dataLen, numInstructions uint64) programBuilder {
 	return programBuilder{
 		Costs: InitialProgramCosts(pt, dataLen, numInstructions),
 
@@ -31,7 +31,7 @@ func newProgramBuilder(pt modules.RPCPriceTable, dataLen, numInstructions uint64
 		programData:     make(ProgramData, dataLen),
 		programDataLen:  dataLen,
 		dataOffset:      0,
-		instructions:    make(Instructions, 0, numInstructions),
+		instructions:    make(modules.Program, 0, numInstructions),
 		numInstructions: numInstructions,
 	}
 }
@@ -136,7 +136,7 @@ func (b *programBuilder) UpdateCosts(newCosts Costs) {
 
 // Finish finishes building the program and returns the final state including
 // the instruction list, program data and final costs.
-func (b *programBuilder) Finish() (Instructions, ProgramData, Costs, error) {
+func (b *programBuilder) Finish() (modules.Program, ProgramData, Costs, error) {
 	// The number of instructions specified should equal the number added.
 	if uint64(len(b.instructions)) != b.numInstructions {
 		return nil, nil, Costs{}, fmt.Errorf("expected %v instructions, received %v", b.numInstructions, len(b.instructions))

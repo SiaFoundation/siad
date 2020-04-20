@@ -190,6 +190,33 @@ func (i storageObligationStatus) String() string {
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 
+// managedGetStorageObligationSnapshot fetches a storage obligation from the
+// database and returns a snapshot.
+func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var err error
+	var so storageObligation
+	if err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, id)
+		return err
+	}); err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+
+	rev, err := so.recentRevision()
+	if err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+	return StorageObligationSnapshot{
+		staticContractSize:        so.fileSize(),
+		staticMerkleRoot:          so.merkleRoot(),
+		staticRemainingCollateral: rev.MissedHostPayout(),
+		staticSectorRoots:         so.SectorRoots,
+	}, nil
+}
+
 // getStorageObligation fetches a storage obligation from the database tx.
 func (h *Host) getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
 	soBytes := tx.Bucket(bucketStorageObligations).Get(soid[:])
@@ -221,9 +248,10 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 // snapshot only contains the properties required by the MDM to execute a
 // program. This can be extended in the future to support other use cases.
 type StorageObligationSnapshot struct {
-	staticContractSize uint64
-	staticMerkleRoot   crypto.Hash
-	staticSectorRoots  []crypto.Hash
+	staticContractSize        uint64
+	staticMerkleRoot          crypto.Hash
+	staticRemainingCollateral types.Currency
+	staticSectorRoots         []crypto.Hash
 }
 
 // ContractSize returns the size of the underlying contract, which is static and
@@ -244,11 +272,22 @@ func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 	return sos.staticSectorRoots
 }
 
+// UnallocatedCollateral returns the remaining collateral within the contract
+// that hasn't been allocated yet. This means it is not yet moved to the void in
+// case of a missed storage proof.
+func (sos StorageObligationSnapshot) UnallocatedCollateral() types.Currency {
+	return sos.staticRemainingCollateral
+}
+
 // Update will take a list of sector changes and update the database to account
 // for all of it.
-func (so storageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
+func (so storageObligation) Update(sectorRoots []crypto.Hash, sectorsRemoved map[crypto.Hash]struct{}, sectorsGained map[crypto.Hash][]byte) error {
 	so.SectorRoots = sectorRoots
-	return so.h.managedModifyStorageObligation(so, sectorsRemoved, sectorsGained)
+	sr := make([]crypto.Hash, 0, len(sectorsRemoved))
+	for sector := range sectorsRemoved {
+		sr = append(sr, sector)
+	}
+	return so.h.managedModifyStorageObligation(so, sr, sectorsGained)
 }
 
 // expiration returns the height at which the storage obligation expires.
@@ -553,33 +592,6 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 		return composeErrors(err, h.removeStorageObligation(so, obligationRejected))
 	}
 	return nil
-}
-
-// managedGetStorageObligationSnapshot fetches a storage obligation from the
-// database and returns a snapshot.
-func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	var err error
-	var so storageObligation
-	if err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = h.getStorageObligation(tx, id)
-		return err
-	}); err != nil {
-		return StorageObligationSnapshot{}, err
-	}
-
-	rev, err := so.recentRevision()
-	if err != nil {
-		return StorageObligationSnapshot{}, errors.AddContext(err, "Could not get storage obligation snapshot")
-	}
-
-	return StorageObligationSnapshot{
-		staticContractSize: rev.NewFileSize,
-		staticMerkleRoot:   rev.NewFileMerkleRoot,
-		staticSectorRoots:  so.SectorRoots,
-	}, nil
 }
 
 // managedModifyStorageObligation will take an updated storage obligation along

@@ -12,7 +12,7 @@ import (
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
-func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) (Instructions, ProgramData, Costs, Costs, error) {
+func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, ProgramData, Costs, Costs, error) {
 	b := newProgramBuilder(pt, uint64(len(sectorData)), 1)
 	err := b.AddAppendInstruction(sectorData, merkleProof)
 	if err != nil {

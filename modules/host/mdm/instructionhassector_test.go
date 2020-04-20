@@ -12,7 +12,7 @@ import (
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt modules.RPCPriceTable) (Instructions, ProgramData, Costs, Costs, error) {
+func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (modules.Program, ProgramData, Costs, Costs, error) {
 	b := newProgramBuilder(pt, uint64(crypto.HashSize), 1)
 	err := b.AddHasSectorInstruction(merkleRoot)
 	if err != nil {

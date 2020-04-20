@@ -74,13 +74,13 @@ func (pd *programData) threadedFetchData() {
 	remainingData := int64(pd.staticLength)
 	quit := func(err error) {
 		pd.mu.Lock()
+		defer pd.mu.Unlock()
 		// Remember the error and close all open requests before stopping
 		// the loop.
 		pd.readErr = err
 		for _, r := range pd.requests {
 			close(r.c)
 		}
-		pd.mu.Unlock()
 	}
 	for remainingData > 0 {
 		select {
@@ -97,7 +97,7 @@ func (pd *programData) threadedFetchData() {
 		n, err := pd.r.Read(d)
 		if err != nil {
 			quit(err)
-			break
+			return
 		}
 		pd.mu.Lock()
 		remainingData -= int64(n)

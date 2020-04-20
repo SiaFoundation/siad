@@ -1,1 +1,0 @@
-- Fix potential channel double closed panic in DownloadByRootProject 

@@ -36,7 +36,7 @@ func (c *Costs) HumanString() string {
 
 // InitialProgramCosts returns the initial costs for a program with the given
 // parameters.
-func InitialProgramCosts(pt modules.RPCPriceTable, dataLen, numInstructions uint64) Costs {
+func InitialProgramCosts(pt *modules.RPCPriceTable, dataLen, numInstructions uint64) Costs {
 	initExecutionCost := modules.MDMInitCost(pt, dataLen, numInstructions)
 	initMemory := modules.MDMInitMemory()
 	return Costs{
@@ -47,7 +47,7 @@ func InitialProgramCosts(pt modules.RPCPriceTable, dataLen, numInstructions uint
 
 // Update is a helper function for updating the running costs of a program after
 // adding an instruction.
-func (c Costs) Update(pt modules.RPCPriceTable, newCosts Costs) Costs {
+func (c Costs) Update(pt *modules.RPCPriceTable, newCosts Costs) Costs {
 	costs := Costs{}
 	costs.Memory = c.Memory + newCosts.Memory
 	memoryCost := modules.MDMMemoryCost(pt, costs.Memory, newCosts.Time)
@@ -60,26 +60,26 @@ func (c Costs) Update(pt modules.RPCPriceTable, newCosts Costs) Costs {
 
 // FinalizeProgramCosts finalizes the costs for a program by adding the cost of
 // committing.
-func (c Costs) FinalizeProgramCosts(pt modules.RPCPriceTable) Costs {
+func (c Costs) FinalizeProgramCosts(pt *modules.RPCPriceTable) Costs {
 	c.ExecutionCost = c.ExecutionCost.Add(modules.MDMMemoryCost(pt, c.Memory, modules.MDMTimeCommit))
 	return c
 }
 
 // EstimateProgramCosts estimates the execution cost, refund, collateral,
 // memory, and time given a program in the form of a list of instructions.
-func (instructions Instructions) EstimateProgramCosts(pt modules.RPCPriceTable, programDataLen uint64, data io.Reader) (Costs, error) {
+func EstimateProgramCosts(p modules.Program, pt *modules.RPCPriceTable, programDataLen uint64, data io.Reader) (Costs, error) {
 	// Make a dummy program to allow us to get the instruction costs.
-	p := &program{
+	program := &program{
 		staticProgramState: &programState{
 			priceTable: pt,
 		},
 		staticData: openProgramData(data, programDataLen),
 	}
-	runningCosts := InitialProgramCosts(pt, programDataLen, uint64(len(instructions)))
+	runningCosts := InitialProgramCosts(pt, programDataLen, uint64(len(p)))
 
-	for _, i := range instructions {
+	for _, i := range p {
 		// Decode instruction.
-		instruction, err := decodeInstruction(p, i)
+		instruction, err := decodeInstruction(program, i)
 		if err != nil {
 			return Costs{}, err
 		}

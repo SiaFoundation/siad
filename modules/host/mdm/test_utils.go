@@ -11,8 +11,8 @@ import (
 
 // testCompareProgramCosts compares the costs of a program calculated during a
 // test with the expected costs returned from EstimateProgramCosts.
-func testCompareProgramCosts(pt modules.RPCPriceTable, instructions Instructions, costs Costs, programData ProgramData) error {
-	expectedCosts, err := instructions.EstimateProgramCosts(pt, uint64(len(programData)), bytes.NewReader(programData))
+func testCompareProgramCosts(pt *modules.RPCPriceTable, p modules.Program, costs Costs, programData ProgramData) error {
+	expectedCosts, err := EstimateProgramCosts(p, pt, uint64(len(programData)), bytes.NewReader(programData))
 	if err != nil {
 		return err
 	}
@@ -61,8 +61,8 @@ func testCompareOutputs(actualOutputs <-chan Output, expectedOutputs []Output) (
 		}
 
 		// Check costs.
-		if !output.costs.Equals(expectedOutput.costs) {
-			return Output{}, fmt.Errorf("expected output costs %v, got %v", output.costs.HumanString(), expectedOutput.costs.HumanString())
+		if !output.Costs.Equals(expectedOutput.Costs) {
+			return Output{}, fmt.Errorf("expected output costs %v, got %v", output.Costs.HumanString(), expectedOutput.Costs.HumanString())
 		}
 
 		numOutputs++
@@ -92,8 +92,8 @@ func randomSectorData() []byte {
 // randomSectorRoots is a testing helper function that initializes a number of
 // random sector roots.
 func randomSectorRoots(numRoots int) []crypto.Hash {
-	roots := make([]crypto.Hash, 10)
-	for i := 0; i < 10; i++ { // initial contract size is 10 sectors.
+	roots := make([]crypto.Hash, numRoots)
+	for i := 0; i < numRoots; i++ {
 		fastrand.Read(roots[i][:]) // random initial merkle root
 	}
 	return roots

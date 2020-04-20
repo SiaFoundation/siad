@@ -123,22 +123,22 @@ func TestHostWeightBasePrice(t *testing.T) {
 	entry3 := DefaultHostDBEntry
 	entry3.SectorAccessPrice = entry.MaxSectorAccessPrice().Mul64(2)
 
-	w1 := hdb.weightFunc(entry).Score()
-	w2 := hdb.weightFunc(entry2).Score()
-	w3 := hdb.weightFunc(entry3).Score()
-	if w1.Cmp(w2) <= 0 {
-		t.Log("Default Score", w1)
-		t.Log("Bad BaseRPCPrice Score", w2)
+	sDefault := hdb.weightFunc(entry).Score()
+	sInsaneBRPCPrice := hdb.weightFunc(entry2).Score()
+	sInsaneSAPrice := hdb.weightFunc(entry3).Score()
+	if sDefault.Cmp(sInsaneBRPCPrice) <= 0 {
+		t.Log("Default Score", sDefault)
+		t.Log("Bad BaseRPCPrice Score", sInsaneBRPCPrice)
 		t.Error("Default host should have higher score")
 	}
-	if w1.Cmp(w3) <= 0 {
-		t.Log("Default Score", w1)
-		t.Log("Bad SectorAccess Score", w3)
+	if sDefault.Cmp(sInsaneSAPrice) <= 0 {
+		t.Log("Default Score", sDefault)
+		t.Log("Bad SectorAccess Score", sInsaneSAPrice)
 		t.Error("Default host should have higher score")
 	}
-	if w2.Cmp(w3) != 0 {
-		t.Log("Bad BaseRPCPrice Score", w2)
-		t.Log("Bad SectorAccess Score", w3)
+	if sInsaneBRPCPrice.Cmp(sInsaneSAPrice) != 0 {
+		t.Log("Bad BaseRPCPrice Score", sInsaneBRPCPrice)
+		t.Log("Bad SectorAccess Score", sInsaneSAPrice)
 		t.Error("Hosts should have the same score")
 	}
 }

@@ -12,7 +12,7 @@ import (
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool, pt modules.RPCPriceTable) (Instructions, ProgramData, Costs, Costs, error) {
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, ProgramData, Costs, Costs, error) {
 	b := newProgramBuilder(pt, uint64(crypto.HashSize)+2*8, 1)
 	err := b.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
 	if err != nil {
@@ -34,7 +34,7 @@ func TestInstructionReadSector(t *testing.T) {
 	pt := newTestPriceTable()
 	readLen := modules.SectorSize
 	so := newTestStorageObligation(true)
-	so.sectorRoots = randomSectorRoots(10)
+	so.sectorRoots = randomSectorRoots(initialContractSectors)
 	root := so.sectorRoots[0]
 	instructions, programData, costs1, finalCosts, err := newReadSectorProgram(readLen, 0, root, true, pt)
 	if err != nil {

@@ -55,6 +55,9 @@ var (
 		Header:  types.NewSpecifier("Fingerprint"),
 		Version: specifierV1430,
 	}
+
+	// errRotationDisabled is returned when a disrupt disabled the rotation
+	errRotationDisabled = errors.New("RotateFingerprintBuckets is disabled")
 )
 
 type (
@@ -79,7 +82,7 @@ type (
 
 	// accountData contains all data persisted for a single ephemeral account
 	accountData struct {
-		Id          types.SiaPublicKey
+		ID          modules.AccountID
 		Balance     types.Currency
 		LastTxnTime int64
 	}
@@ -281,6 +284,10 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 
 // callRotateFingerprintBuckets will rotate the fingerprint buckets
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
+	if ap.h.dependencies.Disrupt("DisableRotateFingerprintBuckets") {
+		return errRotationDisabled
+	}
+
 	fm := ap.staticFingerprintManager
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
@@ -576,10 +583,8 @@ func (fm *fingerprintManager) syncAndClose() error {
 // accountData transforms the account into an accountData struct which will
 // contain all data we persist to disk
 func (a *account) accountData() *accountData {
-	spk := types.SiaPublicKey{}
-	spk.LoadString(string(a.id))
 	return &accountData{
-		Id:          spk,
+		ID:          a.id,
 		Balance:     a.balance,
 		LastTxnTime: a.lastTxnTime,
 	}
@@ -589,7 +594,7 @@ func (a *account) accountData() *accountData {
 // keep in memory
 func (a *accountData) account(index uint32) *account {
 	return &account{
-		id:                 modules.AccountID(a.Id.String()),
+		id:                 a.ID,
 		balance:            a.Balance,
 		lastTxnTime:        a.LastTxnTime,
 		index:              index,
