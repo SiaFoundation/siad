@@ -35,6 +35,9 @@ type (
 		// will be charged in the next period as well
 		Recurring bool `json:"recurring"`
 
+		// Timestamp is the moment that the fee was requested.
+		Timestamp time.Time
+
 		// UID is a unique identifier for the Fee
 		UID FeeUID `json:"uid"`
 	}
