@@ -174,43 +174,38 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	numOutputs := 0
 	var lastOutput Output
 	for output := range outputs {
 		testOutput := testOutputs[numOutputs]
 
 		if output.Error != testOutput.Error {
-			t.Fatalf("expected err %v, got %v", testOutput.Error, output.Error)
+			t.Errorf("expected err %v, got %v", testOutput.Error, output.Error)
 		}
 		if output.NewSize != testOutput.NewSize {
-			t.Fatalf("expected contract size %v, got %v", testOutput.NewSize, output.NewSize)
+			t.Errorf("expected contract size %v, got %v", testOutput.NewSize, output.NewSize)
 		}
 		if output.NewMerkleRoot != testOutput.NewMerkleRoot {
-			t.Fatalf("expected merkle root %v, got %v", testOutput.NewMerkleRoot, output.NewMerkleRoot)
+			t.Errorf("expected merkle root %v, got %v", testOutput.NewMerkleRoot, output.NewMerkleRoot)
 		}
 		// Check proof.
 		if len(output.Proof) != len(testOutput.Proof) {
-			t.Fatalf("expected proof to have length %v but was %v", len(testOutput.Proof), len(output.Proof))
+			t.Errorf("expected proof to have length %v but was %v", len(testOutput.Proof), len(output.Proof))
 		}
 		for i, proof := range output.Proof {
 			if proof != testOutput.Proof[i] {
-				t.Fatalf("expected proof %v, got %v", proof, output.Proof[i])
+				t.Errorf("expected proof %v, got %v", proof, output.Proof[i])
 			}
 		}
 		// Check data.
 		if len(output.Output) != len(testOutput.Output) {
-			t.Fatalf("expected returned data to have length %v but was %v", len(testOutput.Output), len(output.Output))
+			t.Errorf("expected returned data to have length %v but was %v", len(testOutput.Output), len(output.Output))
 		}
 		if !output.ExecutionCost.Equals(testOutput.ExecutionCost) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost, testOutput.ExecutionCost)
-		}
-		if !budget.Value().Equals(cost.Sub(output.ExecutionCost)) {
-			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
-				budget.Value().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
+			t.Errorf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost, testOutput.ExecutionCost)
 		}
 		if !output.PotentialRefund.Equals(testOutput.PotentialRefund) {
-			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund, testOutput.PotentialRefund)
+			t.Errorf("refund doesn't match expected refund: %v != %v", output.PotentialRefund, testOutput.PotentialRefund)
 		}
 
 		numOutputs++
@@ -232,6 +227,11 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	// Finalize the program.
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
+	}
+
+	// Budget should be empty now.
+	if !budget.Value().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
 	}
 
 	// Update variables.

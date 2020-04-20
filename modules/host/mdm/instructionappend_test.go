@@ -99,6 +99,10 @@ func TestInstructionAppend(t *testing.T) {
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
+	// Budget should be empty now.
+	if !budget.Value().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
+	}
 	// Check the storage obligation again.
 	if len(so.sectorMap) != 1 {
 		t.Fatalf("wrong sectorMap len %v != %v", len(so.sectorMap), 1)
@@ -173,6 +177,10 @@ func TestInstructionAppend(t *testing.T) {
 	// Finalize the program.
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
+	}
+	// Budget should be empty now.
+	if !budget.Value().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
 	}
 	// Check the storage obligation again.
 	if len(so.sectorMap) != 2 {

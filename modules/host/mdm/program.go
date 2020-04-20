@@ -104,7 +104,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	}
 	// Build program.
 	program := &program{
-		outputChan: make(chan Output, len(p)),
+		outputChan: make(chan Output),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
@@ -183,8 +183,15 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		select {
 		case <-ctx.Done(): // Check for interrupt
 			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.potentialRefund)
-			break
+			return ErrInterrupted
 		default:
+		}
+		// Increment collateral first.
+		collateral := i.Collateral()
+		err := p.addCollateral(collateral)
+		if err != nil {
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			return err
 		}
 		// Add the memory the next instruction is going to allocate to the
 		// total.
@@ -209,13 +216,6 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		}
 		// Add the instruction's potential refund to the total.
 		p.potentialRefund = p.potentialRefund.Add(refund)
-		// Increment collateral.
-		collateral := i.Collateral()
-		err = p.addCollateral(collateral)
-		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
-			return err
-		}
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
