@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"time"
+
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 

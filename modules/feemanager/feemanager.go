@@ -2,7 +2,6 @@ package feemanager
 
 import (
 	"encoding/hex"
-	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -13,11 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/threadgroup"
-)
-
-const (
-	// nebAddressStr is the string representation of the Nebulous Wallet Address
-	nebAddressStr = "0e38c99857408b7d2604a1ce20c6776c9e42b105b2de9b0cd1e75baad5ec39e5c5308be19cea"
 )
 
 var (
@@ -32,20 +26,10 @@ var (
 	// Enforce that FeeManager satisfies the modules.FeeManager interface.
 	_ modules.FeeManager = (*FeeManager)(nil)
 
-	// nebAddress is the address that Nebulous's share of the fees will be paid
-	// out to
-	nebAddress = initNebAddress()
+	// nebAddress is the nebulous address that is used to send Nebulous its cut
+	// of the application fees.
+	nebAddress = [32]byte{14, 56, 201, 152, 87, 64, 139, 125, 38, 4, 161, 206, 32, 198, 119, 108, 158, 66, 177, 5, 178, 222, 155, 12, 209, 231, 91, 170, 213, 236, 57, 197}
 )
-
-// initNebAddress initializes the Nebulous wallet address
-func initNebAddress() types.UnlockHash {
-	var addr types.UnlockHash
-	_, err := fmt.Sscan(nebAddressStr, &addr)
-	if err != nil {
-		panic(err)
-	}
-	return addr
-}
 
 type (
 	// FeeManager is responsible for tracking any application fees that are
