@@ -530,12 +530,15 @@ func TestProcessPayment(t *testing.T) {
 	// test both payment methods
 	testPayByContract(t, pair)
 	testPayByEphemeralAccount(t, pair)
+
+	// test unknown payment method
+	testUnknownPaymentMethodError(t, pair)
 }
 
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, pair *renterHostPair) {
-	host, renterSK := pair.ht.host, pair.renter
+	host := pair.ht.host
 	amount := types.SiacoinPrecision.Div64(2)
 	amountStr := amount.HumanString()
 
@@ -637,7 +640,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	rev.NewValidProofOutputs = validPayouts
 	rev.NewMissedProofOutputs = missedPayouts
-	sig = revisionSignature(rev, host.blockHeight, renterSK)
+	sig = pair.sign(rev)
 
 	// verify err is not nil
 	err = run(renterFunc, hostFunc)
@@ -753,6 +756,35 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	}
 }
 
+// testUnknownPaymentMethodError verifies the host returns an error if we
+// specify an unknown payment method
+func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
+	// create two streams
+	rStream, hStream := NewTestStreams()
+	defer rStream.Close()
+	defer hStream.Close()
+
+	err := run(func() error {
+		// send PaymentRequest
+		pr := modules.PaymentRequest{Type: types.NewSpecifier("Invalid")}
+		err := modules.RPCWriteAll(rStream, modules.RPCUpdatePriceTable, pr)
+		if err != nil {
+			return err
+		}
+		return modules.RPCRead(rStream, struct{}{})
+	}, func() error {
+		// process payment request
+		_, err := pair.ht.host.ProcessPayment(hStream)
+		if err != nil {
+			modules.RPCWriteError(hStream, err)
+		}
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown payment method") {
+		t.Fatalf("Expected 'unknown payment method' error, but received '%v'", err)
+	}
+}
+
 // newPayByContractRequest uses a revision and signature to build the
 // PayBycontractRequest
 func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
@@ -836,21 +868,6 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	}
 	so.RevisionTransactionSet = tSet
 	return so, nil
-}
-
-// revisionSignature is a helper function that signs the given revision with the
-// given key
-func revisionSignature(rev types.FileContractRevision, blockHeight types.BlockHeight, secretKey crypto.SecretKey) crypto.Signature {
-	signedTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{rev},
-		TransactionSignatures: []types.TransactionSignature{{
-			ParentID:       crypto.Hash(rev.ParentID),
-			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
-			PublicKeyIndex: 0,
-		}},
-	}
-	hash := signedTxn.SigHash(0, blockHeight)
-	return crypto.SignHash(hash, secretKey)
 }
 
 // run is a helper function that runs the given functions in separate goroutines
