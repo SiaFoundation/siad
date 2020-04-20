@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"runtime"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -29,6 +30,16 @@ func TestGlobalSiaPath(t *testing.T) {
 	}
 	if !sp.Equals(expected) {
 		t.Error("the separately spawned siapath should equal the global siapath")
+	}
+}
+
+// TestRandomSiaPath tests that RandomSiaPath always returns a valid SiaPath
+func TestRandomSiaPath(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		err := RandomSiaPath().Validate(false)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -80,65 +91,86 @@ func TestSiapath(t *testing.T) {
 	var pathtests = []struct {
 		in    string
 		valid bool
+		out   string
 	}{
-		{"valid/siapath", true},
-		{"\\some\\windows\\path", true}, // clean converts OS separators
-		{"../../../directory/traversal", false},
-		{"testpath", true},
-		{"valid/siapath/../with/directory/traversal", false},
-		{"validpath/test", true},
-		{"..validpath/..test", true},
-		{"./invalid/path", false},
-		{".../path", true},
-		{"valid./path", true},
-		{"valid../path", true},
-		{"valid/path./test", true},
-		{"valid/path../test", true},
-		{"test/path", true},
-		{"/leading/slash", true}, // clean will trim leading slashes so this is a valid input
-		{"foo/./bar", false},
-		{"", false},
-		{"blank/end/", true}, // clean will trim trailing slashes so this is a valid input
-		{"double//dash", false},
-		{"../", false},
-		{"./", false},
-		{".", false},
-		{"dollar$sign", true},
-		{"and&sign", true},
-		{"single`quote", true},
-		{"full:colon", true},
-		{"semi;colon", true},
-		{"hash#tag", true},
-		{"percent%sign", true},
-		{"at@sign", true},
-		{"less<than", true},
-		{"greater>than", true},
-		{"equal=to", true},
-		{"question?mark", true},
-		{"open[bracket", true},
-		{"close]bracket", true},
-		{"open{bracket", true},
-		{"close}bracket", true},
-		{"carrot^top", true},
-		{"pipe|pipe", true},
-		{"tilda~tilda", true},
-		{"plus+sign", true},
-		{"minus-sign", true},
-		{"under_score", true},
-		{"comma,comma", true},
-		{"apostrophy's", true},
-		{`quotation"marks`, true},
+		{`\\some\\windows\\path`, true, `\\some\\windows\\path`}, // if the os is not windows this will not update the separators
+		{"valid/siapath", true, "valid/siapath"},
+		{`\some\back\slashes\path`, true, `\some\back\slashes\path`},
+		{"../../../directory/traversal", false, ""},
+		{"testpath", true, "testpath"},
+		{"valid/siapath/../with/directory/traversal", false, ""},
+		{"validpath/test", true, "validpath/test"},
+		{"..validpath/..test", true, "..validpath/..test"},
+		{"./invalid/path", false, ""},
+		{".../path", true, ".../path"},
+		{"valid./path", true, "valid./path"},
+		{"valid../path", true, "valid../path"},
+		{"valid/path./test", true, "valid/path./test"},
+		{"valid/path../test", true, "valid/path../test"},
+		{"test/path", true, "test/path"},
+		{"/leading/slash", true, "leading/slash"}, // clean will trim leading slashes so this is a valid input
+		{"foo/./bar", false, ""},
+		{"", false, ""},
+		{`\`, true, `\`},
+		{`\\`, true, `\\`},
+		{`\\\`, true, `\\\`},
+		{`\\\\`, true, `\\\\`},
+		{`\\\\\`, true, `\\\\\`},
+		{"/", false, ""},
+		{"//", false, ""},
+		{"///", false, ""},
+		{"////", false, ""},
+		{"/////", false, ""},
+		{"blank/end/", true, "blank/end"}, // clean will trim trailing slashes so this is a valid input
+		{"double//dash", false, ""},
+		{"../", false, ""},
+		{"./", false, ""},
+		{".", false, ""},
+		{"dollar$sign", true, "dollar$sign"},
+		{"and&sign", true, "and&sign"},
+		{"single`quote", true, "single`quote"},
+		{"full:colon", true, "full:colon"},
+		{"semi;colon", true, "semi;colon"},
+		{"hash#tag", true, "hash#tag"},
+		{"percent%sign", true, "percent%sign"},
+		{"at@sign", true, "at@sign"},
+		{"less<than", true, "less<than"},
+		{"greater>than", true, "greater>than"},
+		{"equal=to", true, "equal=to"},
+		{"question?mark", true, "question?mark"},
+		{"open[bracket", true, "open[bracket"},
+		{"close]bracket", true, "close]bracket"},
+		{"open{bracket", true, "open{bracket"},
+		{"close}bracket", true, "close}bracket"},
+		{"carrot^top", true, "carrot^top"},
+		{"pipe|pipe", true, "pipe|pipe"},
+		{"tilda~tilda", true, "tilda~tilda"},
+		{"plus+sign", true, "plus+sign"},
+		{"minus-sign", true, "minus-sign"},
+		{"under_score", true, "under_score"},
+		{"comma,comma", true, "comma,comma"},
+		{"apostrophy's", true, "apostrophy's"},
+		{`quotation"marks`, true, `quotation"marks`},
+	}
+	// If the OS is windows then the windows path is valid and will be updated
+	if runtime.GOOS == "windows" {
+		pathtests[0].valid = true
+		pathtests[0].out = `some/windows/path`
 	}
 
 	// Test NewSiaPath
 	for _, pathtest := range pathtests {
-		_, err := NewSiaPath(pathtest.in)
+		sp, err := NewSiaPath(pathtest.in)
 		// Verify expected Error
 		if err != nil && pathtest.valid {
 			t.Fatal("validateSiapath failed on valid path: ", pathtest.in)
 		}
 		if err == nil && !pathtest.valid {
 			t.Fatal("validateSiapath succeeded on invalid path: ", pathtest.in)
+		}
+		// Verify expected path
+		if err == nil && pathtest.valid && sp.String() != pathtest.out {
+			t.Fatalf("Unexpected SiaPath From New; got %v, expected %v, for test %v", sp.String(), pathtest.out, pathtest.in)
 		}
 	}
 
@@ -153,6 +185,10 @@ func TestSiapath(t *testing.T) {
 		if err == nil && !pathtest.valid {
 			t.Fatal("validateSiapath succeeded on invalid path: ", pathtest.in)
 		}
+		// Verify expected path
+		if err == nil && pathtest.valid && sp.String() != pathtest.out {
+			t.Fatalf("Unexpected SiaPath from LoadString; got %v, expected %v, for test %v", sp.String(), pathtest.out, pathtest.in)
+		}
 	}
 
 	// Test Join
@@ -161,13 +197,17 @@ func TestSiapath(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, pathtest := range pathtests {
-		_, err = sp.Join(pathtest.in)
+		newSiaPath, err := sp.Join(pathtest.in)
 		// Verify expected Error
 		if err != nil && pathtest.valid {
 			t.Fatal("validateSiapath failed on valid path: ", pathtest.in)
 		}
 		if err == nil && !pathtest.valid {
 			t.Fatal("validateSiapath succeeded on invalid path: ", pathtest.in)
+		}
+		// Verify expected path
+		if err == nil && pathtest.valid && newSiaPath.String() != "test/"+pathtest.out {
+			t.Fatalf("Unexpected SiaPath from Join; got %v, expected %v, for test %v", newSiaPath.String(), "test/"+pathtest.out, pathtest.in)
 		}
 	}
 }

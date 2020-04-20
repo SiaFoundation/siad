@@ -175,6 +175,10 @@ type SkyfileUploadParameters struct {
 	// Recommended that the skyfile is placed in /var/skynet
 	SiaPath SiaPath `json:"siapath"`
 
+	// DryRun allows to retrieve the skylink without actually uploading the file
+	// to the Sia network.
+	DryRun bool `json:"dryrun"`
+
 	// Force determines whether the upload should overwrite an existing siafile
 	// at 'SiaPath'. If set to false, an error will be returned if there is
 	// already a file or folder at 'SiaPath'. If set to true, any existing file
@@ -222,4 +226,10 @@ type SkyfilePinParameters struct {
 	Force               bool    `json:"force"`
 	Root                bool    `json:"root"`
 	BaseChunkRedundancy uint8   `json:"basechunkredundancy"`
+}
+
+// SkynetPortal contains information identifying a Skynet portal.
+type SkynetPortal struct {
+	Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
+	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 }

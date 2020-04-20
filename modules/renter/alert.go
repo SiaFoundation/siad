@@ -6,9 +6,12 @@ import (
 
 // Alerts implements the modules.Alerter interface for the renter. It returns
 // all alerts of the renter and its submodules.
-func (r *Renter) Alerts() []modules.Alert {
-	renterAlerts := r.staticAlerter.Alerts()
-	contractorAlerts := r.hostContractor.Alerts()
-	hostdbAlerts := r.hostDB.Alerts()
-	return append(append(renterAlerts, contractorAlerts...), hostdbAlerts...)
+func (r *Renter) Alerts() (crit, err, warn []modules.Alert) {
+	renterCrit, renterErr, renterWarn := r.staticAlerter.Alerts()
+	contractorCrit, contractorErr, contractorWarn := r.hostContractor.Alerts()
+	hostdbCrit, hostdbErr, hostdbWarn := r.hostDB.Alerts()
+	crit = append(append(renterCrit, contractorCrit...), hostdbCrit...)
+	err = append(append(renterErr, contractorErr...), hostdbErr...)
+	warn = append(append(renterWarn, contractorWarn...), hostdbWarn...)
+	return crit, err, warn
 }

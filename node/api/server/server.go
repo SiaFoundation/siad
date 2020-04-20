@@ -166,7 +166,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}
 
 		// Create the api for the server.
-		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil)
+		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		srv := &Server{
 			api: api,
 			apiServer: &http.Server{
@@ -225,7 +225,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}
 		// Server wasn't shut down. Add node and replace modules.
 		srv.node = n
-		api.SetModules(n.ConsensusSet, n.Explorer, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
+		api.SetModules(n.ConsensusSet, n.Explorer, n.FeeManager, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)
 		return srv, nil
 	}()
 	if err != nil {

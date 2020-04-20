@@ -36,11 +36,13 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblacklist"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
@@ -171,6 +173,7 @@ type Renter struct {
 
 	// Skynet Management
 	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
+	staticSkynetPortals   *skynetportals.SkynetPortals
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -819,6 +822,55 @@ func (r *Renter) Unmount(mountPoint string) error {
 	return r.staticFuseManager.Unmount(mountPoint)
 }
 
+// AddSkykey adds the skykey with the given name, cipher type, and entropy to
+// the renter's skykey manager.
+func (r *Renter) AddSkykey(sk skykey.Skykey) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.AddKey(sk)
+}
+
+// SkykeyByName gets the Skykey with the given name from the renter's skykey
+// manager if it exists.
+func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.KeyByName(name)
+}
+
+// CreateSkykey creates a new Skykey with the given name and ciphertype.
+func (r *Renter) CreateSkykey(name string, ct crypto.CipherType) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.CreateKey(name, ct)
+}
+
+// SkykeyByID gets the Skykey with the given ID from the renter's skykey
+// manager if it exists.
+func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.Skykey{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.KeyByID(id)
+}
+
+// SkykeyIDByName gets the SkykeyID of the key with the given name if it
+// exists.
+func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
+	if err := r.tg.Add(); err != nil {
+		return skykey.SkykeyID{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.IDByName(name)
+}
+
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
@@ -896,6 +948,13 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	r.staticSkynetBlacklist = sb
 
+	// Add SkynetPortals
+	sp, err := skynetportals.New(r.persistDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new skynet portal list")
+	}
+	r.staticSkynetPortals = sp
+
 	// Load all saved data.
 	err = r.managedInitPersist()
 	if err != nil {
@@ -909,7 +968,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.
-	skykeyManDir := build.DefaultSkynetDir()
+	skykeyManDir := build.SkynetDir()
 	if build.Release == "testing" {
 		skykeyManDir = persistDir
 	}

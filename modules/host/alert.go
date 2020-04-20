@@ -3,8 +3,13 @@ package host
 import "gitlab.com/NebulousLabs/Sia/modules"
 
 // Alerts implements the modules.Alerter interface for the host.
-func (h *Host) Alerts() []modules.Alert {
-	return append(h.staticAlerter.Alerts(), h.StorageManager.Alerts()...)
+func (h *Host) Alerts() (crit, err, warn []modules.Alert) {
+	hostCrit, hostErr, hostWarn := h.staticAlerter.Alerts()
+	smCrit, smErr, smWarn := h.StorageManager.Alerts()
+	crit = append(hostCrit, smCrit...)
+	err = append(hostErr, smErr...)
+	warn = append(hostWarn, smWarn...)
+	return crit, err, warn
 }
 
 // TryUnregisterInsufficientCollateralBudgetAlert will be called when the host

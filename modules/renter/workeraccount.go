@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -15,7 +16,7 @@ import (
 
 // account represents a renter's ephemeral account on a host.
 type account struct {
-	staticID        string
+	staticID        modules.AccountID
 	staticHostKey   types.SiaPublicKey
 	staticSecretKey crypto.SecretKey
 
@@ -38,9 +39,12 @@ func openAccount(hostKey types.SiaPublicKey, contractor hostContractor) *account
 		Key:       pk[:],
 	}
 
+	var aid modules.AccountID
+	aid.FromSPK(spk)
+
 	// create the account
 	return &account{
-		staticID:        spk.String(),
+		staticID:        aid,
 		staticHostKey:   hostKey,
 		staticSecretKey: sk,
 		c:               contractor,

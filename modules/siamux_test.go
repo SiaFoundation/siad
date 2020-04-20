@@ -2,17 +2,13 @@ package modules
 
 import (
 	"bytes"
-	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // TestSiaMuxCompat verifies the SiaMux is initialized in compatibility mode
@@ -100,76 +96,26 @@ func TestSiaMuxCompat(t *testing.T) {
 	}
 }
 
-// testStream is a helper struct that wraps a net.Conn and implements the
-// siamux.Stream interface.
-type testStream struct {
-	c net.Conn
-}
+// TestSiaMuxAbsolutePath verifies we can not create the SiaMux using a relative
+// path for neither the siamux dir nor the sia data dir.
+func TestSiaMuxAbsolutePath(t *testing.T) {
+	t.Parallel()
 
-// NewTestStreams returns two siamux.Stream mock objects.
-func NewTestStreams() (client siamux.Stream, server siamux.Stream) {
-	var clientConn net.Conn
-	var serverConn net.Conn
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		serverConn, _ = ln.Accept()
-		wg.Done()
-	}()
-	clientConn, _ = net.Dial("tcp", ln.Addr().String())
-	wg.Wait()
-
-	client = testStream{c: clientConn}
-	server = testStream{c: serverConn}
-	return
-}
-
-func (s testStream) Read(b []byte) (n int, err error)  { return s.c.Read(b) }
-func (s testStream) Write(b []byte) (n int, err error) { return s.c.Write(b) }
-func (s testStream) Close() error                      { return s.c.Close() }
-
-func (s testStream) LocalAddr() net.Addr            { panic("not implemented") }
-func (s testStream) RemoteAddr() net.Addr           { panic("not implemented") }
-func (s testStream) SetDeadline(t time.Time) error  { panic("not implemented") }
-func (s testStream) SetPriority(priority int) error { panic("not implemented") }
-
-func (s testStream) SetReadDeadline(t time.Time) error {
-	panic("not implemented")
-}
-func (s testStream) SetWriteDeadline(t time.Time) error {
-	panic("not implemented")
-}
-
-// TestStreams is a small test that verifies the working of the test stream. It
-// will test that an object can be written to and read from the stream over the
-// underlying connection.
-func TestStreams(t *testing.T) {
-	renter, host := NewTestStreams()
-
-	var pr PaymentRequest
-	var wg sync.WaitGroup
-	wg.Add(1)
-	func() {
-		defer wg.Done()
-		req := PaymentRequest{Type: PayByContract}
-		err := RPCWrite(renter, req)
-		if err != nil {
-			t.Fatal(err)
+	assertRecover := func() {
+		if r := recover(); r == nil {
+			t.Fatalf("Expected a panic when a relative path is passed to the SiaMux")
 		}
-	}()
+	}
 
-	wg.Add(1)
-	func() {
-		defer wg.Done()
-		err := RPCRead(host, &pr)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-	wg.Wait()
-
-	if pr.Type != PayByContract {
-		t.Fatal("Unexpected request received")
+	absPath := os.TempDir()
+	for _, relPath := range []string{"", ".", ".."} {
+		func() {
+			defer assertRecover()
+			NewSiaMux(absPath, relPath, "localhost:0")
+		}()
+		func() {
+			defer assertRecover()
+			NewSiaMux(relPath, absPath, "localhost:0")
+		}()
 	}
 }

@@ -237,6 +237,101 @@ func (ht *hostTester) Close() error {
 	return nil
 }
 
+// renterHostPair is a helper struct that contains a secret key, symbolizing the
+// renter, a host and the id of the file contract they share.
+type renterHostPair struct {
+	accountID  modules.AccountID
+	accountKey crypto.SecretKey
+	ht         *hostTester
+	latestPT   *modules.RPCPriceTable
+	renter     crypto.SecretKey
+	fcid       types.FileContractID
+}
+
+// newRenterHostPair creates a new host tester and returns a renter host pair,
+// this pair is a helper struct that contains both the host and renter,
+// represented by its secret key. This helper will create a storage
+// obligation emulating a file contract between them.
+func newRenterHostPair(name string) (*renterHostPair, error) {
+	// setup host
+	ht, err := newHostTester(name)
+	if err != nil {
+		return nil, err
+	}
+	return newRenterHostPairCustomHostTester(ht)
+}
+
+// newRenterHostPairCustomHostTester returns a renter host pair, this pair is a helper struct
+// that contains both the host and renter, represented by its secret key. This
+// helper will create a storage obligation emulating a file contract between
+// them. This method requires the caller to pass a hostTester opposed to
+// creating one, which allows setting up multiple renters which each have a
+// contract with the one host.
+func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) {
+	// create a renter key pair
+	sk, pk := crypto.GenerateKeyPair()
+	renterPK := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// setup storage obligationn (emulating a renter creating a contract)
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		return nil, err
+	}
+	so, err = ht.addNoOpRevision(so, renterPK)
+	if err != nil {
+		return nil, err
+	}
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	if err != nil {
+		return nil, err
+	}
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// prepare an EA without funding it.
+	accountKey, accountID := prepareAccount()
+
+	pair := &renterHostPair{
+		accountID:  accountID,
+		accountKey: accountKey,
+		ht:         ht,
+		renter:     sk,
+		fcid:       so.id(),
+	}
+	return pair, nil
+}
+
+// Close closes the underlying host tester.
+func (p *renterHostPair) Close() error {
+	return p.ht.Close()
+}
+
+// paymentRevision returns a new revision that transfer the given amount to the
+// host. Returns the payment revision together with a signature signed by the
+// pair's renter.
+func (p *renterHostPair) paymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
+	updated, err := p.ht.host.managedGetStorageObligation(p.fcid)
+	if err != nil {
+		return types.FileContractRevision{}, crypto.Signature{}, err
+	}
+
+	recent, err := updated.recentRevision()
+	if err != nil {
+		return types.FileContractRevision{}, crypto.Signature{}, err
+	}
+
+	rev, err := recent.PaymentRevision(amount)
+	if err != nil {
+		return types.FileContractRevision{}, crypto.Signature{}, err
+	}
+
+	sig := revisionSignature(rev, p.ht.host.BlockHeight(), p.renter)
+	return rev, sig, nil
+}
+
 // TestHostInitialization checks that the host initializes to sensible default
 // values.
 func TestHostInitialization(t *testing.T) {
@@ -382,7 +477,7 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if !settings.MinDownloadBandwidthPrice.Equals(defaultDownloadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinStoragePrice.Equals(defaultStoragePrice) {
+	if !settings.MinStoragePrice.Equals(modules.DefaultStoragePrice) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {

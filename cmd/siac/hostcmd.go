@@ -211,8 +211,8 @@ func hostcmd() {
 
 Host Internal Settings:
 	acceptingcontracts:   %v
-	maxduration:          %v Weeks
 	maxdownloadbatchsize: %v
+	maxduration:          %v Weeks
 	maxrevisebatchsize:   %v
 	netaddress:           %v
 	windowsize:           %v Hours
@@ -221,8 +221,10 @@ Host Internal Settings:
 	collateralbudget: %v
 	maxcollateral:    %v Per Contract
 
+	minbaserpcprice:           %v
 	mincontractprice:          %v
 	mindownloadbandwidthprice: %v / TB
+	minsectoraccessprice:      %v
 	minstorageprice:           %v / TB / Month
 	minuploadbandwidthprice:   %v / TB
 
@@ -260,17 +262,21 @@ RPC Stats:
 			connectabilityString,
 			es.Version,
 
-			yesNo(is.AcceptingContracts), periodUnits(is.MaxDuration),
+			yesNo(is.AcceptingContracts),
 			modules.FilesizeUnits(is.MaxDownloadBatchSize),
-			modules.FilesizeUnits(is.MaxReviseBatchSize), netaddr,
+			periodUnits(is.MaxDuration),
+			modules.FilesizeUnits(is.MaxReviseBatchSize),
+			netaddr,
 			is.WindowSize/6,
 
 			currencyUnits(is.Collateral.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.CollateralBudget),
 			currencyUnits(is.MaxCollateral),
 
+			currencyUnits(is.MinBaseRPCPrice),
 			currencyUnits(is.MinContractPrice),
 			currencyUnits(is.MinDownloadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
+			currencyUnits(is.MinSectorAccessPrice),
 			currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.MinUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 
@@ -442,7 +448,7 @@ func hostcontractcmd() {
 	case "value":
 		fmt.Fprintf(w, "Obligation Id\tObligation Status\tContract Cost\tLocked Collateral\tRisked Collateral\tPotential Revenue\tExpiration Height\tTransaction Fees\n")
 		for _, so := range cg.Contracts {
-			potentialRevenue := so.PotentialDownloadRevenue.Add(so.PotentialUploadRevenue).Add(so.PotentialStorageRevenue)
+			potentialRevenue := so.PotentialDownloadRevenue.Add(so.PotentialUploadRevenue).Add(so.PotentialStorageRevenue).Add(so.PotentialAccountFunding)
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n", so.ObligationId, strings.TrimPrefix(so.ObligationStatus, "obligation"), currencyUnits(so.ContractCost), currencyUnits(so.LockedCollateral),
 				currencyUnits(so.RiskedCollateral), currencyUnits(potentialRevenue), so.ExpirationHeight, currencyUnits(so.TransactionFeesAdded))
 		}
@@ -508,7 +514,6 @@ func hostfolderaddcmd(path, size string) {
 
 // hostfolderremovecmd removes a folder from the host.
 func hostfolderremovecmd(path string) {
-
 	// Ask for confirm for dangerous --force flag
 	if hostFolderRemoveForce {
 		fmt.Println(`Forced removing will completely destroy your renter's data,

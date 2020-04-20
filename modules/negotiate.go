@@ -373,6 +373,18 @@ type (
 	}
 )
 
+// MaxBaseRPCPrice returns the maximum value for the BaseRPCPrice based on the
+// DownloadBandwidthPrice
+func (hes HostExternalSettings) MaxBaseRPCPrice() types.Currency {
+	return hes.DownloadBandwidthPrice.Mul64(MaxBaseRPCPriceVsBandwidth)
+}
+
+// MaxSectorAccessPrice returns the maximum value for the SectorAccessPrice
+// based on the DownloadBandwidthPrice
+func (hes HostExternalSettings) MaxSectorAccessPrice() types.Currency {
+	return hes.DownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
+}
+
 // New RPC IDs
 var (
 	RPCLoopEnter              = types.NewSpecifier("LoopEnter")
@@ -681,7 +693,17 @@ func ReadRPCResponse(r io.Reader, aead cipher.AEAD, resp interface{}, maxLen uin
 		build.Critical("maxLen must be at least RPCMinLen")
 		maxLen = RPCMinLen
 	}
-	return ReadRPCMessage(r, aead, &rpcResponse{nil, resp}, maxLen)
+	response := rpcResponse{nil, resp}
+	if err := ReadRPCMessage(r, aead, &response, maxLen); err != nil {
+		return err
+	}
+
+	// Note: this nil check is important, we can not simply return response.err
+	// here because of it being a pointer, doing so leads to 'bad access' error
+	if response.err != nil {
+		return response.err
+	}
+	return nil
 }
 
 // A RenterHostSession is a session of the new renter-host protocol.

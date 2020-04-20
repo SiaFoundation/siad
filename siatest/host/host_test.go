@@ -3,12 +3,14 @@ package host
 import (
 	"bytes"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -275,5 +277,55 @@ func TestHostBandwidth(t *testing.T) {
 
 	if hbw.Upload <= lastUpload || hbw.Download <= lastDownload {
 		t.Fatal("Expected host to use more bandwidth from downloaded file")
+	}
+}
+
+// TestHostValidPrices confirms that the user can't set invalid prices through
+// the API
+func TestHostValidPrices(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Host
+	testDir := hostTestDir(t.Name())
+	hostParams := node.Host(testDir)
+	host, err := siatest.NewCleanNode(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := host.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get the Host
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that setting an invalid RPC price will return an error
+	rpcPrice := hg.InternalSettings.MaxBaseRPCPrice().Mul64(modules.MaxBaseRPCPriceVsBandwidth)
+	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, rpcPrice)
+	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
+		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
+	}
+
+	// Verify that setting an invalid Sector price will return an error
+	sectorPrice := hg.InternalSettings.MaxSectorAccessPrice().Mul64(modules.MaxSectorAccessPriceVsBandwidth)
+	err = host.HostModifySettingPost(client.HostParamMinSectorAccessPrice, sectorPrice)
+	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidSectorAccessDownloadRatio.Error()) {
+		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidSectorAccessDownloadRatio, err)
+	}
+
+	// Verify that setting an invalid download price will return an error. Error
+	// should be the RPC error since that is the first check
+	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice.Div64(modules.MaxBaseRPCPriceVsBandwidth)
+	err = host.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice)
+	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
+		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
 	}
 }

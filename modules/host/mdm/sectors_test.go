@@ -10,6 +10,11 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+const (
+	// Initial contract size is 10 sectors.
+	initialContractSectors = 10
+)
+
 // randomSector is a testing helper function that initializes a random sector.
 func randomSector() crypto.Hash {
 	var sector crypto.Hash
@@ -26,8 +31,8 @@ func randomSectorData() []byte {
 // randomSectorRoots is a testing helper function that initializes a number of
 // random sector roots.
 func randomSectorRoots(numRoots int) []crypto.Hash {
-	roots := make([]crypto.Hash, 10)
-	for i := 0; i < 10; i++ { // initial contract size is 10 sectors.
+	roots := make([]crypto.Hash, numRoots)
+	for i := 0; i < numRoots; i++ {
 		fastrand.Read(roots[i][:]) // random initial merkle root
 	}
 	return roots
@@ -46,7 +51,7 @@ func randomSectorMap(roots []crypto.Hash) map[crypto.Hash][]byte {
 // TestAppendSector tests appending a single sector to the program cache.
 func TestAppendSector(t *testing.T) {
 	// Initialize the sectors.
-	sectorRoots := randomSectorRoots(10)
+	sectorRoots := randomSectorRoots(initialContractSectors)
 	s := newSectors(sectorRoots)
 	newSectorData := randomSectorData()
 	newSector := crypto.MerkleRoot(newSectorData)
@@ -85,12 +90,76 @@ func TestAppendSector(t *testing.T) {
 	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
 		t.Fatalf("expected sector roots different than actual sector roots")
 	}
+
+	// Drop the last sector and append it again.
+	_, err = s.dropSectors(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newMerkleRoot, err = s.appendSector(newSectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the return value.
+	if merkleRoot != newMerkleRoot {
+		t.Fatalf("expected merkle root %v but was %v", merkleRoot, newMerkleRoot)
+	}
+
+	// Check that the program cache is correct.
+	if len(s.sectorsRemoved) > 0 {
+		t.Fatalf("expected sectors removed length to be %v but was %v", 0, len(s.sectorsRemoved))
+	}
+	if len(s.sectorsGained) != 1 {
+		t.Fatalf("expected sectors gained length to be %v but was %v", 1, len(s.sectorsGained))
+	}
+	if !bytes.Equal(s.sectorsGained[newSector], newSectorData) {
+		t.Fatalf("new sector not found in sectors gained")
+	}
+	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
+		t.Fatalf("expected sector roots different than actual sector roots")
+	}
+
+	// Append a sector and then drop it.
+	newSectorData = randomSectorData()
+	newSector = crypto.MerkleRoot(newSectorData)
+	newMerkleRoot, err = s.appendSector(newSectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Calculate expected roots.
+	sectorRoots = append(sectorRoots, newSector)
+	merkleRoot = cachedMerkleRoot(sectorRoots)
+
+	// Check the return value.
+	if merkleRoot != newMerkleRoot {
+		t.Fatalf("expected merkle root %v but was %v", merkleRoot, newMerkleRoot)
+	}
+
+	_, err = s.dropSectors(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sectorRoots = sectorRoots[:len(sectorRoots)-1]
+
+	// Check that the program cache hasn't changed.
+	if len(s.sectorsRemoved) > 0 {
+		t.Fatalf("expected sectors removed length to be %v but was %v", 0, len(s.sectorsRemoved))
+	}
+	if len(s.sectorsGained) != 1 {
+		t.Fatalf("expected sectors gained length to be %v but was %v", 1, len(s.sectorsGained))
+	}
+	if !reflect.DeepEqual(sectorRoots, s.merkleRoots) {
+		t.Fatalf("expected sector roots different than actual sector roots")
+	}
 }
 
 // TestDropSectors tests dropping sectors from the cache.
 func TestDropSectors(t *testing.T) {
 	// Initialize the sectors.
-	sectorRoots := randomSectorRoots(10)
+	sectorRoots := randomSectorRoots(initialContractSectors)
 	s := newSectors(sectorRoots)
 
 	// Try dropping zero sectors.
@@ -101,8 +170,8 @@ func TestDropSectors(t *testing.T) {
 	if root != cachedMerkleRoot(sectorRoots) {
 		t.Fatalf("unexpected merkle root")
 	}
-	if len(s.merkleRoots) != 10 {
-		t.Fatalf("expected sectors length after dropping to be %v but was %v", 10, len(s.merkleRoots))
+	if len(s.merkleRoots) != initialContractSectors {
+		t.Fatalf("expected sectors length after dropping to be %v but was %v", initialContractSectors, len(s.merkleRoots))
 	}
 
 	// Try dropping half the sectors.
@@ -139,7 +208,7 @@ func TestDropSectors(t *testing.T) {
 // TestHasSector tests checking if a sector exists in the cache or host.
 func TestHasSector(t *testing.T) {
 	// Initialize the sectors.
-	sectorRoots := randomSectorRoots(10)
+	sectorRoots := randomSectorRoots(initialContractSectors)
 	s := newSectors(sectorRoots)
 
 	// Each sector should exist.
@@ -150,7 +219,7 @@ func TestHasSector(t *testing.T) {
 	}
 
 	// These sectors should not exist.
-	for i := 0; i < 10; i++ {
+	for i := 0; i < initialContractSectors; i++ {
 		root := randomSector()
 		if s.hasSector(root) {
 			t.Fatalf("sector %v should not be in program cache or host", root)
@@ -161,17 +230,17 @@ func TestHasSector(t *testing.T) {
 // TestReadSector tests reading sector data from the cache and host.
 func TestReadSector(t *testing.T) {
 	// Initialize the host and sectors.
-	sectorRoots := randomSectorRoots(10)
+	sectorRoots := randomSectorRoots(initialContractSectors)
 	host := newTestHost()
 	host.sectors = randomSectorMap(sectorRoots)
-	sectorsGained := randomSectorRoots(10)
+	sectorsGained := randomSectorRoots(initialContractSectors)
 	sectorRoots = append(sectorRoots, sectorsGained...)
 	sectorsGainedMap := randomSectorMap(sectorsGained)
 	s := newSectors(sectorRoots)
 	s.sectorsGained = sectorsGainedMap
 
 	// Read data for each existing sector.
-	for _, root := range sectorRoots[:10] {
+	for _, root := range sectorRoots[:initialContractSectors] {
 		data, err := s.readSector(host, root)
 		if err != nil {
 			t.Fatal(err)
@@ -180,7 +249,7 @@ func TestReadSector(t *testing.T) {
 			t.Fatalf("root %v not found in host", root)
 		}
 	}
-	for _, root := range sectorRoots[10:] {
+	for _, root := range sectorRoots[initialContractSectors:] {
 		data, err := s.readSector(host, root)
 		if err != nil {
 			t.Fatal(err)
@@ -191,7 +260,7 @@ func TestReadSector(t *testing.T) {
 	}
 
 	// These sectors should not exist.
-	for i := 0; i < 10; i++ {
+	for i := 0; i < initialContractSectors; i++ {
 		root := randomSector()
 		if _, err := s.readSector(host, root); err == nil {
 			t.Fatalf("found a root %v which shouldn't exist", root)

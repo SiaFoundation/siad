@@ -47,6 +47,9 @@ var (
 	// verification of when max risk is reached in tests. Used only in tests.
 	errMaxRiskReached = errors.New("errMaxRiskReached")
 
+	// errZeroAccountID occurs when an account is opened with the ZeroAccountID.
+	errZeroAccountID = errors.New("can't open an account with an empty account id")
+
 	// pruneExpiredAccountsFrequency is the frequency at which the account
 	// manager checks if it can expire accounts which have been inactive for too
 	// long.
@@ -85,7 +88,7 @@ type (
 	// pruning fingerprints of withdrawals that have expired, so memory does not
 	// build up.
 	accountManager struct {
-		accounts                map[string]*account
+		accounts                map[modules.AccountID]*account
 		fingerprints            *fingerprintMap
 		staticAccountsPersister *accountsPersister
 
@@ -129,7 +132,7 @@ type (
 	// account contains all data related to an ephemeral account
 	account struct {
 		index              uint32
-		id                 string
+		id                 modules.AccountID
 		balance            types.Currency
 		blockedWithdrawals blockedWithdrawalHeap
 
@@ -172,7 +175,7 @@ type (
 	// blockedDeposit represents a deposit call that is pending to be
 	// executed but is stalled because maxRisk is reached.
 	blockedDeposit struct {
-		id            string
+		id            modules.AccountID
 		amount        types.Currency
 		persistResult chan error
 		syncResult    chan struct{}
@@ -229,7 +232,7 @@ func (bwh blockedWithdrawalHeap) Value() types.Currency {
 // newAccountManager returns a new account manager ready for use by the host
 func (h *Host) newAccountManager() (_ *accountManager, err error) {
 	am := &accountManager{
-		accounts:           make(map[string]*account),
+		accounts:           make(map[modules.AccountID]*account),
 		fingerprints:       newFingerprintMap(),
 		blockedDeposits:    make([]*blockedDeposit, 0),
 		blockedWithdrawals: make([]*blockedWithdrawal, 0),
@@ -277,11 +280,31 @@ func newFingerprintMap() *fingerprintMap {
 	}
 }
 
-// callDeposit will deposit the amount into the ephemeral account with given id.
-// This will increase the host's current risk by the deposit amount. This is
+// callDeposit calls managedDeposit with refund set to 'false'.
+func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
+	return am.managedDeposit(id, amount, false, syncChan)
+}
+
+// callRefund calls managedDeposit with refund set to 'true' and a closed
+// syncChan.
+func (am *accountManager) callRefund(id modules.AccountID, amount types.Currency) error {
+	// Nothing to refund.
+	if amount.IsZero() {
+		return nil
+	}
+	syncChan := make(chan struct{})
+	close(syncChan)
+	return am.managedDeposit(id, amount, true, syncChan)
+}
+
+// managedDeposit will deposit the amount into the ephemeral account with given
+// id. This will increase the host's current risk by the deposit amount. This is
 // because until the file contract has been fsynced, the host is at risk to
 // losing money. The caller passes in a channel that gets closed when the file
 // contract is fsynced. When that happens, the current risk is lowered.
+//
+// calling managedDeposit with refund = true will ignore the max EA balance
+// restriction.
 //
 // The deposit is subject to maintaining ACID properties between the file
 // contract (FC) and the ephemeral account (EA). In order to document the model,
@@ -314,7 +337,7 @@ func newFingerprintMap() *fingerprintMap {
 // 5. Failure after RPC calls deposit, after EA is updated, after AM returns,
 // after FC sync: EA is updated, FC is updated, there is no risk to the host at
 // this point
-func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan chan struct{}) error {
+func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Currency, refund bool, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
 	his := am.h.InternalSettings()
@@ -323,7 +346,9 @@ func (am *accountManager) callDeposit(id string, amount types.Currency, syncChan
 
 	// Initiate the deposit.
 	persistResultChan := make(chan error)
-	err := am.managedDeposit(id, amount, maxRisk, maxBalance, bh, persistResultChan, syncChan)
+	am.mu.Lock()
+	err := am.deposit(id, amount, maxRisk, maxBalance, bh, refund, persistResultChan, syncChan)
+	am.mu.Unlock()
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
@@ -367,46 +392,58 @@ func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypt
 // callConsensusChanged is called by the host whenever it processed a change to
 // the consensus. We use it to remove fingerprints which have been expired.
 func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHeight, newHeight types.BlockHeight) {
-	// If the host is not synced, withdrawals are disabled. In this case we also
-	// do not want to rotate the fingerprints.
-	am.mu.Lock()
-	if !cc.Synced {
-		am.withdrawalsInactive = true
-		am.mu.Unlock()
-		return
-	}
-	am.withdrawalsInactive = false
-
-	// Rotate only if the new block height is larger than the old block height,
-	// and the min height is between the old and new blockheight. We have to
-	// take into account the old and new height due to blockchain reorgs that
-	// could cause the blockheight to increase (or decrease) by multiple blocks
-	// at a time, potentially skipping over the min height of the bucket.
-	min, _ := currentBucketRange(newHeight)
-	if !(oldHeight < newHeight && oldHeight < min && min <= newHeight) {
-		am.mu.Unlock()
-		return
-	}
-
-	am.fingerprints.rotate()
-	am.mu.Unlock()
-	err := am.staticAccountsPersister.callRotateFingerprintBuckets()
-	if err != nil {
-		am.h.log.Critical("Could not rotate fingerprints on disk", err)
-	}
-}
-
-// managedDeposit performs a couple of steps in preparation of the
-// deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) managedDeposit(id string, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
+	// If the host is not synced, withdrawals are disabled. In this case we
+	// also do not want to rotate the fingerprints.
+	if !cc.Synced {
+		am.withdrawalsInactive = true
+		return
+	}
+
+	// If withdrawals were already active (meaning the host was synced) and
+	// if the new blockheight is not one at which we expect to rotate, we
+	// can return early. In all other cases we rotate the buckets both in
+	// memory and on disk. We rotate when the new height crosses over the
+	// new current bucket range. We have to take into account the old and
+	// new height due to blockchain reorgs that could cause the blockheight
+	// to increase (or decrease) by multiple blocks at a time, potentially
+	// skipping over the min height of the bucket.
+	min, _ := currentBucketRange(newHeight)
+	withdrawalsActive := !am.withdrawalsInactive
+	shouldRotate := oldHeight < newHeight && oldHeight < min && min <= newHeight
+	if withdrawalsActive && !shouldRotate {
+		return
+	}
+
+	// Rotate fingerprint buckets on disk
+	am.mu.Unlock()
+	errRotate := am.staticAccountsPersister.callRotateFingerprintBuckets()
+	am.mu.Lock()
+
+	// Rotate in memory only if the on-disk rotation succeeded
+	if errRotate == nil {
+		am.fingerprints.rotate()
+	} else if errRotate != errRotationDisabled {
+		am.h.log.Critical("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactived", errRotate)
+	}
+
+	// Disable withdrawals on failed rotation
+	am.withdrawalsInactive = errRotate != nil
+}
+
+// deposit performs a couple of steps in preparation of the
+// deposit. If everything checks out it will commit the deposit.
+func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, refund bool, persistResultChan chan error, syncChan chan struct{}) error {
 	// Open the account, if the account does not exist yet, it will be created.
-	acc := am.openAccount(id)
+	acc, err := am.openAccount(id)
+	if err != nil {
+		return errors.AddContext(err, "failed to open account for deposit")
+	}
 
 	// Verify if the deposit does not exceed the maximum
-	if acc.depositExceedsMaxBalance(amount, maxBalance) {
+	if !refund && acc.depositExceedsMaxBalance(amount, maxBalance) {
 		return ErrBalanceMaxExceeded
 	}
 
@@ -458,8 +495,10 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	am.fingerprints.add(fp, expiry, blockHeight)
 
 	// Open the account, create if it does not exist yet
-	acc := am.openAccount(id)
-
+	acc, err := am.openAccount(id)
+	if err != nil {
+		return errors.AddContext(err, "failed to open account for withdrawal")
+	}
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
@@ -489,7 +528,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 
 // managedAccountPersistInfo is a helper method that will collect all of the
 // necessary data to perform the persist.
-func (am *accountManager) managedAccountPersistInfo(id string) *accountPersistInfo {
+func (am *accountManager) managedAccountPersistInfo(id modules.AccountID) *accountPersistInfo {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
@@ -545,7 +584,7 @@ func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, sy
 //
 // Note that the caller adds this thread to the threadgroup. If the add is done
 // inside the goroutine, the host risks losing money even on graceful shutdowns.
-func (am *accountManager) threadedSaveAccount(id string) (waiting int) {
+func (am *accountManager) threadedSaveAccount(id modules.AccountID) (waiting int) {
 	// Gather all information required to persist and process it afterwards
 	accInfo := am.managedAccountPersistInfo(id)
 	if accInfo == nil {
@@ -879,12 +918,26 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 	return deleted
 }
 
+// callAccountBalance will return the balance of an account.
+func (am *accountManager) callAccountBalance(id modules.AccountID) types.Currency {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	account, exists := am.accounts[id]
+	if !exists {
+		return types.ZeroCurrency
+	}
+	return account.balance
+}
+
 // openAccount will return an account object. If the account does not exist it
 // will be created.
-func (am *accountManager) openAccount(id string) *account {
+func (am *accountManager) openAccount(id modules.AccountID) (*account, error) {
+	if id.IsZeroAccount() {
+		return nil, errZeroAccountID
+	}
 	acc, exists := am.accounts[id]
 	if exists {
-		return acc
+		return acc, nil
 	}
 	acc = &account{
 		id:                 id,
@@ -893,7 +946,7 @@ func (am *accountManager) openAccount(id string) *account {
 		persistResultChans: make([]chan error, 0),
 	}
 	am.accounts[id] = acc
-	return acc
+	return acc, nil
 }
 
 // assignFreeIndex will return the next available account index
@@ -935,7 +988,7 @@ func (ab *accountBitfield) releaseIndex(index uint32) {
 // Upon account expiry, its index will be freed up by unsetting the
 // corresponding bit. When a new account is opened, it will grab the first
 // available index, effectively recycling the expired account indexes.
-func (ab *accountBitfield) buildIndex(accounts map[string]*account) {
+func (ab *accountBitfield) buildIndex(accounts map[modules.AccountID]*account) {
 	var maxIndex uint32
 	for _, acc := range accounts {
 		if acc.index > maxIndex {

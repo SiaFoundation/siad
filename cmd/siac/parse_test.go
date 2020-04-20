@@ -239,3 +239,29 @@ func TestParseRatelimit(t *testing.T) {
 		}
 	}
 }
+
+// TestParsePercentages probes the parsePercentages function
+func TestParsePercentages(t *testing.T) {
+	tests := []struct {
+		in  []float64
+		out []float64
+	}{
+		{[]float64{50.0, 50.0}, []float64{50, 50}},
+		{[]float64{49.5, 50.5}, []float64{50, 50}},
+		{[]float64{33.1, 33.4, 33.5}, []float64{33, 33, 34}},
+		{[]float64{63.1, 33.4, 3.5}, []float64{63, 33, 4}},
+		{[]float64{0, 0, 100}, []float64{0, 0, 100}},
+		{[]float64{100}, []float64{100}},
+	}
+
+	for _, test := range tests {
+		res := parsePercentages(test.in)
+		for i, v := range res {
+			if v != test.out[i] {
+				t.Log("Result", res)
+				t.Log("Expected", test.out)
+				t.Fatal("Result not as expected")
+			}
+		}
+	}
+}

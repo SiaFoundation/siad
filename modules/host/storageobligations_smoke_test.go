@@ -95,6 +95,9 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 			{
 				Value: types.ZeroCurrency,
 			},
+			{
+				Value: types.ZeroCurrency,
+			},
 		},
 		UnlockHash:     (types.UnlockConditions{}).UnlockHash(),
 		RevisionNumber: 0,
@@ -515,7 +518,6 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		if i != (j + k) {
 			t.Logf("There should be a total of 3 obligations in the database. Found %v.", i)
 			return errCountErr
-
 		}
 		if j != 3 {
 			t.Logf("There should be 3 succeeded obligations in the database. Found %v.", j)

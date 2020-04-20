@@ -26,6 +26,29 @@ type Client struct {
 	UserAgent string
 }
 
+// A UnsafeClient is a Client with additional access to unsafe methods that are
+// easy to misuse. It should only be used for testing.
+type UnsafeClient struct {
+	Client
+}
+
+// NewUnsafeClient creates a new UnsafeClient using the provided address.
+func NewUnsafeClient(client Client) *UnsafeClient {
+	return &UnsafeClient{client}
+}
+
+// Post makes a POST request to the resource at `resource`, using `data` as the
+// request body. The response, if provided, will be decoded into `obj`.
+func (uc *UnsafeClient) Post(resource string, data string, obj interface{}) error {
+	return uc.post(resource, data, obj)
+}
+
+// Get requests the specified resource. The response, if provided, will be
+// decoded into obj. The resource path must begin with /.
+func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
+	return uc.get(resource, obj)
+}
+
 // New creates a new Client using the provided address.
 func New(address string) *Client {
 	return &Client{
@@ -100,11 +123,6 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "GET request failed")
-	}
-
-	if res.StatusCode == http.StatusNotFound {
-		drainAndClose(res.Body)
-		return nil, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
@@ -221,10 +239,6 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
 	}
 	defer drainAndClose(res.Body)
-
-	if res.StatusCode == http.StatusNotFound {
-		return http.Header{}, nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform POST on "+resource)
-	}
 
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.

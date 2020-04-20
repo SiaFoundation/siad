@@ -288,14 +288,17 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
+	account := openAccount(hostPubKey, r.hostContractor)
+	rpcClient := r.newRPCClient(host, account.staticID, bh)
+
 	return &worker{
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
 		staticHostMuxAddress: hostMuxAddress,
 
-		staticAccount:       openAccount(hostPubKey, r.hostContractor),
+		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
-		staticRPCClient:     r.newRPCClient(host, bh),
+		staticRPCClient:     rpcClient,
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),

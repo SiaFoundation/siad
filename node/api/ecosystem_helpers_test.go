@@ -186,7 +186,6 @@ func fullyConnectNodes(sts []*serverTester) error {
 					return fmt.Errorf("called connect between two nodes, but they are not peers: %v %v %v %v %v %v", aToB, bToA, gg.NetAddress, ggb.NetAddress, gg.Peers, ggb.Peers)
 				}
 				return nil
-
 			})
 			if err != nil {
 				return err

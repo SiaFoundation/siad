@@ -341,6 +341,28 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	}
 }
 
+// staticReadPriceTableID receives a stream and reads the price table's UID from
+// it, if it's a known UID we return the price table
+func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTable, error) {
+	// read the price table uid
+	var uid modules.UniqueID
+	err := modules.RPCRead(stream, &uid)
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to read price table UID")
+	}
+	// check if we know the uid, if we do return it
+	var found bool
+	pt, found := h.staticPriceTables.managedGet(uid)
+	if !found {
+		return nil, errors.New("Price table not found, it might be expired")
+	}
+	// make sure the table isn't expired.
+	if pt.Expiry < time.Now().Unix() {
+		return nil, errors.New("Price table requested is expired")
+	}
+	return pt, nil
+}
+
 // threadedHandleStream handles incoming SiaMux streams.
 func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	// close the stream when the method terminates
@@ -364,32 +386,23 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	var rpcID types.Specifier
 	err = modules.RPCRead(stream, &rpcID)
 	if err != nil {
-		if wErr := modules.RPCWriteError(stream, errors.New("Failed to read RPC id")); wErr != nil {
-			h.managedLogError(err)
+		err = errors.AddContext(err, "Failed to read RPC id")
+		if wErr := modules.RPCWriteError(stream, err); wErr != nil {
+			h.managedLogError(wErr)
 		}
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 		return
 	}
 
-	// read the price table, the renter will send its pricetable UUID by means
-	// of identification, except for when it is updating its price table
-	if rpcID != modules.RPCUpdatePriceTable {
-		var ptID types.Specifier
-		err = modules.RPCRead(stream, &ptID)
-		if err != nil {
-			if wErr := modules.RPCWriteError(stream, errors.New("Failed to read price table UUID")); wErr != nil {
-				h.managedLogError(err)
-			}
-			atomic.AddUint64(&h.atomicErroredCalls, 1)
-			return
-		}
-	}
-
 	switch rpcID {
+	case modules.RPCExecuteProgram:
+		err = h.managedRPCExecuteProgram(stream)
+	case modules.RPCUpdatePriceTable:
+		err = h.staticRPCUpdatePriceTable(stream)
+	case modules.RPCFundAccount:
+		err = h.managedRPCFundEphemeralAccount(stream)
 	default:
-		// TODO log stream.RemoteAddr().String() when it is implemented on the
-		// SiaMux
-		h.log.Debugf("WARN: incoming stream requested unknown RPC \"%v\"", rpcID)
+		h.log.Debugf("WARN: incoming stream %v requested unknown RPC \"%v\"", stream.RemoteAddr().String(), rpcID)
 		err = errors.New(fmt.Sprintf("Unrecognized RPC id %v", rpcID))
 		atomic.AddUint64(&h.atomicUnrecognizedCalls, 1)
 	}

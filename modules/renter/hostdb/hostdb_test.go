@@ -141,6 +141,7 @@ func TestNew(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	testDir := build.TempDir("HostDB", t.Name())
 	g, err := gateway.New("localhost:0", false, filepath.Join(testDir, modules.GatewayDir))
 	if err != nil {
@@ -202,6 +203,7 @@ func TestRandomHosts(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	hdbt, err := newHDBTesterDeps(t.Name(), &disableScanLoopDeps{})
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +292,6 @@ func TestRandomHosts(t *testing.T) {
 				disjoint = true
 			}
 			dupCheck2[host.PublicKey.String()] = host
-
 		}
 		if !overlap || !disjoint {
 			t.Error("Random hosts does not seem to be random")
@@ -412,6 +413,7 @@ func TestRemoveNonexistingHostFromHostTree(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	hdbt, err := newHDBTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -430,6 +432,7 @@ func TestUpdateHistoricInteractions(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// create a HostDB tester without scanloop to be able to manually increment
 	// the interactions without interference.
@@ -617,6 +620,7 @@ func TestCheckForIPViolations(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Prepare a few hosts for the test
 	entry1 := makeHostDBEntry()

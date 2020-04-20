@@ -257,7 +257,7 @@ func TestHostLockTimeout(t *testing.T) {
 	lockedRev := lockedContract.Transaction.FileContractRevisions[0]
 	if rev.NewRevisionNumber != lockedRev.NewRevisionNumber ||
 		rev.NewFileMerkleRoot != lockedRev.NewFileMerkleRoot ||
-		!rev.RenterFunds().Equals(lockedRev.RenterFunds()) {
+		!rev.ValidRenterPayout().Equals(lockedRev.ValidRenterPayout()) {
 		t.Fatal("acquired wrong contract after lock:", rev.NewRevisionNumber, lockedRev.NewRevisionNumber)
 	}
 }
@@ -312,7 +312,13 @@ func TestHostBaseRPCPrice(t *testing.T) {
 
 	// Increase the host's base price.
 	host := tg.Hosts()[0]
-	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, types.SiacoinPrecision.Mul64(1000))
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	minDownloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice
+	maxRPCPrice := minDownloadPrice.Mul64(modules.MaxBaseRPCPriceVsBandwidth)
+	err = host.HostModifySettingPost(client.HostParamMinBaseRPCPrice, maxRPCPrice)
 	if err != nil {
 		t.Fatal(err)
 	}

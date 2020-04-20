@@ -3,26 +3,51 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"net"
+	"reflect"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
+
+// TestPriceTableMarshaling tests a PriceTable can be marshaled and unmarshaled
+func TestPriceTableMarshaling(t *testing.T) {
+	pt := modules.RPCPriceTable{
+		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		UpdatePriceTableCost: types.SiacoinPrecision,
+		InitBaseCost:         types.SiacoinPrecision.Mul64(1e2),
+		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
+		ReadBaseCost:         types.SiacoinPrecision.Mul64(1e4),
+		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
+		HasSectorBaseCost:    types.SiacoinPrecision.Mul64(1e6),
+	}
+	fastrand.Read(pt.UID[:])
+
+	ptBytes, err := json.Marshal(pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ptCopy modules.RPCPriceTable
+	err = json.Unmarshal(ptBytes, &ptCopy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(pt, ptCopy) {
+		t.Log(pt.UID[:])
+		t.Log(ptCopy.UID[:])
+		t.Fatal(errors.New("PriceTable not equal after unmarshaling"))
+	}
+}
 
 // TestPriceTableMinHeap verifies the working of the min heap
 func TestPriceTableMinHeap(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
 	t.Parallel()
 
 	now := time.Now()
@@ -62,51 +87,39 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	t.Parallel()
 
 	// create a blank host tester
-	ht, err := blankHostTester(t.Name())
+	rhp, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	ht := rhp.ht
+	defer rhp.Close()
 
-	// create a test stream
-	stream, err := createTestStream(ht.host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stream.Close()
-
-	// call the update price table rpc
-	err = ht.host.managedRPCUpdatePriceTable(stream)
+	// negotiate a price table.
+	err = rhp.negotiatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify there's at least one price table
-	ht.host.staticPriceTables.mu.RLock()
-	numPTs := len(ht.host.staticPriceTables.guaranteed)
-	ht.host.staticPriceTables.mu.RUnlock()
-	if numPTs == 0 {
-		t.Fatal("Expected at least one price table to be set in the host's price table map")
+	// verify the price table is being tracked
+	pt := rhp.latestPT
+	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
+	if !tracked {
+		t.Log("UID:", pt.UID)
+		t.Log("Guaranteed:", ht.host.staticPriceTables.guaranteed)
+		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
-	// get its uuid
-	ht.host.staticPriceTables.mu.RLock()
-	var uuid types.Specifier
-	for uuid = range ht.host.staticPriceTables.guaranteed {
-		break
-	}
-	ht.host.staticPriceTables.mu.RUnlock()
-
-	// sleep for the duration of the epxiry frequency, seeing as that is greater
+	// sleep for the duration of the expiry frequency, seeing as that is greater
 	// than the price guarantee period, it is the worst case
-	time.Sleep(pruneExpiredRPCPriceTableFrequency)
-
-	// verify it was expired
-	ht.host.staticPriceTables.mu.RLock()
-	_, exists := ht.host.staticPriceTables.guaranteed[uuid]
-	ht.host.staticPriceTables.mu.RUnlock()
-	if exists {
-		t.Fatal("Expected RPC price table to be pruned because it should have expired")
+	err = build.Retry(3, pruneExpiredRPCPriceTableFrequency, func() error {
+		_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
+		if exists {
+			return errors.New("Expected RPC price table to be pruned because it should have expired")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -118,158 +131,172 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	}
 	t.Parallel()
 
-	// create a blank host tester
-	ht, err := blankHostTester(t.Name())
+	// setup a host and renter pair with an emulated file contract between them
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	ht := pair.ht
+	defer pair.Close()
 
-	// setup a client and server mux
-	client, server := createTestingMuxs()
-	defer client.Close()
-	defer server.Close()
+	errMockRenterPriceGougingTooLow := errors.New("Cost too low")
+	errMockRenterPriceGougingTooHigh := errors.New("Cost too high")
 
-	var atomicErrors uint64
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		// open a new stream
-		stream, err := client.NewStream()
-		if err != nil {
-			t.Log(err)
-		}
+	// renter-side logic
+	renterFunc := func(stream siamux.Stream) (pt modules.RPCPriceTable, err error) {
 		defer stream.Close()
-
-		// write the rpc id
-		err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
-		if err != nil {
-			t.Log("Failed to write rpc id", err)
-			atomic.AddUint64(&atomicErrors, 1)
-			return
-		}
-
-		// read the updated RPC price table
 		var update modules.RPCUpdatePriceTableResponse
 		if err = modules.RPCRead(stream, &update); err != nil {
-			t.Log("Failed to read updated price table from the stream", err)
-			atomic.AddUint64(&atomicErrors, 1)
+			err = errors.AddContext(err, "Failed to read updated price table from the stream")
 			return
 		}
 
-		// unmarshal the JSON into a price table
-		var pt modules.RPCPriceTable
 		if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
-			t.Log("Failed to unmarshal the JSON encoded RPC price table")
-			atomic.AddUint64(&atomicErrors, 1)
+			err = errors.AddContext(err, "Failed to unmarshal the JSON encoded RPC price table")
 			return
 		}
-
 		ptc := pt.UpdatePriceTableCost
+
+		// mock of what is going to be price gouging on the renter
 		if ptc.Equals(types.ZeroCurrency) {
-			t.Log(ptc)
-			t.Log("Expected the cost of the updatePriceTableRPC to be set")
-			atomic.AddUint64(&atomicErrors, 1)
+			err = errMockRenterPriceGougingTooLow
+			return
+		} else if ptc.Cmp(types.SiacoinPrecision) > 0 {
+			err = errMockRenterPriceGougingTooHigh
 			return
 		}
 
-		// Note: we do not verify if the host process payment properly. This
-		// would require a paymentprovider, this functionality should be tested
-		// renter-side.
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		// wait for the incoming stream
-		stream, err := server.AcceptStream()
+		// pay using a contract.
+		err = pair.payByContract(stream, ptc, pair.accountID)
 		if err != nil {
-			t.Log(err)
-			atomic.AddUint64(&atomicErrors, 1)
 			return
 		}
+		return
+	}
 
-		// read the rpc id
-		var id types.Specifier
-		err = modules.RPCRead(stream, &id)
+	// host-side logic
+	hostFunc := func(stream siamux.Stream, mock modules.RPCPriceTable) error {
+		defer stream.Close()
+		ht.host.staticPriceTables.managedUpdate(mock)
+		err := ht.host.staticRPCUpdatePriceTable(stream)
 		if err != nil {
-			t.Log(err)
-			atomic.AddUint64(&atomicErrors, 1)
-			return
+			modules.RPCWriteError(stream, err)
 		}
+		return nil
+	}
 
-		// call the update price table RPC, we purposefully ignore the error
-		// here because the client is not providing payment. This RPC call will
-		// end up with a closed stream, which will end up with a payment error.
-		_ = ht.host.managedRPCUpdatePriceTable(stream)
+	runRPC := func(mockedHostPriceTable modules.RPCPriceTable) (pt modules.RPCPriceTable, rErr, hErr error) {
+		rStream, hStream := NewTestStreams()
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			pt, rErr = renterFunc(rStream)
+			wg.Done()
+		}()
+		wg.Add(1)
+		go func() {
+			hErr = hostFunc(hStream, mockedHostPriceTable)
+			wg.Done()
+		}()
+		wg.Wait()
+		return
+	}
 
-	}()
-	wg.Wait()
-
-	if atomic.LoadUint64(&atomicErrors) > 0 {
+	// verify happy flow
+	current := ht.host.staticPriceTables.managedCurrent()
+	fastrand.Read(current.UID[:]) // overwrite to avoid critical during prune
+	update, rErr, hErr := runRPC(current)
+	if err := errors.Compose(rErr, hErr); err != nil {
 		t.Fatal("Update price table failed")
 	}
-}
 
-// createTestingMuxs creates a connected pair of type Mux which has already
-// completed the encryption handshake and is ready to go.
-func createTestingMuxs() (clientMux, serverMux *mux.Mux) {
-	// Prepare tcp connections.
-	clientConn, serverConn := createTestingConns()
-	// Generate server keypair.
-	serverPrivKey, serverPubKey := mux.GenerateED25519KeyPair()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var err error
-		clientMux, err = mux.NewClientMux(clientConn, serverPubKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {}, func(*mux.Mux) {})
-		if err != nil {
-			panic(err)
-		}
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var err error
-		serverMux, err = mux.NewServerMux(serverConn, serverPubKey, serverPrivKey, persist.NewLogger(ioutil.Discard), func(*mux.Mux) {}, func(*mux.Mux) {})
-		if err != nil {
-			panic(err)
-		}
-	}()
-	wg.Wait()
-	return
-}
-
-// createTestingConns is a helper method to create a pair of connected tcp
-// connection ready to use.
-func createTestingConns() (clientConn, serverConn net.Conn) {
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		serverConn, _ = ln.Accept()
-		wg.Done()
-	}()
-	clientConn, _ = net.Dial("tcp", ln.Addr().String())
-	wg.Wait()
-	return
-}
-
-// createTestStream is a helper method to create a stream
-func createTestStream(h *Host) (siamux.Stream, error) {
-	hes := h.ExternalSettings()
-	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
-	mux := h.staticMux
-
-	// fetch a stream from the mux
-	stream, err := mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, modules.SiaPKToMuxPK(h.publicKey))
-	if err != nil {
-		return nil, err
+	// verify the price table is tracked
+	ht.host.staticPriceTables.mu.Lock()
+	_, tracked := ht.host.staticPriceTables.guaranteed[update.UID]
+	ht.host.staticPriceTables.mu.Unlock()
+	if !tracked {
+		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", update.UID[:])
 	}
-	return stream, nil
+
+	// expect error if the rpc costs nothing
+	invalidPT := current
+	fastrand.Read(invalidPT.UID[:]) // overwrite to avoid critical during prune
+	invalidPT.UpdatePriceTableCost = types.ZeroCurrency
+	_, rErr, hErr = runRPC(invalidPT)
+	if rErr != errMockRenterPriceGougingTooLow {
+		t.Fatalf("Expected err '%v', received '%v'", errMockRenterPriceGougingTooLow, err)
+	}
+	if hErr != nil {
+		t.Fatalf("Expected no err, received '%v'", hErr)
+	}
+
+	// expect error if the rpc costs an insane amount
+	invalidPT.UpdatePriceTableCost = types.SiacoinPrecision.Add64(1)
+	_, rErr, hErr = runRPC(invalidPT)
+	if rErr != errMockRenterPriceGougingTooHigh {
+		t.Fatalf("Expected err '%v', received '%v'", errMockRenterPriceGougingTooHigh, err)
+	}
+	if hErr != nil {
+		t.Fatalf("Expected no err, received '%v'", hErr)
+	}
+}
+
+// negotiatePriceTable gets a new price table from the host.
+func (pair *renterHostPair) negotiatePriceTable() error {
+	// create a test stream
+	stream := pair.newStream()
+	defer stream.Close()
+
+	// write the rpc id
+	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		return err
+	}
+
+	// read the updated RPC price table
+	var update modules.RPCUpdatePriceTableResponse
+	if err = modules.RPCRead(stream, &update); err != nil {
+		return err
+	}
+
+	// unmarshal the JSON into a price table
+	var pt modules.RPCPriceTable
+	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
+		return err
+	}
+
+	// Send the payment request.
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	if err != nil {
+		return err
+	}
+
+	// Send the payment details.
+	rev, sig, err := pair.paymentRevision(pt.UpdatePriceTableCost)
+	if err != nil {
+		return err
+	}
+	pbcr := newPayByContractRequest(rev, sig, pair.accountID)
+	err = modules.RPCWrite(stream, pbcr)
+	if err != nil {
+		return err
+	}
+
+	// Receive payment confirmation.
+	var pc modules.PayByContractResponse
+	err = modules.RPCRead(stream, &pc)
+	if err != nil {
+		return err
+	}
+	pair.latestPT = &pt
+	return nil
+}
+
+// newStream creates a stream which can be used to talk to the host.
+func (pair *renterHostPair) newStream() siamux.Stream {
+	stream, err := pair.ht.host.staticMux.NewStream(modules.HostSiaMuxSubscriberName, pair.ht.host.staticMux.Address().String(), pair.ht.host.staticMux.PublicKey())
+	if err != nil {
+		panic(err)
+	}
+	return stream
 }

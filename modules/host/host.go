@@ -76,9 +76,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -156,6 +158,7 @@ type Host struct {
 
 	// Subsystems
 	staticAccountManager *accountManager
+	staticMDM            *mdm.MDM
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -186,7 +189,7 @@ type Host struct {
 	// for a fixed period of time. The host's RPC prices are dynamic, and are
 	// subject to various conditions specific to the RPC in question. Examples
 	// of such conditions are congestion, load, liquidity, etc.
-	staticPriceTables hostPrices
+	staticPriceTables *hostPrices
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -206,9 +209,63 @@ type Host struct {
 // 'guaranteed' map.
 type hostPrices struct {
 	current       modules.RPCPriceTable
-	guaranteed    map[types.Specifier]*modules.RPCPriceTable
+	guaranteed    map[modules.UniqueID]*modules.RPCPriceTable
 	staticMinHeap priceTableHeap
 	mu            sync.RWMutex
+}
+
+// managedCurrent returns the host's current price table
+func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
+	hp.mu.RLock()
+	defer hp.mu.RUnlock()
+	return hp.current
+}
+
+// managedGet returns the price table with given uid
+func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTable, found bool) {
+	hp.mu.RLock()
+	defer hp.mu.RUnlock()
+	pt, found = hp.guaranteed[uid]
+	return
+}
+
+// managedUpdate overwrites the current price table with the one that's given
+func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
+	hp.mu.Lock()
+	defer hp.mu.Unlock()
+	hp.current = pt
+}
+
+// managedTrack adds the given price table to the 'guaranteed' map, that holds
+// all of the price tables the host has recently guaranteed to renters. It will
+// also add it to the heap which facilates efficient pruning of that map.
+func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
+	hp.mu.Lock()
+	hp.guaranteed[pt.UID] = pt
+	hp.mu.Unlock()
+	hp.staticMinHeap.Push(pt)
+}
+
+// managedPruneExpired removes all of the price tables that have expired from
+// the 'guaranteed' map.
+func (hp *hostPrices) managedPruneExpired() {
+	current := hp.managedCurrent()
+	expired := hp.staticMinHeap.PopExpired()
+	if len(expired) == 0 {
+		return
+	}
+	hp.mu.Lock()
+	for _, uid := range expired {
+		// Sanity check to never prune the host's current price table. This can
+		// never occur because the host's price table UID is not added to the
+		// minheap.
+		if uid == current.UID {
+			build.Critical("The host's current price table should not be pruned")
+			continue
+		}
+		delete(hp.guaranteed, uid)
+	}
+	hp.mu.Unlock()
 }
 
 // lockedObligation is a helper type that locks a TryMutex and a counter to
@@ -227,8 +284,8 @@ type priceTableHeap struct {
 	mu   sync.Mutex
 }
 
-// PopExpired returns the UUIDs for all rpc price tables that have expired
-func (pth *priceTableHeap) PopExpired() (expired []types.Specifier) {
+// PopExpired returns the UIDs for all rpc price tables that have expired
+func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
 
@@ -243,7 +300,7 @@ func (pth *priceTableHeap) PopExpired() (expired []types.Specifier) {
 			heap.Push(&pth.heap, pt)
 			break
 		}
-		expired = append(expired, pt.(*modules.RPCPriceTable).UUID)
+		expired = append(expired, pt.(*modules.RPCPriceTable).UID)
 	}
 	return
 }
@@ -319,25 +376,25 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	his := h.managedInternalSettings()
+	_ = h.managedInternalSettings()
 	priceTable := modules.RPCPriceTable{
 		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 
 		// TODO: hardcoded cost should be updated to use a better value.
-		FundAccountCost:      his.MinBaseRPCPrice,
-		UpdatePriceTableCost: his.MinBaseRPCPrice,
+		FundAccountCost:      types.NewCurrency64(1),
+		UpdatePriceTableCost: types.NewCurrency64(1),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		InitBaseCost:   his.MinBaseRPCPrice,
-		MemoryTimeCost: his.MinBaseRPCPrice,
-		ReadBaseCost:   his.MinBaseRPCPrice,
-		ReadLengthCost: his.MinBaseRPCPrice,
+		HasSectorBaseCost: types.NewCurrency64(1),
+		InitBaseCost:      types.NewCurrency64(1),
+		MemoryTimeCost:    types.NewCurrency64(1),
+		ReadBaseCost:      types.NewCurrency64(1),
+		ReadLengthCost:    types.NewCurrency64(1),
 	}
+	fastrand.Read(priceTable.UID[:])
 
 	// update the pricetable
-	h.staticPriceTables.mu.Lock()
-	h.staticPriceTables.current = priceTable
-	h.staticPriceTables.mu.Unlock()
+	h.staticPriceTables.managedUpdate(priceTable)
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
@@ -352,17 +409,7 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 				return
 			}
 			defer h.tg.Done()
-
-			// collect expired uuids using our min heap and prune the expired
-			// price tables
-			expired := h.staticPriceTables.staticMinHeap.PopExpired()
-			if len(expired) > 0 {
-				h.staticPriceTables.mu.Lock()
-				for _, uuid := range expired {
-					delete(h.staticPriceTables.guaranteed, uuid)
-				}
-				h.staticPriceTables.mu.Unlock()
-			}
+			h.staticPriceTables.managedPruneExpired()
 		}()
 
 		// Block until next cycle.
@@ -405,14 +452,17 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		staticMux:                mux,
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
-		staticPriceTables: hostPrices{
-			guaranteed: make(map[types.Specifier]*modules.RPCPriceTable),
+		staticPriceTables: &hostPrices{
+			guaranteed: make(map[modules.UniqueID]*modules.RPCPriceTable),
 			staticMinHeap: priceTableHeap{
 				heap: make([]*modules.RPCPriceTable, 0),
 			},
 		},
 		persistDir: persistDir,
 	}
+
+	// Create MDM.
+	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
 	var err error
@@ -658,11 +708,4 @@ func (h *Host) BlockHeight() types.BlockHeight {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.blockHeight
-}
-
-// PriceTable returns the host's current price table.
-func (h *Host) PriceTable() modules.RPCPriceTable {
-	h.staticPriceTables.mu.RLock()
-	defer h.staticPriceTables.mu.RUnlock()
-	return h.staticPriceTables.current
 }
