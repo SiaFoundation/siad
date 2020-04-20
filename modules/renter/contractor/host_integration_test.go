@@ -478,6 +478,9 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Grab the host settings.
+	hostSettings := editor.HostSettings()
+
 	// renew the contract
 	err = c.managedAcquireAndUpdateContractUtility(contract.ID, modules.ContractUtility{GoodForRenew: true})
 	if err != nil {
@@ -487,7 +490,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if !ok {
 		t.Fatal("failed to acquire contract")
 	}
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+200)
+	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+200, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +524,7 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldContract, _ = c.staticContracts.Acquire(contract.ID)
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
+	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+100, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
