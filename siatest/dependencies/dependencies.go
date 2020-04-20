@@ -94,6 +94,12 @@ type (
 		DependencyTimeoutProjectDownloadByRoot
 		c chan struct{}
 	}
+
+	// DependencyDisableRotateFingerprintBuckets prevents rotation of the
+	// fingerprint buckets on disk.
+	DependencyDisableRotateFingerprintBuckets struct {
+		modules.ProductionDependencies
+	}
 )
 
 // NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
@@ -213,6 +219,11 @@ func (d *DependencyLowFundsRefreshFail) Disrupt(s string) bool {
 // Disrupt causes contract renewal to not clear the contents of a contract.
 func (d *DependencyRenewWithoutClear) Disrupt(s string) bool {
 	return s == "RenewWithoutClear"
+}
+
+// Disrupt causes contract renewal to not clear the contents of a contract.
+func (d *DependencyDisableRotateFingerprintBuckets) Disrupt(s string) bool {
+	return s == "DisableRotateFingerprintBuckets"
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was

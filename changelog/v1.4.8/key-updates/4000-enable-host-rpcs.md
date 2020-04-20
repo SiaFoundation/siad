@@ -1,0 +1,2 @@
+- Enable FundEphemeralAccountRPC on the host
+- Enable UpdatePriceTableRPC on the host

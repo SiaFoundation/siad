@@ -4313,10 +4313,8 @@ responses](#standard-responses).
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/validatesiapath/isthis-aval_idsiapath"
 ```
 
-validates whether or not the provided siapaht is a valid siapath. SiaPaths
-cannot contain traversal strings or be empty. Valid characters are:
-
-$, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
+validates whether or not the provided siapath is a valid siapath. Every path
+valid under Unix is valid as a SiaPath.
 
 ### Path Parameters
 ### REQUIRED
@@ -4370,10 +4368,66 @@ endpoint can be used to both add and remove skylinks from the blacklist.
 At least one of the following fields needs to be non empty.
 
 **add** | array of strings  
-add is an array of skylinks that should be added to the blacklisted
+add is an array of skylinks that should be added to the blacklist.
 
 **remove** | array of strings  
-remove is an array of skylinks that should be removed from the blacklist
+remove is an array of skylinks that should be removed from the blacklist.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /skynet/portals [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/portals"
+```
+
+returns the list of known Skynet portals.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "portals": [ // []SkynetPortal | null
+    {
+      "address": "siasky.net:443", // string
+      "public":  true              // bool
+    }
+  ]
+}
+```
+**address** | string  
+The IP or domain name and the port of the portal. Must be a valid network address.
+
+**public** | bool  
+Indicates whether the portal can be accessed publicly or not.
+
+## /skynet/portals [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : [{"address":"siasky.net:443","public":true}]}' "localhost:9980/skynet/portals"
+
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["siasky.net:443"]}' "localhost:9980/skynet/portals"
+```
+
+updates the list of known Skynet portals. This endpoint can be used to both add
+and remove portals from the list.
+
+### Path Parameters
+### REQUIRED
+At least one of the following fields needs to be non empty.
+
+**add** | array of SkynetPortal  
+add is an array of portal info that should be added to the list of portals.
+
+**remove** | array of string  
+remove is an array of portal network addresses that should be removed from the
+list of portals.
 
 ### Response
 
@@ -4465,11 +4519,11 @@ supplied, this metadata will be relative to the given path.
 
 ```go
 {
-"mode":               // os.FileMode
+"mode":     640,      // os.FileMode
 "filename": "folder", // string
 "subfiles": [         // []SkyfileSubfileMetadata | null
   {
-  "mode":         640                 // os.FileMode
+  "mode":         640,                // os.FileMode
   "filename":     "folder/file1.txt", // string
   "contenttype":  "text/plain",       // string
   "offset":       0,                  // uint64
@@ -4662,7 +4716,6 @@ desired name of the skykey
 ### JSON Response
 > JSON Response Example
 
- 
 ```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
@@ -4695,7 +4748,9 @@ or
 base-64 encoded ID of the skykey being queried
 
 
-### JSON Response ```json
+### JSON Response
+
+```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
 }
@@ -4722,7 +4777,6 @@ name of the skykey being queried
 
 ### JSON Response
 > JSON Response Example
-
  
 ```go
 {

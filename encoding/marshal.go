@@ -19,6 +19,12 @@ const (
 	DefaultAllocLimit = 1e6
 )
 
+var (
+	// ErrInvalidBoolean is returned when the given value cannot be parsed to a
+	// boolean.
+	ErrInvalidBoolean = errors.New("boolean value was not 0 or 1")
+)
+
 // ErrAllocLimitExceeded is the error returned when an encoded object exceeds
 // the specified allocation limit.
 type ErrAllocLimitExceeded int
@@ -29,7 +35,9 @@ func (e ErrAllocLimitExceeded) Error() string {
 }
 
 var (
-	errBadPointer = errors.New("cannot decode into invalid pointer")
+	// ErrBadPointer is returned when the given value cannot be decoded into a
+	// valid pointer
+	ErrBadPointer = errors.New("cannot decode into invalid pointer")
 )
 
 type (
@@ -301,7 +309,7 @@ func (d *Decoder) NextUint64() uint64 {
 func (d *Decoder) NextBool() bool {
 	d.ReadFull(d.buf[:1])
 	if d.buf[0] > 1 && d.err == nil {
-		d.err = errors.New("boolean value was not 0 or 1")
+		d.err = ErrInvalidBoolean
 	}
 	return d.buf[0] == 1
 }
@@ -332,7 +340,7 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 	// v must be a pointer
 	pval := reflect.ValueOf(v)
 	if pval.Kind() != reflect.Ptr || pval.IsNil() {
-		return errBadPointer
+		return ErrBadPointer
 	}
 
 	// catch decoding panics and convert them to errors

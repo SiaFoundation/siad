@@ -56,7 +56,7 @@ For example: siac gateway blacklist append 123.123.123.123 111.222.111.222 mysia
 		Use:   "clear",
 		Short: "Clear the blacklisted peers list",
 		Long: `Clear the blacklisted peers list.
-	
+
 	For example: siac gateway blacklist clear`,
 		Run: gatewayblacklistclearcmd,
 	}

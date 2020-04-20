@@ -43,13 +43,16 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 		return nil, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
 	}
 
+	// get the current account balance.
+	accountBalance := h.staticAccountManager.callAccountBalance(req.Message.Account)
+
 	// process the request
 	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority); err != nil {
 		return nil, errors.AddContext(err, "Withdraw failed")
 	}
 
 	// send the response
-	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Amount: req.Message.Amount}); err != nil {
+	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Balance: accountBalance}); err != nil {
 		return nil, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
@@ -66,6 +69,12 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not read PayByContractRequest")
 	}
 	fcid := pbcr.ContractID
+	accountID := pbcr.RefundAccount
+
+	// sanity check accountID. Should always be provided.
+	if accountID.IsZeroAccount() {
+		return nil, errors.New("no account id provided for refunds")
+	}
 
 	// lock the storage obligation
 	h.managedLockStorageObligation(fcid)
@@ -100,6 +109,9 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not create revision signature")
 	}
 
+	// get account balance before adding funds.
+	accBalance := h.staticAccountManager.callAccountBalance(accountID)
+
 	// extract the payment output & update the storage obligation with the
 	// host's signature
 	so.RevisionTransactionSet = []types.Transaction{{
@@ -117,13 +129,14 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
 	err = modules.RPCWrite(stream, modules.PayByContractResponse{
+		Balance:   accBalance,
 		Signature: sig,
 	})
 	if err != nil {
 		return nil, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return newPaymentDetails("", amount, collateral), nil
+	return newPaymentDetails(accountID, amount, collateral), nil
 }
 
 // managedFundAccount processes a PayByContractRequest coming in over the given
@@ -138,6 +151,11 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 		return types.ZeroCurrency, errors.AddContext(err, "Could not read PayByContractRequest")
 	}
 	fcid := pbcr.ContractID
+
+	// can't provide a refund address when funding an account.
+	if !pbcr.RefundAccount.IsZeroAccount() {
+		return types.ZeroCurrency, errors.New("can't provide a refund account on a fund account rpc")
+	}
 
 	// lock the storage obligation
 	h.managedLockStorageObligation(fcid)

@@ -78,6 +78,11 @@ func TestAccountMaxBalance(t *testing.T) {
 	if !errors.Contains(err, ErrBalanceMaxExceeded) {
 		t.Fatal(err)
 	}
+	// A refund should ignore the max account balance.
+	err = am.callRefund(accountID, exceedingBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestAccountCallWithdraw verifies we can withdraw from an ephemeral account.
@@ -1141,13 +1146,14 @@ func prepareWithdrawal(id modules.AccountID, amount types.Currency, expiry types
 
 // prepareAccount will create an account and return its secret key alonside it's
 // sia public key
-func prepareAccount() (crypto.SecretKey, modules.AccountID) {
+func prepareAccount() (_ crypto.SecretKey, aid modules.AccountID) {
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	return sk, modules.AccountID(spk.String())
+	aid.FromSPK(spk)
+	return sk, aid
 }
 
 // randuint64 generates a random uint64
