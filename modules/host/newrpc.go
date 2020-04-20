@@ -198,8 +198,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 		switch action.Type {
 		case modules.WriteActionAppend:
 			if uint64(len(action.Data)) != modules.SectorSize {
-				s.writeError(errBadSectorSize)
-				return errBadSectorSize
+				s.writeError(ErrBadSectorSize)
+				return ErrBadSectorSize
 			}
 			// Update sector roots.
 			newRoot := crypto.MerkleRoot(action.Data)
@@ -244,8 +244,8 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 				s.writeError(err)
 				return err
 			} else if offset+uint64(len(action.Data)) > modules.SectorSize {
-				s.writeError(errIllegalOffsetAndLength)
-				return errIllegalOffsetAndLength
+				s.writeError(ErrIllegalOffsetAndLength)
+				return ErrIllegalOffsetAndLength
 			}
 			// Update sector roots.
 			sector, err := h.ReadSector(newRoots[sectorIndex])

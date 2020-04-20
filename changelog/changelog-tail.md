@@ -1,6 +1,8 @@
 ## Apr 2, 2020:
 ### v1.4.7
 **Key Updates**
+- Split up contract files into a .header and .roots file. Causes contract
+  insertion to be ACID and fixes a rare panic when loading the contractset.
 - Add `--dry-run` parameter to Skynet upload
 - Set ratio for `MinBaseRPCPrice` and `MinSectorAccessPrice` with
   `MinDownloadBandwidthPrice`

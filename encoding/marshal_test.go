@@ -139,8 +139,8 @@ func TestDecode(t *testing.T) {
 
 	// non-pointer
 	err = Unmarshal([]byte{1, 2, 3}, "foo")
-	if err != errBadPointer {
-		t.Error("expected errBadPointer, got", err)
+	if err != ErrBadPointer {
+		t.Error("expected ErrBadPointer, got", err)
 	}
 
 	// unknown type
