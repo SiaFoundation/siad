@@ -26,6 +26,10 @@ var (
 	// read does not match the current RefCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
 
+	// ErrInvalidUpdateInstruction is returned when trying to parse a WAL update
+	// instruction that is too short to possibly contain all the required data.
+	ErrInvalidUpdateInstruction = errors.New("instructions slice is too short to contain the required data")
+
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
 	// called without an open update session
 	ErrUpdateWithoutUpdateSession = errors.New("an update operation was called without an open update session")
@@ -510,7 +514,7 @@ func offset(secIdx uint64) uint64 {
 // readTruncateUpdate decodes a Truncate update
 func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, err error) {
 	if len(u.Instructions) < 8 {
-		err = errors.New("instructions slice of update is too short to contain the size and path")
+		err = ErrInvalidUpdateInstruction
 		return
 	}
 	newNumSec = binary.LittleEndian.Uint64(u.Instructions[:8])
@@ -521,7 +525,7 @@ func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, 
 // readWriteAtUpdate decodes a WriteAt update
 func readWriteAtUpdate(u writeaheadlog.Update) (path string, secIdx uint64, value uint16, err error) {
 	if len(u.Instructions) < 10 {
-		err = errors.New("instructions slice of update is too short to contain the size and path")
+		err = ErrInvalidUpdateInstruction
 		return
 	}
 	secIdx = binary.LittleEndian.Uint64(u.Instructions[:8])

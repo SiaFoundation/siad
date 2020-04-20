@@ -232,11 +232,11 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 
 	// Check that the transaction set is not empty.
 	if len(txnSet) < 1 {
-		return extendErr("zero-length transaction set: ", errEmptyObject)
+		return extendErr("zero-length transaction set: ", ErrEmptyObject)
 	}
 	// Check that the transaction set has a file contract.
 	if len(txnSet[len(txnSet)-1].FileContracts) < 1 {
-		return extendErr("transaction without file contract: ", errEmptyObject)
+		return extendErr("transaction without file contract: ", ErrEmptyObject)
 	}
 
 	h.mu.Lock()
@@ -252,30 +252,30 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	// The file size and merkle root must match the file size and merkle root
 	// from the previous file contract.
 	if fc.FileSize != so.fileSize() {
-		return errBadFileSize
+		return ErrBadFileSize
 	}
 	if fc.FileMerkleRoot != so.merkleRoot() {
-		return errBadFileMerkleRoot
+		return ErrBadFileMerkleRoot
 	}
 	// The WindowStart must be at least revisionSubmissionBuffer blocks into
 	// the future.
 	if fc.WindowStart <= blockHeight+revisionSubmissionBuffer {
-		return errEarlyWindow
+		return ErrEarlyWindow
 	}
 	// WindowEnd must be at least settings.WindowSize blocks after WindowStart.
 	if fc.WindowEnd < fc.WindowStart+externalSettings.WindowSize {
-		return errSmallWindow
+		return ErrSmallWindow
 	}
 	// WindowStart must not be more than settings.MaxDuration blocks into the
 	// future.
 	if fc.WindowStart > blockHeight+externalSettings.MaxDuration {
-		return errLongDuration
+		return ErrLongDuration
 	}
 
 	// ValidProofOutputs shoud have 2 outputs (renter + host) and missed
 	// outputs should have 3 (renter + host + void)
 	if len(fc.ValidProofOutputs) != 2 || len(fc.MissedProofOutputs) != 3 {
-		return errBadContractOutputCounts
+		return ErrBadContractOutputCounts
 	}
 	// The unlock hashes of the valid and missed proof outputs for the host
 	// must match the host's unlock hash. The third missed output should point
@@ -285,7 +285,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 		return err
 	}
 	if fc.ValidHostOutput().UnlockHash != unlockHash || fc.MissedHostOutput().UnlockHash != unlockHash || voidOutput.UnlockHash != (types.UnlockHash{}) {
-		return errBadPayoutUnlockHashes
+		return ErrBadPayoutUnlockHashes
 	}
 
 	// Check that the collateral does not exceed the maximum amount of
@@ -306,16 +306,16 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	basePrice := renewBasePrice(so, externalSettings, fc)
 	baseCollateral := renewBaseCollateral(so, externalSettings, fc)
 	if fc.ValidHostPayout().Cmp(basePrice.Add(baseCollateral)) < 0 {
-		return errLowHostValidOutput
+		return ErrLowHostValidOutput
 	}
 	expectedHostMissedOutput := fc.ValidHostPayout().Sub(basePrice).Sub(baseCollateral)
 	if fc.MissedHostOutput().Value.Cmp(expectedHostMissedOutput) < 0 {
-		return errLowHostMissedOutput
+		return ErrLowHostMissedOutput
 	}
 	// Check that the void output has the correct value.
 	expectedVoidOutput := basePrice.Add(baseCollateral)
 	if voidOutput.Value.Cmp(expectedVoidOutput) > 0 {
-		return errLowVoidOutput
+		return ErrLowVoidOutput
 	}
 
 	// The unlock hash for the file contract must match the unlock hash that
@@ -328,7 +328,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 		SignaturesRequired: 2,
 	}.UnlockHash()
 	if fc.UnlockHash != expectedUH {
-		return errBadUnlockHash
+		return ErrBadUnlockHash
 	}
 
 	// Check that the transaction set has enough fees on it to get into the
@@ -336,7 +336,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	setFee := modules.CalculateFee(txnSet)
 	minFee, _ := h.tpool.FeeEstimation()
 	if setFee.Cmp(minFee) < 0 {
-		return errLowTransactionFees
+		return ErrLowTransactionFees
 	}
 	return nil
 }
