@@ -736,9 +736,7 @@ returns information about the feemanager.
 ```go
 {
   "settings": {
-    "currentpayout": "1000",                      // Hastings
-    "maxpayout": "10000000000000000000000000000", // Hastings
-    "payoutheight":249854                         // blockheight
+    "payoutheight":249854 // blockheight
   },
 }
 
@@ -746,12 +744,6 @@ returns information about the feemanager.
 
 **settings** | FeeManagerSettings  
 List of current settings of the FeeManager.
-
-**currentpayout** | hastings  
-Amount in hastings that the feemanager expects to pay out this period.
-
-**maxpayout** | hastings  
-Maximum amount in hastings that the feemanager will payout this period.
 
 **payoutheight** | blockheight  
 Height at which the FeeManager will payout the pending fees.
