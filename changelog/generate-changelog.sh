@@ -100,6 +100,9 @@ function create_version_if_not_present {
     done
 }
 
+# get script location
+pushd $(dirname "$0") > /dev/null
+
 # work from "changelog" folder
 pushd "$changelog_files_dir" > /dev/null
 
@@ -185,4 +188,5 @@ fi
 echo 'writing tail of changelog.md'
 cat "$tail_filename" >> "$changelog_md"
 
+popd > /dev/null
 popd > /dev/null
