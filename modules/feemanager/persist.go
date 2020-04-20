@@ -1,347 +1,321 @@
 package feemanager
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
-)
-
-const (
-	// feePersistFilename is the filename to be used when persisting the fees on
-	// disk
-	feePersistFilename = "fees"
-
-	// persistFilename is the filename to be used when persisting FeeManager
-	// information on disk
-	persistFilename = "feemanager"
-
-	// walFile is the filename of the feemanager's writeaheadlog's file.
-	walFile = modules.FeeManagerDir + ".wal"
 )
 
 var (
-	// ErrFeeNotFound is returned if a fee is not found in the FeeManager
-	ErrFeeNotFound = errors.New("fee not found")
+	// LogFile is the filename of the FeeManager logger.
+	LogFile = modules.FeeManagerDir + ".log"
 
-	// logFile is the filename of the FeeManager logger
-	logFile = modules.FeeManagerDir + ".log"
+	// PersistFilename is the filename to be used when persisting FeeManager
+	// information on disk
+	PersistFilename = "feemanager.dat"
 
-	// PayoutInterval is the interval at which the payoutheight is set in the
-	// future
-	PayoutInterval = build.Select(build.Var{
-		Standard: types.BlocksPerMonth,
-		Dev:      types.BlocksPerDay,
-		Testing:  types.BlocksPerHour,
-	}).(types.BlockHeight)
+	// MetadataHeader defines the header for the persist file.
+	MetadataHeader = "Fee Manager\n"
+
+	// MetadataVersion defines the version for the persist file.
+	MetadataVersion = "v1.4.9\n"
 )
 
-// persistence is the structure of the data persisted on disk for the FeeManager
-type persistence struct {
-	// Persisted information about the FeeManager
-	NextFeeOffset int64             `json:"nextfeeoffset"`
-	PayoutHeight  types.BlockHeight `json:"payoutheight"`
+const (
+	// diskSectorSize puts an upper bound on the size of a persist entry, and
+	// also on the size of the encoded object for the persist header.
+	// Consistency for this file depends on the fact that the header is smaller
+	// than one disk sector, and then also on the fact that disk sectors are
+	// always updated atomically in hardware.
+	diskSectorSize = 512
 
-	// List of current pending fees
-	Fees []appFee `json:"fees"`
+	// persistHeaderSize sets the on-disk size of the persist header.
+	persistHeaderSize = 4096
+)
+
+type (
+	// PersistHeader defines the data that goes at the head of the persist file.
+	PersistHeader struct {
+		// Metadata contains the persist metadata identifying the type and
+		// version of the file.
+		persist.Metadata
+
+		// NextPayoutHeight is the height at which the next fee payout happens.
+		NextPayoutHeight types.BlockHeight
+
+		// LatestSyncedOffest is the latest offset that has a confirmed fsync,
+		// data up to and including this point should be reliable.
+		LatestSyncedOffset uint64
+	}
+
+	// syncCoordinator is a struct which ensures only one syncing thread runs at
+	// a time, and ensures that the data on disk is always consistent.
+	//
+	// The syncCoordinator will grab a mutex on the persistSubsystem while the
+	// syncCoordinator is locked, meaning that nothing else should be allowed to
+	// grab the syncCoordinator mutex to prevent deadlocks. The mutex inside of
+	// the syncCoordinator exists only to protect the 'threadRunning' bool, the
+	// other fields are all protected by the fact that only one syncing thread
+	// ever runs at a time.
+	syncCoordinator struct {
+		// threadRunning indicates whether or not there is a syncing thread
+		// already running.
+		threadRunning bool
+
+		// externLatestSyncedOffset is the offset of the persist subsystem as of
+		// the most recent successful sync. Same for
+		// externLatestSyncedPayoutHeight.
+		//
+		// These variables are extern because they are only ever accessed or
+		// updated by the sync persist thread, and there is only one of those
+		// running at a time ever.
+		externLatestSyncedPayoutHeight types.BlockHeight
+		externLatestSyncedOffset       uint64
+
+		common *feeManagerCommon
+		mu     sync.Mutex
+	}
+
+	// persistSubsystem contains the state for the persistence of the fee
+	// manager.
+	persistSubsystem struct {
+		// nextPayoutHeight and latestOffset are the latest known in-memory
+		// values for these variables. They may not have been synced yet, and
+		// therefore could be ahead of the persist file.
+		nextPayoutHeight types.BlockHeight
+		latestOffset       uint64
+
+		// persistFile is the file handle of the file where data is written to.
+		persistFile *os.File
+
+		// Utilities
+		common           *feeManagerCommon
+		staticPersistDir string
+		syncCoordinator  *syncCoordinator
+		mu               sync.Mutex
+	}
+)
+
+// externWritePersistHeader will write the persist header to the first 512 bytes
+// of 'fh' using a WriteAt call. The extern limits this function to being called
+// by the syncing thread, and there can only be one syncing thread running at a
+// time.
+func externWritePersistHeader(fh *os.File, latestSyncedOffset uint64, nextPayoutHeight types.BlockHeight) error {
+	encodedHeader := encoding.Marshal(PersistHeader{
+		Metadata: persist.Metadata{
+			Header:  MetadataHeader,
+			Version: MetadataVersion,
+		},
+		NextPayoutHeight:       nextPayoutHeight,
+		LatestSyncedOffset: latestSyncedOffset,
+	})
+	if len(encodedHeader) > diskSectorSize {
+		return errors.New("encoded header is too large")
+	}
+
+	// Write the file header.
+	_, err := fh.WriteAt(encodedHeader, 0)
+	if err != nil {
+		return errors.AddContext(err, "header write failed")
+	}
+	return nil
 }
 
-// callCancelFee cancels a fee by removing it from the FeeManager's map
-func (fm *FeeManager) callCancelFee(feeUID modules.FeeUID) error {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-	fee, ok := fm.fees[feeUID]
-	if !ok {
-		return ErrFeeNotFound
+// managedAppendEntry will take a new encoded entry and append it to the persist
+// file.
+func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) error {
+	ps.mu.Lock()
+	entryBytes := entry[:]
+	_, err := ps.persistFile.WriteAt(entryBytes, int64(ps.latestOffset))
+	if err == nil {
+		// Only update the total size if the append happened without issues.
+		ps.latestOffset += persistEntrySize
 	}
-
-	delete(fm.fees, feeUID)
-	fee.Cancelled = true
-
-	// Create insert update
-	feeUpdate, err := createInsertUpdate(*fee)
+	ps.mu.Unlock()
 	if err != nil {
-		return errors.AddContext(err, "unable to create insert update")
+		return errors.AddContext(err, "unable to append entry")
 	}
 
-	// Create persistence update
-	persistUpdate, err := createPersistUpdate(fm.persistData())
+	// Ensure that the new updated is synced and the header of the persist file
+	// gets updated accordingly.
+	return ps.syncCoordinator.managedSyncPersist()
+}
+
+// managedSyncPersist will ensure that the persist is synced and that the
+// persist header is updated to reflect any new writes.
+func (sc *syncCoordinator) managedSyncPersist() error {
+	// Determine whether there is another thread performing a sync.
+	sc.mu.Lock()
+	threadRunning := sc.threadRunning
+	if !threadRunning {
+		// This will become the new thread, so set threadRunning to true.
+		sc.threadRunning = true
+	}
+	sc.mu.Unlock()
+	if threadRunning {
+		// Another thread is running, that thread will complete the job this
+		// thread was spun up to complete.
+		return nil
+	}
+
+	// Spin up a thread to perform the fsync tasks.
+	ps := sc.common.persist
+	err := ps.common.staticTG.Add()
 	if err != nil {
-		return errors.AddContext(err, "unable to create persist update")
+		return errors.AddContext(err, "failed to sync persist")
 	}
+	go func() {
+		defer ps.common.staticTG.Done()
+		sc.threadedSyncLoop()
+	}()
+	return nil
+}
 
-	// Apply the updates
-	updates := []writeaheadlog.Update{feeUpdate, persistUpdate}
-	return fm.createAndApplyTransaction(updates...)
+// threadedSyncLoop will perform fsyncs on the persist file and update the
+// persist file header accordingly until there is nothing more to sync.
+func (sc *syncCoordinator) threadedSyncLoop() {
+	ps := sc.common.persist
+	// Perform syncs in a loop until there is no sync job to perform. Doing
+	// things in a loop allows us to cover multiple file write calls with a
+	// single fsync when there is a lot of writing happening in quick
+	// succession.
+	for {
+		// Grab the latest written offset.
+		ps.mu.Lock()
+		latestOffset := ps.latestOffset
+		nextPayoutHeight := ps.nextPayoutHeight
+		ps.mu.Unlock()
+
+		// Block until the persitFile completes a sync, guaranteeing that
+		// everything up to and including the latest offset is synced.
+		err := ps.persistFile.Sync()
+		if err != nil {
+			ps.common.staticLog.Critical("Unable to sync persist file:", err)
+		}
+
+		// Update the latestSyncedOffset now that we have confidence about a new
+		// latestSyncedOffset. Note that new writes may have happened since
+		// calling Sync, but we have saved the value from before syncing, so
+		// this is safe.
+		err = externWritePersistHeader(ps.persistFile, latestOffset, nextPayoutHeight)
+		if err != nil {
+			ps.common.staticLog.Critical("Unable to write persist file header:", err)
+		}
+
+		// Block until the header completes the sync.
+		err = ps.persistFile.Sync()
+		if err != nil {
+			ps.common.staticLog.Critical("Unable to sync persist file:", err)
+		}
+
+		// Update the latest synced values in the sc, and then determine whether
+		// another sync is necessary. The value 'sc.threadRunning' needs to be
+		// updated atomically with learning that there is no other sync which
+		// needs to be performed, which requires locking both the 'sc' and the
+		// 'ps' at the same time. This is safe so long as the ps never locks the
+		// sc, which it does not.
+		die := false
+		sc.mu.Lock()
+		sc.externLatestSyncedOffset = latestOffset
+		sc.externLatestSyncedPayoutHeight = nextPayoutHeight
+		ps.mu.Lock()
+		if sc.externLatestSyncedOffset == ps.latestOffset && sc.externLatestSyncedPayoutHeight == ps.nextPayoutHeight {
+			// No new updates since writing the header and syncing, this thread
+			// can exit.
+			sc.threadRunning = false
+			die = true
+		}
+		ps.mu.Unlock()
+		sc.mu.Unlock()
+		if die {
+			return
+		}
+	}
+}
+
+// callPersistFeeCancellation will write a fee cancellation to the persist file.
+func (ps *persistSubsystem) callPersistFeeCancelation(feeUID modules.FeeUID) error {
+	entry := createCancelFeeEntry(feeUID)
+	return ps.managedAppendEntry(entry)
+}
+
+// callPersistNewFee will persist a new fee to disk.
+func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
+	entry := createAddFeeEntry(fee)
+	return ps.managedAppendEntry(entry)
 }
 
 // callInitPersist handles all of the persistence initialization, such as
 // creating the persistence directory and starting the logger
 func (fm *FeeManager) callInitPersist() error {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-	// Create the persist directories if they do not yet exists
-	err := os.MkdirAll(fm.staticPersistDir, modules.DefaultDirPerm)
-	if err != nil {
-		return err
+	// Check if the fee manager file exists.
+	ps := fm.common.persist
+	filename := filepath.Join(ps.staticPersistDir, PersistFilename)
+	_, err := os.Stat(filename)
+	if err != nil && !os.IsNotExist(err) {
+		return errors.AddContext(err, "unable to stat persist file")
 	}
-
-	// Initialize the logger.
-	fm.staticLog, err = persist.NewFileLogger(filepath.Join(fm.staticPersistDir, logFile))
-	if err != nil {
-		return err
-	}
-	if err := fm.staticTG.AfterStop(fm.staticLog.Close); err != nil {
-		return err
-	}
-
-	// Initialize the writeaheadlog.
-	options := writeaheadlog.Options{
-		StaticLog: fm.staticLog,
-		Path:      filepath.Join(fm.staticPersistDir, walFile),
-	}
-	txns, wal, err := writeaheadlog.NewWithOptions(options)
-	if err != nil {
-		return err
-	}
-	if err := fm.staticTG.AfterStop(wal.Close); err != nil {
-		return err
-	}
-	fm.staticWal = wal
-
-	// Apply unapplied wal txns before loading the persistence structure to
-	// avoid loading potentially corrupted files.
-	if len(txns) > 0 {
-		fm.staticLog.Println("Wal initialized", len(txns), "transactions to apply")
-	}
-	for _, txn := range txns {
-		fm.staticLog.Println("applying transaction with", len(txn.Updates), "updates")
-		err = fm.applyUpdates(txn.Updates...)
-		if err != nil {
-			return errors.AddContext(err, "unable to apply wal updates up load")
-		}
-		err := txn.SignalUpdatesApplied()
-		if err != nil {
-			return errors.AddContext(err, "unable to signal updates applied")
-		}
-	}
-
-	// Load the FeeManager Persistence
-	err = fm.load()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// callLoadAllFees loads all the fees from the Fee Persist file
-func (fm *FeeManager) callLoadAllFees() ([]appFee, error) {
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-
-	// Open the Fee Persist file
-	fileName := filepath.Join(fm.staticPersistDir, feePersistFilename)
-	file, err := fm.staticDeps.Open(fileName)
-	if err != nil {
-		return []appFee{}, errors.AddContext(err, "unable to load fee persist file")
-	}
-	defer file.Close()
-
-	// Read the file
-	bytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		return []appFee{}, errors.AddContext(err, "unable to read data from file")
-	}
-
-	// Unmarshal the fees.
-	fees, err := unmarshalFees(bytes)
-	if err != nil {
-		return []appFee{}, errors.AddContext(err, "unable to unmarshal data")
-	}
-	return fees, nil
-}
-
-// callSetFee sets a fee for the FeeManager to manage
-func (fm *FeeManager) callSetFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) error {
-	// Acquire Lock
-	fm.mu.Lock()
-	defer fm.mu.Unlock()
-
-	// Create Fee
-	fee := &appFee{
-		Address:      address,
-		Amount:       amount,
-		AppUID:       appUID,
-		Offset:       fm.nextFeeOffset,
-		PayoutHeight: fm.payoutHeight,
-		Recurring:    recurring,
-		UID:          uniqueID(),
-	}
-
-	// Add fee to FeeManager
-	_, ok := fm.fees[fee.UID]
-	if ok {
-		return fmt.Errorf("Fee %v already exists", fee.UID)
-	}
-	fm.fees[fee.UID] = fee
-
-	// Save the FeeManager
-	err := fm.saveFeeAndUpdate(*fee)
-	if err != nil {
-		return errors.AddContext(err, "unable to save the FeeManager")
-	}
-	return nil
-}
-
-// load loads the FeeManager persistence from disk and creates it if it does not
-// exist
-func (fm *FeeManager) load() error {
-	// Open the FeeManager Persist file.
-	file, err := fm.staticDeps.Open(filepath.Join(fm.staticPersistDir, persistFilename))
 	if os.IsNotExist(err) {
-		// No persistence file exists yet, save to create one
-		return fm.save()
-	} else if err != nil {
-		return errors.AddContext(err, "unable to load persistence")
+		// TODO: Implement a function to create a brand new fee manager.
+		return nil
 	}
-	defer file.Close()
 
-	// Read the file
-	bytes, err := ioutil.ReadAll(file)
+	// Open the fee manager file handle.
+	fh, err := os.OpenFile(filename, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
-		return errors.AddContext(err, "unable to read data from file")
+		return errors.AddContext(err, "could not open persist file")
 	}
+	fm.common.persist.persistFile = fh
+	fm.common.staticTG.OnStop(func() error {
+		return fm.common.persist.persistFile.Close()
+	})
 
-	// Parse the json object.
-	var persistData persistence
-	err = json.Unmarshal(bytes, &persistData)
+	// Read the header.
+	headerBytes := make([]byte, persistHeaderSize)
+	_, err = fh.Read(headerBytes)
 	if err != nil {
-		return errors.AddContext(err, "unable to unmarshall data")
+		return errors.AddContext(err, "could not read fee manager persist header")
 	}
 
-	// Load persistence data into the FeeManager
-	return fm.loadPersistData(persistData)
-}
+	// Decode the persist header.
+	var ph PersistHeader
+	err = encoding.Unmarshal(headerBytes, &ph)
+	if err != nil {
+		return errors.AddContext(err, "could not parse fee manager persist header")
+	}
 
-// loadPersistData loads the persisted data into the FeeManager
-func (fm *FeeManager) loadPersistData(persistData persistence) error {
-	// Load initial values
-	fm.payoutHeight = persistData.PayoutHeight
-	fm.nextFeeOffset = persistData.NextFeeOffset
+	// Check the metadata.
+	if ph.Header != MetadataHeader {
+		return errors.AddContext(err, "bad metadata header in persist file")
+	}
+	if ph.Version != MetadataVersion {
+		return errors.AddContext(err, "bad metadata version in persist file")
+	}
 
-	// Load Fees
-	for i := 0; i < len(persistData.Fees); i++ {
-		fee := persistData.Fees[i]
-		// Check if data is already loaded
-		_, ok := fm.fees[fee.UID]
-		if ok {
-			return fmt.Errorf("Fee %v already loaded into FeeManager", fee.UID)
+	// Set the offset and payout.
+	fm.common.persist.nextPayoutHeight = ph.NextPayoutHeight
+	fm.common.persist.latestOffset = ph.LatestSyncedOffset
+	fm.common.persist.syncCoordinator.externLatestSyncedOffset = ph.LatestSyncedOffset
+	fm.common.persist.syncCoordinator.externLatestSyncedPayoutHeight = ph.NextPayoutHeight
+
+	// Read through all of the non-corrupt fees.
+	entryBytes := make([]byte, ph.LatestSyncedOffset-persistHeaderSize)
+	_, err = fh.Read(entryBytes)
+	if err != nil {
+		return errors.AddContext(err, "unable to read the synced portion of persist file")
+	}
+	for i := 0; i < len(entryBytes); i += persistEntrySize {
+		// Integrate this entry.
+		err = fm.integrateEntry(entryBytes[i:i+persistEntrySize])
+		if err != nil {
+			return errors.AddContext(err, "parsing a persist entry failed")
 		}
-		fm.fees[fee.UID] = &fee
 	}
 	return nil
-}
-
-// persistData returns the persisted data in the format to be stored on disk
-func (fm *FeeManager) persistData() persistence {
-	var fees []appFee
-	for _, fee := range fm.fees {
-		fees = append(fees, *fee)
-	}
-	return persistence{
-		NextFeeOffset: fm.nextFeeOffset,
-		PayoutHeight:  fm.payoutHeight,
-		Fees:          fees,
-	}
-}
-
-// save saves the FeeManager persistence data to disk
-func (fm *FeeManager) save() error {
-	update, err := createPersistUpdate(fm.persistData())
-	if err != nil {
-		return errors.AddContext(err, "unable to create persist update")
-	}
-	return fm.createAndApplyTransaction(update)
-}
-
-// saveFeeAndUpdate creates the insert update for the fee, updates the
-// nextFeeOffset of the FeeManager, and saves all changes to disk
-func (fm *FeeManager) saveFeeAndUpdate(fee appFee) error {
-	// Marshal the fee and create update
-	// Create a buffer.
-	var buf bytes.Buffer
-	err := fee.marshalSia(&buf)
-	if err != nil {
-		return errors.AddContext(err, "unable to marshal fee")
-	}
-	feeUpdate, err := createInsertUpdateFromRaw(buf.Bytes(), fee.Offset)
-	if err != nil {
-		return errors.AddContext(err, "unable to create fee update")
-	}
-
-	// Update the FeeManager's nextFeeOffset and create the persistence update
-	fm.nextFeeOffset += int64(buf.Len())
-	persistUpdate, err := createPersistUpdate(fm.persistData())
-	if err != nil {
-		return errors.AddContext(err, "unable to create persist update")
-	}
-	updates := []writeaheadlog.Update{feeUpdate, persistUpdate}
-	return fm.createAndApplyTransaction(updates...)
-}
-
-// marshalSia implements the encoding.SiaMarshaler interface.
-func (fee *appFee) marshalSia(w io.Writer) error {
-	e := encoding.NewEncoder(w)
-	e.Encode(fee.Address)
-	e.Encode(fee.Amount)
-	e.Encode(fee.AppUID)
-	e.WriteBool(fee.Cancelled)
-	e.Encode(fee.Offset)
-	e.Encode(fee.PayoutHeight)
-	e.WriteBool(fee.Recurring)
-	e.Encode(fee.UID)
-	return e.Err()
-}
-
-// unmarshalSia implements the encoding.SiaUnmarshaler interface.
-func (fee *appFee) unmarshalSia(r io.Reader) error {
-	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	d.Decode(&fee.Address)
-	d.Decode(&fee.Amount)
-	d.Decode(&fee.AppUID)
-	fee.Cancelled = d.NextBool()
-	d.Decode(&fee.Offset)
-	d.Decode(&fee.PayoutHeight)
-	fee.Recurring = d.NextBool()
-	d.Decode(&fee.UID)
-	return d.Err()
-}
-
-// unmarshalFees unmarshals the sia encoded fees.
-func unmarshalFees(raw []byte) (fees []appFee, err error) {
-	// Create the buffer.
-	r := bytes.NewBuffer(raw)
-	// Unmarshal the fees one by one until EOF or a different error occur.
-	for {
-		var fee appFee
-		if err = fee.unmarshalSia(r); err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, errors.AddContext(err, "unable to unmarshal fee")
-		}
-		fees = append(fees, fee)
-	}
-	return fees, nil
 }

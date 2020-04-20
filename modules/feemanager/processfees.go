@@ -9,11 +9,11 @@ import (
 // ProcessConsensusChange will submit a call to process fees if the consensus is
 // synced
 func (fm *FeeManager) ProcessConsensusChange(cc modules.ConsensusChange) {
-	err := fm.staticTG.Add()
+	err := fm.common.staticTG.Add()
 	if err != nil {
 		return
 	}
-	defer fm.staticTG.Done()
+	defer fm.common.staticTG.Done()
 
 	// Check to see if Consensus is synced
 	if !cc.Synced {
@@ -28,14 +28,14 @@ func (fm *FeeManager) ProcessConsensusChange(cc modules.ConsensusChange) {
 // threadedProcessFees loops over the FeeManager's fees and processes fees based
 // on payOutHeight
 func (fm *FeeManager) threadedProcessFees() {
-	err := fm.staticTG.Add()
+	err := fm.common.staticTG.Add()
 	if err != nil {
 		return
 	}
-	defer fm.staticTG.Done()
+	defer fm.common.staticTG.Done()
 
 	// Get the current blockheight
-	bh := fm.staticCS.Height()
+	bh := fm.common.staticCS.Height()
 
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
@@ -104,6 +104,14 @@ func (fm *FeeManager) processFee(fee *appFee) error {
 	if err != nil {
 		return errors.AddContext(err, "unable to send siacoin outputs")
 	}
+
+	// TODO: Once a fee is confirmed on-chain, add an entry with a timestamp to
+	// the append-only log that says the fee is now available on chain.
+	//
+	// TODO: We will probably also need to make an update when the transaction
+	// is posted which contains the transaction. This is a bit tricky because
+	// the transaction will need to be split across multiple entries, which will
+	// make both encoding and decoding a bit annoying.
 
 	return nil
 }

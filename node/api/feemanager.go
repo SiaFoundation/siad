@@ -128,7 +128,7 @@ func (api *API) feemanagerSetHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Set the fee
-	err = api.feemanager.SetFee(address, amount, modules.AppUID(appUIDstr), recurring)
+	err = api.feemanager.AddFee(address, amount, modules.AppUID(appUIDstr), recurring)
 	if err != nil {
 		WriteError(w, Error{"could not set the fee: " + err.Error()}, http.StatusInternalServerError)
 		return

@@ -33,6 +33,13 @@ type (
 		// AppUID is a unique Application ID that the fee is for
 		AppUID AppUID `json:"appuid"`
 
+		// PaymentCompleted indicates whether the payment for this fee has
+		// appeared on-chain.
+		PaymentCompleted bool `json:"paymentcompleted"`
+
+		// PayoutHeight is the height at which the fee will be paid out.
+		PayoutHeight types.BlockHeight `json:"payoutheight"`
+
 		// Recurring indicates whether or not this fee is a recurring fee and
 		// will be charged in the next period as well
 		Recurring bool `json:"recurring"`
@@ -68,8 +75,8 @@ type FeeManager interface {
 	// FeeManager
 	PendingFees() ([]AppFee, error)
 
-	// SetFee sets a fee for the FeeManager to manage
-	SetFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) error
+	// AddFee adds a fee for the FeeManager to manage
+	AddFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) error
 
 	// Settings returns the settings of the FeeManager
 	Settings() (FeeManagerSettings, error)
