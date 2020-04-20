@@ -230,14 +230,14 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	/*
-	// Grab the Recurring fee for reference
-	var recurringFee modules.AppFee
-	for _, fee := range fmPendingGet.PendingFees {
-		if fee.Recurring {
-			recurringFee = fee
-			break
+		// Grab the Recurring fee for reference
+		var recurringFee modules.AppFee
+		for _, fee := range fmPendingGet.PendingFees {
+			if fee.Recurring {
+				recurringFee = fee
+				break
+			}
 		}
-	}
 	*/
 
 	// Mine blocks to trigger the first payout period

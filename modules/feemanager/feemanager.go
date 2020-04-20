@@ -208,7 +208,7 @@ func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
 	defer fm.mu.Unlock()
 
 	return modules.FeeManagerSettings{
-		PayoutHeight:  fm.payoutHeight,
+		PayoutHeight: fm.payoutHeight,
 	}, nil
 }
 
