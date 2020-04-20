@@ -1,0 +1,1 @@
+- Fixed checking number of contracts in testContractInterrupted test.
