@@ -795,6 +795,7 @@ returns the paid fees that the feemanager managed.
       "amount":"1000",     // hastings
       "appuid":"okapp",    // string
       "recurring":false,  // bool
+      "timestamp":"2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
   ]
@@ -813,6 +814,9 @@ The number of hastings the fee will charge the user.
 
 **recurring** | bool  
 Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
 
 **uid** | string  
 This is the unique identifier for the fee
@@ -837,6 +841,7 @@ returns the pending fees that the feemanager is managing.
       "amount":"1000",     // hastings
       "appuid":"okapp",    // string
       "recurring":false,  // bool
+      "timestamp":"2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
   ]
@@ -859,6 +864,9 @@ The unique application identifier for the application that set the fee.
 
 **recurring** | bool  
 Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
 
 **uid** | string  
 This is the unique identifier for the fee
