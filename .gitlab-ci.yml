@@ -71,11 +71,8 @@ default: &default_params
 .default_windows: &default_windows_params
   before_script:
     - $env:USERNAME
-    - New-Item -ItemType Directory -Force .cache\gocache
-    - $env:PATH += ";$CI_PROJECT_DIR\.cache\bin"
-    - $env:PATH
-    - $env:GOPATH = "$CI_PROJECT_DIR\.cache"
-    - $env:GOPATH
+    ## Do not use cache on Windows to prevent "permission denied" errors
+    ## during pipeline initialization
 
 ## Define the default test parameters.
 .default_test: &default_test_params
@@ -138,9 +135,6 @@ default: &default_params
 
   after_script:
     - XCOPY "C:\Windows\Temp\SiaTesting\*" "$CI_PROJECT_DIR\SiaTesting" /S /I /Y > $null
-    # Git cache permission denied workaround
-    # on second and following runs
-    - Remove-Item -path "$CI_PROJECT_DIR\.cache" -recurse -force
 
 lint:
   stage: lint
