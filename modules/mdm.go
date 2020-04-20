@@ -287,7 +287,7 @@ func (b *RPCBudget) Withdraw(c types.Currency) bool {
 	if b.budget.Cmp(c) < 0 {
 		return false
 	}
-	b.budget.Sub(c)
+	b.budget = b.budget.Sub(c)
 	return true
 }
 
