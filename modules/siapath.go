@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -175,10 +176,11 @@ func (sp SiaPath) IsRoot() bool {
 // Join joins the string to the end of the SiaPath with a "/" and returns the
 // new SiaPath.
 func (sp SiaPath) Join(s string) (SiaPath, error) {
-	if s == "" {
+	cleanStr := clean(s)
+	if s == "" || cleanStr == "" {
 		return SiaPath{}, errors.New("cannot join an empty string to a siapath")
 	}
-	return newSiaPath(sp.Path + "/" + clean(s))
+	return newSiaPath(sp.Path + "/" + cleanStr)
 }
 
 // LoadString sets the path of the SiaPath to the provided string
@@ -314,5 +316,11 @@ func (sp SiaPath) Validate(isRoot bool) error {
 		}
 		prevElem = pathElem
 	}
+
+	// Final check for a valid utf8
+	if !utf8.ValidString(sp.Path) {
+		return errors.New("SiaPath is not a valid utf8 path")
+	}
+
 	return nil
 }

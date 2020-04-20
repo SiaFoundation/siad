@@ -566,7 +566,6 @@ func (w *Wallet) IsMasterKey(masterKey crypto.CipherKey) (bool, error) {
 		return false, err
 	}
 	return true, nil
-
 }
 
 // UnlockAsync will decrypt the wallet seed and load all of the addresses into

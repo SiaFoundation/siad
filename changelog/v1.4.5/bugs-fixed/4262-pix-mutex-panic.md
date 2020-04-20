@@ -1,1 +1,0 @@
-- Fix `unlock of unlocked mutex` panic in the download destination writer.

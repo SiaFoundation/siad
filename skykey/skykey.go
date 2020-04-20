@@ -2,20 +2,18 @@ package skykey
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/aead/chacha20/chacha"
-
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -29,6 +27,11 @@ const (
 	// headerLen is the length of the skykey file header.
 	// It is the length of the magic, the version, and and the file length.
 	headerLen = types.SpecifierLen + types.SpecifierLen + 8
+
+	// Permissions match those in modules/renter.go
+	// Redefined here to avoid an import cycle.
+	defaultFilePerm = 0644
+	defaultDirPerm  = 0755
 )
 
 var (
@@ -42,10 +45,18 @@ var (
 	// SkykeyFileMagic is the first piece of data found in a Skykey file.
 	SkykeyFileMagic = types.NewSpecifier("SkykeyFile")
 
+	// ErrSkykeyWithNameAlreadyExists indicates that a key cannot be created or added
+	// because a key with the same name is already being stored.
+	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key.")
+
+	// ErrSkykeyWithIDAlreadyExists indicates that a key cannot be created or
+	// added because a key with the same ID (and therefore same key entropy) is
+	// already being stored.
+	ErrSkykeyWithIDAlreadyExists = errors.New("Skykey ID already exists.")
+
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
 	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
 	errNoSkykeysWithThatID         = errors.New("No Skykey is assocated with that ID")
-	errSkykeyNameAlreadyExists     = errors.New("Skykey name already exists.")
 	errSkykeyNameToolong           = errors.New("Skykey name exceeds max length")
 
 	// SkykeyPersistFilename is the name of the skykey persistence file.
@@ -107,7 +118,7 @@ func (sk *Skykey) unmarshalSia(r io.Reader) error {
 	return d.Err()
 }
 
-// marshalSia encodess the Skykey into the writer.
+// marshalSia encodes the Skykey into the writer.
 func (sk Skykey) marshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
 	e.Encode(sk.Name)
@@ -116,11 +127,45 @@ func (sk Skykey) marshalSia(w io.Writer) error {
 	return e.Err()
 }
 
+// ToString encodes the Skykey as a base64 string.
+func (sk Skykey) ToString() (string, error) {
+	var b bytes.Buffer
+	err := sk.marshalSia(&b)
+	return base64.URLEncoding.EncodeToString(b.Bytes()), err
+}
+
+// FromString decodes the base64 string into a Skykey.
+func (sk *Skykey) FromString(s string) error {
+	keyBytes, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	return sk.unmarshalSia(bytes.NewReader(keyBytes))
+}
+
 // ID returns the ID for the Skykey.
 func (sk Skykey) ID() (keyID SkykeyID) {
 	h := crypto.HashAll(SkykeySpecifier, sk.CipherType, sk.Entropy)
 	copy(keyID[:], h[:SkykeyIDLen])
 	return keyID
+}
+
+// ToString encodes the SkykeyID as a base64 string.
+func (id SkykeyID) ToString() string {
+	return base64.URLEncoding.EncodeToString(id[:])
+}
+
+// FromString decodes the base64 string into a Skykey ID.
+func (id *SkykeyID) FromString(s string) error {
+	idBytes, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	if len(idBytes) != SkykeyIDLen {
+		return errors.New("Skykey ID has invalid length")
+	}
+	copy(id[:], idBytes[:])
+	return nil
 }
 
 // equals returns true if and only if the two Skykeys are equal.
@@ -147,7 +192,7 @@ func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (S
 	defer sm.mu.Unlock()
 	_, ok := sm.idsByName[name]
 	if ok {
-		return Skykey{}, errSkykeyNameAlreadyExists
+		return Skykey{}, ErrSkykeyWithNameAlreadyExists
 	}
 
 	// Generate the new key.
@@ -163,39 +208,20 @@ func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (S
 
 // AddKey creates a key with the given name, cipherType, and entropy and adds it
 // to the key file.
-func (sm *SkykeyManager) AddKey(name string, cipherType crypto.CipherType, entropy []byte) (Skykey, error) {
-	if len(name) > MaxKeyNameLen {
-		return Skykey{}, errSkykeyNameToolong
-	}
-	if !sm.SupportsCipherType(cipherType) {
-		return Skykey{}, errUnsupportedSkykeyCipherType
-	}
-
+func (sm *SkykeyManager) AddKey(sk Skykey) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	_, ok := sm.idsByName[name]
+	_, ok := sm.keysByID[sk.ID()]
 	if ok {
-		return Skykey{}, errSkykeyNameAlreadyExists
+		return ErrSkykeyWithIDAlreadyExists
 	}
 
-	// Extend the entropy for a 0 nonce. XChaCha20Keys require a nonce in the
-	// entropy. We set it to 0 here because they nonces are stored in Skyfiles.
-	if cipherType == crypto.TypeXChaCha20 {
-		entropy = append(entropy, make([]byte, chacha.XNonceSize)...)
+	_, ok = sm.idsByName[sk.Name]
+	if ok {
+		return ErrSkykeyWithNameAlreadyExists
 	}
 
-	// Generate the new key.
-	cipherKey, err := crypto.NewSiaKey(cipherType, entropy)
-	if err != nil {
-		return Skykey{}, errors.AddContext(err, "Error creating new cipher key")
-	}
-	skykey := Skykey{name, cipherType, cipherKey.Key()}
-
-	err = sm.saveKey(skykey)
-	if err != nil {
-		return Skykey{}, err
-	}
-	return skykey, nil
+	return sm.saveKey(sk)
 }
 
 // IDByName returns the ID associated with the given key name.
@@ -250,7 +276,7 @@ func NewSkykeyManager(persistDir string) (*SkykeyManager, error) {
 	}
 
 	// create the persist dir if it doesn't already exist.
-	err := os.MkdirAll(persistDir, modules.DefaultDirPerm)
+	err := os.MkdirAll(persistDir, defaultDirPerm)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +349,7 @@ func (sm *SkykeyManager) saveHeader(file *os.File) error {
 // it exists. If it does not exist, it initializes that file with the default
 // header values.
 func (sm *SkykeyManager) load() error {
-	file, err := os.OpenFile(sm.persistFile, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	file, err := os.OpenFile(sm.persistFile, os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
@@ -388,7 +414,7 @@ func (sm *SkykeyManager) saveKey(skykey Skykey) error {
 	sm.idsByName[skykey.Name] = keyID
 	sm.keysByID[keyID] = skykey
 
-	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, modules.DefaultFilePerm)
+	file, err := os.OpenFile(sm.persistFile, os.O_RDWR, defaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}

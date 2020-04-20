@@ -13,6 +13,7 @@ import (
 	"golang.org/x/tools/go/cfg"
 )
 
+// Analyzer is the lockcheck analyzer.
 var Analyzer = &analysis.Analyzer{
 	Name: "lockcheck",
 	Doc:  "reports methods that violate locking conventions",

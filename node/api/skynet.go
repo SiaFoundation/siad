@@ -21,6 +21,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -61,6 +63,19 @@ type (
 		Remove []string `json:"remove"`
 	}
 
+	// SkynetPortalsGET contains the information queried for the /skynet/portals
+	// GET endpoint.
+	SkynetPortalsGET struct {
+		Portals []modules.SkynetPortal `json:"portals"`
+	}
+
+	// SkynetPortalsPOST contains the information needed for the /skynet/portals
+	// POST endpoint to be called.
+	SkynetPortalsPOST struct {
+		Add    []modules.SkynetPortal `json:"add"`
+		Remove []modules.NetAddress   `json:"remove"`
+	}
+
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
@@ -79,10 +94,15 @@ type (
 		Version     string `json:"version"`
 		GitRevision string `json:"gitrevision"`
 	}
+
+	// SkykeyGET contains a base64 encoded Skykey.
+	SkykeyGET struct {
+		Skykey string `json:"skykey"` // base64 encoded Skykey
+	}
 )
 
-// skynetBlacklistHandlerGET handles the API call to get the list of
-// blacklisted skylinks
+// skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
+// skylinks.
 func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the Blacklist
 	blacklist, err := api.renter.Blacklist()
@@ -96,7 +116,7 @@ func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request
 	})
 }
 
-// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
+// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks.
 func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
 	var params SkynetBlacklistPOST
@@ -137,7 +157,48 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	// Update the Skynet Blacklist
 	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
 	if err != nil {
-		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
+// skynetPortalsHandlerGET handles the API call to get the list of known skynet
+// portals.
+func (api *API) skynetPortalsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the list of portals.
+	portals, err := api.renter.Portals()
+	if err != nil {
+		WriteError(w, Error{"unable to get the portals list: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetPortalsGET{
+		Portals: portals,
+	})
+}
+
+// skynetPortalsHandlerPOST handles the API call to add and remove portals from
+// the list of known skynet portals.
+func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters.
+	var params SkynetPortalsPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Update the list of known skynet portals.
+	err = api.renter.UpdateSkynetPortals(params.Add, params.Remove)
+	if err != nil {
+		// If validation fails, return a bad request status.
+		errStatus := http.StatusInternalServerError
+		if strings.Contains(err.Error(), skynetportals.ErrSkynetPortalsValidation.Error()) {
+			errStatus = http.StatusBadRequest
+		}
+		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, errStatus)
 		return
 	}
 
@@ -419,6 +480,17 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Parse whether the upload should be performed as a dry-run.
+	var dryRun bool
+	dryRunStr := queryForm.Get("dryrun")
+	if dryRunStr != "" {
+		dryRun, err = strconv.ParseBool(dryRunStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'dryrun' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse whether the siapath should be from root or from the skynet folder.
 	var root bool
 	rootStr := queryForm.Get("root")
@@ -473,6 +545,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Verify the dry-run and force parameter are not combined
+	if allowForce && force && dryRun {
+		WriteError(w, Error{"'dryRun' and 'force' can not be combined"}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether the redundancy has been set.
 	redundancy := uint8(0)
 	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
@@ -496,6 +574,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Build the upload parameters
 	lup := modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
+		DryRun:              dryRun,
 		Force:               force,
 		BaseChunkRedundancy: redundancy,
 	}
@@ -541,12 +620,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Ensure we have a filename
-	if lup.FileMetadata.Filename == "" {
-		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
-		return
-	}
-
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -555,6 +628,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// streaming upload.
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
+		// Ensure we have a filename
+		if lup.FileMetadata.Filename == "" {
+			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+			return
+		}
+
 		skylink, err := api.renter.UploadSkyfile(lup)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
@@ -750,4 +829,115 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		offset += uint64(fh.Size)
 	}
 	return subfiles, io.MultiReader(readers...), nil
+}
+
+// skykeyHandlerGET handles the API call to get a Skykey and its ID using its
+// name or ID.
+func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse Skykey id and name.
+	name := req.FormValue("name")
+	idString := req.FormValue("id")
+
+	if idString == "" && name == "" {
+		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusInternalServerError)
+		return
+	}
+	if idString != "" && name != "" {
+		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusInternalServerError)
+		return
+	}
+
+	var sk skykey.Skykey
+	var err error
+	if name != "" {
+		sk, err = api.renter.SkykeyByName(name)
+	} else if idString != "" {
+		var id skykey.SkykeyID
+		err = id.FromString(idString)
+		if err != nil {
+			WriteError(w, Error{"failed to decode ID string: "}, http.StatusInternalServerError)
+			return
+		}
+		sk, err = api.renter.SkykeyByID(id)
+	}
+	if err != nil {
+		WriteError(w, Error{"failed to retrieve skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	skString, err := sk.ToString()
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	WriteJSON(w, SkykeyGET{
+		Skykey: skString,
+	})
+}
+
+// skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
+// skykey manager.
+func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse skykey name and ciphertype
+	name := req.FormValue("name")
+	ctString := req.FormValue("ciphertype")
+
+	if name == "" {
+		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	if ctString == "" {
+		WriteError(w, Error{"you must specify the desited ciphertype for the skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	var ct crypto.CipherType
+	err := ct.FromString(ctString)
+	if err != nil {
+		WriteError(w, Error{"failed to decode ciphertype" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	sk, err := api.renter.CreateSkykey(name, ct)
+	if err != nil {
+		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	keyString, err := sk.ToString()
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteJSON(w, SkykeyGET{
+		Skykey: keyString,
+	})
+}
+
+// skykeyAddKeyHandlerPost handles the API call to add a skykey to the renter's
+// skykey manager.
+func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse skykey.
+	skString := req.FormValue("skykey")
+	if skString == "" {
+		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	var sk skykey.Skykey
+	err := sk.FromString(skString)
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	err = api.renter.AddSkykey(sk)
+	if err != nil {
+		WriteError(w, Error{"failed to add skykey" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
 }

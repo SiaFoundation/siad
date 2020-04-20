@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -12,17 +13,19 @@ import (
 
 // RPCClient interface lists all possible RPC that can be called on the host
 type RPCClient interface {
+	// UpdatePriceTable updates the price table.
 	UpdatePriceTable() error
-	FundEphemeralAccount(id string, amount types.Currency) error
+	// FundEphemeralAccount funds the given ephemeral account by given amount.
+	FundEphemeralAccount(id modules.AccountID, amount types.Currency) error
 }
 
 // MockRPCClient mocks the RPC Client
 type MockRPCClient struct{}
 
-// UpdatePriceTable updates the price table
-func (m *MockRPCClient) UpdatePriceTable() error { return nil }
-
-// FundEphemeralAccount funds the given ephemeral account by given amount
-func (m *MockRPCClient) FundEphemeralAccount(id string, amount types.Currency) error {
+// FundEphemeralAccount funds the given ephemeral account by given amount.
+func (m *MockRPCClient) FundEphemeralAccount(id modules.AccountID, amount types.Currency) error {
 	return nil
 }
+
+// UpdatePriceTable updates the price table.
+func (m *MockRPCClient) UpdatePriceTable() error { return nil }

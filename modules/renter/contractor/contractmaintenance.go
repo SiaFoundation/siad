@@ -100,6 +100,9 @@ func (c *Contractor) managedCheckForDuplicates() {
 			// TODO: Ideally these two things would happen atomically, but I'm
 			// not completely certain that's feasible with our current
 			// architecture.
+			//
+			// TODO: This should revert the in memory state in the event of an
+			// error and continue
 			err := c.save()
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
@@ -1303,6 +1306,7 @@ func (c *Contractor) threadedContractMaintenance() {
 			c.log.Println("A new contract has been formed with a host:", newContract.ID)
 			c.log.Println("Score:    ", sb.Score)
 			c.log.Println("Age Adjustment:        ", sb.AgeAdjustment)
+			c.log.Println("Base Price Adjustment: ", sb.BasePriceAdjustment)
 			c.log.Println("Burn Adjustment:       ", sb.BurnAdjustment)
 			c.log.Println("Collateral Adjustment: ", sb.CollateralAdjustment)
 			c.log.Println("Duration Adjustment:   ", sb.DurationAdjustment)

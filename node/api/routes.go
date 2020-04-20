@@ -126,10 +126,15 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/skynet/blacklist", api.skynetBlacklistHandlerGET)
 		router.POST("/skynet/blacklist", RequirePassword(api.skynetBlacklistHandlerPOST, requiredPassword))
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
+		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
+		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
 		router.GET("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
 		router.HEAD("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
+		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))
+		router.POST("/skynet/createskykey", RequirePassword(api.skykeyCreateKeyHandlerPOST, requiredPassword))
+		router.POST("/skynet/addskykey", RequirePassword(api.skykeyAddKeyHandlerPOST, requiredPassword))
 
 		// Directory endpoints
 		router.POST("/renter/dir/*siapath", RequirePassword(api.renterDirHandlerPOST, requiredPassword))

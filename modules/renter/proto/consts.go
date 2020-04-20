@@ -12,8 +12,16 @@ import (
 )
 
 const (
-	// contractExtension is the extension given to contract files.
-	contractExtension = ".contract"
+	// v146ContractExtension is the extension given to contract files pre v147.
+	v146ContractExtension = ".contract"
+
+	// contractHeaderExtension is the extension given to the header file of a
+	// contract.
+	contractHeaderExtension = ".header"
+
+	// contractRootsExtension is the extension given to the file that contains
+	// the contract's roots.
+	contractRootsExtension = ".roots"
 
 	// refCounterExtension is the extension given to reference counter files.
 	refCounterExtension = ".rc"

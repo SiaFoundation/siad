@@ -278,7 +278,6 @@ func utilsverifyseed() {
 		die(err)
 	}
 	fmt.Println("No issues detected with your seed")
-
 }
 
 // utilsdisplayapipassword is the handler for the command `siac utils
@@ -317,7 +316,6 @@ func utilsbruteforceseed() {
 			copy(seed[:], checksumSeedBytes)
 			fullChecksum := crypto.HashObject(seed)
 			if len(checksumSeedBytes) == crypto.EntropySize+modules.SeedChecksumSize && bytes.Equal(fullChecksum[:modules.SeedChecksumSize], checksumSeedBytes[crypto.EntropySize:]) {
-
 				if _, err := modules.StringToSeed(s, mnemonics.English); err == nil {
 					fmt.Printf("\nFound valid seed! The missing word was %q\n", word)
 					fmt.Println(s)
@@ -399,6 +397,25 @@ Files: %v
 			len(fileSizes),
 			modules.FilesizeUnits(calculateAverageUint64(fileSizes)),
 			modules.FilesizeUnits(calculateMedianUint64(fileSizes)))
+	}
+}
+
+// askForConfirmation prints a question and waits for confirmation until the
+// user gives a valid answer ("y", "yes", "n", "no" with any capitalization).
+func askForConfirmation(s string) bool {
+	r := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Printf("%s [y/n]: ", s)
+		answer, err := r.ReadString('\n')
+		if err != nil {
+			log.Fatal(err)
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer == "y" || answer == "yes" {
+			return true
+		} else if answer == "n" || answer == "no" {
+			return false
+		}
 	}
 }
 

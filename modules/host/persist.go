@@ -68,7 +68,7 @@ func (h *Host) establishDefaults() error {
 		MinContractPrice:          defaultContractPrice,
 		MinDownloadBandwidthPrice: defaultDownloadBandwidthPrice,
 		MinSectorAccessPrice:      defaultSectorAccessPrice,
-		MinStoragePrice:           defaultStoragePrice,
+		MinStoragePrice:           modules.DefaultStoragePrice,
 		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
 
 		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,
@@ -191,6 +191,30 @@ func (h *Host) load() error {
 		h.log.Println("SUCCESS: successfully upgraded host to v143")
 	} else {
 		return err
+	}
+
+	// Check if the host is currently using defaults that violate the ratio
+	// restrictions between the SectorAccessPrice, BaseRPCPrice, and
+	// DownloadBandwidthPrice
+	var updated bool
+	minBaseRPCPrice := h.settings.MinBaseRPCPrice
+	maxBaseRPCPrice := h.settings.MaxBaseRPCPrice()
+	if minBaseRPCPrice.Cmp(maxBaseRPCPrice) > 0 {
+		h.settings.MinBaseRPCPrice = maxBaseRPCPrice
+		updated = true
+	}
+	minSectorAccessPrice := h.settings.MinSectorAccessPrice
+	maxSectorAccessPrice := h.settings.MaxSectorAccessPrice()
+	if minSectorAccessPrice.Cmp(maxSectorAccessPrice) > 0 {
+		h.settings.MinSectorAccessPrice = maxSectorAccessPrice
+		updated = true
+	}
+	// If we updated the Price values we should save the changes to disk
+	if updated {
+		err = h.saveSync()
+		if err != nil {
+			return err
+		}
 	}
 
 	// Get the contract count and locked collateral by observing all of the incomplete

@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -514,6 +515,7 @@ type HostScoreBreakdown struct {
 	ConversionRate float64        `json:"conversionrate"`
 
 	AgeAdjustment              float64 `json:"ageadjustment"`
+	BasePriceAdjustment        float64 `json:"basepriceadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
 	CollateralAdjustment       float64 `json:"collateraladjustment"`
 	DurationAdjustment         float64 `json:"durationadjustment"`
@@ -932,6 +934,24 @@ type Renter interface {
 	// DirList lists the directories in a siadir
 	DirList(siaPath SiaPath) ([]DirectoryInfo, error)
 
+	// AddSkykey adds the skykey to the renter's skykey manager.
+	AddSkykey(skykey.Skykey) error
+
+	// CreateSkykey creates a new Skykey with the given name and ciphertype.
+	CreateSkykey(string, crypto.CipherType) (skykey.Skykey, error)
+
+	// SkykeyByName gets the Skykey with the given name from the renter's skykey
+	// manager if it exists.
+	SkykeyByName(string) (skykey.Skykey, error)
+
+	// SkykeyByID gets the Skykey with the given ID from the renter's skykey
+	// manager if it exists.
+	SkykeyByID(skykey.SkykeyID) (skykey.Skykey, error)
+
+	// SkykeyIDByName gets the SkykeyID of the key with the given name if it
+	// exists.
+	SkykeyIDByName(string) (skykey.SkykeyID, error)
+
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded
 	// separately, and if there is a fanout expansion that needs to be uploaded
@@ -960,6 +980,12 @@ type Renter interface {
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.
 	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
+
+	// Portals returns the list of known skynet portals.
+	Portals() ([]SkynetPortal, error)
+
+	// UpdateSkynetPortals updates the list of known skynet portals.
+	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

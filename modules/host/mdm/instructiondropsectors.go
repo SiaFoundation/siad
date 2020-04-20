@@ -33,7 +33,7 @@ func NewDropSectorsInstruction(numSectorsOffset uint64, merkleProof bool) module
 
 // staticDecodeDropSectorsInstruction creates a new 'DropSectors' instruction from the
 // provided generic instruction.
-func (p *Program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierDropSectors {
 		return nil, fmt.Errorf("expected specifier %v but got %v",
@@ -109,6 +109,11 @@ func dropSectorsVerify(numSectorsDropped, oldNumSectors uint64) error {
 	return nil
 }
 
+// Collateral is zero for the DropSectors instruction.
+func (i *instructionDropSectors) Collateral() types.Currency {
+	return modules.MDMDropSectorsCollateral()
+}
+
 // Cost returns the Cost of the DropSectors instruction.
 func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
@@ -122,12 +127,7 @@ func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) 
 // Memory returns the memory allocated by the 'DropSectors' instruction beyond
 // the lifetime of the instruction.
 func (i *instructionDropSectors) Memory() uint64 {
-	return DropSectorsMemory()
-}
-
-// ReadOnly for the 'DropSectors' instruction is 'false'.
-func (i *instructionDropSectors) ReadOnly() bool {
-	return false
+	return modules.MDMDropSectorsMemory()
 }
 
 // Time returns the execution time of the 'DropSectors' instruction.
@@ -136,5 +136,5 @@ func (i *instructionDropSectors) Time() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return TimeDropSingleSector * numDropped, nil
+	return modules.MDMDropSectorsTime(numDropped), nil
 }

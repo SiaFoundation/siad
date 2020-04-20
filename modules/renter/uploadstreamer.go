@@ -229,8 +229,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	availableWorkers := len(r.staticWorkerPool.workers)
 	r.staticWorkerPool.mu.RUnlock()
 	if availableWorkers < minWorkers {
-		return nil, fmt.Errorf("Need at least %v workers for upload but got only %v",
-			minWorkers, availableWorkers)
+		return nil, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
 	}
 
 	// Read the chunks we want to upload one by one from the input stream using
@@ -239,8 +238,8 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	var peek []byte
 	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
-		// Disrupt the upload by closing the reader and simulating losing connectivity
-		// during the upload.
+		// Disrupt the upload by closing the reader and simulating losing
+		// connectivity during the upload.
 		if r.deps.Disrupt("DisruptUploadStream") {
 			c, ok := reader.(io.Closer)
 			if ok {

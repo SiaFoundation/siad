@@ -55,6 +55,9 @@ var (
 		Header:  types.NewSpecifier("Fingerprint"),
 		Version: specifierV1430,
 	}
+
+	// errRotationDisabled is returned when a disrupt disabled the rotation
+	errRotationDisabled = errors.New("RotateFingerprintBuckets is disabled")
 )
 
 type (
@@ -73,13 +76,13 @@ type (
 
 	// accountsPersisterData contains all accounts data and fingerprints
 	accountsPersisterData struct {
-		accounts     map[string]*account
+		accounts     map[modules.AccountID]*account
 		fingerprints map[crypto.Hash]struct{}
 	}
 
 	// accountData contains all data persisted for a single ephemeral account
 	accountData struct {
-		Id          types.SiaPublicKey
+		ID          modules.AccountID
 		Balance     types.Currency
 		LastTxnTime int64
 	}
@@ -184,7 +187,7 @@ func (ap *accountsPersister) newFingerprintManager() (_ *fingerprintManager, err
 
 // callLoadData loads all accounts data and fingerprints from disk
 func (ap *accountsPersister) callLoadData() (*accountsPersisterData, error) {
-	accounts := make(map[string]*account)
+	accounts := make(map[modules.AccountID]*account)
 	fingerprints := make(map[crypto.Hash]struct{})
 
 	// Load accounts
@@ -281,6 +284,10 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 
 // callRotateFingerprintBuckets will rotate the fingerprint buckets
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
+	if ap.h.dependencies.Disrupt("DisableRotateFingerprintBuckets") {
+		return errRotationDisabled
+	}
+
 	fm := ap.staticFingerprintManager
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
@@ -370,7 +377,6 @@ func (ap *accountsPersister) openAccountsFile(path string) (modules.File, error)
 func (ap *accountsPersister) openFingerprintBucket(path string) (modules.File, error) {
 	// open file in append-only mode and create if it does not exist yet
 	return ap.openFileWithMetadata(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, fingerprintsMetadata)
-
 }
 
 // openFileWithMetadata will open the file at given path. If the file did not
@@ -399,7 +405,7 @@ func (ap *accountsPersister) openFileWithMetadata(path string, flags int, metada
 }
 
 // loadAccounts will read the given file and load the accounts into the map
-func (ap *accountsPersister) loadAccounts(file modules.File, m map[string]*account) error {
+func (ap *accountsPersister) loadAccounts(file modules.File, m map[modules.AccountID]*account) error {
 	bytes, err := ioutil.ReadFile(file.Name())
 	if err != nil {
 		return errors.AddContext(err, "could not read accounts file")
@@ -577,10 +583,8 @@ func (fm *fingerprintManager) syncAndClose() error {
 // accountData transforms the account into an accountData struct which will
 // contain all data we persist to disk
 func (a *account) accountData() *accountData {
-	spk := types.SiaPublicKey{}
-	spk.LoadString(a.id)
 	return &accountData{
-		Id:          spk,
+		ID:          a.id,
 		Balance:     a.balance,
 		LastTxnTime: a.lastTxnTime,
 	}
@@ -590,7 +594,7 @@ func (a *account) accountData() *accountData {
 // keep in memory
 func (a *accountData) account(index uint32) *account {
 	return &account{
-		id:                 a.Id.String(),
+		id:                 a.ID,
 		balance:            a.Balance,
 		lastTxnTime:        a.LastTxnTime,
 		index:              index,

@@ -2,8 +2,9 @@ package proto
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
-	"math"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -19,26 +20,39 @@ import (
 )
 
 const (
-	// contractHeaderSize is the maximum amount of space that the non-Merkle-root
-	// portion of a contract can consume.
-	contractHeaderSize = writeaheadlog.MaxPayloadSize // TODO: test this
+	updateNameInsertContract = "insertContract"
+	updateNameSetHeader      = "setHeader"
+	updateNameSetRoot        = "setRoot"
 
-	updateNameClearContract = "clearContract"
-	updateNameSetHeader     = "setHeader"
-	updateNameSetRoot       = "setRoot"
+	// decodeMaxSizeMultiplier is multiplied with the size of an encoded object
+	// to allocated a bit of extra space for decoding.
+	decodeMaxSizeMultiplier = 3
 )
 
+// updateInsertContract is an update that inserts a contract into the
+// contractset with the given header and roots.
+type updateInsertContract struct {
+	Header contractHeader
+	Roots  []crypto.Hash
+}
+
+// updateSetHeader is an update that updates the header of the filecontract with
+// the given id.
 type updateSetHeader struct {
 	ID     types.FileContractID
 	Header contractHeader
 }
 
+// updateSetRoot is an update which updates the sector root at the given index
+// of a filecontract with the specified id.
 type updateSetRoot struct {
 	ID    types.FileContractID
 	Root  crypto.Hash
 	Index int
 }
 
+// contractHeader holds all the information about a contract apart from the
+// sector roots themselves.
 type contractHeader struct {
 	// transaction is the signed transaction containing the most recent
 	// revision of the file contract.
@@ -79,12 +93,6 @@ func (h *contractHeader) copyTransaction() (txn types.Transaction) {
 	return
 }
 
-// Finalized returns 'true' if a contract can not be revised anymore due to
-// reaching its final revision number.
-func (h *contractHeader) Finalized() bool {
-	return h.LastRevision().NewRevisionNumber == math.MaxUint64
-}
-
 func (h *contractHeader) LastRevision() types.FileContractRevision {
 	return h.Transaction.FileContractRevisions[0]
 }
@@ -117,7 +125,7 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*writeaheadlog.Transaction
 
-	headerFile *fileSection
+	headerFile *os.File
 	wal        *writeaheadlog.WAL
 	mu         sync.Mutex
 
@@ -242,19 +250,28 @@ func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 	return nil
 }
 
-// Finalized returns 'true' if a contract can not be revised anymore due to
-// reaching its final revision number.
-func (c *SafeContract) Finalized() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.header.Finalized()
-}
-
 // Utility returns the contract utility for the contract.
 func (c *SafeContract) Utility() modules.ContractUtility {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.header.Utility
+}
+
+// makeUpdateInsertContract creates a writeaheadlog.Update to insert a new
+// contract into the contractset.
+func makeUpdateInsertContract(h contractHeader, roots []crypto.Hash) (writeaheadlog.Update, error) {
+	// Validate header.
+	if err := h.validate(); err != nil {
+		return writeaheadlog.Update{}, err
+	}
+	// Create update.
+	return writeaheadlog.Update{
+		Name: updateNameInsertContract,
+		Instructions: encoding.Marshal(updateInsertContract{
+			Header: h,
+			Roots:  roots,
+		}),
+	}, nil
 }
 
 func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Update {
@@ -285,8 +302,8 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 		// read the existing header on disk, to make sure we aren't overwriting
 		// it with an older revision
 		var oldHeader contractHeader
-		headerBytes := make([]byte, contractHeaderSize)
-		if _, err := c.headerFile.ReadAt(headerBytes, 0); err == nil {
+		headerBytes, err := ioutil.ReadAll(c.headerFile)
+		if err == nil {
 			if err := encoding.Unmarshal(headerBytes, &oldHeader); err == nil {
 				if oldHeader.LastRevision().NewRevisionNumber > h.LastRevision().NewRevisionNumber {
 					build.Critical("overwriting a newer revision:", oldHeader.LastRevision().NewRevisionNumber, h.LastRevision().NewRevisionNumber)
@@ -294,9 +311,7 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 			}
 		}
 	}
-
-	headerBytes := make([]byte, contractHeaderSize)
-	copy(headerBytes, encoding.Marshal(h))
+	headerBytes := encoding.Marshal(h)
 	if _, err := c.headerFile.WriteAt(headerBytes, 0); err != nil {
 		return err
 	}
@@ -580,35 +595,88 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	return nil
 }
 
+// managedInsertContract inserts a contract into the set in an ACID fashion
+// using the set's WAL.
 func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Hash) (modules.RenterContract, error) {
-	if err := h.validate(); err != nil {
-		return modules.RenterContract{}, err
-	}
-	f, err := os.Create(filepath.Join(cs.dir, h.ID().String()+contractExtension))
+	insertUpdate, err := makeUpdateInsertContract(h, roots)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	// create fileSections
-	headerSection := newFileSection(f, 0, contractHeaderSize)
-	rootsSection := newFileSection(f, contractHeaderSize, -1)
-	// write header
-	if _, err := headerSection.WriteAt(encoding.Marshal(h), 0); err != nil {
+	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{insertUpdate})
+	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	err = <-txn.SignalSetupComplete()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	rc, err := cs.managedApplyInsertContractUpdate(insertUpdate)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	err = txn.SignalUpdatesApplied()
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	return rc, nil
+}
+
+// managedApplyInsertContractUpdate applies the update to insert a contract into
+// a set. This will overwrite existing contracts of the same name to make sure
+// the update is idempotent.
+func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Update) (modules.RenterContract, error) {
+	// Sanity check update.
+	if update.Name != updateNameInsertContract {
+		return modules.RenterContract{}, fmt.Errorf("can't call managedApplyInsertContractUpdate on update of type '%v'", update.Name)
+	}
+	// Decode update.
+	var insertUpdate updateInsertContract
+	if err := encoding.UnmarshalAll(update.Instructions, &insertUpdate); err != nil {
+		return modules.RenterContract{}, err
+	}
+	h := insertUpdate.Header
+	roots := insertUpdate.Roots
+	// Validate header.
+	if err := h.validate(); err != nil {
+		return modules.RenterContract{}, err
+	}
+	headerFilePath := filepath.Join(cs.dir, h.ID().String()+contractHeaderExtension)
+	rootsFilePath := filepath.Join(cs.dir, h.ID().String()+contractRootsExtension)
+	// create the files.
+	headerFile, err := os.OpenFile(headerFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, modules.DefaultFilePerm)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	rootsFile, err := os.OpenFile(rootsFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, modules.DefaultFilePerm)
+	if err != nil {
+		return modules.RenterContract{}, err
+	}
+	// write header
+	if _, err := headerFile.Write(encoding.Marshal(h)); err != nil {
+		return modules.RenterContract{}, err
+	}
+	// Interrupt if necessary.
+	if cs.deps.Disrupt("InterruptContractInsertion") {
+		return modules.RenterContract{}, errors.New("interrupted")
+	}
 	// write roots
-	merkleRoots := newMerkleRoots(rootsSection)
+	merkleRoots := newMerkleRoots(rootsFile)
 	for _, root := range roots {
 		if err := merkleRoots.push(root); err != nil {
 			return modules.RenterContract{}, err
 		}
 	}
-	if err := f.Sync(); err != nil {
+	// sync both files
+	if err := headerFile.Sync(); err != nil {
+		return modules.RenterContract{}, err
+	}
+	if err := rootsFile.Sync(); err != nil {
 		return modules.RenterContract{}, err
 	}
 	sc := &SafeContract{
 		header:      h,
 		merkleRoots: merkleRoots,
-		headerFile:  headerSection,
+		headerFile:  headerFile,
 		wal:         cs.wal,
 	}
 	// Compatv144 fix missing void output.
@@ -646,32 +714,31 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
-func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlog.Transaction) (err error) {
-	f, err := os.OpenFile(filename, os.O_RDWR, 0600)
+func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName string, walTxns []*writeaheadlog.Transaction) (err error) {
+	headerFile, err := os.OpenFile(headerFileName, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return err
+	}
+	rootsFile, err := os.OpenFile(rootsFileName, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if err != nil {
-			f.Close()
+			err = errors.Compose(err, headerFile.Close(), rootsFile.Close())
 		}
 	}()
-	stat, err := f.Stat()
+	headerStat, err := headerFile.Stat()
 	if err != nil {
 		return err
 	}
-	decodeMaxSize := int(stat.Size() * 3)
-
-	headerSection := newFileSection(f, 0, contractHeaderSize)
-	rootsSection := newFileSection(f, contractHeaderSize, remainingFile)
-
-	header, err := loadSafeContractHeader(f, decodeMaxSize)
+	header, err := loadSafeContractHeader(headerFile, int(headerStat.Size())*decodeMaxSizeMultiplier)
 	if err != nil {
 		return errors.AddContext(err, "unable to load contract header")
 	}
 
 	// read merkleRoots
-	merkleRoots, applyTxns, err := loadExistingMerkleRoots(rootsSection)
+	merkleRoots, applyTxns, err := loadExistingMerkleRoots(rootsFile)
 	if err != nil {
 		return errors.AddContext(err, "unable to load the merkle roots of the contract")
 	}
@@ -707,7 +774,7 @@ func (cs *ContractSet) loadSafeContract(filename string, walTxns []*writeaheadlo
 		header:        header,
 		merkleRoots:   merkleRoots,
 		unappliedTxns: unappliedTxns,
-		headerFile:    headerSection,
+		headerFile:    headerFile,
 		wal:           cs.wal,
 	}
 

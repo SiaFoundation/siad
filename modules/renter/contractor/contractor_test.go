@@ -495,13 +495,13 @@ func TestPayment(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, pResult, pErr := h.ProcessPayment(hStream)
+			pDetails, pErr := h.ProcessPayment(hStream)
 			if pErr != nil {
 				modules.RPCWriteError(hStream, pErr)
 				return
 			}
 			mu.Lock()
-			paid = pResult
+			paid = pDetails.Amount()
 			mu.Unlock()
 		}()
 		c := make(chan struct{})

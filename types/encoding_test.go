@@ -445,7 +445,9 @@ func TestSiaPublicKeyLoadString(t *testing.T) {
 
 	spkString := spk.String()
 	var loadedSPK SiaPublicKey
-	loadedSPK.LoadString(spkString)
+	if err := loadedSPK.LoadString(spkString); err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Equal(loadedSPK.Algorithm[:], spk.Algorithm[:]) {
 		t.Error("SiaPublicKey is not loading correctly")
 	}
@@ -463,7 +465,6 @@ func TestSiaPublicKeyLoadString(t *testing.T) {
 	spk.LoadString(parts[1][1:])
 	spk.LoadString(parts[1][:1])
 	spk.LoadString(parts[0] + parts[1])
-
 }
 
 // TestSiaPublicKeyString does a quick check to verify that the String method
