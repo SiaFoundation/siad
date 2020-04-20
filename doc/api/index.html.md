@@ -811,9 +811,6 @@ The application developer's wallet address that the fee should be paid out to.
 **amount** | hastings  
 The number of hastings the fee will charge the user.
 
-**offset** | int64  
-Offset of the fee within the fee persist file.
-
 **recurring** | bool  
 Indicates whether or not this fee will be a recurring fee. 
 
