@@ -9,7 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
@@ -47,8 +46,11 @@ type RPCPriceTable struct {
 	CollateralCost types.Currency `json:"collateralcost"`
 
 	// Cost values specific to the DropSectors instruction.
-	DropSectorsBaseCost   types.Currency `json:"dropsectorsbasecost"`
-	DropSectorsLengthCost types.Currency `json:"dropsectorslengthcost"`
+	DropSectorsBaseCost types.Currency `json:"dropsectorsbasecost"`
+	DropSectorsUnitCost types.Currency `json:"dropsectorsunitcost"`
+
+	// Cost values specific to the HasSector command.
+	HasSectorBaseCost types.Currency `json:"hassectorbasecost"`
 
 	// Cost values specific to the Read instruction.
 	ReadBaseCost   types.Currency `json:"readbasecost"`
@@ -63,6 +65,12 @@ type RPCPriceTable struct {
 var (
 	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
+
+	// RPCExecuteProgram specifier
+	RPCExecuteProgram = types.NewSpecifier("ExecuteProgram")
+
+	// RPCFundAccount specifier
+	RPCFundAccount = types.NewSpecifier("FundAccount")
 )
 
 type (
@@ -78,6 +86,30 @@ type (
 		Signature crypto.Signature
 	}
 
+	// RPCExecuteProgramRequest is the request sent by the renter to execute a
+	// program on the host's MDM.
+	RPCExecuteProgramRequest struct {
+		// FileContractID is the id of the filecontract we would like to modify.
+		FileContractID types.FileContractID
+		// Instructions to be executed as a program.
+		Program Program
+		// ProgramDataLength is the length of the programData following this
+		// request.
+		ProgramDataLength uint64
+	}
+
+	// RPCExecuteProgramResponse todo missing docstring
+	RPCExecuteProgramResponse struct {
+		AdditionalCollateral types.Currency
+		Output               []byte
+		NewMerkleRoot        crypto.Hash
+		NewSize              uint64
+		Proof                []crypto.Hash
+		Error                error
+		TotalCost            types.Currency
+		PotentialRefund      types.Currency
+	}
+
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
@@ -91,20 +123,65 @@ type (
 	}
 )
 
+// MarshalSia implements the SiaMarshaler interface.
+func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
+	var errStr string
+	if epr.Error != nil {
+		errStr = epr.Error.Error()
+	}
+	ec := encoding.NewEncoder(w)
+	_ = ec.Encode(epr.AdditionalCollateral)
+	_ = ec.Encode(epr.Output)
+	_ = ec.Encode(epr.NewMerkleRoot)
+	_ = ec.Encode(epr.NewSize)
+	_ = ec.Encode(epr.Proof)
+	_ = ec.Encode(errStr)
+	_ = ec.Encode(epr.TotalCost)
+	_ = ec.Encode(epr.PotentialRefund)
+	return ec.Err()
+}
+
+// UnmarshalSia implements the SiaMarshaler interface.
+func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
+	var errStr string
+	dc := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
+	_ = dc.Decode(&epr.AdditionalCollateral)
+	_ = dc.Decode(&epr.Output)
+	_ = dc.Decode(&epr.NewMerkleRoot)
+	_ = dc.Decode(&epr.NewSize)
+	_ = dc.Decode(&epr.Proof)
+	_ = dc.Decode(&errStr)
+	_ = dc.Decode(&epr.TotalCost)
+	_ = dc.Decode(&epr.PotentialRefund)
+	if errStr != "" {
+		epr.Error = errors.New(errStr)
+	}
+	return dc.Err()
+}
+
 // RPCRead tries to read the given object from the stream.
-func RPCRead(stream siamux.Stream, obj interface{}) error {
-	return encoding.ReadObject(stream, &rpcResponse{nil, obj}, uint64(RPCMinLen))
+func RPCRead(r io.Reader, obj interface{}) error {
+	resp := rpcResponse{nil, obj}
+	err := encoding.ReadObject(r, &resp, uint64(RPCMinLen))
+	if err != nil {
+		return err
+	}
+	if resp.err != nil {
+		// must wrap the error here, for more info see: https://www.pixelstech.net/article/1554553347-Be-careful-about-nil-check-on-interface-in-GoLang
+		return errors.New(resp.err.Error())
+	}
+	return nil
 }
 
 // RPCWrite writes the given object to the stream.
-func RPCWrite(stream siamux.Stream, obj interface{}) error {
-	return encoding.WriteObject(stream, &rpcResponse{nil, obj})
+func RPCWrite(w io.Writer, obj interface{}) error {
+	return encoding.WriteObject(w, &rpcResponse{nil, obj})
 }
 
 // RPCWriteAll writes the given objects to the stream.
-func RPCWriteAll(stream siamux.Stream, objs ...interface{}) error {
+func RPCWriteAll(w io.Writer, objs ...interface{}) error {
 	for _, obj := range objs {
-		err := encoding.WriteObject(stream, &rpcResponse{nil, obj})
+		err := encoding.WriteObject(w, &rpcResponse{nil, obj})
 		if err != nil {
 			return err
 		}
@@ -113,12 +190,12 @@ func RPCWriteAll(stream siamux.Stream, objs ...interface{}) error {
 }
 
 // RPCWriteError writes the given error to the stream.
-func RPCWriteError(stream siamux.Stream, err error) error {
+func RPCWriteError(w io.Writer, err error) error {
 	re, ok := err.(*RPCError)
 	if err != nil && !ok {
 		re = &RPCError{Description: err.Error()}
 	}
-	return encoding.WriteObject(stream, &rpcResponse{re, nil})
+	return encoding.WriteObject(w, &rpcResponse{re, nil})
 }
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
@@ -136,8 +213,12 @@ func (resp *rpcResponse) UnmarshalSia(r io.Reader) error {
 	d := encoding.NewDecoder(r, 0)
 	if err := d.Decode(&resp.err); err != nil {
 		return err
-	} else if resp.err != nil {
-		return resp.err
+	}
+	if resp.err != nil {
+		// rpc response data is not decoded in the event of an error, we return
+		// nil here because unmarshaling was successful and is unrelated from
+		// the error in the rpc response
+		return nil
 	}
 	return d.Decode(resp.data)
 }

@@ -1,1 +1,0 @@
-- Fix curl example for `/skynet/skyfile/` post

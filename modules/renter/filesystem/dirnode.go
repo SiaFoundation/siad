@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -121,6 +122,17 @@ func (n *DirNode) Path() (string, error) {
 		return "", err
 	}
 	return sd.Path(), nil
+}
+
+// UpdateLastHealthCheckTime is a wrapper for SiaDir.UpdateLastHealthCheckTime.
+func (n *DirNode) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime time.Time) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return err
+	}
+	return sd.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime)
 }
 
 // UpdateMetadata is a wrapper for SiaDir.UpdateMetadata.

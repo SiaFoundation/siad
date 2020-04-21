@@ -26,6 +26,10 @@ var (
 	// read does not match the current RefCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
 
+	// ErrInvalidUpdateInstruction is returned when trying to parse a WAL update
+	// instruction that is too short to possibly contain all the required data.
+	ErrInvalidUpdateInstruction = errors.New("instructions slice is too short to contain the required data")
+
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
 	// called without an open update session
 	ErrUpdateWithoutUpdateSession = errors.New("an update operation was called without an open update session")
@@ -224,7 +228,7 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	if rc.isDeleted {
 		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-	if secIdx > rc.numSectors-1 {
+	if secIdx >= rc.numSectors {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to decrement")
 	}
 	count, err := rc.readCount(secIdx)
@@ -283,7 +287,7 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	if rc.isDeleted {
 		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-	if secIdx > rc.numSectors-1 {
+	if secIdx >= rc.numSectors {
 		return writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to increment")
 	}
 	count, err := rc.readCount(secIdx)
@@ -322,7 +326,7 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	if rc.isDeleted {
 		return []writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-	if firstIdx > rc.numSectors-1 || secondIdx > rc.numSectors-1 {
+	if firstIdx >= rc.numSectors || secondIdx >= rc.numSectors {
 		return []writeaheadlog.Update{}, errors.AddContext(ErrInvalidSectorNumber, "failed to swap sectors")
 	}
 	firstVal, err := rc.readCount(firstIdx)
@@ -366,7 +370,7 @@ func (rc *RefCounter) UpdateApplied() error {
 func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 	// check if the secIdx is a valid sector index based on the number of
 	// sectors in the file
-	if secIdx > rc.numSectors-1 {
+	if secIdx >= rc.numSectors {
 		return 0, errors.AddContext(ErrInvalidSectorNumber, "failed to read count")
 	}
 	// check if the value is being changed by a pending update
@@ -510,7 +514,7 @@ func offset(secIdx uint64) uint64 {
 // readTruncateUpdate decodes a Truncate update
 func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, err error) {
 	if len(u.Instructions) < 8 {
-		err = errors.New("instructions slice of update is too short to contain the size and path")
+		err = ErrInvalidUpdateInstruction
 		return
 	}
 	newNumSec = binary.LittleEndian.Uint64(u.Instructions[:8])
@@ -521,7 +525,7 @@ func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, 
 // readWriteAtUpdate decodes a WriteAt update
 func readWriteAtUpdate(u writeaheadlog.Update) (path string, secIdx uint64, value uint16, err error) {
 	if len(u.Instructions) < 10 {
-		err = errors.New("instructions slice of update is too short to contain the size and path")
+		err = ErrInvalidUpdateInstruction
 		return
 	}
 	secIdx = binary.LittleEndian.Uint64(u.Instructions[:8])

@@ -77,7 +77,7 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 		// revisions, the expiration is put more than
 		// 'revisionSubmissionBuffer' blocks into the future.
 		WindowStart: ht.host.blockHeight + revisionSubmissionBuffer + 2,
-		WindowEnd:   ht.host.blockHeight + revisionSubmissionBuffer + defaultWindowSize + 2,
+		WindowEnd:   ht.host.blockHeight + revisionSubmissionBuffer + modules.DefaultWindowSize + 2,
 
 		Payout: payout,
 		ValidProofOutputs: []types.SiacoinOutput{
@@ -376,7 +376,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 	// Mine enough blocks so that all active storage obligations succeed and we
 	// know for sure the other obligations are stale, i.e. not in the transaction pool
 	// and with a NegotiationHeight, RespendTimeout blocks behind the currrent block.
-	endblock := ht.host.blockHeight + revisionSubmissionBuffer + defaultWindowSize + 2 + wallet.RespendTimeout + 1
+	endblock := ht.host.blockHeight + revisionSubmissionBuffer + modules.DefaultWindowSize + 2 + wallet.RespendTimeout + 1
 	for cb := ht.host.blockHeight; cb <= endblock; cb++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
@@ -694,7 +694,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 
 	// Mine blocks until the storage proof has enough confirmations that the
 	// host will finalize the obligation.
-	for i := 0; i <= int(defaultWindowSize); i++ {
+	for i := 0; i <= int(modules.DefaultWindowSize); i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -960,7 +960,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 
 	// Mine blocks until the storage proof has enough confirmations that the
 	// host will delete the file entirely.
-	for i := 0; i <= int(defaultWindowSize); i++ {
+	for i := 0; i <= int(modules.DefaultWindowSize); i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -1105,7 +1105,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 
 	// Mine blocks until the storage proof has enough confirmations that the
 	// host will delete the file entirely.
-	for i := 0; i <= int(defaultWindowSize); i++ {
+	for i := 0; i <= int(modules.DefaultWindowSize); i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)

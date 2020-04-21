@@ -55,21 +55,21 @@ func (h *Host) persistData() persistence {
 func (h *Host) establishDefaults() error {
 	// Configure the settings object.
 	h.settings = modules.HostInternalSettings{
-		MaxDownloadBatchSize: uint64(defaultMaxDownloadBatchSize),
-		MaxDuration:          defaultMaxDuration,
-		MaxReviseBatchSize:   uint64(defaultMaxReviseBatchSize),
-		WindowSize:           defaultWindowSize,
+		MaxDownloadBatchSize: uint64(modules.DefaultMaxDownloadBatchSize),
+		MaxDuration:          modules.DefaultMaxDuration,
+		MaxReviseBatchSize:   uint64(modules.DefaultMaxReviseBatchSize),
+		WindowSize:           modules.DefaultWindowSize,
 
-		Collateral:       defaultCollateral,
+		Collateral:       modules.DefaultCollateral,
 		CollateralBudget: defaultCollateralBudget,
-		MaxCollateral:    defaultMaxCollateral,
+		MaxCollateral:    modules.DefaultMaxCollateral,
 
-		MinBaseRPCPrice:           defaultBaseRPCPrice,
-		MinContractPrice:          defaultContractPrice,
-		MinDownloadBandwidthPrice: defaultDownloadBandwidthPrice,
-		MinSectorAccessPrice:      defaultSectorAccessPrice,
-		MinStoragePrice:           defaultStoragePrice,
-		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
+		MinBaseRPCPrice:           modules.DefaultBaseRPCPrice,
+		MinContractPrice:          modules.DefaultContractPrice,
+		MinDownloadBandwidthPrice: modules.DefaultDownloadBandwidthPrice,
+		MinSectorAccessPrice:      modules.DefaultSectorAccessPrice,
+		MinStoragePrice:           modules.DefaultStoragePrice,
+		MinUploadBandwidthPrice:   modules.DefaultUploadBandwidthPrice,
 
 		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,

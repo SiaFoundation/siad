@@ -1,14 +1,18 @@
 package host
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestAccountsReload verifies that an account is properly saved to disk and
@@ -246,19 +250,153 @@ func TestFingerprintsRotate(t *testing.T) {
 	}
 }
 
+// TestFingerprintBucketsRotate verifies the rotation of the fingerprint buckets
+// on disk when the host goes out of sync or is reloaded.
+func TestFingerprintBucketsRotate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a host
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verifyFPBuckets verifies the correct FP buckets are on disk
+	verifyFPBuckets := func() error {
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			var err1, err2 error
+			curr, nxt := fingerprintsFilenames(ht.host.blockHeight)
+			_, err1 = os.Stat(filepath.Join(ht.host.persistDir, curr))
+			_, err2 = os.Stat(filepath.Join(ht.host.persistDir, nxt))
+			if err := errors.Compose(err1, err2); err != nil {
+				// sanity check that withdrawals are never active
+				if !ht.host.staticAccountManager.withdrawalsInactive {
+					t.Fatal("Withdrawals are active without fingerprint buckets on disk. This is a critical error and should never happen.")
+				}
+				return err
+			}
+			return nil
+		})
+	}
+
+	// unsyncHost is a helper that closes the host and then mines the given
+	// amount of blocks, effectively causing the host to become unsynced
+	unsyncHost := func(h *Host, m modules.TestMiner, blocks int) error {
+		err := h.Close()
+		if err != nil {
+			return err
+		}
+		for i := 0; i < blocks; i++ {
+			_, err = m.AddBlock()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// verify withdrawals are active and that the FP buckets are in place
+	err = verifyFPBuckets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ht.host.staticAccountManager.withdrawalsInactive {
+		t.Fatal("Expected withdrawals to be active")
+	}
+
+	// remember the current blockheight
+	oldBlockHeight := ht.host.blockHeight
+
+	// close the host and mine at minimum the bucketBlockRange blocks, this
+	// ensures we have to rotate which should cause at least one of the old
+	// buckets to get cleaned up from the filesystem
+	numBlocks := bucketBlockRange + fastrand.Intn(bucketBlockRange)
+	err = unsyncHost(ht.host, ht.miner, numBlocks)
+
+	// reopen the host
+	err = reopenHost(ht)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify that the host syncs up after a while and buckets are in place
+	err = verifyFPBuckets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ht.host.staticAccountManager.withdrawalsInactive {
+		t.Fatal("Expected withdrawals to be active")
+	}
+
+	// verify the host has cleaned up the old bocket
+	curr, _ := fingerprintsFilenames(oldBlockHeight)
+	if _, err = os.Stat(filepath.Join(ht.host.persistDir, curr)); err == nil {
+		t.Fatal("Expected old current bucket to be removed from disk")
+	}
+
+	// close the host and make sure it's out of sync by mining some blocks
+	numBlocks = bucketBlockRange
+	err = unsyncHost(ht.host, ht.miner, numBlocks)
+
+	// reopen the host but do it with a dependency that disables rotation of the
+	// fingerprint buckets on disk. This should have as effect that the
+	// withdrawals never become active.
+	err = reopenCustomHost(ht, new(dependencies.DependencyDisableRotateFingerprintBuckets))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyFPBuckets()
+	if err == nil {
+		t.Fatal("Expected FP buckets error")
+	}
+	if !ht.host.staticAccountManager.withdrawalsInactive {
+		t.Fatal("Expected withdrawals to remain inactive")
+	}
+
+	// close the host and make sure it's out of sync by mining some blocks
+	numBlocks = bucketBlockRange
+	err = unsyncHost(ht.host, ht.miner, numBlocks)
+
+	// reopen the host again without the dependency and verify withdrawals are
+	// enabled again
+	err = reopenHost(ht)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyFPBuckets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ht.host.staticAccountManager.withdrawalsInactive {
+		t.Fatal("Expected withdrawals to be active")
+	}
+}
+
 // reloadHost will close the given host and reload it on the given host tester
 func reloadHost(ht *hostTester) error {
 	err := ht.host.Close()
 	if err != nil {
 		return err
 	}
+	return reopenHost(ht)
+}
 
-	host, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+// reopenHost will create a new host and set it on the given host tester
+func reopenHost(ht *hostTester) error {
+	return reopenCustomHost(ht, new(modules.ProductionDependencies))
+}
+
+// reopenCustomHost will create a new host and set it on the given host tester,
+// this function allows to pass custom dependencies
+func reopenCustomHost(ht *hostTester, deps modules.Dependencies) error {
+	host, err := NewCustomHost(deps, ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		return err
 	}
 	ht.host = host
-
 	return nil
 }
 

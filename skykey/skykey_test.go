@@ -74,7 +74,7 @@ func TestSkykeyManager(t *testing.T) {
 
 	// Check duplicate name errors.
 	_, err = keyMan.CreateKey("test_key1", cipherType)
-	if !errors.Contains(err, errSkykeyNameAlreadyExists) {
+	if !errors.Contains(err, ErrSkykeyWithNameAlreadyExists) {
 		t.Fatal("Expected skykey name to already exist", err)
 	}
 
@@ -186,7 +186,7 @@ func TestSkykeyManager(t *testing.T) {
 	// shown.
 	for _, key := range keyMan.keysByID {
 		err := addKeyMan.AddKey(key)
-		if !errors.Contains(err, errSkykeyNameAlreadyExists) {
+		if !errors.Contains(err, ErrSkykeyWithIDAlreadyExists) {
 			t.Fatal(err)
 		}
 	}

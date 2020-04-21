@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -54,75 +56,103 @@ func skykeycmd(cmd *cobra.Command, args []string) {
 	os.Exit(exitCodeUsage)
 }
 
-// skykeycreatecmd creates a new Skykey with the given name and cipher type
-// as set by flag.
+// skykeycreatecmd is a wrapper for skykeyCreate used to handle skykey creation.
 func skykeycreatecmd(name string) {
-	var cipherType crypto.CipherType
-	err := cipherType.FromString(skykeyCipherType)
+	skykeyStr, err := skykeyCreate(name)
 	if err != nil {
-		die("could not decode cipher-type:", err)
-	}
-
-	sk, err := httpClient.SkykeyCreateKeyPost(name, cipherType)
-	if err != nil {
-		die("could not create skykey:", err)
-	}
-
-	skykeyStr, err := sk.ToString()
-	if err != nil {
-		die("Could not print skykey string:", err)
+		die(errors.AddContext(err, "Failed to create new skykey"))
 	}
 	fmt.Printf("Created new skykey: %v\n", skykeyStr)
 }
 
-// skykeyaddcmd adds the given skykey to the renter's skykey manager.
-func skykeyaddcmd(skykeyString string) {
-	var sk skykey.Skykey
-	err := sk.FromString(skykeyString)
+// skykeyCreate creates a new Skykey with the given name and cipher type
+// as set by flag.
+func skykeyCreate(name string) (string, error) {
+	var cipherType crypto.CipherType
+	err := cipherType.FromString(skykeyCipherType)
 	if err != nil {
-		die("Could not decode skykey string:", err)
+		return "", errors.AddContext(err, "Could not decode cipher-type")
 	}
 
-	err = httpClient.SkykeyAddKeyPost(sk)
+	sk, err := httpClient.SkykeyCreateKeyPost(name, cipherType)
 	if err != nil {
-		die("could not add skykey:", err)
+		return "", errors.AddContext(err, "Could not create skykey")
+	}
+	return sk.ToString()
+}
+
+// skykeyaddcmd is a wrapper for skykeyAdd used to handle the addition of new skykeys.
+func skykeyaddcmd(skykeyString string) {
+	err := skykeyAdd(skykeyString)
+	if strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
+		die("Skykey name already used. Try using the --rename-as parameter with a different name.")
+	}
+	if err != nil {
+		die(errors.AddContext(err, "Failed to add skykey"))
 	}
 
 	fmt.Printf("Successfully added new skykey: %v\n", skykeyString)
 }
 
-// skykeygetcmd retrieves the skykey using a name or id flag.
-func skykeygetcmd() {
-	if skykeyName == "" && skykeyID == "" {
-		die("Cannot get skykey without using --name or --id flag")
+// skykeyAdd adds the given skykey to the renter's skykey manager.
+func skykeyAdd(skykeyString string) error {
+	var sk skykey.Skykey
+	err := sk.FromString(skykeyString)
+	if err != nil {
+		return errors.AddContext(err, "Could not decode skykey string")
 	}
-	if skykeyName != "" && skykeyID != "" {
-		die("Use only one flag to get the skykey: --name or --id flag")
+
+	// Rename the skykey if the --rename-as flag was provided.
+	if skykeyRenameAs != "" {
+		sk.Name = skykeyRenameAs
+	}
+
+	err = httpClient.SkykeyAddKeyPost(sk)
+	if err != nil {
+		return errors.AddContext(err, "Could not add skykey")
+	}
+
+	return nil
+}
+
+// skykeygetcmd is a wrapper for skykeyGet that handles skykey get commands.
+func skykeygetcmd() {
+	skykeyStr, err := skykeyGet(skykeyName, skykeyID)
+	if err != nil {
+		die(err)
+	}
+
+	fmt.Printf("Found skykey: %v\n", skykeyStr)
+}
+
+// skykeyGet retrieves the skykey using a name or id flag.
+func skykeyGet(name, id string) (string, error) {
+	if name == "" && id == "" {
+		return "", errors.New("Cannot get skykey without using --name or --id flag")
+	}
+	if name != "" && id != "" {
+		return "", errors.New("Use only one flag to get the skykey: --name or --id flag")
 	}
 
 	var sk skykey.Skykey
 	var err error
-	if skykeyName != "" {
-		sk, err = httpClient.SkykeyGetByName(skykeyName)
+	if name != "" {
+		sk, err = httpClient.SkykeyGetByName(name)
 	} else {
-		var id skykey.SkykeyID
-		err = id.FromString(skykeyID)
+		var skykeyID skykey.SkykeyID
+		err = skykeyID.FromString(id)
 		if err != nil {
-			die("Could not decode skykey ID")
+			return "", errors.AddContext(err, "Could not decode skykey ID")
 		}
 
-		sk, err = httpClient.SkykeyGetByID(id)
+		sk, err = httpClient.SkykeyGetByID(skykeyID)
 	}
 
 	if err != nil {
-		die("Failed to retrieve skykey:", err)
+		return "", errors.AddContext(err, "Failed to retrieve skykey")
 	}
 
-	skykeyStr, err := sk.ToString()
-	if err != nil {
-		die("Could not print skykey string:", err)
-	}
-	fmt.Printf("Found skykey: %v\n", skykeyStr)
+	return sk.ToString()
 }
 
 // skykeygetidcmd retrieves the skykey id using its name.

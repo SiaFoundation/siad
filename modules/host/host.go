@@ -76,6 +76,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -157,6 +158,7 @@ type Host struct {
 
 	// Subsystems
 	staticAccountManager *accountManager
+	staticMDM            *mdm.MDM
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -217,6 +219,14 @@ func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
 	hp.mu.RLock()
 	defer hp.mu.RUnlock()
 	return hp.current
+}
+
+// managedGet returns the price table with given uid
+func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTable, found bool) {
+	hp.mu.RLock()
+	defer hp.mu.RUnlock()
+	pt, found = hp.guaranteed[uid]
+	return
 }
 
 // managedUpdate overwrites the current price table with the one that's given
@@ -366,19 +376,20 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	his := h.managedInternalSettings()
+	_ = h.managedInternalSettings()
 	priceTable := modules.RPCPriceTable{
 		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 
 		// TODO: hardcoded cost should be updated to use a better value.
-		FundAccountCost:      his.MinBaseRPCPrice,
-		UpdatePriceTableCost: his.MinBaseRPCPrice,
+		FundAccountCost:      types.NewCurrency64(1),
+		UpdatePriceTableCost: types.NewCurrency64(1),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		InitBaseCost:   his.MinBaseRPCPrice,
-		MemoryTimeCost: his.MinBaseRPCPrice,
-		ReadBaseCost:   his.MinBaseRPCPrice,
-		ReadLengthCost: his.MinBaseRPCPrice,
+		HasSectorBaseCost: types.NewCurrency64(1),
+		InitBaseCost:      types.NewCurrency64(1),
+		MemoryTimeCost:    types.NewCurrency64(1),
+		ReadBaseCost:      types.NewCurrency64(1),
+		ReadLengthCost:    types.NewCurrency64(1),
 	}
 	fastrand.Read(priceTable.UID[:])
 
@@ -449,6 +460,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		},
 		persistDir: persistDir,
 	}
+
+	// Create MDM.
+	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
 	var err error

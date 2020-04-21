@@ -2,8 +2,10 @@ package siafile
 
 import (
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -34,6 +36,10 @@ type (
 	SiafileUID string
 
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
+	// Note: Methods which update the metadata and can potentially fail after
+	// doing so and before persisting the change should use backup() and
+	// restore() to restore the metadata before returning the error. Also
+	// changes to Metadata require backup() and restore() to be updated as well.
 	Metadata struct {
 		UniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
 
@@ -168,18 +174,11 @@ type (
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
 		NumStuckChunks      uint64
+		OnDisk              bool
 		Redundancy          float64
 		Size                uint64
 		StuckHealth         float64
 		UID                 SiafileUID
-	}
-
-	// CachedHealthMetadata is a healper struct that contains the siafile health
-	// metadata fields that are cached
-	CachedHealthMetadata struct {
-		Health      float64
-		Redundancy  float64
-		StuckHealth float64
 	}
 )
 
@@ -191,9 +190,16 @@ func (sf *SiaFile) AccessTime() time.Time {
 }
 
 // AddSkylink will add a skylink to the SiaFile.
-func (sf *SiaFile) AddSkylink(s modules.Skylink) error {
+func (sf *SiaFile) AddSkylink(s modules.Skylink) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	sf.staticMetadata.Skylinks = append(sf.staticMetadata.Skylinks, s.String())
 
 	// Save changes to metadata to disk.
@@ -303,20 +309,136 @@ func (sf *SiaFile) Rename(newSiaFilePath string) error {
 	return sf.rename(newSiaFilePath)
 }
 
+// backup creates a deep-copy of a Metadata.
+func (md Metadata) backup() (b Metadata) {
+	// Copy the static fields first. They are shallow copies since they are not
+	// allowed to change.
+	b.StaticPagesPerChunk = md.StaticPagesPerChunk
+	b.StaticVersion = md.StaticVersion
+	b.StaticPieceSize = md.StaticPieceSize
+	b.StaticMasterKey = md.StaticMasterKey
+	b.StaticMasterKeyType = md.StaticMasterKeyType
+	b.StaticSharingKey = md.StaticSharingKey
+	b.StaticSharingKeyType = md.StaticSharingKeyType
+	b.StaticErasureCodeType = md.StaticErasureCodeType
+	b.StaticErasureCodeParams = md.StaticErasureCodeParams
+	b.staticErasureCode = md.staticErasureCode
+
+	// Deep copy the remaining fields. For the sake of completion and safety we
+	// also copy the native types one-by-one even though they could be cloned
+	// together with the static types by a simple assignment like b = md
+	b.UniqueID = md.UniqueID
+	b.FileSize = md.FileSize
+	b.LocalPath = md.LocalPath
+	b.DisablePartialChunk = md.DisablePartialChunk
+	b.HasPartialChunk = md.HasPartialChunk
+	b.ModTime = md.ModTime
+	b.ChangeTime = md.ChangeTime
+	b.AccessTime = md.AccessTime
+	b.CreateTime = md.CreateTime
+	b.CachedRedundancy = md.CachedRedundancy
+	b.CachedUserRedundancy = md.CachedUserRedundancy
+	b.CachedHealth = md.CachedHealth
+	b.CachedStuckHealth = md.CachedStuckHealth
+	b.CachedExpiration = md.CachedExpiration
+	b.CachedUploadedBytes = md.CachedUploadedBytes
+	b.CachedUploadProgress = md.CachedUploadProgress
+	b.Health = md.Health
+	b.LastHealthCheckTime = md.LastHealthCheckTime
+	b.NumStuckChunks = md.NumStuckChunks
+	b.Redundancy = md.Redundancy
+	b.StuckHealth = md.StuckHealth
+	b.Mode = md.Mode
+	b.UserID = md.UserID
+	b.GroupID = md.GroupID
+	b.ChunkOffset = md.ChunkOffset
+	b.PubKeyTableOffset = md.PubKeyTableOffset
+	// Special handling for slice since reflect.DeepEqual is false when
+	// comparing empty slice to nil.
+	if md.PartialChunks == nil {
+		b.PartialChunks = nil
+	} else {
+		// Being extra explicit about capacity and length here.
+		b.PartialChunks = make([]PartialChunkInfo, len(md.PartialChunks), cap(md.PartialChunks))
+		copy(b.PartialChunks, md.PartialChunks)
+	}
+	if md.Skylinks == nil {
+		b.Skylinks = nil
+	} else {
+		// Being extra explicit about capacity and length here.
+		b.Skylinks = make([]string, len(md.Skylinks), cap(md.Skylinks))
+		copy(b.Skylinks, md.Skylinks)
+	}
+	// If the backup was successful it should match the original.
+	if build.Release == "testing" && !reflect.DeepEqual(md, b) {
+		fmt.Println("md:\n", md)
+		fmt.Println("b:\n", b)
+		build.Critical("backup: copy doesn't match original")
+	}
+	return
+}
+
+// restore restores the metadata from a backup created with the backup() method.
+func (md *Metadata) restore(b Metadata) {
+	md.UniqueID = b.UniqueID
+	md.FileSize = b.FileSize
+	md.LocalPath = b.LocalPath
+	md.DisablePartialChunk = b.DisablePartialChunk
+	md.PartialChunks = b.PartialChunks
+	md.HasPartialChunk = b.HasPartialChunk
+	md.ModTime = b.ModTime
+	md.ChangeTime = b.ChangeTime
+	md.AccessTime = b.AccessTime
+	md.CreateTime = b.CreateTime
+	md.CachedRedundancy = b.CachedRedundancy
+	md.CachedUserRedundancy = b.CachedUserRedundancy
+	md.CachedHealth = b.CachedHealth
+	md.CachedStuckHealth = b.CachedStuckHealth
+	md.CachedExpiration = b.CachedExpiration
+	md.CachedUploadedBytes = b.CachedUploadedBytes
+	md.CachedUploadProgress = b.CachedUploadProgress
+	md.Health = b.Health
+	md.LastHealthCheckTime = b.LastHealthCheckTime
+	md.NumStuckChunks = b.NumStuckChunks
+	md.Redundancy = b.Redundancy
+	md.StuckHealth = b.StuckHealth
+	md.Mode = b.Mode
+	md.UserID = b.UserID
+	md.GroupID = b.GroupID
+	md.ChunkOffset = b.ChunkOffset
+	md.PubKeyTableOffset = b.PubKeyTableOffset
+	md.Skylinks = b.Skylinks
+	// If the backup was successful it should match the backup.
+	if build.Release == "testing" && !reflect.DeepEqual(*md, b) {
+		fmt.Println("md:\n", md)
+		fmt.Println("b:\n", b)
+		build.Critical("backup: copy doesn't match original")
+	}
+}
+
 // rename changes the name of the file to a new one. To guarantee that renaming
 // the file is atomic across all operating systems, we create a wal transaction
 // that moves over all the chunks one-by-one and deletes the src file.
-func (sf *SiaFile) rename(newSiaFilePath string) error {
+func (sf *SiaFile) rename(newSiaFilePath string) (err error) {
 	if sf.deleted {
 		return errors.New("can't rename deleted siafile")
 	}
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldPath := sf.siaFilePath
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+			sf.siaFilePath = oldPath
+		}
+	}(sf.staticMetadata.backup())
 	// Check if file exists at new location.
 	if _, err := os.Stat(newSiaFilePath); err == nil {
 		return ErrPathOverload
 	}
 	// Create path to renamed location.
 	dir, _ := filepath.Split(newSiaFilePath)
-	err := os.MkdirAll(dir, 0700)
+	err = os.MkdirAll(dir, 0700)
 	if err != nil {
 		return err
 	}
@@ -353,9 +475,16 @@ func (sf *SiaFile) rename(newSiaFilePath string) error {
 }
 
 // SetMode sets the filemode of the sia file.
-func (sf *SiaFile) SetMode(mode os.FileMode) error {
+func (sf *SiaFile) SetMode(mode os.FileMode) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	sf.staticMetadata.Mode = mode
 	sf.staticMetadata.ChangeTime = time.Now()
 
@@ -380,9 +509,17 @@ func (sf *SiaFile) SetLastHealthCheckTime() {
 
 // SetLocalPath changes the local path of the file which is used to repair
 // the file from disk.
-func (sf *SiaFile) SetLocalPath(path string) error {
+func (sf *SiaFile) SetLocalPath(path string) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
 	sf.staticMetadata.LocalPath = path
 
 	// Save changes to metadata to disk.
@@ -406,9 +543,16 @@ func (sf *SiaFile) UpdateUniqueID() {
 }
 
 // UpdateAccessTime updates the AccessTime timestamp to the current time.
-func (sf *SiaFile) UpdateAccessTime() error {
+func (sf *SiaFile) UpdateAccessTime() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// backup the changed metadata before hcanging it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	sf.staticMetadata.AccessTime = time.Now()
 
 	// Save changes to metadata to disk.
