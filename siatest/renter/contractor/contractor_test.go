@@ -2394,3 +2394,153 @@ func TestExtendPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestFreshSettingsForRenew tests that the contractor uses the freshest
+// settings for renewal.
+func TestFreshSettingsForRenew(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 0,
+		Miners:  1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a renter with a  toggle-able dependency for using stale host settings
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	defaultSettingsDep := &dependencies.DependencyDefaultRenewSettings{}
+	renterParams.ContractorDeps = defaultSettingsDep
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := tg.Renters()[0]
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) == 0 {
+			return errors.New("No Active Contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defaultSettingsDep.Enable()
+
+	// Increase the host prices.
+	h := tg.Hosts()[0]
+	hg, err := h.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice
+	err = h.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	basePrice := hg.ExternalSettings.BaseRPCPrice
+	err = h.HostModifySettingPost(client.HostParamMinBaseRPCPrice, basePrice.Mul64(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	storagePrice := hg.ExternalSettings.StoragePrice
+	err = h.HostModifySettingPost(client.HostParamMinStoragePrice, storagePrice.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// save the contract end height
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) == 0 {
+		t.Fatal("No active contracts")
+	}
+	endHeight := rc.ActiveContracts[0].EndHeight
+
+	// Mine blocks to force contract renewal
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine until the contract is expired to confirm that we couldn't renew it.
+	cg, err := r.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocksToMine := endHeight - cg.Height - 1
+	m := tg.Miners()[0]
+	for i := 0; i < int(blocksToMine); i++ {
+		if err = m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Check that we haven't renewed.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 1, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now disable the contract and wait to re-form the contracts.
+	defaultSettingsDep.Disable()
+	numTries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%5 == 0 {
+			if err = m.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numTries += 1
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) == 0 {
+			return errors.New("No Active Contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine blocks to force contract renewal
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that we have renewed.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 2, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

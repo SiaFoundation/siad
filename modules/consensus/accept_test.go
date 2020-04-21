@@ -258,8 +258,8 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 			},
 			earliestValidTimestamp: mockInvalidBlock.Timestamp,
 			marshaler:              parentBlockUnmarshaler,
-			validateBlockErr:       errBadMinerPayouts,
-			errWant:                errBadMinerPayouts,
+			validateBlockErr:       ErrBadMinerPayouts,
+			errWant:                ErrBadMinerPayouts,
 			msg:                    "validateHeaderAndBlock should reject a block if ValidateBlock returns an error for the block",
 		},
 		{
@@ -414,7 +414,7 @@ func TestUnitValidateHeader(t *testing.T) {
 			blockMapPairs:          serializedParentBlockMap,
 			earliestValidTimestamp: mockValidBlock.Timestamp + 1,
 			marshaler:              parentBlockHighTargetUnmarshaler,
-			errWant:                errEarlyTimestamp,
+			errWant:                ErrEarlyTimestamp,
 			msg:                    "validateHeader should fail when the header's timestamp is too early",
 		},
 		// Test that headers in the extreme future are rejected.
@@ -426,7 +426,7 @@ func TestUnitValidateHeader(t *testing.T) {
 			dosBlocks:     make(map[types.BlockID]struct{}),
 			blockMapPairs: serializedParentBlockMap,
 			marshaler:     parentBlockHighTargetUnmarshaler,
-			errWant:       errExtremeFutureTimestamp,
+			errWant:       ErrExtremeFutureTimestamp,
 			msg:           "validateHeader should fail when the header's timestamp is in the extreme future",
 		},
 		// Test that headers in the near future are not rejected.
@@ -681,8 +681,8 @@ func TestMinerPayoutHandling(t *testing.T) {
 	block.MinerPayouts = append(block.MinerPayouts, types.SiacoinOutput{Value: types.NewCurrency64(1)})
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != errBadMinerPayouts {
-		t.Fatalf("expected %v, got %v", errBadMinerPayouts, err)
+	if err != ErrBadMinerPayouts {
+		t.Fatalf("expected %v, got %v", ErrBadMinerPayouts, err)
 	}
 }
 
@@ -711,8 +711,8 @@ func TestEarlyTimestampHandling(t *testing.T) {
 	block.Timestamp = minTimestamp - 1
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != errEarlyTimestamp {
-		t.Fatalf("expected %v, got %v", errEarlyTimestamp, err)
+	if err != ErrEarlyTimestamp {
+		t.Fatalf("expected %v, got %v", ErrEarlyTimestamp, err)
 	}
 }
 
@@ -738,8 +738,8 @@ func TestFutureTimestampHandling(t *testing.T) {
 	block.Timestamp = types.CurrentTimestamp() + 2 + types.FutureThreshold
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != errFutureTimestamp {
-		t.Fatalf("expected %v, got %v", errFutureTimestamp, err)
+	if err != ErrFutureTimestamp {
+		t.Fatalf("expected %v, got %v", ErrFutureTimestamp, err)
 	}
 
 	// Poll the consensus set until the future block appears.
@@ -777,8 +777,8 @@ func TestExtremeFutureTimestampHandling(t *testing.T) {
 	block.Timestamp = types.CurrentTimestamp() + 2 + types.ExtremeFutureThreshold
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != errExtremeFutureTimestamp {
-		t.Fatalf("expected %v, got %v", errFutureTimestamp, err)
+	if err != ErrExtremeFutureTimestamp {
+		t.Fatalf("expected %v, got %v", ErrFutureTimestamp, err)
 	}
 }
 

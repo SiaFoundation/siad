@@ -46,7 +46,12 @@ type Config struct {
 
 		Profile    string
 		ProfileDir string
-		SiaDir     string
+
+		// NOTE: SiaDir in this case is referencing the directory that siad is
+		// going to be running out of, not the actual siadir, which is where we
+		// put the apipassword file. This variable should not be altered if it
+		// is not set by a user flag.
+		SiaDir string
 	}
 }
 
@@ -182,11 +187,6 @@ func main() {
 	root.Flags().BoolVarP(&globalConfig.Siad.AuthenticateAPI, "authenticate-api", "", true, "enable API password protection")
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
 	root.Flags().BoolVarP(&globalConfig.Siad.AllowAPIBind, "disable-api-security", "", false, "allow siad to listen on a non-localhost address (DANGEROUS)")
-
-	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
-	if globalConfig.Siad.SiaDir == "" {
-		globalConfig.Siad.SiaDir = build.SiaDir()
-	}
 
 	// Parse cmdline flags, overwriting both the default values and the config
 	// file values.

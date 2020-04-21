@@ -182,9 +182,8 @@ func TestPersistCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	minNumBytes := int(metadataPageSize)
-	corruptionSize := minNumBytes + fastrand.Intn(minNumBytes)
-	_, err = f.Write(fastrand.Bytes(corruptionSize))
+	minNumBytes := int(2 * metadataPageSize)
+	corruptionSize, err := f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}

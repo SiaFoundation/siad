@@ -60,21 +60,21 @@ func TestVerifyPaymentRevision(t *testing.T) {
 		return
 	}
 
-	// expect errBadContractOutputCounts
+	// expect ErrBadContractOutputCounts
 	badOutputs := []types.SiacoinOutput{payment.NewMissedProofOutputs[0]}
 	badPayment := deepCopy(payment)
 	badPayment.NewMissedProofOutputs = badOutputs
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadContractOutputCounts {
-		t.Fatalf("Expected errBadContractOutputCounts but received '%v'", err)
+	if err != ErrBadContractOutputCounts {
+		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
 	}
 
-	// expect errLateRevision
+	// expect ErrLateRevision
 	badCurr := deepCopy(curr)
 	badCurr.NewWindowStart = curr.NewWindowStart - 1
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err != errLateRevision {
-		t.Fatalf("Expected errLateRevision but received '%v'", err)
+	if err != ErrLateRevision {
+		t.Fatalf("Expected ErrLateRevision but received '%v'", err)
 	}
 
 	// expect host payout address changed
@@ -114,124 +114,124 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.SetValidRenterPayout(curr.ValidRenterPayout().Add64(1))
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(errHighRenterValidOutput)) {
-		t.Fatalf("Expected '%v' but received '%v'", string(errHighRenterValidOutput), err)
+	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterValidOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterValidOutput), err)
 	}
 
 	// expect an error saying not enough money was transferred
 	err = verifyPaymentRevision(curr, payment, height, amount.Add64(1))
-	if err == nil || !strings.Contains(err.Error(), string(errHighRenterValidOutput)) {
-		t.Fatalf("Expected '%v' but received '%v'", string(errHighRenterValidOutput), err)
+	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterValidOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterValidOutput), err)
 	}
 	expectedErrorMsg := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", amount.Add64(1), curr.ValidRenterPayout().Sub(payment.ValidRenterPayout()))
 	if err == nil || !strings.Contains(err.Error(), expectedErrorMsg) {
 		t.Fatalf("Expected '%v' but received '%v'", expectedErrorMsg, err)
 	}
 
-	// expect errLowHostValidOutput
+	// expect ErrLowHostValidOutput
 	badPayment = deepCopy(payment)
 	badPayment.SetValidHostPayout(curr.ValidHostPayout().Sub64(1))
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(errLowHostValidOutput)) {
-		t.Fatalf("Expected '%v' but received '%v'", string(errLowHostValidOutput), err)
+	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostValidOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostValidOutput), err)
 	}
 
-	// expect errLowHostValidOutput
+	// expect ErrLowHostValidOutput
 	badCurr = deepCopy(curr)
 	badCurr.SetValidHostPayout(curr.ValidHostPayout().Sub64(1))
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(errLowHostValidOutput)) {
-		t.Fatalf("Expected '%v' but received '%v'", string(errLowHostValidOutput), err)
+	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostValidOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostValidOutput), err)
 	}
 
-	// expect errHighRenterMissedOutput
+	// expect ErrHighRenterMissedOutput
 	badPayment = deepCopy(payment)
 	badPayment.SetMissedRenterPayout(payment.MissedRenterOutput().Value.Sub64(1))
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(errHighRenterMissedOutput)) {
-		t.Fatalf("Expected '%v' but received '%v'", string(errHighRenterMissedOutput), err)
+	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterMissedOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterMissedOutput), err)
 	}
 
-	// expect errLowHostMissedOutput
+	// expect ErrLowHostMissedOutput
 	badCurr = deepCopy(curr)
 	currOut := curr.MissedHostOutput()
 	currOut.Value = currOut.Value.Add64(1)
 	badCurr.NewMissedProofOutputs[1] = currOut
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(errLowHostMissedOutput)) {
-		t.Fatalf("Expected '%v' but received '%v'", string(errLowHostMissedOutput), err)
+	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostMissedOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostMissedOutput), err)
 	}
 
-	// expect errBadRevisionNumber
+	// expect ErrBadRevisionNumber
 	badPayment = deepCopy(payment)
 	badPayment.NewRevisionNumber -= 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadRevisionNumber {
-		t.Fatalf("Expected errBadRevisionNumber but received '%v'", err)
+	if err != ErrBadRevisionNumber {
+		t.Fatalf("Expected ErrBadRevisionNumber but received '%v'", err)
 	}
 
-	// expect errBadParentID
+	// expect ErrBadParentID
 	badPayment = deepCopy(payment)
 	badPayment.ParentID = types.FileContractID(hash)
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadParentID {
-		t.Fatalf("Expected errBadParentID but received '%v'", err)
+	if err != ErrBadParentID {
+		t.Fatalf("Expected ErrBadParentID but received '%v'", err)
 	}
 
-	// expect errBadUnlockConditions
+	// expect ErrBadUnlockConditions
 	badPayment = deepCopy(payment)
 	badPayment.UnlockConditions.Timelock = payment.UnlockConditions.Timelock + 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadUnlockConditions {
-		t.Fatalf("Expected errBadUnlockConditions but received '%v'", err)
+	if err != ErrBadUnlockConditions {
+		t.Fatalf("Expected ErrBadUnlockConditions but received '%v'", err)
 	}
 
-	// expect errBadFileSize
+	// expect ErrBadFileSize
 	badPayment = deepCopy(payment)
 	badPayment.NewFileSize = payment.NewFileSize + 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadFileSize {
-		t.Fatalf("Expected errBadFileSize but received '%v'", err)
+	if err != ErrBadFileSize {
+		t.Fatalf("Expected ErrBadFileSize but received '%v'", err)
 	}
 
-	// expect errBadFileMerkleRoot
+	// expect ErrBadFileMerkleRoot
 	badPayment = deepCopy(payment)
 	badPayment.NewFileMerkleRoot = hash
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadFileMerkleRoot {
-		t.Fatalf("Expected errBadFileMerkleRoot but received '%v'", err)
+	if err != ErrBadFileMerkleRoot {
+		t.Fatalf("Expected ErrBadFileMerkleRoot but received '%v'", err)
 	}
 
-	// expect errBadWindowStart
+	// expect ErrBadWindowStart
 	badPayment = deepCopy(payment)
 	badPayment.NewWindowStart = curr.NewWindowStart + 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadWindowStart {
-		t.Fatalf("Expected errBadWindowStart but received '%v'", err)
+	if err != ErrBadWindowStart {
+		t.Fatalf("Expected ErrBadWindowStart but received '%v'", err)
 	}
 
-	// expect errBadWindowEnd
+	// expect ErrBadWindowEnd
 	badPayment = deepCopy(payment)
 	badPayment.NewWindowEnd = curr.NewWindowEnd - 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadWindowEnd {
-		t.Fatalf("Expected errBadWindowEnd but received '%v'", err)
+	if err != ErrBadWindowEnd {
+		t.Fatalf("Expected ErrBadWindowEnd but received '%v'", err)
 	}
 
-	// expect errBadUnlockHash
+	// expect ErrBadUnlockHash
 	badPayment = deepCopy(payment)
 	badPayment.NewUnlockHash = types.UnlockHash(hash)
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != errBadUnlockHash {
-		t.Fatalf("Expected errBadUnlockHash but received '%v'", err)
+	if err != ErrBadUnlockHash {
+		t.Fatalf("Expected ErrBadUnlockHash but received '%v'", err)
 	}
 
-	// expect errLowHostMissedOutput
+	// expect ErrLowHostMissedOutput
 	badCurr = deepCopy(curr)
 	badCurr.SetMissedHostPayout(payment.MissedHostOutput().Value.Sub64(1))
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err != errLowHostMissedOutput {
-		t.Fatalf("Expected errLowHostMissedOutput but received '%v'", err)
+	if err != ErrLowHostMissedOutput {
+		t.Fatalf("Expected ErrLowHostMissedOutput but received '%v'", err)
 	}
 }
 
