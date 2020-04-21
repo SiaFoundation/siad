@@ -155,8 +155,8 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	// The next read should return io.EOF since the host closes the connection
 	// after the RPC is done.
 	err = modules.RPCRead(stream, &resp)
-	if !errors.Contains(err, io.EOF) {
-		return nil, nil, fmt.Errorf("expected %v but got %v", io.EOF, err)
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return nil, nil, err
 	}
 	return
 }
