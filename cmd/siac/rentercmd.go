@@ -2729,7 +2729,8 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
 }
 
-// skynetuploadcmd will upload a file or directory to Skynet.
+// skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
+// passed, it will fetch the skylinks without uploading.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
