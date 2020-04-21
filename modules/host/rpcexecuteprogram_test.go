@@ -493,8 +493,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(167424) // download
-	expectedUpload := uint64(362752)   // upload
+	expectedDownload := uint64(10220) // download
+	expectedUpload := uint64(18980)   // upload
 	downloadCost := rhp.latestPT.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := rhp.latestPT.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
