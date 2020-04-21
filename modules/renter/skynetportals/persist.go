@@ -252,8 +252,14 @@ func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortal, r
 		}
 	}
 
+	filepath := filepath.Join(sp.staticPersistDir, persistFile)
+	// Truncate the file to remove any corrupted data that may have been added.
+	err = os.Truncate(filepath, sp.persistLength)
+	if err != nil {
+		return err
+	}
 	// Open file
-	f, err := os.OpenFile(filepath.Join(sp.staticPersistDir, persistFile), os.O_RDWR, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}

@@ -176,8 +176,14 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 		}
 	}
 
+	filepath := filepath.Join(sb.staticPersistDir, persistFile)
+	// Truncate the file to remove any corrupted data that may have been added.
+	err := os.Truncate(filepath, sb.persistLength)
+	if err != nil {
+		return err
+	}
 	// Open file
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
