@@ -25,9 +25,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "failed to process payment")
 	}
 
-	// Add limit to the stream.
+	// Add limit to the stream. The readCost is the UploadBandwidthCost since
+	// reading from the stream means uploading from the host's perspective. That
+	// makes the writeCost the DownloadBandwidthCost.
 	budget := modules.NewBudget(pd.Amount())
-	bandwidthLimit := modules.NewBudgetLimit(budget, pt)
+	bandwidthLimit := modules.NewBudgetLimit(budget, pt.UploadBandwidthCost, pt.DownloadBandwidthCost)
 	err = stream.SetLimit(bandwidthLimit)
 	if err != nil {
 		return errors.AddContext(err, "failed to set budget limit on stream")

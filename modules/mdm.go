@@ -295,18 +295,20 @@ func (b *RPCBudget) Withdraw(c types.Currency) bool {
 // an RPCBudget to determine whether to allow for more bandwidth consumption or
 // not.
 type BudgetLimit struct {
-	budget *RPCBudget
-	pt     *RPCPriceTable
+	budget          *RPCBudget
+	staticReadCost  types.Currency
+	staticWriteCost types.Currency
 
 	atomicDownloaded uint64
 	atomicUploaded   uint64
 }
 
 // NewBudgetLimit creates a new limit from a budget and priceTable.
-func NewBudgetLimit(budget *RPCBudget, pt *RPCPriceTable) mux.BandwidthLimit {
+func NewBudgetLimit(budget *RPCBudget, readCost, writeCost types.Currency) mux.BandwidthLimit {
 	return &BudgetLimit{
-		budget: budget,
-		pt:     pt,
+		budget:          budget,
+		staticReadCost:  readCost,
+		staticWriteCost: writeCost,
 	}
 }
 
@@ -322,9 +324,9 @@ func (bl *BudgetLimit) Uploaded() uint64 {
 
 // RecordDownload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordDownload(bytes uint64) error {
-	cost := bl.pt.DownloadBandwidthCost.Mul64(bytes)
+	cost := bl.staticReadCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
-		return errors.AddContext(ErrInsufficientBandwidthBudget, "insufficient budget for download")
+		return ErrInsufficientBandwidthBudget
 	}
 	atomic.AddUint64(&bl.atomicDownloaded, bytes)
 	return nil
@@ -332,9 +334,9 @@ func (bl *BudgetLimit) RecordDownload(bytes uint64) error {
 
 // RecordUpload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordUpload(bytes uint64) error {
-	cost := bl.pt.UploadBandwidthCost.Mul64(bytes)
+	cost := bl.staticWriteCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
-		return errors.AddContext(ErrInsufficientBandwidthBudget, "insufficient budget for upload")
+		return ErrInsufficientBandwidthBudget
 	}
 	atomic.AddUint64(&bl.atomicUploaded, bytes)
 	return nil
