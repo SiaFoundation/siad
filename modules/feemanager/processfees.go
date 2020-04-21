@@ -37,6 +37,17 @@ func (fm *FeeManager) threadedProcessFees() {
 	// Get the current blockheight
 	bh := fm.common.staticCS.Height()
 
+	// Check if there are no fees, bump out the payout height if so.
+	fm.mu.Lock()
+	numFees := len(fm.fees)
+	fm.mu.Unlock()
+	if numFees == 0 {
+		fm.common.persist.mu.Lock()
+		fm.common.persist.nextPayoutHeight = bh + PayoutInterval
+		fm.common.persist.mu.Unlock()
+		fm.common.persist.syncCoordinator.managedSyncPersist()
+	}
+
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 	// If there are no fees, bump out the payoutHeight
