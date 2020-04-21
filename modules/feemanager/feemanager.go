@@ -247,7 +247,7 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 		PaymentCompleted: false,
 		PayoutHeight:     nextPayoutHeight + PayoutInterval, // Don't do this in the next payout, but the following.
 		Recurring:        recurring,
-		Timestamp:        time.Now(),
+		Timestamp:        time.Now().Unix(),
 		UID:              uniqueID(),
 	}
 

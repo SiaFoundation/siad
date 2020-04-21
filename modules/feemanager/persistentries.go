@@ -44,7 +44,7 @@ type (
 	// entryCancelFee is the persist entry that cancels a pending fee.
 	entryCancelFee struct {
 		FeeUID    modules.FeeUID
-		Timestamp time.Time
+		Timestamp int64
 	}
 )
 
@@ -78,7 +78,7 @@ func createCancelFeeEntry(feeUID modules.FeeUID) (ret [persistEntrySize]byte) {
 	// Create the cancel fee entry and marshal it.
 	ecf := entryCancelFee{
 		FeeUID:    feeUID,
-		Timestamp: time.Now(),
+		Timestamp: time.Now().Unix(),
 	}
 	payload := encoding.Marshal(ecf)
 

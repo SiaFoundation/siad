@@ -1,8 +1,6 @@
 package modules
 
 import (
-	"time"
-
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -45,7 +43,7 @@ type (
 		Recurring bool `json:"recurring"`
 
 		// Timestamp is the moment that the fee was requested.
-		Timestamp time.Time
+		Timestamp int64
 
 		// TransactionCreated indicates whether the transaction for this fee has
 		// been created and sent to the Sia network for processing.

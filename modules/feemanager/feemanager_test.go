@@ -43,6 +43,38 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Create a function to check this fee for expected values.
+	feeCheck := func(af modules.AppFee) {
+		if af.Address != uh {
+			t.Fatal("mismatch")
+		}
+		if !af.Amount.Equals(amount) {
+			t.Fatal("mismatch")
+		}
+		if af.AppUID != appuid {
+			t.Fatal("mismatch")
+		}
+		if af.PaymentCompleted {
+			t.Fatal("unexpected")
+		}
+		if af.PayoutHeight == 0 {
+			t.Fatal("payout height is too fast")
+		}
+		if af.Recurring != recurring {
+			t.Fatal("mismatch")
+		}
+		if af.Timestamp == (time.Time{}).Unix() {
+			t.Fatal("timestamp not set")
+		}
+		if af.TransactionCreated {
+			t.Fatal("unexpected")
+		}
+		if af.UID == "" {
+			t.Fatal("unset")
+		}
+	}
+
 	// Check that the fee is available from the fee manager.
 	pendingFees, err := fm.PendingFees()
 	if err != nil {
@@ -52,37 +84,50 @@ func TestFeeManagerBasic(t *testing.T) {
 		t.Fatal("there should be a pending fee")
 	}
 	pf := pendingFees[0]
-	if pf.Address != uh {
-		t.Fatal("mismatch")
-	}
-	if !pf.Amount.Equals(amount) {
-		t.Fatal("mismatch")
-	}
-	if pf.AppUID != appuid {
-		t.Fatal("mismatch")
-	}
-	if pf.PaymentCompleted {
-		t.Fatal("unexpected")
-	}
-	if pf.PayoutHeight == 0 {
-		t.Fatal("payout height is too fast")
-	}
-	if pf.Recurring != recurring {
-		t.Fatal("mismatch")
-	}
-	if pf.Timestamp.Unix() == (time.Time{}).Unix() {
-		t.Fatal("timestamp not set")
-	}
-	if pf.TransactionCreated {
-		t.Fatal("unexpected")
-	}
-	if pf.UID == "" {
-		t.Fatal("unset")
-	}
+	feeCheck(pf)
 
+	// Restart the fee manager.
 	err = fm.Close()
 	if err != nil {
 		t.Fatal(err)
+	}
+	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check the fee again, values should be identical to before.
+	pendingFees, err = fm.PendingFees()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pendingFees) != 1 {
+		t.Fatal("there should be a pending fee")
+	}
+	pf = pendingFees[0]
+	feeCheck(pf)
+
+	// Cancel the fee.
+	err = fm.CancelFee(pf.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pendingFees, err = fm.PendingFees()
+	if len(pendingFees) != 0 {
+		t.Fatal("fee not cancelled")
+	}
+	// Restart the fee manager.
+	err = fm.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that the fee remains cancelled after startup.
+	pendingFees, err = fm.PendingFees()
+	if len(pendingFees) != 0 {
+		t.Fatal("fee not cancelled")
 	}
 }
 
