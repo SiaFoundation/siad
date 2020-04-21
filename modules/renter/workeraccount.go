@@ -79,6 +79,8 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	// Seeing as withdrawals are a blocking action on the host, it is perfectly
 	// ok to trigger them from an account with insufficient balance.
 
+	// TODO (follow-up !4256) cover with test yet
+
 	// create a withdrawal message
 	msg := a.createWithdrawalMessage(amount, blockHeight+withdrawalValidityPeriod)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)

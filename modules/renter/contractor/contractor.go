@@ -256,7 +256,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	}
 
 	// send PayByContractRequest
-	err = modules.RPCWrite(stream, newPayBycontractRequest(rev, sig, refundAccount))
+	err = modules.RPCWrite(stream, createPayBycontractRequest(rev, sig, refundAccount))
 	if err != nil {
 		return err
 	}
