@@ -198,7 +198,7 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 
 // ProvidePayment fulfills the PaymentProvider interface. It uses the given
 // stream and necessary payment details to perform payment for an RPC call.
-func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error {
+func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	// find a contract for the given host
 	contract, exists := c.ContractByPublicKey(host)
 	if !exists {
@@ -246,7 +246,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	// send PaymentRequest & PayByContractRequest
 	req := modules.PaymentRequest{Type: modules.PayByContract}
 	var pbcr modules.PayByContractRequest
-	pbcr.FromArguments(rev, sig)
+	pbcr.FromArguments(rev, sig, refundAccount)
 	err = modules.RPCWriteAll(stream, req, pbcr)
 	if err != nil {
 		return err

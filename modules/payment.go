@@ -66,7 +66,7 @@ type PaymentProvider interface {
 	// ProvidePayment takes a stream and various payment details and handles the
 	// payment by sending and processing payment request and response objects.
 	// Returns an error in case of failure.
-	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error
+	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount AccountID, blockHeight types.BlockHeight) error
 }
 
 // PaymentDetails is an interface that defines method that give more information
@@ -152,7 +152,7 @@ type (
 
 // FromArguments is a helper function that takes a revision and a signature as
 // arguments and decorates their info on a PayByContractRequest object.
-func (pbcr *PayByContractRequest) FromArguments(rev types.FileContractRevision, sig crypto.Signature) {
+func (pbcr *PayByContractRequest) FromArguments(rev types.FileContractRevision, sig crypto.Signature, refundAccount AccountID) {
 	pbcr.ContractID = rev.ID()
 	pbcr.NewRevisionNumber = rev.NewRevisionNumber
 	pbcr.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
@@ -164,6 +164,7 @@ func (pbcr *PayByContractRequest) FromArguments(rev types.FileContractRevision, 
 		pbcr.NewMissedProofValues[i] = o.Value
 	}
 	pbcr.Signature = sig[:]
+	pbcr.RefundAccount = refundAccount
 }
 
 // FromSPK creates an AccountID from a SiaPublicKey. This assumes that the

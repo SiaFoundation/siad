@@ -118,12 +118,22 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 // used for testing host/renter interactions.
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, error) {
 	testdir := build.TempDir("contractor", name)
+
 	// create mux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
 	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, nil, nil, err
 	}
+
+	return newCustomTestingTrio(name, mux)
+}
+
+// newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
+// used for testing host/renter interactions. It allows to pass a custom siamux.
+func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contractor, modules.TestMiner, error) {
+	testdir := build.TempDir("contractor", name)
+
 	// create miner
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {

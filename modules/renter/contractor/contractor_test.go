@@ -1,15 +1,15 @@
 package contractor
 
 import (
+	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
@@ -452,8 +452,33 @@ func TestPayment(t *testing.T) {
 	}
 	t.Parallel()
 
+	// create a siamux
+	testdir := build.TempDir("contractor", t.Name())
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newStream := func() siamux.Stream {
+		stream, err := mux.NewStream(modules.HostSiaMuxSubscriberName, mux.Address().String(), mux.PublicKey())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stream
+	}
+
+	// create a refund account
+	_, pk := crypto.GenerateKeyPair()
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	var aid modules.AccountID
+	aid.FromSPK(spk)
+
 	// create a testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, _, err := newCustomTestingTrio(t.Name(), mux)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,108 +502,100 @@ func TestPayment(t *testing.T) {
 		t.Fatal("No contract with host")
 	}
 
-	// create two streams and verify the payment process
-	pay := func(payment types.Currency) (paid types.Currency, err error) {
-		rStream, hStream := NewTestStreams()
-		defer rStream.Close()
-		defer hStream.Close()
+	// create its crypto pubkey for later use
+	var hcpk crypto.PublicKey
+	copy(hcpk[:], hpk.Key[:])
 
-		var mu sync.Mutex
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			mu.Lock()
-			err = errors.Compose(err, c.ProvidePayment(rStream, hpk, types.Specifier{}, payment, 0))
-			mu.Unlock()
-		}()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			pDetails, pErr := h.ProcessPayment(hStream)
-			if pErr != nil {
-				modules.RPCWriteError(hStream, pErr)
-				return
-			}
-			mu.Lock()
-			paid = pDetails.Amount()
-			mu.Unlock()
-		}()
-		c := make(chan struct{})
-		go func() {
-			defer close(c)
-			wg.Wait()
-		}()
-		select {
-		case <-c:
-		case <-time.After(5 * time.Second):
-			mu.Lock()
-			err = errors.Compose(err, fmt.Errorf("Timed out"))
-			mu.Unlock()
-		}
-		return paid, err
-	}
-
-	// move half of the renter's funds to the host
+	// store how much money's in the contract
 	initial := contract.RenterFunds
-	paid, err := pay(initial.Div64(2))
+
+	// write the rpc id, we are using the update price table RPC
+	stream := newStream()
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
-		t.Fatal("Failed to provide payment", err)
+		t.Fatal(err)
 	}
 
-	// verify the host received the correct amount
-	if !paid.Equals(initial.Div64(2)) {
-		t.Fatalf("Expected host to have received half of the funds in the contract, instead it received %s", paid.HumanString())
+	// read the updated RPC price table
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// unmarshal the JSON into a price table
+	var pt modules.RPCPriceTable
+	err = json.Unmarshal(update.PriceTableJSON, &pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// provide payment
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, c.blockHeight)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// verify the contract was updated
-	expected := initial.Sub(initial.Div64(2))
+	expected := initial.Sub(pt.UpdatePriceTableCost)
 	contract, _ = c.ContractByPublicKey(hpk)
 	remaining := contract.RenterFunds
 	if !remaining.Equals(expected) {
 		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
 	}
 
-	// verify we can not spend more than what's in the contract
-	_, err = pay(remaining.Add64(1))
-	if !errors.Contains(err, errContractInsufficientFunds) {
-		t.Fatalf("Expected 'errContractInsufficientFunds', instead error was '%v'", err)
-	}
-
-	// verify we can spend what's left in the contract
-	paid, err = pay(remaining)
+	// write the rpc id
+	stream = newStream()
+	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
-		t.Fatal("Failed to provide payment", err)
+		t.Fatal(err)
 	}
 
-	// verify the host received the correct amount
-	if !paid.Equals(remaining) {
-		t.Fatalf("Expected host to have received half of the funds in the contract, instead it received %s", paid.HumanString())
+	// write the price table uid
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// verify the contract was updated
-	expected = types.ZeroCurrency
-	contract, _ = c.ContractByPublicKey(hpk)
-	remaining = contract.RenterFunds
-	if !remaining.Equals(expected) {
-		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
+	// send fund account request (re-use the refund account)
+	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: aid})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// verify the host's SO reflects the payments
-	var hso modules.StorageObligation
-	for _, so := range h.StorageObligations() {
-		if so.ObligationId == contract.ID {
-			hso = so
-			break
-		}
-	}
-	if hso.ObligationId != contract.ID {
-		t.Fatal("Expected storage obligation to be found on the host")
+	// provide payment
+	funding := remaining.Div64(2)
+	if funding.Cmp(h.InternalSettings().MaxEphemeralAccountBalance) > 0 {
+		funding = h.InternalSettings().MaxEphemeralAccountBalance
 	}
 
-	// TODO once we have updated the host to track potential revenue we can
-	// extend this test here to verify it
-	// hso.PotentialUnknownRevenue == amount transferred
+	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, c.blockHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// receive response
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the receipt
+	receipt := resp.Receipt
+	err = crypto.VerifyHash(crypto.HashAll(receipt), hcpk, resp.Signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Amount.Equals(funding) {
+		t.Fatalf("Unexpected funded amount in the receipt, expected %v but received %v", funding.HumanString(), receipt.Amount.HumanString())
+	}
+	if receipt.Account != aid {
+		t.Fatalf("Unexpected account id in the receipt, expected %v but received %v", aid, receipt.Account)
+	}
+	if !receipt.Host.Equals(hpk) {
+		t.Fatalf("Unexpected host pubkey in the receipt, expected %v but received %v", hpk, receipt.Host)
+	}
 }
 
 // TestLinkedContracts tests that the contractors maps are updated correctly
@@ -689,42 +706,4 @@ func TestLinkedContracts(t *testing.T) {
 		got:
 		%v`, c.OldContracts()[0].ID, c.Contracts()[0].ID, c.renewedTo)
 	}
-}
-
-// testStream is a helper struct that wraps a net.Conn and implements the
-// siamux.Stream interface.
-type testStream struct{ c net.Conn }
-
-// NewTestStreams returns two siamux.Stream mock objects.
-func NewTestStreams() (client siamux.Stream, server siamux.Stream) {
-	var cc, sc net.Conn
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		sc, _ = ln.Accept()
-		wg.Done()
-	}()
-	cc, _ = net.Dial("tcp", ln.Addr().String())
-	wg.Wait()
-
-	client = testStream{c: cc}
-	server = testStream{c: sc}
-	return
-}
-
-func (s testStream) Read(b []byte) (n int, err error)  { return s.c.Read(b) }
-func (s testStream) Write(b []byte) (n int, err error) { return s.c.Write(b) }
-func (s testStream) Close() error                      { return s.c.Close() }
-
-func (s testStream) LocalAddr() net.Addr            { panic("not implemented") }
-func (s testStream) RemoteAddr() net.Addr           { panic("not implemented") }
-func (s testStream) SetDeadline(t time.Time) error  { panic("not implemented") }
-func (s testStream) SetPriority(priority int) error { panic("not implemented") }
-
-func (s testStream) SetReadDeadline(t time.Time) error {
-	panic("not implemented")
-}
-func (s testStream) SetWriteDeadline(t time.Time) error {
-	panic("not implemented")
 }
