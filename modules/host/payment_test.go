@@ -296,8 +296,8 @@ func TestProcessParallelPayments(t *testing.T) {
 		threshold: int64(maxWithdrawalAmount),
 	}
 
-	// setup multiple renters and SOs
-	pairs := make([]*renterHostPair, runtime.NumCPU())
+	// create an arbitrary amount of renters that have a contract with the host
+	pairs := make([]*renterHostPair, 16)
 	for i := range pairs {
 		pair, err := newRenterHostPairCustomHostTester(ht)
 		if err != nil {
@@ -330,7 +330,10 @@ func TestProcessParallelPayments(t *testing.T) {
 		close(finished)
 	})
 
-	for range pairs {
+	// spin up a large amount of threads that use the renter-host pairs in
+	// parallel
+	totalThreads := 10 * runtime.NumCPU()
+	for thread := 0; thread < totalThreads; thread++ {
 		go func() {
 			// create two streams
 			rs, hs := NewTestStreams()
@@ -345,7 +348,7 @@ func TestProcessParallelPayments(t *testing.T) {
 				default:
 				}
 
-				// generate random pair and amount
+				// pick a random pair and generate a random withdrawal amount
 				rp := pairs[fastrand.Intn(len(pairs))]
 				rw := fastrand.Uint64n(maxWithdrawalAmount) + 1
 				ra := types.NewCurrency64(rw)
@@ -356,7 +359,7 @@ func TestProcessParallelPayments(t *testing.T) {
 					payByFC = true
 				}
 
-				// randomly pick a flow and run it
+				// run payment flow
 				var failed bool
 				var pd modules.PaymentDetails
 				var err error
