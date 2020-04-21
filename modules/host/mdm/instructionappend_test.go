@@ -12,7 +12,7 @@ import (
 
 // newAppendInstruction is a convenience method for creating a single
 // 'Append' instruction.
-func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
+func newAppendInstruction(merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
 	i := NewAppendInstruction(dataOffset, merkleProof)
 	cost, refund := modules.MDMAppendCost(pt)
 	collateral := modules.MDMAppendCollateral(pt)
@@ -22,7 +22,7 @@ func newAppendInstruction(merkleProof bool, dataOffset uint64, pt modules.RPCPri
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
-func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
+func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
 	initCost := modules.MDMInitCost(pt, uint64(len(sectorData)), 1)
 	i, cost, refund, collateral, memory, time := newAppendInstruction(merkleProof, 0, pt)
 	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
@@ -46,7 +46,8 @@ func TestInstructionAppend(t *testing.T) {
 	dataLen := uint64(len(programData))
 	// Execute it.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	budget := modules.NewBudget(cost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +72,10 @@ func TestInstructionAppend(t *testing.T) {
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
+		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
+		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
@@ -94,6 +99,10 @@ func TestInstructionAppend(t *testing.T) {
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
 	}
+	// Budget should be empty now.
+	if !budget.Remaining().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
+	}
 	// Check the storage obligation again.
 	if len(so.sectorMap) != 1 {
 		t.Fatalf("wrong sectorMap len %v != %v", len(so.sectorMap), 1)
@@ -114,7 +123,8 @@ func TestInstructionAppend(t *testing.T) {
 	dataLen = uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	budget = modules.NewBudget(cost)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +151,10 @@ func TestInstructionAppend(t *testing.T) {
 		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
+		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
+		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
 		}
@@ -163,6 +177,10 @@ func TestInstructionAppend(t *testing.T) {
 	// Finalize the program.
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
+	}
+	// Budget should be empty now.
+	if !budget.Remaining().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
 	}
 	// Check the storage obligation again.
 	if len(so.sectorMap) != 2 {

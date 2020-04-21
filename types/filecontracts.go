@@ -290,6 +290,11 @@ func (fcr FileContractRevision) MissedHostOutput() SiacoinOutput {
 	return fcr.NewMissedProofOutputs[1]
 }
 
+// MissedHostPayout gets the value of the host's missed proof output.
+func (fcr FileContractRevision) MissedHostPayout() Currency {
+	return fcr.MissedHostOutput().Value
+}
+
 // MissedVoidOutput gets the void's missed proof output.
 func (fcr FileContractRevision) MissedVoidOutput() (SiacoinOutput, error) {
 	if len(fcr.NewMissedProofOutputs) <= 2 {

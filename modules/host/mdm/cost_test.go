@@ -6,17 +6,18 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // newTestWriteStorePriceTable returns a custom price table for the cost tests.
-func newTestWriteStorePriceTable() modules.RPCPriceTable {
-	pt := modules.RPCPriceTable{}
+func newTestWriteStorePriceTable() *modules.RPCPriceTable {
+	pt := &modules.RPCPriceTable{}
 	pt.Expiry = time.Now().Add(time.Minute).Unix()
 	pt.WriteBaseCost = types.ZeroCurrency
 	pt.WriteLengthCost = types.ZeroCurrency
-	pt.WriteStoreCost = host.DefaultStoragePrice
+	pt.WriteStoreCost = modules.DefaultStoragePrice
+	pt.DownloadBandwidthCost = types.ZeroCurrency
+	pt.UploadBandwidthCost = types.ZeroCurrency
 	return pt
 }
 
@@ -50,7 +51,7 @@ func TestCostForAppendProgram(t *testing.T) {
 	}
 	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))
 
-	expectedCost := host.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
+	expectedCost := modules.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
 	if !aboutEquals(expectedCost, runningCost) {
 		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
 	}
@@ -72,7 +73,7 @@ func TestCostForAppendProgram(t *testing.T) {
 // appendTrueCost returns the true, production cost of an append. This is
 // necessary because in tests the sector size is only 4 KiB and the append cost
 // is misleading.
-func appendTrueCost(pt modules.RPCPriceTable) (types.Currency, types.Currency) {
+func appendTrueCost(pt *modules.RPCPriceTable) (types.Currency, types.Currency) {
 	writeCost := pt.WriteLengthCost.Mul64(modules.SectorSizeStandard).Add(pt.WriteBaseCost)
 	storeCost := pt.WriteStoreCost.Mul64(modules.SectorSizeStandard) // potential refund
 	return writeCost.Add(storeCost), storeCost
@@ -90,7 +91,7 @@ func TestCosts(t *testing.T) {
 	cost, refund := appendTrueCost(pt)
 	// Scale the cost from a single, production-sized sector up to a TB of data.
 	costPerTB := cost.Mul(sectorsPerTB)
-	expectedCostPerTB := host.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
+	expectedCostPerTB := modules.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
 	if !aboutEquals(costPerTB, expectedCostPerTB) {
 		t.Errorf("expected append cost %v, got %v", expectedCostPerTB.HumanString(), costPerTB.HumanString())
 	}

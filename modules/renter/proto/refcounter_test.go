@@ -26,9 +26,25 @@ import (
 
 // testWAL is the WAL instance we're going to use across this test. This would
 // typically come from the calling functions.
-var testWAL, _ = newTestWAL()
+var (
+	testWAL, _ = newTestWAL()
 
-const NO_TIMEOUT = -1
+	// errTimeoutOnLock is returned when we timeout on getting a lock
+	errTimeoutOnLock = errors.New("timeout while acquiring a lock ")
+)
+
+// StartUpdateWithTimeout acquires a lock, ensuring the caller is the only one currently
+//// allowed to perform updates on this refcounter file.
+func (rc *RefCounter) StartUpdateWithTimeout(timeout time.Duration) error {
+	if timeout < 0 {
+		rc.muUpdate.Lock()
+	} else {
+		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
+			return errTimeoutOnLock
+		}
+	}
+	return rc.managedStartUpdate()
+}
 
 // TestRefCounterCount tests that the Count method always returns the correct
 // counter value, either from disk or from in-mem storage.
@@ -92,7 +108,7 @@ func TestRefCounterAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
 	}
-	err = rc.StartUpdate(NO_TIMEOUT)
+	err = rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -152,7 +168,7 @@ func TestRefCounterCreateAndApplyTransaction(t *testing.T) {
 	// prepare a refcounter for the tests
 	numSec := 2 + fastrand.Uint64n(10)
 	rc := testPrepareRefCounter(numSec, t)
-	err := rc.StartUpdate(NO_TIMEOUT)
+	err := rc.StartUpdate()
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -219,7 +235,7 @@ func TestRefCounterDecrement(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(NO_TIMEOUT)
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -274,7 +290,7 @@ func TestRefCounterDelete(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(NO_TIMEOUT)
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -317,11 +333,11 @@ func TestRefCounterDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
 	}
-	err = rc.StartUpdate(NO_TIMEOUT)
+	err = rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 	// update both counters we intend to drop
 	secIdx1 := rc.numSectors - 1
 	secIdx2 := rc.numSectors - 2
@@ -394,7 +410,7 @@ func TestRefCounterIncrement(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(NO_TIMEOUT)
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -550,7 +566,7 @@ func TestRefCounterStartUpdate(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate(NO_TIMEOUT)
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -559,12 +575,12 @@ func TestRefCounterStartUpdate(t *testing.T) {
 	locked := make(chan error)
 	timeout := time.After(time.Second)
 	go func() {
-		locked <- rc.StartUpdate(500 * time.Millisecond)
+		locked <- rc.StartUpdateWithTimeout(500 * time.Millisecond)
 	}()
 	select {
 	case err = <-locked:
-		if !errors.Contains(err, ErrTimeoutOnLock) {
-			t.Fatal("Failed to timeout, expected ErrTimeoutOnLock, got:", err)
+		if !errors.Contains(err, errTimeoutOnLock) {
+			t.Fatal("Failed to timeout, expected errTimeoutOnLock, got:", err)
 		}
 	case <-timeout:
 		t.Fatal("Failed to timeout, missed the deadline.")
@@ -585,8 +601,8 @@ func TestRefCounterSwap(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	updates := make([]writeaheadlog.Update, 0)
-	err := rc.StartUpdate(NO_TIMEOUT)
+	var updates []writeaheadlog.Update
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -656,8 +672,8 @@ func TestRefCounterUpdateApplied(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	updates := make([]writeaheadlog.Update, 0)
-	err := rc.StartUpdate(NO_TIMEOUT)
+	var updates []writeaheadlog.Update
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -716,7 +732,7 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// start an update session
-	err := rc.StartUpdate(NO_TIMEOUT)
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -749,7 +765,7 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// make sure we cannot start an update session on a deleted counter
-	if err = rc.StartUpdate(NO_TIMEOUT); err != ErrUpdateAfterDelete {
+	if err = rc.StartUpdateWithTimeout(-1); err != ErrUpdateAfterDelete {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
 	}
 }
@@ -808,7 +824,7 @@ func TestRefCounterNumSectorsUnderflow(t *testing.T) {
 		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
 	}
 
-	err = rc.StartUpdate(NO_TIMEOUT)
+	err = rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to initiate an update session:", err)
 	}

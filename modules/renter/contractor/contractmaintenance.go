@@ -33,8 +33,9 @@ var (
 type (
 	// fileContractRenewal is an instruction to renew a file contract.
 	fileContractRenewal struct {
-		id     types.FileContractID
-		amount types.Currency
+		id         types.FileContractID
+		amount     types.Currency
+		hostPubKey types.SiaPublicKey
 	}
 )
 
@@ -100,6 +101,9 @@ func (c *Contractor) managedCheckForDuplicates() {
 			// TODO: Ideally these two things would happen atomically, but I'm
 			// not completely certain that's feasible with our current
 			// architecture.
+			//
+			// TODO: This should revert the in memory state in the event of an
+			// error and continue
 			err := c.save()
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
@@ -524,7 +528,7 @@ func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
-func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight) (modules.RenterContract, error) {
+func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
 	// For convenience
 	contract := sc.Metadata()
 	// Sanity check - should not be renewing a bad contract.
@@ -539,6 +543,21 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
 	}
+	// Use the most recent hostSettings, along with the host db entry.
+	host.HostExternalSettings = hostSettings
+
+	if c.staticDeps.Disrupt("DefaultRenewSettings") {
+		c.log.Debugln("Using default host settings")
+		host.HostExternalSettings = modules.DefaultHostExternalSettings()
+		// Reset some specific settings, not available through the default.
+		host.HostExternalSettings.NetAddress = hostSettings.NetAddress
+		host.HostExternalSettings.RemainingStorage = hostSettings.RemainingStorage
+		host.HostExternalSettings.TotalStorage = hostSettings.TotalStorage
+		host.HostExternalSettings.UnlockHash = hostSettings.UnlockHash
+		host.HostExternalSettings.RevisionNumber = hostSettings.RevisionNumber
+		host.HostExternalSettings.SiaMuxPort = hostSettings.SiaMuxPort
+	}
+
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
@@ -546,6 +565,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 	period := c.allowance.Period
 	c.mu.Unlock()
+
 	if !ok {
 		return modules.RenterContract{}, errors.New("no record of that host")
 	} else if host.Filtered {
@@ -643,6 +663,15 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Pull the variables out of the renewal.
 	id := renewInstructions.id
 	amount := renewInstructions.amount
+	hostPubKey := renewInstructions.hostPubKey
+
+	// Get a session with the host, before marking it as being renewed.
+	hs, err := c.Session(hostPubKey, c.tg.StopChan())
+	if err != nil {
+		err = errors.AddContext(err, "Unable to establish session with host")
+		return
+	}
+	s := hs.(*hostSession)
 
 	// Mark the contract as being renewed, and defer logic to unmark it
 	// once renewing is complete.
@@ -658,11 +687,11 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}()
 
 	// Wait for any active editors/downloaders/sessions to finish for this
-	// contract, and then grab the latest revision.
+	// contract, and then grab the latest host settings.
+	var hostSettings modules.HostExternalSettings
 	c.mu.RLock()
 	e, eok := c.editors[id]
 	d, dok := c.downloaders[id]
-	s, sok := c.sessions[id]
 	c.mu.RUnlock()
 	if eok {
 		c.log.Debugln("Waiting for editor invalidation")
@@ -674,11 +703,16 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		d.invalidate()
 		c.log.Debugln("Got downloader invalidation")
 	}
-	if sok {
-		c.log.Debugln("Waiting for session invalidation")
-		s.invalidate()
-		c.log.Debugln("Got session invalidation")
+
+	// Use the Settings RPC with the host and then invalidate the session.
+	hostSettings, err = s.Settings()
+	if err != nil {
+		err = errors.AddContext(err, "Unable to get host settings")
+		return
 	}
+	c.log.Debugln("Waiting for session invalidation")
+	s.invalidate()
+	c.log.Debugln("Got session invalidation")
 
 	// Fetch the contract that we are renewing.
 	c.log.Debugln("Acquiring contract from the contract set", id)
@@ -705,7 +739,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// row and reached its second half of the renew window, we give up
 	// on renewing it and set goodForRenew to false.
 	c.log.Debugln("calling managedRenew on contract", id)
-	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight)
+	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight, hostSettings)
 	c.log.Debugln("managedRenew has returned with error:", errRenew)
 	if errRenew != nil {
 		// Increment the number of failed renews for the contract if it
@@ -991,8 +1025,9 @@ func (c *Contractor) threadedContractMaintenance() {
 				continue
 			}
 			renewSet = append(renewSet, fileContractRenewal{
-				id:     contract.ID,
-				amount: renewAmount,
+				id:         contract.ID,
+				amount:     renewAmount,
+				hostPubKey: contract.HostPublicKey,
 			})
 			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
@@ -1024,8 +1059,9 @@ func (c *Contractor) threadedContractMaintenance() {
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
 			refreshSet = append(refreshSet, fileContractRenewal{
-				id:     contract.ID,
-				amount: contract.TotalCost.Mul64(2),
+				id:         contract.ID,
+				amount:     contract.TotalCost.Mul64(2),
+				hostPubKey: contract.HostPublicKey,
 			})
 			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {

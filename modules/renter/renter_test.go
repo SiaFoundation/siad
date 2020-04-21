@@ -42,9 +42,13 @@ type renterTester struct {
 
 // Close shuts down the renter tester.
 func (rt *renterTester) Close() error {
-	rt.wallet.Lock()
 	rt.cs.Close()
 	rt.gateway.Close()
+	rt.miner.Close()
+	rt.tpool.Close()
+	rt.wallet.Close()
+	rt.mux.Close()
+	rt.renter.Close()
 	return nil
 }
 

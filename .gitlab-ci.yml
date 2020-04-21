@@ -33,6 +33,7 @@ variables:
     ./modules/renter/hostdb/hosttree
     ./modules/renter/proto
     ./modules/renter/skynetblacklist
+    ./modules/renter/skynetportals
     ./modules/miner
     ./modules/wallet
     ./modules/transactionpool

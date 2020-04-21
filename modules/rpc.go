@@ -45,9 +45,16 @@ type RPCPriceTable struct {
 	// lock away as collateral when adding new data to a contract.
 	CollateralCost types.Currency `json:"collateralcost"`
 
+	// Cost values specific to the bandwidth consumption.
+	DownloadBandwidthCost types.Currency `json:"downloadbandwidthcost"`
+	UploadBandwidthCost   types.Currency `json:"uploadbandwidthcost"`
+
 	// Cost values specific to the DropSectors instruction.
 	DropSectorsBaseCost types.Currency `json:"dropsectorsbasecost"`
 	DropSectorsUnitCost types.Currency `json:"dropsectorsunitcost"`
+
+	// Cost values specific to the HasSector command.
+	HasSectorBaseCost types.Currency `json:"hassectorbasecost"`
 
 	// Cost values specific to the Read instruction.
 	ReadBaseCost   types.Currency `json:"readbasecost"`
@@ -62,6 +69,12 @@ type RPCPriceTable struct {
 var (
 	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
+
+	// RPCExecuteProgram specifier
+	RPCExecuteProgram = types.NewSpecifier("ExecuteProgram")
+
+	// RPCFundAccount specifier
+	RPCFundAccount = types.NewSpecifier("FundAccount")
 )
 
 type (
@@ -77,6 +90,30 @@ type (
 		Signature crypto.Signature
 	}
 
+	// RPCExecuteProgramRequest is the request sent by the renter to execute a
+	// program on the host's MDM.
+	RPCExecuteProgramRequest struct {
+		// FileContractID is the id of the filecontract we would like to modify.
+		FileContractID types.FileContractID
+		// Instructions to be executed as a program.
+		Program Program
+		// ProgramDataLength is the length of the programData following this
+		// request.
+		ProgramDataLength uint64
+	}
+
+	// RPCExecuteProgramResponse todo missing docstring
+	RPCExecuteProgramResponse struct {
+		AdditionalCollateral types.Currency
+		Output               []byte
+		NewMerkleRoot        crypto.Hash
+		NewSize              uint64
+		Proof                []crypto.Hash
+		Error                error
+		TotalCost            types.Currency
+		PotentialRefund      types.Currency
+	}
+
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
@@ -89,6 +126,42 @@ type (
 		data interface{}
 	}
 )
+
+// MarshalSia implements the SiaMarshaler interface.
+func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
+	var errStr string
+	if epr.Error != nil {
+		errStr = epr.Error.Error()
+	}
+	ec := encoding.NewEncoder(w)
+	_ = ec.Encode(epr.AdditionalCollateral)
+	_ = ec.Encode(epr.Output)
+	_ = ec.Encode(epr.NewMerkleRoot)
+	_ = ec.Encode(epr.NewSize)
+	_ = ec.Encode(epr.Proof)
+	_ = ec.Encode(errStr)
+	_ = ec.Encode(epr.TotalCost)
+	_ = ec.Encode(epr.PotentialRefund)
+	return ec.Err()
+}
+
+// UnmarshalSia implements the SiaMarshaler interface.
+func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
+	var errStr string
+	dc := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
+	_ = dc.Decode(&epr.AdditionalCollateral)
+	_ = dc.Decode(&epr.Output)
+	_ = dc.Decode(&epr.NewMerkleRoot)
+	_ = dc.Decode(&epr.NewSize)
+	_ = dc.Decode(&epr.Proof)
+	_ = dc.Decode(&errStr)
+	_ = dc.Decode(&epr.TotalCost)
+	_ = dc.Decode(&epr.PotentialRefund)
+	if errStr != "" {
+		epr.Error = errors.New(errStr)
+	}
+	return dc.Err()
+}
 
 // RPCRead tries to read the given object from the stream.
 func RPCRead(r io.Reader, obj interface{}) error {

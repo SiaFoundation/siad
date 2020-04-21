@@ -11,11 +11,19 @@ import (
 )
 
 var (
-	errBadMinerPayouts        = errors.New("miner payout sum does not equal block subsidy")
-	errEarlyTimestamp         = errors.New("block timestamp is too early")
-	errExtremeFutureTimestamp = errors.New("block timestamp too far in future, discarded")
-	errFutureTimestamp        = errors.New("block timestamp too far in future, but saved for later use")
-	errLargeBlock             = errors.New("block is too large to be accepted")
+	// ErrBadMinerPayouts is returned when the miner payout does not equal the
+	// block subsidy
+	ErrBadMinerPayouts = errors.New("miner payout sum does not equal block subsidy")
+	// ErrEarlyTimestamp is returned when the block's timestamp is too early
+	ErrEarlyTimestamp = errors.New("block timestamp is too early")
+	// ErrExtremeFutureTimestamp is returned when the block's timestamp is too
+	// far in the future
+	ErrExtremeFutureTimestamp = errors.New("block timestamp too far in future, discarded")
+	// ErrFutureTimestamp is returned when the block's timestamp is too far in
+	// the future to be used now but it's saved for future use
+	ErrFutureTimestamp = errors.New("block timestamp too far in future, but saved for later use")
+	// ErrLargeBlock is returned when the block is too large to be accepted
+	ErrLargeBlock = errors.New("block is too large to be accepted")
 )
 
 // blockValidator validates a Block against a set of block validity rules.
@@ -67,7 +75,7 @@ func checkTarget(b types.Block, id types.BlockID, target types.Target) bool {
 func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTimestamp types.Timestamp, target types.Target, height types.BlockHeight, log *persist.Logger) error {
 	// Check that the timestamp is not too far in the past to be acceptable.
 	if minTimestamp > b.Timestamp {
-		return errEarlyTimestamp
+		return ErrEarlyTimestamp
 	}
 
 	// Check that the nonce is a legal nonce.
@@ -82,7 +90,7 @@ func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTi
 	// Check that the block is below the size limit.
 	blockSize := len(bv.marshaler.Marshal(b))
 	if uint64(blockSize) > types.BlockSizeLimit {
-		return errLargeBlock
+		return ErrLargeBlock
 	}
 
 	// Check if the block is in the extreme future. We make a distinction between
@@ -90,19 +98,19 @@ func (bv stdBlockValidator) ValidateBlock(b types.Block, id types.BlockID, minTi
 	// the extreme future arrives, this block will no longer be a part of the
 	// longest fork because it will have been ignored by all of the miners.
 	if b.Timestamp > bv.clock.Now()+types.ExtremeFutureThreshold {
-		return errExtremeFutureTimestamp
+		return ErrExtremeFutureTimestamp
 	}
 
 	// Verify that the miner payouts are valid.
 	if !checkMinerPayouts(b, height) {
-		return errBadMinerPayouts
+		return ErrBadMinerPayouts
 	}
 
 	// Check if the block is in the near future, but too far to be acceptable.
 	// This is the last check because it's an expensive check, and not worth
 	// performing if the payouts are incorrect.
 	if b.Timestamp > bv.clock.Now()+types.FutureThreshold {
-		return errFutureTimestamp
+		return ErrFutureTimestamp
 	}
 
 	if log != nil {

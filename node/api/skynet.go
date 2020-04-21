@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -62,6 +63,19 @@ type (
 		Remove []string `json:"remove"`
 	}
 
+	// SkynetPortalsGET contains the information queried for the /skynet/portals
+	// GET endpoint.
+	SkynetPortalsGET struct {
+		Portals []modules.SkynetPortal `json:"portals"`
+	}
+
+	// SkynetPortalsPOST contains the information needed for the /skynet/portals
+	// POST endpoint to be called.
+	SkynetPortalsPOST struct {
+		Add    []modules.SkynetPortal `json:"add"`
+		Remove []modules.NetAddress   `json:"remove"`
+	}
+
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
@@ -87,8 +101,8 @@ type (
 	}
 )
 
-// skynetBlacklistHandlerGET handles the API call to get the list of
-// blacklisted skylinks
+// skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
+// skylinks.
 func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the Blacklist
 	blacklist, err := api.renter.Blacklist()
@@ -102,7 +116,7 @@ func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request
 	})
 }
 
-// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
+// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks.
 func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
 	var params SkynetBlacklistPOST
@@ -143,7 +157,48 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	// Update the Skynet Blacklist
 	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
 	if err != nil {
-		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
+// skynetPortalsHandlerGET handles the API call to get the list of known skynet
+// portals.
+func (api *API) skynetPortalsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the list of portals.
+	portals, err := api.renter.Portals()
+	if err != nil {
+		WriteError(w, Error{"unable to get the portals list: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetPortalsGET{
+		Portals: portals,
+	})
+}
+
+// skynetPortalsHandlerPOST handles the API call to add and remove portals from
+// the list of known skynet portals.
+func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters.
+	var params SkynetPortalsPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Update the list of known skynet portals.
+	err = api.renter.UpdateSkynetPortals(params.Add, params.Remove)
+	if err != nil {
+		// If validation fails, return a bad request status.
+		errStatus := http.StatusInternalServerError
+		if strings.Contains(err.Error(), skynetportals.ErrSkynetPortalsValidation.Error()) {
+			errStatus = http.StatusBadRequest
+		}
+		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, errStatus)
 		return
 	}
 
@@ -568,10 +623,16 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	// Check for a convertpath input
+	convertPathStr := queryForm.Get("convertpath")
+	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
+		WriteError(w, Error{fmt.Sprintf("cannot set both a convertpath and a filename")}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
-	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
 		// Ensure we have a filename
 		if lup.FileMetadata.Filename == "" {

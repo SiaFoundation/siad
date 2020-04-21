@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestAddUnigueBubblePaths probes the addUniqueBubblePaths function
-func TestAddUniqueBubblePaths(t *testing.T) {
+// TestAddUniqueRefreshPaths probes the addUniqueRefreshPaths function
+func TestAddUniqueRefreshPaths(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -26,6 +26,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create some directory tree paths
 	paths := []modules.SiaPath{
@@ -123,6 +124,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		t.Log("Directory Info", di)
 		t.Fatal(err)
 	}
 }

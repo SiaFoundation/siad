@@ -65,8 +65,9 @@ var (
 	// sectorsize.
 	ErrMetadataTooBig = errors.New("metadata exceeds sectorsize")
 
-	// ErrRedundancyNotSupported is the error returned while Skynet only
-	// supports 1-N redundancy
+	// ErrRedundancyNotSupported is the error returned when trying to convert a
+	// Siafile that was uploaded with redundancy that is not currently supported
+	// by Skynet
 	ErrRedundancyNotSupported = errors.New("skylinks currently only support 1-of-N redundancy, other redundancies will be supported in a later version")
 
 	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
@@ -431,6 +432,26 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 	}
 	defer r.tg.Done()
 	return r.staticSkynetBlacklist.UpdateSkynetBlacklist(additions, removals)
+}
+
+// Portals returns the list of known skynet portals.
+func (r *Renter) Portals() ([]modules.SkynetPortal, error) {
+	err := r.tg.Add()
+	if err != nil {
+		return []modules.SkynetPortal{}, err
+	}
+	defer r.tg.Done()
+	return r.staticSkynetPortals.Portals(), nil
+}
+
+// UpdateSkynetPortals updates the list of known Skynet portals that are listed.
+func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
+	err := r.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkynetPortals.UpdateSkynetPortals(additions, removals)
 }
 
 // uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If

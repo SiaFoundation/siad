@@ -3,6 +3,7 @@ package modules
 import (
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -38,6 +39,105 @@ var (
 		Header:  "Sia Host",
 		Version: "1.4.3",
 	}
+)
+
+const (
+	// DefaultMaxDuration defines the maximum number of blocks into the future
+	// that the host will accept for the duration of an incoming file contract
+	// obligation. 6 months is chosen because hosts are expected to be
+	// long-term entities, and because we want to have a set of hosts that
+	// support 6 month contracts when Sia leaves beta.
+	DefaultMaxDuration = 144 * 30 * 6 // 6 months.
+
+)
+
+var (
+	// DefaultMaxDownloadBatchSize defines the maximum number of bytes that the
+	// host will allow to be requested by a single download request. 17 MiB has
+	// been chosen because it's 4 full sectors plus some wiggle room. 17 MiB is
+	// a conservative default, most hosts will be fine with a number like 65
+	// MiB.
+	DefaultMaxDownloadBatchSize = 17 * (1 << 20)
+
+	// DefaultMaxReviseBatchSize defines the maximum number of bytes that the
+	// host will allow to be sent during a single batch update in a revision
+	// RPC. 17 MiB has been chosen because it's four full sectors, plus some
+	// wiggle room for the extra data or a few delete operations. The whole
+	// batch will be held in memory, so the batch size should only be increased
+	// substantially if the host has a lot of memory. Additionally, the whole
+	// batch is sent in one network connection. Additionally, the renter can
+	// steal funds for upload bandwidth all the way out to the size of a batch.
+	// 17 MiB is a conservative default, most hosts are likely to be just fine
+	// with a number like 65 MiB.
+	DefaultMaxReviseBatchSize = 17 * (1 << 20)
+
+	// DefaultWindowSize is the size of the proof of storage window requested
+	// by the host. The host will not delete any obligations until the window
+	// has closed and buried under several confirmations. For release builds,
+	// the default is set to 144 blocks, or about 1 day. This gives the host
+	// flexibility to experience downtime without losing file contracts. The
+	// optimal default, especially as the network matures, is probably closer
+	// to 36 blocks. An experienced or high powered host should not be
+	// frustrated by lost coins due to long periods of downtime.
+	DefaultWindowSize = build.Select(build.Var{
+		Dev:      types.BlockHeight(36),  // 3.6 minutes.
+		Standard: types.BlockHeight(144), // 1 day.
+		Testing:  types.BlockHeight(5),   // 5 seconds.
+	}).(types.BlockHeight)
+
+	// DefaultBaseRPCPrice is the default price of talking to the host. It is
+	// roughly equal to the default bandwidth cost of exchanging a pair of
+	// 4096-byte messages.
+	DefaultBaseRPCPrice = types.SiacoinPrecision.Mul64(100).Div64(1e9) // 100 nS
+
+	// DefaultCollateral defines the amount of money that the host puts up as
+	// collateral per-byte by default. The collateral should be considered as
+	// an absolute instead of as a percentage, because low prices result in
+	// collaterals which may be significant by percentage, but insignificant
+	// overall. A default of 25 KS / TB / Month has been chosen, which is 2.5x
+	// the default price for storage. The host is expected to put up a
+	// significant amount of collateral as a commitment to faithfulness,
+	// because this guarantees that the incentives are aligned for the host to
+	// keep the data even if the price of siacoin fluctuates, the price of raw
+	// storage fluctuates, or the host realizes that there is unexpected
+	// opportunity cost in being a host.
+	DefaultCollateral = types.SiacoinPrecision.Mul64(100).Div(BlockBytesPerMonthTerabyte) // 100 SC / TB / Month
+
+	// DefaultMaxCollateral defines the maximum amount of collateral that the
+	// host is comfortable putting into a single file contract. 10e3 is a
+	// relatively small file contract, but millions of siacoins could be locked
+	// away by only a few hundred file contracts. As the ecosystem matures, it
+	// is expected that the safe default for this value will increase quite a
+	// bit.
+	DefaultMaxCollateral = types.SiacoinPrecision.Mul64(5e3)
+
+	// DefaultContractPrice defines the default price of creating a contract
+	// with the host. The current default is 0.1. This was chosen since it is
+	// the minimum fee estimation of the transactionpool for a filecontract
+	// transaction.
+	DefaultContractPrice = types.SiacoinPrecision.Div64(100).Div64(1e3).Mul64(EstimatedFileContractRevisionAndProofTransactionSetSize)
+
+	// DefaultDownloadBandwidthPrice defines the default price of upload
+	// bandwidth. The default is set to 10 siacoins per gigabyte, because
+	// download bandwidth is expected to be plentiful but also in-demand.
+	DefaultDownloadBandwidthPrice = types.SiacoinPrecision.Mul64(25).Div(BytesPerTerabyte) // 25 SC / TB
+
+	// DefaultSectorAccessPrice defines the default price of a sector access. It
+	// is roughly equal to the cost of downloading 64 KiB.
+	DefaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
+
+	// DefaultStoragePrice defines the starting price for hosts selling
+	// storage. We try to match a number that is both reasonably profitable and
+	// reasonably competitive.
+	DefaultStoragePrice = types.SiacoinPrecision.Mul64(50).Div(BlockBytesPerMonthTerabyte) // 50 SC / TB / Month
+
+	// DefaultUploadBandwidthPrice defines the default price of upload
+	// bandwidth. The default is set to 1 siacoin per GB, because the host is
+	// presumed to have a large amount of downstream bandwidth. Furthermore,
+	// the host is typically only downloading data if it is planning to store
+	// the data, meaning that the host serves to profit from accepting the
+	// data.
+	DefaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(BytesPerTerabyte) // 1 SC / TB
 )
 
 var (
@@ -363,4 +463,29 @@ func (his HostInternalSettings) MaxBaseRPCPrice() types.Currency {
 // based on the MinDownloadBandwidthPrice
 func (his HostInternalSettings) MaxSectorAccessPrice() types.Currency {
 	return his.MinDownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
+}
+
+// DefaultHostExternalSettings returns HostExternalSettings with certain default
+// fields set. NetAddress, RemainingStorage, TotalStorage, UnlockHash, RevisionNumber and SiaMuxPort are not set.
+func DefaultHostExternalSettings() HostExternalSettings {
+	return HostExternalSettings{
+		AcceptingContracts:   true,
+		MaxDownloadBatchSize: uint64(DefaultMaxDownloadBatchSize),
+		MaxDuration:          DefaultMaxDuration,
+		MaxReviseBatchSize:   uint64(DefaultMaxReviseBatchSize),
+		SectorSize:           SectorSize,
+		WindowSize:           DefaultWindowSize,
+
+		Collateral:    DefaultCollateral,
+		MaxCollateral: DefaultMaxCollateral,
+
+		BaseRPCPrice:           DefaultBaseRPCPrice,
+		ContractPrice:          DefaultContractPrice,
+		DownloadBandwidthPrice: DefaultDownloadBandwidthPrice,
+		SectorAccessPrice:      DefaultSectorAccessPrice,
+		StoragePrice:           DefaultStoragePrice,
+		UploadBandwidthPrice:   DefaultUploadBandwidthPrice,
+
+		Version: build.Version,
+	}
 }
