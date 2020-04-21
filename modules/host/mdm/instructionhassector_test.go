@@ -39,16 +39,17 @@ func TestInstructionHasSector(t *testing.T) {
 	mdm := New(host)
 	defer mdm.Stop()
 
-	// Add a random sector to the host.
-	sectorRoot := randomSector()
+	// Create a program to check for a sector on the host.
+	so := newTestStorageObligation(true)
+	so.sectorRoots = randomSectorRoots(1)
+
+	// Add sector to the host.
+	sectorRoot := so.sectorRoots[0]
 	_, err := host.ReadSector(sectorRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Create a program to check for a sector on the host.
-	so := newTestStorageObligation(true)
-	so.sectorRoots = randomSectorRoots(1)
-	sectorRoot = so.sectorRoots[0]
+
 	pt := newTestPriceTable()
 	instructions, programData, cost, refund, collateral, _ := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
