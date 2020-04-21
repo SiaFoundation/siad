@@ -135,20 +135,24 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 		if err != nil {
 			return nil, nil, err
 		}
+
 		// Append response to resps.
 		resps = append(resps, resp)
+
+		// Read the output data.
+		output := make([]byte, resp.OutputLength, resp.OutputLength)
+		_, err = io.ReadFull(stream, output)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Append response to resps.
+		outputs = append(outputs, output)
+
 		// If the response contains an error we are done.
 		if resp.Error != nil {
 			return
 		}
-		// Read the output data.
-		output := make([]byte, resp.OutputLength, resp.OutputLength)
-		_, err = stream.Read(output)
-		if err != nil {
-			return nil, nil, err
-		}
-		// Append response to resps.
-		outputs = append(outputs, output)
 	}
 
 	// The next read should return io.EOF since the host closes the connection
@@ -290,12 +294,12 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
-
 	// modify the host's storage obligation to add the sector
 	so, err := ht.host.managedGetStorageObligation(rhp.fcid)
 	if err != nil {
 		t.Fatal(err)
 	}
+	so.SectorRoots = append(so.SectorRoots, sectorRoot)
 	ht.host.managedLockStorageObligation(rhp.fcid)
 	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
@@ -303,8 +307,11 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}
 	ht.host.managedUnlockStorageObligation(rhp.fcid)
 
+	offset := uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
+	length := uint64(crypto.SegmentSize)
+
 	// create the 'ReadSector' program.
-	program, data, cost, refund, collateral, memory := newReadSectorProgram(modules.SectorSize/2, modules.SectorSize/2, sectorRoot, rhp.latestPT)
+	program, data, cost, refund, collateral, memory := newReadSectorProgram(length, offset, sectorRoot, rhp.latestPT)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -349,9 +356,6 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if resp.NewMerkleRoot != sos.staticMerkleRoot {
 		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
 	}
-	if len(resp.Proof) != 1 {
-		t.Fatalf("expected proof length to be %v but was %v", 1, len(resp.Proof))
-	}
 	if !resp.TotalCost.Equals(cost.Sub(modules.MDMMemoryCost(rhp.latestPT, memory, modules.MDMTimeCommit))) {
 		t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", resp.TotalCost.HumanString(), cost.HumanString())
 	}
@@ -361,15 +365,17 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if !resp.PotentialRefund.Equals(refund) {
 		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
-	if uint64(len(output)) != modules.SectorSize/2 {
-		t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize/2, len(output))
+	if uint64(len(output)) != length {
+		t.Fatalf("expected returned data to have length %v but was %v", length, len(output))
 	}
-	if !bytes.Equal(sectorData[modules.SectorSize/2:], output) {
+
+	if !bytes.Equal(sectorData[offset:offset+length], output) {
 		t.Fatal("Unexpected data")
 	}
+
 	// verify the proof
-	proofStart := int(modules.SectorSize/2) / crypto.SegmentSize
-	proofEnd := int(modules.SectorSize) / crypto.SegmentSize
+	proofStart := int(offset) / crypto.SegmentSize
+	proofEnd := int(offset+length) / crypto.SegmentSize
 	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
 	if !reflect.DeepEqual(proof, resp.Proof) {
 		t.Fatal("proof doesn't match expected proof")
