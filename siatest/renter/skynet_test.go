@@ -547,23 +547,18 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// Upload a siafile that will then be converted to a skyfile. The siafile
-	// needs at least 2 sectors.
+	// Upload a siafile that will then be converted to a skyfile.
 	//
 	// Set 2 as the datapieces to check for N-of-M redundancy conversions
-	filesize := int(modules.SectorSize*2) + siatest.Fuzz()
+	filesize := int(modules.SectorSize) + siatest.Fuzz()
 	localFile, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create Skyfile Upload Parameters
-	skyFilePath, err := modules.NewSiaPath("newskyfile")
-	if err != nil {
-		t.Fatal(err)
-	}
 	sup := modules.SkyfileUploadParameters{
-		SiaPath: skyFilePath,
+		SiaPath: modules.RandomSiaPath(),
 	}
 
 	// Try and convert to a Skyfile, this should fail due to the the original
