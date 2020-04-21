@@ -251,6 +251,22 @@ func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
 	return ps.managedAppendEntry(entry)
 }
 
+// newPersist is called if there is no existing persist file.
+func (fm *FeeManager) newPersist(filename string) error {
+	fh, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "unable to create persist file for fee manager")
+	}
+	fm.common.persist.persistFile = fh
+	fm.common.staticTG.OnStop(func() error {
+		return fm.common.persist.persistFile.Close()
+	})
+
+	// Set the offset and save the header.
+	fm.common.persist.latestOffset = persistHeaderSize
+	return fm.common.persist.syncCoordinator.managedSyncPersist()
+}
+
 // callInitPersist handles all of the persistence initialization, such as
 // creating the persistence directory and starting the logger
 func (fm *FeeManager) callInitPersist() error {
@@ -262,8 +278,7 @@ func (fm *FeeManager) callInitPersist() error {
 		return errors.AddContext(err, "unable to stat persist file")
 	}
 	if os.IsNotExist(err) {
-		// TODO: Implement a function to create a brand new fee manager.
-		return nil
+		return errors.AddContext(fm.newPersist(filename), "unable to create a new persist setup for the fee manager")
 	}
 
 	// Open the fee manager file handle.
