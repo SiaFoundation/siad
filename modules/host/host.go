@@ -712,7 +712,7 @@ func (h *Host) BlockHeight() types.BlockHeight {
 	return h.blockHeight
 }
 
-// managedExternalSettings returns the hosts external settings. These values
+// managedExternalSettings returns the host's external settings. These values
 // cannot be set by the user (host is configured through InternalSettings), and
 // are the values that get displayed to other hosts on the network.
 func (h *Host) managedExternalSettings() modules.HostExternalSettings {
