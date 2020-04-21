@@ -17,8 +17,6 @@ const (
 
 	// persistEntryPayloadSize is the size of a persist entry minus the size of
 	// a types.Specifier.
-	//
-	// TODO: Write a test to ensure this invariant is correct.
 	persistEntryPayloadSize = 240
 )
 
