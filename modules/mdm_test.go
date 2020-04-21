@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBudget tests the RPCBudget helper type.
@@ -63,5 +64,88 @@ func TestRPCBudget(t *testing.T) {
 				t.Errorf("%v/%v: expected %v got %v", i, j, budget.Remaining(), remaining)
 			}
 		}
+	}
+}
+
+// TestBudgetLimit tests the BudgetLimit.
+func TestBudgetLimit(t *testing.T) {
+	initialBudget := uint64(100)
+	readCost := uint64(1)
+	writeCost := uint64(2)
+
+	// Read full budget
+	budget := NewBudget(types.NewCurrency64(initialBudget))
+	limit := NewBudgetLimit(budget, types.NewCurrency64(readCost), types.NewCurrency64(writeCost))
+	err := limit.RecordDownload(initialBudget / readCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit.Downloaded() != initialBudget/readCost {
+		t.Fatalf("expected %v but got %v", initialBudget/readCost, limit.Downloaded())
+	}
+
+	// Write full budget
+	budget = NewBudget(types.NewCurrency64(initialBudget))
+	limit = NewBudgetLimit(budget, types.NewCurrency64(readCost), types.NewCurrency64(writeCost))
+	err = limit.RecordUpload(initialBudget / writeCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit.Uploaded() != initialBudget/writeCost {
+		t.Fatalf("expected %v but got %v", initialBudget/writeCost, limit.Uploaded())
+	}
+
+	// Do it half half.
+	budget = NewBudget(types.NewCurrency64(initialBudget))
+	limit = NewBudgetLimit(budget, types.NewCurrency64(readCost), types.NewCurrency64(writeCost))
+	err = limit.RecordUpload(initialBudget / writeCost / 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = limit.RecordDownload(initialBudget / readCost / 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit.Downloaded() != initialBudget/readCost/2 {
+		t.Fatalf("expected %v but got %v", initialBudget/readCost/2, limit.Downloaded())
+	}
+	if limit.Uploaded() != initialBudget/writeCost/2 {
+		t.Fatalf("expected %v but got %v", initialBudget/writeCost/2, limit.Uploaded())
+	}
+
+	// Enough budget for read but not write.
+	budget = NewBudget(types.NewCurrency64(readCost))
+	limit = NewBudgetLimit(budget, types.NewCurrency64(readCost), types.NewCurrency64(writeCost))
+	err = limit.RecordUpload(1)
+	if !errors.Contains(err, ErrInsufficientBandwidthBudget) {
+		t.Fatal("expected error but got", err)
+	}
+	err = limit.RecordDownload(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit.Downloaded() != 1 {
+		t.Fatalf("expected %v but got %v", 1, limit.Downloaded())
+	}
+	if limit.Uploaded() != 0 {
+		t.Fatalf("expected %v but got %v", 0, limit.Uploaded())
+	}
+
+	// Enough budget for write but not read.
+	budget = NewBudget(types.NewCurrency64(readCost))
+	limit = NewBudgetLimit(budget, types.NewCurrency64(writeCost), types.NewCurrency64(readCost))
+	err = limit.RecordDownload(1)
+	if !errors.Contains(err, ErrInsufficientBandwidthBudget) {
+		t.Fatal("expected error but got", err)
+	}
+	err = limit.RecordUpload(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit.Downloaded() != 0 {
+		t.Fatalf("expected %v but got %v", 0, limit.Downloaded())
+	}
+	if limit.Uploaded() != 1 {
+		t.Fatalf("expected %v but got %v", 1, limit.Uploaded())
 	}
 }
