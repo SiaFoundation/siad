@@ -58,15 +58,11 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	stream := rhp.newStream()
 	defer stream.Close()
 
-	// Set a limit to track bandwidth.
-	limit = &mux.NoLimit{}
-	err := stream.SetLimit(limit)
-	if err != nil {
-		return nil, limit, err
-	}
+	// Get the limit to track bandwidth.
+	limit = stream.Limit()
 
 	// Write the specifier.
-	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	err := modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
 		return nil, limit, err
 	}

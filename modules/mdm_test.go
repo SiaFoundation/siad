@@ -69,6 +69,8 @@ func TestRPCBudget(t *testing.T) {
 
 // TestBudgetLimit tests the BudgetLimit.
 func TestBudgetLimit(t *testing.T) {
+	t.Parallel()
+
 	initialBudget := uint64(100)
 	readCost := uint64(1)
 	writeCost := uint64(2)
