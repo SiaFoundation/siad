@@ -33,7 +33,6 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *mod
 	i, cost, refund, collateral, memory, time := newReadSectorInstruction(length, true, 0, pt)
 	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
 	instructions := []modules.Instruction{i}
-	cost = cost.Add(modules.MDMMemoryCost(pt, memory, modules.MDMTimeCommit))
 	return instructions, data, cost, refund, collateral, memory
 }
 
@@ -50,13 +49,14 @@ func TestInstructionReadSector(t *testing.T) {
 	// Execute it.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
-	instructions, programData, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
+	instructions, programData, cost, refund, collateral, _ := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
 	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
+	budget := modules.NewBudget(cost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +79,12 @@ func TestInstructionReadSector(t *testing.T) {
 		if uint64(len(output.Output)) != modules.SectorSize {
 			t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
+		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
 		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
@@ -101,11 +105,12 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, programData, cost, refund, collateral, usedMemory = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
+	instructions, programData, cost, refund, collateral, _ = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
 	r = bytes.NewReader(programData)
 	dataLen = uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
+	budget = modules.NewBudget(cost)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,8 +135,12 @@ func TestInstructionReadSector(t *testing.T) {
 		if !bytes.Equal(output.Output, sectorData[modules.SectorSize/2:]) {
 			t.Fatal("output should match the second half of the sector data")
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(modules.MDMMemoryCost(pt, usedMemory, modules.MDMTimeCommit))) {
+		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
 		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())

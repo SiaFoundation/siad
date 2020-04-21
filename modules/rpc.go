@@ -45,6 +45,10 @@ type RPCPriceTable struct {
 	// lock away as collateral when adding new data to a contract.
 	CollateralCost types.Currency `json:"collateralcost"`
 
+	// Cost values specific to the bandwidth consumption.
+	DownloadBandwidthCost types.Currency `json:"downloadbandwidthcost"`
+	UploadBandwidthCost   types.Currency `json:"uploadbandwidthcost"`
+
 	// Cost values specific to the DropSectors instruction.
 	DropSectorsBaseCost types.Currency `json:"dropsectorsbasecost"`
 	DropSectorsUnitCost types.Currency `json:"dropsectorsunitcost"`

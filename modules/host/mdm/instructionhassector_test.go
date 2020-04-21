@@ -54,7 +54,8 @@ func TestInstructionHasSector(t *testing.T) {
 	instructions, programData, cost, refund, collateral, _ := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	budget := modules.NewBudget(cost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +80,10 @@ func TestInstructionHasSector(t *testing.T) {
 		}
 		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
 		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())

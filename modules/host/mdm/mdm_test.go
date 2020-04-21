@@ -121,6 +121,10 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),
+
+		// Bandwidth costs
+		DownloadBandwidthCost: types.NewCurrency64(1),
+		UploadBandwidthCost:   types.NewCurrency64(1),
 	}
 }
 
