@@ -602,9 +602,9 @@ func (c *Contractor) managedSynced() bool {
 	return false
 }
 
-// newPayBycontractRequest is a helper function that takes a revision, signature
-// and refund account and creates a PayByContractRequest object.
-func newPayBycontractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
+// createPayBycontractRequest is a helper function that takes a revision,
+// signature and refund account and creates a PayByContractRequest object.
+func createPayBycontractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
 	req := modules.PayByContractRequest{
 		ContractID:           rev.ID(),
 		NewRevisionNumber:    rev.NewRevisionNumber,

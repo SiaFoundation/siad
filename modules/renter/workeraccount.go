@@ -76,37 +76,39 @@ func (a *account) AvailableBalance() types.Currency {
 // Returns an error in case of failure.
 func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, blockHeight types.BlockHeight) error {
 	// NOTE: we purposefully do not verify if the account has sufficient funds.
-	// Seeing as spends are a blocking action on the host, it is perfectly ok to
-	// trigger spends from an account with insufficient balance. If it is
-	// succeeded by a fund in due time, the RPCs will successfully execute as
-	// soon as funds are available.
+	// Seeing as withdrawals are a blocking action on the host, it is perfectly
+	// ok to trigger them from an account with insufficient balance.
 
 	// create a withdrawal message
 	msg := a.createWithdrawalMessage(amount, blockHeight+withdrawalValidityPeriod)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
-	// send PaymentRequest & PayByEphemeralAccountRequest
-	pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
-	pbcRequest := modules.PayByEphemeralAccountRequest{
+	// send PaymentRequest
+	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	if err != nil {
+		return err
+	}
+
+	// send PayByEphemeralAccountRequest
+	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountRequest{
 		Message:   msg,
 		Signature: sig,
-	}
-	err := modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	})
 	if err != nil {
 		return err
 	}
 
 	// receive PayByEphemeralAccountResponse
 	var payByResponse modules.PayByEphemeralAccountResponse
-	if err := modules.RPCRead(stream, &payByResponse); err != nil {
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
-// createWithdrawalMessage returns a new withdrawal message using the given
-// parameters.
+// createWithdrawalMessage is a helper function that takes a set of parameters
+// and a WithdrawalMessage.
 func (a *account) createWithdrawalMessage(amount types.Currency, expiry types.BlockHeight) modules.WithdrawalMessage {
 	var nonce [modules.WithdrawalNonceSize]byte
 	copy(nonce[:], fastrand.Bytes(len(nonce)))
