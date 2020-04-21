@@ -2135,8 +2135,8 @@ func getDir(siaPath modules.SiaPath, root, recursive bool) (dirs []directoryInfo
 	return
 }
 
-// renterfileslistcmd is the handler for the command `siac renter list`.
-// Lists files known to the renter on the network.
+// renterfileslistcmd is the handler for the command `siac renter ls`. Lists
+// files known to the renter on the network.
 func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	var path string
 	switch len(args) {
@@ -2180,17 +2180,26 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Get dirs with their corresponding files.
 	dirs := getDir(sp, renterListRoot, renterListRecursive)
-	numFiles := 0
-	var totalStored uint64
-	for _, dir := range dirs {
-		for _, file := range dir.files {
-			totalStored += file.Filesize
-		}
-		numFiles += len(dir.files)
-	}
-	if numFiles+len(dirs) < 1 {
+	if len(dirs) == 0 {
 		fmt.Println("No files/dirs have been uploaded.")
 		return
+	}
+	var totalStored uint64
+	// Get the total stored by counting all top-level files and subdirs. This
+	// gives us the same answer whether we are recursing or not.
+	root := dirs[0]
+	for _, subDir := range root.subDirs {
+		totalStored += subDir.AggregateSize
+	}
+	for _, file := range root.files {
+		totalStored += file.Filesize
+	}
+	// Count the total number of listings (subdirs and files).
+	numSubDirs := 0
+	numFiles := 0
+	for _, dir := range dirs {
+		numSubDirs += len(dir.subDirs)
+		numFiles += len(dir.files)
 	}
 
 	// Sort the directories and the files.
@@ -2201,14 +2210,13 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Print text that available for both verbose and not verbose output.
-	numFilesDirs := numFiles + len(dirs) - 1
 	totalStoredStr := modules.FilesizeUnits(totalStored)
-	fmt.Printf("\nListing %v files/dirs: %9s\n\n", numFilesDirs, totalStoredStr)
+	fmt.Printf("\nListing %v files/dirs: %9s\n\n", numSubDirs+numFiles, totalStoredStr)
 
 	// Handle the non verbose output.
 	if !renterListVerbose {
 		for _, dir := range dirs {
-			fmt.Println(dir.dir.SiaPath.String() + "/")
+			fmt.Printf("%v/\n", dir.dir.SiaPath)
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			for _, subDir := range dir.subDirs {
 				name := subDir.SiaPath.Name() + "/"
@@ -2653,6 +2661,10 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Get the full set of files and directories.
 	dirs := getDir(sp, true, skynetLsRecursive)
+	if len(dirs) == 0 {
+		fmt.Println("No files/dirs have been uploaded.")
+		return
+	}
 	// Drop any files that are not tracking skylinks.
 	for j := 0; j < len(dirs); j++ {
 		for i := 0; i < len(dirs[j].files); i++ {
@@ -2664,19 +2676,34 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Produce the full information for these files.
-	numFiles := 0
 	var totalStored uint64
-	for _, dir := range dirs {
-		for _, file := range dir.files {
+	// Get the total stored by counting all files and subdirs if not recursing,
+	// and all files (and only files, so we don't count twice) when recursing.
+	// Counting only top-level files and subdirs doesn't work when non-skylink
+	// files have been dropped.
+	if skynetLsRecursive {
+		for _, dir := range dirs {
+			for _, file := range dir.files {
+				totalStored += file.Filesize
+			}
+		}
+	} else {
+		root := dirs[0]
+		for _, subDir := range root.subDirs {
+			totalStored += subDir.AggregateSize
+		}
+		for _, file := range root.files {
 			totalStored += file.Filesize
 		}
+	}
+	// Count the total number of listings (subdirs and files).
+	numSubDirs := 0
+	numFiles := 0
+	for _, dir := range dirs {
+		numSubDirs += len(dir.subDirs)
 		numFiles += len(dir.files)
 	}
-	if numFiles+len(dirs) < 1 {
-		fmt.Println("No files/dirs have been uploaded.")
-		return
-	}
-	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
+	fmt.Printf("\nListing %v files/dirs:", numSubDirs+numFiles)
 	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
 	sort.Sort(byDirectoryInfo(dirs))
 	// Print dirs.
