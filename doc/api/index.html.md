@@ -748,6 +748,39 @@ List of current settings of the FeeManager.
 **payoutheight** | blockheight  
 Height at which the FeeManager will payout the pending fees.
 
+## /feemanager/add [POST]
+> curl example  
+
+```go
+// Required Fields Only
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp" "localhost:9980/feemanager/set"
+
+// All Fields
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&recurring=true" "localhost:9980/feemanager/set"
+```
+sets a fee and associates it with the provided application UID.
+
+### Query String Parameters
+### REQUIRED
+**amount** | hastings  
+The amount is how much the fee will charge the user.
+
+**address** | address  
+The address is the application developer's wallet address that the fee should be
+paid out to.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+### OPTIONAL
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /feemanager/cancel [POST]
 > curl example  
 
@@ -786,8 +819,11 @@ returns the paid fees that the feemanager managed.
       "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
       "amount":"1000",     // hastings
       "appuid":"okapp",    // string
+	  "paymentcompleted":true, // bool
+	  "payoutheight":12345, // types.BlockHeight
       "recurring":false,  // bool
       "timestamp":"2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
+	  "transactioncreated":true, // bool
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
   ]
@@ -804,11 +840,27 @@ The application developer's wallet address that the fee should be paid out to.
 **amount** | hastings  
 The number of hastings the fee will charge the user.
 
+**appuid** | string  
+Indicates the uid of the application requesting the fee.  
+
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
 **recurring** | bool  
 Indicates whether or not this fee will be a recurring fee. 
 
 **timestamp** | Unix timestamp  
 This is the moment that the fee was requested.  
+
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
 
 **uid** | string  
 This is the unique identifier for the fee
@@ -832,8 +884,11 @@ returns the pending fees that the feemanager is managing.
       "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
       "amount":"1000",     // hastings
       "appuid":"okapp",    // string
+	  "paymentcompleted":false, // bool
+	  "payoutheight":12345, // types.BlockHeight
       "recurring":false,  // bool
       "timestamp":"2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
+	  "transactioncreated":true, // bool
       "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
     }
   ]
@@ -854,47 +909,27 @@ The number of hastings the fee will charge the user.
 **appuid** | string  
 The unique application identifier for the application that set the fee.
 
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
 **recurring** | bool  
 Indicates whether or not this fee will be a recurring fee. 
 
 **timestamp** | Unix timestamp  
 This is the moment that the fee was requested.  
 
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
+
 **uid** | string  
 This is the unique identifier for the fee
-
-## /feemanager/set [POST]
-> curl example  
-
-```go
-// Required Fields Only
-curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp" "localhost:9980/feemanager/set"
-
-// All Fields
-curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&recurring=true" "localhost:9980/feemanager/set"
-```
-sets a fee and associates it with the provided application UID.
-
-### Query String Parameters
-### REQUIRED
-**amount** | hastings  
-The amount is how much the fee will charge the user.
-
-**address** | address  
-The address is the application developer's wallet address that the fee should be
-paid out to.
-
-**appuid** | string  
-The unique application identifier for the application that set the fee.
-
-### OPTIONAL
-**recurring** | bool  
-Indicates whether or not this fee will be a recurring fee. 
-
-### Response
-
-standard success or error response. See [standard
-responses](#standard-responses).
 
 # Gateway
 

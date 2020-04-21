@@ -86,8 +86,8 @@ func (api *API) feemanagerCancelHandlerPOST(w http.ResponseWriter, req *http.Req
 	WriteSuccess(w)
 }
 
-// feemanagerSetHandlerPOST handles API calls to /feemanager/set
-func (api *API) feemanagerSetHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// feemanagerAddHandlerPOST handles API calls to /feemanager/set
+func (api *API) feemanagerAddHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Scan for amount - REQUIRED
 	if req.FormValue("amount") == "" {
 		WriteError(w, Error{"amount cannot be blank"}, http.StatusBadRequest)
@@ -127,7 +127,7 @@ func (api *API) feemanagerSetHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Set the fee
+	// Add the fee
 	err = api.feemanager.AddFee(address, amount, modules.AppUID(appUIDstr), recurring)
 	if err != nil {
 		WriteError(w, Error{"could not set the fee: " + err.Error()}, http.StatusInternalServerError)

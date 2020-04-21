@@ -62,6 +62,10 @@ type (
 
 	// FeeManager manages fees for applications
 	FeeManager interface {
+		// AddFee adds a fee for the FeeManager to manage, returning the UID of
+		// the fee.
+		AddFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) (FeeUID, error)
+
 		// Close closes the FeeManager
 		Close() error
 
@@ -75,9 +79,6 @@ type (
 		// PendingFees returns all the pending fees that are being tracked by the
 		// FeeManager
 		PendingFees() ([]AppFee, error)
-
-		// AddFee adds a fee for the FeeManager to manage
-		AddFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) error
 
 		// Settings returns the settings of the FeeManager
 		Settings() (FeeManagerSettings, error)

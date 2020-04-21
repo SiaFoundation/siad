@@ -167,11 +167,12 @@ func (fm *FeeManager) CancelFee(feeUID modules.FeeUID) error {
 	defer fm.common.staticTG.Done()
 
 	// Erase the fee from memory.
+	fm.mu.Lock()
 	_, exists := fm.fees[feeUID]
 	if !exists {
+		fm.mu.Unlock()
 		return ErrFeeNotFound
 	}
-	fm.mu.Lock()
 	delete(fm.fees, feeUID)
 	fm.mu.Unlock()
 
@@ -230,9 +231,9 @@ func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
 }
 
 // AddFee adds a fee to the fee manager.
-func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) error {
+func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (modules.FeeUID, error) {
 	if err := fm.common.staticTG.Add(); err != nil {
-		return err
+		return "", err
 	}
 	defer fm.common.staticTG.Done()
 
@@ -259,7 +260,11 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 	fm.mu.Unlock()
 
 	// Persist the fee.
-	return fm.common.persist.callPersistNewFee(fee)
+	err := fm.common.persist.callPersistNewFee(fee)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to persist the new fee")
+	}
+	return fee.UID, nil
 }
 
 // Settings returns the settings of the FeeManager

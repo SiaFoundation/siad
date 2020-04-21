@@ -62,7 +62,7 @@ func TestFeeManager(t *testing.T) {
 	address := types.UnlockHash{}
 	appUID := modules.AppUID("testapp")
 	recurring := false
-	err = fm.FeeManagerSetPost(address, amount, appUID, recurring)
+	err = fm.FeeManagerAddPost(address, amount, appUID, recurring)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 	amount := types.SiacoinPrecision.Mul64(500)
 	appUID := modules.AppUID("testapp")
 	recurring := false
-	err = fm.FeeManagerSetPost(devAddress, amount, appUID, recurring)
+	err = fm.FeeManagerAddPost(devAddress, amount, appUID, recurring)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func testFeesFailTogether(t *testing.T, tg *siatest.TestGroup) {
 	amount = types.SiacoinPrecision.Mul64(300)
 	appUID = modules.AppUID("testapp2")
 	recurring = true
-	err = fm.FeeManagerSetPost(devAddress, amount, appUID, recurring)
+	err = fm.FeeManagerAddPost(devAddress, amount, appUID, recurring)
 	if err != nil {
 		t.Fatal(err)
 	}

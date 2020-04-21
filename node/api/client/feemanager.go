@@ -16,6 +16,18 @@ func (c *Client) FeeManagerGet() (fmg api.FeeManagerGET, err error) {
 	return
 }
 
+// FeeManagerAddPost use the /feemanager/add POST endpoint to add a fee for the
+// FeeManager to manage
+func (c *Client) FeeManagerAddPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (err error) {
+	values := url.Values{}
+	values.Set("address", address.String())
+	values.Set("amount", amount.String())
+	values.Set("appuid", string(appUID))
+	values.Set("recurring", fmt.Sprint(recurring))
+	err = c.post("/feemanager/set", values.Encode(), nil)
+	return
+}
+
 // FeeManagerCancelPost uses the /feemanager/cancel POST endpoint to cancel a
 // fee being managed by the FeeManager
 func (c *Client) FeeManagerCancelPost(feeUID modules.FeeUID) (err error) {
@@ -36,17 +48,5 @@ func (c *Client) FeeManagerPaidFeesGet() (pfg api.FeeManagerPaidFeesGET, err err
 // return the pending fees the FeeManager is tracking
 func (c *Client) FeeManagerPendingFeesGet() (pfg api.FeeManagerPendingFeesGET, err error) {
 	err = c.get("/feemanager/pendingfees", &pfg)
-	return
-}
-
-// FeeManagerSetPost use the /feemanager/set POST endpoint to set a fee for the
-// FeeManager to manage
-func (c *Client) FeeManagerSetPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (err error) {
-	values := url.Values{}
-	values.Set("address", address.String())
-	values.Set("amount", amount.String())
-	values.Set("appuid", string(appUID))
-	values.Set("recurring", fmt.Sprint(recurring))
-	err = c.post("/feemanager/set", values.Encode(), nil)
 	return
 }
