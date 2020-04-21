@@ -230,7 +230,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Budget should be empty now.
-	if !budget.Value().IsZero() {
+	if !budget.Remaining().IsZero() {
 		t.Fatal("budget wasn't completely depleted")
 	}
 

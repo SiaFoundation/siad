@@ -45,7 +45,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			defer h.tg.Done()
 			// The total refund is the remaining value of the budget + the
 			// potential program refund.
-			depositErr := h.staticAccountManager.callRefund(refundAccount, programRefund.Add(budget.Value()))
+			depositErr := h.staticAccountManager.callRefund(refundAccount, programRefund.Add(budget.Remaining()))
 			if depositErr != nil {
 				h.log.Print("ERROR: failed to refund renter", depositErr)
 			}

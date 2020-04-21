@@ -272,8 +272,8 @@ func NewBudget(budget types.Currency) *RPCBudget {
 	}
 }
 
-// Value returns the remaining value in the budget.
-func (b *RPCBudget) Value() types.Currency {
+// Remaining returns the remaining value in the budget.
+func (b *RPCBudget) Remaining() types.Currency {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.budget
