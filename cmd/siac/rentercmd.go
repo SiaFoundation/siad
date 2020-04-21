@@ -2729,7 +2729,8 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
 }
 
-// skynetuploadcmd will upload a file or directory to Skynet.
+// skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
+// passed, it will fetch the skylinks without uploading.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
@@ -2747,6 +2748,9 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 	if !fi.IsDir() {
 		skynetUploadFile(sourcePath, sourcePath, destSiaPath, pbs)
+		if skynetUploadDryRun {
+			fmt.Print("[dry run] ")
+		}
 		fmt.Printf("Successfully uploaded skyfile!\n")
 		return
 	}
@@ -2768,6 +2772,9 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		die(err)
 	}
 	// Confirm with the user that they want to upload all of them.
+	if skynetUploadDryRun {
+		fmt.Print("[dry run] ")
+	}
 	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", len(filesToUpload)))
 	if !ok {
 		os.Exit(0)
@@ -2795,6 +2802,9 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	}
 	wg.Wait()
 	pbs.Wait()
+	if skynetUploadDryRun {
+		fmt.Print("[dry run] ")
+	}
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
