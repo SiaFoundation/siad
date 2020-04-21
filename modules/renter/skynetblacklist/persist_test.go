@@ -186,6 +186,16 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The filesize with corruption should be greater than the persist length.
+	fi, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesize := fi.Size()
+	if filesize <= sb.persistLength {
+		t.Fatalf("Expected file size greater than %v, got %v", sb.persistLength, filesize)
+	}
+
 	// Update blacklist
 	var skylink modules.Skylink
 	add := []modules.Skylink{skylink}
@@ -193,6 +203,17 @@ func TestPersistCorruption(t *testing.T) {
 	err = sb.UpdateSkynetBlacklist(add, remove)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// The filesize should be equal to the persist length now due to the
+	// truncate when updating.
+	fi, err = os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesize = fi.Size()
+	if filesize != sb.persistLength {
+		t.Fatalf("Expected file size %v, got %v", sb.persistLength, filesize)
 	}
 
 	// Blacklist should be empty because we added and then removed the same
@@ -264,11 +285,11 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// The final filesize should be equal to the persist length.
-	fi, err := os.Stat(filename)
+	fi, err = os.Stat(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
-	filesize := fi.Size()
+	filesize = fi.Size()
 	if filesize != sb3.persistLength {
 		t.Fatalf("Expected file size %v, got %v", sb3.persistLength, filesize)
 	}

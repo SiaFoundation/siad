@@ -28,6 +28,12 @@ const (
 
 	// persistPortalSize is the size of a persisted portal in the portals list.
 	// It is the length of `NetAddress` plus the `public` and `listed` flags.
+	//
+	// TODO: We can use a variable-sized buffer for a persisted portal instead
+	// of a fixed-size buffer. We currently use a large fixed-size buffer so
+	// that we always know the amount of stored objects given the file size (and
+	// for consistency with the blacklist implementation). This wastes a lot of
+	// space.
 	persistPortalSize int64 = modules.MaxEncodedNetAddressLength + 2
 )
 
