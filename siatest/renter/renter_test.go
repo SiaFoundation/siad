@@ -1561,6 +1561,26 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		if err != nil {
 			return err
 		}
+
+		// Check for older compatibility fields.
+		// If we don't check this fields we are not checking the right conditions.
+		rc, err := renter.RenterExpiredContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.InactiveContracts) != 0 {
+			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected %v", len(rc.InactiveContracts), 0)
+		}
+		if len(rc.ActiveContracts) != numHosts {
+			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), numHosts)
+		}
+		if len(rc.Contracts) != numHosts {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), numHosts)
+		}
+		if len(rc.ExpiredContracts) != numHosts {
+			return fmt.Errorf("Incorrect number of expired contracts: have %v expected %v", len(rc.ExpiredContracts), numHosts)
+		}
+
 		if err = m.MineBlock(); err != nil {
 			return err
 		}
