@@ -74,11 +74,18 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *mod
 	return instructions, data, cost, refund, collateral, memory
 }
 
+// executeProgramResponse is a helper struct that adds the output to the program
+// response
+type executeProgramResponse struct {
+	modules.RPCExecuteProgramResponse
+	Output []byte
+}
+
 // executeProgram executes an MDM program on the host using an EA payment and
 // returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) (resps []modules.RPCExecuteProgramResponse, outputs [][]byte, _ error) {
+func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, error) {
 	// create stream
 	stream := rhp.newStream()
 	defer stream.Close()
@@ -86,82 +93,76 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	// Write the specifier.
 	err := modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Write the pricetable uid.
 	err = modules.RPCWrite(stream, rhp.latestPT.UID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Send the payment request.
 	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Send the payment details.
 	pbear := newPayByEphemeralAccountRequest(rhp.accountID, rhp.ht.host.BlockHeight()+6, budget, rhp.accountKey)
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Receive payment confirmation.
 	var pc modules.PayByEphemeralAccountResponse
 	err = modules.RPCRead(stream, &pc)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Send the execute program request.
 	err = modules.RPCWrite(stream, epr)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Send the programData.
 	_, err = stream.Write(programData)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Read the responses.
-	var resp modules.RPCExecuteProgramResponse
-	for range epr.Program {
+	responses := make([]executeProgramResponse, len(epr.Program))
+	for i := range epr.Program {
 		// Read the response.
-		err = modules.RPCRead(stream, &resp)
+		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-
-		// Append response to resps.
-		resps = append(resps, resp)
 
 		// Read the output data.
-		output := make([]byte, resp.OutputLength, resp.OutputLength)
-		_, err = io.ReadFull(stream, output)
+		responses[i].Output = make([]byte, responses[i].OutputLength, responses[i].OutputLength)
+		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
-		// Append response to resps.
-		outputs = append(outputs, output)
-
 		// If the response contains an error we are done.
-		if resp.Error != nil {
-			return
+		if responses[i].Error != nil {
+			return responses, nil
 		}
 	}
 
 	// The next read should return io.EOF since the host closes the connection
 	// after the RPC is done.
-	err = modules.RPCRead(stream, &resp)
+	err = modules.RPCRead(stream, struct{}{})
 	if !errors.Contains(err, io.ErrClosedPipe) {
-		return nil, nil, err
+		return nil, err
 	}
-	return
+	return responses, nil
 }
 
 // TestExecuteReadSectorProgram tests the managedRPCExecuteProgram with a valid
@@ -221,23 +222,18 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	}
 
 	// execute program.
-	resps, outputs, err := rhp.executeProgram(epr, data, cost)
+	resps, err := rhp.executeProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
 		t.Fatal(err)
 	}
+
 	// there should only be a single response.
 	if len(resps) != 1 {
 		t.Fatalf("expected 1 response but got %v", len(resps))
 	}
 	resp := resps[0]
-
-	// there should only be a single output.
-	if len(outputs) != 1 {
-		t.Fatalf("expected 1 output but got %v", len(outputs))
-	}
-	output := outputs[0]
 
 	// check response.
 	if resp.Error != nil {
@@ -261,10 +257,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if !resp.PotentialRefund.Equals(refund) {
 		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
-	if uint64(len(output)) != modules.SectorSize {
-		t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(output))
+	if uint64(len(resp.Output)) != modules.SectorSize {
+		t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(resp.Output))
 	}
-	if !bytes.Equal(sectorData, output) {
+	if !bytes.Equal(sectorData, resp.Output) {
 		t.Fatal("Unexpected data")
 	}
 }
@@ -328,7 +324,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}
 
 	// execute program.
-	resps, outputs, err := rhp.executeProgram(epr, data, cost)
+	resps, err := rhp.executeProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -339,12 +335,6 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 		t.Fatalf("expected 1 response but got %v", len(resps))
 	}
 	resp := resps[0]
-
-	// there should only be a single output.
-	if len(outputs) != 1 {
-		t.Fatalf("expected 1 output but got %v", len(outputs))
-	}
-	output := outputs[0]
 
 	// check response.
 	if resp.Error != nil {
@@ -365,11 +355,11 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if !resp.PotentialRefund.Equals(refund) {
 		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
-	if uint64(len(output)) != length {
-		t.Fatalf("expected returned data to have length %v but was %v", length, len(output))
+	if uint64(len(resp.Output)) != length {
+		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
 	}
 
-	if !bytes.Equal(sectorData[offset:offset+length], output) {
+	if !bytes.Equal(sectorData[offset:offset+length], resp.Output) {
 		t.Fatal("Unexpected data")
 	}
 
@@ -431,7 +421,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Execute program.
-	resps, outputs, err := rhp.executeProgram(epr, data, cost)
+	resps, err := rhp.executeProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -442,12 +432,6 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatalf("expected 1 response but got %v", len(resps))
 	}
 	resp := resps[0]
-
-	// There should only be a single output.
-	if len(outputs) != 1 {
-		t.Fatalf("expected 1 output but got %v", len(outputs))
-	}
-	output := outputs[0]
 
 	// Check response.
 	if resp.Error != nil {
@@ -466,8 +450,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if len(resp.Proof) != 0 {
 		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
-	if output[0] != 1 {
-		t.Fatalf("wrong Output %v != %v", output[0], []byte{1})
+	if resp.Output[0] != 1 {
+		t.Fatalf("wrong Output %v != %v", resp.Output[0], []byte{1})
 	}
 	if !resp.TotalCost.Equals(cost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), cost.HumanString())
