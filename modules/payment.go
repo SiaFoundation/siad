@@ -150,23 +150,6 @@ type (
 	}
 )
 
-// FromArguments is a helper function that takes a revision and a signature as
-// arguments and decorates their info on a PayByContractRequest object.
-func (pbcr *PayByContractRequest) FromArguments(rev types.FileContractRevision, sig crypto.Signature, refundAccount AccountID) {
-	pbcr.ContractID = rev.ID()
-	pbcr.NewRevisionNumber = rev.NewRevisionNumber
-	pbcr.NewValidProofValues = make([]types.Currency, len(rev.NewValidProofOutputs))
-	for i, o := range rev.NewValidProofOutputs {
-		pbcr.NewValidProofValues[i] = o.Value
-	}
-	pbcr.NewMissedProofValues = make([]types.Currency, len(rev.NewMissedProofOutputs))
-	for i, o := range rev.NewMissedProofOutputs {
-		pbcr.NewMissedProofValues[i] = o.Value
-	}
-	pbcr.Signature = sig[:]
-	pbcr.RefundAccount = refundAccount
-}
-
 // FromSPK creates an AccountID from a SiaPublicKey. This assumes that the
 // provided key is valid and won't perform additional checks.
 func (aid *AccountID) FromSPK(spk types.SiaPublicKey) {

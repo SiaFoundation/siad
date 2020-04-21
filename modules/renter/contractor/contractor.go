@@ -249,11 +249,14 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
 
-	// send PaymentRequest & PayByContractRequest
-	req := modules.PaymentRequest{Type: modules.PayByContract}
-	var pbcr modules.PayByContractRequest
-	pbcr.FromArguments(rev, sig, refundAccount)
-	err = modules.RPCWriteAll(stream, req, pbcr)
+	// send PaymentRequest
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	if err != nil {
+		return err
+	}
+
+	// send PayByContractRequest
+	err = modules.RPCWrite(stream, newPayBycontractRequest(rev, sig, refundAccount))
 	if err != nil {
 		return err
 	}
@@ -597,4 +600,24 @@ func (c *Contractor) managedSynced() bool {
 	default:
 	}
 	return false
+}
+
+// newPayBycontractRequest is a helper function that takes a revision, signature
+// and refund account and creates a PayByContractRequest object.
+func newPayBycontractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
+	req := modules.PayByContractRequest{
+		ContractID:           rev.ID(),
+		NewRevisionNumber:    rev.NewRevisionNumber,
+		NewValidProofValues:  make([]types.Currency, len(rev.NewValidProofOutputs)),
+		NewMissedProofValues: make([]types.Currency, len(rev.NewMissedProofOutputs)),
+		RefundAccount:        refundAccount,
+		Signature:            sig[:],
+	}
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+	return req
 }
