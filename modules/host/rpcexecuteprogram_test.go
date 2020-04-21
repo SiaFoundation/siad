@@ -191,6 +191,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	so.SectorRoots = append(so.SectorRoots, sectorRoot)
 	ht.host.managedLockStorageObligation(rhp.fcid)
 	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
