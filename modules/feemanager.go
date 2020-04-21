@@ -59,27 +59,44 @@ type (
 		// PayoutHeight is the blockheight at which the next payout will occur
 		PayoutHeight types.BlockHeight `json:"payoutheight"`
 	}
+
+	// FeeManager manages fees for applications
+	FeeManager interface {
+		// Close closes the FeeManager
+		Close() error
+
+		// CancelFee cancels the fee associated with the FeeUID
+		CancelFee(feeUID FeeUID) error
+
+		// PaidFees returns all the paid fees that are being tracked by the
+		// FeeManager
+		PaidFees() ([]AppFee, error)
+
+		// PendingFees returns all the pending fees that are being tracked by the
+		// FeeManager
+		PendingFees() ([]AppFee, error)
+
+		// AddFee adds a fee for the FeeManager to manage
+		AddFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) error
+
+		// Settings returns the settings of the FeeManager
+		Settings() (FeeManagerSettings, error)
+	}
 )
 
-// FeeManager manages fees for applications
-type FeeManager interface {
-	// Close closes the FeeManager
-	Close() error
+// Implement a ByTimestamp sort for the AppFees.
+type (
+	AppFeeByTimestamp []AppFee
+)
 
-	// CancelFee cancels the fee associated with the FeeUID
-	CancelFee(feeUID FeeUID) error
+func (afbt AppFeeByTimestamp) Len() int {
+	return len(afbt)
+}
 
-	// PaidFees returns all the paid fees that are being tracked by the
-	// FeeManager
-	PaidFees() ([]AppFee, error)
+func (afbt AppFeeByTimestamp) Swap(i, j int) {
+	afbt[i], afbt[j] = afbt[j], afbt[i]
+}
 
-	// PendingFees returns all the pending fees that are being tracked by the
-	// FeeManager
-	PendingFees() ([]AppFee, error)
-
-	// AddFee adds a fee for the FeeManager to manage
-	AddFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) error
-
-	// Settings returns the settings of the FeeManager
-	Settings() (FeeManagerSettings, error)
+func (afbt AppFeeByTimestamp) Less(i, j int) bool {
+	return afbt[i].Timestamp < afbt[j].Timestamp
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -199,8 +200,8 @@ func (fm *FeeManager) PaidFees() ([]modules.AppFee, error) {
 		}
 	}
 	fm.mu.Unlock()
-
-	// TODO: Sort by timestamp?
+	// Sort by timestamp.
+	sort.Sort(modules.AppFeeByTimestamp(paidFees))
 
 	return paidFees, nil
 }
@@ -222,8 +223,8 @@ func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
 		}
 	}
 	fm.mu.Unlock()
-
-	// TODO: Sort by timestamp?
+	// Sort by timestamp.
+	sort.Sort(modules.AppFeeByTimestamp(pendingFees))
 
 	return pendingFees, nil
 }

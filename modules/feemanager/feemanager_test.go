@@ -129,102 +129,51 @@ func TestFeeManagerBasic(t *testing.T) {
 	if len(pendingFees) != 0 {
 		t.Fatal("fee not cancelled")
 	}
-}
 
-/*
-// TestFeeManagerSetAndCancel makes sure the the SetFee and CancelFee methods
-// perform as expected
-func TestFeeManagerSetAndCancel(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create FeeManager
-	fm, err := newTestingFeeManager(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer fm.Close()
-
-	// Set some Fees
+	// Add a random number of fees.
 	err = addRandomFees(fm)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Get the Fees
-	paidFees, err := fm.PaidFees()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pendingFees, err := fm.PendingFees()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify all the fees were set
-	originalNumFees := len(pendingFees)
-	if originalNumFees != len(fm.fees) {
-		t.Fatalf("Not all fees recorded, expected %v pending fees but found %v", originalNumFees, len(fm.fees))
-	}
-	if len(paidFees) != 0 {
-		t.Fatalf("Shouldn't have any paid fees but found %v", len(paidFees))
-	}
-
-	// Cancel a random fee
-	i := fastrand.Intn(originalNumFees)
-	canceledUID := pendingFees[i].UID
-	err = fm.CancelFee(canceledUID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Get the Fees
-	paidFees, err = fm.PaidFees()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Fetch all the fees and check that they are sorted correctly.
 	pendingFees, err = fm.PendingFees()
 	if err != nil {
 		t.Fatal(err)
 	}
+	recent := pendingFees[0].Timestamp
+	for i := 1; i < len(pendingFees); i++ {
+		if recent > pendingFees[i].Timestamp {
+			t.Error("fees not sorted correctly")
+		}
+		recent = pendingFees[i].Timestamp
+	}
+	// Cancel all of the fees.
+	for _, fee := range pendingFees {
+		err = fm.CancelFee(fee.UID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 
-	// Verify the number of fees
-	if _, ok := fm.fees[canceledUID]; ok {
-		t.Fatal("Fee not removed from the map")
-	}
-	if originalNumFees-1 != len(fm.fees) {
-		t.Fatalf("Expected %v fees in the map but found %v", originalNumFees-1, len(fm.fees))
-	}
-	if originalNumFees-1 != len(pendingFees) {
-		t.Fatalf("Expected %v pending fees but found %v", originalNumFees-1, len(pendingFees))
-	}
-	if len(paidFees) != 0 {
-		t.Fatalf("Shouldn't have any paid fees but found %v", len(paidFees))
-	}
-
-	// Check the number of Fees in the Fees Persist File
-	persistedFees, err := fm.callLoadAllFees()
+	// Restart the fee manager and check that all fees are cancelled.
+	err = fm.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(persistedFees) != originalNumFees {
-		t.Fatalf("Expected %v fees to be persisted but found %v", originalNumFees, len(persistedFees))
-	}
-
-	// Load a new FeeManager from the same persist directory and verify the fee
-	// cancel was persisted
-	fm2, err := New(fm.staticCS, fm.staticWallet, fm.staticPersistDir)
+	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fm2.Close()
-	if _, ok := fm2.fees[canceledUID]; ok {
-		t.Fatal("Fee not removed from the map")
+	// Check the fee again, values should be identical to before.
+	pendingFees, err = fm.PendingFees()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if originalNumFees-1 != len(fm2.fees) {
-		t.Fatalf("Expected %v fees in the map but found %v", originalNumFees-1, len(fm2.fees))
+	if len(pendingFees) != 0 {
+		t.Fatal("there should not be any fees")
+	}
+	err = fm.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
-*/

@@ -70,7 +70,7 @@ func addRandomFees(fm *FeeManager) error {
 	for i := 0; i < fastrand.Intn(5)+1; i++ {
 		amount := types.NewCurrency64(fastrand.Uint64n(100))
 		appUID := modules.AppUID(uniqueID())
-		recurring := fastrand.Intn(100)%2 == 0
+		recurring := fastrand.Intn(2) == 0
 		err := fm.AddFee(types.UnlockHash{}, amount, appUID, recurring)
 		if err != nil {
 			return err
