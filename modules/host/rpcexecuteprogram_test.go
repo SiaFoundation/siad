@@ -75,8 +75,8 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *mod
 	return instructions, data, cost, refund, collateral, memory
 }
 
-// executeProgramResponse is a helper struct that adds the output to the program
-// response
+// executeProgramResponse is a helper struct that wraps the
+// RPCExecuteProgramResponse together with the output data
 type executeProgramResponse struct {
 	modules.RPCExecuteProgramResponse
 	Output []byte
