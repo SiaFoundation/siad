@@ -1557,11 +1557,6 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		t.Fatal(err)
 	}
 	err = build.Retry(70, 100*time.Millisecond, func() error {
-		err = siatest.CheckExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, numHosts, 0)
-		if err != nil {
-			return err
-		}
-
 		// Check for older compatibility fields.
 		// If we don't check this fields we are not checking the right conditions.
 		rc, err := renter.RenterExpiredContractsGet()
