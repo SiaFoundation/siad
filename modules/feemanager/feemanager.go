@@ -2,6 +2,7 @@ package feemanager
 
 import (
 	"encoding/hex"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -87,6 +88,12 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 		return nil, errNilWallet
 	}
 
+	// Create the persist directory.
+	err := os.MkdirAll(persistDir, modules.DefaultDirPerm)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to make fee manager persist directory")
+	}
+
 	// Create the common struct.
 	common := &feeManagerCommon{
 		staticCS:     cs,
@@ -114,10 +121,9 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 	ps.syncCoordinator = sc
 
 	// Initialize the logger.
-	var err error
 	common.staticLog, err = persist.NewFileLogger(filepath.Join(ps.staticPersistDir, LogFile))
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to create common.staticLogger")
+		return nil, errors.AddContext(err, "unable to create logger")
 	}
 	if err := common.staticTG.AfterStop(common.staticLog.Close); err != nil {
 		return nil, errors.AddContext(err, "unable to set up an AfterStop to close logger")
@@ -235,14 +241,14 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 
 	// Create the fee.
 	fee := modules.AppFee{
-		Address:      address,
-		Amount:       amount,
-		AppUID:       appUID,
+		Address:          address,
+		Amount:           amount,
+		AppUID:           appUID,
 		PaymentCompleted: false,
-		PayoutHeight: nextPayoutHeight + PayoutInterval, // Don't do this in the next payout, but the following.
-		Recurring:    recurring,
-		Timestamp:    time.Now(),
-		UID:          uniqueID(),
+		PayoutHeight:     nextPayoutHeight + PayoutInterval, // Don't do this in the next payout, but the following.
+		Recurring:        recurring,
+		Timestamp:        time.Now(),
+		UID:              uniqueID(),
 	}
 
 	// Add the fee. Don't need to check for existence because we just generated

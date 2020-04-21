@@ -1,5 +1,6 @@
 package feemanager
 
+/*
 import (
 	"bytes"
 	"fmt"
@@ -99,3 +100,4 @@ func verifyLoadedPersistence(fm *FeeManager, persistData persistence) error {
 	}
 	return nil
 }
+*/

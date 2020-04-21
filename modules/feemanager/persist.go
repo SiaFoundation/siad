@@ -89,7 +89,7 @@ type (
 		// values for these variables. They may not have been synced yet, and
 		// therefore could be ahead of the persist file.
 		nextPayoutHeight types.BlockHeight
-		latestOffset       uint64
+		latestOffset     uint64
 
 		// persistFile is the file handle of the file where data is written to.
 		persistFile *os.File
@@ -112,7 +112,7 @@ func externWritePersistHeader(fh *os.File, latestSyncedOffset uint64, nextPayout
 			Header:  MetadataHeader,
 			Version: MetadataVersion,
 		},
-		NextPayoutHeight:       nextPayoutHeight,
+		NextPayoutHeight:   nextPayoutHeight,
 		LatestSyncedOffset: latestSyncedOffset,
 	})
 	if len(encodedHeader) > diskSectorSize {
@@ -258,7 +258,7 @@ func (fm *FeeManager) newPersist(filename string) error {
 		return errors.AddContext(err, "unable to create persist file for fee manager")
 	}
 	fm.common.persist.persistFile = fh
-	fm.common.staticTG.OnStop(func() error {
+	fm.common.staticTG.AfterStop(func() error {
 		return fm.common.persist.persistFile.Close()
 	})
 
@@ -287,7 +287,7 @@ func (fm *FeeManager) callInitPersist() error {
 		return errors.AddContext(err, "could not open persist file")
 	}
 	fm.common.persist.persistFile = fh
-	fm.common.staticTG.OnStop(func() error {
+	fm.common.staticTG.AfterStop(func() error {
 		return fm.common.persist.persistFile.Close()
 	})
 
@@ -327,7 +327,7 @@ func (fm *FeeManager) callInitPersist() error {
 	}
 	for i := 0; i < len(entryBytes); i += persistEntrySize {
 		// Integrate this entry.
-		err = fm.integrateEntry(entryBytes[i:i+persistEntrySize])
+		err = fm.integrateEntry(entryBytes[i : i+persistEntrySize])
 		if err != nil {
 			return errors.AddContext(err, "parsing a persist entry failed")
 		}

@@ -47,6 +47,10 @@ type (
 		// Timestamp is the moment that the fee was requested.
 		Timestamp time.Time
 
+		// TransactionCreated indicates whether the transaction for this fee has
+		// been created and sent to the Sia network for processing.
+		TransactionCreated bool `json:"transactioncreated"`
+
 		// UID is a unique identifier for the Fee
 		UID FeeUID `json:"uid"`
 	}

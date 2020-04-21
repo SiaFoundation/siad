@@ -1,73 +1,92 @@
 package feemanager
 
 import (
-	"path/filepath"
 	"testing"
+	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/consensus"
-	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
-	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
+	// "gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestFeeManager checks to make sure the creating and closing a FeeManager
+// TestFeeManagerBasic checks to make sure the creating and closing a FeeManager
 // performs as expected and that loading the persistence from disk is as
 // expected
-func TestFeeManager(t *testing.T) {
+func TestFeeManagerBasic(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// Create FeeManager
+	// Create FeeManager.
 	fm, err := newTestingFeeManager(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Set some Fees
-	err = setRandomFees(fm)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Record the data to be persisted
-	persistData := fm.persistData()
-
-	// Check the Settings
-	settings, err := fm.Settings()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if settings.PayoutHeight != fm.payoutHeight {
-		t.Fatalf("Incorrect Settings: PayoutHeight is %v Expected %v", settings.PayoutHeight, fm.payoutHeight)
-	}
-
-	// Close FeeManager
+	// Close FeeManager.
 	err = fm.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Load a new FeeManager from the same persist directory
-	fm2, err := New(fm.staticCS, fm.staticWallet, fm.staticPersistDir)
+	// Re-open the fee manager.
+	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fm2.Close()
 
-	// Verify the persistence was loaded as expected
-	err = verifyLoadedPersistence(fm2, persistData)
+	// Add a fee to the fee manager.
+	uh := types.UnlockHash{1, 2, 3}
+	amount := types.NewCurrency64(100)
+	appuid := modules.AppUID("testapp")
+	recurring := false
+	err = fm.AddFee(uh, amount, appuid, recurring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that the fee is available from the fee manager.
+	pendingFees, err := fm.PendingFees()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pendingFees) != 1 {
+		t.Fatal("there should be a pending fee")
+	}
+	pf := pendingFees[0]
+	if pf.Address != uh {
+		t.Fatal("mismatch")
+	}
+	if !pf.Amount.Equals(amount) {
+		t.Fatal("mismatch")
+	}
+	if pf.AppUID != appuid {
+		t.Fatal("mismatch")
+	}
+	if pf.PaymentCompleted {
+		t.Fatal("unexpected")
+	}
+	if pf.PayoutHeight == 0 {
+		t.Fatal("payout height is too fast")
+	}
+	if pf.Recurring != recurring {
+		t.Fatal("mismatch")
+	}
+	if pf.Timestamp.Unix() == (time.Time{}).Unix() {
+		t.Fatal("timestamp not set")
+	}
+	if pf.TransactionCreated {
+		t.Fatal("unexpected")
+	}
+	if pf.UID == "" {
+		t.Fatal("unset")
+	}
+
+	err = fm.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
+/*
 // TestFeeManagerSetAndCancel makes sure the the SetFee and CancelFee methods
 // perform as expected
 func TestFeeManagerSetAndCancel(t *testing.T) {
@@ -84,7 +103,7 @@ func TestFeeManagerSetAndCancel(t *testing.T) {
 	defer fm.Close()
 
 	// Set some Fees
-	err = setRandomFees(fm)
+	err = addRandomFees(fm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,68 +182,4 @@ func TestFeeManagerSetAndCancel(t *testing.T) {
 		t.Fatalf("Expected %v fees in the map but found %v", originalNumFees-1, len(fm2.fees))
 	}
 }
-
-// newTestingFeeManager creates a FeeManager for testing
-func newTestingFeeManager(testName string) (*FeeManager, error) {
-	// Create testdir
-	testDir := build.TempDir("feemanager", testName)
-
-	// Create Dependencies
-	cs, w, err := testingDependencies(testDir)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return FeeManager
-	return NewCustomFeeManager(cs, w, filepath.Join(testDir, modules.FeeManagerDir), "", modules.ProdDependencies)
-}
-
-// testingDependencies creates the dependencies needed for the FeeManager
-func testingDependencies(testdir string) (modules.ConsensusSet, modules.Wallet, error) {
-	// Create a gateway
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
-	if err != nil {
-		return nil, nil, err
-	}
-	// Create a consensus set
-	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
-	if err := <-errChan; err != nil {
-		return nil, nil, err
-	}
-	// Create a tpool
-	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
-	if err != nil {
-		return nil, nil, err
-	}
-	// Create a wallet and unlock it
-	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
-	if err != nil {
-		return nil, nil, err
-	}
-	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
-	_, err = w.Encrypt(key)
-	if err != nil {
-		return nil, nil, err
-	}
-	err = w.Unlock(key)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return cs, w, nil
-}
-
-// setRandomFees is a helper function to set a random number of fees for the
-// FeeManager. It will always set at least 1
-func setRandomFees(fm *FeeManager) error {
-	for i := 0; i < fastrand.Intn(5)+1; i++ {
-		amount := types.NewCurrency64(fastrand.Uint64n(100))
-		appUID := modules.AppUID(uniqueID())
-		recurring := fastrand.Intn(100)%2 == 0
-		err := fm.SetFee(types.UnlockHash{}, amount, appUID, recurring)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
+*/
