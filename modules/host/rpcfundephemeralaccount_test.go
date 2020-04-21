@@ -86,9 +86,9 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		}
 
 		// expect clean stream close
-		err = modules.RPCRead(stream, &payByResponse)
-		if err != io.EOF {
-			return nil, nil, err
+		err = modules.RPCRead(stream, struct{}{})
+		if !errors.Contains(err, io.ErrClosedPipe) {
+			return nil, err
 		}
 
 		return &payByResponse, &resp, nil
