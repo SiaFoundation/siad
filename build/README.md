@@ -29,8 +29,6 @@ variables that are set by the user.
    to put the sia data
  - `SIA_WALLET_PASSWORD` is the siaWalletPassword environment variable that can
    enable auto unlocking the wallet
- - `SKYNET_DATA_DIR` is the skynetDataDir environment variable that tells siad
-   where to put the miscellaneous skynet data
 
 ## Build Flags
 ### Key Files
