@@ -30,6 +30,7 @@ var (
 	errHostNotFound              = errors.New("host not found")
 	errContractNotFound          = errors.New("contract not found")
 	errContractInsufficientFunds = errors.New("contract has insufficient funds")
+	errRefundAccountInvalid      = errors.New("invalid refund account")
 
 	// COMPATv1.0.4-lts
 	// metricsContractID identifies a special contract that contains aggregate
@@ -199,6 +200,11 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 // ProvidePayment fulfills the PaymentProvider interface. It uses the given
 // stream and necessary payment details to perform payment for an RPC call.
 func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+	// verify we do not specify a refund account on the fund account RPC
+	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
+		return errRefundAccountInvalid
+	}
+
 	// find a contract for the given host
 	contract, exists := c.ContractByPublicKey(host)
 	if !exists {
