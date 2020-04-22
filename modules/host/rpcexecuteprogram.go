@@ -143,7 +143,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 
+		// Create a buffer
 		buffer := bytes.NewBuffer(nil)
+
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
@@ -156,25 +158,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			return errors.AddContext(err, "failed to send output data to peer")
 		}
 
+		// Write contents of the buffer
 		_, err = stream.Write(buffer.Bytes())
 		if err != nil {
 			return errors.AddContext(err, "failed to send data to peer")
 		}
-
-		// // Send the response to the peer.
-		// err = modules.RPCWrite(stream, resp)
-		// if err != nil {
-		// 	panic("err1")
-		// 	return errors.AddContext(err, "failed to send output to peer")
-		// }
-
-		// // Write output.
-		// // fmt.Println("writing data", output.Output)
-		// _, err = stream.Write(output.Output)
-		// if err != nil {
-		// 	panic("err2")
-		// 	return errors.AddContext(err, "failed to send output data to peer")
-		// }
 	}
 	// Sanity check that we received at least 1 output.
 	if numOutputs == 0 {

@@ -2,7 +2,6 @@ package encoding
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 )
 
@@ -45,12 +44,4 @@ func WriteUint64(w io.Writer, u uint64) error {
 // WriteInt writes i to w.
 func WriteInt(w io.Writer, i int) error {
 	return WriteUint64(w, uint64(i))
-}
-
-// WriteIntPrint writes i to w.
-func WriteIntPrint(w io.Writer, i int) error {
-	enc := EncUint64(uint64(i))
-	fmt.Println("writing", enc)
-	_, err := w.Write(enc)
-	return err
 }

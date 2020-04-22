@@ -1,9 +1,7 @@
 package host
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"runtime"
 	"strings"
@@ -22,28 +20,6 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
-
-func TestReadAfterClose(t *testing.T) {
-	r, h := NewTestStreams()
-
-	b := fastrand.Bytes(10)
-	fmt.Println(b)
-
-	h.Write(b)
-	h.Close()
-
-	time.Sleep(3 * time.Second)
-	for i := 0; i < 12; i++ {
-		br := make([]byte, 1, 1)
-		_, err := r.Read(br)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fmt.Println(br)
-		time.Sleep(time.Second)
-	}
-	fmt.Println("it works")
-}
 
 // TestVerifyPaymentRevision is a unit test covering verifyPaymentRevision
 func TestVerifyPaymentRevision(t *testing.T) {
@@ -286,73 +262,6 @@ func (bt *balanceTracker) TrackWithdrawal(id modules.AccountID, withdrawal int64
 		return true
 	}
 	return
-}
-
-func TestConsecutiveWrites(t *testing.T) {
-	t.Parallel()
-
-	renter, host := NewTestStreams()
-
-	expectedData := fastrand.Bytes(int(modules.SectorSize))
-	expectedRoot := crypto.MerkleRoot(expectedData)
-	resp := modules.RPCExecuteProgramResponse{
-		NewMerkleRoot: expectedRoot,
-		OutputLength:  modules.SectorSize,
-	}
-
-	var response executeProgramResponse
-	var output []byte
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer host.Close()
-		buffer := bytes.NewBuffer(nil)
-		err := modules.RPCWrite(buffer, resp)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		_, err = buffer.Write(expectedData)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		b := buffer.Bytes()
-		fmt.Println("writing", b)
-		_, err = host.Write(b)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-	}()
-
-	wg.Add(1)
-	func() {
-		defer wg.Done()
-		defer renter.Close()
-		err := modules.RPCReadPrint(renter, &response)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-
-		response.Output = make([]byte, response.OutputLength, response.OutputLength)
-		output = make([]byte, resp.OutputLength, resp.OutputLength)
-		_, err = io.ReadFull(renter, output)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-	}()
-	wg.Wait()
-	if !bytes.Equal(response.NewMerkleRoot[:], expectedRoot[:]) {
-		t.Fatal("response mismatch")
-	}
-	if !bytes.Equal(expectedData, output) {
-		t.Fatal("data mismatch")
-	}
 }
 
 // TestProcessParallelPayments tests the behaviour of the ProcessPayment method
