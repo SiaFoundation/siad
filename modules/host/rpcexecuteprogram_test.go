@@ -3,7 +3,9 @@ package host
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -137,23 +139,29 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	if err != nil {
 		return nil, limit, err
 	}
-
+	// fmt.Println("after writing program data")
 	// Read the responses.
 	responses := make([]executeProgramResponse, len(epr.Program))
 	for i := range epr.Program {
 		// Read the response.
-		err = modules.RPCRead(stream, &responses[i])
+
+		var resp modules.RPCExecuteProgramResponse
+		err = modules.RPCRead(stream, &resp)
 		if err != nil {
+			panic(err)
 			return nil, limit, err
 		}
 
 		// Read the output data.
+		fmt.Println("expecting output length", responses[i].OutputLength)
 		responses[i].Output = make([]byte, responses[i].OutputLength, responses[i].OutputLength)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
+			panic("read2")
 			return nil, limit, err
 		}
-
+		// fmt.Println("reading", responses[i].Output)
+		// return nil, limit, err
 		// If the response contains an error we are done.
 		if responses[i].Error != nil {
 			return responses, limit, nil
@@ -240,6 +248,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
+	cost = types.NewCurrency64(math.MaxUint64)
 	resps, limit, err := rhp.executeProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())

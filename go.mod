@@ -32,4 +32,6 @@ require (
 	golang.org/x/tools v0.0.0-20200130002326-2f3ba24bd6e7
 )
 
+replace gitlab.com/NebulousLabs/siamux => /Users/peterjan/go/src/gitlab.com/NebulousLabs/siamux
+
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux

@@ -176,10 +176,26 @@ func RPCRead(r io.Reader, obj interface{}) error {
 	}
 	return nil
 }
+func RPCReadPrint(r io.Reader, obj interface{}) error {
+	resp := rpcResponse{nil, obj}
+	err := encoding.ReadObjectPrint(r, &resp, uint64(RPCMinLen))
+	if err != nil {
+		return err
+	}
+	if resp.err != nil {
+		// must wrap the error here, for more info see: https://www.pixelstech.net/article/1554553347-Be-careful-about-nil-check-on-interface-in-GoLang
+		return errors.New(resp.err.Error())
+	}
+	return nil
+}
 
 // RPCWrite writes the given object to the stream.
 func RPCWrite(w io.Writer, obj interface{}) error {
 	return encoding.WriteObject(w, &rpcResponse{nil, obj})
+}
+
+func RPCWritePrint(w io.Writer, obj interface{}) error {
+	return encoding.WriteObjectPrint(w, &rpcResponse{nil, obj}, true)
 }
 
 // RPCWriteAll writes the given objects to the stream.

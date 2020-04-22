@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -142,17 +143,44 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 
+		// fmt.Println(resp)
+		buffer := bytes.NewBuffer(nil)
 		// Send the response to the peer.
-		err = modules.RPCWrite(stream, resp)
+		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
+			panic("err1")
 			return errors.AddContext(err, "failed to send output to peer")
 		}
 
 		// Write output.
-		_, err = stream.Write(output.Output)
+		_, err = buffer.Write(output.Output)
 		if err != nil {
+			panic("err2")
 			return errors.AddContext(err, "failed to send output data to peer")
 		}
+
+		bb := buffer.Bytes()
+		fmt.Println("wrting bytes", bb, len(bb))
+		_, err = stream.Write(bb)
+		if err != nil {
+			panic("err3")
+			return errors.AddContext(err, "failed to send data to peer")
+		}
+
+		// Send the response to the peer.
+		// err = modules.RPCWrite(stream, resp)
+		// if err != nil {
+		// 	panic("err1")
+		// 	return errors.AddContext(err, "failed to send output to peer")
+		// }
+
+		// // Write output.
+		// // fmt.Println("writing data", output.Output)
+		// _, err = stream.Write(output.Output)
+		// if err != nil {
+		// 	panic("err2")
+		// 	return errors.AddContext(err, "failed to send output data to peer")
+		// }
 	}
 	// Sanity check that we received at least 1 output.
 	if numOutputs == 0 {

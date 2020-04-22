@@ -1,7 +1,9 @@
 package host
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"runtime"
 	"strings"
@@ -262,6 +264,73 @@ func (bt *balanceTracker) TrackWithdrawal(id modules.AccountID, withdrawal int64
 		return true
 	}
 	return
+}
+
+func TestConsecutiveWrites(t *testing.T) {
+	t.Parallel()
+
+	renter, host := NewTestStreams()
+
+	expectedData := fastrand.Bytes(int(modules.SectorSize))
+	expectedRoot := crypto.MerkleRoot(expectedData)
+	resp := modules.RPCExecuteProgramResponse{
+		NewMerkleRoot: expectedRoot,
+		OutputLength:  modules.SectorSize,
+	}
+
+	var response executeProgramResponse
+	var output []byte
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer host.Close()
+		buffer := bytes.NewBuffer(nil)
+		err := modules.RPCWrite(buffer, resp)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, err = buffer.Write(expectedData)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		b := buffer.Bytes()
+		fmt.Println("writing", b)
+		_, err = host.Write(b)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+	}()
+
+	wg.Add(1)
+	func() {
+		defer wg.Done()
+		defer renter.Close()
+		err := modules.RPCReadPrint(renter, &response)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		response.Output = make([]byte, response.OutputLength, response.OutputLength)
+		output = make([]byte, resp.OutputLength, resp.OutputLength)
+		_, err = io.ReadFull(renter, output)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+	}()
+	wg.Wait()
+	if !bytes.Equal(response.NewMerkleRoot[:], expectedRoot[:]) {
+		t.Fatal("response mismatch")
+	}
+	if !bytes.Equal(expectedData, output) {
+		t.Fatal("data mismatch")
+	}
 }
 
 // TestProcessParallelPayments tests the behaviour of the ProcessPayment method

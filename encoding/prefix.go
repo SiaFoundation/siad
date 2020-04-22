@@ -49,3 +49,49 @@ func WritePrefixedBytes(w io.Writer, data []byte) error {
 func WriteObject(w io.Writer, v interface{}) error {
 	return WritePrefixedBytes(w, Marshal(v))
 }
+
+// WritePrefixedBytesPrint writes a length-prefixed byte slice to w.
+func WritePrefixedBytesPrint(w io.Writer, data []byte, print bool) error {
+	err := WriteIntPrint(w, len(data))
+	if err != nil {
+		return err
+	}
+	if print {
+		fmt.Println("writing", data, len(data))
+	}
+	n, err := w.Write(data)
+	if err == nil && n != len(data) {
+		err = io.ErrShortWrite
+	}
+	return err
+}
+
+// WriteObjectPrint writes a length-prefixed object to w.
+func WriteObjectPrint(w io.Writer, v interface{}, print bool) error {
+	return WritePrefixedBytesPrint(w, Marshal(v), print)
+}
+
+// ReadObject reads and decodes a length-prefixed and marshalled object.
+func ReadObjectPrint(r io.Reader, obj interface{}, maxLen uint64) error {
+	data, err := ReadPrefixedBytesPrint(r, maxLen)
+	if err != nil {
+		return err
+	}
+	return Unmarshal(data, obj)
+}
+
+func ReadPrefixedBytesPrint(r io.Reader, maxLen uint64) ([]byte, error) {
+	prefix := make([]byte, 8)
+	if _, err := io.ReadFull(r, prefix); err != nil {
+		return nil, err
+	}
+	dataLen := DecUint64(prefix)
+	if dataLen > maxLen {
+		return nil, fmt.Errorf("length %d exceeds maxLen of %d", dataLen, maxLen)
+	}
+	// read dataLen bytes
+	data := make([]byte, dataLen)
+	_, err := io.ReadFull(r, data)
+	fmt.Println("reading", data, dataLen)
+	return data, err
+}
