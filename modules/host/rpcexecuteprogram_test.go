@@ -3,13 +3,13 @@ package host
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"math"
 	"reflect"
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
@@ -146,12 +146,13 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 		// Read the response.
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
+			build.Critical(err)
 			return nil, limit, err
 		}
-		fmt.Println(responses[i].OutputLength)
+		// fmt.Println(responses[i].OutputLength)
 
 		// Read the output data.
-		// responses[i].OutputLength = 4096
+		responses[i].OutputLength = 4096
 		responses[i].Output = make([]byte, responses[i].OutputLength, responses[i].OutputLength)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {

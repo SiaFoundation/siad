@@ -148,22 +148,22 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
-			panic("err1")
+			build.Critical(err)
 			return errors.AddContext(err, "failed to send output to peer")
 		}
 
 		// Write output.
 		_, err = buffer.Write(output.Output)
 		if err != nil {
-			panic("err2")
+			build.Critical(err)
 			return errors.AddContext(err, "failed to send output data to peer")
 		}
 
 		bb := buffer.Bytes()
-		// fmt.Println("wrting bytes", bb, len(bb))
+		fmt.Println("wrting bytes", bb, len(bb))
 		_, err = stream.Write(bb)
 		if err != nil {
-			panic("err3")
+			build.Critical(err)
 			return errors.AddContext(err, "failed to send data to peer")
 		}
 

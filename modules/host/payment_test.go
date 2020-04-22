@@ -23,6 +23,28 @@ import (
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
+func TestReadAfterClose(t *testing.T) {
+	r, h := NewTestStreams()
+
+	b := fastrand.Bytes(10)
+	fmt.Println(b)
+
+	h.Write(b)
+	h.Close()
+
+	time.Sleep(3 * time.Second)
+	for i := 0; i < 12; i++ {
+		br := make([]byte, 1, 1)
+		_, err := r.Read(br)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(br)
+		time.Sleep(time.Second)
+	}
+	fmt.Println("it works")
+}
+
 // TestVerifyPaymentRevision is a unit test covering verifyPaymentRevision
 func TestVerifyPaymentRevision(t *testing.T) {
 	t.Parallel()
