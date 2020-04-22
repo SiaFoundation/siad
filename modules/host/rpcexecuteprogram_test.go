@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"math"
 	"reflect"
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
@@ -139,27 +137,24 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	if err != nil {
 		return nil, limit, err
 	}
-	// fmt.Println("after writing program data")
+
 	// Read the responses.
 	responses := make([]executeProgramResponse, len(epr.Program))
 	for i := range epr.Program {
 		// Read the response.
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
-			build.Critical(err)
 			return nil, limit, err
 		}
-		// fmt.Println(responses[i].OutputLength)
 
 		// Read the output data.
-		responses[i].OutputLength = 4096
-		responses[i].Output = make([]byte, responses[i].OutputLength, responses[i].OutputLength)
+		outputLen := responses[i].OutputLength
+		responses[i].Output = make([]byte, outputLen, outputLen)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
 			return nil, limit, err
 		}
-		// fmt.Println("reading", responses[i].Output)
-		// return nil, limit, err
+
 		// If the response contains an error we are done.
 		if responses[i].Error != nil {
 			return responses, limit, nil
@@ -238,21 +233,23 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(13140)
-	expectedUpload := uint64(18980)
+	expectedDownload := uint64(10220) // download
+	expectedUpload := uint64(18980)   // upload
 	downloadCost := rhp.latestPT.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := rhp.latestPT.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	cost = types.NewCurrency64(math.MaxUint64)
 	resps, limit, err := rhp.executeProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
 		t.Fatal(err)
 	}
+
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (read full sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
 
 	// there should only be a single response.
 	if len(resps) != 1 {
@@ -308,9 +305,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 		t.Fatalf("expected executeProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 
-	// verify the host charged us by checking the EA balance and Check that the remaining balance is correct again. We expect the host to
-	// charge us for the program since the bandwidth limit was reached when
-	// sending the response, after executing the program.
+	// verify the host charged us by checking the EA balance and Check that the
+	// remaining balance is correct again. We expect the host to charge us for
+	// the program since the bandwidth limit was reached when sending the
+	// response, after executing the program.
 	downloadCost = rhp.latestPT.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = rhp.latestPT.UploadBandwidthCost.Mul64(limit.Uploaded())
 	remainingBalance = am.callAccountBalance(rhp.accountID)
@@ -318,9 +316,6 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if !remainingBalance.Equals(expectedRemainingBalance) {
 		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
 	}
-
-	// Log the bandwidth used by this RPC.
-	t.Logf("Used bandwidth (read full sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
 }
 
 // TestExecuteReadPartialSectorProgram tests the managedRPCExecuteProgram with a
@@ -500,8 +495,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(10220) // download
-	expectedUpload := uint64(18980)   // upload
+	expectedDownload := uint64(7300) // download
+	expectedUpload := uint64(18980)  // upload
 	downloadCost := rhp.latestPT.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := rhp.latestPT.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
