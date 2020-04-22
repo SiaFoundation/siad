@@ -3,11 +3,14 @@ package host
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
@@ -291,10 +294,16 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// verify the EA balance
 	am := rhp.ht.host.staticAccountManager
-	remainingBalance := am.callAccountBalance(rhp.accountID)
 	expectedRemainingBalance := maxBalance.Sub(cost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		remainingBalance := am.callAccountBalance(rhp.accountID)
+		if !remainingBalance.Equals(expectedRemainingBalance) {
+			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// rerun the program but now make sure the given budget does not cover the
@@ -311,10 +320,17 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// response, after executing the program.
 	downloadCost = rhp.latestPT.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = rhp.latestPT.UploadBandwidthCost.Mul64(limit.Uploaded())
-	remainingBalance = am.callAccountBalance(rhp.accountID)
+
 	expectedRemainingBalance = expectedRemainingBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		remainingBalance := am.callAccountBalance(rhp.accountID)
+		if !remainingBalance.Equals(expectedRemainingBalance) {
+			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -542,11 +558,19 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
-	remainingBalance := rhp.ht.host.staticAccountManager.callAccountBalance(rhp.accountID)
+	am := rhp.ht.host.staticAccountManager
 	expectedRemainingBalance := maxBalance.Sub(cost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance.HumanString(), remainingBalance.HumanString())
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		remainingBalance := am.callAccountBalance(rhp.accountID)
+		if !remainingBalance.Equals(expectedRemainingBalance) {
+			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
 	cost = programCost.Add(bandwidthCost.Sub64(1))
 	_, limit, err = rhp.executeProgram(epr, data, cost)
@@ -560,9 +584,16 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// sending the response, after executing the program.
 	downloadCost = rhp.latestPT.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = rhp.latestPT.UploadBandwidthCost.Mul64(limit.Uploaded())
-	remainingBalance = rhp.ht.host.staticAccountManager.callAccountBalance(rhp.accountID)
+
 	expectedRemainingBalance = expectedRemainingBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		remainingBalance := am.callAccountBalance(rhp.accountID)
+		if !remainingBalance.Equals(expectedRemainingBalance) {
+			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
