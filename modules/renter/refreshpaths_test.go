@@ -125,7 +125,8 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 			return fmt.Errorf("Expected AggregateNumFiles to be %v but got %v", len(dirsToRefresh.childDirs), di[0].AggregateNumFiles)
 		}
 		// Check that AggregateNumSubDirs equals the length of `paths`, minus
-		// the root directory, plus the standard directories.
+		// the root directory, plus the standard directories `home`,
+		// `snapshots`, and `var`.
 		numSubDirs := len(paths) - 1 + 3
 		if int(di[0].AggregateNumSubDirs) != numSubDirs {
 			return fmt.Errorf("Expected AggregateNumSubDirs to be %v but got %v", numSubDirs, di[0].AggregateNumSubDirs)
@@ -133,7 +134,6 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		di, _ = rt.renter.DirList(modules.RootSiaPath())
 		t.Log("Num dirs", len(di))
 		t.Log("Directory Infos", di)
 		t.Fatal(err)

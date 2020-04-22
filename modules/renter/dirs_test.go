@@ -222,6 +222,9 @@ func TestRenterListDirectory(t *testing.T) {
 	// Wait for root directory to show proper number of files and subdirs.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		directories, err = rt.renter.DirList(modules.RootSiaPath())
+		if err != nil {
+			return err
+		}
 		root := directories[0]
 		// Check the aggregate and siadir fields.
 		if root.AggregateNumSubDirs != 4 {
@@ -238,7 +241,6 @@ func TestRenterListDirectory(t *testing.T) {
 		}
 		return nil
 	})
-	directories, err = rt.renter.DirList(modules.RootSiaPath())
 
 	// Verify that the directory information matches the on disk information
 	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
