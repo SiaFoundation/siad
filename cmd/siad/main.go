@@ -188,6 +188,11 @@ func main() {
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
 	root.Flags().BoolVarP(&globalConfig.Siad.AllowAPIBind, "disable-api-security", "", false, "allow siad to listen on a non-localhost address (DANGEROUS)")
 
+	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
+	if globalConfig.Siad.SiaDir == "" {
+		globalConfig.Siad.SiaDir = build.SiadDataDir()
+	}
+
 	// Parse cmdline flags, overwriting both the default values and the config
 	// file values.
 	if err := root.Execute(); err != nil {
