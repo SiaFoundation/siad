@@ -160,7 +160,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 
 		bb := buffer.Bytes()
-		fmt.Println("wrting bytes", bb, len(bb))
+		// fmt.Println("wrting bytes", bb, len(bb))
 		_, err = stream.Write(bb)
 		if err != nil {
 			panic("err3")

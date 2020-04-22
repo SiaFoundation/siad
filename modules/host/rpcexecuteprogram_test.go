@@ -144,16 +144,15 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	responses := make([]executeProgramResponse, len(epr.Program))
 	for i := range epr.Program {
 		// Read the response.
-
-		var resp modules.RPCExecuteProgramResponse
-		err = modules.RPCRead(stream, &resp)
+		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
 			panic(err)
 			return nil, limit, err
 		}
+		fmt.Println(responses[i].OutputLength)
 
 		// Read the output data.
-		fmt.Println("expecting output length", responses[i].OutputLength)
+		// responses[i].OutputLength = 4096
 		responses[i].Output = make([]byte, responses[i].OutputLength, responses[i].OutputLength)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
