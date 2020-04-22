@@ -15,9 +15,9 @@ var (
 )
 
 const (
-	// DISRUPT_SIG defines the disrupt signature with which we can check if an
+	// DisruptFaultyFile defines the disrupt signature with which we can check if an
 	// error was genuine or injected
-	DISRUPT_SIG = "faultyFile"
+	DisruptFaultyFile = "faultyFile"
 )
 
 // scrambleData takes some data as input and replaces parts of it randomly with
@@ -77,7 +77,7 @@ func (d *DependencyFaultyDisk) enable() {
 // don't panic when updates can't be applied but instead are able to handle the
 // error gracefully during testing.
 func (d *DependencyFaultyDisk) Disrupt(s string) bool {
-	return s == DISRUPT_SIG
+	return s == DisruptFaultyFile
 }
 
 // tryFail will check if the disk has failed yet, and if not, it'll rng to see

@@ -210,7 +210,7 @@ func TestRefCounterCreateAndApplyTransaction(t *testing.T) {
 		}
 		// make sure the number of sectors in memory is the expected one
 		if rc.numSectors != expectNumSec {
-			t.Fatal("Wrong number of sectors in memory after a panic")
+			t.Fatalf("Wrong number of sectors in memory after a panic. Expected %d, got %d", expectNumSec, rc.numSectors)
 		}
 		if len(rc.newSectorCounts) != 0 {
 			t.Fatal("Failed to drop the in-mem cache of new sector counts")
