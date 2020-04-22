@@ -146,7 +146,6 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 		// Read the response.
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
-			panic(err)
 			return nil, limit, err
 		}
 		fmt.Println(responses[i].OutputLength)
@@ -156,7 +155,6 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 		responses[i].Output = make([]byte, responses[i].OutputLength, responses[i].OutputLength)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
-			panic("read2")
 			return nil, limit, err
 		}
 		// fmt.Println("reading", responses[i].Output)

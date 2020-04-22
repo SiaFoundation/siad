@@ -167,7 +167,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			return errors.AddContext(err, "failed to send data to peer")
 		}
 
-		// Send the response to the peer.
+		// // Send the response to the peer.
 		// err = modules.RPCWrite(stream, resp)
 		// if err != nil {
 		// 	panic("err1")
