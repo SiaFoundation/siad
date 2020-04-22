@@ -83,7 +83,7 @@ func apiPasswordFilePath() string {
 // createAPIPasswordFile creates an api password file in the Sia data directory
 // and returns the newly created password
 func createAPIPasswordFile() (string, error) {
-	err := os.Mkdir(SiaDir(), 0700)
+	err := os.MkdirAll(SiaDir(), 0700)
 	if err != nil {
 		return "", err
 	}
