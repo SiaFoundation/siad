@@ -1,2 +1,2 @@
-- Move gererate-changelog.sh script to changelog directory.
+- Move generate-changelog.sh script to changelog directory.
 - Generate changelog from any file extension (.md is not needed)

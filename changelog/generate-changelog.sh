@@ -38,8 +38,8 @@ function add_items {
     local new_line=false
     for item in $items_list
     do
-        # skip .init files
-        if [ "$item" == '.init' ]
+        # skip .init files and .DS_Store (from MacOS)
+        if [ "$item" == '.init' ] || [ "$item" == '.DS_Store' ]
         then
             continue
         fi
