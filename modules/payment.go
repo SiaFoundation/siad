@@ -60,20 +60,20 @@ type PaymentProcessor interface {
 	ProcessPayment(stream siamux.Stream) (PaymentDetails, error)
 }
 
+// PaymentProvider is the interface implemented to provide payment for an RPC.
+type PaymentProvider interface {
+	// ProvidePayment takes a stream and various payment details and handles the
+	// payment by sending and processing payment request and response objects.
+	// Returns an error in case of failure.
+	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount AccountID, blockHeight types.BlockHeight) error
+}
+
 // PaymentDetails is an interface that defines method that give more information
 // about the details of a processed payment.
 type PaymentDetails interface {
 	AccountID() AccountID
 	Amount() types.Currency
 	AddedCollateral() types.Currency
-}
-
-// PaymentProvider is the interface implemented to provide RPC payment.
-type PaymentProvider interface {
-	// ProvidePayment takes a stream and various payment details and handles the
-	// payment by sending and processing payment request and response objects.
-	// Returns an error in case of failure.
-	ProvidePayment(stream siamux.Stream, rpc types.Specifier, amount types.Currency, refundAccount AccountID, blockHeight types.BlockHeight) error
 }
 
 // Payment identifiers

@@ -17,6 +17,7 @@ import (
 // on more and more RPCs that support the new renter-host protocol.
 type rpcClient struct {
 	staticHostAddress   string
+	staticHostKey       types.SiaPublicKey
 	staticRefundAccount modules.AccountID
 
 	// The current block height is cached on the client and gets updated by the
@@ -32,6 +33,7 @@ type rpcClient struct {
 func (r *Renter) newRPCClient(he modules.HostDBEntry, ra modules.AccountID, bh types.BlockHeight) *rpcClient {
 	return &rpcClient{
 		staticHostAddress:   string(he.NetAddress),
+		staticHostKey:       he.PublicKey,
 		staticRefundAccount: ra,
 		blockHeight:         bh,
 		r:                   r,
@@ -61,7 +63,7 @@ func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Str
 
 	// provide payment
 	// TODO: NTH cost := program.EstimateCost(data, dataLen)
-	err = pp.ProvidePayment(stream, modules.RPCUpdatePriceTable, cost, c.staticRefundAccount, c.managedBlockHeight())
+	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCUpdatePriceTable, cost, c.staticRefundAccount, c.managedBlockHeight())
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +117,7 @@ func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.S
 	// TODO: (follow-up) this should negatively affect the host's score
 
 	// provide payment
-	err = pp.ProvidePayment(stream, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, c.staticRefundAccount, c.managedBlockHeight())
+	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, c.staticRefundAccount, c.managedBlockHeight())
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +147,7 @@ func (c *rpcClient) FundAccount(pp modules.PaymentProvider, stream siamux.Stream
 	}
 
 	// provide payment
-	err = pp.ProvidePayment(stream, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, c.managedBlockHeight())
+	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, c.managedBlockHeight())
 	if err != nil {
 		return nil, err
 	}

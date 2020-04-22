@@ -9,9 +9,11 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -24,6 +26,11 @@ var (
 	errNilHDB    = errors.New("cannot create contractor with nil HostDB")
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
+
+	errHostNotFound              = errors.New("host not found")
+	errContractNotFound          = errors.New("contract not found")
+	errContractInsufficientFunds = errors.New("contract has insufficient funds")
+	errRefundAccountInvalid      = errors.New("invalid refund account")
 
 	// COMPATv1.0.4-lts
 	// metricsContractID identifies a special contract that contains aggregate
@@ -188,6 +195,93 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.currentPeriod
+}
+
+// ProvidePayment fulfills the PaymentProvider interface. It uses the given
+// stream and necessary payment details to perform payment for an RPC call.
+func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+	// verify we do not specify a refund account on the fund account RPC
+	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
+		return errRefundAccountInvalid
+	}
+
+	// find a contract for the given host
+	contract, exists := c.ContractByPublicKey(host)
+	if !exists {
+		return errContractNotFound
+	}
+
+	// acquire a safe contract
+	sc, exists := c.staticContracts.Acquire(contract.ID)
+	if !exists {
+		return errContractNotFound
+	}
+	defer c.staticContracts.Return(sc)
+
+	// verify the contract has enough funds
+	metadata := sc.Metadata()
+	if metadata.RenterFunds.Cmp(amount) < 0 {
+		return errContractInsufficientFunds
+	}
+
+	// create a new revision
+	current := sc.LastRevision()
+	rev, err := current.PaymentRevision(amount)
+	if err != nil {
+		return errors.AddContext(err, "Failed to create a payment revision")
+	}
+
+	// create transaction containing the revision
+	signedTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{rev},
+		TransactionSignatures: []types.TransactionSignature{{
+			ParentID:       crypto.Hash(rev.ParentID),
+			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+			PublicKeyIndex: 0,
+		}},
+	}
+	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+	// record the payment intent
+	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc)
+	if err != nil {
+		return errors.AddContext(err, "Failed to record payment intent")
+	}
+
+	// send PaymentRequest
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	if err != nil {
+		return err
+	}
+
+	// send PayByContractRequest
+	err = modules.RPCWrite(stream, createPayBycontractRequest(rev, sig, refundAccount))
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	if err := modules.RPCRead(stream, &payByResponse); err != nil {
+		return err
+	}
+
+	// verify the host's signature
+	hash := crypto.HashAll(rev)
+	var pk crypto.PublicKey
+	copy(pk[:], metadata.HostPublicKey.Key)
+	if err := crypto.VerifyHash(hash, pk, payByResponse.Signature); err != nil {
+		return errors.New("could not verify host's signature")
+	}
+
+	// commit payment intent
+	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+	if err != nil {
+		return errors.AddContext(err, "Failed to commit unknown spending intent")
+	}
+
+	return nil
 }
 
 // RateLimits sets the bandwidth limits for connections created by the
@@ -506,4 +600,24 @@ func (c *Contractor) managedSynced() bool {
 	default:
 	}
 	return false
+}
+
+// createPayBycontractRequest is a helper function that takes a revision,
+// signature and refund account and creates a PayByContractRequest object.
+func createPayBycontractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
+	req := modules.PayByContractRequest{
+		ContractID:           rev.ID(),
+		NewRevisionNumber:    rev.NewRevisionNumber,
+		NewValidProofValues:  make([]types.Currency, len(rev.NewValidProofOutputs)),
+		NewMissedProofValues: make([]types.Currency, len(rev.NewMissedProofOutputs)),
+		RefundAccount:        refundAccount,
+		Signature:            sig[:],
+	}
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+	return req
 }
