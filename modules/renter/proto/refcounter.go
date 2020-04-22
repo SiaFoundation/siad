@@ -8,9 +8,6 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -232,8 +229,7 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	// This means that we need to panic in case applying the updates fails in
 	// order to avoid data corruption.
 	defer func() {
-		// Don't panic on errors injected by the faulty disk dependency.
-		if err != nil && !rc.staticDeps.Disrupt(dependencies.DisruptFaultyFile) {
+		if err != nil {
 			// Before panicking, restore the previous in-mem data, so in case we
 			// recover from the panic we'll have valid in-mem data.
 			rc.isDeleted = false
@@ -248,11 +244,11 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 		}
 	}()
 	// Apply the updates.
-	if err := applyUpdates(f, updates...); err != nil {
+	if err = applyUpdates(f, updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
-	if err := txn.SignalUpdatesApplied(); err != nil {
+	if err = txn.SignalUpdatesApplied(); err != nil {
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
