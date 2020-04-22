@@ -229,8 +229,9 @@ func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTabl
 	return
 }
 
-// managedUpdate overwrites the current price table with the one that's given
-func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
+// managedSetCurrent overwrites the current price table with the one that's
+// given
+func (hp *hostPrices) managedSetCurrent(pt modules.RPCPriceTable) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 	hp.current = pt
@@ -398,7 +399,7 @@ func (h *Host) managedUpdatePriceTable() {
 	fastrand.Read(priceTable.UID[:])
 
 	// update the pricetable
-	h.staticPriceTables.managedUpdate(priceTable)
+	h.staticPriceTables.managedSetCurrent(priceTable)
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry

@@ -95,7 +95,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	defer rhp.Close()
 
 	// negotiate a price table.
-	err = rhp.negotiatePriceTable()
+	err = rhp.updatePriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +104,6 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	pt := rhp.latestPT
 	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
-		t.Log("UID:", pt.UID)
-		t.Log("Guaranteed:", ht.host.staticPriceTables.guaranteed)
 		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
@@ -220,55 +218,4 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientPaymentForRPC.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", modules.ErrInsufficientPaymentForRPC, err)
 	}
-}
-
-// negotiatePriceTable gets a new price table from the host.
-func (pair *renterHostPair) negotiatePriceTable() error {
-	// create a test stream
-	stream := pair.newStream()
-	defer stream.Close()
-
-	// write the rpc id
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
-	if err != nil {
-		return err
-	}
-
-	// read the updated RPC price table
-	var update modules.RPCUpdatePriceTableResponse
-	if err = modules.RPCRead(stream, &update); err != nil {
-		return err
-	}
-
-	// unmarshal the JSON into a price table
-	var pt modules.RPCPriceTable
-	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
-		return err
-	}
-
-	// Send the payment request.
-	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
-	if err != nil {
-		return err
-	}
-
-	// Send the payment details.
-	rev, sig, err := pair.paymentRevision(pt.UpdatePriceTableCost)
-	if err != nil {
-		return err
-	}
-	pbcr := newPayByContractRequest(rev, sig, pair.accountID)
-	err = modules.RPCWrite(stream, pbcr)
-	if err != nil {
-		return err
-	}
-
-	// Receive payment confirmation.
-	var pc modules.PayByContractResponse
-	err = modules.RPCRead(stream, &pc)
-	if err != nil {
-		return err
-	}
-	pair.latestPT = &pt
-	return nil
 }
