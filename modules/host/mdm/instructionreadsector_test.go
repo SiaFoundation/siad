@@ -158,3 +158,75 @@ func TestInstructionReadSector(t *testing.T) {
 		t.Fatal("finalize callback should be nil for readonly program")
 	}
 }
+
+// TestInstructionReadOutsideSector tests reading a sector from outside the
+// storage obligation.
+func TestInstructionReadOutsideSector(t *testing.T) {
+	host := newTestHost()
+	mdm := New(host)
+	defer mdm.Stop()
+
+	// Add a sector root to the host but not to the SO.
+	sectorRoot := randomSectorRoots(1)[0]
+	sectorData, err := host.ReadSector(sectorRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a program to read a full sector from the host.
+	pt := newTestPriceTable()
+	readLen := modules.SectorSize
+	// Execute it.
+	so := newTestStorageObligation(true)
+	instructions, programData, cost, refund, collateral, _ := newReadSectorProgram(readLen, 0, sectorRoot, pt)
+	r := bytes.NewReader(programData)
+	dataLen := uint64(len(programData))
+	// Execute it.
+	budget := modules.NewBudget(cost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be one output since there was one instruction.
+	numOutputs := 0
+	imr := crypto.Hash{}
+	for output := range outputs {
+		if err := output.Error; err != nil {
+			t.Fatal(err)
+		}
+		if output.NewSize != 0 {
+			t.Fatalf("expected contract size to stay the same: %v != %v", 0, output.NewSize)
+		}
+		if output.NewMerkleRoot != imr {
+			t.Fatalf("expected merkle root to stay the same: %v != %v", imr, output.NewMerkleRoot)
+		}
+		if len(output.Proof) != 0 {
+			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
+		}
+		if !bytes.Equal(output.Output, sectorData) {
+			t.Fatal("output data doesn't match")
+		}
+		if !output.ExecutionCost.Equals(cost) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		}
+		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
+			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
+				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
+		}
+		if !output.AdditionalCollateral.Equals(collateral) {
+			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
+		}
+		if !output.PotentialRefund.Equals(refund) {
+			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
+		}
+		sectorData = output.Output
+		numOutputs++
+	}
+	if numOutputs != 1 {
+		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
+	}
+	// No need to finalize the program since this program is readonly.
+	if finalize != nil {
+		t.Fatal("finalize callback should be nil for readonly program")
+	}
+}
