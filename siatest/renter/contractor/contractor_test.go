@@ -2559,7 +2559,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   1,
 		Renters: 0,
 		Miners:  1,
 	}
@@ -2583,7 +2583,6 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := tg.Renters()[0]
-	hosts := tg.Hosts()
 
 	// Waiting for nodes to sync
 	if err = tg.Sync(); err != nil {
@@ -2606,6 +2605,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 
 	defaultSettingsDep.Enable()
 
+	hosts := tg.Hosts()
 	h := hosts[0]
 	// Increase one of the host's prices.
 	hg, err := h.HostGet()
@@ -2637,7 +2637,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityError,
-		Cause:    "Renew failure due to dependency",
+		Cause:    "rejected for high paying renter valid output",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}

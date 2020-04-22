@@ -1138,6 +1138,8 @@ func (c *Contractor) threadedContractMaintenance() {
 			alertSeverity = modules.SeverityCritical
 		}
 		if renewErr != nil {
+			c.log.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
+			c.log.Debugln("alert err: ", renewErr)
 			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.AlertSeverity(alertSeverity))
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
