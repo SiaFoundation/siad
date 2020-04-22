@@ -124,6 +124,17 @@ func (n *DirNode) Path() (string, error) {
 	return sd.Path(), nil
 }
 
+// UpdateBubbledMetadata is a wrapper for SiaDir.UpdateBubbledMetadata.
+func (n *DirNode) UpdateBubbledMetadata(md siadir.Metadata) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return err
+	}
+	return sd.UpdateBubbledMetadata(md)
+}
+
 // UpdateLastHealthCheckTime is a wrapper for SiaDir.UpdateLastHealthCheckTime.
 func (n *DirNode) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime time.Time) error {
 	n.mu.Lock()
