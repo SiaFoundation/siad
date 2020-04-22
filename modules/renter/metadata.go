@@ -180,7 +180,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
-			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
+			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs + 1
 			metadata.AggregateSize += dirMetadata.AggregateSize
 
 			// Update siadir fields
