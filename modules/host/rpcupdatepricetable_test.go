@@ -94,12 +94,6 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	ht := rhp.ht
 	defer rhp.Close()
 
-	// negotiate a price table.
-	err = rhp.updatePriceTable()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// verify the price table is being tracked
 	pt := rhp.latestPT
 	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)

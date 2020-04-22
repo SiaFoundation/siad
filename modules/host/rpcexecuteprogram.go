@@ -114,13 +114,20 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			build.Critical("There shouldn't be another output after the execution already failed")
 			continue // continue to drain the channel
 		}
+
+		// Sanity check output when error occurred
+		if executionFailed && len(output.Output) > 0 {
+			err = fmt.Errorf("output.Error != nil but len(output.Output) == %v", len(output.Output))
+			build.Critical(err) // don't return on purpose
+		}
+
 		// Prepare the RPC response.
 		resp := modules.RPCExecuteProgramResponse{
 			AdditionalCollateral: output.AdditionalCollateral,
 			Error:                output.Error,
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
-			Output:               output.Output,
+			OutputLength:         uint64(len(output.Output)),
 			PotentialRefund:      output.PotentialRefund,
 			Proof:                output.Proof,
 			TotalCost:            output.ExecutionCost,
@@ -134,10 +141,17 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		programRefund = resp.PotentialRefund
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
+
 		// Send the response to the peer.
 		err = modules.RPCWrite(stream, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
+		}
+
+		// Write output.
+		_, err = stream.Write(output.Output)
+		if err != nil {
+			return errors.AddContext(err, "failed to send output data to peer")
 		}
 	}
 	// Sanity check that we received at least 1 output.
