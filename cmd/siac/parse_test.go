@@ -293,7 +293,7 @@ func TestParsePercentages(t *testing.T) {
 	}
 }
 
-// randomPercentages creates a slice of sudo random size, up to 500 elements,
+// randomPercentages creates a slice of pseudo random size, up to 500 elements,
 // with random elements that add to 100.
 //
 // NOTE: this function does not explicitly check that all the elements strictly
