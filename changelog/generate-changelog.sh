@@ -5,7 +5,7 @@ set -e
 
 # config
 
-generate_till_version=v1.4.7
+generate_till_version=v1.4.8
 changelog_md=../CHANGELOG.md
 changelog_files_dir=.
 head_filename=changelog-head.md
@@ -39,7 +39,7 @@ function add_items {
     for item in $items_list
     do
         # skip .init files and .DS_Store (from MacOS)
-        if [ "$item" == '.init' ] || [ "$item" == '.DS_Store' ]
+        if [ $(basename "$item") == .init ] || [ $(basename "$item") == .DS_Store ]
         then
             continue
         fi
