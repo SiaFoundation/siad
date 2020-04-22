@@ -626,40 +626,40 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if settings.AcceptingContracts != false {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.MaxDuration != defaultMaxDuration {
+	if settings.MaxDuration != modules.DefaultMaxDuration {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.MaxDownloadBatchSize != uint64(defaultMaxDownloadBatchSize) {
+	if settings.MaxDownloadBatchSize != uint64(modules.DefaultMaxDownloadBatchSize) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.MaxReviseBatchSize != uint64(defaultMaxReviseBatchSize) {
+	if settings.MaxReviseBatchSize != uint64(modules.DefaultMaxReviseBatchSize) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if settings.NetAddress != "" {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.WindowSize != defaultWindowSize {
+	if settings.WindowSize != modules.DefaultWindowSize {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.Collateral.Equals(defaultCollateral) {
+	if !settings.Collateral.Equals(modules.DefaultCollateral) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.CollateralBudget.Equals(defaultCollateralBudget) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MaxCollateral.Equals(defaultMaxCollateral) {
+	if !settings.MaxCollateral.Equals(modules.DefaultMaxCollateral) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinContractPrice.Equals(defaultContractPrice) {
+	if !settings.MinContractPrice.Equals(modules.DefaultContractPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinDownloadBandwidthPrice.Equals(defaultDownloadBandwidthPrice) {
+	if !settings.MinDownloadBandwidthPrice.Equals(modules.DefaultDownloadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MinStoragePrice.Equals(modules.DefaultStoragePrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {
+	if !settings.MinUploadBandwidthPrice.Equals(modules.DefaultUploadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if settings.EphemeralAccountExpiry != (defaultEphemeralAccountExpiry) {
@@ -735,16 +735,16 @@ func TestSetAndGetSettings(t *testing.T) {
 
 	// Check the default settings get returned at first call.
 	settings := ht.host.Settings()
-	if settings.MaxDuration != defaultMaxDuration {
+	if settings.MaxDuration != modules.DefaultMaxDuration {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.WindowSize != defaultWindowSize {
+	if settings.WindowSize != modules.DefaultWindowSize {
 		t.Error("settings retrieval did not return default value")
 	}
 	if settings.Price.Cmp(defaultPrice) != 0 {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.Collateral.Cmp(defaultCollateral) != 0 {
+	if settings.Collateral.Cmp(modules.DefaultCollateral) != 0 {
 		t.Error("settings retrieval did not return default value")
 	}
 

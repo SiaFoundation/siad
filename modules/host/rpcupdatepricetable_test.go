@@ -94,12 +94,6 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	ht := rhp.ht
 	defer rhp.Close()
 
-	// negotiate a price table.
-	err = rhp.updatePriceTable()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// verify the price table is being tracked
 	pt := rhp.latestPT
 	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
@@ -177,7 +171,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 		// expect clean stream close
 		err = modules.RPCRead(stream, struct{}{})
-		if err != io.EOF {
+		if !errors.Contains(err, io.ErrClosedPipe) {
 			return nil, err
 		}
 		return &pt, nil

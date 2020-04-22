@@ -45,6 +45,10 @@ type RPCPriceTable struct {
 	// lock away as collateral when adding new data to a contract.
 	CollateralCost types.Currency `json:"collateralcost"`
 
+	// Cost values specific to the bandwidth consumption.
+	DownloadBandwidthCost types.Currency `json:"downloadbandwidthcost"`
+	UploadBandwidthCost   types.Currency `json:"uploadbandwidthcost"`
+
 	// Cost values specific to the DropSectors instruction.
 	DropSectorsBaseCost types.Currency `json:"dropsectorsbasecost"`
 	DropSectorsUnitCost types.Currency `json:"dropsectorsunitcost"`
@@ -101,7 +105,7 @@ type (
 	// RPCExecuteProgramResponse todo missing docstring
 	RPCExecuteProgramResponse struct {
 		AdditionalCollateral types.Currency
-		Output               []byte
+		OutputLength         uint64
 		NewMerkleRoot        crypto.Hash
 		NewSize              uint64
 		Proof                []crypto.Hash
@@ -131,7 +135,7 @@ func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
 	}
 	ec := encoding.NewEncoder(w)
 	_ = ec.Encode(epr.AdditionalCollateral)
-	_ = ec.Encode(epr.Output)
+	_ = ec.Encode(epr.OutputLength)
 	_ = ec.Encode(epr.NewMerkleRoot)
 	_ = ec.Encode(epr.NewSize)
 	_ = ec.Encode(epr.Proof)
@@ -146,7 +150,7 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	var errStr string
 	dc := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
 	_ = dc.Decode(&epr.AdditionalCollateral)
-	_ = dc.Decode(&epr.Output)
+	_ = dc.Decode(&epr.OutputLength)
 	_ = dc.Decode(&epr.NewMerkleRoot)
 	_ = dc.Decode(&epr.NewSize)
 	_ = dc.Decode(&epr.Proof)

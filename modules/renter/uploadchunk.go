@@ -42,6 +42,7 @@ type unfinishedUploadChunk struct {
 	memoryReleased         uint64 // memory that has been returned of memoryNeeded
 	minimumPieces          int    // number of pieces required to recover the file.
 	offset                 int64  // Offset of the chunk within the file.
+	onDisk                 bool   // indicates if there is a local file accessible on disk
 	piecesNeeded           int    // number of pieces to achieve a 100% complete upload
 	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
