@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -109,7 +110,7 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(sb.Filepath(), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -176,7 +177,7 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 		}
 	}
 
-	filepath := filepath.Join(sb.staticPersistDir, persistFile)
+	filepath := sb.Filepath()
 	// Truncate the file to remove any corrupted data that may have been added.
 	err := os.Truncate(filepath, sb.persistLength)
 	if err != nil {
@@ -219,7 +220,7 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 // load loads the persisted blacklist from disk
 func (sb *SkynetBlacklist) load() error {
 	// Open File
-	filepath := filepath.Join(sb.staticPersistDir, persistFile)
+	filepath := sb.Filepath()
 	f, err := os.Open(filepath)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
@@ -288,9 +289,19 @@ func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
 		return errors.AddContext(err, "unable to unmarshal version")
 	}
 	if version != metadataVersion {
-		return errWrongVersion
+		// Convert versions to strings and strip newlines for displaying.
+		expected, _ := metadataVersion.MarshalText()
+		received, _ := version.MarshalText()
+		expectedStr := string(bytes.Trim(expected, "\x000"))
+		receivedStr := string(bytes.Trim(received, "\x000"))
+		return errors.AddContext(errWrongVersion, fmt.Sprintf("expected %v, received %v", strings.TrimSpace(expectedStr), strings.TrimSpace(receivedStr)))
 	}
 
 	// Unmarshal the length
 	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
+}
+
+// Filepath returns the filepath of the persist file.
+func (sb *SkynetBlacklist) Filepath() string {
+	return filepath.Join(sb.staticPersistDir, persistFile)
 }

@@ -47,6 +47,9 @@ func TestPersist(t *testing.T) {
 	}
 
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
+	if filename != sp.Filepath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.Filepath())
+	}
 
 	// There should be no portals in the list
 	if len(sp.portals) != 0 {
@@ -177,6 +180,9 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
+	if filename != sp.Filepath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.Filepath())
+	}
 
 	// There should be no portals in the list
 	if len(sp.portals) != 0 {
@@ -485,7 +491,7 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = sp.unmarshalMetadata(mdBytes)
-	if err != errWrongVersion {
+	if !errors.Contains(err, errWrongVersion) {
 		t.Fatalf("Expected %v got %v", errWrongVersion, err)
 	}
 

@@ -137,7 +137,7 @@ func (sp *SkynetPortals) callInitPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(filepath.Join(sp.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(sp.Filepath(), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -252,7 +252,7 @@ func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortal, r
 		}
 	}
 
-	filepath := filepath.Join(sp.staticPersistDir, persistFile)
+	filepath := sp.Filepath()
 	// Truncate the file to remove any corrupted data that may have been added.
 	err = os.Truncate(filepath, sp.persistLength)
 	if err != nil {
@@ -295,7 +295,7 @@ func (sp *SkynetPortals) callUpdateAndAppend(additions []modules.SkynetPortal, r
 // load loads the persisted portals list from disk.
 func (sp *SkynetPortals) load() error {
 	// Open File
-	filepath := filepath.Join(sp.staticPersistDir, persistFile)
+	filepath := sp.Filepath()
 	f, err := os.Open(filepath)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
@@ -365,9 +365,19 @@ func (sp *SkynetPortals) unmarshalMetadata(raw []byte) error {
 		return errors.AddContext(err, "unable to unmarshal version")
 	}
 	if version != metadataVersion {
-		return errWrongVersion
+		// Convert versions to strings and strip newlines for displaying.
+		expected, _ := metadataVersion.MarshalText()
+		received, _ := version.MarshalText()
+		expectedStr := string(bytes.Trim(expected, "\x000"))
+		receivedStr := string(bytes.Trim(received, "\x000"))
+		return errors.AddContext(errWrongVersion, fmt.Sprintf("expected %v, received %v", strings.TrimSpace(expectedStr), strings.TrimSpace(receivedStr)))
 	}
 
 	// Unmarshal the length
 	return encoding.Unmarshal(raw[lengthOffset:], &sp.persistLength)
+}
+
+// Filepath returns the filepath of the persist file.
+func (sp *SkynetPortals) Filepath() string {
+	return filepath.Join(sp.staticPersistDir, persistFile)
 }

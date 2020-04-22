@@ -1,6 +1,7 @@
 package skynetportals
 
 import (
+	"fmt"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -33,7 +34,7 @@ func New(persistDir string) (*SkynetPortals, error) {
 	// Initialize the persistence of the portals list
 	err := sp.callInitPersist()
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to initialize the skynet portal list persistence")
+		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet portal list persistence at '%v'", sp.Filepath()))
 	}
 
 	return sp, nil
@@ -56,5 +57,6 @@ func (sp *SkynetPortals) Portals() []modules.SkynetPortal {
 
 // UpdateSkynetPortals updates the list of known Skynet portals.
 func (sp *SkynetPortals) UpdateSkynetPortals(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
-	return sp.callUpdateAndAppend(additions, removals)
+	err := sp.callUpdateAndAppend(additions, removals)
+	return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.Filepath()))
 }
