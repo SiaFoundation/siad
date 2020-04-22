@@ -164,7 +164,7 @@ func TestPersist(t *testing.T) {
 	}
 }
 
-// TestPersistCorruption tests the persistence of the Skynet blacklist when
+// TestPersistCorruption tests the persistence of the Skynet portal list when
 // corruption occurs.
 func TestPersistCorruption(t *testing.T) {
 	if testing.Short() {
@@ -172,7 +172,7 @@ func TestPersistCorruption(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create a new SkynetBlacklist
+	// Create a new SkynetPortalList
 	testdir := testDir(t.Name())
 	sp, err := New(testdir)
 	if err != nil {
