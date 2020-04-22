@@ -18,6 +18,14 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
+// SeveyTODO
+//
+// - Update all siatests
+//
+// - Verify changes through API
+//
+// - Clean up commented out code, helpful for F/U MRs
+
 var (
 	// Nil dependency errors.
 	errNilCS     = errors.New("cannot create FeeManager with nil consensus set")
@@ -136,19 +144,8 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 		return nil, errors.AddContext(err, "unable to initialize the FeeManager's persistence")
 	}
 
-	// Subscribe to the consensus set.
-	err = cs.ConsensusSetSubscribe(fm, modules.ConsensusChangeRecent, common.staticTG.StopChan())
-	if err != nil {
-		return nil, err
-	}
-	// Unsubscribe on shutdown
-	err = common.staticTG.OnStop(func() error {
-		cs.Unsubscribe(fm)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
+	// Launch background thread to process fees
+	go fm.threadedProcessFees()
 
 	return fm, nil
 }
@@ -156,6 +153,51 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 // uniqueID creates a random unique FeeUID.
 func uniqueID() modules.FeeUID {
 	return modules.FeeUID(hex.EncodeToString(fastrand.Bytes(20)))
+}
+
+// AddFee adds a fee to the fee manager.
+func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (modules.FeeUID, error) {
+	if err := fm.common.staticTG.Add(); err != nil {
+		return "", err
+	}
+	defer fm.common.staticTG.Done()
+
+	fm.common.persist.mu.Lock()
+	nextPayoutHeight := fm.common.persist.nextPayoutHeight
+	fm.common.persist.mu.Unlock()
+
+	// Determine the payoutHeight
+	payoutHeight := types.BlockHeight(0)
+	if fm.common.staticCS.Synced() {
+		// Consensus is synced, set to the following payout period
+		payoutHeight = nextPayoutHeight + PayoutInterval
+	}
+
+	// Create the fee.
+	fee := modules.AppFee{
+		Address:            address,
+		Amount:             amount,
+		AppUID:             appUID,
+		PaymentCompleted:   false,
+		PayoutHeight:       payoutHeight,
+		Recurring:          recurring,
+		Timestamp:          time.Now().Unix(),
+		TransactionCreated: false,
+		UID:                uniqueID(),
+	}
+
+	// Add the fee. Don't need to check for existence because we just generated
+	// a unique ID.
+	fm.mu.Lock()
+	fm.fees[fee.UID] = &fee
+	fm.mu.Unlock()
+
+	// Persist the fee.
+	err := fm.common.persist.callPersistNewFee(fee)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to persist the new fee")
+	}
+	return fee.UID, nil
 }
 
 // CancelFee cancels a fee by removing it from the FeeManager's map
@@ -230,43 +272,6 @@ func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
 	return pendingFees, nil
 }
 
-// AddFee adds a fee to the fee manager.
-func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (modules.FeeUID, error) {
-	if err := fm.common.staticTG.Add(); err != nil {
-		return "", err
-	}
-	defer fm.common.staticTG.Done()
-
-	fm.common.persist.mu.Lock()
-	nextPayoutHeight := fm.common.persist.nextPayoutHeight
-	fm.common.persist.mu.Unlock()
-
-	// Create the fee.
-	fee := modules.AppFee{
-		Address:          address,
-		Amount:           amount,
-		AppUID:           appUID,
-		PaymentCompleted: false,
-		PayoutHeight:     nextPayoutHeight + PayoutInterval, // Don't do this in the next payout, but the following.
-		Recurring:        recurring,
-		Timestamp:        time.Now().Unix(),
-		UID:              uniqueID(),
-	}
-
-	// Add the fee. Don't need to check for existence because we just generated
-	// a unique ID.
-	fm.mu.Lock()
-	fm.fees[fee.UID] = &fee
-	fm.mu.Unlock()
-
-	// Persist the fee.
-	err := fm.common.persist.callPersistNewFee(fee)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to persist the new fee")
-	}
-	return fee.UID, nil
-}
-
 // Settings returns the settings of the FeeManager
 func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
 	if err := fm.common.staticTG.Add(); err != nil {
@@ -277,6 +282,8 @@ func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
 	fm.common.persist.mu.Lock()
 	nextPayoutHeight := fm.common.persist.nextPayoutHeight
 	fm.common.persist.mu.Unlock()
+
+	// SeveyTODO - why didn't we add the payout amount too?
 
 	return modules.FeeManagerSettings{
 		PayoutHeight: nextPayoutHeight,

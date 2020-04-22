@@ -1,134 +1,140 @@
 package feemanager
 
 import (
+	"time"
+
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	// "gitlab.com/NebulousLabs/Sia/types"
-	// "gitlab.com/NebulousLabs/errors"
 )
 
-// ProcessConsensusChange will submit a call to process fees if the consensus is
-// synced
-func (fm *FeeManager) ProcessConsensusChange(cc modules.ConsensusChange) {
-	/*
-		err := fm.common.staticTG.Add()
-		if err != nil {
+var (
+	// processFeesCheckInterval is how often the FeeManager will check if fees
+	// can be processed
+	processFeesCheckInterval = build.Select(build.Var{
+		Standard: time.Minute * 10,
+		Dev:      time.Minute,
+		Testing:  time.Second,
+	}).(time.Duration)
+
+	// syncCheckInterval is how often the FeeManager will check if consensus is
+	// synced
+	syncCheckInterval = build.Select(build.Var{
+		Standard: time.Second * 5,
+		Dev:      time.Second * 3,
+		Testing:  time.Second,
+	}).(time.Duration)
+)
+
+// blockUntilSynced will block until the consensus is synced
+func (fm *FeeManager) blockUntilSynced() {
+	for {
+		// Check if consensus is synced
+		if fm.common.staticCS.Synced() {
 			return
 		}
-		defer fm.common.staticTG.Done()
 
-		// Check to see if Consensus is synced
-		if !cc.Synced {
+		// Block until it is time to check again
+		select {
+		case <-fm.common.staticTG.StopChan():
 			return
+		case <-time.After(processFeesCheckInterval):
 		}
-
-		// Process fees
-		go fm.threadedProcessFees()
-	*/
-	return
+	}
 }
 
-// threadedProcessFees loops over the FeeManager's fees and processes fees based
-// on payOutHeight
+// threadedProcessFees is a background thread that handles processing the
+// FeeManager's Fees
 func (fm *FeeManager) threadedProcessFees() {
-	/*
-		err := fm.common.staticTG.Add()
-		if err != nil {
-			return
-		}
-		defer fm.common.staticTG.Done()
+	err := fm.common.staticTG.Add()
+	if err != nil {
+		return
+	}
+	defer fm.common.staticTG.Done()
 
-		// Get the current blockheight
+	for {
+		// Block until synced
+		fm.blockUntilSynced()
+
+		// Grab the Current blockheight
 		bh := fm.common.staticCS.Height()
 
-		// Check if there are no fees, bump out the payout height if so.
-		fm.mu.Lock()
-		numFees := len(fm.fees)
-		fm.mu.Unlock()
-		if numFees == 0 {
-			fm.common.persist.mu.Lock()
-			fm.common.persist.nextPayoutHeight = bh + PayoutInterval
-			fm.common.persist.mu.Unlock()
-			fm.common.persist.syncCoordinator.managedSyncPersist()
+		// Check if the FeeManager nextPayoutHeight has been set yet, it not,
+		// update in memory. We do not need to save here as any following call
+		// to save a fee to the persist file will persist the new value
+		fm.common.persist.mu.Lock()
+		nextPayoutHeight := fm.common.persist.nextPayoutHeight
+		if nextPayoutHeight == 0 || nextPayoutHeight < bh {
+			nextPayoutHeight = bh + PayoutInterval
+			fm.common.persist.nextPayoutHeight = nextPayoutHeight
 		}
+		fm.common.persist.mu.Unlock()
 
+		// Check for fees that need to be updated due to their PayoutHeights
+		// being set to 0, and check for fees that are ready to be processed
+		var feesToUpdate []modules.AppFee
+		var feesToProcess []modules.AppFee
 		fm.mu.Lock()
-		defer fm.mu.Unlock()
-		// If there are no fees, bump out the payoutHeight
-		if len(fm.fees) == 0 {
-			fm.payoutHeight = bh + PayoutInterval
-		}
-		// Check to see if the payoutHeight has been reached.
-		if fm.payoutHeight > bh {
-			return
-		}
-		fm.staticLog.Printf("Processing fees; Blockheight %v, PayoutHeight %v", bh, fm.payoutHeight)
-
-		// Process the fees
-		var processErrors error
 		for _, fee := range fm.fees {
-			// Check for any recurring fees that have already been paid for this period
-			if fee.Recurring && fee.PayoutHeight > bh {
+			// Skip any fees that have had transactions created or payments
+			// completed
+			if fee.TransactionCreated || fee.PaymentCompleted {
 				continue
 			}
 
-			// Process the fee.
-			err := fm.processFee(fee)
+			// Skip any fees with PayoutHeights in the future
+			if fee.PayoutHeight > bh {
+				continue
+			}
+
+			// Grab any fees that need to be updated
+			if fee.PayoutHeight == 0 {
+				feesToUpdate = append(feesToUpdate, *fee)
+				continue
+			}
+
+			// Fee needs to be processed
+			feesToProcess = append(feesToProcess, *fee)
+		}
+		fm.mu.Unlock()
+
+		// Add new entries for all the fees with a PayoutHeight of 0 so the new
+		// PayoutHeight is reflected
+		for _, fee := range feesToUpdate {
+			fee.PayoutHeight = nextPayoutHeight + PayoutInterval
+			err = fm.common.persist.callPersistNewFee(fee)
 			if err != nil {
-				fm.staticLog.Printf("WARN: unable to process fee; id %v; err: %v", fee.UID, err)
-				processErrors = errors.Compose(processErrors, err)
-				continue
+				fm.common.staticLog.Println("WARN: Error adding new fee with updated PayoutHeight:", err)
 			}
-			delete(fm.fees, fee.UID)
 		}
 
-		// Increment the payoutHeight.
-		if processErrors == nil {
-			fm.payoutHeight += PayoutInterval
-			fm.staticLog.Println("All fees processed, new PayoutHeight is", fm.payoutHeight)
+		// Process any current heights
+		for _, fee := range feesToProcess {
+			// Process fee
 		}
 
-		// Save the FeeManager
-		err = fm.save()
-		if err != nil {
-			fm.staticLog.Println("WARN: error saving FeeManager after processing fees:", err)
+		// Sleep until it is time to check the fees again
+		select {
+		case <-fm.common.staticTG.StopChan():
+		case <-time.After(processFeesCheckInterval):
 		}
-	*/
-	return
+	}
 }
 
-// processFee will submit txns to split the PayOut between the application
+// processFee will create a txn to split the fee amount between the application
 // developer and Nebulous
 func (fm *FeeManager) processFee(fee *modules.AppFee) error {
-	/*
-		if fm.staticDeps.Disrupt("ProcessFeeFail") {
-			return errors.New("processFee failed due to dependency")
-		}
+	// TODO: Once a fee is confirmed on-chain, add an entry with a timestamp to
+	// the append-only log that says the fee is now available on chain.
+	//
+	// TODO: We will probably also need to make an update when the transaction
+	// is posted which contains the transaction. This is a bit tricky because
+	// the transaction will need to be split across multiple entries, which will
+	// make both encoding and decoding a bit annoying.
 
-		// Split PayOut between Application Developer Address and Nebulous Address
-		appDevFeePayOut := fee.Amount.Mul64(7).Div64(10)
-		nebulousFeePayOut := fee.Amount.Mul64(3).Div64(10)
-		appDevFee := types.SiacoinOutput{
-			Value:      appDevFeePayOut,
-			UnlockHash: fee.Address,
-		}
-		nebulousFee := types.SiacoinOutput{
-			Value:      nebulousFeePayOut,
-			UnlockHash: nebAddress,
-		}
-		outputs := []types.SiacoinOutput{appDevFee, nebulousFee}
-		_, err := fm.staticWallet.SendSiacoinsMulti(outputs)
-		if err != nil {
-			return errors.AddContext(err, "unable to send siacoin outputs")
-		}
+	// Create transaction for the fee and track it
 
-		// TODO: Once a fee is confirmed on-chain, add an entry with a timestamp to
-		// the append-only log that says the fee is now available on chain.
-		//
-		// TODO: We will probably also need to make an update when the transaction
-		// is posted which contains the transaction. This is a bit tricky because
-		// the transaction will need to be split across multiple entries, which will
-		// make both encoding and decoding a bit annoying.
-	*/
+	// Transaction should be 70% to the developer, 30% to Nebulous
 
+	// Mark that the transaction for the fee was created
 	return nil
 }

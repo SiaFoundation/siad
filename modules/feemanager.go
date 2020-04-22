@@ -40,6 +40,10 @@ type (
 
 		// Recurring indicates whether or not this fee is a recurring fee and
 		// will be charged in the next period as well
+		//
+		// NOTE: the application is responsible for submitting the fee again,
+		// the FeeManager is not responsible for processing this fee on a
+		// recurring basis
 		Recurring bool `json:"recurring"`
 
 		// Timestamp is the moment that the fee was requested.

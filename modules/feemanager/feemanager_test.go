@@ -50,31 +50,31 @@ func TestFeeManagerBasic(t *testing.T) {
 	// Create a function to check this fee for expected values.
 	feeCheck := func(af modules.AppFee) {
 		if af.Address != uh {
-			t.Fatal("mismatch")
+			t.Fatalf("Expected address to be %v but was %v", uh, af.Address)
 		}
 		if !af.Amount.Equals(amount) {
-			t.Fatal("mismatch")
+			t.Fatalf("Expected amount to be %v but was %v", amount.HumanString(), af.Amount.HumanString())
 		}
 		if af.AppUID != appuid {
-			t.Fatal("mismatch")
+			t.Fatalf("Expected appuid to be %v but was %v", appuid, af.AppUID)
 		}
 		if af.PaymentCompleted {
-			t.Fatal("unexpected")
+			t.Fatal("PaymentCompleted should be false")
 		}
 		if af.PayoutHeight == 0 {
-			t.Fatal("payout height is too fast")
+			t.Fatal("payout height is 0")
 		}
 		if af.Recurring != recurring {
-			t.Fatal("mismatch")
+			t.Fatalf("Expected recurring to be %v but was %v", recurring, af.Recurring)
 		}
 		if af.Timestamp == (time.Time{}).Unix() {
 			t.Fatal("timestamp not set")
 		}
 		if af.TransactionCreated {
-			t.Fatal("unexpected")
+			t.Fatal("TransactionCreated should be false")
 		}
 		if af.UID == "" {
-			t.Fatal("unset")
+			t.Fatal("FeeUID is blank")
 		}
 	}
 
@@ -158,6 +158,15 @@ func TestFeeManagerBasic(t *testing.T) {
 		}
 	}
 
+	// Verify they are cancelled in Memory
+	pendingFees, err = fm.PendingFees()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pendingFees) != 0 {
+		t.Fatalf("Expected 0 fees but found %v", 0)
+	}
+
 	// Restart the fee manager and check that all fees are cancelled.
 	err = fm.Close()
 	if err != nil {
@@ -167,13 +176,14 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Check the fee again, values should be identical to before.
 	pendingFees, err = fm.PendingFees()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(pendingFees) != 0 {
-		t.Fatal("there should not be any fees")
+		t.Fatalf("Expected 0 fees but found %v", 0)
 	}
 	err = fm.Close()
 	if err != nil {
@@ -208,10 +218,7 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 		copy(uh[:], randBytes)
 		amount := types.NewCurrency64(100)
 		appuid := modules.AppUID(hex.EncodeToString(randBytes))
-		recurring := false
-		if fastrand.Intn(2) == 0 {
-			recurring = true
-		}
+		recurring := fastrand.Intn(2) == 0
 
 		// Add the fee.
 		uid, err := fm.AddFee(uh, amount, appuid, recurring)
@@ -270,46 +277,56 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 		wg.Wait()
 	}
 
+	// Define helper for all the fee checks
+	checkAllFees := func() {
+		// Check that the fee manager has exactly the set of fees that it is
+		// supposed to.
+		allFees, err := fm.PendingFees()
+		if err != nil {
+			t.Fatal(err)
+		}
+		feeMap := make(map[modules.FeeUID]struct{})
+		recentTime := allFees[0].Timestamp
+		recentTime--
+		for _, fee := range allFees {
+			// Check that the fees are sorted.
+			if fee.Timestamp < recentTime {
+				t.Error("bad sorting")
+			}
+			recentTime = fee.Timestamp
+
+			// Check that this fee is not already in the feeMap.
+			_, exists := feeMap[fee.UID]
+			if exists {
+				t.Error("double fee")
+			}
+			feeMap[fee.UID] = struct{}{}
+		}
+		// Check that every fee in our uid list appears in the fee map.
+		var totalFees int
+		for _, uid := range fees {
+			// Skip deleted fees.
+			if uid == "" {
+				continue
+			}
+			totalFees++
+			_, exists := feeMap[uid]
+			if !exists {
+				t.Error("missing fee")
+			}
+		}
+		// Check that the total number of fees in the list is the same as in the fm.
+		if len(allFees) != totalFees || len(feeMap) != totalFees {
+			t.Log("allFees:", len(allFees))
+			t.Log("feeMap:", len(feeMap))
+			t.Log("totalFees:", totalFees)
+			t.Error("wrong fee count")
+		}
+	}
+
 	// Check that the fee manager has exactly the set of fees that it is
 	// supposed to.
-	allFees, err := fm.PendingFees()
-	if err != nil {
-		t.Fatal(err)
-	}
-	feeMap := make(map[modules.FeeUID]struct{})
-	recentTime := allFees[0].Timestamp
-	recentTime--
-	for _, fee := range allFees {
-		// Check that the fees are sorted.
-		if fee.Timestamp < recentTime {
-			t.Error("bad sorting")
-		}
-		recentTime = fee.Timestamp
-
-		// Check that this fee is not already in the feeMap.
-		_, exists := feeMap[fee.UID]
-		if exists {
-			t.Error("double fee")
-		}
-		feeMap[fee.UID] = struct{}{}
-	}
-	// Check that every fee in our uid list appears in the fee map.
-	var totalFees int
-	for _, uid := range fees {
-		// Skip deleted fees.
-		if uid == "" {
-			continue
-		}
-		totalFees++
-		_, exists := feeMap[uid]
-		if !exists {
-			t.Error("missing fee")
-		}
-	}
-	// Check that the total number of fees in the list is the same as in the fm.
-	if len(allFees) != totalFees || len(feeMap) != totalFees {
-		t.Error("wrong fee count")
-	}
+	checkAllFees()
 
 	// Restart the fee manger and check that it still has exactly the set of
 	// fees that it is supposed to.
@@ -324,44 +341,7 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 
 	// Check that the fee manager has exactly the set of fees that it is
 	// supposed to.
-	allFees, err = fm.PendingFees()
-	if err != nil {
-		t.Fatal(err)
-	}
-	feeMap = make(map[modules.FeeUID]struct{})
-	recentTime = allFees[0].Timestamp
-	recentTime--
-	for _, fee := range allFees {
-		// Check that the fees are sorted.
-		if fee.Timestamp < recentTime {
-			t.Error("bad sorting")
-		}
-		recentTime = fee.Timestamp
-
-		// Check that this fee is not already in the feeMap.
-		_, exists := feeMap[fee.UID]
-		if exists {
-			t.Error("double fee")
-		}
-		feeMap[fee.UID] = struct{}{}
-	}
-	// Check that every fee in our uid list appears in the fee map.
-	totalFees = 0
-	for _, uid := range fees {
-		// Skip deleted fees.
-		if uid == "" {
-			continue
-		}
-		totalFees++
-		_, exists := feeMap[uid]
-		if !exists {
-			t.Error("missing fee")
-		}
-	}
-	// Check that the total number of fees in the list is the same as in the fm.
-	if len(allFees) != totalFees || len(feeMap) != totalFees {
-		t.Error("wrong fee count", len(allFees), totalFees, len(feeMap))
-	}
+	checkAllFees()
 
 	// Close FeeManager.
 	err = fm.Close()

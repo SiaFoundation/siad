@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	// LogFile is the filename of the FeeManager logger.
-	LogFile = modules.FeeManagerDir + ".log"
+	// logFile is the filename of the FeeManager logger.
+	logFile = modules.FeeManagerDir + ".log"
 
 	// PersistFilename is the filename to be used when persisting FeeManager
 	// information on disk
@@ -54,6 +54,25 @@ type (
 		LatestSyncedOffset uint64
 	}
 
+	// persistSubsystem contains the state for the persistence of the fee
+	// manager.
+	persistSubsystem struct {
+		// nextPayoutHeight and latestOffset are the latest known in-memory
+		// values for these variables. They may not have been synced yet, and
+		// therefore could be ahead of the persist file.
+		nextPayoutHeight types.BlockHeight
+		latestOffset     uint64
+
+		// persistFile is the file handle of the file where data is written to.
+		persistFile *os.File
+
+		// Utilities
+		common           *feeManagerCommon
+		staticPersistDir string
+		syncCoordinator  *syncCoordinator
+		mu               sync.Mutex
+	}
+
 	// syncCoordinator is a struct which ensures only one syncing thread runs at
 	// a time, and ensures that the data on disk is always consistent.
 	//
@@ -80,25 +99,6 @@ type (
 
 		common *feeManagerCommon
 		mu     sync.Mutex
-	}
-
-	// persistSubsystem contains the state for the persistence of the fee
-	// manager.
-	persistSubsystem struct {
-		// nextPayoutHeight and latestOffset are the latest known in-memory
-		// values for these variables. They may not have been synced yet, and
-		// therefore could be ahead of the persist file.
-		nextPayoutHeight types.BlockHeight
-		latestOffset     uint64
-
-		// persistFile is the file handle of the file where data is written to.
-		persistFile *os.File
-
-		// Utilities
-		common           *feeManagerCommon
-		staticPersistDir string
-		syncCoordinator  *syncCoordinator
-		mu               sync.Mutex
 	}
 )
 
@@ -127,6 +127,91 @@ func externWritePersistHeader(fh *os.File, latestSyncedOffset uint64, nextPayout
 	return nil
 }
 
+// callInitPersist handles all of the persistence initialization, such as
+// creating the persistence directory
+func (fm *FeeManager) callInitPersist() error {
+	// Check if the fee manager file exists.
+	ps := fm.common.persist
+	filename := filepath.Join(ps.staticPersistDir, PersistFilename)
+	_, err := os.Stat(filename)
+	if err != nil && !os.IsNotExist(err) {
+		return errors.AddContext(err, "unable to stat persist file")
+	}
+	if os.IsNotExist(err) {
+		// Error will only be returned if there is an error with newPersist
+		return errors.AddContext(fm.newPersist(filename), "unable to create a new persist setup for the fee manager")
+	}
+
+	// Open the fee manager file handle.
+	fh, err := os.OpenFile(filename, os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "could not open persist file")
+	}
+	fm.common.persist.persistFile = fh
+	fm.common.staticTG.AfterStop(func() error {
+		return fm.common.persist.persistFile.Close()
+	})
+
+	// Read the header.
+	headerBytes := make([]byte, persistHeaderSize)
+	_, err = fh.Read(headerBytes)
+	if err != nil {
+		return errors.AddContext(err, "could not read fee manager persist header")
+	}
+
+	// Decode the persist header.
+	var ph PersistHeader
+	err = encoding.Unmarshal(headerBytes, &ph)
+	if err != nil {
+		return errors.AddContext(err, "could not parse fee manager persist header")
+	}
+
+	// Check the metadata.
+	if ph.Header != MetadataHeader {
+		return errors.AddContext(err, "bad metadata header in persist file")
+	}
+	if ph.Version != MetadataVersion {
+		return errors.AddContext(err, "bad metadata version in persist file")
+	}
+
+	// Set the offset and payout.
+	fm.common.persist.nextPayoutHeight = ph.NextPayoutHeight
+	fm.common.persist.latestOffset = ph.LatestSyncedOffset
+	fm.common.persist.syncCoordinator.externLatestSyncedOffset = ph.LatestSyncedOffset
+	fm.common.persist.syncCoordinator.externLatestSyncedPayoutHeight = ph.NextPayoutHeight
+
+	// Read through all of the non-corrupt fees.
+	entryBytes := make([]byte, ph.LatestSyncedOffset-persistHeaderSize)
+	_, err = fh.Read(entryBytes)
+	if err != nil {
+		return errors.AddContext(err, "unable to read the synced portion of persist file")
+	}
+	for i := 0; i < len(entryBytes); i += persistEntrySize {
+		// Integrate this entry.
+		err = fm.integrateEntry(entryBytes[i : i+persistEntrySize])
+		if err != nil {
+			return errors.AddContext(err, "parsing a persist entry failed")
+		}
+	}
+	return nil
+}
+
+// newPersist is called if there is no existing persist file.
+func (fm *FeeManager) newPersist(filename string) error {
+	fh, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "unable to create persist file for fee manager")
+	}
+	fm.common.persist.persistFile = fh
+	fm.common.staticTG.AfterStop(func() error {
+		return fm.common.persist.persistFile.Close()
+	})
+
+	// Set the offset and save the header.
+	fm.common.persist.latestOffset = persistHeaderSize
+	return fm.common.persist.syncCoordinator.managedSyncPersist()
+}
+
 // managedAppendEntry will take a new encoded entry and append it to the persist
 // file.
 func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) error {
@@ -145,6 +230,18 @@ func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) err
 	// Ensure that the new updated is synced and the header of the persist file
 	// gets updated accordingly.
 	return ps.syncCoordinator.managedSyncPersist()
+}
+
+// callPersistFeeCancellation will write a fee cancellation to the persist file.
+func (ps *persistSubsystem) callPersistFeeCancelation(feeUID modules.FeeUID) error {
+	entry := createCancelFeeEntry(feeUID)
+	return ps.managedAppendEntry(entry)
+}
+
+// callPersistNewFee will persist a new fee to disk.
+func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
+	entry := createAddFeeEntry(fee)
+	return ps.managedAppendEntry(entry)
 }
 
 // managedSyncPersist will ensure that the persist is synced and that the
@@ -172,14 +269,14 @@ func (sc *syncCoordinator) managedSyncPersist() error {
 	}
 	go func() {
 		defer ps.common.staticTG.Done()
-		sc.threadedSyncLoop()
+		sc.managedSyncPersistLoop()
 	}()
 	return nil
 }
 
-// threadedSyncLoop will perform fsyncs on the persist file and update the
+// managedSyncPersistLoop will perform fsyncs on the persist file and update the
 // persist file header accordingly until there is nothing more to sync.
-func (sc *syncCoordinator) threadedSyncLoop() {
+func (sc *syncCoordinator) managedSyncPersistLoop() {
 	ps := sc.common.persist
 	// Perform syncs in a loop until there is no sync job to perform. Doing
 	// things in a loop allows us to cover multiple file write calls with a
@@ -237,100 +334,4 @@ func (sc *syncCoordinator) threadedSyncLoop() {
 			return
 		}
 	}
-}
-
-// callPersistFeeCancellation will write a fee cancellation to the persist file.
-func (ps *persistSubsystem) callPersistFeeCancelation(feeUID modules.FeeUID) error {
-	entry := createCancelFeeEntry(feeUID)
-	return ps.managedAppendEntry(entry)
-}
-
-// callPersistNewFee will persist a new fee to disk.
-func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
-	entry := createAddFeeEntry(fee)
-	return ps.managedAppendEntry(entry)
-}
-
-// newPersist is called if there is no existing persist file.
-func (fm *FeeManager) newPersist(filename string) error {
-	fh, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
-	if err != nil {
-		return errors.AddContext(err, "unable to create persist file for fee manager")
-	}
-	fm.common.persist.persistFile = fh
-	fm.common.staticTG.AfterStop(func() error {
-		return fm.common.persist.persistFile.Close()
-	})
-
-	// Set the offset and save the header.
-	fm.common.persist.latestOffset = persistHeaderSize
-	return fm.common.persist.syncCoordinator.managedSyncPersist()
-}
-
-// callInitPersist handles all of the persistence initialization, such as
-// creating the persistence directory and starting the logger
-func (fm *FeeManager) callInitPersist() error {
-	// Check if the fee manager file exists.
-	ps := fm.common.persist
-	filename := filepath.Join(ps.staticPersistDir, PersistFilename)
-	_, err := os.Stat(filename)
-	if err != nil && !os.IsNotExist(err) {
-		return errors.AddContext(err, "unable to stat persist file")
-	}
-	if os.IsNotExist(err) {
-		return errors.AddContext(fm.newPersist(filename), "unable to create a new persist setup for the fee manager")
-	}
-
-	// Open the fee manager file handle.
-	fh, err := os.OpenFile(filename, os.O_RDWR, modules.DefaultFilePerm)
-	if err != nil {
-		return errors.AddContext(err, "could not open persist file")
-	}
-	fm.common.persist.persistFile = fh
-	fm.common.staticTG.AfterStop(func() error {
-		return fm.common.persist.persistFile.Close()
-	})
-
-	// Read the header.
-	headerBytes := make([]byte, persistHeaderSize)
-	_, err = fh.Read(headerBytes)
-	if err != nil {
-		return errors.AddContext(err, "could not read fee manager persist header")
-	}
-
-	// Decode the persist header.
-	var ph PersistHeader
-	err = encoding.Unmarshal(headerBytes, &ph)
-	if err != nil {
-		return errors.AddContext(err, "could not parse fee manager persist header")
-	}
-
-	// Check the metadata.
-	if ph.Header != MetadataHeader {
-		return errors.AddContext(err, "bad metadata header in persist file")
-	}
-	if ph.Version != MetadataVersion {
-		return errors.AddContext(err, "bad metadata version in persist file")
-	}
-
-	// Set the offset and payout.
-	fm.common.persist.nextPayoutHeight = ph.NextPayoutHeight
-	fm.common.persist.latestOffset = ph.LatestSyncedOffset
-	fm.common.persist.syncCoordinator.externLatestSyncedOffset = ph.LatestSyncedOffset
-	fm.common.persist.syncCoordinator.externLatestSyncedPayoutHeight = ph.NextPayoutHeight
-
-	// Read through all of the non-corrupt fees.
-	entryBytes := make([]byte, ph.LatestSyncedOffset-persistHeaderSize)
-	_, err = fh.Read(entryBytes)
-	if err != nil {
-		return errors.AddContext(err, "unable to read the synced portion of persist file")
-	}
-	for i := 0; i < len(entryBytes); i += persistEntrySize {
-		// Integrate this entry.
-		err = fm.integrateEntry(entryBytes[i : i+persistEntrySize])
-		if err != nil {
-			return errors.AddContext(err, "parsing a persist entry failed")
-		}
-	}
-	return nil
 }

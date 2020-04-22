@@ -14,6 +14,21 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// addRandomFees will add a random number of fees to the FeeManager, always at
+// least 1.
+func addRandomFees(fm *FeeManager) error {
+	for i := 0; i < fastrand.Intn(5)+1; i++ {
+		amount := types.NewCurrency64(fastrand.Uint64n(100))
+		appUID := modules.AppUID(uniqueID())
+		recurring := fastrand.Intn(2) == 0
+		_, err := fm.AddFee(types.UnlockHash{}, amount, appUID, recurring)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // newTestingFeeManager creates a FeeManager for testing
 func newTestingFeeManager(testName string) (*FeeManager, error) {
 	// Create testdir
@@ -62,19 +77,4 @@ func testingDependencies(testdir string) (modules.ConsensusSet, modules.Wallet, 
 	}
 
 	return cs, w, nil
-}
-
-// addRandomFees iwill add a random number of feees to the FeeManager, always at
-// least 1.
-func addRandomFees(fm *FeeManager) error {
-	for i := 0; i < fastrand.Intn(5)+1; i++ {
-		amount := types.NewCurrency64(fastrand.Uint64n(100))
-		appUID := modules.AppUID(uniqueID())
-		recurring := fastrand.Intn(2) == 0
-		_, err := fm.AddFee(types.UnlockHash{}, amount, appUID, recurring)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
