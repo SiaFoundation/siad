@@ -258,8 +258,17 @@ type renterHostPair struct {
 // represented by its secret key. This helper will create a storage
 // obligation emulating a file contract between them.
 func newRenterHostPair(name string) (*renterHostPair, error) {
+	return newCustomRenterHostPair(name, modules.ProdDependencies)
+}
+
+// newCustomRenterHostPair creates a new host tester and returns a renter host
+// pair, this pair is a helper struct that contains both the host and renter,
+// represented by its secret key. This helper will create a storage obligation
+// emulating a file contract between them. It is custom as it allows passing a
+// set of dependencies.
+func newCustomRenterHostPair(name string, deps modules.Dependencies) (*renterHostPair, error) {
 	// setup host
-	ht, err := newHostTester(name)
+	ht, err := newMockHostTester(deps, name)
 	if err != nil {
 		return nil, err
 	}
@@ -470,6 +479,41 @@ func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Curren
 		return errors.New("could not verify host signature")
 	}
 	return nil
+}
+
+// payByEphemeralAccount is a helper that makes payment using the pair's EA.
+func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount types.Currency) error {
+	// Send the payment request.
+	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	if err != nil {
+		return err
+	}
+
+	// Send the payment details.
+	pbear := newPayByEphemeralAccountRequest(p.accountID, p.ht.host.BlockHeight()+6, amount, p.accountKey)
+	err = modules.RPCWrite(stream, pbear)
+	if err != nil {
+		return err
+	}
+
+	// Receive payment confirmation.
+	var pc modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &pc)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// prefundAccount is a helper method that prefunds the ephemeral account to the
+// maximum balance
+func (p *renterHostPair) prefundAccount() {
+	his := p.ht.host.managedInternalSettings()
+	maxBalance := his.MaxEphemeralAccountBalance
+	_, err := p.fundEphemeralAccount(maxBalance.Add(p.latestPT.FundAccountCost))
+	if err != nil {
+		panic(err)
+	}
 }
 
 // sign returns the renter's signature of the given revision

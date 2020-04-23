@@ -59,3 +59,10 @@ func NewDependencyHostDiskTrouble() *DependencyInterruptOnceOnKeyword {
 func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) modules.Dependencies {
 	return newDependencyAddLatency("errMaxRiskReached", duration)
 }
+
+// NewHostMDMProgramWriteDelay is a dependency injection for the host
+// that will ensure the response of a program instruction is written after the
+// set latency.
+func NewHostMDMProgramWriteDelay(duration time.Duration) modules.Dependencies {
+	return newDependencyAddLatency("MDMProgramOutputDelayWrite", duration)
+}

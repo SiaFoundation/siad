@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -171,6 +172,60 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 		return nil, limit, err
 	}
 	return responses, limit, nil
+}
+
+// TestExecuteProgramWriteDeadline verifies the ExecuteProgramRPC sets a write
+// deadline
+func TestExecuteProgramWriteDeadline(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	delay := modules.MDMProgramWriteResponseTime * 2
+	deps := dependencies.NewHostMDMProgramWriteDelay(delay)
+	rhp, err := newCustomRenterHostPair(t.Name(), deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rhp.Close()
+
+	// create stream
+	stream := rhp.newStream()
+	defer stream.Close()
+
+	// create a random sector
+	sectorRoot, _, err := rhp.addRandomSector()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create the 'ReadSector' program.
+	program, programData, programCost, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, rhp.latestPT)
+
+	expectedDownload := uint64(10220) // download
+	expectedUpload := uint64(18980)   // upload
+	downloadCost := rhp.latestPT.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := rhp.latestPT.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+	cost := programCost.Add(bandwidthCost)
+
+	// prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
+		Program:           program,
+		ProgramDataLength: uint64(len(programData)),
+	}
+
+	// prefund the EA
+	rhp.prefundAccount()
+
+	// execute program.
+	_, _, err = rhp.executeProgram(epr, programData, cost)
+	if err == nil || !errors.Contains(err, io.ErrClosedPipe) {
+		t.Fatal("Expected executeProgram to fail with an ErrClosedPipe, instead err was", err)
+	}
 }
 
 // TestExecuteReadSectorProgram tests the managedRPCExecuteProgram with a valid
