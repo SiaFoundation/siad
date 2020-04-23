@@ -404,7 +404,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(rhp.fcid)
 
 	offset := uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
-	length := uint64(crypto.SegmentSize)
+	length := uint64(crypto.SegmentSize) * (fastrand.Uint64n(5) + 1)
 
 	// create the 'ReadSector' program.
 	program, data, programCost, refund, collateral, _ := newReadSectorProgram(length, offset, sectorRoot, rhp.latestPT)

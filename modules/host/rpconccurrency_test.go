@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -62,14 +63,25 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		data    []byte
 		cost    types.Currency
 	}
-	readSectorPrograms := make(map[types.FileContractID]ReadSectorProgram)
+	readFullSectorPrograms := make(map[types.FileContractID]ReadSectorProgram)
+	readPartialSectorPrograms := make(map[types.FileContractID]ReadSectorProgram)
 	for _, pair := range pairs {
 		sectorRoot, _, err := pair.addRandomSector()
 		if err != nil {
 			t.Fatal(err)
 		}
 		program, data, cost, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, pair.PriceTable())
-		readSectorPrograms[pair.fcid] = ReadSectorProgram{
+		readFullSectorPrograms[pair.fcid] = ReadSectorProgram{
+			program: program,
+			data:    data,
+			cost:    cost,
+		}
+
+		offset := uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
+		length := uint64(crypto.SegmentSize) * (fastrand.Uint64n(5) + 1)
+
+		program, data, cost, _, _, _ = newReadSectorProgram(length, offset, sectorRoot, pair.PriceTable())
+		readPartialSectorPrograms[pair.fcid] = ReadSectorProgram{
 			program: program,
 			data:    data,
 			cost:    cost,
@@ -85,7 +97,8 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	var atomicUpdatePTCalls_FC uint64
 	var atomicUpdatePTCalls_EA uint64
 	var atomicFundAccountCalls_FC uint64
-	var atomicExecuteProgramCalls_EA uint64
+	var atomicExecuteProgramFullReadCalls_EA uint64
+	var atomicExecuteProgramPartialReadCalls_EA uint64
 
 	// spin up a large amount of threads that use the renter-host pairs in
 	// parallel
@@ -142,9 +155,9 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					done = true
 				}
 
-				// execute read full sector program 30% of the time
+				// execute full sector read 30% of the time
 				if !done && fastrand.Intn(100) < 30 {
-					p := readSectorPrograms[pair.fcid]
+					p := readFullSectorPrograms[pair.fcid]
 					epr := modules.RPCExecuteProgramRequest{
 						FileContractID:    pair.fcid,
 						Program:           p.program,
@@ -155,7 +168,24 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					ulcost := curr.UploadBandwidthCost.Mul64(18980)
 					budget := p.cost.Add(dlcost).Add(ulcost)
 					_, _, err = pair.executeProgram(epr, p.data, budget)
-					atomic.AddUint64(&atomicExecuteProgramCalls_EA, 1)
+					atomic.AddUint64(&atomicExecuteProgramFullReadCalls_EA, 1)
+					done = true
+				}
+
+				// execute partial sector read the rest of the time
+				if !done {
+					p := readPartialSectorPrograms[pair.fcid]
+					epr := modules.RPCExecuteProgramRequest{
+						FileContractID:    pair.fcid,
+						Program:           p.program,
+						ProgramDataLength: uint64(len(p.data)),
+					}
+					curr := pair.PriceTable()
+					dlcost := curr.DownloadBandwidthCost.Mul64(10220)
+					ulcost := curr.UploadBandwidthCost.Mul64(18980)
+					budget := p.cost.Add(dlcost).Add(ulcost)
+					_, _, err = pair.executeProgram(epr, p.data, budget)
+					atomic.AddUint64(&atomicExecuteProgramPartialReadCalls_EA, 1)
 					done = true
 				}
 
@@ -164,9 +194,6 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					fcLocks[pair.fcid].Lock()
 					err = pair.updatePriceTable(true)
 					fcLocks[pair.fcid].Unlock()
-					if err != nil {
-						t.Log("TRY RECOVER FAILED", err)
-					}
 				}
 
 				// try to recover from insufficient balance
@@ -175,9 +202,6 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					fcLocks[pair.fcid].Lock()
 					_, err = pair.fundEphemeralAccount(curr.FundAccountCost.Add(funding))
 					fcLocks[pair.fcid].Unlock()
-					if err != nil {
-						t.Log("TRY RECOVER FAILED TWICE", err)
-					}
 				}
 
 				if err != nil {
@@ -192,12 +216,18 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	numUpdatePT_FC := atomic.LoadUint64(&atomicUpdatePTCalls_FC)
 	numUpdatePT_EA := atomic.LoadUint64(&atomicUpdatePTCalls_EA)
 	numFundAccount_FC := atomic.LoadUint64(&atomicFundAccountCalls_FC)
-	numExecuteProgram_EA := atomic.LoadUint64(&atomicExecuteProgramCalls_EA)
+	numExecProgram_Full_EA := atomic.LoadUint64(&atomicExecuteProgramFullReadCalls_EA)
+	numExecProgram_Partial_EA := atomic.LoadUint64(&atomicExecuteProgramPartialReadCalls_EA)
 
 	t.Logf(`
 	In %.f seconds, on %d cores, the following RPCs completed successfully:
-	UpdatePriceTableRPC: 		%d (%d FC %d EA)
-	FundEphemeralAccountRPC: 	%d (%d FC)
-	ExecuteMDMProgramRPC: 		%d (%d EA)
-	`, timeout.Seconds(), runtime.NumCPU(), numUpdatePT_FC+numUpdatePT_EA, numUpdatePT_FC, numUpdatePT_EA, numFundAccount_FC, numFundAccount_FC, numExecuteProgram_EA, numExecuteProgram_EA)
+	UpdatePriceTableRPC: 						%d (%d FC %d EA)
+	FundEphemeralAccountRPC: 					%d (%d FC)
+	ExecuteMDMProgramRPC (Full Sector Read): 	%d (%d EA)
+	ExecuteMDMProgramRPC (Partial Sector Read):	%d (%d EA)
+	`, timeout.Seconds(), runtime.NumCPU(),
+		numUpdatePT_FC+numUpdatePT_EA, numUpdatePT_FC, numUpdatePT_EA, numFundAccount_FC, numFundAccount_FC,
+		numExecProgram_Full_EA, numExecProgram_Full_EA,
+		numExecProgram_Partial_EA, numExecProgram_Partial_EA,
+	)
 }
