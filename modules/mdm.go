@@ -4,7 +4,9 @@ import (
 	"encoding/binary"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux/mux"
@@ -73,6 +75,16 @@ const (
 )
 
 var (
+	// MDMProgramWriteResponseTime defines the amount of time that the host
+	// allows to write the output of an instruction to the stream. The time is
+	// set high enough that a renter behind Tor has a reasonable chance of
+	// completing the read.
+	MDMProgramWriteResponseTime = build.Select(build.Var{
+		Standard: time.Minute,
+		Dev:      30 * time.Second,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
+
 	// SpecifierAppend is the specifier for the Append instruction.
 	SpecifierAppend = InstructionSpecifier{'A', 'p', 'p', 'e', 'n', 'd'}
 
