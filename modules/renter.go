@@ -124,18 +124,6 @@ const (
 	// the renter's filesystem.
 	FileSystemRoot = "fs"
 
-	// HomeFolderRoot is the name of the directory that is used to store all of
-	// the user accessible data.
-	HomeFolderRoot = "home"
-
-	// UserRoot is the name of the directory that is used to store the
-	// renter's siafiles.
-	UserRoot = "user"
-
-	// BackupRoot is the name of the directory that is used to store the renter's
-	// snapshot siafiles.
-	BackupRoot = "snapshots"
-
 	// CombinedChunksRoot is the name of the directory that contains combined
 	// chunks consisting of multiple partial chunks.
 	CombinedChunksRoot = "combinedchunks"

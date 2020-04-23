@@ -39,6 +39,33 @@ func TestAPIPassword(t *testing.T) {
 	}
 }
 
+// TestSiadDataDir tests getting and setting the Sia consensus directory
+func TestSiadDataDir(t *testing.T) {
+	// Unset any defaults, this only affects in memory state. Any Env Vars will
+	// remain intact on disk
+	err := os.Unsetenv(siadDataDir)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Test Default SiadDataDir
+	siadDir := SiadDataDir()
+	if siadDir != "" {
+		t.Errorf("Expected siadDir to be empty but was %v", siadDir)
+	}
+
+	// Test Env Variable
+	newSiaDir := "foo/bar"
+	err = os.Setenv(siadDataDir, newSiaDir)
+	if err != nil {
+		t.Error(err)
+	}
+	siadDir = SiadDataDir()
+	if siadDir != newSiaDir {
+		t.Errorf("Expected siadDir to be %v but was %v", newSiaDir, siadDir)
+	}
+}
+
 // TestSiaDir tests getting and setting the Sia data directory
 func TestSiaDir(t *testing.T) {
 	// Unset any defaults, this only affects in memory state. Any Env Vars will
