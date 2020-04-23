@@ -17,6 +17,10 @@ import (
 // interface. More detailed testing of the skykey manager is done in the skykey
 // package.
 func TestSkykeyCommands(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// Create a node for the test
 	n, err := siatest.NewNode(node.AllModules(build.TempDir(t.Name())))
 	if err != nil {

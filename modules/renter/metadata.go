@@ -457,7 +457,7 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 		err = errors.AddContext(err, e)
 	} else {
 		defer siaDir.Close()
-		err = siaDir.UpdateMetadata(metadata)
+		err = siaDir.UpdateBubbledMetadata(metadata)
 		if err != nil {
 			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())
 			err = errors.AddContext(err, e)
