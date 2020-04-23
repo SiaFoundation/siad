@@ -206,7 +206,7 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
+	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_CREATE|os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
