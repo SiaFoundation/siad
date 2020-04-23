@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"errors"
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -92,12 +91,6 @@ func (s *sectors) hasSector(sectorRoot crypto.Hash) bool {
 
 // readSector reads data from the given root, returning the entire sector.
 func (s *sectors) readSector(host Host, sectorRoot crypto.Hash) ([]byte, error) {
-	// Check if the sector exists first-- otherwise the root wasn't added, or
-	// was deleted.
-	if !s.hasSector(sectorRoot) {
-		return nil, errors.New("root not found in list of roots")
-	}
-
 	// The root exists. First check the gained sectors.
 	if data, exists := s.sectorsGained[sectorRoot]; exists {
 		return data, nil

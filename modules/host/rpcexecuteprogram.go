@@ -1,8 +1,10 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -114,13 +116,20 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			build.Critical("There shouldn't be another output after the execution already failed")
 			continue // continue to drain the channel
 		}
+
+		// Sanity check output when error occurred
+		if executionFailed && len(output.Output) > 0 {
+			err = fmt.Errorf("output.Error != nil but len(output.Output) == %v", len(output.Output))
+			build.Critical(err) // don't return on purpose
+		}
+
 		// Prepare the RPC response.
 		resp := modules.RPCExecuteProgramResponse{
 			AdditionalCollateral: output.AdditionalCollateral,
 			Error:                output.Error,
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
-			Output:               output.Output,
+			OutputLength:         uint64(len(output.Output)),
 			PotentialRefund:      output.PotentialRefund,
 			Proof:                output.Proof,
 			TotalCost:            output.ExecutionCost,
@@ -134,10 +143,37 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		programRefund = resp.PotentialRefund
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
+
+		// Create a buffer
+		buffer := bytes.NewBuffer(nil)
+
 		// Send the response to the peer.
-		err = modules.RPCWrite(stream, resp)
+		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
+		}
+
+		// Write output.
+		_, err = buffer.Write(output.Output)
+		if err != nil {
+			return errors.AddContext(err, "failed to send output data to peer")
+		}
+
+		// Increase the write deadline just before writing to it.
+		err = stream.SetWriteDeadline(time.Now().Add(modules.MDMProgramWriteResponseTime))
+		if err != nil {
+			return errors.AddContext(err, "failed to set write deadline on stream")
+		}
+
+		// Disrupt if the delay write dependency is set
+		if h.dependencies.Disrupt("MDMProgramOutputDelayWrite") {
+			// adds a write delay
+		}
+
+		// Write contents of the buffer
+		_, err = stream.Write(buffer.Bytes())
+		if err != nil {
+			return errors.AddContext(err, "failed to send data to peer")
 		}
 	}
 	// Sanity check that we received at least 1 output.
@@ -145,6 +181,12 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		err := errors.New("program returned 0 outputs - should never happen")
 		build.Critical(err)
 		return err
+	}
+
+	// Reset the deadline (set both read and write)
+	err = stream.SetDeadline(time.Now().Add(defaultConnectionDeadline))
+	if err != nil {
+		return errors.AddContext(err, "failed to set deadline on stream")
 	}
 
 	// If the execution failed we return without an error. The peer will notice
