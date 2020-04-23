@@ -11,20 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-var (
-	// siaAPIPassword is the environment variable that sets a custom API
-	// password if the default is not used
-	siaAPIPassword = "SIA_API_PASSWORD"
-
-	// siaDataDir is the environment variable that tells siad where to put the
-	// sia data
-	siaDataDir = "SIA_DATA_DIR"
-
-	// siaWalletPassword is the environment variable that can be set to enable
-	// auto unlocking the wallet
-	siaWalletPassword = "SIA_WALLET_PASSWORD"
-)
-
 // APIPassword returns the Sia API Password either from the environment variable
 // or from the password file. If no environment variable is set and no file
 // exists, a password file is created and that password is returned
@@ -52,6 +38,13 @@ func APIPassword() (string, error) {
 		return "", err
 	}
 	return pw, nil
+}
+
+// SiadDataDir returns the siad consensus data directory from the
+// environment variable. If there is no environment variable it returns an empty
+// string, instructing siad to store the consensus in the current directory.
+func SiadDataDir() string {
+	return os.Getenv(siadDataDir)
 }
 
 // SiaDir returns the Sia data directory either from the environment variable or
