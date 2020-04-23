@@ -18,12 +18,6 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
-// SeveyTODO
-//
-// - Update all siatests
-//
-// - Update README
-
 var (
 	// Nil dependency errors.
 	errNilCS     = errors.New("cannot create FeeManager with nil consensus set")

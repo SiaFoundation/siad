@@ -196,20 +196,16 @@ func (fm *FeeManager) callInitPersist() error {
 	return nil
 }
 
-// newPersist is called if there is no existing persist file.
-func (fm *FeeManager) newPersist(filename string) error {
-	fh, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
-	if err != nil {
-		return errors.AddContext(err, "unable to create persist file for fee manager")
-	}
-	fm.common.persist.persistFile = fh
-	fm.common.staticTG.AfterStop(func() error {
-		return fm.common.persist.persistFile.Close()
-	})
+// callPersistFeeCancellation will write a fee cancellation to the persist file.
+func (ps *persistSubsystem) callPersistFeeCancelation(feeUID modules.FeeUID) error {
+	entry := createCancelFeeEntry(feeUID)
+	return ps.managedAppendEntry(entry)
+}
 
-	// Set the offset and save the header.
-	fm.common.persist.latestOffset = persistHeaderSize
-	return fm.common.persist.syncCoordinator.managedSyncPersist()
+// callPersistNewFee will persist a new fee to disk.
+func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
+	entry := createAddFeeEntry(fee)
+	return ps.managedAppendEntry(entry)
 }
 
 // managedAppendEntry will take a new encoded entry and append it to the persist
@@ -232,16 +228,20 @@ func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) err
 	return ps.syncCoordinator.managedSyncPersist()
 }
 
-// callPersistFeeCancellation will write a fee cancellation to the persist file.
-func (ps *persistSubsystem) callPersistFeeCancelation(feeUID modules.FeeUID) error {
-	entry := createCancelFeeEntry(feeUID)
-	return ps.managedAppendEntry(entry)
-}
+// newPersist is called if there is no existing persist file.
+func (fm *FeeManager) newPersist(filename string) error {
+	fh, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "unable to create persist file for fee manager")
+	}
+	fm.common.persist.persistFile = fh
+	fm.common.staticTG.AfterStop(func() error {
+		return fm.common.persist.persistFile.Close()
+	})
 
-// callPersistNewFee will persist a new fee to disk.
-func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
-	entry := createAddFeeEntry(fee)
-	return ps.managedAppendEntry(entry)
+	// Set the offset and save the header.
+	fm.common.persist.latestOffset = persistHeaderSize
+	return fm.common.persist.syncCoordinator.managedSyncPersist()
 }
 
 // managedSyncPersist will ensure that the persist is synced and that the
