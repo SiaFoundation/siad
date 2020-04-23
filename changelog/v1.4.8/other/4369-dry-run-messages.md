@@ -1,0 +1,1 @@
+- `siac skynet upload` with the `--dry-run` flag will now print more clear messages to emphasize that no files are actually uploaded.

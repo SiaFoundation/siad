@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 
 	// "gitlab.com/NebulousLabs/Sia/modules/renter"
@@ -248,6 +249,7 @@ type renterHostPair struct {
 	ht         *hostTester
 	latestPT   *modules.RPCPriceTable
 	renter     crypto.SecretKey
+	renterPK   types.SiaPublicKey
 	fcid       types.FileContractID
 }
 
@@ -256,8 +258,17 @@ type renterHostPair struct {
 // represented by its secret key. This helper will create a storage
 // obligation emulating a file contract between them.
 func newRenterHostPair(name string) (*renterHostPair, error) {
+	return newCustomRenterHostPair(name, modules.ProdDependencies)
+}
+
+// newCustomRenterHostPair creates a new host tester and returns a renter host
+// pair, this pair is a helper struct that contains both the host and renter,
+// represented by its secret key. This helper will create a storage obligation
+// emulating a file contract between them. It is custom as it allows passing a
+// set of dependencies.
+func newCustomRenterHostPair(name string, deps modules.Dependencies) (*renterHostPair, error) {
 	// setup host
-	ht, err := newHostTester(name)
+	ht, err := newMockHostTester(deps, name)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +313,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		accountKey: accountKey,
 		ht:         ht,
 		renter:     sk,
+		renterPK:   renterPK,
 		fcid:       so.id(),
 	}
 
@@ -325,6 +337,38 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
 	return p.ht.Close()
+}
+
+// addRandomSector is a helper function that creates a random sector and adds it
+// to the storage obligation.
+func (p *renterHostPair) addRandomSector() (crypto.Hash, []byte, error) {
+	// create a random sector
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+
+	// fetch the SO
+	so, err := p.ht.host.managedGetStorageObligation(p.fcid)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// add a new revision
+	so.SectorRoots = append(so.SectorRoots, sectorRoot)
+	so, err = p.ht.addNewRevision(so, p.renterPK, uint64(len(sectorData)), sectorRoot)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// modify the SO
+	p.ht.host.managedLockStorageObligation(p.fcid)
+	err = p.ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
+	if err != nil {
+		p.ht.host.managedUnlockStorageObligation(p.fcid)
+		return crypto.Hash{}, nil, err
+	}
+	p.ht.host.managedUnlockStorageObligation(p.fcid)
+
+	return sectorRoot, sectorData, nil
 }
 
 // fundEphemeralAccount will deposit the given amount in the pair's ephemeral
@@ -436,6 +480,41 @@ func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Curren
 		return errors.New("could not verify host signature")
 	}
 	return nil
+}
+
+// payByEphemeralAccount is a helper that makes payment using the pair's EA.
+func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount types.Currency) (modules.PayByEphemeralAccountResponse, error) {
+	// Send the payment request.
+	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	if err != nil {
+		return modules.PayByEphemeralAccountResponse{}, err
+	}
+
+	// Send the payment details.
+	pbear := newPayByEphemeralAccountRequest(p.accountID, p.ht.host.BlockHeight()+6, amount, p.accountKey)
+	err = modules.RPCWrite(stream, pbear)
+	if err != nil {
+		return modules.PayByEphemeralAccountResponse{}, err
+	}
+
+	// Receive payment confirmation.
+	var resp modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return modules.PayByEphemeralAccountResponse{}, err
+	}
+	return resp, nil
+}
+
+// prefundAccount is a helper method that prefunds the ephemeral account to the
+// maximum balance
+func (p *renterHostPair) prefundAccount() {
+	his := p.ht.host.managedInternalSettings()
+	maxBalance := his.MaxEphemeralAccountBalance
+	_, err := p.fundEphemeralAccount(maxBalance.Add(p.latestPT.FundAccountCost))
+	if err != nil {
+		panic(err)
+	}
 }
 
 // sign returns the renter's signature of the given revision
@@ -626,40 +705,40 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if settings.AcceptingContracts != false {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.MaxDuration != defaultMaxDuration {
+	if settings.MaxDuration != modules.DefaultMaxDuration {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.MaxDownloadBatchSize != uint64(defaultMaxDownloadBatchSize) {
+	if settings.MaxDownloadBatchSize != uint64(modules.DefaultMaxDownloadBatchSize) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.MaxReviseBatchSize != uint64(defaultMaxReviseBatchSize) {
+	if settings.MaxReviseBatchSize != uint64(modules.DefaultMaxReviseBatchSize) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if settings.NetAddress != "" {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.WindowSize != defaultWindowSize {
+	if settings.WindowSize != modules.DefaultWindowSize {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.Collateral.Equals(defaultCollateral) {
+	if !settings.Collateral.Equals(modules.DefaultCollateral) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.CollateralBudget.Equals(defaultCollateralBudget) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MaxCollateral.Equals(defaultMaxCollateral) {
+	if !settings.MaxCollateral.Equals(modules.DefaultMaxCollateral) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinContractPrice.Equals(defaultContractPrice) {
+	if !settings.MinContractPrice.Equals(modules.DefaultContractPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinDownloadBandwidthPrice.Equals(defaultDownloadBandwidthPrice) {
+	if !settings.MinDownloadBandwidthPrice.Equals(modules.DefaultDownloadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MinStoragePrice.Equals(modules.DefaultStoragePrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MinUploadBandwidthPrice.Equals(defaultUploadBandwidthPrice) {
+	if !settings.MinUploadBandwidthPrice.Equals(modules.DefaultUploadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if settings.EphemeralAccountExpiry != (defaultEphemeralAccountExpiry) {
@@ -735,16 +814,16 @@ func TestSetAndGetSettings(t *testing.T) {
 
 	// Check the default settings get returned at first call.
 	settings := ht.host.Settings()
-	if settings.MaxDuration != defaultMaxDuration {
+	if settings.MaxDuration != modules.DefaultMaxDuration {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.WindowSize != defaultWindowSize {
+	if settings.WindowSize != modules.DefaultWindowSize {
 		t.Error("settings retrieval did not return default value")
 	}
 	if settings.Price.Cmp(defaultPrice) != 0 {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.Collateral.Cmp(defaultCollateral) != 0 {
+	if settings.Collateral.Cmp(modules.DefaultCollateral) != 0 {
 		t.Error("settings retrieval did not return default value")
 	}
 

@@ -376,7 +376,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	_ = h.managedInternalSettings()
+	es := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
 		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 
@@ -390,6 +390,10 @@ func (h *Host) managedUpdatePriceTable() {
 		MemoryTimeCost:    types.NewCurrency64(1),
 		ReadBaseCost:      types.NewCurrency64(1),
 		ReadLengthCost:    types.NewCurrency64(1),
+
+		// Bandwidth related fields.
+		DownloadBandwidthCost: es.DownloadBandwidthPrice,
+		UploadBandwidthCost:   es.UploadBandwidthPrice,
 	}
 	fastrand.Read(priceTable.UID[:])
 
@@ -592,9 +596,7 @@ func (h *Host) ExternalSettings() modules.HostExternalSettings {
 		build.Critical("Call to ExternalSettings after close")
 	}
 	defer h.tg.Done()
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.externalSettings()
+	return h.managedExternalSettings()
 }
 
 // BandwidthCounters returns the Hosts's upload and download bandwidth
@@ -708,4 +710,13 @@ func (h *Host) BlockHeight() types.BlockHeight {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.blockHeight
+}
+
+// managedExternalSettings returns the host's external settings. These values
+// cannot be set by the user (host is configured through InternalSettings), and
+// are the values that get displayed to other hosts on the network.
+func (h *Host) managedExternalSettings() modules.HostExternalSettings {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.externalSettings()
 }

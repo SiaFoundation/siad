@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 // TestVerifyPaymentRevision is a unit test covering verifyPaymentRevision
@@ -296,8 +297,8 @@ func TestProcessParallelPayments(t *testing.T) {
 		threshold: int64(maxWithdrawalAmount),
 	}
 
-	// setup multiple renters and SOs
-	pairs := make([]*renterHostPair, runtime.NumCPU())
+	// create an arbitrary amount of renters that have a contract with the host
+	pairs := make([]*renterHostPair, 16)
 	for i := range pairs {
 		pair, err := newRenterHostPairCustomHostTester(ht)
 		if err != nil {
@@ -330,7 +331,10 @@ func TestProcessParallelPayments(t *testing.T) {
 		close(finished)
 	})
 
-	for range pairs {
+	// spin up a large amount of threads that use the renter-host pairs in
+	// parallel
+	totalThreads := 10 * runtime.NumCPU()
+	for thread := 0; thread < totalThreads; thread++ {
 		go func() {
 			// create two streams
 			rs, hs := NewTestStreams()
@@ -345,7 +349,7 @@ func TestProcessParallelPayments(t *testing.T) {
 				default:
 				}
 
-				// generate random pair and amount
+				// pick a random pair and generate a random withdrawal amount
 				rp := pairs[fastrand.Intn(len(pairs))]
 				rw := fastrand.Uint64n(maxWithdrawalAmount) + 1
 				ra := types.NewCurrency64(rw)
@@ -356,7 +360,7 @@ func TestProcessParallelPayments(t *testing.T) {
 					payByFC = true
 				}
 
-				// randomly pick a flow and run it
+				// run payment flow
 				var failed bool
 				var pd modules.PaymentDetails
 				var err error
@@ -870,6 +874,46 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	return so, nil
 }
 
+// addNewRevision is a helper method that adds a new revision to the given
+// obligation with given newfilesize and newfilemerkleroot.
+func (ht *hostTester) addNewRevision(so storageObligation, renterPK types.SiaPublicKey, newFileSize uint64, newFileMerkleRoot crypto.Hash) (storageObligation, error) {
+	builder, err := ht.wallet.StartTransaction()
+	if err != nil {
+		return storageObligation{}, err
+	}
+
+	txnSet := so.OriginTransactionSet
+	contractTxn := txnSet[len(txnSet)-1]
+	fc := contractTxn.FileContracts[0]
+
+	noOpRevision := types.FileContractRevision{
+		ParentID: contractTxn.FileContractID(0),
+		UnlockConditions: types.UnlockConditions{
+			PublicKeys: []types.SiaPublicKey{
+				renterPK,
+				ht.host.publicKey,
+			},
+			SignaturesRequired: 2,
+		},
+		NewRevisionNumber:     fc.RevisionNumber + 1,
+		NewFileSize:           newFileSize,
+		NewFileMerkleRoot:     newFileMerkleRoot,
+		NewWindowStart:        fc.WindowStart,
+		NewWindowEnd:          fc.WindowEnd,
+		NewValidProofOutputs:  fc.ValidProofOutputs,
+		NewMissedProofOutputs: fc.MissedProofOutputs,
+		NewUnlockHash:         fc.UnlockHash,
+	}
+
+	builder.AddFileContractRevision(noOpRevision)
+	tSet, err := builder.Sign(true)
+	if err != nil {
+		return so, err
+	}
+	so.RevisionTransactionSet = tSet
+	return so, nil
+}
+
 // run is a helper function that runs the given functions in separate goroutines
 // and awaits them
 func run(f1, f2 func() error) error {
@@ -922,6 +966,9 @@ func (s testStream) LocalAddr() net.Addr            { panic("not implemented") }
 func (s testStream) RemoteAddr() net.Addr           { panic("not implemented") }
 func (s testStream) SetDeadline(t time.Time) error  { panic("not implemented") }
 func (s testStream) SetPriority(priority int) error { panic("not implemented") }
+
+func (s testStream) Limit() mux.BandwidthLimit           { panic("not implemented") }
+func (s testStream) SetLimit(_ mux.BandwidthLimit) error { panic("not implemented") }
 
 func (s testStream) SetReadDeadline(t time.Time) error {
 	panic("not implemented")
