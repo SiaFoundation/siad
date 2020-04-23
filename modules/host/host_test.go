@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -251,6 +252,7 @@ type renterHostPair struct {
 	renter     crypto.SecretKey
 	renterPK   types.SiaPublicKey
 	fcid       types.FileContractID
+	mu         sync.Mutex
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -318,7 +320,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	}
 
 	// fetch a price table
-	err = pair.updatePriceTable()
+	err = pair.updatePriceTable(true)
 	if err != nil {
 		return nil, err
 	}
@@ -337,6 +339,20 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
 	return p.ht.Close()
+}
+
+// PriceTable returns the latest price table
+func (p *renterHostPair) PriceTable() *modules.RPCPriceTable {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.latestPT
+}
+
+// SetPriceTable sets the latest price table
+func (p *renterHostPair) SetPriceTable(pt *modules.RPCPriceTable) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.latestPT = pt
 }
 
 // addRandomSector is a helper function that creates a random sector and adds it
@@ -532,7 +548,7 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 
 // updatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
 // table on the pair
-func (p *renterHostPair) updatePriceTable() error {
+func (p *renterHostPair) updatePriceTable(payByFC bool) error {
 	stream := p.newStream()
 	defer stream.Close()
 
@@ -543,42 +559,31 @@ func (p *renterHostPair) updatePriceTable() error {
 	}
 
 	// receive the price table response
-	var pt modules.RPCPriceTable
 	var update modules.RPCUpdatePriceTableResponse
 	err = modules.RPCRead(stream, &update)
 	if err != nil {
 		return err
 	}
-	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
-		return err
-	}
 
-	// prepare an updated revision that pays the host
-	rev, sig, err := p.paymentRevision(pt.UpdatePriceTableCost)
+	var pt modules.RPCPriceTable
+	err = json.Unmarshal(update.PriceTableJSON, &pt)
 	if err != nil {
 		return err
 	}
 
-	// send PaymentRequest & PayByContractRequest
-	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(rev, sig, p.accountID)
-	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
-	if err != nil {
-		return err
+	if payByFC {
+		err = p.payByContract(stream, pt.UpdatePriceTableCost, p.accountID)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = p.payByEphemeralAccount(stream, pt.UpdatePriceTableCost)
+		if err != nil {
+			return err
+		}
 	}
 
-	// receive PayByContractResponse
-	var payByResponse modules.PayByContractResponse
-	err = modules.RPCRead(stream, &payByResponse)
-	if err != nil {
-		return err
-	}
-
-	err = p.verify(crypto.HashObject(rev), payByResponse.Signature)
-	if err != nil {
-		return err
-	}
-	p.latestPT = &pt
+	p.SetPriceTable(&pt)
 	return nil
 }
 
