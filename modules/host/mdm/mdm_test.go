@@ -12,12 +12,16 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// errSectorNotFound return by ReadSector if the sector can't be found.
+var errSectorNotFound = errors.New("sector not found")
+
 type (
 	// TestHost is a dummy host for testing which satisfies the Host interface.
 	TestHost struct {
-		blockHeight types.BlockHeight
-		sectors     map[crypto.Hash][]byte
-		mu          sync.Mutex
+		generateSectors bool
+		blockHeight     types.BlockHeight
+		sectors         map[crypto.Hash][]byte
+		mu              sync.Mutex
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
@@ -28,8 +32,13 @@ type (
 )
 
 func newTestHost() *TestHost {
+	return newCustomTestHost(true)
+}
+
+func newCustomTestHost(generateSectors bool) *TestHost {
 	return &TestHost{
-		sectors: make(map[crypto.Hash][]byte),
+		generateSectors: generateSectors,
+		sectors:         make(map[crypto.Hash][]byte),
 	}
 }
 
@@ -59,9 +68,11 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	data, exists := h.sectors[sectorRoot]
-	if !exists {
+	if !exists && h.generateSectors {
 		data = fastrand.Bytes(int(modules.SectorSize))
 		h.sectors[sectorRoot] = data
+	} else if !exists && !h.generateSectors {
+		return nil, errSectorNotFound
 	}
 	return data, nil
 }
@@ -121,6 +132,10 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),
+
+		// Bandwidth costs
+		DownloadBandwidthCost: types.NewCurrency64(1),
+		UploadBandwidthCost:   types.NewCurrency64(1),
 	}
 }
 

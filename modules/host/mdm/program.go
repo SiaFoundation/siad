@@ -52,7 +52,7 @@ type program struct {
 	staticData         *programData
 	staticProgramState *programState
 
-	staticBudget           types.Currency
+	staticBudget           *modules.RPCBudget
 	staticCollateralBudget types.Currency
 	executionCost          types.Currency
 	additionalCollateral   types.Currency // collateral the host is required to add
@@ -97,14 +97,14 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	// Sanity check program length.
 	if len(p) == 0 {
 		return nil, nil, ErrEmptyProgram
 	}
 	// Build program.
 	program := &program{
-		outputChan: make(chan Output, len(p)),
+		outputChan: make(chan Output),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
@@ -165,11 +165,10 @@ func (p *program) addCollateral(collateral types.Currency) error {
 // becomes larger than the budget of the program, ErrInsufficientBudget is
 // returned.
 func (p *program) addCost(cost types.Currency) error {
-	newExecutionCost := p.executionCost.Add(cost)
-	if p.staticBudget.Cmp(newExecutionCost) < 0 {
+	if !p.staticBudget.Withdraw(cost) {
 		return modules.ErrMDMInsufficientBudget
 	}
-	p.executionCost = newExecutionCost
+	p.executionCost = p.executionCost.Add(cost)
 	return nil
 }
 
@@ -184,8 +183,15 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		select {
 		case <-ctx.Done(): // Check for interrupt
 			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.potentialRefund)
-			break
+			return ErrInterrupted
 		default:
+		}
+		// Increment collateral first.
+		collateral := i.Collateral()
+		err := p.addCollateral(collateral)
+		if err != nil {
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			return err
 		}
 		// Add the memory the next instruction is going to allocate to the
 		// total.
@@ -210,13 +216,6 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		}
 		// Add the instruction's potential refund to the total.
 		p.potentialRefund = p.potentialRefund.Add(refund)
-		// Increment collateral.
-		collateral := i.Collateral()
-		err = p.addCollateral(collateral)
-		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
-			return err
-		}
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
