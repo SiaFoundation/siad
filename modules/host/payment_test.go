@@ -875,7 +875,7 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 }
 
 // addNewRevision is a helper method that adds a new revision to the given
-// obligation.
+// obligation with given newfilesize and newfilemerkleroot.
 func (ht *hostTester) addNewRevision(so storageObligation, renterPK types.SiaPublicKey, newFileSize uint64, newFileMerkleRoot crypto.Hash) (storageObligation, error) {
 	builder, err := ht.wallet.StartTransaction()
 	if err != nil {
