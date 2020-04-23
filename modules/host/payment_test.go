@@ -874,6 +874,46 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	return so, nil
 }
 
+// addNewRevision is a helper method that adds a new revision to the given
+// obligation.
+func (ht *hostTester) addNewRevision(so storageObligation, renterPK types.SiaPublicKey, newFileSize uint64, newFileMerkleRoot crypto.Hash) (storageObligation, error) {
+	builder, err := ht.wallet.StartTransaction()
+	if err != nil {
+		return storageObligation{}, err
+	}
+
+	txnSet := so.OriginTransactionSet
+	contractTxn := txnSet[len(txnSet)-1]
+	fc := contractTxn.FileContracts[0]
+
+	noOpRevision := types.FileContractRevision{
+		ParentID: contractTxn.FileContractID(0),
+		UnlockConditions: types.UnlockConditions{
+			PublicKeys: []types.SiaPublicKey{
+				renterPK,
+				ht.host.publicKey,
+			},
+			SignaturesRequired: 2,
+		},
+		NewRevisionNumber:     fc.RevisionNumber + 1,
+		NewFileSize:           newFileSize,
+		NewFileMerkleRoot:     newFileMerkleRoot,
+		NewWindowStart:        fc.WindowStart,
+		NewWindowEnd:          fc.WindowEnd,
+		NewValidProofOutputs:  fc.ValidProofOutputs,
+		NewMissedProofOutputs: fc.MissedProofOutputs,
+		NewUnlockHash:         fc.UnlockHash,
+	}
+
+	builder.AddFileContractRevision(noOpRevision)
+	tSet, err := builder.Sign(true)
+	if err != nil {
+		return so, err
+	}
+	so.RevisionTransactionSet = tSet
+	return so, nil
+}
+
 // run is a helper function that runs the given functions in separate goroutines
 // and awaits them
 func run(f1, f2 func() error) error {

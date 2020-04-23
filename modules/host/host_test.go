@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 
 	// "gitlab.com/NebulousLabs/Sia/modules/renter"
@@ -248,6 +249,7 @@ type renterHostPair struct {
 	ht         *hostTester
 	latestPT   *modules.RPCPriceTable
 	renter     crypto.SecretKey
+	renterPK   types.SiaPublicKey
 	fcid       types.FileContractID
 }
 
@@ -302,6 +304,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		accountKey: accountKey,
 		ht:         ht,
 		renter:     sk,
+		renterPK:   renterPK,
 		fcid:       so.id(),
 	}
 
@@ -325,6 +328,37 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
 	return p.ht.Close()
+}
+
+// addRandomSector is a helper function that creates a random sector and adds it
+// to the storage obligation.
+func (p *renterHostPair) addRandomSector() (crypto.Hash, []byte, error) {
+	// create a random sector
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+
+	// fetch the SO
+	so, err := p.ht.host.managedGetStorageObligation(p.fcid)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// add a new revision
+	so.SectorRoots = append(so.SectorRoots, sectorRoot)
+	so, err = p.ht.addNewRevision(so, p.renterPK, uint64(len(sectorData)), sectorRoot)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// modify the SO
+	p.ht.host.managedLockStorageObligation(p.fcid)
+	err = p.ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+	p.ht.host.managedUnlockStorageObligation(p.fcid)
+
+	return sectorRoot, sectorData, nil
 }
 
 // fundEphemeralAccount will deposit the given amount in the pair's ephemeral

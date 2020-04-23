@@ -189,28 +189,21 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	defer rhp.Close()
 	ht := rhp.ht
 
+	// create a random sector
+	sectorRoot, sectorData, err := rhp.addRandomSector()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// get a snapshot of the SO before running the program.
 	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.fcid)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// create a random sector
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorRoot := crypto.MerkleRoot(sectorData)
-
-	// modify the host's storage obligation to add the sector
-	so, err := ht.host.managedGetStorageObligation(rhp.fcid)
-	if err != nil {
-		t.Fatal(err)
+	// verify the root is not the zero root to begin with
+	if sos.staticMerkleRoot == crypto.MerkleRoot([]byte{}) {
+		t.Fatalf("expected merkle root to be non zero: %v", sos.staticMerkleRoot)
 	}
-	so.SectorRoots = append(so.SectorRoots, sectorRoot)
-	ht.host.managedLockStorageObligation(rhp.fcid)
-	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(rhp.fcid)
 
 	// create the 'ReadSector' program.
 	program, data, programCost, refund, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, rhp.latestPT)
@@ -294,14 +287,8 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// verify the EA balance
 	am := rhp.ht.host.staticAccountManager
-	expectedRemainingBalance := maxBalance.Sub(cost)
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		remainingBalance := am.callAccountBalance(rhp.accountID)
-		if !remainingBalance.Equals(expectedRemainingBalance) {
-			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
-		}
-		return nil
-	})
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,14 +308,8 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	downloadCost = rhp.latestPT.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = rhp.latestPT.UploadBandwidthCost.Mul64(limit.Uploaded())
 
-	expectedRemainingBalance = expectedRemainingBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		remainingBalance := am.callAccountBalance(rhp.accountID)
-		if !remainingBalance.Equals(expectedRemainingBalance) {
-			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
-		}
-		return nil
-	})
+	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,14 +540,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.ht.host.staticAccountManager
-	expectedRemainingBalance := maxBalance.Sub(cost)
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		remainingBalance := am.callAccountBalance(rhp.accountID)
-		if !remainingBalance.Equals(expectedRemainingBalance) {
-			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
-		}
-		return nil
-	})
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,15 +560,22 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	downloadCost = rhp.latestPT.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = rhp.latestPT.UploadBandwidthCost.Mul64(limit.Uploaded())
 
-	expectedRemainingBalance = expectedRemainingBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		remainingBalance := am.callAccountBalance(rhp.accountID)
-		if !remainingBalance.Equals(expectedRemainingBalance) {
-			return fmt.Errorf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
-		}
-		return nil
-	})
+	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// verifyBalance is a helper function that will verify if the ephemeral account
+// with given id has a certain balance. It does this in a (short) build.Retry
+// loop to avoid race conditions.
+func verifyBalance(am *accountManager, id modules.AccountID, expected types.Currency) error {
+	return build.Retry(100, 100*time.Millisecond, func() error {
+		actual := am.callAccountBalance(id)
+		if !actual.Equals(expected) {
+			return fmt.Errorf("expected %v remaining balance but got %v", expected, actual)
+		}
+		return nil
+	})
 }
