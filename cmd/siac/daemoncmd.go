@@ -61,7 +61,7 @@ Set them to 0 for no limit.`,
 // alertscmd prints the alerts from the daemon. This will not print critical
 // alerts as critical alerts are printed on every siac command
 func alertscmd() {
-	al, err := httpClient.DaemonAlertsGet()
+	al, err := siacGlobalHttpClient.DaemonAlertsGet()
 	if err != nil {
 		fmt.Println("Could not get daemon alerts:", err)
 		return
@@ -108,7 +108,7 @@ func versioncmd() {
 		fmt.Println("\tGit Revision " + build.GitRevision)
 		fmt.Println("\tBuild Time   " + build.BuildTime)
 	}
-	dvg, err := httpClient.DaemonVersionGet()
+	dvg, err := siacGlobalHttpClient.DaemonVersionGet()
 	if err != nil {
 		fmt.Println("Could not get daemon version:", err)
 		return
@@ -124,7 +124,7 @@ func versioncmd() {
 // stopcmd is the handler for the command `siac stop`.
 // Stops the daemon.
 func stopcmd() {
-	err := httpClient.DaemonStopGet()
+	err := siacGlobalHttpClient.DaemonStopGet()
 	if err != nil {
 		die("Could not stop daemon:", err)
 	}
@@ -134,7 +134,7 @@ func stopcmd() {
 // updatecmd is the handler for the command `siac update`.
 // Updates the daemon version to latest general release.
 func updatecmd() {
-	update, err := httpClient.DaemonUpdateGet()
+	update, err := siacGlobalHttpClient.DaemonUpdateGet()
 	if err != nil {
 		fmt.Println("Could not check for update:", err)
 		return
@@ -144,7 +144,7 @@ func updatecmd() {
 		return
 	}
 
-	err = httpClient.DaemonUpdatePost()
+	err = siacGlobalHttpClient.DaemonUpdatePost()
 	if err != nil {
 		fmt.Println("Could not apply update:", err)
 		return
@@ -155,7 +155,7 @@ func updatecmd() {
 // updatecheckcmd is the handler for the command `siac check`.
 // Checks is there is an newer daemon version available.
 func updatecheckcmd() {
-	update, err := httpClient.DaemonUpdateGet()
+	update, err := siacGlobalHttpClient.DaemonUpdateGet()
 	if err != nil {
 		fmt.Println("Could not check for update:", err)
 		return
@@ -178,7 +178,7 @@ func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 	if err != nil {
 		die(errors.AddContext(err, "unable to parse upload speed"))
 	}
-	err = httpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	err = siacGlobalHttpClient.DaemonGlobalRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
 		die("Could not set global ratelimit speed:", err)
 	}

@@ -239,7 +239,7 @@ func confirmPassword(prev string) error {
 // walletaddresscmd fetches a new address from the wallet that will be able to
 // receive coins.
 func walletaddresscmd() {
-	addr, err := httpClient.WalletAddressGet()
+	addr, err := siacGlobalHttpClient.WalletAddressGet()
 	if err != nil {
 		die("Could not generate new address:", err)
 	}
@@ -248,7 +248,7 @@ func walletaddresscmd() {
 
 // walletaddressescmd fetches the list of addresses that the wallet knows.
 func walletaddressescmd() {
-	addrs, err := httpClient.WalletAddressesGet()
+	addrs, err := siacGlobalHttpClient.WalletAddressesGet()
 	if err != nil {
 		die("Failed to fetch addresses:", err)
 	}
@@ -269,7 +269,7 @@ func walletchangepasswordcmd() {
 	} else if err = confirmPassword(newPassword); err != nil {
 		die(err)
 	}
-	err = httpClient.WalletChangePasswordPost(currentPassword, newPassword)
+	err = siacGlobalHttpClient.WalletChangePasswordPost(currentPassword, newPassword)
 	if err != nil {
 		die("Changing the password failed:", err)
 	}
@@ -288,7 +288,7 @@ func walletinitcmd() {
 			die(err)
 		}
 	}
-	er, err := httpClient.WalletInitPost(password, initForce)
+	er, err := siacGlobalHttpClient.WalletInitPost(password, initForce)
 	if err != nil {
 		die("Error when encrypting wallet:", err)
 	}
@@ -315,7 +315,7 @@ func walletinitseedcmd() {
 			die(err)
 		}
 	}
-	err = httpClient.WalletInitSeedPost(seed, password, initForce)
+	err = siacGlobalHttpClient.WalletInitSeedPost(seed, password, initForce)
 	if err != nil {
 		die("Could not initialize wallet from seed:", err)
 	}
@@ -332,7 +332,7 @@ func walletload033xcmd(source string) {
 	if err != nil {
 		die("Reading password failed:", err)
 	}
-	err = httpClient.Wallet033xPost(abs(source), password)
+	err = siacGlobalHttpClient.Wallet033xPost(abs(source), password)
 	if err != nil {
 		die("Loading wallet failed:", err)
 	}
@@ -349,7 +349,7 @@ func walletloadseedcmd() {
 	if err != nil {
 		die("Reading password failed:", err)
 	}
-	err = httpClient.WalletSeedPost(seed, password)
+	err = siacGlobalHttpClient.WalletSeedPost(seed, password)
 	if err != nil {
 		die("Could not add seed:", err)
 	}
@@ -362,7 +362,7 @@ func walletloadsiagcmd(keyfiles string) {
 	if err != nil {
 		die("Reading password failed:", err)
 	}
-	err = httpClient.WalletSiagKeyPost(keyfiles, password)
+	err = siacGlobalHttpClient.WalletSiagKeyPost(keyfiles, password)
 	if err != nil {
 		die("Loading siag key failed:", err)
 	}
@@ -371,7 +371,7 @@ func walletloadsiagcmd(keyfiles string) {
 
 // walletlockcmd locks the wallet
 func walletlockcmd() {
-	err := httpClient.WalletLockPost()
+	err := siacGlobalHttpClient.WalletLockPost()
 	if err != nil {
 		die("Could not lock wallet:", err)
 	}
@@ -379,7 +379,7 @@ func walletlockcmd() {
 
 // walletseedcmd returns the current seed {
 func walletseedscmd() {
-	seedInfo, err := httpClient.WalletSeedsGet()
+	seedInfo, err := siacGlobalHttpClient.WalletSeedsGet()
 	if err != nil {
 		die("Error retrieving the current seed:", err)
 	}
@@ -414,7 +414,7 @@ func walletsendsiacoinscmd(amount, dest string) {
 	if _, err := fmt.Sscan(dest, &hash); err != nil {
 		die("Failed to parse destination address", err)
 	}
-	_, err = httpClient.WalletSiacoinsPost(value, hash, walletTxnFeeIncluded)
+	_, err = siacGlobalHttpClient.WalletSiacoinsPost(value, hash, walletTxnFeeIncluded)
 	if err != nil {
 		die("Could not send siacoins:", err)
 	}
@@ -431,7 +431,7 @@ func walletsendsiafundscmd(amount, dest string) {
 	if _, err := fmt.Sscan(dest, &hash); err != nil {
 		die("Failed to parse destination address", err)
 	}
-	_, err := httpClient.WalletSiafundsPost(value, hash)
+	_, err := siacGlobalHttpClient.WalletSiafundsPost(value, hash)
 	if err != nil {
 		die("Could not send siafunds:", err)
 	}
@@ -440,7 +440,7 @@ func walletsendsiafundscmd(amount, dest string) {
 
 // walletbalancecmd retrieves and displays information about the wallet.
 func walletbalancecmd() {
-	status, err := httpClient.WalletGet()
+	status, err := siacGlobalHttpClient.WalletGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Wallet:\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -449,7 +449,7 @@ func walletbalancecmd() {
 		die("Could not get wallet status:", err)
 	}
 
-	fees, err := httpClient.TransactionPoolFeeGet()
+	fees, err := siacGlobalHttpClient.TransactionPoolFeeGet()
 	if err != nil {
 		die("Could not get fee estimation:", err)
 	}
@@ -494,7 +494,7 @@ func walletbroadcastcmd(txnStr string) {
 	if err != nil {
 		die("Could not decode transaction:", err)
 	}
-	err = httpClient.TransactionPoolRawPost(txn, nil)
+	err = siacGlobalHttpClient.TransactionPoolRawPost(txn, nil)
 	if err != nil {
 		die("Could not broadcast transaction:", err)
 	}
@@ -508,7 +508,7 @@ func walletsweepcmd() {
 		die("Reading seed failed:", err)
 	}
 
-	swept, err := httpClient.WalletSweepPost(seed)
+	swept, err := siacGlobalHttpClient.WalletSweepPost(seed)
 	if err != nil {
 		die("Could not sweep seed:", err)
 	}
@@ -539,7 +539,7 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 	}
 
 	// try API first
-	wspr, err := httpClient.WalletSignPost(txn, toSign)
+	wspr, err := siacGlobalHttpClient.WalletSignPost(txn, toSign)
 	if err == nil {
 		txn = wspr.Transaction
 	} else {
@@ -594,11 +594,11 @@ func walletsigncmdoffline(txn *types.Transaction, toSign []crypto.Hash) {
 // wallettransactionscmd lists all of the transactions related to the wallet,
 // providing a net flow of siacoins and siafunds for each.
 func wallettransactionscmd() {
-	wtg, err := httpClient.WalletTransactionsGet(types.BlockHeight(walletStartHeight), types.BlockHeight(walletEndHeight))
+	wtg, err := siacGlobalHttpClient.WalletTransactionsGet(types.BlockHeight(walletStartHeight), types.BlockHeight(walletEndHeight))
 	if err != nil {
 		die("Could not fetch transaction history:", err)
 	}
-	cg, err := httpClient.ConsensusGet()
+	cg, err := siacGlobalHttpClient.ConsensusGet()
 	if err != nil {
 		die("Could not fetch consensus information:", err)
 	}
@@ -657,7 +657,7 @@ func walletunlockcmd() {
 	password := build.WalletPassword()
 	if password != "" && !initPassword {
 		fmt.Println("Using SIA_WALLET_PASSWORD environment variable")
-		err := httpClient.WalletUnlockPost(password)
+		err := siacGlobalHttpClient.WalletUnlockPost(password)
 		if err != nil {
 			fmt.Println("Automatic unlock failed!")
 		} else {
@@ -669,7 +669,7 @@ func walletunlockcmd() {
 	if err != nil {
 		die("Reading password failed:", err)
 	}
-	err = httpClient.WalletUnlockPost(password)
+	err = siacGlobalHttpClient.WalletUnlockPost(password)
 	if err != nil {
 		die("Could not unlock wallet:", err)
 	}

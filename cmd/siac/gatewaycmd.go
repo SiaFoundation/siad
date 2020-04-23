@@ -117,7 +117,7 @@ Set them to 0 for no limit.`,
 // gatewayconnectcmd is the handler for the command `siac gateway add [address]`.
 // Adds a new peer to the peer list.
 func gatewayconnectcmd(addr string) {
-	err := httpClient.GatewayConnectPost(modules.NetAddress(addr))
+	err := siacGlobalHttpClient.GatewayConnectPost(modules.NetAddress(addr))
 	if err != nil {
 		die("Could not add peer:", err)
 	}
@@ -127,7 +127,7 @@ func gatewayconnectcmd(addr string) {
 // gatewaydisconnectcmd is the handler for the command `siac gateway remove [address]`.
 // Removes a peer from the peer list.
 func gatewaydisconnectcmd(addr string) {
-	err := httpClient.GatewayDisconnectPost(modules.NetAddress(addr))
+	err := siacGlobalHttpClient.GatewayDisconnectPost(modules.NetAddress(addr))
 	if err != nil {
 		die("Could not remove peer:", err)
 	}
@@ -137,7 +137,7 @@ func gatewaydisconnectcmd(addr string) {
 // gatewayaddresscmd is the handler for the command `siac gateway address`.
 // Prints the gateway's network address.
 func gatewayaddresscmd() {
-	info, err := httpClient.GatewayGet()
+	info, err := siacGlobalHttpClient.GatewayGet()
 	if err != nil {
 		die("Could not get gateway address:", err)
 	}
@@ -147,7 +147,7 @@ func gatewayaddresscmd() {
 //gatewaybandwidthcmd is the handler for the command `siac gateway bandwidth`.
 //returns the total upload and download bandwidth usage for the gateway
 func gatewaybandwidthcmd() {
-	bandwidth, err := httpClient.GatewayBandwidthGet()
+	bandwidth, err := siacGlobalHttpClient.GatewayBandwidthGet()
 	if err != nil {
 		die("Could not get bandwidth monitor", err)
 	}
@@ -161,7 +161,7 @@ Duration: %v
 // gatewaycmd is the handler for the command `siac gateway`.
 // Prints the gateway's network address and number of peers.
 func gatewaycmd() {
-	info, err := httpClient.GatewayGet()
+	info, err := siacGlobalHttpClient.GatewayGet()
 	if err != nil {
 		die("Could not get gateway address:", err)
 	}
@@ -174,7 +174,7 @@ func gatewaycmd() {
 // gatewayblacklistcmd is the handler for the command `siac gateway blacklist`
 // Prints the ip addresses on the gateway blacklist
 func gatewayblacklistcmd() {
-	gbg, err := httpClient.GatewayBlacklistGet()
+	gbg, err := siacGlobalHttpClient.GatewayBlacklistGet()
 	if err != nil {
 		die("Could not get gateway blacklist", err)
 	}
@@ -193,7 +193,7 @@ func gatewayblacklistappendcmd(cmd *cobra.Command, addresses []string) {
 		cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
-	err := httpClient.GatewayAppendBlacklistPost(addresses)
+	err := siacGlobalHttpClient.GatewayAppendBlacklistPost(addresses)
 	if err != nil {
 		die("Could not append the ip addresses(es) to the gateway blacklist", err)
 	}
@@ -204,7 +204,7 @@ func gatewayblacklistappendcmd(cmd *cobra.Command, addresses []string) {
 // `siac gateway blacklist clear`
 // Clears the gateway blacklist
 func gatewayblacklistclearcmd(cmd *cobra.Command, addresses []string) {
-	err := httpClient.GatewaySetBlacklistPost(addresses)
+	err := siacGlobalHttpClient.GatewaySetBlacklistPost(addresses)
 	if err != nil {
 		die("Could not clear the gateway blacklist", err)
 	}
@@ -220,7 +220,7 @@ func gatewayblacklistremovecmd(cmd *cobra.Command, addresses []string) {
 		cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
-	err := httpClient.GatewayRemoveBlacklistPost(addresses)
+	err := siacGlobalHttpClient.GatewayRemoveBlacklistPost(addresses)
 	if err != nil {
 		die("Could not remove the ip address(es) from the gateway blacklist", err)
 	}
@@ -236,7 +236,7 @@ func gatewayblacklistsetcmd(cmd *cobra.Command, addresses []string) {
 		cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
-	err := httpClient.GatewaySetBlacklistPost(addresses)
+	err := siacGlobalHttpClient.GatewaySetBlacklistPost(addresses)
 	if err != nil {
 		die("Could not set the gateway blacklist", err)
 	}
@@ -246,7 +246,7 @@ func gatewayblacklistsetcmd(cmd *cobra.Command, addresses []string) {
 // gatewaylistcmd is the handler for the command `siac gateway list`.
 // Prints a list of all peers.
 func gatewaylistcmd() {
-	info, err := httpClient.GatewayGet()
+	info, err := siacGlobalHttpClient.GatewayGet()
 	if err != nil {
 		die("Could not get peer list:", err)
 	}
@@ -276,7 +276,7 @@ func gatewayratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die(errors.AddContext(err, "unable to parse upload speed"))
 	}
 
-	err = httpClient.GatewayRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	err = siacGlobalHttpClient.GatewayRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
 		die("Could not set gateway ratelimit speed")
 	}

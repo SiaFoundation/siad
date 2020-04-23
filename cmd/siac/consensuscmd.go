@@ -25,7 +25,7 @@ var (
 // consensuscmd is the handler for the command `siac consensus`.
 // Prints the current state of consensus.
 func consensuscmd() {
-	cg, err := httpClient.ConsensusGet()
+	cg, err := siacGlobalHttpClient.ConsensusGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)

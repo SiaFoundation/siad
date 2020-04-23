@@ -77,7 +77,7 @@ var (
 var (
 	// Globals.
 	rootCmd           *cobra.Command // Root command cobra object, used by bash completion cmd.
-	httpClient        client.Client
+	siacGlobalHttpClient        client.Client
 	numCriticalAlerts int
 )
 
@@ -129,7 +129,7 @@ func statuscmd() {
 	defer fmt.Println()
 
 	// Consensus Info
-	cg, err := httpClient.ConsensusGet()
+	cg, err := siacGlobalHttpClient.ConsensusGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -144,7 +144,7 @@ func statuscmd() {
 	}
 
 	// Wallet Info
-	walletStatus, err := httpClient.WalletGet()
+	walletStatus, err := siacGlobalHttpClient.WalletGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Wallet:\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -175,7 +175,7 @@ func statuscmd() {
 	}
 
 	// Global Daemon Rate Limits
-	dg, err := httpClient.DaemonSettingsGet()
+	dg, err := siacGlobalHttpClient.DaemonSettingsGet()
 	if err != nil {
 		die("Could not get daemon:", err)
 	}
@@ -184,7 +184,7 @@ Global `)
 	rateLimitSummary(dg.MaxDownloadSpeed, dg.MaxUploadSpeed)
 
 	// Gateway Rate Limits
-	gg, err := httpClient.GatewayGet()
+	gg, err := siacGlobalHttpClient.GatewayGet()
 	if err != nil {
 		die("Could not get gateway:", err)
 	}
@@ -193,7 +193,7 @@ Gateway `)
 	rateLimitSummary(gg.MaxDownloadSpeed, gg.MaxUploadSpeed)
 
 	// Renter Rate Limits
-	rg, err := httpClient.RenterGet()
+	rg, err := siacGlobalHttpClient.RenterGet()
 	if err != nil {
 		die("Error getting renter:", err)
 	}
@@ -353,20 +353,20 @@ func main() {
 
 	// initialize client
 	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
-	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
-	root.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
+	root.PersistentFlags().StringVarP(&siacGlobalHttpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
+	root.PersistentFlags().StringVarP(&siacGlobalHttpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
 	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
-	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
+	root.PersistentFlags().StringVarP(&siacGlobalHttpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
 	// Check if the API Password is set
-	if httpClient.Password == "" {
+	if siacGlobalHttpClient.Password == "" {
 		// No password passed in, fetch the API Password
 		pw, err := build.APIPassword()
 		if err != nil {
 			fmt.Println("Exiting: Error getting API Password:", err)
 			os.Exit(exitCodeGeneral)
 		}
-		httpClient.Password = pw
+		siacGlobalHttpClient.Password = pw
 	}
 
 	// Check if the siaDir is set.
@@ -376,7 +376,7 @@ func main() {
 	}
 
 	// Check for Critical Alerts
-	alerts, err := httpClient.DaemonAlertsGet()
+	alerts, err := siacGlobalHttpClient.DaemonAlertsGet()
 	if err == nil {
 		for _, a := range alerts.Alerts {
 			if a.Severity != modules.SeverityCritical {
