@@ -330,10 +330,12 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 	// from it and handle it as a normal faulty disk error within this test.
 	defer func() {
 		r := recover()
-		// check if the panic we recovered from was really caused by the faulty
-		// disk dependency
 		if fmt.Sprintf("%s", r) == dependencies.ErrDiskFault.Error() {
+			// we recovered by a panic caused by the faulty disk dependency
 			err = dependencies.ErrDiskFault
+		} else if r != nil {
+			// This isn't the panic you're looking for!
+			panic(r)
 		}
 	}()
 
