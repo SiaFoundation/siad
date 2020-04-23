@@ -363,6 +363,7 @@ func (p *renterHostPair) addRandomSector() (crypto.Hash, []byte, error) {
 	p.ht.host.managedLockStorageObligation(p.fcid)
 	err = p.ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
+		p.ht.host.managedUnlockStorageObligation(p.fcid)
 		return crypto.Hash{}, nil, err
 	}
 	p.ht.host.managedUnlockStorageObligation(p.fcid)
@@ -482,27 +483,27 @@ func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Curren
 }
 
 // payByEphemeralAccount is a helper that makes payment using the pair's EA.
-func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount types.Currency) error {
+func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount types.Currency) (modules.PayByEphemeralAccountResponse, error) {
 	// Send the payment request.
 	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
-		return err
+		return modules.PayByEphemeralAccountResponse{}, err
 	}
 
 	// Send the payment details.
 	pbear := newPayByEphemeralAccountRequest(p.accountID, p.ht.host.BlockHeight()+6, amount, p.accountKey)
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
-		return err
+		return modules.PayByEphemeralAccountResponse{}, err
 	}
 
 	// Receive payment confirmation.
-	var pc modules.PayByEphemeralAccountResponse
-	err = modules.RPCRead(stream, &pc)
+	var resp modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &resp)
 	if err != nil {
-		return err
+		return modules.PayByEphemeralAccountResponse{}, err
 	}
-	return nil
+	return resp, nil
 }
 
 // prefundAccount is a helper method that prefunds the ephemeral account to the
