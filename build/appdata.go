@@ -87,6 +87,12 @@ func createAPIPasswordFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// ensure SiaDir has the correct mode as MkdirAll won't change the mode of
+	// an existent directory
+	err = os.Chmod(SiaDir(), 0700)
+	if err != nil {
+		return "", err
+	}
 	pw := hex.EncodeToString(fastrand.Bytes(16))
 	err = ioutil.WriteFile(apiPasswordFilePath(), []byte(pw+"\n"), 0600)
 	if err != nil {
