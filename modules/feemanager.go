@@ -70,11 +70,11 @@ type (
 		// the fee.
 		AddFee(address types.UnlockHash, amount types.Currency, appUID AppUID, recurring bool) (FeeUID, error)
 
-		// Close closes the FeeManager
-		Close() error
-
 		// CancelFee cancels the fee associated with the FeeUID
 		CancelFee(feeUID FeeUID) error
+
+		// Close closes the FeeManager
+		Close() error
 
 		// PaidFees returns all the paid fees that are being tracked by the
 		// FeeManager
@@ -91,6 +91,7 @@ type (
 
 // Implement a ByTimestamp sort for the AppFees.
 type (
+	// AppFeeByTimestamp is a helper struct for the ByTimestamp sort.
 	AppFeeByTimestamp []AppFee
 )
 

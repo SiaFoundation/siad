@@ -22,9 +22,7 @@ import (
 //
 // - Update all siatests
 //
-// - Verify changes through API
-//
-// - Clean up commented out code, helpful for F/U MRs
+// - Update README
 
 var (
 	// Nil dependency errors.
@@ -130,7 +128,7 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 	ps.syncCoordinator = sc
 
 	// Initialize the logger.
-	common.staticLog, err = persist.NewFileLogger(filepath.Join(ps.staticPersistDir, LogFile))
+	common.staticLog, err = persist.NewFileLogger(filepath.Join(ps.staticPersistDir, logFile))
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create logger")
 	}
@@ -162,15 +160,13 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 	}
 	defer fm.common.staticTG.Done()
 
-	fm.common.persist.mu.Lock()
-	nextPayoutHeight := fm.common.persist.nextPayoutHeight
-	fm.common.persist.mu.Unlock()
-
 	// Determine the payoutHeight
 	payoutHeight := types.BlockHeight(0)
 	if fm.common.staticCS.Synced() {
 		// Consensus is synced, set to the following payout period
-		payoutHeight = nextPayoutHeight + PayoutInterval
+		fm.common.persist.mu.Lock()
+		payoutHeight = fm.common.persist.nextPayoutHeight + PayoutInterval
+		fm.common.persist.mu.Unlock()
 	}
 
 	// Create the fee.
@@ -282,8 +278,6 @@ func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
 	fm.common.persist.mu.Lock()
 	nextPayoutHeight := fm.common.persist.nextPayoutHeight
 	fm.common.persist.mu.Unlock()
-
-	// SeveyTODO - why didn't we add the payout amount too?
 
 	return modules.FeeManagerSettings{
 		PayoutHeight: nextPayoutHeight,

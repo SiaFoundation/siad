@@ -18,13 +18,13 @@ func (c *Client) FeeManagerGet() (fmg api.FeeManagerGET, err error) {
 
 // FeeManagerAddPost use the /feemanager/add POST endpoint to add a fee for the
 // FeeManager to manage
-func (c *Client) FeeManagerAddPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (err error) {
+func (c *Client) FeeManagerAddPost(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (fmap api.FeeManagerAddFeePOST, err error) {
 	values := url.Values{}
 	values.Set("address", address.String())
 	values.Set("amount", amount.String())
 	values.Set("appuid", string(appUID))
 	values.Set("recurring", fmt.Sprint(recurring))
-	err = c.post("/feemanager/set", values.Encode(), nil)
+	err = c.post("/feemanager/add", values.Encode(), &fmap)
 	return
 }
 

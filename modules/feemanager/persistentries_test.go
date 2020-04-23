@@ -12,6 +12,7 @@ import (
 
 // TestIntegrateEntry tests the integrateEntry method of the FeeManager
 func TestIntegrateEntry(t *testing.T) {
+	t.Parallel()
 	// Create minimum FeeManager
 	fm := &FeeManager{
 		fees: make(map[modules.FeeUID]*modules.AppFee),
@@ -62,6 +63,7 @@ func TestIntegrateEntry(t *testing.T) {
 // TestPersistEntryPayloadSize ensures that the payload size plus the size of
 // the rest of the persist entry matches up to the persistEntrySize.
 func TestPersistEntryPayloadSize(t *testing.T) {
+	t.Parallel()
 	var pe persistEntry
 	data := encoding.Marshal(pe)
 	if len(data) != persistEntrySize {

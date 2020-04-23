@@ -58,15 +58,14 @@ func (fm *FeeManager) threadedProcessFees() {
 		// Grab the Current blockheight
 		bh := fm.common.staticCS.Height()
 
-		// Check if the FeeManager nextPayoutHeight has been set yet, it not,
-		// update in memory. We do not need to save here as any following call
-		// to save a fee to the persist file will persist the new value
+		// Check if the FeeManager nextPayoutHeight needs to be pushed out, if
+		// so update in memory. We do not need to save here as any following
+		// call to save a fee to the persist file will persist the new value.
 		fm.common.persist.mu.Lock()
-		nextPayoutHeight := fm.common.persist.nextPayoutHeight
-		if nextPayoutHeight == 0 || nextPayoutHeight < bh {
-			nextPayoutHeight = bh + PayoutInterval
-			fm.common.persist.nextPayoutHeight = nextPayoutHeight
+		if fm.common.persist.nextPayoutHeight <= bh {
+			fm.common.persist.nextPayoutHeight = bh + PayoutInterval
 		}
+		nextPayoutHeight := fm.common.persist.nextPayoutHeight
 		fm.common.persist.mu.Unlock()
 
 		// Check for fees that need to be updated due to their PayoutHeights
@@ -108,13 +107,14 @@ func (fm *FeeManager) threadedProcessFees() {
 		}
 
 		// Process any current heights
-		for _, fee := range feesToProcess {
-			// Process fee
-		}
+		// for _, fee := range feesToProcess {
+		// 	// Process fee
+		// }
 
 		// Sleep until it is time to check the fees again
 		select {
 		case <-fm.common.staticTG.StopChan():
+			return
 		case <-time.After(processFeesCheckInterval):
 		}
 	}

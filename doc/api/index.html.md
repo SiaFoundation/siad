@@ -718,8 +718,7 @@ This is the version number that is visible to its peers on the network.
 
 The feemanager allows applications built on top of Sia to charge the Sia user a
 fee. The feemanager's API endpoints expose methods for viewing information about
-the feemanager and for setting and canceling fees. Additionally the feemanager
-launches a web server that allows fees to be viewable at `localhost:9979`
+the feemanager and for adding and canceling fees. 
 
 ## /feemanager [GET]
 > curl example
@@ -739,7 +738,6 @@ returns information about the feemanager.
     "payoutheight":249854 // blockheight
   },
 }
-
 ```
 
 **settings** | FeeManagerSettings  
@@ -776,10 +774,17 @@ The unique application identifier for the application that set the fee.
 **recurring** | bool  
 Indicates whether or not this fee will be a recurring fee. 
 
-### Response
+### JSON Response
+> JSON Response Example
 
-standard success or error response. See [standard
-responses](#standard-responses).
+```go
+{
+  "feeuid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+}
+```
+
+**feeuid** | string  
+This is the unique identifier for the fee that was just added
 
 ## /feemanager/cancel [POST]
 > curl example  
@@ -816,15 +821,15 @@ returns the paid fees that the feemanager managed.
 {
   "paidfees": [
     {
-      "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
-      "amount":"1000",     // hastings
-      "appuid":"okapp",    // string
-	  "paymentcompleted":true, // bool
-	  "payoutheight":12345, // types.BlockHeight
-      "recurring":false,  // bool
-      "timestamp":"2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
-	  "transactioncreated":true, // bool
-      "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+      "uid":                "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
     }
   ]
 }
@@ -881,15 +886,15 @@ returns the pending fees that the feemanager is managing.
 {
   "pendingfees": [
     {
-      "address":"f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056",  // hash
-      "amount":"1000",     // hastings
-      "appuid":"okapp",    // string
-	  "paymentcompleted":false, // bool
-	  "payoutheight":12345, // types.BlockHeight
-      "recurring":false,  // bool
-      "timestamp":"2018-09-23T08:00:00.000000000+04:00", // Unix timestamp
-	  "transactioncreated":true, // bool
-      "uid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+      "uid":                "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
     }
   ]
 }
