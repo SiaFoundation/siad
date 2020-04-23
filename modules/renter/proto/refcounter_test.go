@@ -35,10 +35,10 @@ var (
 
 // StartUpdateWithTimeout acquires a lock, ensuring the caller is the only one
 // currently allowed to perform updates on this refcounter file. Panics if the
-// supplied timeout is negative - use `StartUpdate` instead.
+// supplied timeout is <= 0 - use `StartUpdate` instead.
 func (rc *RefCounter) StartUpdateWithTimeout(timeout time.Duration) error {
-	if timeout < 0 {
-		panic("negative timeout")
+	if timeout <= 0 {
+		panic("non-positive timeout")
 	} else {
 		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
 			return errTimeoutOnLock
