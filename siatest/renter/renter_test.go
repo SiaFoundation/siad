@@ -2015,75 +2015,51 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	}
 	renter := nodes[0]
 
+	// Grab the number of hosts
+	numHosts := len(tg.Hosts())
+
 	// Test Resetting allowance
 	// Cancel the allowance
 	if err := renter.RenterAllowanceCancelPost(); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
-	// Give it some time to mark the contracts as !goodForUpload and
-	// !goodForRenew.
+	// Mark sure contracts have been updated
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now only have inactive contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v inactive contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
-		}
-		for _, c := range rc.InactiveContracts {
-			if c.GoodForUpload {
-				return errors.New("contract shouldn't be goodForUpload")
-			}
-			if c.GoodForRenew {
-				return errors.New("contract shouldn't be goodForRenew")
-			}
-		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, numHosts, 0, 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Set the allowance again.
 	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Mine a block to start the threadedContractMaintenance.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
 		t.Fatal(err)
 	}
 
 	// Give it some time to mark the contracts as goodForUpload and
 	// goodForRenew again.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now only have active contracts.
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v active contracts, got %v", len(tg.Hosts()), len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != 0 {
-			return fmt.Errorf("expected 0 inactive contracts, got %v", len(rc.InactiveContracts))
-		}
-		for _, c := range rc.ActiveContracts {
-			if !c.GoodForUpload {
-				return errors.New("contract should be goodForUpload")
-			}
-			if !c.GoodForRenew {
-				return errors.New("contract should be goodForRenew")
+	tries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if tries%20 == 0 {
+			err := m.MineBlock()
+			if err != nil {
+				return err
 			}
 		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, 0, 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2093,44 +2069,29 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	parityPieces := uint64(len(tg.Hosts()) - 1)
 	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Cancel the allowance
 	if err := renter.RenterAllowanceCancelPost(); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Give it some time to mark the contracts as !goodForUpload and
 	// !goodForRenew.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have 2 inactive contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v inactive contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
-		}
-		for _, c := range rc.InactiveContracts {
-			if c.GoodForUpload {
-				return errors.New("contract shouldn't be goodForUpload")
-			}
-			if c.GoodForRenew {
-				return errors.New("contract shouldn't be goodForRenew")
-			}
-		}
-		return nil
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, numHosts, 0, 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Try downloading the file; should succeed.
 	if _, _, err := renter.DownloadByStream(rf); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal("downloading file failed", err)
 	}
 
@@ -2141,6 +2102,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	// Try to upload a file after the allowance was cancelled. Should succeed.
 	_, rf2, err := renter.UploadNewFile(100, dataPieces, parityPieces, false)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2150,6 +2112,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	// Redundancy should still be 0.
 	renterFiles, err := renter.RenterFilesGet(false)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal("Failed to get files")
 	}
 	if len(renterFiles.Files) != 2 {
@@ -2157,6 +2120,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	}
 	fileInfo, err := renter.File(rf2)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 	if fileInfo.UploadProgress > 0 || fileInfo.UploadedBytes > 0 || fileInfo.Redundancy > 0 {
@@ -2164,16 +2128,22 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Mine enough blocks for the period to pass and the contracts to expire.
-	miner := tg.Miners()[0]
 	for i := types.BlockHeight(0); i < siatest.DefaultAllowance.Period; i++ {
-		if err := miner.MineBlock(); err != nil {
+		if err := m.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// All contracts should be expired.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
+	tries = 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if tries%20 == 0 {
+			err := m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, numHosts, 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
@@ -2182,6 +2152,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try downloading the file; should fail.
 	if _, _, err := renter.DownloadByStream(rf2); err == nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal("downloading file succeeded even though it shouldnt", err)
 	}
 
@@ -2197,6 +2168,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
