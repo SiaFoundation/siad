@@ -222,11 +222,11 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeSiaPath())
+	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.SnapshotsSiaPath())
+	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.BackupFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
