@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -202,18 +203,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	}
 
 	// create the 'ReadSector' program.
-	program, programData, programCost, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, rhp.latestPT)
-
-	expectedDownload := uint64(10220) // download
-	expectedUpload := uint64(18980)   // upload
-	downloadCost := rhp.latestPT.DownloadBandwidthCost.Mul64(expectedDownload)
-	uploadCost := rhp.latestPT.UploadBandwidthCost.Mul64(expectedUpload)
-	bandwidthCost := downloadCost.Add(uploadCost)
-	cost := programCost.Add(bandwidthCost)
+	program, programData, _, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, rhp.latestPT)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    rhp.fcid,
 		Program:           program,
 		ProgramDataLength: uint64(len(programData)),
 	}
@@ -222,7 +216,8 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	rhp.prefundAccount()
 
 	// execute program.
-	_, _, err = rhp.executeProgram(epr, programData, cost)
+	budget := types.NewCurrency64(math.MaxUint64)
+	_, _, err = rhp.executeProgram(epr, programData, budget)
 	if err == nil || !errors.Contains(err, io.ErrClosedPipe) {
 		t.Fatal("Expected executeProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
