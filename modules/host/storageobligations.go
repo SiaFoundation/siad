@@ -633,7 +633,7 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	}
 	// Sanity check - there needs to be enough time to submit the file contract
 	// revision to the blockchain.
-	if so.expiration()-revisionSubmissionBuffer <= h.blockHeight {
+	if so.expiration()-revisionSubmissionBuffer <= hostHeight {
 		return errNoBuffer
 	}
 
@@ -695,10 +695,6 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 		_ = h.RemoveSector(sectorsRemoved[k])
 	}
 
-	// The locked storage collateral was altered, we potentially want to
-	// unregister the insufficient collateral budget alert
-	h.TryUnregisterInsufficientCollateralBudgetAlert()
-
 	// Lock the host while we update the financial metrics.
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -724,6 +720,11 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Sub(oldSO.PotentialUploadRevenue)
 	h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Sub(oldSO.RiskedCollateral)
 	h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Sub(oldSO.TransactionFeesAdded)
+
+	// The locked storage collateral was altered, we potentially want to
+	// unregister the insufficient collateral budget alert
+	h.tryUnregisterInsufficientCollateralBudgetAlert()
+
 	return nil
 }
 
@@ -788,7 +789,7 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 
 			// The locked storage collateral was altered, we potentially want to
 			// unregister the insufficient collateral budget alert
-			h.TryUnregisterInsufficientCollateralBudgetAlert()
+			h.tryUnregisterInsufficientCollateralBudgetAlert()
 		}
 	}
 	if sos == obligationSucceeded {
@@ -820,7 +821,7 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 
 		// The locked storage collateral was altered, we potentially want to
 		// unregister the insufficient collateral budget alert
-		h.TryUnregisterInsufficientCollateralBudgetAlert()
+		h.tryUnregisterInsufficientCollateralBudgetAlert()
 	}
 	if sos == obligationFailed {
 		// Remove the obligation statistics as potential risk and income.
@@ -839,7 +840,7 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 
 		// The locked storage collateral was altered, we potentially want to
 		// unregister the insufficient collateral budget alert
-		h.TryUnregisterInsufficientCollateralBudgetAlert()
+		h.tryUnregisterInsufficientCollateralBudgetAlert()
 	}
 
 	// Update the storage obligation to be finalized but still in-database. The
