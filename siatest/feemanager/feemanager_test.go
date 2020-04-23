@@ -21,7 +21,7 @@ func TestFeeManager(t *testing.T) {
 
 	// Create a new FeeManager
 	testDir := feeManagerTestDir(t.Name())
-	fm, err := siatest.NewCleanNode(node.FeeManager(testDir, t.Name()))
+	fm, err := siatest.NewCleanNode(node.FeeManager(testDir))
 	if err != nil {
 		t.Fatal(err)
 	}

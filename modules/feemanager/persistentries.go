@@ -26,14 +26,6 @@ var (
 )
 
 type (
-	// persistEntry is a generic entry in the persist database.
-	persistEntry struct {
-		EntryType types.Specifier
-		Payload   [persistEntryPayloadSize]byte
-	}
-)
-
-type (
 	// entryAddFee is the persist entry that adds a new fee.
 	entryAddFee struct {
 		Fee modules.AppFee
@@ -43,6 +35,12 @@ type (
 	entryCancelFee struct {
 		FeeUID    modules.FeeUID
 		Timestamp int64
+	}
+
+	// persistEntry is a generic entry in the persist database.
+	persistEntry struct {
+		EntryType types.Specifier
+		Payload   [persistEntryPayloadSize]byte
 	}
 )
 

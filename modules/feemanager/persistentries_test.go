@@ -24,7 +24,7 @@ func TestIntegrateEntry(t *testing.T) {
 		Amount:             types.NewCurrency64(fastrand.Uint64n(1000)),
 		AppUID:             modules.AppUID(uniqueID()),
 		PaymentCompleted:   fastrand.Intn(2) == 0,
-		PayoutHeight:       types.BlockHeight(fastrand.Uint64n(100)),
+		PayoutHeight:       0,
 		Recurring:          fastrand.Intn(2) == 0,
 		Timestamp:          time.Now().Unix(),
 		TransactionCreated: fastrand.Intn(2) == 0,
@@ -43,6 +43,28 @@ func TestIntegrateEntry(t *testing.T) {
 	// Should see the one entry
 	if len(fm.fees) != 1 {
 		t.Errorf("Expected 1 fee in FeeManager, found %v", len(fm.fees))
+	}
+
+	// Since the PayoutHeight was set to 0 this fee would need to be updated.
+	// Set the payoutheight and reintegrate
+	fee.PayoutHeight = types.BlockHeight(fastrand.Uint64n(100))
+	pe = createAddFeeEntry(fee)
+	err = fm.integrateEntry(pe[:])
+	if err != nil {
+		t.Error(err)
+	}
+
+	// There should still just be the one entry and the payout height should be
+	// updated
+	if len(fm.fees) != 1 {
+		t.Errorf("Expected 1 fee in FeeManager, found %v", len(fm.fees))
+	}
+	mapFee, ok := fm.fees[fee.UID]
+	if !ok {
+		t.Fatal("Fee not found in map")
+	}
+	if mapFee.PayoutHeight != fee.PayoutHeight {
+		t.Errorf("Expected fee in map to have PayoutHeight of %v but was %v", fee.PayoutHeight, mapFee.PayoutHeight)
 	}
 
 	// createCancelFeeEntry

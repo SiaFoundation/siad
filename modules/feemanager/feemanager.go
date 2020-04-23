@@ -127,7 +127,8 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 		return nil, errors.AddContext(err, "unable to create logger")
 	}
 	if err := common.staticTG.AfterStop(common.staticLog.Close); err != nil {
-		return nil, errors.AddContext(err, "unable to set up an AfterStop to close logger")
+		tgErr := errors.AddContext(err, "unable to set up an AfterStop to close logger")
+		return nil, errors.Compose(tgErr, common.staticLog.Close())
 	}
 
 	// Initialize the FeeManager persistence
