@@ -604,35 +604,37 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 // will need to appear in 'sectorsRemoved' multiple times. Same with
 // 'sectorsGained'.
 func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	// Sanity check - obligation should be under lock while being modified.
-	soid := so.id()
-	_, exists := h.lockedStorageObligations[soid]
-	if !exists {
-		err := errors.New("modifyStorageObligation called with an obligation that is not locked")
-		h.log.Print(err)
-		return err
-	}
-	// TODO: remove this once the host was optimized for disk i/o
-	// If the contract is too large we delay for a bit to prevent rapid updates
-	// from clogging up disk i/o.
-	if so.fileSize() >= largeContractSize {
-		h.mu.Unlock()
-		time.Sleep(largeContractUpdateDelay)
-		h.mu.Lock()
-	}
-	// Sanity check - there needs to be enough time to submit the file contract
-	// revision to the blockchain.
-	if so.expiration()-revisionSubmissionBuffer <= h.blockHeight {
-		return errNoBuffer
-	}
 	// Sanity check - all of the sector data should be modules.SectorSize
 	for _, data := range sectorsGained {
 		if uint64(len(data)) != modules.SectorSize {
 			h.log.Critical("modifying a revision with garbase sector sizes", len(data))
 			return errInsaneStorageObligationRevision
 		}
+	}
+
+	// TODO: remove this once the host was optimized for disk i/o
+	// If the contract is too large we delay for a bit to prevent rapid updates
+	// from clogging up disk i/o.
+	if so.fileSize() >= largeContractSize {
+		time.Sleep(largeContractUpdateDelay)
+	}
+
+	// Grab a couple of host state facts for sanity checks.
+	soid := so.id()
+	h.mu.Lock()
+	hostHeight := h.blockHeight
+	_, exists := h.lockedStorageObligations[soid]
+	h.mu.Unlock()
+	// Sanity check - obligation should be under lock while being modified.
+	if !exists {
+		err := errors.New("modifyStorageObligation called with an obligation that is not locked")
+		h.log.Print(err)
+		return err
+	}
+	// Sanity check - there needs to be enough time to submit the file contract
+	// revision to the blockchain.
+	if so.expiration()-revisionSubmissionBuffer <= h.blockHeight {
+		return errNoBuffer
 	}
 
 	// Note, for safe error handling, the operation order should be: add
@@ -661,6 +663,7 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 		}
 		return err
 	}
+
 	// Update the database to contain the new storage obligation.
 	var oldSO storageObligation
 	err = h.db.Update(func(tx *bolt.Tx) error {
@@ -692,6 +695,14 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 		_ = h.RemoveSector(sectorsRemoved[k])
 	}
 
+	// The locked storage collateral was altered, we potentially want to
+	// unregister the insufficient collateral budget alert
+	h.TryUnregisterInsufficientCollateralBudgetAlert()
+
+	// Lock the host while we update the financial metrics.
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	// Update the financial information for the storage obligation - apply the
 	// new values.
 	h.financialMetrics.PotentialContractCompensation = h.financialMetrics.PotentialContractCompensation.Add(so.ContractCost)
@@ -713,11 +724,6 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Sub(oldSO.PotentialUploadRevenue)
 	h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Sub(oldSO.RiskedCollateral)
 	h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Sub(oldSO.TransactionFeesAdded)
-
-	// The locked storage collateral was altered, we potentially want to
-	// unregister the insufficient collateral budget alert
-	h.TryUnregisterInsufficientCollateralBudgetAlert()
-
 	return nil
 }
 
