@@ -1501,6 +1501,7 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		t.Fatal(err)
 	}
 	renter := nodes[0]
+	numHosts := len(tg.Hosts())
 
 	// Call fail on the dependency every 10 ms.
 	cancel := make(chan struct{})
@@ -1532,8 +1533,10 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		if err != nil {
 			return err
 		}
-		if len(rc.Contracts) != len(tg.Hosts())*2 {
-			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts())*2)
+		// Need to use old contract endpoint field as it is pulling from the
+		// Contractor's staticContracts field which is where the bug was seen
+		if len(rc.Contracts) != numHosts*2 {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), numHosts*2)
 		}
 		return nil
 	})
@@ -1554,19 +1557,25 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		t.Fatal(err)
 	}
 	err = build.Retry(70, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
+		// Check for older compatibility fields.
+		// If we don't check this fields we are not checking the right conditions.
+		rc, err := renter.RenterExpiredContractsGet()
 		if err != nil {
 			return err
 		}
-		if len(rc.InactiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected %v", len(rc.InactiveContracts), len(tg.Hosts()))
+		if len(rc.InactiveContracts) != 0 {
+			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected %v", len(rc.InactiveContracts), 0)
 		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts()))
+		if len(rc.ActiveContracts) != numHosts {
+			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), numHosts)
 		}
-		if len(rc.Contracts) != len(tg.Hosts()) {
-			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts()))
+		if len(rc.Contracts) != numHosts {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), numHosts)
 		}
+		if len(rc.ExpiredContracts) != numHosts {
+			return fmt.Errorf("Incorrect number of expired contracts: have %v expected %v", len(rc.ExpiredContracts), numHosts)
+		}
+
 		if err = m.MineBlock(); err != nil {
 			return err
 		}
