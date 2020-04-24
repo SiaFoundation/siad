@@ -77,6 +77,7 @@ func (d *DependencyFaultyDisk) Disrupt(s string) bool {
 // tryFail will check if the disk has failed yet, and if not, it'll rng to see
 // if the disk should fail now. Returns 'true' if the disk has failed.
 func (d *DependencyFaultyDisk) tryFail() bool {
+	// TODO totalWrites is only ever referenced here??
 	d.totalWrites++
 	if d.disabled {
 		return false

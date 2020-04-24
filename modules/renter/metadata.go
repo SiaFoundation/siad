@@ -183,6 +183,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateSize += dirMetadata.AggregateSize
 
+			// Add 1 to the AggregateNumSubDirs to account for this subdirectory.
+			metadata.AggregateNumSubDirs++
+
 			// Update siadir fields
 			metadata.NumSubDirs++
 		} else {
