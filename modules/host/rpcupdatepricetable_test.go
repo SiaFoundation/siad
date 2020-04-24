@@ -98,8 +98,6 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	pt := rhp.latestPT
 	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
-		t.Log("UID:", pt.UID)
-		t.Log("Guaranteed:", ht.host.staticPriceTables.guaranteed)
 		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 

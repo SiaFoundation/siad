@@ -5,6 +5,7 @@ import (
 
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -595,11 +596,19 @@ func (p *renterHostPair) updatePriceTable() error {
 		return err
 	}
 
+	// verify the signature
 	err = p.verify(crypto.HashObject(rev), payByResponse.Signature)
 	if err != nil {
 		return err
 	}
 	p.latestPT = &pt
+
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return err
+	}
+
 	return nil
 }
 
