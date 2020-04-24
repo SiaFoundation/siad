@@ -171,7 +171,7 @@ test-v:
 	go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
 test-long: clean fmt vet lint-ci
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=3600s ./modules/host -run=TestRenterHostPair -count=100
+	go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
 test-vlong: clean fmt vet lint-ci
 ifneq ("$(OS)","Windows_NT")
