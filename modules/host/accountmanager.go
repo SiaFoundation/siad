@@ -439,11 +439,14 @@ func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBala
 	// Open the account, if the account does not exist yet, it will be created.
 	acc, err := am.openAccount(id)
 	if err != nil {
-		return errors.AddContext(err, "failed to open account for deposit")
+		err2 := errors.AddContext(err, "failed to open account for deposit")
+		persistResultChan <- err2
+		return err2
 	}
 
 	// Verify if the deposit does not exceed the maximum
 	if !refund && acc.depositExceedsMaxBalance(amount, maxBalance) {
+		persistResultChan <- ErrBalanceMaxExceeded
 		return ErrBalanceMaxExceeded
 	}
 
@@ -462,7 +465,6 @@ func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBala
 
 	// Commit the deposit
 	am.commitDeposit(acc, amount, blockHeight, persistResultChan, syncChan)
-
 	return nil
 }
 
