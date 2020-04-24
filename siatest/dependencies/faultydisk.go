@@ -40,7 +40,6 @@ type DependencyFaultyDisk struct {
 	disabled        bool
 	failed          bool
 	failDenominator int
-	totalWrites     int
 	writeLimit      int
 
 	mu sync.Mutex
