@@ -19,7 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 // updateRunningCosts is a testing helper function for updating the running
@@ -80,102 +79,6 @@ func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *mod
 	return instructions, data, cost, refund, collateral, memory
 }
 
-// executeProgramResponse is a helper struct that wraps the
-// RPCExecuteProgramResponse together with the output data
-type executeProgramResponse struct {
-	modules.RPCExecuteProgramResponse
-	Output []byte
-}
-
-// executeProgram executes an MDM program on the host using an EA payment and
-// returns the responses received by the host. A failure to execute an
-// instruction won't result in an error. Instead the returned responses need to
-// be inspected for that depending on the testcase.
-func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
-	// create stream
-	stream := rhp.newStream()
-	defer stream.Close()
-
-	// Get the limit to track bandwidth.
-	limit := stream.Limit()
-
-	// Write the specifier.
-	err := modules.RPCWrite(stream, modules.RPCExecuteProgram)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Write the pricetable uid.
-	pt := rhp.PriceTable()
-	err = modules.RPCWrite(stream, pt.UID)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the payment request.
-	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the payment details.
-	pbear := newPayByEphemeralAccountRequest(rhp.staticAccountID, rhp.ht.host.BlockHeight()+6, budget, rhp.staticAccountKey)
-	err = modules.RPCWrite(stream, pbear)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Receive payment confirmation.
-	var pc modules.PayByEphemeralAccountResponse
-	err = modules.RPCRead(stream, &pc)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the execute program request.
-	err = modules.RPCWrite(stream, epr)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the programData.
-	_, err = stream.Write(programData)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Read the responses.
-	responses := make([]executeProgramResponse, len(epr.Program))
-	for i := range epr.Program {
-		// Read the response.
-		err = modules.RPCRead(stream, &responses[i])
-		if err != nil {
-			return nil, limit, err
-		}
-
-		// Read the output data.
-		outputLen := responses[i].OutputLength
-		responses[i].Output = make([]byte, outputLen, outputLen)
-		_, err = io.ReadFull(stream, responses[i].Output)
-		if err != nil {
-			return nil, limit, err
-		}
-
-		// If the response contains an error we are done.
-		if responses[i].Error != nil {
-			return responses, limit, nil
-		}
-	}
-
-	// The next read should return io.EOF since the host closes the connection
-	// after the RPC is done.
-	err = modules.RPCRead(stream, struct{}{})
-	if !errors.Contains(err, io.ErrClosedPipe) {
-		return nil, limit, err
-	}
-	return responses, limit, nil
-}
-
 // TestExecuteProgramWriteDeadline verifies the ExecuteProgramRPC sets a write
 // deadline
 func TestExecuteProgramWriteDeadline(t *testing.T) {
@@ -194,7 +97,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	defer rhp.Close()
 
 	// prefund the EA
-	rhp.prefundAccount()
+	his := rhp.ht.host.managedInternalSettings()
+	_, err = rhp.callFundEphemeralAccount(his.MaxEphemeralAccountBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// create stream
 	stream := rhp.newStream()
@@ -219,9 +126,9 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// execute program.
 	budget := types.NewCurrency64(math.MaxUint64)
-	_, _, err = rhp.executeProgram(epr, programData, budget)
+	_, _, err = rhp.callExecuteProgram(epr, programData, budget)
 	if err == nil || !errors.Contains(err, io.ErrClosedPipe) {
-		t.Fatal("Expected executeProgram to fail with an ErrClosedPipe, instead err was", err)
+		t.Fatal("Expected callExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
 }
 
@@ -272,7 +179,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	his := rhp.ht.host.managedInternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
 	fundingAmt := maxBalance.Add(pt.FundAccountCost)
-	_, err = rhp.fundEphemeralAccount(fundingAmt)
+	_, err = rhp.callFundEphemeralAccount(fundingAmt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +197,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, limit, err := rhp.executeProgram(epr, data, cost)
+	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -349,9 +256,9 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// rerun the program but now make sure the given budget does not cover the
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
 	cost = cost.Sub64(1)
-	_, limit, err = rhp.executeProgram(epr, data, cost)
+	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
-		t.Fatalf("expected executeProgram to fail due to insufficient bandwidth budget: %v", err)
+		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 
 	// verify the host charged us by checking the EA balance and Check that the
@@ -422,7 +329,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// fund an account.
 	fundingAmt := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
-	_, err = rhp.fundEphemeralAccount(fundingAmt)
+	_, err = rhp.callFundEphemeralAccount(fundingAmt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +347,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, bandwidth, err := rhp.executeProgram(epr, data, cost)
+	resps, bandwidth, err := rhp.callExecuteProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -537,7 +444,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Fund an account with the max balance.
 	maxBalance := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance
 	fundingAmt := maxBalance.Add(pt.FundAccountCost)
-	_, err = rhp.fundEphemeralAccount(fundingAmt)
+	_, err = rhp.callFundEphemeralAccount(fundingAmt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,7 +462,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Execute program.
 	cost := programCost.Add(bandwidthCost)
-	resps, limit, err := rhp.executeProgram(epr, data, cost)
+	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -603,9 +510,9 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
 	cost = programCost.Add(bandwidthCost.Sub64(1))
-	_, limit, err = rhp.executeProgram(epr, data, cost)
+	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
-		t.Fatalf("expected executeProgram to fail due to insufficient bandwidth budget: %v", err)
+		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 	// Log the bandwidth used by this RPC.
 	t.Logf("Used bandwidth (invalid program): %v down, %v up", limit.Downloaded(), limit.Uploaded())

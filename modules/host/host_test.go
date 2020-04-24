@@ -4,12 +4,13 @@ import (
 	// "errors"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -20,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 
 	// "gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
@@ -322,7 +324,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	}
 
 	// fetch a price table
-	err = pair.updatePriceTable()
+	err = pair.callUpdatePriceTable()
 	if err != nil {
 		return nil, err
 	}
@@ -341,6 +343,20 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
 	return p.ht.Close()
+}
+
+// FetchPriceTable returns the latest price table, if that price table is
+// expired it will fetch a new one from the host.
+func (p *renterHostPair) FetchPriceTable() (*modules.RPCPriceTable, error) {
+	pt := p.PriceTable()
+	if pt.Expiry <= time.Now().Unix() {
+		err := p.callUpdatePriceTable()
+		if err != nil {
+			return nil, err
+		}
+		return p.PriceTable(), nil
+	}
+	return pt, nil
 }
 
 // PriceTable returns the latest price table
@@ -389,21 +405,127 @@ func (p *renterHostPair) addRandomSector() (crypto.Hash, []byte, error) {
 	return sectorRoot, sectorData, nil
 }
 
-// fundEphemeralAccount will deposit the given amount in the pair's ephemeral
-// account using the pair's file contract to provide payment
-func (p *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+// executeProgramResponse is a helper struct that wraps the
+// RPCExecuteProgramResponse together with the output data
+type executeProgramResponse struct {
+	modules.RPCExecuteProgramResponse
+	Output []byte
+}
+
+// callExecuteProgram executes an MDM program on the host using an EA payment
+// and returns the responses received by the host. A failure to execute an
+// instruction won't result in an error. Instead the returned responses need to
+// be inspected for that depending on the testcase.
+func (p *renterHostPair) callExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+	// fetch a price table
+	pt, err := p.FetchPriceTable()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// create stream
+	stream := p.newStream()
+	defer stream.Close()
+
+	// Get the limit to track bandwidth.
+	limit := stream.Limit()
+
+	// Write the specifier.
+	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	if err != nil {
+		return nil, limit, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return nil, limit, err
+	}
+
+	// Send the payment request.
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	if err != nil {
+		return nil, limit, err
+	}
+
+	// Send the payment details.
+	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, p.ht.host.BlockHeight()+6, budget, p.staticAccountKey)
+	err = modules.RPCWrite(stream, pbear)
+	if err != nil {
+		return nil, limit, err
+	}
+
+	// Receive payment confirmation.
+	var pc modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &pc)
+	if err != nil {
+		return nil, limit, err
+	}
+
+	// Send the execute program request.
+	err = modules.RPCWrite(stream, epr)
+	if err != nil {
+		return nil, limit, err
+	}
+
+	// Send the programData.
+	_, err = stream.Write(programData)
+	if err != nil {
+		return nil, limit, err
+	}
+
+	// Read the responses.
+	responses := make([]executeProgramResponse, len(epr.Program))
+	for i := range epr.Program {
+		// Read the response.
+		err = modules.RPCRead(stream, &responses[i])
+		if err != nil {
+			return nil, limit, err
+		}
+
+		// Read the output data.
+		outputLen := responses[i].OutputLength
+		responses[i].Output = make([]byte, outputLen, outputLen)
+		_, err = io.ReadFull(stream, responses[i].Output)
+		if err != nil {
+			return nil, limit, err
+		}
+
+		// If the response contains an error we are done.
+		if responses[i].Error != nil {
+			return responses, limit, nil
+		}
+	}
+
+	// The next read should return io.EOF since the host closes the connection
+	// after the RPC is done.
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return nil, limit, err
+	}
+	return responses, limit, nil
+}
+
+// callFundEphemeralAccount will deposit the given amount in the pair's
+// ephemeral account using the pair's file contract to provide payment
+func (p *renterHostPair) callFundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+	// fetch a price table
+	pt, err := p.FetchPriceTable()
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
 	// create stream
 	stream := p.newStream()
 	defer stream.Close()
 
 	// Write RPC ID.
-	err := modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
 
 	// Write price table id.
-	pt := p.PriceTable()
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
@@ -429,6 +551,59 @@ func (p *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.Fu
 		return modules.FundAccountResponse{}, err
 	}
 	return resp, nil
+}
+
+// callUpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the
+// price table on the pair
+func (p *renterHostPair) callUpdatePriceTable() error {
+	stream := p.newStream()
+	defer stream.Close()
+
+	// initiate the RPC
+	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		return err
+	}
+
+	// receive the price table response
+	var pt modules.RPCPriceTable
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
+		return err
+	}
+
+	// prepare an updated revision that pays the host
+	rev, sig, err := p.paymentRevision(pt.UpdatePriceTableCost)
+	if err != nil {
+		return err
+	}
+
+	// send PaymentRequest & PayByContractRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+	pbcRequest := newPayByContractRequest(rev, sig, p.staticAccountID)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return err
+	}
+
+	err = p.verify(crypto.HashObject(rev), payByResponse.Signature)
+	if err != nil {
+		return err
+	}
+
+	p.SetPriceTable(&pt)
+	return nil
 }
 
 // newStream opens a stream to the pair's host and returns it
@@ -525,30 +700,6 @@ func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount type
 	return resp, nil
 }
 
-// prefundAccount is a helper method that prefunds the ephemeral account to the
-// maximum balance
-func (p *renterHostPair) prefundAccount() {
-	his := p.ht.host.managedInternalSettings()
-
-	pt := p.PriceTable()
-	fa := his.MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
-
-	_, err := p.fundEphemeralAccount(fa)
-
-	// recover from expired PT
-	if err != nil && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
-		err = p.updatePriceTable()
-		if err != nil {
-			panic(err)
-		}
-		_, err = p.fundEphemeralAccount(fa)
-	}
-
-	if err != nil {
-		panic(err)
-	}
-}
-
 // sign returns the renter's signature of the given revision
 func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 	signedTxn := types.Transaction{
@@ -561,59 +712,6 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 	}
 	hash := signedTxn.SigHash(0, p.ht.host.BlockHeight())
 	return crypto.SignHash(hash, p.staticRenterSK)
-}
-
-// updatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
-// table on the pair
-func (p *renterHostPair) updatePriceTable() error {
-	stream := p.newStream()
-	defer stream.Close()
-
-	// initiate the RPC
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
-	if err != nil {
-		return err
-	}
-
-	// receive the price table response
-	var pt modules.RPCPriceTable
-	var update modules.RPCUpdatePriceTableResponse
-	err = modules.RPCRead(stream, &update)
-	if err != nil {
-		return err
-	}
-	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
-		return err
-	}
-
-	// prepare an updated revision that pays the host
-	rev, sig, err := p.paymentRevision(pt.UpdatePriceTableCost)
-	if err != nil {
-		return err
-	}
-
-	// send PaymentRequest & PayByContractRequest
-	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-	pbcRequest := newPayByContractRequest(rev, sig, p.staticAccountID)
-	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
-	if err != nil {
-		return err
-	}
-
-	// receive PayByContractResponse
-	var payByResponse modules.PayByContractResponse
-	err = modules.RPCRead(stream, &payByResponse)
-	if err != nil {
-		return err
-	}
-
-	err = p.verify(crypto.HashObject(rev), payByResponse.Signature)
-	if err != nil {
-		return err
-	}
-
-	p.SetPriceTable(&pt)
-	return nil
 }
 
 // verify verifies the given signature was made by the host
