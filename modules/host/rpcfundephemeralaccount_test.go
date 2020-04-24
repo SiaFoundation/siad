@@ -61,7 +61,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		}
 
 		// send fund account request
-		far := modules.FundAccountRequest{Account: pair.accountID}
+		far := modules.FundAccountRequest{Account: pair.staticAccountID}
 		err = modules.RPCWrite(stream, far)
 		if err != nil {
 			return nil, nil, err
@@ -111,15 +111,15 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		if !receipt.Amount.Equals(funding) {
 			return fmt.Errorf("Unexpected funded amount in the receipt, expected %v but received %v", funding.HumanString(), receipt.Amount.HumanString())
 		}
-		if receipt.Account != pair.accountID {
-			return fmt.Errorf("Unexpected account id in the receipt, expected %v but received %v", pair.accountID, receipt.Account)
+		if receipt.Account != pair.staticAccountID {
+			return fmt.Errorf("Unexpected account id in the receipt, expected %v but received %v", pair.staticAccountID, receipt.Account)
 		}
 		if !receipt.Host.Equals(hpk) {
 			return fmt.Errorf("Unexpected host pubkey in the receipt, expected %v but received %v", hpk, receipt.Host)
 		}
 
 		// verify the funding got deposited into the ephemeral account
-		currBalance := getAccountBalance(ht.host.staticAccountManager, pair.accountID)
+		currBalance := getAccountBalance(ht.host.staticAccountManager, pair.staticAccountID)
 		if !currBalance.Equals(prevBalance.Add(funding)) {
 			t.Fatalf("Unexpected account balance, expected %v but received %v", prevBalance.Add(funding).HumanString(), currBalance.HumanString())
 		}
@@ -139,7 +139,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	balance := getAccountBalance(ht.host.staticAccountManager, pair.accountID)
+	balance := getAccountBalance(ht.host.staticAccountManager, pair.staticAccountID)
 	pbcResp, fundAccResp, err := runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// expect error when revision moves collateral
 	// update the host collateral
 	collateral := types.NewCurrency64(5)
-	so, err := ht.host.managedGetStorageObligation(pair.fcid)
+	so, err := ht.host.managedGetStorageObligation(pair.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	// undo host collateral update
-	so, err = ht.host.managedGetStorageObligation(pair.fcid)
+	so, err = ht.host.managedGetStorageObligation(pair.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	balance = getAccountBalance(ht.host.staticAccountManager, pair.accountID)
+	balance = getAccountBalance(ht.host.staticAccountManager, pair.staticAccountID)
 	pbcResp, fundAccResp, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		t.Fatal(err)

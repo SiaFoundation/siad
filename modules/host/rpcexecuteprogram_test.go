@@ -119,7 +119,7 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	}
 
 	// Send the payment details.
-	pbear := newPayByEphemeralAccountRequest(rhp.accountID, rhp.ht.host.BlockHeight()+6, budget, rhp.accountKey)
+	pbear := newPayByEphemeralAccountRequest(rhp.staticAccountID, rhp.ht.host.BlockHeight()+6, budget, rhp.staticAccountKey)
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
 		return nil, limit, err
@@ -212,7 +212,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.fcid,
+		FileContractID:    rhp.staticFCID,
 		Program:           program,
 		ProgramDataLength: uint64(len(programData)),
 	}
@@ -248,7 +248,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	}
 
 	// get a snapshot of the SO before running the program.
-	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.fcid)
+	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -341,7 +341,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// verify the EA balance
 	am := rhp.ht.host.staticAccountManager
 	expectedBalance := maxBalance.Sub(cost)
-	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +362,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	uploadCost = pt.UploadBandwidthCost.Mul64(limit.Uploaded())
 
 	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	ht := rhp.ht
 
 	// get a snapshot of the SO before running the program.
-	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.fcid)
+	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,17 +394,17 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
 	// modify the host's storage obligation to add the sector
-	so, err := ht.host.managedGetStorageObligation(rhp.fcid)
+	so, err := ht.host.managedGetStorageObligation(rhp.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	so.SectorRoots = append(so.SectorRoots, sectorRoot)
-	ht.host.managedLockStorageObligation(rhp.fcid)
+	ht.host.managedLockStorageObligation(rhp.staticFCID)
 	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht.host.managedUnlockStorageObligation(rhp.fcid)
+	ht.host.managedUnlockStorageObligation(rhp.staticFCID)
 
 	offset := uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
 	length := uint64(crypto.SegmentSize)
@@ -415,7 +415,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -509,7 +509,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	ht := rhp.ht
 
 	// get a snapshot of the SO before running the program.
-	sos, err := rhp.ht.host.managedGetStorageObligationSnapshot(rhp.fcid)
+	sos, err := rhp.ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +529,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -596,7 +596,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.ht.host.staticAccountManager
 	expectedBalance := maxBalance.Sub(cost)
-	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -616,7 +616,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	uploadCost = pt.UploadBandwidthCost.Mul64(limit.Uploaded())
 
 	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
 	}
