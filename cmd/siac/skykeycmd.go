@@ -59,7 +59,7 @@ func skykeycmd(cmd *cobra.Command, args []string) {
 
 // skykeycreatecmd is a wrapper for skykeyCreate used to handle skykey creation.
 func skykeycreatecmd(name string) {
-	skykeyStr, err := skykeyCreate(&siacGlobalHttpClient,name)
+	skykeyStr, err := skykeyCreate(&siacGlobalHttpClient, name)
 	if err != nil {
 		die(errors.AddContext(err, "Failed to create new skykey"))
 	}
