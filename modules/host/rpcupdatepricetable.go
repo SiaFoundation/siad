@@ -21,7 +21,6 @@ var (
 	ErrPriceTableExpired = errors.New("Price table requested is expired")
 )
 
-
 // managedRPCUpdatePriceTable returns a copy of the host's current rpc price
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
