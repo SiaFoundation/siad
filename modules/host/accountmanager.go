@@ -1061,10 +1061,7 @@ func (a *account) sendResult(result error, waiting int) {
 	for i := 0; i < waiting; i++ {
 		persistResultChan := a.persistResultChans[i]
 		err := errors.AddContext(result, ErrAccountPersist.Error())
-		select {
-		case persistResultChan <- err:
-		default:
-		}
+		persistResultChan <- err
 	}
 	a.persistResultChans = a.persistResultChans[waiting:]
 }
