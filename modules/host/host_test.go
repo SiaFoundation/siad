@@ -688,6 +688,19 @@ func TestNilValues(t *testing.T) {
 	}
 }
 
+// TestRenterHostPair tests the newRenterHostPair constructor
+func TestRenterHostPair(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	_, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestSetAndGetInternalSettings checks that the functions for interacting with
 // the host's internal settings object are working as expected.
 func TestSetAndGetInternalSettings(t *testing.T) {
