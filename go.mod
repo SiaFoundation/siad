@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v0.0.5
 	github.com/vbauerster/mpb/v5 v5.0.3
 	github.com/xtaci/smux v1.3.3
-	gitlab.com/NebulousLabs/bolt v1.4.3
+	gitlab.com/NebulousLabs/bolt v1.4.0
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20171229012116-7ead97ef90b8
