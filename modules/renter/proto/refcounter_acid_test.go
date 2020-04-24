@@ -136,6 +136,9 @@ OUTER:
 	for {
 		wal, err = loadWal(rcFilePath, walPath, fdd)
 		if errors.Contains(err, dependencies.ErrDiskFault) {
+			// Disk has failed, all future attempts to load the wal will fail so
+			// we need to reset the dependency and try again
+			fdd.Reset()
 			continue
 		}
 		if err != nil {

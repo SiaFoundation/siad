@@ -1351,7 +1351,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
 		heapLen := r.uploadHeap.managedLen()
-		r.managedBuildChunkHeap(modules.SnapshotsSiaPath(), hosts, targetBackupChunks)
+		r.managedBuildChunkHeap(modules.BackupFolder, hosts, targetBackupChunks)
 		numBackupChunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupChunks > 0 {
 			r.repairLog.Printf("Added %v backup chunks to the upload heap", numBackupChunks)
