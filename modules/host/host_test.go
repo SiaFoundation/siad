@@ -740,6 +740,66 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 	return crypto.SignHash(hash, p.staticRenterSK)
 }
 
+// updatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
+// table on the pair
+func (p *renterHostPair) updatePriceTable() error {
+	stream := p.newStream()
+	defer stream.Close()
+
+	// initiate the RPC
+	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		return err
+	}
+
+	// receive the price table response
+	var pt modules.RPCPriceTable
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(update.PriceTableJSON, &pt); err != nil {
+		return err
+	}
+
+	// prepare an updated revision that pays the host
+	rev, sig, err := p.paymentRevision(pt.UpdatePriceTableCost)
+	if err != nil {
+		return err
+	}
+
+	// send PaymentRequest & PayByContractRequest
+	pRequest := modules.PaymentRequest{Type: modules.PayByContract}
+	pbcRequest := newPayByContractRequest(rev, sig, p.staticAccountID)
+	err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return err
+	}
+
+	// verify the signature
+	err = p.verify(crypto.HashObject(rev), payByResponse.Signature)
+	if err != nil {
+		return err
+	}
+	p.SetPriceTable(&pt)
+
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return err
+	}
+
+	return nil
+}
+
 // verify verifies the given signature was made by the host
 func (p *renterHostPair) verify(hash crypto.Hash, signature crypto.Signature) error {
 	var hpk crypto.PublicKey
