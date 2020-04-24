@@ -2,6 +2,7 @@ package host
 
 import (
 	// "errors"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -116,7 +117,7 @@ func blankHostTester(name string) (*hostTester, error) {
 // extra initialization has been done, for example no blocks have been mined
 // and the wallet keys have not been created.
 func blankMockHostTester(d modules.Dependencies, name string) (*hostTester, error) {
-	testdir := build.TempDir(modules.HostDir, name)
+	testdir := build.TempDir(modules.HostDir, hex.EncodeToString(fastrand.Bytes(16)), name)
 
 	// Create the siamux.
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
