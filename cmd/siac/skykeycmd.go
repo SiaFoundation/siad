@@ -59,7 +59,7 @@ func skykeycmd(cmd *cobra.Command, args []string) {
 
 // skykeycreatecmd is a wrapper for skykeyCreate used to handle skykey creation.
 func skykeycreatecmd(name string) {
-	skykeyStr, err := skykeyCreate(&siacGlobalHttpClient, name)
+	skykeyStr, err := skykeyCreate(siacGlobalHttpClient, name)
 	if err != nil {
 		die(errors.AddContext(err, "Failed to create new skykey"))
 	}
@@ -68,14 +68,14 @@ func skykeycreatecmd(name string) {
 
 // skykeyCreate creates a new Skykey with the given name and cipher type
 // as set by flag.
-func skykeyCreate(httpClient *client.Client, name string) (string, error) {
+func skykeyCreate(siacHttpClient client.Client, name string) (string, error) {
 	var cipherType crypto.CipherType
 	err := cipherType.FromString(skykeyCipherType)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not decode cipher-type")
 	}
 
-	sk, err := httpClient.SkykeyCreateKeyPost(name, cipherType)
+	sk, err := siacHttpClient.SkykeyCreateKeyPost(name, cipherType)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not create skykey")
 	}
@@ -84,7 +84,7 @@ func skykeyCreate(httpClient *client.Client, name string) (string, error) {
 
 // skykeyaddcmd is a wrapper for skykeyAdd used to handle the addition of new skykeys.
 func skykeyaddcmd(skykeyString string) {
-	err := skykeyAdd(&siacGlobalHttpClient, skykeyString)
+	err := skykeyAdd(siacGlobalHttpClient, skykeyString)
 	if err != nil && strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		die("Skykey name already used. Try using the --rename-as parameter with a different name.")
 	}
@@ -96,7 +96,7 @@ func skykeyaddcmd(skykeyString string) {
 }
 
 // skykeyAdd adds the given skykey to the renter's skykey manager.
-func skykeyAdd(httpClient *client.Client, skykeyString string) error {
+func skykeyAdd(siacHttpClient client.Client, skykeyString string) error {
 	var sk skykey.Skykey
 	err := sk.FromString(skykeyString)
 	if err != nil {
@@ -108,7 +108,7 @@ func skykeyAdd(httpClient *client.Client, skykeyString string) error {
 		sk.Name = skykeyRenameAs
 	}
 
-	err = httpClient.SkykeyAddKeyPost(sk)
+	err = siacHttpClient.SkykeyAddKeyPost(sk)
 	if err != nil {
 		return errors.AddContext(err, "Could not add skykey")
 	}
@@ -118,7 +118,7 @@ func skykeyAdd(httpClient *client.Client, skykeyString string) error {
 
 // skykeygetcmd is a wrapper for skykeyGet that handles skykey get commands.
 func skykeygetcmd() {
-	skykeyStr, err := skykeyGet(&siacGlobalHttpClient, skykeyName, skykeyID)
+	skykeyStr, err := skykeyGet(siacGlobalHttpClient, skykeyName, skykeyID)
 	if err != nil {
 		die(err)
 	}
@@ -127,7 +127,7 @@ func skykeygetcmd() {
 }
 
 // skykeyGet retrieves the skykey using a name or id flag.
-func skykeyGet(httpClient *client.Client, name, id string) (string, error) {
+func skykeyGet(siacHttpClient client.Client, name, id string) (string, error) {
 	if name == "" && id == "" {
 		return "", errors.New("Cannot get skykey without using --name or --id flag")
 	}
@@ -138,7 +138,7 @@ func skykeyGet(httpClient *client.Client, name, id string) (string, error) {
 	var sk skykey.Skykey
 	var err error
 	if name != "" {
-		sk, err = httpClient.SkykeyGetByName(name)
+		sk, err = siacHttpClient.SkykeyGetByName(name)
 	} else {
 		var skykeyID skykey.SkykeyID
 		err = skykeyID.FromString(id)
@@ -146,7 +146,7 @@ func skykeyGet(httpClient *client.Client, name, id string) (string, error) {
 			return "", errors.AddContext(err, "Could not decode skykey ID")
 		}
 
-		sk, err = httpClient.SkykeyGetByID(skykeyID)
+		sk, err = siacHttpClient.SkykeyGetByID(skykeyID)
 	}
 
 	if err != nil {
