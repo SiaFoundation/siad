@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
@@ -250,6 +251,7 @@ type renterHostPair struct {
 	ht         *hostTester
 	latestPT   *modules.RPCPriceTable
 	renter     crypto.SecretKey
+	renterMux  *siamux.SiaMux
 	renterPK   types.SiaPublicKey
 	fcid       types.FileContractID
 }
@@ -309,11 +311,26 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	// prepare an EA without funding it.
 	accountKey, accountID := prepareAccount()
 
+	// prepare a siamux for the renter
+	renterMuxDir := filepath.Join(ht.persistDir, "rentermux")
+	if err := os.MkdirAll(renterMuxDir, 0700); err != nil {
+		return nil, err
+	}
+	muxLogger, err := persist.NewFileLogger(filepath.Join(renterMuxDir, "siamux.log"))
+	if err != nil {
+		return nil, err
+	}
+	renterMux, err := siamux.New("127.0.0.1:0", muxLogger, renterMuxDir)
+	if err != nil {
+		return nil, err
+	}
+
 	pair := &renterHostPair{
 		accountID:  accountID,
 		accountKey: accountKey,
 		ht:         ht,
 		renter:     sk,
+		renterMux:  renterMux,
 		renterPK:   renterPK,
 		fcid:       so.id(),
 	}
@@ -329,7 +346,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	am := pair.ht.host.staticAccountManager
 	balance := am.callAccountBalance(pair.accountID)
 	if !balance.IsZero() {
-		return nil, errors.New("Account balance was not zero after initialising a renter host pair.")
+		return nil, errors.New("account balance was not zero after initialising a renter host pair")
 	}
 
 	return pair, nil
@@ -337,7 +354,9 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
-	return p.ht.Close()
+	err1 := p.renterMux.Close()
+	err2 := p.ht.Close()
+	return errors.Compose(err1, err2)
 }
 
 // addRandomSector is a helper function that creates a random sector and adds it
@@ -422,7 +441,7 @@ func (p *renterHostPair) newStream() siamux.Stream {
 	address := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
 	subscriber := modules.HostSiaMuxSubscriberName
 
-	stream, err := host.staticMux.NewStream(subscriber, address, pk)
+	stream, err := p.renterMux.NewStream(subscriber, address, pk)
 	if err != nil {
 		panic(err)
 	}
@@ -694,7 +713,11 @@ func TestRenterHostPair(t *testing.T) {
 	}
 	t.Parallel()
 
-	_, err := newRenterHostPair(t.Name())
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rhp.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
