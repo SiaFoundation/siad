@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/bolt"
-	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
