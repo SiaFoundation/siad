@@ -62,6 +62,7 @@ type contractHeader struct {
 	// transaction.
 	SecretKey crypto.SecretKey
 
+	// TODO Can we move these to a central struct, so they can share documentation easily?
 	// Same as modules.RenterContract.
 	StartHeight      types.BlockHeight
 	DownloadSpending types.Currency
@@ -128,6 +129,8 @@ type SafeContract struct {
 	headerFile *os.File
 	wal        *writeaheadlog.WAL
 	mu         sync.Mutex
+
+	rc *RefCounter // TODO initialise this wherever SafeContract is created
 
 	// revisionMu serializes revisions to the contract. It is acquired by
 	// (ContractSet).Acquire and released by (ContractSet).Return. When holding
@@ -263,7 +266,23 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 }
 
 func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
-	return c.merkleRoots.insert(index, root)
+	err := c.merkleRoots.insert(index, root)
+	if err != nil {
+		return err
+	}
+	// TODO is this the right place to perform the update? Maybe we should do it where we create the update instead.
+	// update the reference counter before signalling that the update was
+	// successfully applied
+	err = c.rc.StartUpdate()
+	if err != nil {
+		return err
+	}
+	defer c.rc.UpdateApplied() // TODO double, triple-check if we can safely do this. Check the error?
+	u, err := c.rc.Append()
+	if err != nil {
+		return err
+	}
+	return c.rc.CreateAndApplyTransaction(u)
 }
 
 func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
@@ -284,6 +303,22 @@ func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision,
 	if err != nil {
 		return nil, err
 	}
+	//// update the reference counter before signalling that the update was
+	//// successfully applied
+	//{
+	//	if err := c.rc.StartUpdate(); err != nil {
+	//		return nil, err
+	//	}
+	//	defer c.rc.UpdateApplied() // TODO double, triple-check if we can safely do this. Maybe check the error?
+	//	u, err := c.rc.Append()
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	err = c.rc.CreateAndApplyTransaction(u)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//}
 	if err := <-t.SignalSetupComplete(); err != nil {
 		return nil, err
 	}
@@ -401,6 +436,9 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	if err := c.headerFile.Sync(); err != nil {
 		return err
 	}
+	// TODO Should we decrement the refcounter counters here? The old contract
+	// 	has been "cleared out" and the counts should have been incremented for
+	// 	the new contract added in `renew.go`.
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
@@ -585,6 +623,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	}
 	headerFilePath := filepath.Join(cs.dir, h.ID().String()+contractHeaderExtension)
 	rootsFilePath := filepath.Join(cs.dir, h.ID().String()+contractRootsExtension)
+	// TODO rcFilePath := filepath.Join(cs.dir, h.ID().String()+refCounterExtension)
 	// create the files.
 	headerFile, err := os.OpenFile(headerFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, modules.DefaultFilePerm)
 	if err != nil {
@@ -602,12 +641,14 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if cs.deps.Disrupt("InterruptContractInsertion") {
 		return modules.RenterContract{}, errors.New("interrupted")
 	}
+	// TODO open the rc transaction here, defer a check for error in case we error out while pushing roots
 	// write roots
 	merkleRoots := newMerkleRoots(rootsFile)
 	for _, root := range roots {
 		if err := merkleRoots.push(root); err != nil {
 			return modules.RenterContract{}, err
 		}
+		// TODO rc.Append()
 	}
 	// sync both files
 	if err := headerFile.Sync(); err != nil {
@@ -616,11 +657,13 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if err := rootsFile.Sync(); err != nil {
 		return modules.RenterContract{}, err
 	}
+	// TODO rc.UpdateApplied()
 	sc := &SafeContract{
 		header:      h,
 		merkleRoots: merkleRoots,
 		headerFile:  headerFile,
 		wal:         cs.wal,
+		// TODO rc: rc,
 	}
 	// Compatv144 fix missing void output.
 	cs.mu.Lock()
@@ -657,7 +700,7 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
-func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName string, walTxns []*writeaheadlog.Transaction) (err error) {
+func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCounterPath string, walTxns []*writeaheadlog.Transaction) (err error) {
 	headerFile, err := os.OpenFile(headerFileName, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
@@ -712,6 +755,17 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName string, wa
 			unappliedTxns = append(unappliedTxns, t)
 		}
 	}
+	// load the reference counter
+	rc, err := LoadRefCounter(refCounterPath, cs.wal)
+	if errors.Contains(err, ErrRefCounterNotExist) {
+		// there is no reference counter, create a new one
+		if rc, err = NewRefCounter(refCounterPath, uint64(merkleRoots.numMerkleRoots), cs.wal); err != nil {
+			return err
+		}
+		// TODO update the counters to their real values. Maybe should be part of New?
+	} else if err != nil {
+		return err
+	}
 	// add to set
 	sc := &SafeContract{
 		header:        header,
@@ -719,6 +773,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName string, wa
 		unappliedTxns: unappliedTxns,
 		headerFile:    headerFile,
 		wal:           cs.wal,
+		rc:            rc,
 	}
 
 	// apply the wal txns if necessary.
@@ -853,7 +908,7 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 // of the contract until it either succeeds or it runs out of decoding
 // strategies to try.
 func unmarshalHeader(b []byte, u *updateSetHeader) error {
-	// Try unmarshaling the header.
+	// Try unmarshalling the header.
 	if err := encoding.Unmarshal(b, u); err != nil {
 		// Try unmarshalling the update
 		v132Err := updateSetHeaderUnmarshalV132ToV1420(b, u)
