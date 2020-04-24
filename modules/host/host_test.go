@@ -622,6 +622,12 @@ func (p *renterHostPair) callUpdatePriceTable() error {
 		return err
 	}
 
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return err
+	}
+
 	p.SetPriceTable(&pt)
 	return nil
 }
