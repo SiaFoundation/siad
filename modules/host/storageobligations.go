@@ -664,6 +664,10 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 		return err
 	}
 
+	// Lock the host while we update storage obligation and financial metrics.
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	// Update the database to contain the new storage obligation.
 	var oldSO storageObligation
 	err = h.db.Update(func(tx *bolt.Tx) error {
@@ -694,10 +698,6 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 		// place to be, especially if the host can run consistency checks.
 		_ = h.RemoveSector(sectorsRemoved[k])
 	}
-
-	// Lock the host while we update the financial metrics.
-	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	// Update the financial information for the storage obligation - apply the
 	// new values.
