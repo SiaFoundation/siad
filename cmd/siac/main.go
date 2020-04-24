@@ -76,9 +76,9 @@ var (
 
 var (
 	// Globals.
-	rootCmd           *cobra.Command // Root command cobra object, used by bash completion cmd.
-	siacGlobalHttpClient        client.Client
-	numCriticalAlerts int
+	rootCmd              *cobra.Command // Root command cobra object, used by bash completion cmd.
+	siacGlobalHttpClient client.Client
+	numCriticalAlerts    int
 )
 
 // Exit codes.
