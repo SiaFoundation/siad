@@ -207,15 +207,15 @@ func (r *Renter) managedInitPersist() error {
 	}
 
 	// Create the essential dirs in the filesystem.
-	err = fs.NewSiaDir(modules.HomeSiaPath(), modules.DefaultDirPerm)
+	err = fs.NewSiaDir(modules.HomeFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
-	err = fs.NewSiaDir(modules.UserSiaPath(), modules.DefaultDirPerm)
+	err = fs.NewSiaDir(modules.UserFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
-	err = fs.NewSiaDir(modules.SnapshotsSiaPath(), modules.DefaultDirPerm)
+	err = fs.NewSiaDir(modules.BackupFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}

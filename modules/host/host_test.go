@@ -2,6 +2,7 @@ package host
 
 import (
 	// "errors"
+
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,7 +17,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 
 	// "gitlab.com/NebulousLabs/Sia/modules/renter"
@@ -249,6 +252,8 @@ type renterHostPair struct {
 	ht         *hostTester
 	latestPT   *modules.RPCPriceTable
 	renter     crypto.SecretKey
+	renterMux  *siamux.SiaMux
+	renterPK   types.SiaPublicKey
 	fcid       types.FileContractID
 }
 
@@ -257,8 +262,17 @@ type renterHostPair struct {
 // represented by its secret key. This helper will create a storage
 // obligation emulating a file contract between them.
 func newRenterHostPair(name string) (*renterHostPair, error) {
+	return newCustomRenterHostPair(name, modules.ProdDependencies)
+}
+
+// newCustomRenterHostPair creates a new host tester and returns a renter host
+// pair, this pair is a helper struct that contains both the host and renter,
+// represented by its secret key. This helper will create a storage obligation
+// emulating a file contract between them. It is custom as it allows passing a
+// set of dependencies.
+func newCustomRenterHostPair(name string, deps modules.Dependencies) (*renterHostPair, error) {
 	// setup host
-	ht, err := newHostTester(name)
+	ht, err := newMockHostTester(deps, name)
 	if err != nil {
 		return nil, err
 	}
@@ -298,11 +312,27 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	// prepare an EA without funding it.
 	accountKey, accountID := prepareAccount()
 
+	// prepare a siamux for the renter
+	renterMuxDir := filepath.Join(ht.persistDir, "rentermux")
+	if err := os.MkdirAll(renterMuxDir, 0700); err != nil {
+		return nil, err
+	}
+	muxLogger, err := persist.NewFileLogger(filepath.Join(renterMuxDir, "siamux.log"))
+	if err != nil {
+		return nil, err
+	}
+	renterMux, err := siamux.New("127.0.0.1:0", muxLogger, renterMuxDir)
+	if err != nil {
+		return nil, err
+	}
+
 	pair := &renterHostPair{
 		accountID:  accountID,
 		accountKey: accountKey,
 		ht:         ht,
 		renter:     sk,
+		renterMux:  renterMux,
+		renterPK:   renterPK,
 		fcid:       so.id(),
 	}
 
@@ -317,7 +347,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	am := pair.ht.host.staticAccountManager
 	balance := am.callAccountBalance(pair.accountID)
 	if !balance.IsZero() {
-		return nil, errors.New("Account balance was not zero after initialising a renter host pair.")
+		return nil, errors.New("account balance was not zero after initialising a renter host pair")
 	}
 
 	return pair, nil
@@ -325,7 +355,41 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
-	return p.ht.Close()
+	err1 := p.renterMux.Close()
+	err2 := p.ht.Close()
+	return errors.Compose(err1, err2)
+}
+
+// addRandomSector is a helper function that creates a random sector and adds it
+// to the storage obligation.
+func (p *renterHostPair) addRandomSector() (crypto.Hash, []byte, error) {
+	// create a random sector
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+
+	// fetch the SO
+	so, err := p.ht.host.managedGetStorageObligation(p.fcid)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// add a new revision
+	so.SectorRoots = append(so.SectorRoots, sectorRoot)
+	so, err = p.ht.addNewRevision(so, p.renterPK, uint64(len(sectorData)), sectorRoot)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// modify the SO
+	p.ht.host.managedLockStorageObligation(p.fcid)
+	err = p.ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
+	if err != nil {
+		p.ht.host.managedUnlockStorageObligation(p.fcid)
+		return crypto.Hash{}, nil, err
+	}
+	p.ht.host.managedUnlockStorageObligation(p.fcid)
+
+	return sectorRoot, sectorData, nil
 }
 
 // fundEphemeralAccount will deposit the given amount in the pair's ephemeral
@@ -378,7 +442,7 @@ func (p *renterHostPair) newStream() siamux.Stream {
 	address := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
 	subscriber := modules.HostSiaMuxSubscriberName
 
-	stream, err := host.staticMux.NewStream(subscriber, address, pk)
+	stream, err := p.renterMux.NewStream(subscriber, address, pk)
 	if err != nil {
 		panic(err)
 	}
@@ -437,6 +501,41 @@ func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Curren
 		return errors.New("could not verify host signature")
 	}
 	return nil
+}
+
+// payByEphemeralAccount is a helper that makes payment using the pair's EA.
+func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount types.Currency) (modules.PayByEphemeralAccountResponse, error) {
+	// Send the payment request.
+	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	if err != nil {
+		return modules.PayByEphemeralAccountResponse{}, err
+	}
+
+	// Send the payment details.
+	pbear := newPayByEphemeralAccountRequest(p.accountID, p.ht.host.BlockHeight()+6, amount, p.accountKey)
+	err = modules.RPCWrite(stream, pbear)
+	if err != nil {
+		return modules.PayByEphemeralAccountResponse{}, err
+	}
+
+	// Receive payment confirmation.
+	var resp modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return modules.PayByEphemeralAccountResponse{}, err
+	}
+	return resp, nil
+}
+
+// prefundAccount is a helper method that prefunds the ephemeral account to the
+// maximum balance
+func (p *renterHostPair) prefundAccount() {
+	his := p.ht.host.managedInternalSettings()
+	maxBalance := his.MaxEphemeralAccountBalance
+	_, err := p.fundEphemeralAccount(maxBalance.Add(p.latestPT.FundAccountCost))
+	if err != nil {
+		panic(err)
+	}
 }
 
 // sign returns the renter's signature of the given revision
@@ -613,6 +712,23 @@ func TestNilValues(t *testing.T) {
 	_, err = New(ht.cs, ht.gateway, ht.tpool, nil, ht.mux, "localhost:0", hostDir)
 	if err != errNilWallet {
 		t.Fatal("Could not trigger errNilWallet")
+	}
+}
+
+// TestRenterHostPair tests the newRenterHostPair constructor
+func TestRenterHostPair(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rhp.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -266,9 +266,9 @@ func isCalledWithRootFlag(req *http.Request) (bool, error) {
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	if siaPath.IsRoot() {
-		return modules.UserSiaPath(), nil
+		return modules.UserFolder, nil
 	}
-	return modules.UserSiaPath().Join(siaPath.String())
+	return modules.UserFolder.Join(siaPath.String())
 }
 
 // trimSiaDirFolder is a helper method to trim /home/siafiles off of the
@@ -276,7 +276,7 @@ func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 // /home/siafiles and not relative to root.
 func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, err error) {
 	for i := range dis {
-		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
 		if err != nil {
 			return nil, err
 		}
@@ -289,7 +289,7 @@ func trimSiaDirFolder(dis ...modules.DirectoryInfo) (_ []modules.DirectoryInfo, 
 // /home/siafiles and not relative to root.
 func trimSiaDirFolderOnFiles(fis ...modules.FileInfo) (_ []modules.FileInfo, err error) {
 	for i := range fis {
-		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		fis[i].SiaPath, err = fis[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to trim the user sia path from a provided fileinfo")
 		}
@@ -302,7 +302,7 @@ func trimSiaDirFolderOnFiles(fis ...modules.FileInfo) (_ []modules.FileInfo, err
 // /home/siafiles and not relative to root.
 func trimDownloadInfo(dis ...modules.DownloadInfo) (_ []modules.DownloadInfo, err error) {
 	for i := range dis {
-		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		dis[i].SiaPath, err = dis[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
 		if err != nil {
 			return nil, err
 		}
@@ -1237,7 +1237,7 @@ func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _
 		MountPoints: api.renter.MountInfo(),
 	}
 	for i := 0; i < len(rfi.MountPoints); i++ {
-		rebased, err := rfi.MountPoints[i].SiaPath.Rebase(modules.UserSiaPath(), modules.RootSiaPath())
+		rebased, err := rfi.MountPoints[i].SiaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
@@ -1447,7 +1447,7 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 			return
 		}
 	}
-	files, err := api.renter.FileList(modules.UserSiaPath(), true, c)
+	files, err := api.renter.FileList(modules.UserFolder, true, c)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return

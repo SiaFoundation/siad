@@ -981,13 +981,13 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 
 	// Copy the siafile to the new location.
-	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
 	siaFile, err := ioutil.ReadFile(oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
-	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
 	if err := os.MkdirAll(filepath.Dir(newPath), persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
@@ -2387,10 +2387,18 @@ func TestExtendPeriod(t *testing.T) {
 
 	// Confirm the previously active contracts are now marked as expired and
 	// were replaced with new active contracts
+	tries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if tries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		tries++
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }

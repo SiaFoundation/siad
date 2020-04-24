@@ -3,14 +3,19 @@ package host
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -148,7 +153,8 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 		}
 
 		// Read the output data.
-		responses[i].Output = make([]byte, responses[i].OutputLength, responses[i].OutputLength)
+		outputLen := responses[i].OutputLength
+		responses[i].Output = make([]byte, outputLen, outputLen)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
 			return nil, limit, err
@@ -169,6 +175,54 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 	return responses, limit, nil
 }
 
+// TestExecuteProgramWriteDeadline verifies the ExecuteProgramRPC sets a write
+// deadline
+func TestExecuteProgramWriteDeadline(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	delay := modules.MDMProgramWriteResponseTime * 2
+	deps := dependencies.NewHostMDMProgramWriteDelay(delay)
+	rhp, err := newCustomRenterHostPair(t.Name(), deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rhp.Close()
+
+	// create stream
+	stream := rhp.newStream()
+	defer stream.Close()
+
+	// create a random sector
+	sectorRoot, _, err := rhp.addRandomSector()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create the 'ReadSector' program.
+	program, programData, _, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, rhp.latestPT)
+
+	// prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.fcid,
+		Program:           program,
+		ProgramDataLength: uint64(len(programData)),
+	}
+
+	// prefund the EA
+	rhp.prefundAccount()
+
+	// execute program.
+	budget := types.NewCurrency64(math.MaxUint64)
+	_, _, err = rhp.executeProgram(epr, programData, budget)
+	if err == nil || !errors.Contains(err, io.ErrClosedPipe) {
+		t.Fatal("Expected executeProgram to fail with an ErrClosedPipe, instead err was", err)
+	}
+}
+
 // TestExecuteReadSectorProgram tests the managedRPCExecuteProgram with a valid
 // 'ReadSector' program.
 func TestExecuteReadSectorProgram(t *testing.T) {
@@ -185,28 +239,21 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	defer rhp.Close()
 	ht := rhp.ht
 
+	// create a random sector
+	sectorRoot, sectorData, err := rhp.addRandomSector()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// get a snapshot of the SO before running the program.
 	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.fcid)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// create a random sector
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorRoot := crypto.MerkleRoot(sectorData)
-
-	// modify the host's storage obligation to add the sector
-	so, err := ht.host.managedGetStorageObligation(rhp.fcid)
-	if err != nil {
-		t.Fatal(err)
+	// verify the root is not the zero root to begin with
+	if sos.staticMerkleRoot == crypto.MerkleRoot([]byte{}) {
+		t.Fatalf("expected merkle root to be non zero: %v", sos.staticMerkleRoot)
 	}
-	so.SectorRoots = append(so.SectorRoots, sectorRoot)
-	ht.host.managedLockStorageObligation(rhp.fcid)
-	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(rhp.fcid)
 
 	// create the 'ReadSector' program.
 	program, data, programCost, refund, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, rhp.latestPT)
@@ -232,8 +279,8 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(13140)
-	expectedUpload := uint64(18980)
+	expectedDownload := uint64(10220) // download
+	expectedUpload := uint64(18980)   // upload
 	downloadCost := rhp.latestPT.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := rhp.latestPT.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
@@ -246,6 +293,9 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
 		t.Fatal(err)
 	}
+
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (read full sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
 
 	// there should only be a single response.
 	if len(resps) != 1 {
@@ -287,10 +337,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// verify the EA balance
 	am := rhp.ht.host.staticAccountManager
-	remainingBalance := am.callAccountBalance(rhp.accountID)
-	expectedRemainingBalance := maxBalance.Sub(cost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// rerun the program but now make sure the given budget does not cover the
@@ -301,19 +351,18 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 		t.Fatalf("expected executeProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 
-	// verify the host charged us by checking the EA balance and Check that the remaining balance is correct again. We expect the host to
-	// charge us for the program since the bandwidth limit was reached when
-	// sending the response, after executing the program.
+	// verify the host charged us by checking the EA balance and Check that the
+	// remaining balance is correct again. We expect the host to charge us for
+	// the program since the bandwidth limit was reached when sending the
+	// response, after executing the program.
 	downloadCost = rhp.latestPT.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = rhp.latestPT.UploadBandwidthCost.Mul64(limit.Uploaded())
-	remainingBalance = am.callAccountBalance(rhp.accountID)
-	expectedRemainingBalance = expectedRemainingBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
-	}
 
-	// Log the bandwidth used by this RPC.
-	t.Logf("Used bandwidth (read full sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestExecuteReadPartialSectorProgram tests the managedRPCExecuteProgram with a
@@ -493,8 +542,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(10220) // download
-	expectedUpload := uint64(18980)   // upload
+	expectedDownload := uint64(7300) // download
+	expectedUpload := uint64(18980)  // upload
 	downloadCost := rhp.latestPT.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := rhp.latestPT.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
@@ -540,11 +589,13 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
-	remainingBalance := rhp.ht.host.staticAccountManager.callAccountBalance(rhp.accountID)
-	expectedRemainingBalance := maxBalance.Sub(cost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance.HumanString(), remainingBalance.HumanString())
+	am := rhp.ht.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
 	}
+
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
 	cost = programCost.Add(bandwidthCost.Sub64(1))
 	_, limit, err = rhp.executeProgram(epr, data, cost)
@@ -558,9 +609,23 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// sending the response, after executing the program.
 	downloadCost = rhp.latestPT.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = rhp.latestPT.UploadBandwidthCost.Mul64(limit.Uploaded())
-	remainingBalance = rhp.ht.host.staticAccountManager.callAccountBalance(rhp.accountID)
-	expectedRemainingBalance = expectedRemainingBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
-	if !remainingBalance.Equals(expectedRemainingBalance) {
-		t.Fatalf("expected %v remaining balance but got %v", expectedRemainingBalance, remainingBalance)
+
+	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
+	err = verifyBalance(am, rhp.accountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
 	}
+}
+
+// verifyBalance is a helper function that will verify if the ephemeral account
+// with given id has a certain balance. It does this in a (short) build.Retry
+// loop to avoid race conditions.
+func verifyBalance(am *accountManager, id modules.AccountID, expected types.Currency) error {
+	return build.Retry(100, 100*time.Millisecond, func() error {
+		actual := am.callAccountBalance(id)
+		if !actual.Equals(expected) {
+			return fmt.Errorf("expected %v remaining balance but got %v", expected, actual)
+		}
+		return nil
+	})
 }
