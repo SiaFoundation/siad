@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -537,7 +536,6 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 // table on the pair
 func (p *renterHostPair) updatePriceTable() error {
 	stream := p.newStream()
-	stream.SetDeadline(time.Now().Add(time.Minute))
 	defer stream.Close()
 
 	// initiate the RPC

@@ -172,7 +172,7 @@ test-v:
 test-long: clean fmt vet lint-ci
 	@mkdir -p cover
 	go get -u gitlab.com/NebulousLabs/siamux@debug-newstream
-	go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=3600s ./modules/host -run=TestRenterHostPair -count=1000
+	go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=60s ./modules/host -run=TestRenterHostPair -count=1000
 
 test-vlong: clean fmt vet lint-ci
 ifneq ("$(OS)","Windows_NT")
