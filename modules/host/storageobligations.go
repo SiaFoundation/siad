@@ -607,7 +607,7 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 	// Sanity check - all of the sector data should be modules.SectorSize
 	for _, data := range sectorsGained {
 		if uint64(len(data)) != modules.SectorSize {
-			h.log.Critical("modifying a revision with garbase sector sizes", len(data))
+			h.log.Critical("modifying a revision with garbage sector sizes", len(data))
 			return errInsaneStorageObligationRevision
 		}
 	}
