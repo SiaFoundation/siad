@@ -197,7 +197,7 @@ func (h *Host) load() error {
 	// Compatv148 delete the old account file.
 	af := filepath.Join(h.persistDir, v148AccountsFilename)
 	if err := os.RemoveAll(af); err != nil {
-		return errors.AddContext(err, "failed to remove legacy account file")
+		h.log.Printf("WARNING: failed to remove legacy account file at '%v', err: %v", af, err)
 	}
 
 	// Check if the host is currently using defaults that violate the ratio
