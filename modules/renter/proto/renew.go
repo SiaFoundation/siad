@@ -116,6 +116,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 
 	// Add fc.
 	txnBuilder.AddFileContract(fc)
+	// TODO Should we increment the refcounter counts here?
 	// add miner fee
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.
@@ -386,6 +387,7 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 
 	// Add fc.
 	txnBuilder.AddFileContract(fc)
+	// TODO Should we increment the refcounter counts here?
 	// add miner fee
 	txnBuilder.AddMinerFee(txnFee)
 	// Add FileContract identifier.

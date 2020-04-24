@@ -32,6 +32,10 @@ var (
 	// instruction that is too short to possibly contain all the required data.
 	ErrInvalidUpdateInstruction = errors.New("instructions slice is too short to contain the required data")
 
+	// ErrRefCounterNotExist is returned when there is no refcounter file with
+	// the given path
+	ErrRefCounterNotExist = errors.New("refcounter does not exist")
+
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
 	// called without an open update session
 	ErrUpdateWithoutUpdateSession = errors.New("an update operation was called without an open update session")
@@ -100,7 +104,9 @@ type (
 		// newSectorCounts holds the new values of sector counters during an
 		// update session, so we can use them even before they are store on disk
 		newSectorCounts map[uint64]uint16
-		// muUpdates controls who can create and apply updates
+
+		// muUpdates serializes updates to the refcounter. It is acquired by
+		// StartUpdate and released by UpdateApplied.
 		muUpdate siasync.TryMutex
 	}
 
@@ -113,7 +119,7 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
-		return &RefCounter{}, err
+		return &RefCounter{}, ErrRefCounterNotExist
 	}
 	defer f.Close()
 
@@ -177,6 +183,8 @@ func NewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, dep
 func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	return NewCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
+
+// TODO maaaaybe these public methods should be self-contained transactions? :)
 
 // Append appends one counter to the end of the refcounter file and
 // initializes it with `1`
