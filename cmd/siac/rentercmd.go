@@ -2180,27 +2180,6 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Get dirs with their corresponding files.
 	dirs := getDir(sp, renterListRoot, renterListRecursive)
-	if len(dirs) == 0 {
-		fmt.Println("No files/dirs have been uploaded.")
-		return
-	}
-	var totalStored uint64
-	// Get the total stored by counting all top-level files and subdirs. This
-	// gives us the same answer whether we are recursing or not.
-	root := dirs[0]
-	for _, subDir := range root.subDirs {
-		totalStored += subDir.AggregateSize
-	}
-	for _, file := range root.files {
-		totalStored += file.Filesize
-	}
-	// Count the total number of listings (subdirs and files).
-	numSubDirs := 0
-	numFiles := 0
-	for _, dir := range dirs {
-		numSubDirs += len(dir.subDirs)
-		numFiles += len(dir.files)
-	}
 
 	// Sort the directories and the files.
 	sort.Sort(byDirectoryInfo(dirs))
@@ -2209,9 +2188,19 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		sort.Sort(bySiaPathFile(dirs[i].files))
 	}
 
-	// Print text that available for both verbose and not verbose output.
+	// Get the total number of listings (subdirs and files).
+	root := dirs[0] // Root directory we are querying.
+	totalStored := root.dir.AggregateSize
+	var numFilesDirs uint64
+	if renterListRecursive {
+		numFilesDirs = root.dir.AggregateNumFiles + root.dir.AggregateNumSubDirs
+	} else {
+		numFilesDirs = root.dir.NumFiles + root.dir.NumSubDirs
+	}
+
+	// Print totals for both verbose and not verbose output.
 	totalStoredStr := modules.FilesizeUnits(totalStored)
-	fmt.Printf("\nListing %v files/dirs: %9s\n\n", numSubDirs+numFiles, totalStoredStr)
+	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
 	if !renterListVerbose {
@@ -2660,66 +2649,91 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Get the full set of files and directories.
-	dirs := getDir(sp, true, skynetLsRecursive)
-	if len(dirs) == 0 {
-		fmt.Println("No files/dirs have been uploaded.")
-		return
+	//
+	// NOTE: Always query recursively so that we can filter out non-tracked
+	// files and get accurate, consistent sizes for dirs. If the --recursive
+	// flag was not passed, we limit the directory output later.
+	dirs := getDir(sp, true, true)
+
+	// Sort the directories and the files.
+	sort.Sort(byDirectoryInfo(dirs))
+	for i := 0; i < len(dirs); i++ {
+		sort.Sort(bySiaPathDir(dirs[i].subDirs))
+		sort.Sort(bySiaPathFile(dirs[i].files))
 	}
+
+	// Keep track of the aggregate sizes for dirs as we may be adjusting them.
+	sizePerDir := make(map[modules.SiaPath]uint64)
+	for _, dir := range dirs {
+		sizePerDir[dir.dir.SiaPath] = dir.dir.AggregateSize
+	}
+
 	// Drop any files that are not tracking skylinks.
+	var numDropped uint64
+	numOmittedPerDir := make(map[modules.SiaPath]int)
 	for j := 0; j < len(dirs); j++ {
 		for i := 0; i < len(dirs[j].files); i++ {
-			if len(dirs[j].files[i].Skylinks) == 0 {
-				dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
-				i--
+			file := dirs[j].files[i]
+			if len(file.Skylinks) != 0 {
+				continue
 			}
+
+			siaPath := dirs[j].dir.SiaPath
+			numDropped++
+			numOmittedPerDir[siaPath]++
+			// Subtract the size from the aggregate size for the dir and all
+			// parent dirs.
+			for {
+				sizePerDir[siaPath] -= file.Filesize
+				if siaPath.IsRoot() {
+					break
+				}
+				siaPath, err = siaPath.Dir()
+				if err != nil {
+					die("could not parse parent dir:", err)
+				}
+				if _, exists := sizePerDir[siaPath]; !exists {
+					break
+				}
+			}
+			// Remove the file.
+			dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
+			i--
 		}
 	}
 
-	// Produce the full information for these files.
-	var totalStored uint64
-	// Get the total stored by counting all files and subdirs if not recursing,
-	// and all files (and only files, so we don't count twice) when recursing.
-	// Counting only top-level files and subdirs doesn't work when non-skylink
-	// files have been dropped.
+	// Get the total number of listings (subdirs and files).
+	root := dirs[0] // Root directory we are querying.
+	var numFilesDirs uint64
 	if skynetLsRecursive {
-		for _, dir := range dirs {
-			for _, file := range dir.files {
-				totalStored += file.Filesize
-			}
-		}
+		numFilesDirs = root.dir.AggregateNumFiles + root.dir.AggregateNumSubDirs
+		numFilesDirs -= numDropped
 	} else {
-		root := dirs[0]
-		for _, subDir := range root.subDirs {
-			totalStored += subDir.AggregateSize
-		}
-		for _, file := range root.files {
-			totalStored += file.Filesize
-		}
+		numFilesDirs = root.dir.NumFiles + root.dir.NumSubDirs
+		numFilesDirs -= uint64(numOmittedPerDir[root.dir.SiaPath])
 	}
-	// Count the total number of listings (subdirs and files).
-	numSubDirs := 0
-	numFiles := 0
-	for _, dir := range dirs {
-		numSubDirs += len(dir.subDirs)
-		numFiles += len(dir.files)
-	}
-	fmt.Printf("\nListing %v files/dirs:", numSubDirs+numFiles)
-	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
-	sort.Sort(byDirectoryInfo(dirs))
+
+	// Print totals.
+	totalStoredStr := modules.FilesizeUnits(sizePerDir[root.dir.SiaPath])
+	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
+
 	// Print dirs.
 	for _, dir := range dirs {
-		fmt.Printf("%v/\n", dir.dir.SiaPath)
+		fmt.Printf("%v/", dir.dir.SiaPath)
+		if numOmitted := numOmittedPerDir[dir.dir.SiaPath]; numOmitted > 0 {
+			fmt.Printf("\t(%v omitted)", numOmitted)
+		}
+		fmt.Println()
+
 		// Print subdirs.
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
 			subDirName := subDir.SiaPath.Name() + "/"
-			size := modules.FilesizeUnits(subDir.AggregateSize)
-			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, size)
+			sizeUnits := modules.FilesizeUnits(sizePerDir[subDir.SiaPath])
+			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
 		}
 
 		// Print files.
-		sort.Sort(bySiaPathFile(dir.files))
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
 			firstSkylink := file.Skylinks[0]
@@ -2731,6 +2745,11 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		}
 		w.Flush()
 		fmt.Println()
+
+		if !skynetLsRecursive {
+			// If not --recursive, finish early after the first dir.
+			break
+		}
 	}
 }
 
