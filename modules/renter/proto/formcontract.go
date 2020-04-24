@@ -101,7 +101,6 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 
 	// Add file contract.
 	txnBuilder.AddFileContract(fc)
-	// TODO Increment/add refcounter counts.
 	// Add miner fee.
 	txnBuilder.AddMinerFee(txnFee)
 

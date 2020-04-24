@@ -184,8 +184,6 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCoun
 	return NewCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
 
-// TODO maaaaybe these public methods should be self-contained transactions? :)
-
 // Append appends one counter to the end of the refcounter file and
 // initializes it with `1`
 func (rc *RefCounter) Append() (writeaheadlog.Update, error) {

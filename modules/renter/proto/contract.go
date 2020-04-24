@@ -276,7 +276,12 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 		return err
 	}
 	defer c.rc.UpdateApplied()
-	u, err := c.rc.Append()
+	var u writeaheadlog.Update
+	if uint64(index) > c.rc.numSectors {
+		u, err = c.rc.Append()
+	} else {
+		// TODO we need a WriteAt update here
+	}
 	if err != nil {
 		return err
 	}
@@ -418,12 +423,6 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	if err := c.headerFile.Sync(); err != nil {
 		return err
 	}
-	// TODO Should we decrement the refcounter counters here? The old contract
-	// 	has been "cleared out" and the counts should have been incremented for
-	// 	the new contract added in `renew.go`.
-	//
-	// -> Yes, we should. This is used at the end of newRenewAndClear in renew.go after a new contract is created.
-	// Maybe check with Chris anyway.
 	err := func() error {
 		err := c.rc.StartUpdate()
 		if err != nil {
