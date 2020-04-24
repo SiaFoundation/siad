@@ -62,7 +62,6 @@ type contractHeader struct {
 	// transaction.
 	SecretKey crypto.SecretKey
 
-	// TODO Can we move these to a central struct, so they can share documentation easily?
 	// Same as modules.RenterContract.
 	StartHeight      types.BlockHeight
 	DownloadSpending types.Currency
@@ -130,7 +129,7 @@ type SafeContract struct {
 	wal        *writeaheadlog.WAL
 	mu         sync.Mutex
 
-	rc *RefCounter // TODO initialise this wherever SafeContract is created
+	rc *RefCounter
 
 	// revisionMu serializes revisions to the contract. It is acquired by
 	// (ContractSet).Acquire and released by (ContractSet).Return. When holding
@@ -270,14 +269,13 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	if err != nil {
 		return err
 	}
-	// TODO is this the right place to perform the update? Maybe we should do it where we create the update instead.
 	// update the reference counter before signalling that the update was
 	// successfully applied
 	err = c.rc.StartUpdate()
 	if err != nil {
 		return err
 	}
-	defer c.rc.UpdateApplied() // TODO double, triple-check if we can safely do this. Check the error?
+	defer c.rc.UpdateApplied()
 	u, err := c.rc.Append()
 	if err != nil {
 		return err
@@ -303,22 +301,6 @@ func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision,
 	if err != nil {
 		return nil, err
 	}
-	//// update the reference counter before signalling that the update was
-	//// successfully applied
-	//{
-	//	if err := c.rc.StartUpdate(); err != nil {
-	//		return nil, err
-	//	}
-	//	defer c.rc.UpdateApplied() // TODO double, triple-check if we can safely do this. Maybe check the error?
-	//	u, err := c.rc.Append()
-	//	if err != nil {
-	//		return nil, err
-	//	}
-	//	err = c.rc.CreateAndApplyTransaction(u)
-	//	if err != nil {
-	//		return nil, err
-	//	}
-	//}
 	if err := <-t.SignalSetupComplete(); err != nil {
 		return nil, err
 	}
@@ -439,6 +421,24 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	// TODO Should we decrement the refcounter counters here? The old contract
 	// 	has been "cleared out" and the counts should have been incremented for
 	// 	the new contract added in `renew.go`.
+	//
+	// -> Yes, we should. This is used at the end of newRenewAndClear in renew.go after a new contract is created.
+	// Maybe check with Chris anyway.
+	err := func() error {
+		err := c.rc.StartUpdate()
+		if err != nil {
+			return errors.AddContext(err, "failed to open update session")
+		}
+		defer c.rc.UpdateApplied()
+		u, err := c.rc.DeleteRefCounter()
+		if err != nil {
+			return errors.AddContext(err, "failed to create delete update")
+		}
+		return c.rc.CreateAndApplyTransaction(u)
+	}()
+	if err != nil {
+		return errors.AddContext(err, "failed to delete reference counter")
+	}
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
@@ -623,7 +623,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	}
 	headerFilePath := filepath.Join(cs.dir, h.ID().String()+contractHeaderExtension)
 	rootsFilePath := filepath.Join(cs.dir, h.ID().String()+contractRootsExtension)
-	// TODO rcFilePath := filepath.Join(cs.dir, h.ID().String()+refCounterExtension)
+	rcFilePath := filepath.Join(cs.dir, h.ID().String()+refCounterExtension)
 	// create the files.
 	headerFile, err := os.OpenFile(headerFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, modules.DefaultFilePerm)
 	if err != nil {
@@ -641,14 +641,12 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if cs.deps.Disrupt("InterruptContractInsertion") {
 		return modules.RenterContract{}, errors.New("interrupted")
 	}
-	// TODO open the rc transaction here, defer a check for error in case we error out while pushing roots
 	// write roots
 	merkleRoots := newMerkleRoots(rootsFile)
 	for _, root := range roots {
 		if err := merkleRoots.push(root); err != nil {
 			return modules.RenterContract{}, err
 		}
-		// TODO rc.Append()
 	}
 	// sync both files
 	if err := headerFile.Sync(); err != nil {
@@ -657,13 +655,14 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if err := rootsFile.Sync(); err != nil {
 		return modules.RenterContract{}, err
 	}
-	// TODO rc.UpdateApplied()
+	rc, err := NewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
+	// TODO update the counters to their real values. Maybe should be part of New?
 	sc := &SafeContract{
 		header:      h,
 		merkleRoots: merkleRoots,
 		headerFile:  headerFile,
 		wal:         cs.wal,
-		// TODO rc: rc,
+		rc:          rc,
 	}
 	// Compatv144 fix missing void output.
 	cs.mu.Lock()
