@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -244,13 +246,15 @@ func (ht *hostTester) Close() error {
 // renterHostPair is a helper struct that contains a secret key, symbolizing the
 // renter, a host and the id of the file contract they share.
 type renterHostPair struct {
+	ht         *hostTester
 	accountID  modules.AccountID
 	accountKey crypto.SecretKey
-	ht         *hostTester
-	latestPT   *modules.RPCPriceTable
-	renter     crypto.SecretKey
+	renterSK   crypto.SecretKey
 	renterPK   types.SiaPublicKey
 	fcid       types.FileContractID
+
+	pt *modules.RPCPriceTable
+	mu sync.Mutex
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -312,7 +316,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		accountID:  accountID,
 		accountKey: accountKey,
 		ht:         ht,
-		renter:     sk,
+		renterSK:   sk,
 		renterPK:   renterPK,
 		fcid:       so.id(),
 	}
@@ -337,6 +341,20 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
 	return p.ht.Close()
+}
+
+// PriceTable returns the latest price table
+func (p *renterHostPair) PriceTable() *modules.RPCPriceTable {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.pt
+}
+
+// SetPriceTable sets the given price table
+func (p *renterHostPair) SetPriceTable(pt *modules.RPCPriceTable) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pt = pt
 }
 
 // addRandomSector is a helper function that creates a random sector and adds it
@@ -385,7 +403,8 @@ func (p *renterHostPair) fundEphemeralAccount(amount types.Currency) (modules.Fu
 	}
 
 	// Write price table id.
-	err = modules.RPCWrite(stream, p.latestPT.UID)
+	pt := p.PriceTable()
+	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
@@ -510,8 +529,21 @@ func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount type
 // maximum balance
 func (p *renterHostPair) prefundAccount() {
 	his := p.ht.host.managedInternalSettings()
-	maxBalance := his.MaxEphemeralAccountBalance
-	_, err := p.fundEphemeralAccount(maxBalance.Add(p.latestPT.FundAccountCost))
+
+	pt := p.PriceTable()
+	fa := his.MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
+
+	_, err := p.fundEphemeralAccount(fa)
+
+	// recover from expired PT
+	if err != nil && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
+		err = p.updatePriceTable()
+		if err != nil {
+			panic(err)
+		}
+		_, err = p.fundEphemeralAccount(fa)
+	}
+
 	if err != nil {
 		panic(err)
 	}
@@ -528,7 +560,7 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 		}},
 	}
 	hash := signedTxn.SigHash(0, p.ht.host.BlockHeight())
-	return crypto.SignHash(hash, p.renter)
+	return crypto.SignHash(hash, p.renterSK)
 }
 
 // updatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
@@ -579,7 +611,8 @@ func (p *renterHostPair) updatePriceTable() error {
 	if err != nil {
 		return err
 	}
-	p.latestPT = &pt
+
+	p.SetPriceTable(&pt)
 	return nil
 }
 

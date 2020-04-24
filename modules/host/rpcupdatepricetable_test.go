@@ -95,7 +95,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	defer rhp.Close()
 
 	// verify the price table is being tracked
-	pt := rhp.latestPT
+	pt := rhp.PriceTable()
 	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
 		t.Log("UID:", pt.UID)
