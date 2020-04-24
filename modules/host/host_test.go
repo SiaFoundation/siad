@@ -2,6 +2,7 @@ package host
 
 import (
 	// "errors"
+
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
@@ -250,9 +252,10 @@ func (ht *hostTester) Close() error {
 type renterHostPair struct {
 	staticAccountID  modules.AccountID
 	staticAccountKey crypto.SecretKey
+	staticFCID       types.FileContractID
 	staticRenterSK   crypto.SecretKey
 	staticRenterPK   types.SiaPublicKey
-	staticFCID       types.FileContractID
+	staticRenterMux  *siamux.SiaMux
 
 	ht *hostTester
 	pt *modules.RPCPriceTable
@@ -314,11 +317,26 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	// prepare an EA without funding it.
 	accountKey, accountID := prepareAccount()
 
+	// prepare a siamux for the renter
+	renterMuxDir := filepath.Join(ht.persistDir, "rentermux")
+	if err := os.MkdirAll(renterMuxDir, 0700); err != nil {
+		return nil, err
+	}
+	muxLogger, err := persist.NewFileLogger(filepath.Join(renterMuxDir, "siamux.log"))
+	if err != nil {
+		return nil, err
+	}
+	renterMux, err := siamux.New("127.0.0.1:0", muxLogger, renterMuxDir)
+	if err != nil {
+		return nil, err
+	}
+
 	pair := &renterHostPair{
 		staticAccountID:  accountID,
 		staticAccountKey: accountKey,
 		staticRenterSK:   sk,
 		staticRenterPK:   renterPK,
+		staticRenterMux:  renterMux,
 		staticFCID:       so.id(),
 		ht:               ht,
 	}
@@ -334,7 +352,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	am := pair.ht.host.staticAccountManager
 	balance := am.callAccountBalance(pair.staticAccountID)
 	if !balance.IsZero() {
-		return nil, errors.New("Account balance was not zero after initialising a renter host pair.")
+		return nil, errors.New("account balance was not zero after initialising a renter host pair")
 	}
 
 	return pair, nil
@@ -342,7 +360,9 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 
 // Close closes the underlying host tester.
 func (p *renterHostPair) Close() error {
-	return p.ht.Close()
+	err1 := p.staticRenterMux.Close()
+	err2 := p.ht.Close()
+	return errors.Compose(err1, err2)
 }
 
 // FetchPriceTable returns the latest price table, if that price table is
@@ -615,7 +635,7 @@ func (p *renterHostPair) newStream() siamux.Stream {
 	address := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
 	subscriber := modules.HostSiaMuxSubscriberName
 
-	stream, err := host.staticMux.NewStream(subscriber, address, pk)
+	stream, err := p.staticRenterMux.NewStream(subscriber, address, pk)
 	if err != nil {
 		panic(err)
 	}
@@ -814,6 +834,23 @@ func TestNilValues(t *testing.T) {
 	_, err = New(ht.cs, ht.gateway, ht.tpool, nil, ht.mux, "localhost:0", hostDir)
 	if err != errNilWallet {
 		t.Fatal("Could not trigger errNilWallet")
+	}
+}
+
+// TestRenterHostPair tests the newRenterHostPair constructor
+func TestRenterHostPair(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rhp.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
