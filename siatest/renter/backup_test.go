@@ -122,7 +122,7 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The .siadir file should also be recovered.
-	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, "subDir", modules.SiaDirExtension)
+	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
 	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
 		t.Fatal(".siadir file doesn't exist:", dirMDPath)
 	}
@@ -193,7 +193,7 @@ func TestInterruptBackup(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   5,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -223,20 +223,25 @@ func TestInterruptBackup(t *testing.T) {
 	parityPieces := uint64(1)
 	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 
 	// Create a snapshot.
 	if err := r.RenterCreateBackupPost("foo"); err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 	// The snapshot should be listed and not 100% uploaded.
 	ubs, err := r.RenterBackups()
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	} else if len(ubs.Backups) != 1 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("expected one backup, got", ubs)
 	} else if ubs.Backups[0].UploadProgress == 100 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("backup should not be 100% uploaded")
 	}
 
@@ -248,10 +253,13 @@ func TestInterruptBackup(t *testing.T) {
 	// The snapshot should still be listed and incomplete.
 	ubs, err = r.RenterBackups()
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	} else if len(ubs.Backups) != 1 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("expected one backup, got", ubs)
 	} else if ubs.Backups[0].UploadProgress == 100 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("backup should not be 100% uploaded")
 	}
 
@@ -259,14 +267,15 @@ func TestInterruptBackup(t *testing.T) {
 	err = build.Retry(60, time.Second, func() error {
 		ubs, _ := r.RenterBackups()
 		if len(ubs.Backups) != 1 {
-			return errors.New("expected one backup")
+			return fmt.Errorf("expected one backup for %v", len(ubs.Backups))
 		}
 		if ubs.Backups[0].UploadProgress != 100 {
-			return errors.New("backup not uploaded")
+			return fmt.Errorf("backup not uploaded, upload progress is %v", ubs.Backups[0].UploadProgress)
 		}
 		return nil
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }

@@ -133,7 +133,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	defer r.tg.Done()
 
 	// Only load a backup if there are no siafiles yet.
-	root, err := r.staticFileSystem.OpenSiaDir(modules.UserSiaPath())
+	root, err := r.staticFileSystem.OpenSiaDir(modules.UserFolder)
 	if err != nil {
 		return err
 	}
@@ -230,7 +230,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 	// Walk over all the siafiles in in the user's home and add them to the
 	// tarball.
-	return r.staticFileSystem.Walk(modules.UserSiaPath(), func(path string, info os.FileInfo, err error) error {
+	return r.staticFileSystem.Walk(modules.UserFolder, func(path string, info os.FileInfo, err error) error {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
 		if err != nil {
@@ -246,7 +246,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		if err != nil {
 			return err
 		}
-		relPath := strings.TrimPrefix(path, r.staticFileSystem.DirPath(modules.UserSiaPath()))
+		relPath := strings.TrimPrefix(path, r.staticFileSystem.DirPath(modules.UserFolder))
 		header.Name = relPath
 		// If the info is a dir there is nothing more to do besides writing the
 		// header.
@@ -257,7 +257,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 		var file io.Reader
 		if filepath.Ext(path) == modules.SiaFileExtension {
 			// Get the siafile.
-			siaPath, err := modules.UserSiaPath().Join(strings.TrimSuffix(relPath, modules.SiaFileExtension))
+			siaPath, err := modules.UserFolder.Join(strings.TrimSuffix(relPath, modules.SiaFileExtension))
 			if err != nil {
 				return err
 			}
@@ -285,9 +285,9 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			var siaPath modules.SiaPath
 			siaPathStr := strings.TrimSuffix(relPath, modules.SiaDirExtension)
 			if siaPathStr == string(filepath.Separator) {
-				siaPath = modules.UserSiaPath()
+				siaPath = modules.UserFolder
 			} else {
-				siaPath, err = modules.UserSiaPath().Join(siaPathStr)
+				siaPath, err = modules.UserFolder.Join(siaPathStr)
 				if err != nil {
 					return err
 				}
@@ -339,7 +339,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		} else if err != nil {
 			return err
 		}
-		dst := filepath.Join(r.staticFileSystem.DirPath(modules.UserSiaPath()), header.Name)
+		dst := filepath.Join(r.staticFileSystem.DirPath(modules.UserFolder), header.Name)
 
 		// Check for dir.
 		info := header.FileInfo()
@@ -363,7 +363,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			}
 			// Try creating a new SiaDir.
 			var siaPath modules.SiaPath
-			if err := siaPath.LoadSysPath(r.staticFileSystem.DirPath(modules.UserSiaPath()), dst); err != nil {
+			if err := siaPath.LoadSysPath(r.staticFileSystem.DirPath(modules.UserFolder), dst); err != nil {
 				return err
 			}
 			siaPath, err = siaPath.Dir()
@@ -393,7 +393,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
 			// Add the file to the SiaFileSet.
 			reader := bytes.NewReader(b)
-			siaPath, err := modules.UserSiaPath().Join(strings.TrimSuffix(header.Name, modules.SiaFileExtension))
+			siaPath, err := modules.UserFolder.Join(strings.TrimSuffix(header.Name, modules.SiaFileExtension))
 			if err != nil {
 				return err
 			}
