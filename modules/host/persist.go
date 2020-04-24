@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -191,6 +192,12 @@ func (h *Host) load() error {
 		h.log.Println("SUCCESS: successfully upgraded host to v143")
 	} else {
 		return err
+	}
+
+	// Compatv148 delete the old account file.
+	af := filepath.Join(h.persistDir, v148AccountsFilename)
+	if err := os.RemoveAll(af); err != nil {
+		return errors.AddContext(err, "failed to remove legacy account file")
 	}
 
 	// Check if the host is currently using defaults that violate the ratio
