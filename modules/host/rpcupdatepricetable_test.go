@@ -103,7 +103,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 
 	// sleep for the duration of the expiry frequency, seeing as that is greater
 	// than the price guarantee period, it is the worst case
-	err = build.Retry(3, pruneExpiredRPCPriceTableFrequency, func() error {
+	err = build.Retry(10, pruneExpiredRPCPriceTableFrequency, func() error {
 		_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
 		if exists {
 			return errors.New("Expected RPC price table to be pruned because it should have expired")
