@@ -49,6 +49,10 @@ func TestHostContractCountPersistence(t *testing.T) {
 	if ht.host.financialMetrics.ContractCount != 1 {
 		t.Fatal("expected one contract, got", ht.host.financialMetrics.ContractCount)
 	}
+	err = ht.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestHostAddressPersistence checks that the host persists any updates to the
@@ -83,6 +87,10 @@ func TestHostAddressPersistence(t *testing.T) {
 	// Verify that the address persisted.
 	if ht.host.settings.NetAddress != "foo.com:234" {
 		t.Error("User-set address does not seem to be persisting.")
+	}
+	err = ht.host.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -166,5 +174,9 @@ func TestHostPriceRatios(t *testing.T) {
 		t.Log("Actual:", settings.MinSectorAccessPrice.HumanString())
 		t.Log("Expected:", sectorPrice.HumanString())
 		t.Fatal("sector price not as expected")
+	}
+	err = ht.host.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
