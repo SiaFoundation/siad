@@ -234,6 +234,13 @@ func TestHostVerifyAnnouncementAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
 	// Create host addresses.
 	host1 := modules.NetAddress("TwoIPv4Loopback.com:1234")
 	host2 := modules.NetAddress("TwoIPv6Loopback.com:1234")
