@@ -1,8 +1,6 @@
 package host
 
 import (
-	// "errors"
-
 	"encoding/json"
 	"fmt"
 	"io"
@@ -302,16 +300,16 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	// setup storage obligation (emulating a renter creating a contract)
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to make the new tester storage obligation")
 	}
 	so, err = ht.addNoOpRevision(so, renterPK)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to add noop revision")
 	}
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedAddStorageObligation(so, false)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to add the storage obligation")
 	}
 	ht.host.managedUnlockStorageObligation(so.id())
 
@@ -321,15 +319,15 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	// prepare a siamux for the renter
 	renterMuxDir := filepath.Join(ht.persistDir, "rentermux")
 	if err := os.MkdirAll(renterMuxDir, 0700); err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to mkdirall")
 	}
 	muxLogger, err := persist.NewFileLogger(filepath.Join(renterMuxDir, "siamux.log"))
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create mux logger")
 	}
 	renterMux, err := siamux.New("127.0.0.1:0", muxLogger, renterMuxDir)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to create renter mux")
 	}
 
 	pair := &renterHostPair{
@@ -345,7 +343,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	// fetch a price table
 	err = pair.callUpdatePriceTable()
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to update price table")
 	}
 
 	// sanity check to verify the refund account used to update the PT is empty
