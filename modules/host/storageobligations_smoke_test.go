@@ -111,7 +111,6 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 	// Assemble and return the storage obligation.
 	so := storageObligation{
 		OriginTransactionSet: tSet,
-		// TODO: There are no tracking values, because no fees were added.
 
 		h: ht.host,
 	}

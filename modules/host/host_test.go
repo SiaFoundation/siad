@@ -240,6 +240,7 @@ func (ht *hostTester) Close() error {
 		ht.tpool.Close(),
 		ht.cs.Close(),
 		ht.gateway.Close(),
+		ht.mux.Close(),
 	}
 	if err := build.JoinErrors(errs, "; "); err != nil {
 		panic(err)
@@ -298,7 +299,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		Key:       pk[:],
 	}
 
-	// setup storage obligationn (emulating a renter creating a contract)
+	// setup storage obligation (emulating a renter creating a contract)
 	so, err := ht.newTesterStorageObligation()
 	if err != nil {
 		return nil, err
