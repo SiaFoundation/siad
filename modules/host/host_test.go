@@ -235,6 +235,7 @@ func (ht *hostTester) Close() error {
 	errs := []error{
 		ht.host.Close(),
 		ht.miner.Close(),
+		ht.wallet.Close(),
 		ht.tpool.Close(),
 		ht.cs.Close(),
 		ht.gateway.Close(),
