@@ -17,6 +17,12 @@ func TestHostContractCountPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err = ht.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a storage obligation, which should increment contract count
 	so, err := ht.newTesterStorageObligation()
@@ -48,10 +54,6 @@ func TestHostContractCountPersistence(t *testing.T) {
 	// contract count should still be 1
 	if ht.host.financialMetrics.ContractCount != 1 {
 		t.Fatal("expected one contract, got", ht.host.financialMetrics.ContractCount)
-	}
-	err = ht.host.Close()
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 

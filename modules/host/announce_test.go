@@ -63,7 +63,12 @@ func TestHostAnnounce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err = ht.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create an announcement finder to scan the blockchain for host
 	// announcements.
