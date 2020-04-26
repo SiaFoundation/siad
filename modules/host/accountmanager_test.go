@@ -34,6 +34,12 @@ func TestAccountCallDeposit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -66,6 +72,12 @@ func TestAccountMaxBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -96,6 +108,12 @@ func TestAccountCallWithdraw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -174,6 +192,12 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare a new account
@@ -198,6 +222,12 @@ func TestAccountExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account

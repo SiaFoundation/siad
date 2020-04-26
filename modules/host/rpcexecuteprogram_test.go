@@ -145,7 +145,12 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rhp.Close()
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	ht := rhp.ht
 
 	// create a random sector
@@ -288,7 +293,12 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rhp.Close()
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	ht := rhp.ht
 
 	// get a snapshot of the SO before running the program.
@@ -412,7 +422,12 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rhp.Close()
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	ht := rhp.ht
 
 	// get a snapshot of the SO before running the program.

@@ -547,7 +547,12 @@ func TestProcessPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pair.Close()
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// test both payment methods
 	testPayByContract(t, pair)

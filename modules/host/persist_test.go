@@ -67,6 +67,12 @@ func TestHostAddressPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// Set the address of the host.
 	settings := ht.host.InternalSettings()
@@ -90,10 +96,6 @@ func TestHostAddressPersistence(t *testing.T) {
 	if ht.host.settings.NetAddress != "foo.com:234" {
 		t.Error("User-set address does not seem to be persisting.")
 	}
-	err = ht.host.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
 // TestHostPriceRatios checks that the host fixes and price ratios that were
@@ -106,7 +108,12 @@ func TestHostPriceRatios(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// Set the unreasonable defaults for the RPC and Sector Access Prices.
 	settings := ht.host.InternalSettings()
