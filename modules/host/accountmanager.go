@@ -350,7 +350,7 @@ func (am *accountManager) callRefund(id modules.AccountID, amount types.Currency
 func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Currency, refund bool, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
-	his := am.h.InternalSettings()
+	his := am.h.managedInternalSettings()
 	maxRisk := his.MaxEphemeralAccountRisk
 	maxBalance := his.MaxEphemeralAccountBalance
 
@@ -376,7 +376,7 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Curr
 // funds.
 func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypto.Signature, priority int64) error {
 	// Gather some variables
-	his := am.h.InternalSettings()
+	his := am.h.managedInternalSettings()
 	bh := am.h.BlockHeight()
 	maxRisk := his.MaxEphemeralAccountRisk
 
@@ -837,7 +837,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 // on the threadgroup would deadlock.
 func (am *accountManager) threadedPruneExpiredAccounts() {
 	for {
-		his := am.h.InternalSettings()
+		his := am.h.managedInternalSettings()
 		accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
 
 		func() {
