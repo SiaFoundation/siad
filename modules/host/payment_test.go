@@ -290,13 +290,13 @@ func TestProcessParallelPayments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	am := ht.host.staticAccountManager
 	defer func() {
 		err := ht.Close()
 		if err != nil {
 			t.Error(err)
 		}
 	}()
+	am := ht.host.staticAccountManager
 
 	var refillAmount uint64 = 100
 	var maxWithdrawalAmount uint64 = 10
@@ -314,6 +314,12 @@ func TestProcessParallelPayments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer func(pair *renterHostPair) {
+			err := pair.staticRenterMux.Close()
+			if err != nil {
+				t.Error(err)
+			}
+		}(pair)
 		pairs[i] = pair
 
 		if err := callDeposit(am, pair.staticAccountID, types.NewCurrency64(refillAmount)); err != nil {
