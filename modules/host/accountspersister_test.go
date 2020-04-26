@@ -263,6 +263,12 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// verifyFPBuckets verifies the correct FP buckets are on disk
 	verifyFPBuckets := func() error {

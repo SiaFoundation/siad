@@ -175,8 +175,4 @@ func TestHostPriceRatios(t *testing.T) {
 		t.Log("Expected:", sectorPrice.HumanString())
 		t.Fatal("sector price not as expected")
 	}
-	err = ht.host.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
 }
