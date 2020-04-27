@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -102,7 +103,8 @@ type (
 		// are allowed to be created and applied
 		isUpdateInProgress bool
 		// newSectorCounts holds the new values of sector counters during an
-		// update session, so we can use them even before they are store on disk
+		// update session, so we can use them even before they are stored on
+		// disk
 		newSectorCounts map[uint64]uint16
 
 		// muUpdates serializes updates to the refcounter. It is acquired by
@@ -229,12 +231,30 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point, the changes to be made are written to the disk.
+	// This means that we need to panic in case applying the updates fails in
+	// order to avoid data corruption.
+	defer func() {
+		if err != nil {
+			// Before panicking, restore the previous in-mem data, so in case we
+			// recover from the panic we'll have valid in-mem data.
+			rc.isDeleted = false
+			rc.newSectorCounts = make(map[uint64]uint16)
+			fi, e := os.Stat(rc.filepath)
+			if e != nil {
+				build.Critical("Failed to read refcounter stats from disk on panic, cannot restore the valid number of sectors in memory.")
+			} else {
+				rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
+			}
+			panic(err)
+		}
+	}()
 	// Apply the updates.
-	if err := applyUpdates(f, updates...); err != nil {
+	if err = applyUpdates(f, updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
-	if err := txn.SignalUpdatesApplied(); err != nil {
+	if err = txn.SignalUpdatesApplied(); err != nil {
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
