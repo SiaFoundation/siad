@@ -269,18 +269,21 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	if err != nil {
 		return err
 	}
-	// update the reference counter before signalling that the update was
-	// successfully applied
-	err = c.rc.StartUpdate()
-	if err != nil {
-		return err
+	if build.Release == "testing" {
+		// update the reference counter before signalling that the update was
+		// successfully applied
+		err = c.rc.StartUpdate()
+		if err != nil {
+			return err
+		}
+		defer c.rc.UpdateApplied()
+		u, err := c.rc.SetCount(uint64(index), 1)
+		if err != nil {
+			return err
+		}
+		return c.rc.CreateAndApplyTransaction(u)
 	}
-	defer c.rc.UpdateApplied()
-	u, err := c.rc.SetCount(uint64(index), 1)
-	if err != nil {
-		return err
-	}
-	return c.rc.CreateAndApplyTransaction(u)
+	return nil
 }
 
 func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
@@ -418,20 +421,22 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	if err := c.headerFile.Sync(); err != nil {
 		return err
 	}
-	err := func() error {
-		err := c.rc.StartUpdate()
+	if build.Release == "testing" {
+		err := func() error {
+			err := c.rc.StartUpdate()
+			if err != nil {
+				return errors.AddContext(err, "failed to open update session")
+			}
+			defer c.rc.UpdateApplied()
+			u, err := c.rc.DeleteRefCounter()
+			if err != nil {
+				return errors.AddContext(err, "failed to create delete update")
+			}
+			return c.rc.CreateAndApplyTransaction(u)
+		}()
 		if err != nil {
-			return errors.AddContext(err, "failed to open update session")
+			return errors.AddContext(err, "failed to delete reference counter")
 		}
-		defer c.rc.UpdateApplied()
-		u, err := c.rc.DeleteRefCounter()
-		if err != nil {
-			return errors.AddContext(err, "failed to create delete update")
-		}
-		return c.rc.CreateAndApplyTransaction(u)
-	}()
-	if err != nil {
-		return errors.AddContext(err, "failed to delete reference counter")
 	}
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
@@ -649,8 +654,13 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if err := rootsFile.Sync(); err != nil {
 		return modules.RenterContract{}, err
 	}
-	rc, err := NewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
-	// TODO update the counters to their real values. Maybe should be part of New?
+	rc := &RefCounter{}
+	if build.Release == "testing" {
+		_, err = NewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
+		if err != nil {
+			return modules.RenterContract{}, errors.AddContext(err, "failed to create a refcounter")
+		}
+	}
 	sc := &SafeContract{
 		header:      h,
 		merkleRoots: merkleRoots,
@@ -748,16 +758,16 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCounte
 			unappliedTxns = append(unappliedTxns, t)
 		}
 	}
-	// load the reference counter
-	rc, err := LoadRefCounter(refCounterPath, cs.wal)
-	if errors.Contains(err, ErrRefCounterNotExist) {
-		// there is no reference counter, create a new one
-		if rc, err = NewRefCounter(refCounterPath, uint64(merkleRoots.numMerkleRoots), cs.wal); err != nil {
+	rc := &RefCounter{}
+	if build.Release == "testing" {
+		// load the reference counter or create one if it doesn't exist
+		rc, err = LoadRefCounter(refCounterPath, cs.wal)
+		if errors.Contains(err, ErrRefCounterNotExist) {
+			rc, err = NewRefCounter(refCounterPath, uint64(merkleRoots.numMerkleRoots), cs.wal)
+		}
+		if err != nil {
 			return err
 		}
-		// TODO update the counters to their real values. Maybe should be part of New?
-	} else if err != nil {
-		return err
 	}
 	// add to set
 	sc := &SafeContract{
