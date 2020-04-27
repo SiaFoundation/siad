@@ -247,9 +247,16 @@ func (tn *TestNode) KnowsHost(host *TestNode) error {
 	return errors.New("host ist unknown")
 }
 
-// Rename renames a remoteFile and returns the new file.
+// Rename renames a remoteFile with the root parameter set to false and returns
+// the new file.
 func (tn *TestNode) Rename(rf *RemoteFile, newPath modules.SiaPath) (*RemoteFile, error) {
-	err := tn.RenterRenamePost(rf.SiaPath(), newPath)
+	return tn.RenameRoot(rf, newPath, false)
+}
+
+// RenameRoot renames a remoteFile with the option of setting the root parameter
+// and returns the new file.
+func (tn *TestNode) RenameRoot(rf *RemoteFile, newPath modules.SiaPath, root bool) (*RemoteFile, error) {
+	err := tn.RenterRenamePost(rf.SiaPath(), newPath, root)
 	if err != nil {
 		return nil, err
 	}

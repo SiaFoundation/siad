@@ -552,7 +552,7 @@ func TestStresstestSiaFileSet(t *testing.T) {
 				continue
 			}
 			sp := files[fastrand.Intn(len(files))].SiaPath
-			err = r.RenterRenamePost(sp, modules.RandomSiaPath())
+			err = r.RenterRenamePost(sp, modules.RandomSiaPath(), false)
 			if err != nil && !strings.Contains(err.Error(), siafile.ErrUnknownPath.Error()) {
 				t.Fatal(err)
 			}
