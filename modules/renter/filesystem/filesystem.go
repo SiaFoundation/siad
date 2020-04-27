@@ -371,7 +371,7 @@ func (fs *FileSystem) WriteFile(siaPath modules.SiaPath, data []byte, perm os.Fi
 // from a legacy file.
 func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FileNode, error) {
 	// Get file's SiaPath.
-	sp, err := modules.UserSiaPath().Join(fd.Name)
+	sp, err := modules.UserFolder.Join(fd.Name)
 	if err != nil {
 		return nil, err
 	}
