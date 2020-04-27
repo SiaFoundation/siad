@@ -38,30 +38,73 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// create an arbitrary amount of renters
+	// prepare an amount with which we'll refund the EAs
+	his := ht.host.InternalSettings()
+	funding := his.MaxEphemeralAccountBalance.Div64(1e5)
+
+	// create 10 renter host pairs
 	pairs := make([]*renterHostPair, 10)
 	for i := range pairs {
 		pair, err := newRenterHostPairCustomHostTester(ht)
 		if err != nil {
 			t.Fatal(err)
 		}
+		// prefund the EAs
+		_, err = pair.callFundEphemeralAccount(funding)
+		if err != nil {
+			t.Fatal(err)
+		}
 		pairs[i] = pair
 	}
 
-	// setup a lock guarding the filecontracts seeing as we are concurrently
-	// accessing them and generating revisions for them
-	fcLocks := make(map[types.FileContractID]*sync.Mutex)
+	// for every pair precreate MDM programs
+	readFullPrograms := make(map[types.FileContractID]mdmProgram)
+	readPartPrograms := make(map[types.FileContractID]mdmProgram)
+	hasSectorPrograms := make(map[types.FileContractID]mdmProgram)
 	for _, pair := range pairs {
-		fcLocks[pair.staticFCID] = new(sync.Mutex)
+		root, _, err := pair.addRandomSector()
+		if err != nil {
+			t.Fatal(err)
+		}
+		pt := pair.PriceTable()
+		fcid := pair.staticFCID
+		readFullPrograms[fcid] = createRandomReadSectorProgram(pt, root, true)
+		readPartPrograms[fcid] = createRandomReadSectorProgram(pt, root, false)
+		hasSectorPrograms[fcid] = createRandomHasSectorProgram(pt, root)
 	}
 
-	// setup a 'ReadSector' program for every pair
-	readFullSectors := make(map[types.FileContractID]readSectorProgram)
-	readPartialSectors := make(map[types.FileContractID]readSectorProgram)
-	for _, pair := range pairs {
-		fcid := pair.staticFCID
-		readFullSectors[fcid] = createRandomReadSectorProgram(pair, true)
-		readPartialSectors[fcid] = createRandomReadSectorProgram(pair, false)
+	// randomScenario is a helper function that randomly selects which program
+	// to execute, returns its cost and a function that tracks a successful call
+	randomScenario := func(pair *renterHostPair, stats *rpcStats) (program mdmProgram, cost types.Currency, track func()) {
+		pt := pair.PriceTable()
+		scenario := fastrand.Intn(3)
+		switch scenario {
+		case 0:
+			program = readFullPrograms[pair.staticFCID]
+			dlcost := pt.DownloadBandwidthCost.Mul64(10220)
+			ulcost := pt.UploadBandwidthCost.Mul64(18980)
+			cost = program.cost.Add(dlcost).Add(ulcost)
+			track = func() {
+				stats.trackReadSector(true)
+			}
+		case 1:
+			program = readPartPrograms[pair.staticFCID]
+			dlcost := pt.DownloadBandwidthCost.Mul64(10220)
+			ulcost := pt.UploadBandwidthCost.Mul64(18980)
+			cost = program.cost.Add(dlcost).Add(ulcost)
+			track = func() {
+				stats.trackReadSector(false)
+			}
+		case 2:
+			program = hasSectorPrograms[pair.staticFCID]
+			dlcost := pt.DownloadBandwidthCost.Mul64(7300)
+			ulcost := pt.UploadBandwidthCost.Mul64(18980)
+			cost = program.cost.Add(dlcost).Add(ulcost)
+			track = func() {
+				stats.trackHasSector()
+			}
+		}
+		return
 	}
 
 	// start the timer
@@ -71,8 +114,9 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	})
 
 	// collect rpc stats
-	var stats rpcStats
+	stats := &rpcStats{}
 
+	numThreads := 10
 	var wg sync.WaitGroup
 	for _, p := range pairs {
 		// spin up a goroutine for every pair that just tries to recover from a
@@ -83,25 +127,27 @@ func TestRPCConcurrentCalls(t *testing.T) {
 			for err := range recoverChan {
 				select {
 				case <-finished:
-					break
+					continue
 				default:
 				}
 
+				// try to recover from insufficient balance
 				var recovered bool
-
-				// try to recover from expired PT
-				if !recovered && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
-					err = pair.updatePriceTable(true)
-					stats.trackUpdatePT(true)
+				if !recovered && strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
+					_, err = pair.fundEphemeralAccount(pair.PriceTable(), funding)
+					stats.trackFundEA()
 					recovered = err == nil
 				}
 
-				// try to recover from insufficient balance
-				if !recovered && strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
-					his := pair.ht.host.InternalSettings()
-					funding := his.MaxEphemeralAccountBalance.Div64(10)
-					_, err = pair.callFundEphemeralAccount(funding)
-					stats.trackFundEA()
+				// try to recover from expired PT
+				if !recovered && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
+					var payByFC bool
+					err = pair.updatePriceTable(false) // try using an EA
+					if err != nil {
+						pair.updatePriceTable(true)
+						payByFC = true
+					}
+					stats.trackUpdatePT(payByFC)
 					recovered = err == nil
 				}
 
@@ -116,8 +162,8 @@ func TestRPCConcurrentCalls(t *testing.T) {
 			}
 		}(p, recoverChan)
 
-		wg.Add(10)
-		for i := 0; i < 10; i++ {
+		wg.Add(numThreads)
+		for i := 0; i < numThreads; i++ {
 			go func(pair *renterHostPair, recoverChan chan error) {
 				defer wg.Done()
 			LOOP:
@@ -128,30 +174,21 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					default:
 					}
 
-					// execute full sector read 50% of the time
-					var err error
-					var full = fastrand.Intn(2) == 0
-
-					var p readSectorProgram
-					if full {
-						p = readFullSectors[pair.staticFCID]
-					} else {
-						p = readPartialSectors[pair.staticFCID]
-					}
-
+					// get a random program to execute
+					p, cost, trackFn := randomScenario(pair, stats)
 					epr := modules.RPCExecuteProgramRequest{
 						FileContractID:    pair.staticFCID,
 						Program:           p.program,
 						ProgramDataLength: uint64(len(p.data)),
 					}
-					curr := pair.PriceTable()
-					_, _, err = pair.executeProgram(curr, epr, p.data, p.Cost(curr))
-					if err == nil {
-						stats.trackReadSector(full)
-					}
 
+					// execute it and handle the error
+					pt := pair.PriceTable()
+					_, _, err := pair.executeProgram(pt, epr, p.data, cost)
 					if err != nil {
 						recoverChan <- err
+					} else {
+						trackFn()
 					}
 				}
 			}(p, recoverChan)
@@ -160,36 +197,22 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	<-finished
 	wg.Wait()
 
-	t.Logf("In %.f seconds, on %d cores, the following RPCs completed successfully: %s\n", timeout.Seconds(), runtime.NumCPU(), stats.String())
+	t.Logf("In %.f seconds, on %d cores across %d threads, the following RPCs completed: %s\n", timeout.Seconds(), runtime.NumCPU(), numThreads, stats.String())
 }
 
-// readSectorProgram is a helper struct that contains all necessary details to
-// execute an MDM program to read a full (or partial) sector from the host
-type readSectorProgram struct {
+// mdmProgram is a helper struct that contains all necessary details to execute
+// an MDM program to read a full (or partial) sector from the host
+type mdmProgram struct {
 	program modules.Program
 	data    []byte
 	cost    types.Currency
 }
 
-// Cost returns the cost of running this program, calculated using the given rpc
-// price table
-func (rsp *readSectorProgram) Cost(pt *modules.RPCPriceTable) types.Currency {
-	dlcost := pt.DownloadBandwidthCost.Mul64(10220)
-	ulcost := pt.UploadBandwidthCost.Mul64(18980)
-	return rsp.cost.Add(dlcost).Add(ulcost)
-}
-
-// createRandomReadSectorProgram is a helper function that creates a random
-// sector on the host and returns a program that reads this sector. It returns a
-// program to read a full sector or partial sector depending on the `full`
-// parameter. In case `full` is false, we will read a partial sector, which is a
-// random length at random offset.
-func createRandomReadSectorProgram(pair *renterHostPair, full bool) readSectorProgram {
-	sectorRoot, _, err := pair.addRandomSector()
-	if err != nil {
-		panic(err)
-	}
-
+// createRandomReadSectorProgram is a helper function that creates a program to
+// read data from the host. If full is set to true, the program will perform a
+// full sector read, if it is false we return a program that reads a random
+// couple of segments at random offset.
+func createRandomReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full bool) mdmProgram {
 	var offset uint64
 	var length uint64
 	if full {
@@ -199,10 +222,21 @@ func createRandomReadSectorProgram(pair *renterHostPair, full bool) readSectorPr
 		offset = uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
 		length = uint64(crypto.SegmentSize) * (fastrand.Uint64n(5) + 1)
 	}
+	p, data, cost, _, _, _ := newReadSectorProgram(length, offset, root, pt)
+	return mdmProgram{
+		program: p,
+		data:    data,
+		cost:    cost,
+	}
+}
 
-	program, data, cost, _, _, _ := newReadSectorProgram(length, offset, sectorRoot, pair.PriceTable())
-	return readSectorProgram{
-		program: program,
+// createRandomHasSectorProgram is a helper function that creates a random
+// sector on the host and returns a program that returns whether or not the host
+// has this sector.
+func createRandomHasSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash) mdmProgram {
+	p, data, cost, _, _, _ := newHasSectorProgram(root, pt)
+	return mdmProgram{
+		program: p,
 		data:    data,
 		cost:    cost,
 	}
@@ -211,48 +245,61 @@ func createRandomReadSectorProgram(pair *renterHostPair, full bool) readSectorPr
 // rpcStats is a helper struct to collect the amount of times an RPC has been
 // performed.
 type rpcStats struct {
-	atomicUpdatePTCalls_FC                  uint64
-	atomicUpdatePTCalls_EA                  uint64
-	atomicFundAccountCalls_FC               uint64
-	atomicExecuteProgramFullReadCalls_EA    uint64
-	atomicExecuteProgramPartialReadCalls_EA uint64
+	atomicUpdatePTCallsFC                uint64
+	atomicUpdatePTCallsEA                uint64
+	atomicFundAccountCalls               uint64
+	atomicExecuteProgramFullReadCalls    uint64
+	atomicExecuteProgramPartialReadCalls uint64
+	atomicExecuteHasSectorCalls          uint64
 }
 
 // trackPartialRead tracks an update price table call
 func (rs *rpcStats) trackUpdatePT(payByFC bool) {
 	if payByFC {
-		atomic.AddUint64(&rs.atomicUpdatePTCalls_FC, 1)
+		atomic.AddUint64(&rs.atomicUpdatePTCallsFC, 1)
 	} else {
-		atomic.AddUint64(&rs.atomicUpdatePTCalls_EA, 1)
+		atomic.AddUint64(&rs.atomicUpdatePTCallsEA, 1)
 	}
 }
 
 // trackPartialRead tracks a fund ephemeral account call
 func (rs *rpcStats) trackFundEA() {
-	atomic.AddUint64(&rs.atomicFundAccountCalls_FC, 1)
+	atomic.AddUint64(&rs.atomicFundAccountCalls, 1)
 }
 
 // trackPartialRead tracks a sector read
 func (rs *rpcStats) trackReadSector(full bool) {
 	if full {
-		atomic.AddUint64(&rs.atomicExecuteProgramFullReadCalls_EA, 1)
+		atomic.AddUint64(&rs.atomicExecuteProgramFullReadCalls, 1)
 	} else {
-		atomic.AddUint64(&rs.atomicExecuteProgramPartialReadCalls_EA, 1)
+		atomic.AddUint64(&rs.atomicExecuteProgramPartialReadCalls, 1)
 	}
+}
+
+// trackHasSector tracks a sector lookup
+func (rs *rpcStats) trackHasSector() {
+	atomic.AddUint64(&rs.atomicExecuteHasSectorCalls, 1)
 }
 
 // String prints a string representation of the RPC statistics
 func (rs *rpcStats) String() string {
-	numUpdatePT_FC := atomic.LoadUint64(&rs.atomicUpdatePTCalls_FC)
-	numUpdatePT_EA := atomic.LoadUint64(&rs.atomicUpdatePTCalls_EA)
-	numFundAccount_FC := atomic.LoadUint64(&rs.atomicFundAccountCalls_FC)
-	numExecProgram_Full_EA := atomic.LoadUint64(&rs.atomicExecuteProgramFullReadCalls_EA)
-	numExecProgram_Partial_EA := atomic.LoadUint64(&rs.atomicExecuteProgramPartialReadCalls_EA)
+	numPTFC := atomic.LoadUint64(&rs.atomicUpdatePTCallsFC)
+	numPTEA := atomic.LoadUint64(&rs.atomicUpdatePTCallsEA)
+	numPT := numPTFC + numPTEA
+
+	numEA := atomic.LoadUint64(&rs.atomicFundAccountCalls)
+	numFS := atomic.LoadUint64(&rs.atomicExecuteProgramFullReadCalls)
+	numPS := atomic.LoadUint64(&rs.atomicExecuteProgramPartialReadCalls)
+	numHS := atomic.LoadUint64(&rs.atomicExecuteHasSectorCalls)
+	total := numPT + numEA + numFS + numPS + numHS
 
 	return fmt.Sprintf(`
-	UpdatePriceTableRPC: %d (%d FC %d EA)
-	FundEphemeralAccountRPC: %d (%d FC)
-	ExecuteMDMProgramRPC (Full Sector Read): %d (%d EA)
-	ExecuteMDMProgramRPC (Partial Sector Read): %d (%d EA)
-`, numUpdatePT_FC+numUpdatePT_EA, numUpdatePT_FC, numUpdatePT_EA, numFundAccount_FC, numFundAccount_FC, numExecProgram_Full_EA, numExecProgram_Full_EA, numExecProgram_Partial_EA, numExecProgram_Partial_EA)
+	Total RPC Calls: %d
+ 
+	UpdatePriceTableRPC: %d (%d by FC)
+	FundEphemeralAccountRPC: %d
+	ExecuteMDMProgramRPC (Full Sector Read): %d
+	ExecuteMDMProgramRPC (Partial Sector Read): %d
+	ExecuteMDMProgramRPC (Has Sector): %d
+`, total, numPT, numPTFC, numEA, numFS, numPS, numHS)
 }
