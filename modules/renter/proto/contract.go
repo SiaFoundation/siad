@@ -276,12 +276,7 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 		return err
 	}
 	defer c.rc.UpdateApplied()
-	var u writeaheadlog.Update
-	if uint64(index) > c.rc.numSectors {
-		u, err = c.rc.Append()
-	} else {
-		// TODO we need a WriteAt update here
-	}
+	u, err := c.rc.SetCount(uint64(index), 1)
 	if err != nil {
 		return err
 	}

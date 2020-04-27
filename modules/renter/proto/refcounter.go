@@ -349,6 +349,21 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	return createWriteAtUpdate(rc.filepath, secIdx, count), nil
 }
 
+// SetCount sets the value of the reference counter of a given sector. The
+// sector is specified by its sequential number (secIdx).
+func (rc *RefCounter) SetCount(secIdx uint64, c uint16) (writeaheadlog.Update, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if !rc.isUpdateInProgress {
+		return writeaheadlog.Update{}, ErrUpdateWithoutUpdateSession
+	}
+	if rc.isDeleted {
+		return writeaheadlog.Update{}, ErrUpdateAfterDelete
+	}
+	rc.newSectorCounts[secIdx] = c
+	return createWriteAtUpdate(rc.filepath, secIdx, c), nil
+}
+
 // StartUpdate acquires a lock, ensuring the caller is the only one currently
 // allowed to perform updates on this refcounter file.
 func (rc *RefCounter) StartUpdate() error {
