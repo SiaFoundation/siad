@@ -95,17 +95,19 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	defer rhp.Close()
 
 	// verify the price table is being tracked
-	pt := rhp.latestPT
+	pt, err := rhp.FetchPriceTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	_, tracked := ht.host.staticPriceTables.managedGet(pt.UID)
 	if !tracked {
-		t.Log("UID:", pt.UID)
-		t.Log("Guaranteed:", ht.host.staticPriceTables.guaranteed)
 		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
 	// sleep for the duration of the expiry frequency, seeing as that is greater
 	// than the price guarantee period, it is the worst case
-	err = build.Retry(3, pruneExpiredRPCPriceTableFrequency, func() error {
+	err = build.Retry(10, pruneExpiredRPCPriceTableFrequency, func() error {
 		_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
 		if exists {
 			return errors.New("Expected RPC price table to be pruned because it should have expired")

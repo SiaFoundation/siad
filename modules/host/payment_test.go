@@ -306,18 +306,18 @@ func TestProcessParallelPayments(t *testing.T) {
 		}
 		pairs[i] = pair
 
-		if err := callDeposit(am, pair.accountID, types.NewCurrency64(refillAmount)); err != nil {
+		if err := callDeposit(am, pair.staticAccountID, types.NewCurrency64(refillAmount)); err != nil {
 			t.Log("failed deposit", err)
 			t.Fatal(err)
 		}
-		bt.TrackDeposit(pair.accountID, int64(refillAmount))
+		bt.TrackDeposit(pair.staticAccountID, int64(refillAmount))
 	}
 
 	// setup a lock guarding the filecontracts seeing as we are concurrently
 	// accessing them and generating revisions for them
 	fcLocks := make(map[types.FileContractID]*sync.Mutex)
 	for _, pair := range pairs {
-		fcLocks[pair.fcid] = new(sync.Mutex)
+		fcLocks[pair.staticFCID] = new(sync.Mutex)
 	}
 
 	var fcPayments uint64
@@ -365,14 +365,14 @@ func TestProcessParallelPayments(t *testing.T) {
 				var pd modules.PaymentDetails
 				var err error
 				if payByFC {
-					fcLocks[rp.fcid].Lock()
+					fcLocks[rp.staticFCID].Lock()
 					if pd, failed, err = runPayByContractFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&fcFailures, 1)
 					}
 					atomic.AddUint64(&fcPayments, 1)
-					fcLocks[rp.fcid].Unlock()
+					fcLocks[rp.staticFCID].Unlock()
 				} else {
-					refill := bt.TrackWithdrawal(rp.accountID, int64(rw))
+					refill := bt.TrackWithdrawal(rp.staticAccountID, int64(rw))
 					if refill {
 						go func(id modules.AccountID) {
 							time.Sleep(100 * time.Millisecond) // make it slow
@@ -380,7 +380,7 @@ func TestProcessParallelPayments(t *testing.T) {
 								t.Error(err)
 							}
 							bt.TrackDeposit(id, int64(refillAmount))
-						}(rp.accountID)
+						}(rp.staticAccountID)
 					}
 					if pd, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&eaFailures, 1)
@@ -435,7 +435,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 			}
 			// send PaymentRequest & PayByContractRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-			pbcRequest := newPayByContractRequest(rev, sig, pair.accountID)
+			pbcRequest := newPayByContractRequest(rev, sig, pair.staticAccountID)
 			err = modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 			if err != nil {
 				return err
@@ -481,12 +481,12 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 	err = run(
 		func() error {
 			// create the request
-			pbeaRequest := newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey)
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.staticAccountID, pair.ht.host.blockHeight+6, amount, pair.staticAccountKey)
 
 			if fail {
 				// this induces failure because the nonce will be different and
 				// this the signature will be invalid
-				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey).Signature
+				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.staticAccountID, pair.ht.host.blockHeight+6, amount, pair.staticAccountKey).Signature
 			}
 
 			// send PaymentRequest & PayByEphemeralAccountRequest
@@ -609,7 +609,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 
 	// verify the host updated the storage obligation
-	updated, err := host.managedGetStorageObligation(pair.fcid)
+	updated, err := host.managedGetStorageObligation(pair.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
