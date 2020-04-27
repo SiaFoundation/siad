@@ -405,7 +405,7 @@ func rentercmd() {
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 
 	// Print out file health summary for the renter
-	dirs := getDir(modules.RootSiaPath(), false, true)
+	dirs := getDir(modules.RootSiaPath(), true, true)
 	fmt.Println()
 	renterFileHealthSummary(dirs)
 }
@@ -469,13 +469,13 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirRootGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
+		return errors.AddContext(err, "unable to get root dir with RenterDirRootGet")
 	}
 
 	rc, err := httpClient.RenterDisabledContractsGet()
