@@ -8,6 +8,7 @@ set -e
 generate_till_version=v1.4.7
 changelog_md=../CHANGELOG.md
 changelog_files_dir=.
+changelog_ignore=.changelogignore
 head_filename=changelog-head.md
 mid_filename=changelog-mid.md
 tail_filename=changelog-tail.md
@@ -38,11 +39,14 @@ function add_items {
     local new_line=false
     for item in $items_list
     do
-        # skip .init files and .DS_Store (from MacOS)
-        if [ $(basename "$item") == .init ] || [ $(basename "$item") == .DS_Store ]
-        then
-            continue
-        fi
+        # skip files from .changelogignore (e.g. .init to be able to commit
+        # empty directory structure to git and .DS_Store from MacOS)
+        cat "$changelog_ignore" | while read file_to_ignore; do
+            if [ $(basename "$item") == "$file_to_ignore" ]
+            then
+                continue 2
+            fi
+        done
 
         if [ "$section_has_items" == false ]
     	then
