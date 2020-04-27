@@ -17,6 +17,12 @@ func TestHostContractCountPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err = ht.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a storage obligation, which should increment contract count
 	so, err := ht.newTesterStorageObligation()
@@ -61,6 +67,12 @@ func TestHostAddressPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// Set the address of the host.
 	settings := ht.host.InternalSettings()
@@ -96,7 +108,12 @@ func TestHostPriceRatios(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// Set the unreasonable defaults for the RPC and Sector Access Prices.
 	settings := ht.host.InternalSettings()

@@ -80,8 +80,11 @@ func createAPIPasswordFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// ensure SiaDir has the correct mode as MkdirAll won't change the mode of
-	// an existent directory
+	// Ensure SiaDir has the correct mode as MkdirAll won't change the mode of
+	// an existent directory. We specifically use 0700 in order to prevent
+	// potential attackers from accessing the sensitive information inside, both
+	// by reading the contents of the directory and/or by creating files with
+	// specific names which siad would later on read from and/or write to.
 	err = os.Chmod(SiaDir(), 0700)
 	if err != nil {
 		return "", err

@@ -26,8 +26,13 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	ht := pair.ht
-	defer ht.Close()
 
 	// fetch the price table
 	pt := pair.PriceTable()
