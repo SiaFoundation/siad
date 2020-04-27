@@ -27,9 +27,9 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	// determine a reasonable timeout
 	var timeout time.Duration
 	if build.VLONG {
-		timeout = time.Minute
+		timeout = 5 * time.Minute
 	} else {
-		timeout = 10 * time.Second
+		timeout = 30 * time.Second
 	}
 
 	// setup the host
@@ -37,9 +37,6 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	his := ht.host.InternalSettings()
-	funding := his.MaxEphemeralAccountBalance.Div64(10)
 
 	// create an arbitrary amount of renters
 	pairs := make([]*renterHostPair, 10)
@@ -74,118 +71,91 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	})
 
 	// collect rpc stats
-	stats := rpcStats{}
+	var stats rpcStats
 
 	var wg sync.WaitGroup
-
-	// spin up a goroutine for every pair and perform random RPC calls
 	for _, p := range pairs {
-		wg.Add(1)
-		go func(pair *renterHostPair) {
-			defer wg.Done()
-			// create two streams
-			rs, hs := NewTestStreams()
-			defer rs.Close()
-			defer hs.Close()
-
-		LOOP:
-			for {
+		// spin up a goroutine for every pair that just tries to recover from a
+		// set of errors which are expected to happen, if we can recover from
+		// them, the test should not be considered as failed
+		recoverChan := make(chan error)
+		go func(pair *renterHostPair, recoverChan chan error) {
+			for err := range recoverChan {
 				select {
 				case <-finished:
-					break LOOP
+					break
 				default:
 				}
 
-				var err error
-
-				// pay by contract 5% of time
-				var payByFC bool
-				if fastrand.Intn(100) < 5 {
-					payByFC = true
-				}
-
-				var done bool
-
-				// update price table 10% of the time
-				if !done && fastrand.Intn(100) < 10 {
-					if payByFC {
-						fcLocks[pair.staticFCID].Lock()
-						err = pair.updatePriceTable(payByFC)
-						fcLocks[pair.staticFCID].Unlock()
-					} else {
-						err = pair.updatePriceTable(payByFC)
-					}
-					stats.trackUpdatePT(payByFC)
-					done = true
-				}
-
-				// fund account 30% of the time
-				if !done && fastrand.Intn(100) < 30 {
-					curr := pair.PriceTable()
-					fcLocks[pair.staticFCID].Lock()
-					_, err = pair.fundEphemeralAccount(curr, funding)
-					fcLocks[pair.staticFCID].Unlock()
-					stats.trackFundEA()
-					done = true
-				}
-
-				// execute full sector read 30% of the time
-				if !done && fastrand.Intn(100) < 30 {
-					p := readFullSectors[pair.staticFCID]
-					epr := modules.RPCExecuteProgramRequest{
-						FileContractID:    pair.staticFCID,
-						Program:           p.program,
-						ProgramDataLength: uint64(len(p.data)),
-					}
-					curr := pair.PriceTable()
-					budget := p.Cost(curr)
-					_, _, err = pair.executeProgram(curr, epr, p.data, budget)
-					stats.trackFullRead()
-					done = true
-				}
-
-				// execute partial sector read the rest of the time
-				if !done {
-					p := readPartialSectors[pair.staticFCID]
-					epr := modules.RPCExecuteProgramRequest{
-						FileContractID:    pair.staticFCID,
-						Program:           p.program,
-						ProgramDataLength: uint64(len(p.data)),
-					}
-					curr := pair.PriceTable()
-					budget := p.Cost(curr)
-					_, _, err = pair.executeProgram(curr, epr, p.data, budget)
-					stats.trackPartialRead()
-					done = true
-				}
+				var recovered bool
 
 				// try to recover from expired PT
-				if err != nil && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
-					fcLocks[pair.staticFCID].Lock()
+				if !recovered && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
 					err = pair.updatePriceTable(true)
-					fcLocks[pair.staticFCID].Unlock()
 					stats.trackUpdatePT(true)
+					recovered = err == nil
 				}
 
 				// try to recover from insufficient balance
-				if err != nil && strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
-					fcLocks[pair.staticFCID].Lock()
+				if !recovered && strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
+					his := pair.ht.host.InternalSettings()
+					funding := his.MaxEphemeralAccountBalance.Div64(10)
 					_, err = pair.callFundEphemeralAccount(funding)
-					fcLocks[pair.staticFCID].Unlock()
 					stats.trackFundEA()
+					recovered = err == nil
 				}
 
 				// ignore max balance exceeded
-				if err != nil && strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) {
+				if !recovered && strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) {
 					err = nil
 				}
 
 				if err != nil {
 					t.Error(err)
-					break LOOP
 				}
 			}
-		}(p)
+		}(p, recoverChan)
+
+		wg.Add(10)
+		for i := 0; i < 10; i++ {
+			go func(pair *renterHostPair, recoverChan chan error) {
+				defer wg.Done()
+			LOOP:
+				for {
+					select {
+					case <-finished:
+						break LOOP
+					default:
+					}
+
+					// execute full sector read 50% of the time
+					var err error
+					var full = fastrand.Intn(2) == 0
+
+					var p readSectorProgram
+					if full {
+						p = readFullSectors[pair.staticFCID]
+					} else {
+						p = readPartialSectors[pair.staticFCID]
+					}
+
+					epr := modules.RPCExecuteProgramRequest{
+						FileContractID:    pair.staticFCID,
+						Program:           p.program,
+						ProgramDataLength: uint64(len(p.data)),
+					}
+					curr := pair.PriceTable()
+					_, _, err = pair.executeProgram(curr, epr, p.data, p.Cost(curr))
+					if err == nil {
+						stats.trackReadSector(full)
+					}
+
+					if err != nil {
+						recoverChan <- err
+					}
+				}
+			}(p, recoverChan)
+		}
 	}
 	<-finished
 	wg.Wait()
@@ -262,18 +232,17 @@ func (rs *rpcStats) trackFundEA() {
 	atomic.AddUint64(&rs.atomicFundAccountCalls_FC, 1)
 }
 
-// trackPartialRead tracks a full read
-func (rs *rpcStats) trackFullRead() {
-	atomic.AddUint64(&rs.atomicExecuteProgramFullReadCalls_EA, 1)
-}
-
-// trackPartialRead tracks a partial read
-func (rs *rpcStats) trackPartialRead() {
-	atomic.AddUint64(&rs.atomicExecuteProgramPartialReadCalls_EA, 1)
+// trackPartialRead tracks a sector read
+func (rs *rpcStats) trackReadSector(full bool) {
+	if full {
+		atomic.AddUint64(&rs.atomicExecuteProgramFullReadCalls_EA, 1)
+	} else {
+		atomic.AddUint64(&rs.atomicExecuteProgramPartialReadCalls_EA, 1)
+	}
 }
 
 // String prints a string representation of the RPC statistics
-func (rs rpcStats) String() string {
+func (rs *rpcStats) String() string {
 	numUpdatePT_FC := atomic.LoadUint64(&rs.atomicUpdatePTCalls_FC)
 	numUpdatePT_EA := atomic.LoadUint64(&rs.atomicUpdatePTCalls_EA)
 	numFundAccount_FC := atomic.LoadUint64(&rs.atomicFundAccountCalls_FC)
@@ -285,6 +254,5 @@ func (rs rpcStats) String() string {
 	FundEphemeralAccountRPC: %d (%d FC)
 	ExecuteMDMProgramRPC (Full Sector Read): %d (%d EA)
 	ExecuteMDMProgramRPC (Partial Sector Read): %d (%d EA)
-`, numUpdatePT_FC+numUpdatePT_EA, numUpdatePT_FC, numUpdatePT_EA, numFundAccount_FC, numFundAccount_FC, numExecProgram_Full_EA, numExecProgram_Full_EA,
-		numExecProgram_Partial_EA, numExecProgram_Partial_EA)
+`, numUpdatePT_FC+numUpdatePT_EA, numUpdatePT_FC, numUpdatePT_EA, numFundAccount_FC, numFundAccount_FC, numExecProgram_Full_EA, numExecProgram_Full_EA, numExecProgram_Partial_EA, numExecProgram_Partial_EA)
 }
