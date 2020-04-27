@@ -284,7 +284,7 @@ func utilsverifyseed() {
 // display-api-password`.
 // displays the API Password to the user.
 func utilsdisplayapipassword() {
-	fmt.Println(siacGlobalHttpClient.Password)
+	fmt.Println(httpClient.Password)
 }
 
 // utilsbruteforceseed is the handler for the command `siac utils

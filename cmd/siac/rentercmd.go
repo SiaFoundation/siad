@@ -290,7 +290,7 @@ func rentercmd() {
 	defer fmt.Println()
 
 	// Get Renter
-	rg, err := siacGlobalHttpClient.RenterGet()
+	rg, err := httpClient.RenterGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Renter:\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -409,7 +409,11 @@ func filePercentageBreakdown(dirs []directoryInfo) (float64, float64, float64, f
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
+<<<<<<< HEAD
 	rf, err := siacGlobalHttpClient.RenterDirRootGet(modules.RootSiaPath())
+=======
+	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
+>>>>>>> Revert global httpClient renaming
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -418,7 +422,7 @@ func renterFilesAndContractSummary() error {
 		return errors.AddContext(err, "unable to get root dir with RenterDirRootGet")
 	}
 
-	rc, err := siacGlobalHttpClient.RenterDisabledContractsGet()
+	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
 		return err
 	}
@@ -449,7 +453,7 @@ func renterFilesAndContractSummary() error {
 // renteruploadscmd is the handler for the command `siac renter uploads`.
 // Lists files currently uploading.
 func renteruploadscmd() {
-	rf, err := siacGlobalHttpClient.RenterFilesGet(false)
+	rf, err := httpClient.RenterFilesGet(false)
 	if err != nil {
 		die("Could not get upload queue:", err)
 	}
@@ -480,7 +484,7 @@ func renteruploadscmd() {
 // Lists files currently downloading, and optionally previously downloaded
 // files if the -H or --history flag is specified.
 func renterdownloadscmd() {
-	queue, err := siacGlobalHttpClient.RenterDownloadsGet()
+	queue, err := httpClient.RenterDownloadsGet()
 	if err != nil {
 		die("Could not get download queue:", err)
 	}
@@ -565,7 +569,7 @@ Spending:
 // renterallowancecmd is the handler for the command `siac renter allowance`.
 // displays the current allowance.
 func renterallowancecmd() {
-	rg, err := siacGlobalHttpClient.RenterGet()
+	rg, err := httpClient.RenterGet()
 	if err != nil {
 		die("Could not get allowance:", err)
 	}
@@ -641,7 +645,7 @@ again:
 	default:
 		goto again
 	}
-	err := siacGlobalHttpClient.RenterAllowanceCancelPost()
+	err := httpClient.RenterAllowanceCancelPost()
 	if err != nil {
 		die("error canceling allowance:", err)
 	}
@@ -652,12 +656,12 @@ again:
 // set the allowance or modify individual allowance fields.
 func rentersetallowancecmd(cmd *cobra.Command, args []string) {
 	// Get the current period setting.
-	rg, err := siacGlobalHttpClient.RenterGet()
+	rg, err := httpClient.RenterGet()
 	if err != nil {
 		die("Could not get renter settings")
 	}
 
-	req := siacGlobalHttpClient.RenterPostPartialAllowance()
+	req := httpClient.RenterPostPartialAllowance()
 	changedFields := 0
 	period := rg.Settings.Allowance.Period
 
@@ -1354,7 +1358,7 @@ func (s byValue) Less(i, j int) bool {
 // createbackup`.
 func renterbackupcreatecmd(name string) {
 	// Create backup.
-	err := siacGlobalHttpClient.RenterCreateBackupPost(name)
+	err := httpClient.RenterCreateBackupPost(name)
 	if err != nil {
 		die("Failed to create backup", err)
 	}
@@ -1364,7 +1368,7 @@ func renterbackupcreatecmd(name string) {
 // renterbackuprestorecmd is the handler for the command `siac renter
 // restorebackup`.
 func renterbackuprestorecmd(name string) {
-	err := siacGlobalHttpClient.RenterRecoverBackupPost(name)
+	err := httpClient.RenterRecoverBackupPost(name)
 	if err != nil {
 		die("Failed to restore backup", err)
 	}
@@ -1372,7 +1376,7 @@ func renterbackuprestorecmd(name string) {
 
 // renterbackuplistcmd is the handler for the command `siac renter listbackups`.
 func renterbackuplistcmd() {
-	ubs, err := siacGlobalHttpClient.RenterBackups()
+	ubs, err := httpClient.RenterBackups()
 	if err != nil {
 		die("Failed to retrieve backups", err)
 	} else if len(ubs.Backups) == 0 {
@@ -1447,7 +1451,7 @@ func writeContracts(contracts []api.RenterContract) {
 // rentercontractscmd is the handler for the comand `siac renter contracts`.
 // It lists the Renter's contracts.
 func rentercontractscmd() {
-	rc, err := siacGlobalHttpClient.RenterDisabledContractsGet()
+	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
 		die("Could not get contracts:", err)
 	}
@@ -1511,7 +1515,7 @@ func rentercontractscmd() {
 	}
 
 	if renterAllContracts {
-		rce, err := siacGlobalHttpClient.RenterExpiredContractsGet()
+		rce, err := httpClient.RenterExpiredContractsGet()
 		if err != nil {
 			die("Could not get expired contracts:", err)
 		}
@@ -1552,7 +1556,7 @@ func rentercontractscmd() {
 // rentercontractsviewcmd is the handler for the command `siac renter contracts <id>`.
 // It lists details of a specific contract.
 func rentercontractsviewcmd(cid string) {
-	rc, err := siacGlobalHttpClient.RenterAllContractsGet()
+	rc, err := httpClient.RenterAllContractsGet()
 	if err != nil {
 		die("Could not get contract details: ", err)
 	}
@@ -1578,7 +1582,7 @@ func printContractInfo(cid string, contracts []api.RenterContract) error {
 			if rc.TotalCost.Cmp(rc.Fees) > 0 {
 				fundsAllocated = rc.TotalCost.Sub(rc.Fees)
 			}
-			hostInfo, err := siacGlobalHttpClient.HostDbHostsGet(rc.HostPublicKey)
+			hostInfo, err := httpClient.HostDbHostsGet(rc.HostPublicKey)
 			if err != nil {
 				return fmt.Errorf("Could not fetch details of host: %v", err)
 			}
@@ -1622,7 +1626,7 @@ Contract %v
 // into a single error.
 func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
-	rd, err := siacGlobalHttpClient.RenterDirGet(siaPath)
+	rd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
 		err = errors.AddContext(err, "failed to get dir info")
 		return
@@ -1645,7 +1649,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		_, err = siacGlobalHttpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1716,7 +1720,7 @@ func renterdirdownload(path, destination string) {
 // renterdownloadcancelcmd is the handler for the command `siac renter download cancel [cancelID]`
 // Cancels the ongoing download.
 func renterdownloadcancelcmd(cancelID modules.DownloadID) {
-	if err := siacGlobalHttpClient.RenterCancelDownloadPost(cancelID); err != nil {
+	if err := httpClient.RenterCancelDownloadPost(cancelID); err != nil {
 		die("Couldn't cancel download:", err)
 	}
 	fmt.Println("Download canceled successfully")
@@ -1740,9 +1744,9 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		// guaranteed to always be two renter calls.
 		var errFile error
 		if renterDeleteRoot {
-			errFile = siacGlobalHttpClient.RenterFileDeleteRootPost(siaPath)
+			errFile = httpClient.RenterFileDeleteRootPost(siaPath)
 		} else {
-			errFile = siacGlobalHttpClient.RenterFileDeletePost(siaPath)
+			errFile = httpClient.RenterFileDeletePost(siaPath)
 		}
 		if errFile == nil {
 			fmt.Printf("Deleted file '%v'\n", path)
@@ -1753,9 +1757,9 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		// Try to delete dir.
 		var errDir error
 		if renterDeleteRoot {
-			errDir = siacGlobalHttpClient.RenterDirDeleteRootPost(siaPath)
+			errDir = httpClient.RenterDirDeleteRootPost(siaPath)
 		} else {
-			errDir = siacGlobalHttpClient.RenterDirDeletePost(siaPath)
+			errDir = httpClient.RenterDirDeletePost(siaPath)
 		}
 		if errDir == nil {
 			fmt.Printf("Deleted directory '%v'\n", path)
@@ -1778,14 +1782,14 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-	_, err = siacGlobalHttpClient.RenterFileGet(siaPath)
+	_, err = httpClient.RenterFileGet(siaPath)
 	if err == nil {
 		renterfilesdownload(path, destination)
 		return
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = siacGlobalHttpClient.RenterDirGet(siaPath)
+	_, err = httpClient.RenterDirGet(siaPath)
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
@@ -1814,7 +1818,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	cancelID, err := siacGlobalHttpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -1827,7 +1831,7 @@ func renterfilesdownload(path, destination string) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	file, err := siacGlobalHttpClient.RenterFileGet(siaPath)
+	file, err := httpClient.RenterFileGet(siaPath)
 	if err != nil {
 		die("Error getting file after download has started:", err)
 	}
@@ -1842,7 +1846,7 @@ func renterfilesdownload(path, destination string) {
 // rentertriggercontractrecoveryrescancmd starts a new scan for recoverable
 // contracts on the blockchain.
 func rentertriggercontractrecoveryrescancmd() {
-	crpg, err := siacGlobalHttpClient.RenterContractRecoveryProgressGet()
+	crpg, err := httpClient.RenterContractRecoveryProgressGet()
 	if err != nil {
 		die("Failed to get recovery status", err)
 	}
@@ -1851,7 +1855,7 @@ func rentertriggercontractrecoveryrescancmd() {
 		fmt.Println("Scanned height:\t", crpg.ScannedHeight)
 		return
 	}
-	if err := siacGlobalHttpClient.RenterInitContractRecoveryScanPost(); err != nil {
+	if err := httpClient.RenterInitContractRecoveryScanPost(); err != nil {
 		die("Failed to trigger recovery scan", err)
 	}
 	fmt.Println("Successfully triggered contract recovery scan.")
@@ -1860,7 +1864,7 @@ func rentertriggercontractrecoveryrescancmd() {
 // rentercontractrecoveryscanprogresscmd returns the current progress of a
 // potentially ongoing recovery scan.
 func rentercontractrecoveryscanprogresscmd() {
-	crpg, err := siacGlobalHttpClient.RenterContractRecoveryProgressGet()
+	crpg, err := httpClient.RenterContractRecoveryProgressGet()
 	if err != nil {
 		die("Failed to get recovery status", err)
 	}
@@ -1932,7 +1936,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	}
 	for range time.Tick(OutputRefreshRate) {
 		// Get the list of downloads.
-		rdg, err := siacGlobalHttpClient.RenterDownloadsGet()
+		rdg, err := httpClient.RenterDownloadsGet()
 		if err != nil {
 			continue // benign
 		}
@@ -2053,9 +2057,9 @@ func getDir(siaPath modules.SiaPath, root, recursive bool) (dirs []directoryInfo
 	var rd api.RenterDirectory
 	var err error
 	if root {
-		rd, err = siacGlobalHttpClient.RenterDirRootGet(siaPath)
+		rd, err = httpClient.RenterDirRootGet(siaPath)
 	} else {
-		rd, err = siacGlobalHttpClient.RenterDirGet(siaPath)
+		rd, err = httpClient.RenterDirGet(siaPath)
 	}
 	if err != nil {
 		die("failed to get dir info:", err)
@@ -2109,7 +2113,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Check for file first
 	if !sp.IsRoot() {
-		rf, err := siacGlobalHttpClient.RenterFileGet(sp)
+		rf, err := httpClient.RenterFileGet(sp)
 		if err == nil {
 			json, err := json.MarshalIndent(rf.File, "", "  ")
 			if err != nil {
@@ -2222,7 +2226,11 @@ func renterfilesrenamecmd(path, newpath string) {
 	if err := errors.Compose(err1, err2); err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
+<<<<<<< HEAD
 	err := siacGlobalHttpClient.RenterRenamePost(siaPath, newSiaPath, renterRenameRoot)
+=======
+	err := httpClient.RenterRenamePost(siaPath, newSiaPath)
+>>>>>>> Revert global httpClient renaming
 	if err != nil {
 		die("Could not rename file:", err)
 	}
@@ -2233,7 +2241,7 @@ func renterfilesrenamecmd(path, newpath string) {
 // fuse.
 func renterfusecmd() {
 	// Get the list of mountpoints.
-	fuseInfo, err := siacGlobalHttpClient.RenterFuse()
+	fuseInfo, err := httpClient.RenterFuse()
 	if err != nil {
 		die("Unable to fetch fuse information:", err)
 	}
@@ -2287,7 +2295,7 @@ func renterfusemountcmd(path, siaPathStr string) {
 		ReadOnly:   true,
 		AllowOther: renterFuseMountAllowOther,
 	}
-	err = siacGlobalHttpClient.RenterFuseMount(path, siaPath, opts)
+	err = httpClient.RenterFuseMount(path, siaPath, opts)
 	if err != nil {
 		die("Unable to mount the directory:", err)
 	}
@@ -2297,7 +2305,7 @@ func renterfusemountcmd(path, siaPathStr string) {
 // renterfuseunmountcmd is the handler for the command `siac renter fuse unmount [path]`.
 func renterfuseunmountcmd(path string) {
 	path = abs(path)
-	err := siacGlobalHttpClient.RenterFuseUnmount(path)
+	err := httpClient.RenterFuseUnmount(path)
 	if err != nil {
 		s := fmt.Sprintf("Unable to unmount %s:", path)
 		die(s, err)
@@ -2314,7 +2322,7 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 	if err != nil {
 		die("Couldn't parse Siapath:", err)
 	}
-	err = siacGlobalHttpClient.RenterSetRepairPathPost(siaPath, newlocalpath)
+	err = httpClient.RenterSetRepairPathPost(siaPath, newlocalpath)
 	if err != nil {
 		die("Could not Change the path of the file:", err)
 	}
@@ -2324,7 +2332,7 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 // renterfilesunstuckcmd is the handler for the command `siac renter
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
-	rfg, err := siacGlobalHttpClient.RenterFilesGet(true)
+	rfg, err := httpClient.RenterFilesGet(true)
 	if err != nil {
 		die("Couldn't get list of all files:", err)
 	}
@@ -2333,7 +2341,7 @@ func renterfilesunstuckcmd() {
 	toUnstuck := make(chan modules.SiaPath)
 	worker := func() {
 		for siaPath := range toUnstuck {
-			err = siacGlobalHttpClient.RenterSetFileStuckPost(siaPath, false)
+			err = httpClient.RenterSetFileStuckPost(siaPath, false)
 			if err != nil {
 				die(fmt.Sprintf("Couldn't set %v to unstuck: %v", siaPath, err))
 			}
@@ -2409,7 +2417,7 @@ func renterfilesuploadcmd(source, path string) {
 			if err != nil {
 				die("Couldn't parse SiaPath:", err)
 			}
-			err = siacGlobalHttpClient.RenterUploadPost(abs(file), fSiaPath, uint64(numDataPieces), uint64(numParityPieces))
+			err = httpClient.RenterUploadPost(abs(file), fSiaPath, uint64(numDataPieces), uint64(numParityPieces))
 			if err != nil {
 				failed++
 				fmt.Printf("Could not upload file %s :%v\n", file, err)
@@ -2423,7 +2431,7 @@ func renterfilesuploadcmd(source, path string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
-		err = siacGlobalHttpClient.RenterUploadPost(abs(source), siaPath, uint64(numDataPieces), uint64(numParityPieces))
+		err = httpClient.RenterUploadPost(abs(source), siaPath, uint64(numDataPieces), uint64(numParityPieces))
 		if err != nil {
 			die("Could not upload file:", err)
 		}
@@ -2439,7 +2447,7 @@ func renterfilesuploadpausecmd(dur string) {
 	if err != nil {
 		die("Couldn't parse duration:", err)
 	}
-	err = siacGlobalHttpClient.RenterUploadsPausePost(pauseDuration)
+	err = httpClient.RenterUploadsPausePost(pauseDuration)
 	if err != nil {
 		die("Could not pause renter uploads:", err)
 	}
@@ -2449,7 +2457,7 @@ func renterfilesuploadpausecmd(dur string) {
 // renterfilesuploadresumecmd is the handler for the command `siac renter upload
 // resume`.  It resumes all renter uploads that have been paused.
 func renterfilesuploadresumecmd() {
-	err := siacGlobalHttpClient.RenterUploadsResumePost()
+	err := httpClient.RenterUploadsResumePost()
 	if err != nil {
 		die("Could not resume renter uploads:", err)
 	}
@@ -2500,7 +2508,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	rpg, err := siacGlobalHttpClient.RenterPricesGet(allowance)
+	rpg, err := httpClient.RenterPricesGet(allowance)
 	if err != nil {
 		die("Could not read the renter prices:", err)
 	}
@@ -2538,7 +2546,7 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die(errors.AddContext(err, "unable to parse upload speed"))
 	}
 
-	err = siacGlobalHttpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
+	err = httpClient.RenterRateLimitPost(downloadSpeedInt, uploadSpeedInt)
 	if err != nil {
 		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
 	}

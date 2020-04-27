@@ -75,7 +75,7 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 // Lists hosts known to the hostdb
 func hostdbcmd() {
 	if !hostdbVerbose {
-		info, err := siacGlobalHttpClient.HostDbActiveGet()
+		info, err := httpClient.HostDbActiveGet()
 		if errors.Contains(err, api.ErrAPICallNotRecognized) {
 			// Assume module is not loaded if status command is not recognized.
 			fmt.Printf("HostDB:\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -103,7 +103,7 @@ func hostdbcmd() {
 		}
 		w.Flush()
 	} else {
-		info, err := siacGlobalHttpClient.HostDbAllGet()
+		info, err := httpClient.HostDbAllGet()
 		if err != nil {
 			die("Could not fetch host list:", err)
 		}
@@ -238,7 +238,7 @@ func hostdbcmd() {
 		referenceScore := big.NewRat(1, 1)
 		if len(activeHosts) > 0 {
 			referenceIndex := len(activeHosts) * 3 / 5
-			hostInfo, err := siacGlobalHttpClient.HostDbHostsGet(activeHosts[referenceIndex].PublicKey)
+			hostInfo, err := httpClient.HostDbHostsGet(activeHosts[referenceIndex].PublicKey)
 			if err != nil {
 				die("Could not fetch provided host:", err)
 			}
@@ -288,7 +288,7 @@ func hostdbcmd() {
 			}
 
 			// Grab the score information for the active hosts.
-			hostInfo, err := siacGlobalHttpClient.HostDbHostsGet(host.PublicKey)
+			hostInfo, err := httpClient.HostDbHostsGet(host.PublicKey)
 			if err != nil {
 				die("Could not fetch provided host:", err)
 			}
@@ -307,7 +307,7 @@ func hostdbcmd() {
 // hostdbfiltermodecmd is the handler for the command `siac hostdb
 // filtermode`.
 func hostdbfiltermodecmd() {
-	hdfmg, err := siacGlobalHttpClient.HostDbFilterModeGet()
+	hdfmg, err := httpClient.HostDbFilterModeGet()
 	if err != nil {
 		die(err)
 	}
@@ -349,7 +349,7 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 		die()
 	}
 
-	err = siacGlobalHttpClient.HostDbFilterModePost(fm, hosts)
+	err = httpClient.HostDbFilterModePost(fm, hosts)
 	if err != nil {
 		fmt.Println("Could not set hostdb filtermode: ", err)
 		die()
@@ -362,7 +362,7 @@ func hostdbsetfiltermodecmd(cmd *cobra.Command, args []string) {
 func hostdbviewcmd(pubkey string) {
 	var publicKey types.SiaPublicKey
 	publicKey.LoadString(pubkey)
-	info, err := siacGlobalHttpClient.HostDbHostsGet(publicKey)
+	info, err := httpClient.HostDbHostsGet(publicKey)
 	if err != nil {
 		die("Could not fetch provided host:", err)
 	}

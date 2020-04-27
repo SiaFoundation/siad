@@ -34,7 +34,7 @@ var (
 // minerstartcmd is the handler for the command `siac miner start`.
 // Starts the CPU miner.
 func minerstartcmd() {
-	err := siacGlobalHttpClient.MinerStartGet()
+	err := httpClient.MinerStartGet()
 	if err != nil {
 		die("Could not start miner:", err)
 	}
@@ -44,7 +44,7 @@ func minerstartcmd() {
 // minercmd is the handler for the command `siac miner`.
 // Prints the status of the miner.
 func minercmd() {
-	status, err := siacGlobalHttpClient.MinerGet()
+	status, err := httpClient.MinerGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Miner:\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -67,7 +67,7 @@ Blocks Mined: %d (%d stale)
 // minerstopcmd is the handler for the command `siac miner stop`.
 // Stops the CPU miner.
 func minerstopcmd() {
-	err := siacGlobalHttpClient.MinerStopGet()
+	err := httpClient.MinerStopGet()
 	if err != nil {
 		die("Could not stop miner:", err)
 	}

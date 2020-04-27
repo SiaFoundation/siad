@@ -147,7 +147,7 @@ sector may impact host revenue.`,
 // hostcmd is the handler for the command `siac host`.
 // Prints info about the host and its storage folders.
 func hostcmd() {
-	hg, err := siacGlobalHttpClient.HostGet()
+	hg, err := httpClient.HostGet()
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Host:\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -156,7 +156,7 @@ func hostcmd() {
 		die("Could not fetch host settings:", err)
 	}
 
-	sg, err := siacGlobalHttpClient.HostStorageGet()
+	sg, err := httpClient.HostStorageGet()
 	if err != nil {
 		die("Could not fetch storage info:", err)
 	}
@@ -328,7 +328,7 @@ RPC Stats:
 	}
 
 	// if wallet is locked print warning
-	walletstatus, walleterr := siacGlobalHttpClient.WalletGet()
+	walletstatus, walleterr := httpClient.WalletGet()
 	if walleterr != nil {
 		fmt.Print("\nWarning:\n	Could not get wallet status. A working wallet is needed in order to operate your host. Error: ")
 		fmt.Println(walleterr)
@@ -418,14 +418,14 @@ func hostconfigcmd(param, value string) {
 	default:
 		die("\"" + param + "\" is not a host setting")
 	}
-	err = siacGlobalHttpClient.HostModifySettingPost(client.HostParam(param), value)
+	err = httpClient.HostModifySettingPost(client.HostParam(param), value)
 	if err != nil {
 		die("Failed to update host settings:", err)
 	}
 	fmt.Println("Host settings updated.")
 
 	// get the estimated conversion rate.
-	eg, err := siacGlobalHttpClient.HostEstimateScoreGet(param, value)
+	eg, err := httpClient.HostEstimateScoreGet(param, value)
 	if err != nil {
 		if err.Error() == "cannot call /host/estimatescore without the renter module" {
 			// score estimate requires the renter module
@@ -438,7 +438,7 @@ func hostconfigcmd(param, value string) {
 
 // hostcontractcmd is the handler for the command `siac host contracts [type]`.
 func hostcontractcmd() {
-	cg, err := siacGlobalHttpClient.HostContractInfoGet()
+	cg, err := httpClient.HostContractInfoGet()
 	if err != nil {
 		die("Could not fetch host contract info:", err)
 	}
@@ -471,9 +471,9 @@ func hostannouncecmd(cmd *cobra.Command, args []string) {
 	var err error
 	switch len(args) {
 	case 0:
-		err = siacGlobalHttpClient.HostAnnouncePost()
+		err = httpClient.HostAnnouncePost()
 	case 1:
-		err = siacGlobalHttpClient.HostAnnounceAddrPost(modules.NetAddress(args[0]))
+		err = httpClient.HostAnnounceAddrPost(modules.NetAddress(args[0]))
 	default:
 		cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
@@ -484,7 +484,7 @@ func hostannouncecmd(cmd *cobra.Command, args []string) {
 	fmt.Println("Host announcement submitted to network.")
 
 	// start accepting contracts
-	err = siacGlobalHttpClient.HostModifySettingPost(client.HostParamAcceptingContracts, true)
+	err = httpClient.HostModifySettingPost(client.HostParamAcceptingContracts, true)
 	if err != nil {
 		die("Could not configure host to accept contracts:", err)
 	}
@@ -505,7 +505,7 @@ func hostfolderaddcmd(path, size string) {
 	sizeUint64 /= 64 * modules.SectorSize
 	sizeUint64 *= 64 * modules.SectorSize
 
-	err = siacGlobalHttpClient.HostStorageFoldersAddPost(abs(path), sizeUint64)
+	err = httpClient.HostStorageFoldersAddPost(abs(path), sizeUint64)
 	if err != nil {
 		die("Could not add folder:", err)
 	}
@@ -532,7 +532,7 @@ func hostfolderremovecmd(path string) {
 		}
 	}
 
-	err := siacGlobalHttpClient.HostStorageFoldersRemovePost(abs(path), hostFolderRemoveForce)
+	err := httpClient.HostStorageFoldersRemovePost(abs(path), hostFolderRemoveForce)
 
 	if err != nil {
 		die("Could not remove folder:", err)
@@ -552,7 +552,7 @@ func hostfolderresizecmd(path, newsize string) {
 	sizeUint64 /= 64 * modules.SectorSize
 	sizeUint64 *= 64 * modules.SectorSize
 
-	err = siacGlobalHttpClient.HostStorageFoldersResizePost(abs(path), sizeUint64)
+	err = httpClient.HostStorageFoldersResizePost(abs(path), sizeUint64)
 	if err != nil {
 		die("Could not resize folder:", err)
 	}
@@ -566,7 +566,7 @@ func hostsectordeletecmd(root string) {
 	if err != nil {
 		die("Could not parse root:", err)
 	}
-	err = siacGlobalHttpClient.HostStorageSectorsDeletePost(hash)
+	err = httpClient.HostStorageSectorsDeletePost(hash)
 	if err != nil {
 		die("Could not delete sector:", err)
 	}
