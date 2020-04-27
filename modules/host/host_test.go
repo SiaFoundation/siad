@@ -32,20 +32,24 @@ import (
 
 // A hostTester is the helper object for host testing, including helper modules
 // and methods for controlling synchronization.
-type hostTester struct {
-	mux *siamux.SiaMux
+type (
+	closeFn func() error
 
-	cs        modules.ConsensusSet
-	gateway   modules.Gateway
-	miner     modules.TestMiner
-	tpool     modules.TransactionPool
-	wallet    modules.Wallet
-	walletKey crypto.CipherKey
+	hostTester struct {
+		mux *siamux.SiaMux
 
-	host *Host
+		cs        modules.ConsensusSet
+		gateway   modules.Gateway
+		miner     modules.TestMiner
+		tpool     modules.TransactionPool
+		wallet    modules.Wallet
+		walletKey crypto.CipherKey
 
-	persistDir string
-}
+		host *Host
+
+		persistDir string
+	}
+)
 
 /*
 // initRenting prepares the host tester for uploads and downloads by announcing

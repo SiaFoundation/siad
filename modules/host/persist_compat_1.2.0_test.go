@@ -24,7 +24,7 @@ const (
 
 // loadExistingHostWithNewDeps will create all of the dependencies for a host,
 // then load the host on top of the given directory.
-func loadExistingHostWithNewDeps(modulesDir, siaMuxDir, hostDir string) (func() error, modules.Host, error) {
+func loadExistingHostWithNewDeps(modulesDir, siaMuxDir, hostDir string) (closeFn, modules.Host, error) {
 	// Create the siamux
 	mux, err := modules.NewSiaMux(siaMuxDir, modulesDir, "localhost:0")
 	if err != nil {
