@@ -139,6 +139,7 @@ OUTER:
 			// Disk has failed, all future attempts to load the wal will fail so
 			// we need to reset the dependency and try again
 			fdd.Reset()
+			atomic.AddUint64(&track.atomicNumRecoveries, 1)
 			continue
 		}
 		if err != nil {

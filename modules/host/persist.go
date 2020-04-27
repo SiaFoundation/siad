@@ -193,6 +193,12 @@ func (h *Host) load() error {
 		return err
 	}
 
+	// Compatv148 delete the old account file.
+	af := filepath.Join(h.persistDir, v148AccountsFilename)
+	if err := os.RemoveAll(af); err != nil {
+		h.log.Printf("WARNING: failed to remove legacy account file at '%v', err: %v", af, err)
+	}
+
 	// Check if the host is currently using defaults that violate the ratio
 	// restrictions between the SectorAccessPrice, BaseRPCPrice, and
 	// DownloadBandwidthPrice

@@ -24,7 +24,7 @@ require (
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
-	gitlab.com/NebulousLabs/siamux v0.0.0-20200424140810-ed1f983ad0b2
+	gitlab.com/NebulousLabs/siamux v0.0.0-20200424151054-7bcafb9dfdcb
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
 	golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
