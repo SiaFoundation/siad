@@ -91,8 +91,13 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	ht := rhp.ht
-	defer rhp.Close()
 
 	// verify the price table is being tracked
 	pt, err := rhp.FetchPriceTable()
@@ -132,8 +137,13 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	ht := pair.ht
-	defer pair.Close()
 
 	// renter-side logic
 	runWithRequest := func(pbcRequest modules.PayByContractRequest) (*modules.RPCPriceTable, error) {

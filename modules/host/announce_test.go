@@ -63,7 +63,12 @@ func TestHostAnnounce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err = ht.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create an announcement finder to scan the blockchain for host
 	// announcements.
@@ -234,6 +239,13 @@ func TestHostVerifyAnnouncementAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
 	// Create host addresses.
 	host1 := modules.NetAddress("TwoIPv4Loopback.com:1234")
 	host2 := modules.NetAddress("TwoIPv6Loopback.com:1234")
