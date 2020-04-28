@@ -28,6 +28,13 @@ type fundAccountJobResult struct {
 	err    error
 }
 
+// callLen returns the length of the fundAccountJobQueue queue
+func (queue *fundAccountJobQueue) callLen() int {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return len(queue.queue)
+}
+
 // sendResult is a helper function that sends the rsult to the resultChan and
 // closes the result channel
 func (job *fundAccountJob) sendResult(funded types.Currency, err error) {

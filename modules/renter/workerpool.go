@@ -30,17 +30,78 @@ type workerPool struct {
 	renter  *Renter
 }
 
-// callWorker will return the worker associated with the provided public key.
-// If no worker is found, an error will be returned.
-func (wp *workerPool) callWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+// callStatus returns the status of the workers in the worker pool.
+func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
+	// For tests, callUpdate to ensure the worker pool isn't empty
+	if build.Release == "testing" {
+		wp.callUpdate()
+	}
+
+	// Grab the contracts and create a map
+	contractSlice := wp.renter.hostContractor.Contracts()
+	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
+	for _, contract := range contractSlice {
+		contractMap[contract.HostPublicKey.String()] = contract
+	}
+
 	wp.mu.Lock()
 	defer wp.mu.Unlock()
 
-	worker, exists := wp.workers[hostPubKey.String()]
-	if !exists {
-		return nil, errors.New("worker is not available in the worker pool")
+	var totalDownloadCoolDown, totalUploadCoolDown int
+	var workers []modules.WorkerStatus
+	for id, worker := range wp.workers {
+		contract, exists := contractMap[id]
+		if !exists {
+			// Skip any workers that don't have contracts as the next call to
+			// callUpdate will remove them from the workerPool
+			continue
+		}
+		worker.mu.Lock()
+		uploadOnCoolDown, uploadCoolDownTime := worker.onUploadCooldown()
+		downloadOnCoolDown := worker.ownedOnDownloadCooldown()
+		if downloadOnCoolDown {
+			totalDownloadCoolDown++
+		}
+		if uploadOnCoolDown {
+			totalUploadCoolDown++
+		}
+		workers = append(workers, modules.WorkerStatus{
+			// Contract Information
+			ContractID:    contract.ID,
+			GoodForRenew:  contract.Utility.GoodForRenew,
+			GoodForUpload: contract.Utility.GoodForUpload,
+
+			// Download information
+			DownloadOnCoolDown: downloadOnCoolDown,
+			DownloadQueue:      len(worker.downloadChunks),
+			DownloadTerminated: worker.downloadTerminated,
+
+			// Upload information
+			UploadCoolDownError: worker.uploadRecentFailureErr,
+			UploadCoolDownTime:  uploadCoolDownTime,
+			UploadOnCoolDown:    uploadOnCoolDown,
+			UploadQueue:         len(worker.unprocessedChunks),
+			UploadTerminated:    worker.uploadTerminated,
+
+			// Ephemeral Account information
+			AvailableBalance:    worker.staticAccount.AvailableBalance(),
+			BalanceTarget:       worker.staticBalanceTarget,
+			FundAccountJobQueue: worker.staticFundAccountJobQueue.callLen(),
+
+			// Job Queues
+			BackupJobQueue:       worker.staticFetchBackupsJobQueue.callLen(),
+			DownloadRootJobQueue: worker.staticJobQueueDownloadByRoot.callLen(),
+
+			PubKey: worker.staticHostPubKey,
+		})
+		worker.mu.Unlock()
 	}
-	return worker, nil
+	return modules.WorkerPoolStatus{
+		NumWorkers:            len(wp.workers),
+		TotalDownloadCoolDown: totalDownloadCoolDown,
+		TotalUploadCoolDown:   totalUploadCoolDown,
+		Workers:               workers,
+	}
 }
 
 // callUpdate will grab the set of contracts from the contractor and update the
@@ -86,7 +147,6 @@ func (wp *workerPool) callUpdate() {
 	}
 
 	// Remove a worker for any worker that is not in the set of new contracts.
-	totalCoolDown := 0
 	for id, worker := range wp.workers {
 		select {
 		case <-wp.renter.tg.StopChan():
@@ -95,26 +155,34 @@ func (wp *workerPool) callUpdate() {
 			return
 		default:
 		}
-		contract, exists := contractMap[id]
+		_, exists := contractMap[id]
 		if !exists {
 			delete(wp.workers, id)
 			close(worker.killChan)
 		}
-
-		// A lock is grabbed on the worker to fetch some info for a debugging
-		// statement. build.DEBUG is used so that worker lock contention is not
-		// introduced needlessly.
-		if build.DEBUG {
-			worker.mu.Lock()
-			onCoolDown, coolDownTime := worker.onUploadCooldown()
-			if onCoolDown {
-				totalCoolDown++
-			}
-			wp.renter.log.Debugf("Worker %v is GoodForUpload %v for contract %v and is on uploadCooldown %v for %v because of %v", worker.staticHostPubKey, contract.Utility.GoodForUpload, contract.ID, onCoolDown, coolDownTime, worker.uploadRecentFailureErr)
-			worker.mu.Unlock()
-		}
 	}
-	wp.renter.log.Debugf("worker pool has %v workers, %v are on cooldown", len(wp.workers), totalCoolDown)
+}
+
+// callWorker will return the worker associated with the provided public key.
+// If no worker is found, an error will be returned.
+func (wp *workerPool) callWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+	wp.mu.Lock()
+	defer wp.mu.Unlock()
+
+	worker, exists := wp.workers[hostPubKey.String()]
+	if !exists {
+		return nil, errors.New("worker is not available in the worker pool")
+	}
+	return worker, nil
+}
+
+// WorkerPoolStatus returns the current status of the Renter's worker pool
+func (r *Renter) WorkerPoolStatus() (modules.WorkerPoolStatus, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.WorkerPoolStatus{}, err
+	}
+	defer r.tg.Done()
+	return r.staticWorkerPool.callStatus(), nil
 }
 
 // newWorkerPool will initialize and return a worker pool.

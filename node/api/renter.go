@@ -2127,3 +2127,15 @@ func (api *API) renterContractStatusHandler(w http.ResponseWriter, req *http.Req
 
 	WriteJSON(w, contractStatus)
 }
+
+// renterWorkersHandler handles the API call to check the status of the renter's
+// workers
+func (api *API) renterWorkersHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	workerPoolStatus, err := api.renter.WorkerPoolStatus()
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, workerPoolStatus)
+}

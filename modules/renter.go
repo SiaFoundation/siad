@@ -721,6 +721,48 @@ type UploadedBackup struct {
 	UploadProgress float64
 }
 
+type (
+	// WorkerPoolStatus contains information about the status of the workerPool
+	// and the workers
+	WorkerPoolStatus struct {
+		NumWorkers            int            `json:"numworkers"`
+		TotalDownloadCoolDown int            `json:"totaldownloadcooldown"`
+		TotalUploadCoolDown   int            `json:"totaluploadcooldown"`
+		Workers               []WorkerStatus `json:"workers"`
+	}
+
+	// WorkerStatus contains information about the status of a worker
+	WorkerStatus struct {
+		// Worker contract information
+		ContractID    types.FileContractID `json:"contractid"`
+		GoodForRenew  bool                 `json:"goodforrenew"`
+		GoodForUpload bool                 `json:"goodforupload"`
+
+		// Download status information
+		DownloadOnCoolDown bool `json:"downloadoncooldown"`
+		DownloadQueue      int  `json:"downloadqueue"`
+		DownloadTerminated bool `json:"downloadterminated"`
+
+		// Upload status information
+		UploadCoolDownError error         `json:"uploadcooldownerror"`
+		UploadCoolDownTime  time.Duration `json:"uploadcooldowntime"`
+		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
+		UploadQueue         int           `json:"uploadqueue"`
+		UploadTerminated    bool          `json:"uploadterminated"`
+
+		// Ephemeral Account information
+		AvailableBalance    types.Currency `json:"availablebalance"`
+		BalanceTarget       types.Currency `json:"balancetarget"`
+		FundAccountJobQueue int            `json:"fundaccountjobqueue"`
+
+		// Job Queues
+		BackupJobQueue       int `json:"backupjobqueue"`
+		DownloadRootJobQueue int `json:"downloadrootjobqueue"`
+
+		PubKey types.SiaPublicKey `json:"pubkey"`
+	}
+)
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -974,6 +1016,9 @@ type Renter interface {
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
+
+	// WorkerPoolStatus returns the current status of the Renter's worker pool
+	WorkerPoolStatus() (WorkerPoolStatus, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

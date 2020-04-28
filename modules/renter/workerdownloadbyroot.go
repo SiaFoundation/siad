@@ -11,6 +11,13 @@ type jobQueueDownloadByRoot struct {
 	mu    sync.Mutex
 }
 
+// callLen returns the length of the jobQueueDownloadByRoot queue
+func (queue *jobQueueDownloadByRoot) callLen() int {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return len(queue.queue)
+}
+
 // managedQueueJobDownloadByRoot adds a downloadByRoot job to the worker's queue.
 func (w *worker) callQueueJobDownloadByRoot(jdbr jobDownloadByRoot) error {
 	w.staticJobQueueDownloadByRoot.mu.Lock()
