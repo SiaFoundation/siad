@@ -157,8 +157,8 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					recovered = err == nil
 				}
 
-				// ignore max balance exceeded
-				if !recovered && strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) {
+				// ignore max balance exceeded & cancelled deposits
+				if !recovered && (strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) || strings.Contains(err.Error(), ErrDepositCancelled.Error())) {
 					err = nil
 				}
 
