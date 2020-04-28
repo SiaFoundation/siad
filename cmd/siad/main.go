@@ -46,7 +46,12 @@ type Config struct {
 
 		Profile    string
 		ProfileDir string
-		SiaDir     string
+
+		// NOTE: SiaDir in this case is referencing the directory that siad is
+		// going to be running out of, not the actual siadir, which is where we
+		// put the apipassword file. This variable should not be altered if it
+		// is not set by a user flag.
+		SiaDir string
 	}
 }
 
@@ -177,7 +182,7 @@ func main() {
 	root.Flags().BoolVarP(&globalConfig.Siad.NoBootstrap, "no-bootstrap", "", false, "disable bootstrapping on this run")
 	root.Flags().StringVarP(&globalConfig.Siad.Profile, "profile", "", "", "enable profiling with flags 'cmt' for CPU, memory, trace")
 	root.Flags().StringVarP(&globalConfig.Siad.RPCaddr, "rpc-addr", "", ":9981", "which port the gateway listens on")
-	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxAddr, "siamux-addr", "", ":9999", "which port the SiaMux listens on")
+	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxAddr, "siamux-addr", "", ":9983", "which port the SiaMux listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "cghrtwf", "enabled modules, see 'siad modules' for more info")
 	root.Flags().BoolVarP(&globalConfig.Siad.AuthenticateAPI, "authenticate-api", "", true, "enable API password protection")
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
@@ -185,7 +190,7 @@ func main() {
 
 	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
 	if globalConfig.Siad.SiaDir == "" {
-		globalConfig.Siad.SiaDir = build.SiaDir()
+		globalConfig.Siad.SiaDir = build.SiadDataDir()
 	}
 
 	// Parse cmdline flags, overwriting both the default values and the config

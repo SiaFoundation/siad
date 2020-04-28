@@ -70,7 +70,7 @@ func TestObligationLocks(t *testing.T) {
 		ht.host.managedUnlockStorageObligation(ob1)
 	}()
 	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
-	if err != errObligationLocked {
+	if err != ErrObligationLocked {
 		t.Fatal("storage obligation was able to get a lock, despite already being locked")
 	}
 
@@ -103,7 +103,7 @@ func TestObligationLocks(t *testing.T) {
 		t.Fatal("unable to get lock despite not having a lock in place")
 	}
 	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
-	if err != errObligationLocked {
+	if err != ErrObligationLocked {
 		t.Fatal("storage obligation was able to get a lock, despite already being locked")
 	}
 	ht.host.managedUnlockStorageObligation(ob1)

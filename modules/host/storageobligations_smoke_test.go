@@ -7,13 +7,13 @@ package host
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -28,23 +28,26 @@ import (
 )
 
 // newTestTPool returns a tpool with custom dependencies for testing
-func newTestTPool(name string, deps modules.Dependencies) (*transactionpool.TransactionPool, error) {
+func newTestTPool(name string, deps modules.Dependencies) (func() error, *transactionpool.TransactionPool, error) {
 	testdir := build.TempDir(modules.HostDir, name)
 	// Create the modules needed.
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Create the tpool.
 	tp, err := transactionpool.NewCustomTPool(cs, g, filepath.Join(testdir, modules.TransactionPoolDir), deps)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return tp, nil
+	closefn := func() error {
+		return errors.Compose(tp.Close(), cs.Close(), g.Close())
+	}
+	return closefn, tp, nil
 }
 
 // randSector creates a random sector, returning the sector along with the
@@ -77,7 +80,7 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 		// revisions, the expiration is put more than
 		// 'revisionSubmissionBuffer' blocks into the future.
 		WindowStart: ht.host.blockHeight + revisionSubmissionBuffer + 2,
-		WindowEnd:   ht.host.blockHeight + revisionSubmissionBuffer + defaultWindowSize + 2,
+		WindowEnd:   ht.host.blockHeight + revisionSubmissionBuffer + modules.DefaultWindowSize + 2,
 
 		Payout: payout,
 		ValidProofOutputs: []types.SiacoinOutput{
@@ -111,7 +114,6 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 	// Assemble and return the storage obligation.
 	so := storageObligation{
 		OriginTransactionSet: tSet,
-		// TODO: There are no tracking values, because no fees were added.
 
 		h: ht.host,
 	}
@@ -240,7 +242,12 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// The number of contracts and locked storage collateral reported
 	// by the host should be zero.
@@ -304,7 +311,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 
 	// Replace transaction pool with one that has custom dependency.
 	tp := ht.host.tpool
-	newTPool, err := newTestTPool(filepath.Join(t.Name(), "newtpool"), &dependencies.DependencyDoNotAcceptTxnSet{})
+	closeNewTPTFn, newTPool, err := newTestTPool(filepath.Join(t.Name(), "newtpool"), &dependencies.DependencyDoNotAcceptTxnSet{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,11 +379,15 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 
 	// Reset the transaction pool
 	ht.host.tpool = tp
+	err = closeNewTPTFn()
+	if err != nil {
+		t.Error(err)
+	}
 
 	// Mine enough blocks so that all active storage obligations succeed and we
 	// know for sure the other obligations are stale, i.e. not in the transaction pool
 	// and with a NegotiationHeight, RespendTimeout blocks behind the currrent block.
-	endblock := ht.host.blockHeight + revisionSubmissionBuffer + defaultWindowSize + 2 + wallet.RespendTimeout + 1
+	endblock := ht.host.blockHeight + revisionSubmissionBuffer + modules.DefaultWindowSize + 2 + wallet.RespendTimeout + 1
 	for cb := ht.host.blockHeight; cb <= endblock; cb++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
@@ -694,7 +705,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 
 	// Mine blocks until the storage proof has enough confirmations that the
 	// host will finalize the obligation.
-	for i := 0; i <= int(defaultWindowSize); i++ {
+	for i := 0; i <= int(modules.DefaultWindowSize); i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -960,7 +971,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 
 	// Mine blocks until the storage proof has enough confirmations that the
 	// host will delete the file entirely.
-	for i := 0; i <= int(defaultWindowSize); i++ {
+	for i := 0; i <= int(modules.DefaultWindowSize); i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)
@@ -1105,7 +1116,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 
 	// Mine blocks until the storage proof has enough confirmations that the
 	// host will delete the file entirely.
-	for i := 0; i <= int(defaultWindowSize); i++ {
+	for i := 0; i <= int(modules.DefaultWindowSize); i++ {
 		_, err := ht.miner.AddBlock()
 		if err != nil {
 			t.Fatal(err)

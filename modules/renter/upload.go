@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	// errUploadDirectory is returned if the user tries to upload a directory.
-	errUploadDirectory = errors.New("cannot upload directory")
+	// ErrUploadDirectory is returned if the user tries to upload a directory.
+	ErrUploadDirectory = errors.New("cannot upload directory")
 )
 
 // Upload instructs the renter to start tracking a file. The renter will
@@ -40,7 +40,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 		return errors.AddContext(err, "unable to stat input file")
 	}
 	if sourceInfo.IsDir() {
-		return errUploadDirectory
+		return ErrUploadDirectory
 	}
 
 	// Check for read access.

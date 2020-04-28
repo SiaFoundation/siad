@@ -305,10 +305,10 @@ maintaining the file in your renter.`,
 
 	skynetUnpinCmd = &cobra.Command{
 		Use:   "unpin [siapath]",
-		Short: "Unpin a pinned skyfile.",
-		Long: `Unpin the pinned skyfile at the given siapath. The file will continue to be
-available on Skynet if other nodes have pinned the file.`,
-		Run: wrap(skynetunpincmd),
+		Short: "Unpin pinned skyfiles or directories.",
+		Long: `Unpin one or more pinned skyfiles or directories at the given siapaths. The
+files and directories will continue to be available on Skynet if other nodes have pinned them.`,
+		Run: skynetunpincmd,
 	}
 
 	skynetLsCmd = &cobra.Command{
@@ -405,7 +405,7 @@ func rentercmd() {
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 
 	// Print out file health summary for the renter
-	dirs := getDir(modules.RootSiaPath(), false, true)
+	dirs := getDir(modules.RootSiaPath(), true, true)
 	fmt.Println()
 	renterFileHealthSummary(dirs)
 }
@@ -469,13 +469,13 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirRootGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
+		return errors.AddContext(err, "unable to get root dir with RenterDirRootGet")
 	}
 
 	rc, err := httpClient.RenterDisabledContractsGet()
@@ -1791,7 +1791,13 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
+
 		// Try to delete file.
+		//
+		// In the case where the path points to a dir, this will fail and we
+		// silently move on to deleting it as a dir. This is more efficient than
+		// querying the renter first to see if it is a file or a dir, as that is
+		// guaranteed to always be two renter calls.
 		var errFile error
 		if renterDeleteRoot {
 			errFile = httpClient.RenterFileDeleteRootPost(siaPath)
@@ -1804,7 +1810,7 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
 			die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 		}
-		// Try to delete folder.
+		// Try to delete dir.
 		var errDir error
 		if renterDeleteRoot {
 			errDir = httpClient.RenterDirDeleteRootPost(siaPath)
@@ -1817,7 +1823,8 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 			die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
 		}
-		// Unknown file/folder.
+
+		// Unknown file/dir.
 		die(fmt.Sprintf("Unknown path '%v'", path))
 	}
 	return
@@ -1845,7 +1852,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
 	}
-	die(fmt.Sprintf("Unknown file '%v'", path))
+	die(fmt.Sprintf("Unknown path '%v'", path))
 }
 
 // renterfilesdownload downloads the file at the specified path from the Sia
@@ -2729,7 +2736,8 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
 }
 
-// skynetuploadcmd will upload a file or directory to Skynet.
+// skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
+// passed, it will fetch the skylinks without uploading.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
 	// Open the source file.
 	file, err := os.Open(sourcePath)
@@ -2747,6 +2755,9 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 
 	if !fi.IsDir() {
 		skynetUploadFile(sourcePath, sourcePath, destSiaPath, pbs)
+		if skynetUploadDryRun {
+			fmt.Print("[dry run] ")
+		}
 		fmt.Printf("Successfully uploaded skyfile!\n")
 		return
 	}
@@ -2768,18 +2779,16 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		die(err)
 	}
 	// Confirm with the user that they want to upload all of them.
+	if skynetUploadDryRun {
+		fmt.Print("[dry run] ")
+	}
 	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", len(filesToUpload)))
 	if !ok {
 		os.Exit(0)
 	}
-	// Queue all files for upload.
-	filesChan := make(chan string, len(filesToUpload))
-	for _, path := range filesToUpload {
-		filesChan <- path
-	}
-	close(filesChan)
 
-	// Start the workers that will upload the files in parallel.
+	// Start the workers.
+	filesChan := make(chan string)
 	var wg sync.WaitGroup
 	for i := 0; i < SimultaneousSkynetUploads; i++ {
 		wg.Add(1)
@@ -2793,8 +2802,17 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 			}
 		}()
 	}
+	// Send all files for upload.
+	for _, path := range filesToUpload {
+		filesChan <- path
+	}
+	// Signal the workers that there is no more work.
+	close(filesChan)
 	wg.Wait()
 	pbs.Wait()
+	if skynetUploadDryRun {
+		fmt.Print("[dry run] ")
+	}
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
@@ -2805,7 +2823,7 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	if err != nil {
 		die("Could not parse destination siapath:", err)
 	}
-	_, filename := filepath.Split(sourcePath)
+	filename := filepath.Base(sourcePath)
 
 	// Open the source file.
 	file, err := os.Open(sourcePath)
@@ -2823,32 +2841,31 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 		// matching after it's done.
 		skylink = skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
 		fmt.Printf("%s -> %s\n", sourcePath, skylink)
-	} else {
-		// Display progress bars while uploading and processing the file.
-		var pUpload *mpb.Bar
-		var pSpinner *mpb.Bar
-		var rc io.ReadCloser
-		var relPath string
-		if strings.Compare(sourcePath, basePath) == 0 {
-			// when uploading a single file we only use the filename
-			relPath = filename
-		} else {
-			// when uploading multiple files we strip the common basePath
-			relPath = strings.TrimPrefix(sourcePath, basePath)
-			// this may or may not be there, that's why we trim it separately
-			relPath = strings.TrimPrefix(relPath, "/")
-		}
-		rc = file
-		// Wrap the file reader in a progress bar reader
-		pUpload, rc = newProgressReader(pbs, fi.Size(), relPath, rc)
-		// Set a spinner to start after the upload is finished
-		pSpinner = newProgressSpinner(pbs, pUpload, relPath)
-		// Perform the upload
-		skylink = skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
-		// Replace the spinner with the skylink and stop it
-		newProgressSkylink(pbs, pSpinner, relPath, skylink)
+		return
 	}
-	return skylink
+
+	// Display progress bars while uploading and processing the file.
+	var relPath string
+	if sourcePath == basePath {
+		// when uploading a single file we only display the filename
+		relPath = filename
+	} else {
+		// when uploading multiple files we strip the common basePath
+		relPath, err = filepath.Rel(basePath, sourcePath)
+		if err != nil {
+			die("Could not get relative path:", err)
+		}
+	}
+	rc := io.ReadCloser(file)
+	// Wrap the file reader in a progress bar reader
+	pUpload, rc := newProgressReader(pbs, fi.Size(), relPath, rc)
+	// Set a spinner to start after the upload is finished
+	pSpinner := newProgressSpinner(pbs, pUpload, relPath)
+	// Perform the upload
+	skylink = skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
+	// Replace the spinner with the skylink and stop it
+	newProgressSkylink(pbs, pSpinner, relPath, skylink)
+	return
 }
 
 // skynetUploadFileFromReader is a helper method that uploads a file to Skynet
@@ -2929,33 +2946,54 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 	return bar
 }
 
-// skynetunpincmd will unpin and delete the file from the Renter.
-func skynetunpincmd(siaPathStr string) {
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(siaPathStr)
-	if err != nil {
-		die("Could not parse siapath:", err)
+// skynetunpincmd will unpin and delete either a single or multiple files or
+// directories from the Renter.
+func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
+	if len(skyPathStrs) == 0 {
+		cmd.UsageFunc()(cmd)
+		os.Exit(exitCodeUsage)
 	}
 
-	// Parse out the intended siapath.
-	if !skynetUnpinRoot {
-		siaPath, err = modules.SkynetFolder.Join(siaPath.String())
+	for _, skyPathStr := range skyPathStrs {
+		// Create the skypath.
+		skyPath, err := modules.NewSiaPath(skyPathStr)
 		if err != nil {
-			die("could not build siapath:", err)
+			die("Could not parse skypath:", err)
 		}
-	}
 
-	// Try to delete file.
-	errFile := httpClient.RenterFileDeleteRootPost(siaPath)
-	if errFile == nil {
-		fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
-		return
-	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
-		die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
-	}
+		// Parse out the intended siapath.
+		if !skynetUnpinRoot {
+			skyPath, err = modules.SkynetFolder.Join(skyPath.String())
+			if err != nil {
+				die("could not build siapath:", err)
+			}
+		}
 
-	// Unknown file/folder.
-	die(fmt.Sprintf("Unknown path '%v'", siaPath))
+		// Try to delete file.
+		//
+		// In the case where the path points to a dir, this will fail and we
+		// silently move on to deleting it as a dir. This is more efficient than
+		// querying the renter first to see if it is a file or a dir, as that is
+		// guaranteed to always be two renter calls.
+		errFile := httpClient.RenterFileDeleteRootPost(skyPath)
+		if errFile == nil {
+			fmt.Printf("Unpinned skyfile '%v'\n", skyPath)
+			continue
+		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
+			die(fmt.Sprintf("Failed to unpin skyfile %v: %v", skyPath, errFile))
+		}
+		// Try to delete dir.
+		errDir := httpClient.RenterDirDeleteRootPost(skyPath)
+		if errDir == nil {
+			fmt.Printf("Unpinned Skynet directory '%v'\n", skyPath)
+			continue
+		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
+			die(fmt.Sprintf("Failed to unpin Skynet directory %v: %v", skyPath, errDir))
+		}
+
+		// Unknown file/dir.
+		die(fmt.Sprintf("Unknown path '%v'", skyPath))
+	}
 }
 
 // skynetconvertcmd will convert an existing siafile to a skyfile and skylink on

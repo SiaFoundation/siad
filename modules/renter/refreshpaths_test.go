@@ -14,8 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestAddUnigueBubblePaths probes the addUniqueBubblePaths function
-func TestAddUniqueBubblePaths(t *testing.T) {
+// TestAddUniqueRefreshPaths probes the addUniqueRefreshPaths function
+func TestAddUniqueRefreshPaths(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -26,6 +26,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rt.Close()
 
 	// Create some directory tree paths
 	paths := []modules.SiaPath{
@@ -52,7 +53,7 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		}
 	}
 
-	// No randomly add more paths
+	// Randomly add more paths
 	for i := 0; i < 10; i++ {
 		err = dirsToRefresh.callAdd(paths[fastrand.Intn(len(paths))])
 		if err != nil {
@@ -107,11 +108,14 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 	if di[0].AggregateNumFiles != 0 {
 		t.Fatal("Expected AggregateNumFiles to be 0 but got", di[0].AggregateNumFiles)
 	}
+	if di[0].AggregateNumSubDirs != 0 {
+		t.Fatal("Expected AggregateNumSubDirs to be 0 but got", di[0].AggregateNumSubDirs)
+	}
 
 	// Have uniqueBubblePaths call bubble
 	dirsToRefresh.callRefreshAll()
 
-	// Wait for root directory to show proper number of files
+	// Wait for root directory to show proper number of files and subdirs.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		di, err = rt.renter.DirList(modules.RootSiaPath())
 		if err != nil {
@@ -120,9 +124,18 @@ func TestAddUniqueBubblePaths(t *testing.T) {
 		if int(di[0].AggregateNumFiles) != len(dirsToRefresh.childDirs) {
 			return fmt.Errorf("Expected AggregateNumFiles to be %v but got %v", len(dirsToRefresh.childDirs), di[0].AggregateNumFiles)
 		}
+		// Check that AggregateNumSubDirs equals the length of `paths`, minus
+		// the root directory, plus the standard directories `home`,
+		// `snapshots`, and `var`.
+		numSubDirs := len(paths) - 1 + 3
+		if int(di[0].AggregateNumSubDirs) != numSubDirs {
+			return fmt.Errorf("Expected AggregateNumSubDirs to be %v but got %v", numSubDirs, di[0].AggregateNumSubDirs)
+		}
 		return nil
 	})
 	if err != nil {
+		t.Log("Num dirs", len(di))
+		t.Log("Directory Infos", di)
 		t.Fatal(err)
 	}
 }

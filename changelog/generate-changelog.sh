@@ -7,7 +7,7 @@ set -e
 
 generate_till_version=v1.4.7
 changelog_md=../CHANGELOG.md
-changelog_files_dir=../changelog
+changelog_files_dir=.
 head_filename=changelog-head.md
 mid_filename=changelog-mid.md
 tail_filename=changelog-tail.md
@@ -34,10 +34,16 @@ function add_items {
     local items_folder="$2"
     
     local section_has_items=false
-    local items_list=$(find ./"$version" -wholename "*/$items_folder/*.md" | sort)
+    local items_list=$(find ./"$version" -wholename "*/$items_folder/*" | sort)
     local new_line=false
     for item in $items_list
     do
+        # skip .init files and .DS_Store (from MacOS)
+        if [ $(basename "$item") == .init ] || [ $(basename "$item") == .DS_Store ]
+        then
+            continue
+        fi
+
         if [ "$section_has_items" == false ]
     	then
             # Write section header

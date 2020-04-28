@@ -77,7 +77,7 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 	}
 
 	// Fetch the requested information.
-	hasSector := i.staticState.sectors.hasSector(sectorRoot)
+	hasSector := i.staticState.host.HasSector(sectorRoot)
 
 	// Return the output.
 	out := []byte{0}

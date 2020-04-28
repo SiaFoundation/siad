@@ -55,21 +55,21 @@ func (h *Host) persistData() persistence {
 func (h *Host) establishDefaults() error {
 	// Configure the settings object.
 	h.settings = modules.HostInternalSettings{
-		MaxDownloadBatchSize: uint64(defaultMaxDownloadBatchSize),
-		MaxDuration:          defaultMaxDuration,
-		MaxReviseBatchSize:   uint64(defaultMaxReviseBatchSize),
-		WindowSize:           defaultWindowSize,
+		MaxDownloadBatchSize: uint64(modules.DefaultMaxDownloadBatchSize),
+		MaxDuration:          modules.DefaultMaxDuration,
+		MaxReviseBatchSize:   uint64(modules.DefaultMaxReviseBatchSize),
+		WindowSize:           modules.DefaultWindowSize,
 
-		Collateral:       defaultCollateral,
+		Collateral:       modules.DefaultCollateral,
 		CollateralBudget: defaultCollateralBudget,
-		MaxCollateral:    defaultMaxCollateral,
+		MaxCollateral:    modules.DefaultMaxCollateral,
 
-		MinBaseRPCPrice:           defaultBaseRPCPrice,
-		MinContractPrice:          defaultContractPrice,
-		MinDownloadBandwidthPrice: defaultDownloadBandwidthPrice,
-		MinSectorAccessPrice:      defaultSectorAccessPrice,
+		MinBaseRPCPrice:           modules.DefaultBaseRPCPrice,
+		MinContractPrice:          modules.DefaultContractPrice,
+		MinDownloadBandwidthPrice: modules.DefaultDownloadBandwidthPrice,
+		MinSectorAccessPrice:      modules.DefaultSectorAccessPrice,
 		MinStoragePrice:           modules.DefaultStoragePrice,
-		MinUploadBandwidthPrice:   defaultUploadBandwidthPrice,
+		MinUploadBandwidthPrice:   modules.DefaultUploadBandwidthPrice,
 
 		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,
 		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,
@@ -191,6 +191,12 @@ func (h *Host) load() error {
 		h.log.Println("SUCCESS: successfully upgraded host to v143")
 	} else {
 		return err
+	}
+
+	// Compatv148 delete the old account file.
+	af := filepath.Join(h.persistDir, v148AccountsFilename)
+	if err := os.RemoveAll(af); err != nil {
+		h.log.Printf("WARNING: failed to remove legacy account file at '%v', err: %v", af, err)
 	}
 
 	// Check if the host is currently using defaults that violate the ratio

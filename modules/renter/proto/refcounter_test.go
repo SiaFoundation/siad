@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -23,7 +24,27 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-var testWAL = newTestWAL()
+// testWAL is the WAL instance we're going to use across this test. This would
+// typically come from the calling functions.
+var (
+	testWAL, _ = newTestWAL()
+
+	// errTimeoutOnLock is returned when we timeout on getting a lock
+	errTimeoutOnLock = errors.New("timeout while acquiring a lock ")
+)
+
+// StartUpdateWithTimeout acquires a lock, ensuring the caller is the only one currently
+//// allowed to perform updates on this refcounter file.
+func (rc *RefCounter) StartUpdateWithTimeout(timeout time.Duration) error {
+	if timeout < 0 {
+		rc.muUpdate.Lock()
+	} else {
+		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
+			return errTimeoutOnLock
+		}
+	}
+	return rc.managedStartUpdate()
+}
 
 // TestRefCounterCount tests that the Count method always returns the correct
 // counter value, either from disk or from in-mem storage.
@@ -87,7 +108,7 @@ func TestRefCounterAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
 	}
-	err = rc.StartUpdate()
+	err = rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -144,7 +165,7 @@ func TestRefCounterDecrement(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate()
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -199,7 +220,7 @@ func TestRefCounterDelete(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
-	err := rc.StartUpdate()
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -242,11 +263,11 @@ func TestRefCounterDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal("RefCounter creation finished successfully but the file is not accessible:", err)
 	}
-	err = rc.StartUpdate()
+	err = rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 	// update both counters we intend to drop
 	secIdx1 := rc.numSectors - 1
 	secIdx2 := rc.numSectors - 2
@@ -319,7 +340,7 @@ func TestRefCounterIncrement(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	err := rc.StartUpdate()
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -465,6 +486,42 @@ func TestRefCounterLoadInvalidVersion(t *testing.T) {
 	}
 }
 
+// TestRefCounterStartUpdate tests that the StartUpdate method respects the
+// timeout limits set for it.
+func TestRefCounterStartUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// prepare a refcounter for the tests
+	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
+	err := rc.StartUpdateWithTimeout(-1)
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
+
+	// try to lock again with a timeout and see the timout trigger
+	locked := make(chan error)
+	timeout := time.After(time.Second)
+	go func() {
+		locked <- rc.StartUpdateWithTimeout(500 * time.Millisecond)
+	}()
+	select {
+	case err = <-locked:
+		if !errors.Contains(err, errTimeoutOnLock) {
+			t.Fatal("Failed to timeout, expected errTimeoutOnLock, got:", err)
+		}
+	case <-timeout:
+		t.Fatal("Failed to timeout, missed the deadline.")
+	}
+
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
+}
+
 // TestRefCounterSwap tests that the Swap method results in correct values
 func TestRefCounterSwap(t *testing.T) {
 	if testing.Short() {
@@ -474,8 +531,8 @@ func TestRefCounterSwap(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	updates := make([]writeaheadlog.Update, 0)
-	err := rc.StartUpdate()
+	var updates []writeaheadlog.Update
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -545,8 +602,8 @@ func TestRefCounterUpdateApplied(t *testing.T) {
 
 	// prepare a refcounter for the tests
 	rc := testPrepareRefCounter(2+fastrand.Uint64n(10), t)
-	updates := make([]writeaheadlog.Update, 0)
-	err := rc.StartUpdate()
+	var updates []writeaheadlog.Update
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -605,7 +662,7 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// start an update session
-	err := rc.StartUpdate()
+	err := rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
@@ -637,9 +694,8 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 		t.Fatal("Failed to finish the update session:", err)
 	}
 
-	// verify: make sure we cannot start an update session on a deleted counter
-	err = rc.StartUpdate()
-	if !errors.Contains(err, ErrUpdateAfterDelete) {
+	// make sure we cannot start an update session on a deleted counter
+	if err = rc.StartUpdateWithTimeout(-1); err != ErrUpdateAfterDelete {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
 	}
 }
@@ -698,7 +754,7 @@ func TestRefCounterNumSectorsUnderflow(t *testing.T) {
 		t.Fatal("Expected ErrInvalidSectorNumber, got:", err)
 	}
 
-	err = rc.StartUpdate()
+	err = rc.StartUpdateWithTimeout(-1)
 	if err != nil {
 		t.Fatal("Failed to initiate an update session:", err)
 	}
@@ -740,18 +796,18 @@ func TestRefCounterNumSectorsUnderflow(t *testing.T) {
 }
 
 // newTestWal is a helper method to create a WAL for testing.
-func newTestWAL() *writeaheadlog.WAL {
+func newTestWAL() (*writeaheadlog.WAL, string) {
 	// Create the wal.
 	wd := filepath.Join(os.TempDir(), "rc-wals")
 	if err := os.MkdirAll(wd, modules.DefaultDirPerm); err != nil {
 		panic(err)
 	}
-	p := filepath.Join(wd, hex.EncodeToString(fastrand.Bytes(8)))
-	_, wal, err := writeaheadlog.New(p)
+	walFilePath := filepath.Join(wd, hex.EncodeToString(fastrand.Bytes(8)))
+	_, wal, err := writeaheadlog.New(walFilePath)
 	if err != nil {
 		panic(err)
 	}
-	return wal
+	return wal, walFilePath
 }
 
 // testPrepareRefCounter is a helper that creates a refcounter and fails the

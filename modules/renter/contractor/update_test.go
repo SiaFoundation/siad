@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -109,6 +110,8 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer c.Close()
+	defer m.Close()
 
 	// form a contract with the host
 	a := modules.Allowance{
@@ -134,8 +137,18 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 			}
 		}
 		numRetries++
-		if len(c.Contracts()) == 0 {
-			return errors.New("contracts were not formed")
+		// Check for number of contracts and number of pubKeys as there is a
+		// slight delay between the contract being added to the contract set and
+		// the pubkey being added to the contractor map
+		c.mu.Lock()
+		numPubKeys := len(c.pubKeysToContractID)
+		c.mu.Unlock()
+		numContracts := len(c.Contracts())
+		if numContracts != 1 {
+			return fmt.Errorf("Expected 1 contracts, found %v", numContracts)
+		}
+		if numPubKeys != 1 {
+			return fmt.Errorf("Expected 1 pubkey, found %v", numPubKeys)
 		}
 		return nil
 	})

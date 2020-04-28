@@ -12,7 +12,7 @@ import (
 )
 
 // TestSiaMuxCompat verifies the SiaMux is initialized in compatibility mode
-// when the host's persitence metadata version is v1.4.2
+// when the host's persistence metadata version is v1.4.2
 func TestSiaMuxCompat(t *testing.T) {
 	// ensure the host's persistence file does not exist
 	siaDataDir := filepath.Join(os.TempDir(), t.Name())

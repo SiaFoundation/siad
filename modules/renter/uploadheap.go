@@ -70,7 +70,11 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	//  3) Stuck Chunks
 	//    - These are chunks added by the stuck loop
 	//
-	//  4) Worst Health Chunk
+	//  4) Remote Chunks
+	//    - These are chunks of a siafile that do not have a local file to repair
+	//    from
+	//
+	//  5) Worst Health Chunk
 	//    - The base priority of chunks in the heap is by the worst health
 
 	// Check for Priority chunks
@@ -105,6 +109,14 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	}
 	// If chunk j is stuck, return true to prioritize it.
 	if !uch[i].stuck && uch[j].stuck {
+		return false
+	}
+
+	// Check for Remote Chunks
+	if !uch[i].onDisk && uch[j].onDisk {
+		return true
+	}
+	if uch[i].onDisk && !uch[j].onDisk {
 		return false
 	}
 
@@ -394,6 +406,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		r.log.Println("WARN: unable to get 'stuck' status:", err)
 		return nil, errors.AddContext(err, "unable to get 'stuck' status")
 	}
+	_, err = os.Stat(entryCopy.LocalPath())
+	onDisk := err == nil
 	uuc := &unfinishedUploadChunk{
 		fileEntry: entryCopy,
 
@@ -405,6 +419,7 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		index:    chunkIndex,
 		length:   entry.ChunkSize(),
 		offset:   int64(chunkIndex * entry.ChunkSize()),
+		onDisk:   onDisk,
 		priority: priority,
 
 		staticSiaPath: entryCopy.SiaFilePath(),
@@ -581,9 +596,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// accessed without error. If there is an error accessing the file then
 		// it is likely that we can not read the file in which case it can not
 		// be used for repair.
-		_, err := os.Stat(chunk.fileEntry.LocalPath())
-		onDisk := err == nil
-		repairable := chunk.health <= 1 || onDisk
+		repairable := chunk.health <= 1 || chunk.onDisk
 		needsRepair := chunk.health >= RepairThreshold
 
 		// Add chunk to list of incompleteChunks if it is incomplete and
@@ -596,7 +609,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// If a chunk is not able to be repaired, mark it as stuck.
 		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being repairable")
-			err = r.managedSetStuckAndClose(chunk, true)
+			err := r.managedSetStuckAndClose(chunk, true)
 			if err != nil {
 				r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 			}
@@ -604,7 +617,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Close entry of completed chunk
-		err = r.managedSetStuckAndClose(chunk, false)
+		err := r.managedSetStuckAndClose(chunk, false)
 		if err != nil {
 			r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
@@ -664,20 +677,15 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 			return siaPaths, nil
 		}
 
-		// Grab health and siaPath of the directory
-		dir.mu.Lock()
-		dirHealth := dir.health
-		dirSiaPath := dir.siaPath
-		dir.mu.Unlock()
-
 		// If the directory that was just popped is healthy then return
-		if dirHealth < RepairThreshold {
+		heapHealth, _ := dir.managedHeapHealth()
+		if heapHealth < RepairThreshold {
 			r.repairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return siaPaths, nil
 		}
 
 		// Add chunks from the directory to the uploadHeap.
-		r.managedBuildChunkHeap(dirSiaPath, hosts, targetUnstuckChunks)
+		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks)
 
 		// Check to see if we are still adding chunks
 		heapLen := r.uploadHeap.managedLen()
@@ -690,11 +698,11 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
-		err = siaPaths.callAdd(dirSiaPath)
+		err = siaPaths.callAdd(dir.staticSiaPath)
 		if err != nil {
 			r.repairLog.Println("WARN: error adding siapath to tracked paths to bubble:", err)
 		}
-		r.repairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dirSiaPath)
+		r.repairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dir.staticSiaPath)
 	}
 
 	return siaPaths, nil
@@ -755,12 +763,31 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// temporary heap
 	var unfinishedChunkHeap uploadChunkHeap
 	var worstIgnoredHealth float64
-	dirHeapHealth := r.directoryHeap.managedPeekHealth()
+	var worstHealthRemote bool
+	dirHeapHealth, dirHeapRemote := r.directoryHeap.managedPeekHealth()
 	for _, file := range files {
 		// For normal repairs check if file is a worse health than the directory
-		// heap
-		fileHealth := file.Metadata().CachedHealth
-		if fileHealth < dirHeapHealth && target == targetUnstuckChunks {
+		// heap or if the directory heap is tracking remote files and the file
+		// is not remote
+		fileMetadata := file.Metadata()
+		fileHealth := fileMetadata.CachedHealth
+		remoteFile := fileMetadata.LocalPath == ""
+		if (fileHealth < dirHeapHealth || !remoteFile && dirHeapRemote) && target == targetUnstuckChunks {
+			// Track the health
+			if !remoteFile && worstHealthRemote {
+				// Nothing to do as we are tracking the health of at least one
+				// remote file
+				continue
+			}
+			if remoteFile && !worstHealthRemote {
+				// If the file is remote and we haven't been tracking the health
+				// of any remote files then we want to track the health of this
+				// file and set the worstHealthRemote to true
+				worstHealthRemote = true
+				worstIgnoredHealth = fileHealth
+				continue
+			}
+			// Update the worstIgnoredHealth
 			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
 			continue
 		}
@@ -773,7 +800,10 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// Check to see the chunk is already in the upload heap
 			if r.uploadHeap.managedExists(chunk.id) {
 				// Close the file entry
-				chunk.fileEntry.Close()
+				err := chunk.fileEntry.Close()
+				if err != nil {
+					r.log.Println("Error closing file entry:", err)
+				}
 				// Since the chunk is already in the heap we do not need to
 				// track the health of the chunk
 				continue
@@ -783,9 +813,25 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// directory heap
 			if chunk.health < dirHeapHealth && target == targetUnstuckChunks {
 				// Track the health
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+				if chunk.onDisk && worstHealthRemote {
+					// Nothing to do as we are tracking the health of at least one
+					// remote chunk
+				} else if !chunk.onDisk && !worstHealthRemote {
+					// If the chunk is remote and we haven't been tracking the health
+					// of any remote chunks then we want to track the health of this
+					// chunk and set the worstHealthRemote to true
+					worstHealthRemote = true
+					worstIgnoredHealth = chunk.health
+				} else {
+					// Update the worstIgnoredHealth
+					worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+				}
+
 				// Close the file entry
-				chunk.fileEntry.Close()
+				err := chunk.fileEntry.Close()
+				if err != nil {
+					r.log.Println("Error closing file entry:", err)
+				}
 				continue
 			}
 
@@ -808,12 +854,28 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 
 			// Check health of next chunk
 			chunk = heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+			if chunk.onDisk && worstHealthRemote {
+				// Nothing to do as we are tracking the health of at least one
+				// remote chunk
+			} else if !chunk.onDisk && !worstHealthRemote {
+				// If the chunk is remote and we haven't been tracking the health
+				// of any remote chunks then we want to track the health of this
+				// chunk and set the worstHealthRemote to true
+				worstHealthRemote = true
+				worstIgnoredHealth = chunk.health
+			} else {
+				// Update the worstIgnoredHealth
+				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+			}
+
 			// Close the file entry
-			chunk.fileEntry.Close()
+			err := chunk.fileEntry.Close()
+			if err != nil {
+				r.log.Println("Error closing file entry:", err)
+			}
 
 			// Reset temp heap to release memory
-			err := unfinishedChunkHeap.reset()
+			err = unfinishedChunkHeap.reset()
 			if err != nil {
 				r.log.Println("WARN: error resetting the temporary upload heap:", err)
 			}
@@ -838,7 +900,10 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// We don't track the health of this chunk since the only reason it
 			// wouldn't be added to the heap is if it is already in the heap or
 			// is currently being repaired. Close the file.
-			chunk.fileEntry.Close()
+			err := chunk.fileEntry.Close()
+			if err != nil {
+				r.log.Println("Error closing file entry:", err)
+			}
 		}
 	}
 
@@ -846,9 +911,25 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// health of the next chunk
 	if len(unfinishedChunkHeap) > 0 {
 		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-		worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-		// Close the chunk's file
-		chunk.fileEntry.Close()
+		if chunk.onDisk && worstHealthRemote {
+			// Nothing to do as we are tracking the health of at least one
+			// remote chunk
+		} else if !chunk.onDisk && !worstHealthRemote {
+			// If the chunk is remote and we haven't been tracking the health
+			// of any remote chunks then we want to track the health of this
+			// chunk and set the worstHealthRemote to true
+			worstHealthRemote = true
+			worstIgnoredHealth = chunk.health
+		} else {
+			// Update the worstIgnoredHealth
+			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
+		}
+
+		// Close the file entry
+		err := chunk.fileEntry.Close()
+		if err != nil {
+			r.log.Println("Error closing file entry:", err)
+		}
 	}
 
 	// We are done with the temporary heap so reset it to help release the
@@ -888,8 +969,15 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		aggregateHealth: worstIgnoredHealth,
 		health:          worstIgnoredHealth,
 		explored:        true,
-		siaPath:         dirSiaPath,
+		staticSiaPath:   dirSiaPath,
 	}
+	// Update the RemoteHealths as well if we were tracking the health of remote
+	// files and chunks
+	if worstHealthRemote {
+		d.aggregateRemoteHealth = worstIgnoredHealth
+		d.remoteHealth = worstIgnoredHealth
+	}
+
 	// Add the directory to the heap. If there is a conflict because the
 	// directory is already in the heap (for example, added by another thread or
 	// process), then the worst of the values between this dir and the one
@@ -1071,7 +1159,8 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 	// heap size. We want to process all of the chunks if the rest of the
 	// directory heap is in good health and there are no more chunks that could
 	// be added to the heap.
-	smallRepair := r.directoryHeap.managedPeekHealth() < RepairThreshold
+	dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+	smallRepair := dirHeapHealth < RepairThreshold
 
 	// Limit the amount of time spent in each iteration of the repair loop so
 	// that changes to the directory heap take effect sooner rather than later.
@@ -1262,7 +1351,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
 		heapLen := r.uploadHeap.managedLen()
-		r.managedBuildChunkHeap(modules.RootSiaPath(), hosts, targetBackupChunks)
+		r.managedBuildChunkHeap(modules.BackupFolder, hosts, targetBackupChunks)
 		numBackupChunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupChunks > 0 {
 			r.repairLog.Printf("Added %v backup chunks to the upload heap", numBackupChunks)
@@ -1271,7 +1360,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Check if there is work to do. If the filesystem is healthy and the
 		// heap is empty, there is no work to do and the thread should block
 		// until there is work to do.
-		if r.uploadHeap.managedLen() == 0 && r.directoryHeap.managedPeekHealth() < RepairThreshold {
+		dirHeapHealth, _ := r.directoryHeap.managedPeekHealth()
+		if r.uploadHeap.managedLen() == 0 && dirHeapHealth < RepairThreshold {
 			// TODO: This has a tiny window where it might be dumping out chunks
 			// that need health, if the upload call is appending to the
 			// directory heap because there is a new upload.

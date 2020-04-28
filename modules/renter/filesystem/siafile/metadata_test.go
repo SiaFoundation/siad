@@ -75,6 +75,10 @@ func createLinkedBlankSiafiles(dir string) (*SiaFile, *SiaFile, error) {
 // works as expected. Especially using it as a deferred statement like we would
 // use it in production code.
 func TestBackupRestoreMetadata(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	sf := newTestFile()
 
 	// Test both nil slice and regular slice.

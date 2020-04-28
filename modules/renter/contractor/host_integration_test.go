@@ -3,6 +3,7 @@ package contractor
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -429,9 +430,12 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 	defer h.Close()
 	defer c.Close()
+	defer m.Close()
 
 	// set an allowance and wait for a contract to be formed.
-	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
+	a := modules.DefaultAllowance
+	a.Hosts = 1
+	if err := c.SetAllowance(a); err != nil {
 		t.Fatal(err)
 	}
 	numRetries := 0
@@ -442,8 +446,18 @@ func TestIntegrationRenew(t *testing.T) {
 			}
 		}
 		numRetries++
-		if len(c.Contracts()) == 0 {
-			return errors.New("no contracts were formed")
+		// Check for number of contracts and number of pubKeys as there is a
+		// slight delay between the contract being added to the contract set and
+		// the pubkey being added to the contractor map
+		c.mu.Lock()
+		numPubKeys := len(c.pubKeysToContractID)
+		c.mu.Unlock()
+		numContracts := len(c.Contracts())
+		if numContracts != 1 {
+			return fmt.Errorf("Expected 1 contracts, found %v", numContracts)
+		}
+		if numPubKeys != 1 {
+			return fmt.Errorf("Expected 1 pubkey, found %v", numPubKeys)
 		}
 		return nil
 	})
@@ -469,6 +483,9 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Grab the host settings.
+	hostSettings := editor.HostSettings()
+
 	// renew the contract
 	err = c.managedAcquireAndUpdateContractUtility(contract.ID, modules.ContractUtility{GoodForRenew: true})
 	if err != nil {
@@ -478,7 +495,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if !ok {
 		t.Fatal("failed to acquire contract")
 	}
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+200)
+	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+200, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +529,7 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldContract, _ = c.staticContracts.Acquire(contract.ID)
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
+	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+100, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
