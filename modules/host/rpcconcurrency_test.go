@@ -37,6 +37,12 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// prepare an amount with which we'll refund the EAs
 	his := ht.host.InternalSettings()
