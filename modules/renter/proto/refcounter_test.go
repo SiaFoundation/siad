@@ -39,10 +39,9 @@ var (
 func (rc *RefCounter) StartUpdateWithTimeout(timeout time.Duration) error {
 	if timeout <= 0 {
 		return errors.New("non-positive timeout")
-	} else {
-		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
-			return errTimeoutOnLock
-		}
+	}
+	if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
+		return errTimeoutOnLock
 	}
 	return rc.managedStartUpdate()
 }
