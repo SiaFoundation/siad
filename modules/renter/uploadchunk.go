@@ -210,6 +210,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		uc.mu.Unlock()
 		if onCooldown || !gfu || !candidateHost {
 			r.repairLog.Println(onCooldown, !gfu, !candidateHost)
+			w.managedDropChunk(uc)
 			continue
 		}
 		w.callQueueUploadChunk(uc)
