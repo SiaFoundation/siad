@@ -346,7 +346,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	}
 
 	// fetch a price table
-	err = pair.callUpdatePriceTable()
+	err = pair.UpdatePriceTable(true)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to update price table")
 	}
@@ -379,7 +379,7 @@ func (p *renterHostPair) FetchPriceTable() (*modules.RPCPriceTable, error) {
 
 	pt := p.PriceTable()
 	if pt.Expiry <= time.Now().Unix()+expiryBuffer {
-		err := p.callUpdatePriceTable()
+		err := p.UpdatePriceTable(true)
 		if err != nil {
 			return nil, err
 		}
@@ -441,50 +441,21 @@ type executeProgramResponse struct {
 	Output []byte
 }
 
-// callExecuteProgram wraps executeProgram and will thus execute an MDM program
-// on the host using an EA payment and returns the responses received by the
-// host. A failure to execute an instruction won't result in an error. Instead
-// the returned responses need to be inspected for that depending on the
-// testcase. It calls executeProgram with a price table we fetch, this ensures
-// the price table is not expired.
-func (p *renterHostPair) callExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
-	// fetch a price table
-	pt, err := p.FetchPriceTable()
-	if err != nil {
-		return nil, nil, err
-	}
-	return p.executeProgram(pt, epr, programData, budget)
-}
-
-// callFundEphemeralAccount wraps fundEphemeralAccount and will thus deposit the
-// given amount in the pair's ephemeral account. It will do so by first fetching
-// the price table, which ensures the fund ephemeral account call is performed
-// using a price table that is not expired.
-func (p *renterHostPair) callFundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
-	// fetch a price table
-	pt, err := p.FetchPriceTable()
-	if err != nil {
-		return modules.FundAccountResponse{}, err
-	}
-	return p.fundEphemeralAccount(pt, amount)
-}
-
-// callUpdatePriceTable wraps updatePriceTable and will thus update the pairs
-// RPC price table. It calls updatePriceTable with 'payByFC' set to true. This
-// ensures the call has most chances of succeeding (seeing as there is no need
-// for the pair's EA to be funded).
-func (p *renterHostPair) callUpdatePriceTable() error {
-	return p.updatePriceTable(true)
-}
-
-// executeProgram executes an MDM program on the host using an EA payment and
+// ExecuteProgram executes an MDM program on the host using an EA payment and
 // returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-//
-// NOTE the helper function callExecuteProgram which ensures the price table is
-// not expired.
-func (p *renterHostPair) executeProgram(pt *modules.RPCPriceTable, epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+func (p *renterHostPair) ExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable bool) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+	var err error
+
+	pt := p.PriceTable()
+	if updatePriceTable {
+		pt, err = p.FetchPriceTable()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
 	// create stream
 	stream := p.newStream()
 	defer stream.Close()
@@ -493,7 +464,7 @@ func (p *renterHostPair) executeProgram(pt *modules.RPCPriceTable, epr modules.R
 	limit := stream.Limit()
 
 	// Write the specifier.
-	err := modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
 		return nil, limit, err
 	}
@@ -568,19 +539,26 @@ func (p *renterHostPair) executeProgram(pt *modules.RPCPriceTable, epr modules.R
 	return responses, limit, nil
 }
 
-// fundEphemeralAccount will deposit the given amount in the pair's ephemeral
+// FundEphemeralAccount will deposit the given amount in the pair's ephemeral
 // account using the pair's file contract to provide payment and the given price
 // table.
-//
-// NOTE the helper function callFundEphemeralAccount which ensures the price
-// table is not expired.
-func (p *renterHostPair) fundEphemeralAccount(pt *modules.RPCPriceTable, amount types.Currency) (modules.FundAccountResponse, error) {
+func (p *renterHostPair) FundEphemeralAccount(amount types.Currency, updatePriceTable bool) (modules.FundAccountResponse, error) {
+	var err error
+
+	pt := p.PriceTable()
+	if updatePriceTable {
+		pt, err = p.FetchPriceTable()
+		if err != nil {
+			return modules.FundAccountResponse{}, err
+		}
+	}
+
 	// create stream
 	stream := p.newStream()
 	defer stream.Close()
 
 	// Write RPC ID.
-	err := modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
@@ -721,9 +699,9 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 	return crypto.SignHash(hash, p.staticRenterSK)
 }
 
-// updatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
+// UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
 // table on the pair
-func (p *renterHostPair) updatePriceTable(payByFC bool) error {
+func (p *renterHostPair) UpdatePriceTable(payByFC bool) error {
 	stream := p.newStream()
 	defer stream.Close()
 

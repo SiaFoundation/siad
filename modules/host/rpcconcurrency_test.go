@@ -43,10 +43,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-
-	// prepare an amount with which we'll refund the EAs
 	his := ht.host.InternalSettings()
-	funding := his.MaxEphemeralAccountBalance.Div64(1e5)
 
 	// create 10 renter host pairs
 	pairs := make([]*renterHostPair, 10)
@@ -57,8 +54,8 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		}
 
 		// note we can not simply call the `Close` function on the
-		// renterHostPair because we are dealing with a custom host tester in
-		// which we injected the same host tester.
+		// renterHostPair because all renter host pairs share the same host
+		// tester
 		defer func() {
 			err := pair.staticRenterMux.Close()
 			if err != nil {
@@ -67,71 +64,29 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		}()
 
 		// prefund the EAs
-		_, err = pair.callFundEphemeralAccount(funding)
+		funding := his.MaxEphemeralAccountBalance.Div64(1e5)
+		_, err = pair.FundEphemeralAccount(funding, true)
 		if err != nil {
 			t.Fatal(err)
 		}
 		pairs[i] = pair
 	}
 
-	// for every pair precreate MDM programs
-	readFullPrograms := make(map[types.FileContractID]mdmProgram)
-	readPartPrograms := make(map[types.FileContractID]mdmProgram)
-	hasSectorPrograms := make(map[types.FileContractID]mdmProgram)
+	// create a sector on every pair and index them for later use, we will use
+	// these to generate random MDM programs on the fly
+	sectorRoots := make(map[types.FileContractID]crypto.Hash)
 	for _, pair := range pairs {
 		root, _, err := pair.addRandomSector()
 		if err != nil {
 			t.Fatal(err)
 		}
-		pt := pair.PriceTable()
-		fcid := pair.staticFCID
-		readFullPrograms[fcid] = createRandomReadSectorProgram(pt, root, true)
-		readPartPrograms[fcid] = createRandomReadSectorProgram(pt, root, false)
-		hasSectorPrograms[fcid] = newRandomHasSectorProgram(pt, root)
-	}
-
-	// randomScenario is a helper function that randomly selects which program
-	// to execute, returns its cost and a function that tracks a successful call
-	//
-	// NOTE that the costs values are hardcoded and set to what they ought to be
-	// in order for the MDM to successfully execute the program. Values taken
-	// from rpcexecuteprogram_test.go.
-	randomScenario := func(pair *renterHostPair, stats *rpcStats) (program mdmProgram, cost types.Currency, track func()) {
-		pt := pair.PriceTable()
-		scenario := fastrand.Intn(3)
-		switch scenario {
-		case 0:
-			program = readFullPrograms[pair.staticFCID]
-			dlcost := pt.DownloadBandwidthCost.Mul64(10220)
-			ulcost := pt.UploadBandwidthCost.Mul64(18980)
-			cost = program.cost.Add(dlcost).Add(ulcost)
-			track = func() {
-				stats.trackReadSector(true)
-			}
-		case 1:
-			program = readPartPrograms[pair.staticFCID]
-			dlcost := pt.DownloadBandwidthCost.Mul64(10220)
-			ulcost := pt.UploadBandwidthCost.Mul64(18980)
-			cost = program.cost.Add(dlcost).Add(ulcost)
-			track = func() {
-				stats.trackReadSector(false)
-			}
-		case 2:
-			program = hasSectorPrograms[pair.staticFCID]
-			dlcost := pt.DownloadBandwidthCost.Mul64(7300)
-			ulcost := pt.UploadBandwidthCost.Mul64(18980)
-			cost = program.cost.Add(dlcost).Add(ulcost)
-			track = func() {
-				stats.trackHasSector()
-			}
-		}
-		return
+		sectorRoots[pair.staticFCID] = root
 	}
 
 	// start the timer
-	finished := make(chan struct{})
+	finishedChan := make(chan struct{})
 	time.AfterFunc(timeout, func() {
-		close(finished)
+		close(finishedChan)
 	})
 
 	// collect rpc stats
@@ -144,47 +99,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		// set of errors which are expected to happen, if we can recover from
 		// them, the test should not be considered as failed
 		recoverChan := make(chan error)
-		go func(pair *renterHostPair, recoverChan chan error) {
-			for err := range recoverChan {
-				select {
-				case <-finished:
-					continue
-				default:
-				}
-
-				// try to recover from insufficient balance
-				var recovered bool
-				if !recovered && strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
-					_, err = pair.fundEphemeralAccount(pair.PriceTable(), funding)
-					stats.trackFundEA()
-					recovered = err == nil
-				}
-
-				// try to recover from expired PT
-				if !recovered && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
-					var payByFC bool
-					// try using an EA, but fall back to contract payment, this
-					// ensures the price table gets updated, and attempts to do
-					// it in the fastest way possible
-					err = pair.updatePriceTable(false)
-					if err != nil {
-						pair.updatePriceTable(true)
-						payByFC = true
-					}
-					stats.trackUpdatePT(payByFC)
-					recovered = err == nil
-				}
-
-				// ignore max balance exceeded & cancelled deposits
-				if !recovered && (strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) || strings.Contains(err.Error(), ErrDepositCancelled.Error())) {
-					err = nil
-				}
-
-				if err != nil {
-					t.Error(err)
-				}
-			}
-		}(p, recoverChan)
+		go recoverFromError(t, p, stats, recoverChan, finishedChan)
 
 		wg.Add(numThreads)
 		for i := 0; i < numThreads; i++ {
@@ -193,13 +108,14 @@ func TestRPCConcurrentCalls(t *testing.T) {
 			LOOP:
 				for {
 					select {
-					case <-finished:
+					case <-finishedChan:
 						break LOOP
 					default:
 					}
 
 					// get a random program to execute
-					p, cost, trackFn := randomScenario(pair, stats)
+					root := sectorRoots[pair.staticFCID]
+					p, cost, trackRPC := randomMDMProgram(pair, root)
 					epr := modules.RPCExecuteProgramRequest{
 						FileContractID:    pair.staticFCID,
 						Program:           p.program,
@@ -207,21 +123,98 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					}
 
 					// execute it and handle the error
-					pt := pair.PriceTable()
-					_, _, err := pair.executeProgram(pt, epr, p.data, cost)
+					_, _, err := pair.ExecuteProgram(epr, p.data, cost, false)
 					if err != nil {
 						recoverChan <- err
 					} else {
-						trackFn()
+						trackRPC(stats)
 					}
 				}
 			}(p, recoverChan)
 		}
 	}
-	<-finished
+	<-finishedChan
 	wg.Wait()
 
 	t.Logf("In %.f seconds, on %d cores across %d threads, the following RPCs completed: %s\n", timeout.Seconds(), runtime.NumCPU(), numThreads, stats.String())
+}
+
+// randomMDMProgram is a helper function that randomly creates an MDM program.
+// It returns either a full sector read, partial sector read or has sector
+// program. Alongside the program and cost it returns a function that updates
+// the appropriate RPC tracker in the stats object.
+func randomMDMProgram(pair *renterHostPair, sectorRoot crypto.Hash) (program mdmProgram, cost types.Currency, updateStats func(stats *rpcStats)) {
+	pt := pair.PriceTable()
+	switch fastrand.Intn(3) {
+	case 0:
+		program = newRandomReadSectorProgram(pt, sectorRoot, true)
+		dlcost := pt.DownloadBandwidthCost.Mul64(10220)
+		ulcost := pt.UploadBandwidthCost.Mul64(18980)
+		cost = program.cost.Add(dlcost).Add(ulcost)
+		updateStats = func(stats *rpcStats) { stats.trackReadSector(true) }
+	case 1:
+		program = newRandomReadSectorProgram(pt, sectorRoot, false)
+		dlcost := pt.DownloadBandwidthCost.Mul64(10220)
+		ulcost := pt.UploadBandwidthCost.Mul64(18980)
+		cost = program.cost.Add(dlcost).Add(ulcost)
+		updateStats = func(stats *rpcStats) { stats.trackReadSector(false) }
+	case 2:
+		program = newRandomHasSectorProgram(pt, sectorRoot)
+		dlcost := pt.DownloadBandwidthCost.Mul64(7300)
+		ulcost := pt.UploadBandwidthCost.Mul64(18980)
+		cost = program.cost.Add(dlcost).Add(ulcost)
+		updateStats = func(stats *rpcStats) { stats.trackHasSector() }
+	}
+	return
+}
+
+// recoverFromError is a helper function that takes a channel over which errors
+// are sent. These errors occurred by executing RPC calls on the pair, and they
+// might be expected errors from which we want to recover. Examples of such
+// errors are expired price tables, or out of balance errors.
+func recoverFromError(t *testing.T, pair *renterHostPair, stats *rpcStats, errChan chan error, finishedChan chan struct{}) {
+	his := pair.ht.host.InternalSettings()
+	funding := his.MaxEphemeralAccountBalance.Div64(1e5)
+
+	for err := range errChan {
+		select {
+		case <-finishedChan:
+			continue
+		default:
+		}
+
+		// try to recover from insufficient balance
+		var recovered bool
+		if !recovered && strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
+			_, err = pair.FundEphemeralAccount(funding, false)
+			stats.trackFundEA()
+			recovered = err == nil
+		}
+
+		// try to recover from expired PT
+		if !recovered && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
+			var payByFC bool
+			// try using an EA, but fall back to contract payment, this
+			// ensures the price table gets updated, and attempts to do
+			// it in the fastest way possible
+			err = pair.UpdatePriceTable(false)
+			if err != nil {
+				pair.UpdatePriceTable(true)
+				payByFC = true
+			}
+			stats.trackUpdatePT(payByFC)
+			recovered = err == nil
+		}
+
+		// ignore max balance exceeded & cancelled deposits
+		if !recovered && (strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) || strings.Contains(err.Error(), ErrDepositCancelled.Error())) {
+			err = nil
+		}
+
+		if err != nil {
+			t.Error(err)
+		}
+	}
 }
 
 // mdmProgram is a helper struct that contains all necessary details to execute
@@ -232,11 +225,11 @@ type mdmProgram struct {
 	cost    types.Currency
 }
 
-// createRandomReadSectorProgram is a helper function that creates a program to
+// newRandomReadSectorProgram is a helper function that creates a program to
 // read data from the host. If full is set to true, the program will perform a
 // full sector read, if it is false we return a program that reads a random
 // couple of segments at random offset.
-func createRandomReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full bool) mdmProgram {
+func newRandomReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full bool) mdmProgram {
 	var offset uint64
 	var length uint64
 	if full {
