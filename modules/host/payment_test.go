@@ -397,7 +397,9 @@ func TestProcessParallelPayments(t *testing.T) {
 				} else {
 					refill := bt.TrackWithdrawal(rp.staticAccountID, int64(rw))
 					if refill {
+						wg.Add(1)
 						go func(id modules.AccountID) {
+							defer wg.Done()
 							time.Sleep(100 * time.Millisecond) // make it slow
 							if err := callDeposit(am, id, types.NewCurrency64(refillAmount)); err != nil {
 								t.Error(err)
