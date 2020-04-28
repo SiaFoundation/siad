@@ -145,26 +145,30 @@ func TestRPCConcurrentCalls(t *testing.T) {
 // the appropriate RPC tracker in the stats object.
 func randomMDMProgram(pair *renterHostPair, sectorRoot crypto.Hash) (program mdmProgram, cost types.Currency, updateStats func(stats *rpcStats)) {
 	pt := pair.PriceTable()
+	var expectedDLBandwidth uint64
+	var expectedULBandwidth uint64
+
 	switch fastrand.Intn(3) {
 	case 0:
 		program = newRandomReadSectorProgram(pt, sectorRoot, true)
-		dlcost := pt.DownloadBandwidthCost.Mul64(10220)
-		ulcost := pt.UploadBandwidthCost.Mul64(18980)
-		cost = program.cost.Add(dlcost).Add(ulcost)
+		expectedDLBandwidth = 10220
+		expectedULBandwidth = 18980
 		updateStats = func(stats *rpcStats) { stats.trackReadSector(true) }
 	case 1:
 		program = newRandomReadSectorProgram(pt, sectorRoot, false)
-		dlcost := pt.DownloadBandwidthCost.Mul64(10220)
-		ulcost := pt.UploadBandwidthCost.Mul64(18980)
-		cost = program.cost.Add(dlcost).Add(ulcost)
+		expectedDLBandwidth = 10220
+		expectedULBandwidth = 18980
 		updateStats = func(stats *rpcStats) { stats.trackReadSector(false) }
 	case 2:
 		program = newRandomHasSectorProgram(pt, sectorRoot)
-		dlcost := pt.DownloadBandwidthCost.Mul64(7300)
-		ulcost := pt.UploadBandwidthCost.Mul64(18980)
-		cost = program.cost.Add(dlcost).Add(ulcost)
+		expectedDLBandwidth = 7300
+		expectedULBandwidth = 18980
 		updateStats = func(stats *rpcStats) { stats.trackHasSector() }
 	}
+
+	dlcost := pt.DownloadBandwidthCost.Mul64(expectedDLBandwidth)
+	ulcost := pt.UploadBandwidthCost.Mul64(expectedULBandwidth)
+	cost = program.cost.Add(dlcost).Add(ulcost)
 	return
 }
 
