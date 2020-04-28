@@ -28,8 +28,21 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
+)
+
+var (
+	// cachedContractUtilityTimeout specifies how long the cached contract
+	// utility is valid for the worker.
+	cachedContractUtilityTimeout = build.Select(build.Var{
+		Dev:      time.Second * 5,
+		Standard: time.Minute * 10,
+		Testing:  time.Second,
+	}).(time.Duration)
 )
 
 // A worker listens for work on a certain host.
@@ -50,6 +63,9 @@ type worker struct {
 	// one worker per host.
 	staticHostPubKey    types.SiaPublicKey
 	staticHostPubKeyStr string
+
+	// Cached value for the contract utility, updated infrequently.
+	cachedContractUtility modules.ContractUtility
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -127,6 +143,23 @@ func (w *worker) managedBlockUntilReady() bool {
 	return true
 }
 
+// managedUpdateCache will check how recently each of the cached values of the
+// worker has been updated and update anything that is not recent enough.
+//
+// 'false' will be returned if the cache cannot be updated, signaling that the
+// worker should exit.
+func (w *worker) managedUpdateCache() (<-chan time.Time, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)
+	if !exists {
+		return nil, false
+	}
+	w.cachedContractUtility = utility
+	return time.After(cachedContractUtilityTimeout), true
+}
+
 // staticKilled is a convenience function to determine if a worker has been
 // killed or not.
 func (w *worker) staticKilled() bool {
@@ -180,6 +213,7 @@ func (w *worker) threadedWorkLoop() {
 	// 'workAttempted' indicates that there was a job to perform, and that a
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
+	var cacheUpdateTimer <-chan time.Time
 	for {
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are
@@ -187,6 +221,21 @@ func (w *worker) threadedWorkLoop() {
 		// worker should exit.
 		if !w.managedBlockUntilReady() {
 			return
+		}
+
+		// Check if the cache needs to be updated. cacheUpdateTimer is a channel
+		// that will fire when the current cache has expired. If the current
+		// cache has expired, update the cache.
+		select {
+		case <-cacheUpdateTimer:
+			var ok bool
+			cacheUpdateTimer, ok = w.managedUpdateCache()
+			if !ok {
+				// Could not update cache, kill worker.
+				w.renter.log.Debugln("worker is being killed because the cache could not be updated")
+				return
+			}
+		default:
 		}
 
 		// Check if the account needs to be refilled.

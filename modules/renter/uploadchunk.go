@@ -186,10 +186,22 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		workers = append(workers, worker)
 	}
 	r.staticWorkerPool.mu.RUnlock()
-	r.repairLog.Debugf("Distributed chunk %v of %s to %v workers", uc.index, uc.staticSiaPath, len(workers))
-	for _, worker := range workers {
-		worker.callQueueUploadChunk(uc)
+
+	// Filter through the workers, ignoring any that are not good for upload,
+	// and ignoring any that are on upload cooldown.
+	jobsDistributed := 0
+	for _, w := range workers {
+		w.mu.Lock()
+		onCooldown, _ := w.onUploadCooldown()
+		gfu := w.cachedContractUtility.GoodForUpload
+		w.mu.Unlock()
+		if onCooldown || !gfu {
+			continue
+		}
+		w.callQueueUploadChunk(uc)
+		jobsDistributed++
 	}
+	r.repairLog.Printf("Distributed chunk %v of %s to %v workers", uc.index, uc.staticSiaPath, jobsDistributed)
 	r.managedCleanUpUploadChunk(uc)
 }
 

@@ -242,10 +242,9 @@ func (w *worker) onUploadCooldown() (bool, time.Duration) {
 // managedProcessUploadChunk will process a chunk from the worker chunk queue.
 func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk *unfinishedUploadChunk, pieceIndex uint64) {
 	// Determine the usability value of this worker.
-	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)
-	goodForUpload := exists && utility.GoodForUpload
 	w.mu.Lock()
 	onCooldown, _ := w.onUploadCooldown()
+	goodForUpload := w.cachedContractUtility.GoodForUpload
 	w.mu.Unlock()
 
 	// Determine what sort of help this chunk needs.
