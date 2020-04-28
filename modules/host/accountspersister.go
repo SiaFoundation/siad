@@ -23,7 +23,11 @@ const (
 	accountSize = 1 << 7 // 128 bytes
 
 	// accountsFilename is the filename of the file that holds the accounts
-	accountsFilename = "accounts.txt"
+	accountsFilename = "accounts.dat"
+
+	// v148AccountsFilename is the filename of the file that holds the accounts
+	// used for version <= 1.4.8.
+	v148AccountsFilename = "accounts.txt"
 
 	// fingerprintSize is the fixed fingerprint size in bytes
 	fingerprintSize = 1 << 5 // 32 bytes

@@ -163,13 +163,7 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get the starting filesize.
 	filename := filepath.Join(sb.staticPersistDir, persistFile)
-	fi, err := os.Stat(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadataSize := fi.Size()
 
 	// There should be no skylinks in the blacklist
 	if len(sb.merkleroots) != 0 {
@@ -183,13 +177,23 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	minNumBytes := int(2 * metadataPageSize)
-	corruptionSize, err := f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
+	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = f.Close()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// The filesize with corruption should be greater than the persist length.
+	fi, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesize := fi.Size()
+	if filesize <= sb.persistLength {
+		t.Fatalf("Expected file size greater than %v, got %v", sb.persistLength, filesize)
 	}
 
 	// Update blacklist
@@ -199,6 +203,17 @@ func TestPersistCorruption(t *testing.T) {
 	err = sb.UpdateSkynetBlacklist(add, remove)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// The filesize should be equal to the persist length now due to the
+	// truncate when updating.
+	fi, err = os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesize = fi.Size()
+	if filesize != sb.persistLength {
+		t.Fatalf("Expected file size %v, got %v", sb.persistLength, filesize)
 	}
 
 	// Blacklist should be empty because we added and then removed the same
@@ -269,15 +284,20 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
-	// The final filesize should be metadata + corruption size.
+	// The final filesize should be equal to the persist length.
 	fi, err = os.Stat(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
-	filesize := fi.Size()
-	expectedSize := metadataSize + int64(corruptionSize)
-	if filesize != expectedSize {
-		t.Fatalf("Expected file size %v, got %v", expectedSize, filesize)
+	filesize = fi.Size()
+	if filesize != sb3.persistLength {
+		t.Fatalf("Expected file size %v, got %v", sb3.persistLength, filesize)
+	}
+
+	// Verify that the correct number of links were persisted to verify no links
+	// are being truncated
+	if err = checkNumPersistedLinks(filename, 4); err != nil {
+		t.Errorf("error verifying correct number of links: %v", err)
 	}
 }
 
@@ -329,7 +349,7 @@ func TestMarshalSia(t *testing.T) {
 
 	// Test unmarshalPersistLinks
 	r = bytes.NewBuffer(buf.Bytes())
-	blacklist, err := unmarshalBlacklist(r, 2)
+	blacklist, err := unmarshalBlacklist(r)
 	if err != nil {
 		t.Fatal(err)
 	}

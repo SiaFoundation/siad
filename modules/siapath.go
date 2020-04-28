@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -42,9 +41,20 @@ var (
 )
 
 var (
+	// BackupFolder is the Sia folder where all of the renter's snapshot
+	// siafiles are stored by default.
+	BackupFolder = NewGlobalSiaPath("/snapshots")
+
+	// HomeFolder is the Sia folder that is used to store all of the user
+	// accessible data.
+	HomeFolder = NewGlobalSiaPath("/home")
+
 	// SkynetFolder is the Sia folder where all of the skyfiles are stored by
 	// default.
 	SkynetFolder = NewGlobalSiaPath("/var/skynet")
+
+	// UserFolder is the Sia folder that is used to store the renter's siafiles.
+	UserFolder = NewGlobalSiaPath("/home/user")
 )
 
 type (
@@ -82,34 +92,6 @@ func RandomSiaPath() (sp SiaPath) {
 // RootSiaPath returns a SiaPath for the root siadir which has a blank path
 func RootSiaPath() SiaPath {
 	return SiaPath{}
-}
-
-// HomeSiaPath returns a siapath to /home
-func HomeSiaPath() SiaPath {
-	sp, err := RootSiaPath().Join(HomeFolderRoot)
-	if err != nil {
-		build.Critical(err)
-	}
-	return sp
-}
-
-// UserSiaPath returns a siapath to /home/user
-func UserSiaPath() SiaPath {
-	sp := HomeSiaPath()
-	sp, err := sp.Join(UserRoot)
-	if err != nil {
-		build.Critical(err)
-	}
-	return sp
-}
-
-// SnapshotsSiaPath returns a siapath to /snapshots
-func SnapshotsSiaPath() SiaPath {
-	sp, err := RootSiaPath().Join(BackupRoot)
-	if err != nil {
-		build.Critical(err)
-	}
-	return sp
 }
 
 // CombinedSiaFilePath returns the SiaPath to a hidden siafile which is used to

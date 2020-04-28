@@ -136,9 +136,10 @@ type (
 		balance            types.Currency
 		blockedWithdrawals blockedWithdrawalHeap
 
-		// persistResultChans is a queue on which the result of committing the
-		// account to disk is sent.
-		persistResultChans []chan error
+		// persistResults contains a list of channels for threads that are
+		// waiting for results on the persist status of an action performed on
+		// the account.
+		persistResults []*persistResult
 
 		// pendingRisk keeps track of the unsaved account balance delta. We keep
 		// track of this on a per account basis because we have to know how much
@@ -177,7 +178,7 @@ type (
 	blockedDeposit struct {
 		id            modules.AccountID
 		amount        types.Currency
-		persistResult chan error
+		persistResult *persistResult
 		syncResult    chan struct{}
 	}
 
@@ -193,6 +194,15 @@ type (
 	fingerprintMap struct {
 		current map[crypto.Hash]struct{}
 		next    map[crypto.Hash]struct{}
+	}
+
+	// persistResult contains a channel which gets closed when the error from
+	// the result has been determined, along with the error from the result. The
+	// error is not allowed to be accessed until the result chan is closed,
+	// except by thread that is reporting the error.
+	persistResult struct {
+		errAvail  chan struct{}
+		externErr error
 	}
 
 	// accountPersistInfo is a helper struct that contains all necessary
@@ -340,21 +350,23 @@ func (am *accountManager) callRefund(id modules.AccountID, amount types.Currency
 func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Currency, refund bool, syncChan chan struct{}) error {
 	// Gather some variables.
 	bh := am.h.BlockHeight()
-	his := am.h.InternalSettings()
+	his := am.h.managedInternalSettings()
 	maxRisk := his.MaxEphemeralAccountRisk
 	maxBalance := his.MaxEphemeralAccountBalance
 
 	// Initiate the deposit.
-	persistResultChan := make(chan error)
+	pr := &persistResult{
+		errAvail: make(chan struct{}),
+	}
 	am.mu.Lock()
-	err := am.deposit(id, amount, maxRisk, maxBalance, bh, refund, persistResultChan, syncChan)
+	err := am.deposit(id, amount, maxRisk, maxBalance, bh, refund, pr, syncChan)
 	am.mu.Unlock()
 	if err != nil {
 		return errors.AddContext(err, "Deposit failed")
 	}
 
 	// Wait for the deposit to be persisted.
-	return errors.AddContext(am.staticWaitForDepositResult(persistResultChan), "Deposit failed")
+	return errors.AddContext(am.staticWaitForDepositResult(pr), "Deposit failed")
 }
 
 // callWithdraw will process the given withdrawal message. This call will block
@@ -364,7 +376,7 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Curr
 // funds.
 func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypto.Signature, priority int64) error {
 	// Gather some variables
-	his := am.h.InternalSettings()
+	his := am.h.managedInternalSettings()
 	bh := am.h.BlockHeight()
 	maxRisk := his.MaxEphemeralAccountRisk
 
@@ -435,15 +447,20 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 
 // deposit performs a couple of steps in preparation of the
 // deposit. If everything checks out it will commit the deposit.
-func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, refund bool, persistResultChan chan error, syncChan chan struct{}) error {
+func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBalance types.Currency, blockHeight types.BlockHeight, refund bool, pr *persistResult, syncChan chan struct{}) error {
 	// Open the account, if the account does not exist yet, it will be created.
 	acc, err := am.openAccount(id)
 	if err != nil {
-		return errors.AddContext(err, "failed to open account for deposit")
+		err2 := errors.AddContext(err, "failed to open account for deposit")
+		pr.externErr = err2
+		close(pr.errAvail)
+		return err2
 	}
 
 	// Verify if the deposit does not exceed the maximum
 	if !refund && acc.depositExceedsMaxBalance(amount, maxBalance) {
+		pr.externErr = ErrBalanceMaxExceeded
+		close(pr.errAvail)
 		return ErrBalanceMaxExceeded
 	}
 
@@ -454,15 +471,14 @@ func (am *accountManager) deposit(id modules.AccountID, amount, maxRisk, maxBala
 		am.blockedDeposits = append(am.blockedDeposits, &blockedDeposit{
 			id:            id,
 			amount:        amount,
-			persistResult: persistResultChan,
+			persistResult: pr,
 			syncResult:    syncChan,
 		})
 		return nil
 	}
 
 	// Commit the deposit
-	am.commitDeposit(acc, amount, blockHeight, persistResultChan, syncChan)
-
+	am.commitDeposit(acc, amount, blockHeight, pr, syncChan)
 	return nil
 }
 
@@ -541,7 +557,7 @@ func (am *accountManager) managedAccountPersistInfo(id modules.AccountID) *accou
 		index:   acc.index,
 		data:    acc.accountData(),
 		risk:    acc.pendingRisk,
-		waiting: len(acc.persistResultChans),
+		waiting: len(acc.persistResults),
 	}
 }
 
@@ -578,9 +594,9 @@ func (am *accountManager) threadedUpdateRiskAfterSync(deposit types.Currency, sy
 }
 
 // threadedSaveAccount will save the account with given id. The thread will keep
-// calling this method as long as there are channels in persistResultChans.
-// Which essentially means there are other threads awaiting the persist result.
-// There is only ever one save thread per account.
+// calling this method as long as there are channels in persistResults. Which
+// essentially means there are other threads awaiting the persist result. There
+// is only ever one save thread per account.
 //
 // Note that the caller adds this thread to the threadgroup. If the add is done
 // inside the goroutine, the host risks losing money even on graceful shutdowns.
@@ -616,7 +632,7 @@ func (am *accountManager) threadedSaveAccount(id modules.AccountID) (waiting int
 		// through the waiting return value. If there are channels still
 		// waiting, threadedSaveAccount will be called again.
 		acc.sendResult(err, accInfo.waiting)
-		waiting = len(acc.persistResultChans)
+		waiting = len(acc.persistResults)
 
 		// Sanity check
 		if waiting == 0 && !acc.pendingRisk.IsZero() {
@@ -637,7 +653,7 @@ func (am *accountManager) threadedSaveAccount(id modules.AccountID) (waiting int
 
 // commitDeposit deposits the amount to the account balance and schedules a
 // persist to save the account data to disk.
-func (am *accountManager) commitDeposit(a *account, amount types.Currency, blockHeight types.BlockHeight, persistResultChan chan error, syncChan chan struct{}) {
+func (am *accountManager) commitDeposit(a *account, amount types.Currency, blockHeight types.BlockHeight, pr *persistResult, syncChan chan struct{}) {
 	// Update the account details
 	a.balance = a.balance.Add(amount)
 	a.lastTxnTime = time.Now().Unix()
@@ -669,7 +685,7 @@ func (am *accountManager) commitDeposit(a *account, amount types.Currency, block
 		// Commit the withdrawal
 		am.commitWithdrawal(a, bw.withdrawal.Amount, blockHeight, bw.commitResult)
 	}
-	am.schedulePersist(a, persistResultChan)
+	am.schedulePersist(a, pr)
 }
 
 // commitWithdrawal withdraws the amount from the account balance and schedules
@@ -687,7 +703,10 @@ func (am *accountManager) commitWithdrawal(a *account, amount types.Currency, bl
 	a.pendingRisk = a.pendingRisk.Add(amount)
 	am.currentRisk = am.currentRisk.Add(amount)
 
-	am.schedulePersist(a, make(chan error))
+	pr := &persistResult{
+		errAvail: make(chan struct{}),
+	}
+	am.schedulePersist(a, pr)
 }
 
 // updateRiskAfterDeposit will update the current risk after a deposit has been
@@ -713,9 +732,9 @@ func (am *accountManager) updateRiskAfterDeposit(deposit types.Currency, syncCha
 // call threadedSaveAccount for the given id. This way persists are happening in
 // a FIFO fashion, ensuring an account is never overwritten by older account
 // data.
-func (am *accountManager) schedulePersist(acc *account, persistResultChan chan error) {
-	persistScheduled := len(acc.persistResultChans) > 0
-	acc.persistResultChans = append(acc.persistResultChans, persistResultChan)
+func (am *accountManager) schedulePersist(acc *account, pr *persistResult) {
+	persistScheduled := len(acc.persistResults) > 0
+	acc.persistResults = append(acc.persistResults, pr)
 
 	// Return early if we weren't the first to schedule a persist for this
 	// account. This is to ensure there's only one save thread per account.
@@ -818,7 +837,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 // on the threadgroup would deadlock.
 func (am *accountManager) threadedPruneExpiredAccounts() {
 	for {
-		his := am.h.InternalSettings()
+		his := am.h.managedInternalSettings()
 		accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
 
 		func() {
@@ -868,10 +887,10 @@ func (am *accountManager) threadedPruneExpiredAccounts() {
 
 // staticWaitForDepositResult will block until it receives a message on the
 // given result channel, or until it receives a stop signal.
-func (am *accountManager) staticWaitForDepositResult(persistResultChan chan error) error {
+func (am *accountManager) staticWaitForDepositResult(pr *persistResult) error {
 	select {
-	case err := <-persistResultChan:
-		return err
+	case <-pr.errAvail:
+		return pr.externErr
 	case <-am.h.tg.StopChan():
 		return ErrDepositCancelled
 	}
@@ -904,12 +923,9 @@ func (am *accountManager) managedExpireAccounts(threshold int64) []uint32 {
 	for id, acc := range am.accounts {
 		if force || now-acc.lastTxnTime > threshold {
 			// Signal all waiting result chans this account has expired
-			for _, c := range acc.persistResultChans {
-				select {
-				case c <- ErrAccountExpired:
-				default:
-				}
-				close(c)
+			for _, c := range acc.persistResults {
+				c.externErr = ErrAccountExpired
+				close(c.errAvail)
 			}
 			delete(am.accounts, id)
 			deleted = append(deleted, acc.index)
@@ -943,7 +959,7 @@ func (am *accountManager) openAccount(id modules.AccountID) (*account, error) {
 		id:                 id,
 		index:              am.accountBitfield.assignFreeIndex(),
 		blockedWithdrawals: make(blockedWithdrawalHeap, 0),
-		persistResultChans: make([]chan error, 0),
+		persistResults:     make([]*persistResult, 0),
 	}
 	am.accounts[id] = acc
 	return acc, nil
@@ -1057,12 +1073,10 @@ func (a *account) withdrawalExceedsBalance(withdrawal types.Currency) bool {
 // sendResult will send the given result to the result channels that are waiting
 func (a *account) sendResult(result error, waiting int) {
 	for i := 0; i < waiting; i++ {
-		persistResultChan := a.persistResultChans[i]
+		persistResult := a.persistResults[i]
 		err := errors.AddContext(result, ErrAccountPersist.Error())
-		select {
-		case persistResultChan <- err:
-		default:
-		}
+		persistResult.externErr = err
+		close(persistResult.errAvail)
 	}
-	a.persistResultChans = a.persistResultChans[waiting:]
+	a.persistResults = a.persistResults[waiting:]
 }

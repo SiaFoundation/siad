@@ -21,6 +21,10 @@ import (
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
+var (
+	invalidSpecifier = types.NewSpecifier("Invalid")
+)
+
 // TestVerifyPaymentRevision is a unit test covering verifyPaymentRevision
 func TestVerifyPaymentRevision(t *testing.T) {
 	t.Parallel()
@@ -286,6 +290,12 @@ func TestProcessParallelPayments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	var refillAmount uint64 = 100
@@ -304,20 +314,26 @@ func TestProcessParallelPayments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer func(pair *renterHostPair) {
+			err := pair.staticRenterMux.Close()
+			if err != nil {
+				t.Error(err)
+			}
+		}(pair)
 		pairs[i] = pair
 
-		if err := callDeposit(am, pair.accountID, types.NewCurrency64(refillAmount)); err != nil {
+		if err := callDeposit(am, pair.staticAccountID, types.NewCurrency64(refillAmount)); err != nil {
 			t.Log("failed deposit", err)
 			t.Fatal(err)
 		}
-		bt.TrackDeposit(pair.accountID, int64(refillAmount))
+		bt.TrackDeposit(pair.staticAccountID, int64(refillAmount))
 	}
 
 	// setup a lock guarding the filecontracts seeing as we are concurrently
 	// accessing them and generating revisions for them
 	fcLocks := make(map[types.FileContractID]*sync.Mutex)
 	for _, pair := range pairs {
-		fcLocks[pair.fcid] = new(sync.Mutex)
+		fcLocks[pair.staticFCID] = new(sync.Mutex)
 	}
 
 	var fcPayments uint64
@@ -334,10 +350,17 @@ func TestProcessParallelPayments(t *testing.T) {
 	// spin up a large amount of threads that use the renter-host pairs in
 	// parallel
 	totalThreads := 10 * runtime.NumCPU()
+	var wg sync.WaitGroup
 	for thread := 0; thread < totalThreads; thread++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			// create two streams
-			rs, hs := NewTestStreams()
+			rs, hs, err := NewTestStreams()
+			if err != nil {
+				t.Error(err)
+				return
+			}
 			defer rs.Close()
 			defer hs.Close()
 
@@ -365,22 +388,24 @@ func TestProcessParallelPayments(t *testing.T) {
 				var pd modules.PaymentDetails
 				var err error
 				if payByFC {
-					fcLocks[rp.fcid].Lock()
+					fcLocks[rp.staticFCID].Lock()
 					if pd, failed, err = runPayByContractFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&fcFailures, 1)
 					}
 					atomic.AddUint64(&fcPayments, 1)
-					fcLocks[rp.fcid].Unlock()
+					fcLocks[rp.staticFCID].Unlock()
 				} else {
-					refill := bt.TrackWithdrawal(rp.accountID, int64(rw))
+					refill := bt.TrackWithdrawal(rp.staticAccountID, int64(rw))
 					if refill {
+						wg.Add(1)
 						go func(id modules.AccountID) {
+							defer wg.Done()
 							time.Sleep(100 * time.Millisecond) // make it slow
 							if err := callDeposit(am, id, types.NewCurrency64(refillAmount)); err != nil {
 								t.Error(err)
 							}
 							bt.TrackDeposit(id, int64(refillAmount))
-						}(rp.accountID)
+						}(rp.staticAccountID)
 					}
 					if pd, failed, err = runPayByEphemeralAccountFlow(rp, rs, hs, ra); failed {
 						atomic.AddUint64(&eaFailures, 1)
@@ -401,6 +426,7 @@ func TestProcessParallelPayments(t *testing.T) {
 		}()
 	}
 	<-finished
+	wg.Wait()
 
 	t.Logf("\n\nIn %.f seconds, on %d cores, the following payments completed successfully\nPayByContract: %d (%v expected failures)\nPayByEphemeralAccount: %d (%v expected failures)\n\n", timeout.Seconds(), runtime.NumCPU(), atomic.LoadUint64(&fcPayments), atomic.LoadUint64(&fcFailures), atomic.LoadUint64(&eaPayments), atomic.LoadUint64(&eaFailures))
 }
@@ -435,7 +461,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 			}
 			// send PaymentRequest & PayByContractRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-			pbcRequest := newPayByContractRequest(rev, sig, pair.accountID)
+			pbcRequest := newPayByContractRequest(rev, sig, pair.staticAccountID)
 			err = modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 			if err != nil {
 				return err
@@ -481,12 +507,12 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 	err = run(
 		func() error {
 			// create the request
-			pbeaRequest := newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey)
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.staticAccountID, pair.ht.host.blockHeight+6, amount, pair.staticAccountKey)
 
 			if fail {
 				// this induces failure because the nonce will be different and
 				// this the signature will be invalid
-				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.accountID, pair.ht.host.blockHeight+6, amount, pair.accountKey).Signature
+				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.staticAccountID, pair.ht.host.blockHeight+6, amount, pair.staticAccountKey).Signature
 			}
 
 			// send PaymentRequest & PayByEphemeralAccountRequest
@@ -529,7 +555,12 @@ func TestProcessPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pair.Close()
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// test both payment methods
 	testPayByContract(t, pair)
@@ -553,7 +584,11 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 
 	// create two streams
-	rStream, hStream := NewTestStreams()
+	rStream, hStream, err := NewTestStreams()
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	defer rStream.Close()
 	defer hStream.Close()
 
@@ -609,7 +644,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 
 	// verify the host updated the storage obligation
-	updated, err := host.managedGetStorageObligation(pair.fcid)
+	updated, err := host.managedGetStorageObligation(pair.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,7 +732,11 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 		t.Fatal(err)
 	}
 	// create two streams
-	rStream, hStream := NewTestStreams()
+	rStream, hStream, err := NewTestStreams()
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	defer rStream.Close()
 	defer hStream.Close()
 
@@ -764,13 +803,17 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 // specify an unknown payment method
 func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
 	// create two streams
-	rStream, hStream := NewTestStreams()
+	rStream, hStream, err := NewTestStreams()
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	defer rStream.Close()
 	defer hStream.Close()
 
-	err := run(func() error {
+	err = run(func() error {
 		// send PaymentRequest
-		pr := modules.PaymentRequest{Type: types.NewSpecifier("Invalid")}
+		pr := modules.PaymentRequest{Type: invalidSpecifier}
 		err := modules.RPCWriteAll(rStream, modules.RPCUpdatePriceTable, pr)
 		if err != nil {
 			return err
@@ -874,6 +917,46 @@ func (ht *hostTester) addNoOpRevision(so storageObligation, renterPK types.SiaPu
 	return so, nil
 }
 
+// addNewRevision is a helper method that adds a new revision to the given
+// obligation with given newfilesize and newfilemerkleroot.
+func (ht *hostTester) addNewRevision(so storageObligation, renterPK types.SiaPublicKey, newFileSize uint64, newFileMerkleRoot crypto.Hash) (storageObligation, error) {
+	builder, err := ht.wallet.StartTransaction()
+	if err != nil {
+		return storageObligation{}, err
+	}
+
+	txnSet := so.OriginTransactionSet
+	contractTxn := txnSet[len(txnSet)-1]
+	fc := contractTxn.FileContracts[0]
+
+	noOpRevision := types.FileContractRevision{
+		ParentID: contractTxn.FileContractID(0),
+		UnlockConditions: types.UnlockConditions{
+			PublicKeys: []types.SiaPublicKey{
+				renterPK,
+				ht.host.publicKey,
+			},
+			SignaturesRequired: 2,
+		},
+		NewRevisionNumber:     fc.RevisionNumber + 1,
+		NewFileSize:           newFileSize,
+		NewFileMerkleRoot:     newFileMerkleRoot,
+		NewWindowStart:        fc.WindowStart,
+		NewWindowEnd:          fc.WindowEnd,
+		NewValidProofOutputs:  fc.ValidProofOutputs,
+		NewMissedProofOutputs: fc.MissedProofOutputs,
+		NewUnlockHash:         fc.UnlockHash,
+	}
+
+	builder.AddFileContractRevision(noOpRevision)
+	tSet, err := builder.Sign(true)
+	if err != nil {
+		return so, err
+	}
+	so.RevisionTransactionSet = tSet
+	return so, nil
+}
+
 // run is a helper function that runs the given functions in separate goroutines
 // and awaits them
 func run(f1, f2 func() error) error {
@@ -900,22 +983,31 @@ type testStream struct {
 }
 
 // NewTestStreams returns two siamux.Stream mock objects.
-func NewTestStreams() (client siamux.Stream, server siamux.Stream) {
+func NewTestStreams() (client siamux.Stream, server siamux.Stream, err error) {
 	var clientConn net.Conn
 	var serverConn net.Conn
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "net.Listen failed")
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		serverConn, _ = ln.Accept()
+		serverConn, err = ln.Accept()
 		wg.Done()
 	}()
-	clientConn, _ = net.Dial("tcp", ln.Addr().String())
+	clientConn, clientErr := net.Dial("tcp", ln.Addr().String())
 	wg.Wait()
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "listener.Accept failed")
+	}
+	if clientErr != nil {
+		return nil, nil, errors.AddContext(clientErr, "net.Dial failed for clientConn")
+	}
 
 	client = testStream{c: clientConn}
 	server = testStream{c: serverConn}
-	return
+	return client, server, nil
 }
 
 func (s testStream) Read(b []byte) (n int, err error)  { return s.c.Read(b) }
@@ -941,7 +1033,10 @@ func (s testStream) SetWriteDeadline(t time.Time) error {
 // will test that an object can be written to and read from the stream over the
 // underlying connection.
 func TestStreams(t *testing.T) {
-	renter, host := NewTestStreams()
+	renter, host, err := NewTestStreams()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var pr modules.PaymentRequest
 	var wg sync.WaitGroup

@@ -1,0 +1,1 @@
+- Move `scanCheckInterval` to be a build variable for the `hostdb`
