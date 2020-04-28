@@ -799,7 +799,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 			countRoot++
 			continue
 		}
-		if dir.Equals(modules.UserSiaPath()) {
+		if dir.Equals(modules.UserFolder) {
 			countSiaFiles++
 			continue
 		}
@@ -875,7 +875,7 @@ func TestRandomStuckFile(t *testing.T) {
 
 	// Since we disabled the health loop for this test, call it manually to
 	// update the directory metadata
-	err = rt.renter.managedBubbleMetadata(modules.UserSiaPath())
+	err = rt.renter.managedBubbleMetadata(modules.UserFolder)
 	if err != nil {
 		t.Fatal(err)
 	}

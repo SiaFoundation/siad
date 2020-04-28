@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -142,8 +143,12 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 		c.mu.Lock()
 		numPubKeys := len(c.pubKeysToContractID)
 		c.mu.Unlock()
-		if len(c.Contracts()) != 1 && numPubKeys != 1 {
-			return errors.New("contracts were not formed")
+		numContracts := len(c.Contracts())
+		if numContracts != 1 {
+			return fmt.Errorf("Expected 1 contracts, found %v", numContracts)
+		}
+		if numPubKeys != 1 {
+			return fmt.Errorf("Expected 1 pubkey, found %v", numPubKeys)
 		}
 		return nil
 	})
