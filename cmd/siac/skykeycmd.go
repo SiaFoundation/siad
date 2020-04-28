@@ -68,14 +68,14 @@ func skykeycreatecmd(name string) {
 
 // skykeyCreate creates a new Skykey with the given name and cipher type
 // as set by flag.
-func skykeyCreate(siacHttpClient client.Client, name string) (string, error) {
+func skykeyCreate(c client.Client, name string) (string, error) {
 	var cipherType crypto.CipherType
 	err := cipherType.FromString(skykeyCipherType)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not decode cipher-type")
 	}
 
-	sk, err := siacHttpClient.SkykeyCreateKeyPost(name, cipherType)
+	sk, err := c.SkykeyCreateKeyPost(name, cipherType)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not create skykey")
 	}
@@ -96,7 +96,7 @@ func skykeyaddcmd(skykeyString string) {
 }
 
 // skykeyAdd adds the given skykey to the renter's skykey manager.
-func skykeyAdd(siacHttpClient client.Client, skykeyString string) error {
+func skykeyAdd(c client.Client, skykeyString string) error {
 	var sk skykey.Skykey
 	err := sk.FromString(skykeyString)
 	if err != nil {
@@ -108,7 +108,7 @@ func skykeyAdd(siacHttpClient client.Client, skykeyString string) error {
 		sk.Name = skykeyRenameAs
 	}
 
-	err = siacHttpClient.SkykeyAddKeyPost(sk)
+	err = c.SkykeyAddKeyPost(sk)
 	if err != nil {
 		return errors.AddContext(err, "Could not add skykey")
 	}
@@ -127,7 +127,7 @@ func skykeygetcmd() {
 }
 
 // skykeyGet retrieves the skykey using a name or id flag.
-func skykeyGet(siacHttpClient client.Client, name, id string) (string, error) {
+func skykeyGet(c client.Client, name, id string) (string, error) {
 	if name == "" && id == "" {
 		return "", errors.New("Cannot get skykey without using --name or --id flag")
 	}
@@ -138,7 +138,7 @@ func skykeyGet(siacHttpClient client.Client, name, id string) (string, error) {
 	var sk skykey.Skykey
 	var err error
 	if name != "" {
-		sk, err = siacHttpClient.SkykeyGetByName(name)
+		sk, err = c.SkykeyGetByName(name)
 	} else {
 		var skykeyID skykey.SkykeyID
 		err = skykeyID.FromString(id)
@@ -146,7 +146,7 @@ func skykeyGet(siacHttpClient client.Client, name, id string) (string, error) {
 			return "", errors.AddContext(err, "Could not decode skykey ID")
 		}
 
-		sk, err = siacHttpClient.SkykeyGetByID(skykeyID)
+		sk, err = c.SkykeyGetByID(skykeyID)
 	}
 
 	if err != nil {
