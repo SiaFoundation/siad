@@ -10,6 +10,53 @@ Version History
 
 Latest:
 
+## Apr 28, 2020:
+### v1.4.8
+**Key Updates**
+- Enable FundEphemeralAccountRPC on the host
+- Enable UpdatePriceTableRPC on the host
+- Add progress bars to Skynet uploads. Those can be disabled by passing the 
+  `--silent` flag.
+- Add the Execute Program RPC to the host
+- Added Skykey API endpoints and siac commands.
+- Add /skynet/portals API endpoints.
+- Add MinBaseRPCPrice and MinSectorAccessPrice to `siac host -v`
+- Add `basePriceAdjustment` to the host score to check for `BaseRPCPrice` and
+  `SectorAccessPrice` price violations.
+- Change payment processing to always use ephemeral accounts, even for contract payments
+- Increase renew alert severity in 2nd half of renew window
+- Prioritize remote repairs
+- Add SIAD_DATA_DIR environment variable which tells `siad` where to store the
+  siad-specific data. This complements the SIA_DATA_DIR variable which tells 
+  `siad` where to store general Sia data, such as the API password,
+  configuration, etc.
+
+**Bugs Fixed**
+- Fix decode bug for the rpcResponse object
+- Fix bug in rotation of fingerprint buckets
+- Refactor the environment variables into the `build` package to address bug
+  where `siac` and `siad` could be using different API Passwords.
+- Fix bug in converting siafile to skyfile and enable testing.
+- Fixed bug in bubble code that would overwrite the `siadir` metadata with old
+  metadata
+- Fixed bug where backups where not being repaired
+- The `AggregateNumSubDirs` count was fixed as it was always 0. This is a piece of metadata keeping track of the number of all subdirs of a directory, counted recursively.
+
+**Other**
+- Add 'AccountFunding' to the Host's financial metrics
+- Support multiple changelog items in one changelog file.
+- Add updating changelog tail to changelog generator.
+- Generate 2 patch level and 1 minor level upcoming changelog directories.
+- Fixed checking number of contracts in testContractInterrupted test.
+- Move generate-changelog.sh script to changelog directory.
+- Generate changelog from any file extension (.md is not needed)
+- Created `Merge Request.md` to document the merge request standards and process.
+- Remove backslash check in SiaPath validation, add `\` to list of accepted
+  characters
+- `siac skynet upload` with the `--dry-run` flag will now print more clear messages to emphasize that no files are actually uploaded.
+- Move `scanCheckInterval` to be a build variable for the `hostdb`
+- Setup Windows runner for nightly test executions.
+
 ## Apr 2, 2020:
 ### v1.4.7
 **Key Updates**
