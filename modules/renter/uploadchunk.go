@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -69,6 +70,15 @@ type unfinishedUploadChunk struct {
 	// sourceReader is an optional source for the logical chunk data. If
 	// available it will be tried before the repair path or remote repair.
 	sourceReader io.ReadCloser
+
+	// Performance information.
+	chunkCreationTime        time.Time
+	chunkPoppedFromHeapTime  time.Time
+	chunkDistributionTime    time.Time
+	chunkFailedProcessTimes  []time.Time
+	chunkSuccessProcessTimes []time.Time
+	chunkAvailableTime       time.Time
+	chunkCompleteTime        time.Time
 
 	// Worker synchronization fields. The mutex only protects these fields.
 	//
@@ -195,12 +205,18 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		onCooldown, _ := w.onUploadCooldown()
 		gfu := w.cachedContractUtility.GoodForUpload
 		w.mu.Unlock()
-		if onCooldown || !gfu {
+		uc.mu.Lock()
+		_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
+		uc.mu.Unlock()
+		if onCooldown || !gfu || !candidateHost {
 			continue
 		}
 		w.callQueueUploadChunk(uc)
 		jobsDistributed++
 	}
+	uc.mu.Lock()
+	uc.chunkDistributionTime = time.Now()
+	uc.mu.Unlock()
 	r.repairLog.Printf("Distributed chunk %v of %s to %v workers", uc.index, uc.staticSiaPath, jobsDistributed)
 	r.managedCleanUpUploadChunk(uc)
 }
@@ -576,6 +592,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 
 	// Check if the chunk is now available.
 	if uc.piecesCompleted >= uc.minimumPieces && !uc.staticAvailable() && !uc.released {
+		uc.chunkAvailableTime = time.Now()
 		close(uc.availableChan)
 	}
 
@@ -592,9 +609,22 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 		if !uc.staticAvailable() {
 			uc.err = errors.New("unable to upload file, file is not available on the network")
+			uc.chunkAvailableTime = time.Now()
 			close(uc.availableChan)
 		}
 		uc.released = true
+		uc.chunkCompleteTime = time.Now()
+
+		// Create profile string.
+		failedTimes := make([]time.Duration, 0, len(uc.chunkFailedProcessTimes))
+		for _, ft := range uc.chunkFailedProcessTimes {
+			failedTimes = append(failedTimes, time.Since(ft)/time.Millisecond)
+		}
+		successTimes := make([]time.Duration, 0, len(uc.chunkSuccessProcessTimes))
+		for _, st := range uc.chunkSuccessProcessTimes {
+			successTimes = append(successTimes, time.Since(st)/time.Millisecond)
+		}
+		r.repairLog.Printf("\tChunk Created: %v\n\tChunk Popped: %v\n\tChunk Distributed: %v\n\tChunk Available: %v\n\tChunk Complete: %v\n\tFail Times: %v\n\tSuccess Times: %v", time.Since(uc.chunkCreationTime)/time.Millisecond, time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond, time.Since(uc.chunkDistributionTime)/time.Millisecond, time.Since(uc.chunkAvailableTime)/time.Millisecond, time.Since(uc.chunkCompleteTime)/time.Millisecond, failedTimes, successTimes)
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased

@@ -167,6 +167,9 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
 	if uc == nil {
+		nextChunk.mu.Lock()
+		nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
+		nextChunk.mu.Unlock()
 		return true
 	}
 	// Open an editing connection to the host.
@@ -223,6 +226,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	uc.piecesCompleted++
 	uc.physicalChunkData[pieceIndex] = nil
 	uc.memoryReleased += uint64(releaseSize)
+	uc.chunkSuccessProcessTimes = append(uc.chunkSuccessProcessTimes, time.Now())
 	uc.mu.Unlock()
 	w.renter.memoryManager.Return(uint64(releaseSize))
 	w.renter.managedCleanUpUploadChunk(uc)
@@ -313,6 +317,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 	uc.mu.Lock()
 	uc.piecesRegistered--
 	uc.pieceUsage[pieceIndex] = false
+	uc.chunkFailedProcessTimes = append(uc.chunkFailedProcessTimes, time.Now())
 	uc.mu.Unlock()
 
 	// Notify the standby workers of the chunk
