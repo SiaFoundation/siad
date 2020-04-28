@@ -340,3 +340,83 @@ func TestContractSetInsertInterrupted(t *testing.T) {
 		t.Error("roots don't match")
 	}
 }
+
+// TestContractRefCounter checks if RefCounter behaves as expected when called
+// from Contract
+func TestContractRefCounter(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a contract set
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// add a contract
+	initialHeader := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{
+				{NewRevisionNumber: 1},
+			},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	c, err := cs.managedInsertContract(initialHeader, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := cs.mustAcquire(t, c.ID)
+	// verify that the refcounter exists and has the correct size
+	if sc.rc == nil {
+		t.Fatal("RefCounter was not created with the contract.")
+	}
+	if sc.rc.numSectors != 1 {
+		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", 1, sc.rc.numSectors)
+	}
+
+	// upload a new sector
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{
+			{NewRevisionNumber: 2},
+		},
+	}
+	revisedHeader := contractHeader{
+		Transaction:     txn,
+		StorageSpending: types.NewCurrency64(7),
+		UploadSpending:  types.NewCurrency64(17),
+	}
+	newRev := revisedHeader.Transaction.FileContractRevisions[0]
+	newRoot := crypto.Hash{2}
+	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
+	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
+	walTxn, err := sc.managedRecordUploadIntent(newRev, newRoot, storageCost, bandwidthCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// sign the transaction
+	txn.TransactionSignatures = []types.TransactionSignature{
+		{
+			ParentID:       crypto.Hash(newRev.ParentID),
+			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+			PublicKeyIndex: 0, // renter key is always first -- see formContract
+		},
+		{
+			ParentID:       crypto.Hash(newRev.ParentID),
+			PublicKeyIndex: 1,
+			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+			Signature:      nil, // to be provided by host
+		},
+	}
+	// commit the change
+	err = sc.managedCommitUpload(walTxn, txn, newRoot, storageCost, bandwidthCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// verify that the refcounter increased with 1, as expected
+	if sc.rc.numSectors != 2 {
+		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", 2, sc.rc.numSectors)
+	}
+}

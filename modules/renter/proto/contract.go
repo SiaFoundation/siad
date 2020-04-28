@@ -421,23 +421,6 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	if err := c.headerFile.Sync(); err != nil {
 		return err
 	}
-	if build.Release == "testing" {
-		err := func() error {
-			err := c.rc.StartUpdate()
-			if err != nil {
-				return errors.AddContext(err, "failed to open update session")
-			}
-			defer c.rc.UpdateApplied()
-			u, err := c.rc.DeleteRefCounter()
-			if err != nil {
-				return errors.AddContext(err, "failed to create delete update")
-			}
-			return c.rc.CreateAndApplyTransaction(u)
-		}()
-		if err != nil {
-			return errors.AddContext(err, "failed to delete reference counter")
-		}
-	}
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
@@ -656,7 +639,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	}
 	rc := &RefCounter{}
 	if build.Release == "testing" {
-		_, err = NewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
+		rc, err = NewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
 		if err != nil {
 			return modules.RenterContract{}, errors.AddContext(err, "failed to create a refcounter")
 		}
