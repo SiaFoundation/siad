@@ -482,8 +482,8 @@ func (p *renterHostPair) callUpdatePriceTable() error {
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
 //
-// NOTE the helper function callExecuteProgram which ensures the price
-// table is always valid.
+// NOTE the helper function callExecuteProgram which ensures the price table is
+// not expired.
 func (p *renterHostPair) executeProgram(pt *modules.RPCPriceTable, epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
 	// create stream
 	stream := p.newStream()
@@ -573,7 +573,7 @@ func (p *renterHostPair) executeProgram(pt *modules.RPCPriceTable, epr modules.R
 // table.
 //
 // NOTE the helper function callFundEphemeralAccount which ensures the price
-// table is always valid.
+// table is not expired.
 func (p *renterHostPair) fundEphemeralAccount(pt *modules.RPCPriceTable, amount types.Currency) (modules.FundAccountResponse, error) {
 	// create stream
 	stream := p.newStream()
