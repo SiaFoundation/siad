@@ -47,7 +47,7 @@ type (
 		Recurring bool `json:"recurring"`
 
 		// Timestamp is the moment that the fee was requested.
-		Timestamp int64
+		Timestamp int64 `json:"timestamp"`
 
 		// TransactionCreated indicates whether the transaction for this fee has
 		// been created and sent to the Sia network for processing.

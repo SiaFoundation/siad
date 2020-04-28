@@ -18,6 +18,23 @@ func TestIntegrateEntry(t *testing.T) {
 		fees: make(map[modules.FeeUID]*modules.AppFee),
 	}
 
+	// Test bad specifier case
+	entry := persistEntry{
+		EntryType: types.Specifier{'x'},
+	}
+	copy(entry.Payload[:], fastrand.Bytes(persistEntrySize))
+	encodedEntry := encoding.Marshal(entry)
+	err := fm.integrateEntry(encodedEntry[:])
+	if err != errUnrecognizedEntryType {
+		t.Fatalf("Expected error to be %v but was %v", errUnrecognizedEntryType, err)
+	}
+
+	// Test random data cases
+	err = fm.integrateEntry(fastrand.Bytes(100)[:])
+	if err == nil {
+		t.Fatal("Shouldn't be able to integrate random data")
+	}
+
 	// Create Fee
 	fee := modules.AppFee{
 		Address:            types.UnlockHash{},
@@ -35,7 +52,7 @@ func TestIntegrateEntry(t *testing.T) {
 	pe := createAddFeeEntry(fee)
 
 	// Call integrateEntry
-	err := fm.integrateEntry(pe[:])
+	err = fm.integrateEntry(pe[:])
 	if err != nil {
 		t.Error(err)
 	}
@@ -47,8 +64,8 @@ func TestIntegrateEntry(t *testing.T) {
 
 	// Since the PayoutHeight was set to 0 this fee would need to be updated.
 	// Set the payoutheight and reintegrate
-	fee.PayoutHeight = types.BlockHeight(fastrand.Uint64n(100))
-	pe = createAddFeeEntry(fee)
+	payoutHeight := types.BlockHeight(fastrand.Uint64n(100))
+	pe = createUpdateFeeEntry(fee.UID, payoutHeight)
 	err = fm.integrateEntry(pe[:])
 	if err != nil {
 		t.Error(err)
@@ -63,8 +80,8 @@ func TestIntegrateEntry(t *testing.T) {
 	if !ok {
 		t.Fatal("Fee not found in map")
 	}
-	if mapFee.PayoutHeight != fee.PayoutHeight {
-		t.Errorf("Expected fee in map to have PayoutHeight of %v but was %v", fee.PayoutHeight, mapFee.PayoutHeight)
+	if mapFee.PayoutHeight != payoutHeight {
+		t.Errorf("Expected fee in map to have PayoutHeight of %v but was %v", payoutHeight, mapFee.PayoutHeight)
 	}
 
 	// createCancelFeeEntry
@@ -90,5 +107,13 @@ func TestPersistEntryPayloadSize(t *testing.T) {
 	data := encoding.Marshal(pe)
 	if len(data) != persistEntrySize {
 		t.Fatal("encoded persistEntry must be persistEntrySize")
+	}
+
+	// In a loop test random data. Not checking output as this is purely testing
+	// that the build.Critical is never hit
+	for i := 0; i < 1000; i++ {
+		_ = createAddFeeEntry(randomFee())
+		_ = createCancelFeeEntry(uniqueID())
+		_ = createUpdateFeeEntry(uniqueID(), types.BlockHeight(fastrand.Uint64n(1e9)))
 	}
 }

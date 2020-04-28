@@ -1,7 +1,6 @@
 package feemanager
 
 import (
-	"encoding/hex"
 	"sync"
 	"testing"
 	"time"
@@ -32,7 +31,7 @@ func TestFeeManagerBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Re-open the fee manager.
-	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +93,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +122,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +133,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	}
 
 	// Add a random number of fees.
-	err = addRandomFees(fm)
+	_, err = addRandomFees(fm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +171,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,16 +211,8 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 
 	// Create a helper function to add a random fee.
 	addRandFee := func() {
-		// Establish random values to add a fee.
-		randBytes := fastrand.Bytes(16)
-		var uh types.UnlockHash
-		copy(uh[:], randBytes)
-		amount := types.NewCurrency64(100)
-		appuid := modules.AppUID(hex.EncodeToString(randBytes))
-		recurring := fastrand.Intn(2) == 0
-
 		// Add the fee.
-		uid, err := fm.AddFee(uh, amount, appuid, recurring)
+		uid, err := addRandomFee(fm)
 		if err != nil {
 			t.Error(err)
 		}
@@ -234,6 +225,10 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 	deleteRandFee := func() {
 		// Grab a random fee to erase.
 		feesMu.Lock()
+		if len(fees) == 0 {
+			feesMu.Unlock()
+			return
+		}
 		i := fastrand.Intn(len(fees))
 		uid := fees[i]
 		fees[i] = ""
@@ -251,9 +246,6 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 		}
 	}
 
-	// Add one random fee before kicking things off to resolve an edge case with
-	// deleteRandFee.
-	addRandFee()
 	// Do 10 separate rounds of spinning up and spinning down a large number of
 	// goroutines. This stresses the sync coordinator's code which ensures only
 	// one syncing thread is running at a time.
@@ -334,7 +326,7 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm, err = New(fm.common.staticCS, fm.common.staticWallet, fm.common.persist.staticPersistDir)
+	fm, err = New(fm.staticCommon.staticCS, fm.staticCommon.staticWallet, fm.staticCommon.staticPersist.staticPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}

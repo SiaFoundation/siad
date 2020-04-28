@@ -56,6 +56,8 @@ type (
 
 	// persistSubsystem contains the state for the persistence of the fee
 	// manager.
+	//
+	// NOTE: The persistSubsystem should never lock the syncCoordinator.
 	persistSubsystem struct {
 		// nextPayoutHeight and latestOffset are the latest known in-memory
 		// values for these variables. They may not have been synced yet, and
@@ -67,10 +69,10 @@ type (
 		persistFile *os.File
 
 		// Utilities
-		common           *feeManagerCommon
-		staticPersistDir string
-		syncCoordinator  *syncCoordinator
-		mu               sync.Mutex
+		staticCommon          *feeManagerCommon
+		staticPersistDir      string
+		staticSyncCoordinator *syncCoordinator
+		mu                    sync.Mutex
 	}
 
 	// syncCoordinator is a struct which ensures only one syncing thread runs at
@@ -82,6 +84,9 @@ type (
 	// the syncCoordinator exists only to protect the 'threadRunning' bool, the
 	// other fields are all protected by the fact that only one syncing thread
 	// ever runs at a time.
+	//
+	// NOTE: While the persistSubsystem should never lock the syncCoordinator,
+	// the syncCoordinator can lock the persistSubsystem
 	syncCoordinator struct {
 		// threadRunning indicates whether or not there is a syncing thread
 		// already running.
@@ -97,8 +102,8 @@ type (
 		externLatestSyncedPayoutHeight types.BlockHeight
 		externLatestSyncedOffset       uint64
 
-		common *feeManagerCommon
-		mu     sync.Mutex
+		staticCommon *feeManagerCommon
+		mu           sync.Mutex
 	}
 )
 
@@ -130,8 +135,10 @@ func externWritePersistHeader(fh *os.File, latestSyncedOffset uint64, nextPayout
 // callInitPersist handles all of the persistence initialization, such as
 // creating the persistence directory
 func (fm *FeeManager) callInitPersist() error {
+	// Define shorter name helper for staticPersit
+	ps := fm.staticCommon.staticPersist
+
 	// Check if the fee manager file exists.
-	ps := fm.common.persist
 	filename := filepath.Join(ps.staticPersistDir, PersistFilename)
 	_, err := os.Stat(filename)
 	if err != nil && !os.IsNotExist(err) {
@@ -147,9 +154,9 @@ func (fm *FeeManager) callInitPersist() error {
 	if err != nil {
 		return errors.AddContext(err, "could not open persist file")
 	}
-	fm.common.persist.persistFile = fh
-	fm.common.staticTG.AfterStop(func() error {
-		return fm.common.persist.persistFile.Close()
+	ps.persistFile = fh
+	fm.staticCommon.staticTG.AfterStop(func() error {
+		return ps.persistFile.Close()
 	})
 
 	// Read the header.
@@ -175,10 +182,10 @@ func (fm *FeeManager) callInitPersist() error {
 	}
 
 	// Set the offset and payout.
-	fm.common.persist.nextPayoutHeight = ph.NextPayoutHeight
-	fm.common.persist.latestOffset = ph.LatestSyncedOffset
-	fm.common.persist.syncCoordinator.externLatestSyncedOffset = ph.LatestSyncedOffset
-	fm.common.persist.syncCoordinator.externLatestSyncedPayoutHeight = ph.NextPayoutHeight
+	ps.nextPayoutHeight = ph.NextPayoutHeight
+	ps.latestOffset = ph.LatestSyncedOffset
+	ps.staticSyncCoordinator.externLatestSyncedOffset = ph.LatestSyncedOffset
+	ps.staticSyncCoordinator.externLatestSyncedPayoutHeight = ph.NextPayoutHeight
 
 	// Read through all of the non-corrupt fees.
 	entryBytes := make([]byte, ph.LatestSyncedOffset-persistHeaderSize)
@@ -199,6 +206,12 @@ func (fm *FeeManager) callInitPersist() error {
 // callPersistFeeCancellation will write a fee cancellation to the persist file.
 func (ps *persistSubsystem) callPersistFeeCancelation(feeUID modules.FeeUID) error {
 	entry := createCancelFeeEntry(feeUID)
+	return ps.managedAppendEntry(entry)
+}
+
+// callPersistFeeUpdate will persist a fee update to the persist file.
+func (ps *persistSubsystem) callPersistFeeUpdate(feeUID modules.FeeUID, payoutHeight types.BlockHeight) error {
+	entry := createUpdateFeeEntry(feeUID, payoutHeight)
 	return ps.managedAppendEntry(entry)
 }
 
@@ -223,25 +236,28 @@ func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) err
 		return errors.AddContext(err, "unable to append entry")
 	}
 
-	// Ensure that the new updated is synced and the header of the persist file
+	// Ensure that the new update is synced and the header of the persist file
 	// gets updated accordingly.
-	return ps.syncCoordinator.managedSyncPersist()
+	return ps.staticSyncCoordinator.managedSyncPersist()
 }
 
 // newPersist is called if there is no existing persist file.
 func (fm *FeeManager) newPersist(filename string) error {
+	// Open Persist file
 	fh, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to create persist file for fee manager")
 	}
-	fm.common.persist.persistFile = fh
-	fm.common.staticTG.AfterStop(func() error {
-		return fm.common.persist.persistFile.Close()
+
+	ps := fm.staticCommon.staticPersist
+	ps.persistFile = fh
+	fm.staticCommon.staticTG.AfterStop(func() error {
+		return ps.persistFile.Close()
 	})
 
 	// Set the offset and save the header.
-	fm.common.persist.latestOffset = persistHeaderSize
-	return fm.common.persist.syncCoordinator.managedSyncPersist()
+	ps.latestOffset = persistHeaderSize
+	return ps.staticSyncCoordinator.managedSyncPersist()
 }
 
 // managedSyncPersist will ensure that the persist is synced and that the
@@ -250,25 +266,24 @@ func (sc *syncCoordinator) managedSyncPersist() error {
 	// Determine whether there is another thread performing a sync.
 	sc.mu.Lock()
 	threadRunning := sc.threadRunning
-	if !threadRunning {
-		// This will become the new thread, so set threadRunning to true.
-		sc.threadRunning = true
-	}
-	sc.mu.Unlock()
 	if threadRunning {
 		// Another thread is running, that thread will complete the job this
 		// thread was spun up to complete.
+		sc.mu.Unlock()
 		return nil
 	}
+	// This will become the new thread, so set threadRunning to true.
+	sc.threadRunning = true
+	sc.mu.Unlock()
 
 	// Spin up a thread to perform the fsync tasks.
-	ps := sc.common.persist
-	err := ps.common.staticTG.Add()
+	ps := sc.staticCommon.staticPersist
+	err := ps.staticCommon.staticTG.Add()
 	if err != nil {
 		return errors.AddContext(err, "failed to sync persist")
 	}
 	go func() {
-		defer ps.common.staticTG.Done()
+		defer ps.staticCommon.staticTG.Done()
 		sc.managedSyncPersistLoop()
 	}()
 	return nil
@@ -277,7 +292,7 @@ func (sc *syncCoordinator) managedSyncPersist() error {
 // managedSyncPersistLoop will perform fsyncs on the persist file and update the
 // persist file header accordingly until there is nothing more to sync.
 func (sc *syncCoordinator) managedSyncPersistLoop() {
-	ps := sc.common.persist
+	ps := sc.staticCommon.staticPersist
 	// Perform syncs in a loop until there is no sync job to perform. Doing
 	// things in a loop allows us to cover multiple file write calls with a
 	// single fsync when there is a lot of writing happening in quick
@@ -289,11 +304,11 @@ func (sc *syncCoordinator) managedSyncPersistLoop() {
 		nextPayoutHeight := ps.nextPayoutHeight
 		ps.mu.Unlock()
 
-		// Block until the persitFile completes a sync, guaranteeing that
+		// Block until the persistFile completes a sync, guaranteeing that
 		// everything up to and including the latest offset is synced.
 		err := ps.persistFile.Sync()
 		if err != nil {
-			ps.common.staticLog.Critical("Unable to sync persist file:", err)
+			ps.staticCommon.staticLog.Critical("Unable to sync persist file:", err)
 		}
 
 		// Update the latestSyncedOffset now that we have confidence about a new
@@ -302,13 +317,13 @@ func (sc *syncCoordinator) managedSyncPersistLoop() {
 		// this is safe.
 		err = externWritePersistHeader(ps.persistFile, latestOffset, nextPayoutHeight)
 		if err != nil {
-			ps.common.staticLog.Critical("Unable to write persist file header:", err)
+			ps.staticCommon.staticLog.Critical("Unable to write persist file header:", err)
 		}
 
 		// Block until the header completes the sync.
 		err = ps.persistFile.Sync()
 		if err != nil {
-			ps.common.staticLog.Critical("Unable to sync persist file:", err)
+			ps.staticCommon.staticLog.Critical("Unable to sync persist file:", err)
 		}
 
 		// Update the latest synced values in the sc, and then determine whether

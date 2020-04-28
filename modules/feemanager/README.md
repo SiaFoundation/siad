@@ -72,7 +72,7 @@ file and update the persist file header.
   - The feemanager subsystem's `AddFee` method calls `callPersistNewFee` to add
     a fee to the FeeManager and persists the change on disk
   - The process fees subsystem's `threadedProcessFess` method calls
-    `callPersistNewFee` to persist a change to a Fee's `PayoutHeight` on disk
+    `callPersistFeeUpdate` to persist a change to a Fee's `PayoutHeight` on disk
 
 ### Process Fees Subsystem
 **Key Files**
@@ -82,5 +82,5 @@ The process fees subsystem handles processing fees for each payout period and
 ensuring that the `PayoutHeight`'s are updated.
 
 **Outbound Complexities**
- - The persist subsystem's `callPersistNewFee` method is called from
+ - The persist subsystem's `callPersistFeeUpdate` method is called from
    `threadedProcessFees`

@@ -2,6 +2,7 @@ package feemanager
 
 import (
 	"path/filepath"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -14,19 +15,46 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// addRandomFee will add a random fee to the FeeManager
+func addRandomFee(fm *FeeManager) (modules.FeeUID, error) {
+	fee := randomFee()
+	uid, err := fm.AddFee(fee.Address, fee.Amount, fee.AppUID, fee.Recurring)
+	if err != nil {
+		return "", err
+	}
+	return uid, nil
+}
+
 // addRandomFees will add a random number of fees to the FeeManager, always at
 // least 1.
-func addRandomFees(fm *FeeManager) error {
+func addRandomFees(fm *FeeManager) ([]modules.FeeUID, error) {
+	var uids []modules.FeeUID
 	for i := 0; i < fastrand.Intn(5)+1; i++ {
-		amount := types.NewCurrency64(fastrand.Uint64n(100))
-		appUID := modules.AppUID(uniqueID())
-		recurring := fastrand.Intn(2) == 0
-		_, err := fm.AddFee(types.UnlockHash{}, amount, appUID, recurring)
+		uid, err := addRandomFee(fm)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		uids = append(uids, uid)
 	}
-	return nil
+	return uids, nil
+}
+
+// randomFee creates and returns a fee with random values
+func randomFee() modules.AppFee {
+	randBytes := fastrand.Bytes(16)
+	var uh types.UnlockHash
+	copy(uh[:], randBytes)
+	return modules.AppFee{
+		Address:            uh,
+		Amount:             types.NewCurrency64(fastrand.Uint64n(1e9)),
+		AppUID:             modules.AppUID(uniqueID()),
+		PaymentCompleted:   fastrand.Intn(2) == 0,
+		PayoutHeight:       types.BlockHeight(fastrand.Uint64n(1e9)),
+		Recurring:          fastrand.Intn(2) == 0,
+		Timestamp:          time.Now().Unix(),
+		TransactionCreated: fastrand.Intn(2) == 0,
+		UID:                uniqueID(),
+	}
 }
 
 // newTestingFeeManager creates a FeeManager for testing

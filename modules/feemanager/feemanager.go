@@ -53,8 +53,8 @@ type (
 		// fees are all the fees that are currently charging this siad instance
 		fees map[modules.FeeUID]*modules.AppFee
 
-		common *feeManagerCommon
-		mu     sync.RWMutex
+		staticCommon *feeManagerCommon
+		mu           sync.RWMutex
 	}
 
 	// feeManagerCommon contains fields that are common to all of the subsystems
@@ -65,7 +65,7 @@ type (
 		staticWallet modules.Wallet
 
 		// Subsystems
-		persist *persistSubsystem
+		staticPersist *persistSubsystem
 
 		// Utilities
 		staticDeps modules.Dependencies
@@ -106,20 +106,20 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 	fm := &FeeManager{
 		fees: make(map[modules.FeeUID]*modules.AppFee),
 
-		common: common,
+		staticCommon: common,
 	}
 	// Create the persist subsystem.
 	ps := &persistSubsystem{
 		staticPersistDir: persistDir,
 
-		common: common,
+		staticCommon: common,
 	}
-	common.persist = ps
+	common.staticPersist = ps
 	// Create the sync coordinator
 	sc := &syncCoordinator{
-		common: common,
+		staticCommon: common,
 	}
-	ps.syncCoordinator = sc
+	ps.staticSyncCoordinator = sc
 
 	// Initialize the logger.
 	common.staticLog, err = persist.NewFileLogger(filepath.Join(ps.staticPersistDir, logFile))
@@ -150,18 +150,20 @@ func uniqueID() modules.FeeUID {
 
 // AddFee adds a fee to the fee manager.
 func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, appUID modules.AppUID, recurring bool) (modules.FeeUID, error) {
-	if err := fm.common.staticTG.Add(); err != nil {
+	if err := fm.staticCommon.staticTG.Add(); err != nil {
 		return "", err
 	}
-	defer fm.common.staticTG.Done()
+	defer fm.staticCommon.staticTG.Done()
+	ps := fm.staticCommon.staticPersist
 
-	// Determine the payoutHeight
+	// Determine the payoutHeight, payoutHeight will be 0 if the consensus is
+	// not synced
 	payoutHeight := types.BlockHeight(0)
-	if fm.common.staticCS.Synced() {
+	if fm.staticCommon.staticCS.Synced() {
 		// Consensus is synced, set to the following payout period
-		fm.common.persist.mu.Lock()
-		payoutHeight = fm.common.persist.nextPayoutHeight + PayoutInterval
-		fm.common.persist.mu.Unlock()
+		ps.mu.Lock()
+		payoutHeight = ps.nextPayoutHeight + PayoutInterval
+		ps.mu.Unlock()
 	}
 
 	// Create the fee.
@@ -184,7 +186,7 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 	fm.mu.Unlock()
 
 	// Persist the fee.
-	err := fm.common.persist.callPersistNewFee(fee)
+	err := ps.callPersistNewFee(fee)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to persist the new fee")
 	}
@@ -194,10 +196,10 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 // CancelFee cancels a fee by removing it from the FeeManager's map
 func (fm *FeeManager) CancelFee(feeUID modules.FeeUID) error {
 	// Add thread group
-	if err := fm.common.staticTG.Add(); err != nil {
+	if err := fm.staticCommon.staticTG.Add(); err != nil {
 		return err
 	}
-	defer fm.common.staticTG.Done()
+	defer fm.staticCommon.staticTG.Done()
 
 	// Erase the fee from memory.
 	fm.mu.Lock()
@@ -210,21 +212,21 @@ func (fm *FeeManager) CancelFee(feeUID modules.FeeUID) error {
 	fm.mu.Unlock()
 
 	// Mark a cancellation of the fee on disk.
-	return fm.common.persist.callPersistFeeCancelation(feeUID)
+	return fm.staticCommon.staticPersist.callPersistFeeCancelation(feeUID)
 }
 
 // Close closes the FeeManager
 func (fm *FeeManager) Close() error {
-	return fm.common.staticTG.Stop()
+	return fm.staticCommon.staticTG.Stop()
 }
 
 // PaidFees returns all the paid fees that are being tracked by the FeeManager
 func (fm *FeeManager) PaidFees() ([]modules.AppFee, error) {
 	// Add thread group
-	if err := fm.common.staticTG.Add(); err != nil {
+	if err := fm.staticCommon.staticTG.Add(); err != nil {
 		return nil, err
 	}
-	defer fm.common.staticTG.Done()
+	defer fm.staticCommon.staticTG.Done()
 
 	var paidFees []modules.AppFee
 	fm.mu.Lock()
@@ -244,10 +246,10 @@ func (fm *FeeManager) PaidFees() ([]modules.AppFee, error) {
 // FeeManager
 func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
 	// Add thread group
-	if err := fm.common.staticTG.Add(); err != nil {
+	if err := fm.staticCommon.staticTG.Add(); err != nil {
 		return nil, err
 	}
-	defer fm.common.staticTG.Done()
+	defer fm.staticCommon.staticTG.Done()
 
 	var pendingFees []modules.AppFee
 	fm.mu.Lock()
@@ -265,14 +267,14 @@ func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
 
 // Settings returns the settings of the FeeManager
 func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
-	if err := fm.common.staticTG.Add(); err != nil {
+	if err := fm.staticCommon.staticTG.Add(); err != nil {
 		return modules.FeeManagerSettings{}, err
 	}
-	defer fm.common.staticTG.Done()
+	defer fm.staticCommon.staticTG.Done()
 
-	fm.common.persist.mu.Lock()
-	nextPayoutHeight := fm.common.persist.nextPayoutHeight
-	fm.common.persist.mu.Unlock()
+	fm.staticCommon.staticPersist.mu.Lock()
+	nextPayoutHeight := fm.staticCommon.staticPersist.nextPayoutHeight
+	fm.staticCommon.staticPersist.mu.Unlock()
 
 	return modules.FeeManagerSettings{
 		PayoutHeight: nextPayoutHeight,

@@ -19,8 +19,8 @@ var (
 	// syncCheckInterval is how often the FeeManager will check if consensus is
 	// synced
 	syncCheckInterval = build.Select(build.Var{
-		Standard: time.Second * 5,
-		Dev:      time.Second * 3,
+		Standard: time.Minute * 5,
+		Dev:      time.Minute,
 		Testing:  time.Second,
 	}).(time.Duration)
 )
@@ -29,15 +29,15 @@ var (
 func (fm *FeeManager) blockUntilSynced() {
 	for {
 		// Check if consensus is synced
-		if fm.common.staticCS.Synced() {
+		if fm.staticCommon.staticCS.Synced() {
 			return
 		}
 
 		// Block until it is time to check again
 		select {
-		case <-fm.common.staticTG.StopChan():
+		case <-fm.staticCommon.staticTG.StopChan():
 			return
-		case <-time.After(processFeesCheckInterval):
+		case <-time.After(syncCheckInterval):
 		}
 	}
 }
@@ -45,33 +45,38 @@ func (fm *FeeManager) blockUntilSynced() {
 // threadedProcessFees is a background thread that handles processing the
 // FeeManager's Fees
 func (fm *FeeManager) threadedProcessFees() {
-	err := fm.common.staticTG.Add()
+	err := fm.staticCommon.staticTG.Add()
 	if err != nil {
 		return
 	}
-	defer fm.common.staticTG.Done()
+	defer fm.staticCommon.staticTG.Done()
 
+	// Define shorter name helpers for staticCommon and staticPersit
+	fc := fm.staticCommon
+	ps := fm.staticCommon.staticPersist
+
+	// Process Fees in a loop until the Feemanager shutsdown
 	for {
 		// Block until synced
 		fm.blockUntilSynced()
 
 		// Grab the Current blockheight
-		bh := fm.common.staticCS.Height()
+		bh := fc.staticCS.Height()
 
 		// Check if the FeeManager nextPayoutHeight needs to be pushed out, if
 		// so update in memory. We do not need to save here as any following
 		// call to save a fee to the persist file will persist the new value.
-		fm.common.persist.mu.Lock()
-		if fm.common.persist.nextPayoutHeight <= bh {
-			fm.common.persist.nextPayoutHeight = bh + PayoutInterval
+		ps.mu.Lock()
+		if ps.nextPayoutHeight <= bh {
+			ps.nextPayoutHeight = bh + PayoutInterval
 		}
-		nextPayoutHeight := fm.common.persist.nextPayoutHeight
-		fm.common.persist.mu.Unlock()
+		nextPayoutHeight := ps.nextPayoutHeight
+		ps.mu.Unlock()
 
 		// Check for fees that need to be updated due to their PayoutHeights
 		// being set to 0, and check for fees that are ready to be processed
-		var feesToUpdate []modules.AppFee
-		var feesToProcess []modules.AppFee
+		var feesToUpdate []modules.FeeUID
+		var feesToProcess []*modules.AppFee
 		fm.mu.Lock()
 		for _, fee := range fm.fees {
 			// Skip any fees that have had transactions created or payments
@@ -85,24 +90,23 @@ func (fm *FeeManager) threadedProcessFees() {
 				continue
 			}
 
-			// Grab any fees that need to be updated
+			// Grab the UIDs of any fees that need to be updated
 			if fee.PayoutHeight == 0 {
-				feesToUpdate = append(feesToUpdate, *fee)
+				feesToUpdate = append(feesToUpdate, fee.UID)
 				continue
 			}
 
 			// Fee needs to be processed
-			feesToProcess = append(feesToProcess, *fee)
+			feesToProcess = append(feesToProcess, fee)
 		}
 		fm.mu.Unlock()
 
-		// Add new entries for all the fees with a PayoutHeight of 0 so the new
-		// PayoutHeight is reflected
-		for _, fee := range feesToUpdate {
-			fee.PayoutHeight = nextPayoutHeight + PayoutInterval
-			err = fm.common.persist.callPersistNewFee(fee)
+		// Calculate the updated payoutHeight and submit updates for the fees
+		payoutHeight := nextPayoutHeight + PayoutInterval
+		for _, feeUID := range feesToUpdate {
+			err = ps.callPersistFeeUpdate(feeUID, payoutHeight)
 			if err != nil {
-				fm.common.staticLog.Println("WARN: Error adding new fee with updated PayoutHeight:", err)
+				fc.staticLog.Println("WARN: Error submitting a fee update with updated PayoutHeight:", err)
 			}
 		}
 
@@ -113,7 +117,7 @@ func (fm *FeeManager) threadedProcessFees() {
 
 		// Sleep until it is time to check the fees again
 		select {
-		case <-fm.common.staticTG.StopChan():
+		case <-fc.staticTG.StopChan():
 			return
 		case <-time.After(processFeesCheckInterval):
 		}

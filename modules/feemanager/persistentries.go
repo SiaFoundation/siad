@@ -21,8 +21,14 @@ const (
 )
 
 var (
-	entryTypeAddFee    = types.Specifier{'a', 'd', 'd', ' ', 'f', 'e', 'e'}
-	entryTypeCancelFee = types.Specifier{'c', 'a', 'n', 'c', 'e', 'l', ' ', 'f', 'e', 'e'}
+	// Persist entry types
+	entryTypeAddFee    = types.NewSpecifier("add fee")
+	entryTypeCancelFee = types.NewSpecifier("cancel fee")
+	entryTypeUpdateFee = types.NewSpecifier("update fee")
+
+	// errUnrecognizedEntryType is returned if the FeeManager tries to integrate
+	// an unrecognized entry type
+	errUnrecognizedEntryType = errors.New("unrecognized entry type")
 )
 
 type (
@@ -35,6 +41,13 @@ type (
 	entryCancelFee struct {
 		FeeUID    modules.FeeUID
 		Timestamp int64
+	}
+
+	// entryupdateFee is the persist entry that updates a pending fee's payout
+	// height.
+	entryupdateFee struct {
+		FeeUID       modules.FeeUID
+		PayoutHeight types.BlockHeight
 	}
 
 	// persistEntry is a generic entry in the persist database.
@@ -69,7 +82,8 @@ func createAddFeeEntry(fee modules.AppFee) (ret [persistEntrySize]byte) {
 	return
 }
 
-// createCancelFeeEntry will take a feeUID and create a persist entry.
+// createCancelFeeEntry will take a feeUID and create a persist entry for a
+// cancel fee request.
 func createCancelFeeEntry(feeUID modules.FeeUID) (ret [persistEntrySize]byte) {
 	// Create the cancel fee entry and marshal it.
 	ecf := entryCancelFee{
@@ -95,6 +109,32 @@ func createCancelFeeEntry(feeUID modules.FeeUID) (ret [persistEntrySize]byte) {
 	return
 }
 
+// createUpdateFeeEntry will create a persist entry for an update fee request.
+func createUpdateFeeEntry(feeUID modules.FeeUID, payoutHeight types.BlockHeight) (ret [persistEntrySize]byte) {
+	// Create the cancel fee entry and marshal it.
+	euf := entryupdateFee{
+		FeeUID:       feeUID,
+		PayoutHeight: payoutHeight,
+	}
+	payload := encoding.Marshal(euf)
+
+	// Load the marshalled entry into the generic entry.
+	entry := persistEntry{
+		EntryType: entryTypeUpdateFee,
+	}
+	copy(entry.Payload[:], payload)
+
+	// Encode the generic entry and check a size invariant.
+	encodedEntry := encoding.Marshal(entry)
+	if len(encodedEntry) != persistEntrySize {
+		build.Critical("an encoded entry has the wrong size")
+	}
+
+	// Set the return value and return.
+	copy(ret[:], encodedEntry)
+	return
+}
+
 // integrateEntry will integrate a provided entry and integrate it into the fee
 // manager.
 func (fm *FeeManager) integrateEntry(entry []byte) error {
@@ -103,12 +143,15 @@ func (fm *FeeManager) integrateEntry(entry []byte) error {
 	if err != nil {
 		return errors.AddContext(err, "could not unmarshal generic entry")
 	}
-	if pe.EntryType == entryTypeAddFee {
+	switch pe.EntryType {
+	case entryTypeAddFee:
 		return fm.integrateEntryAddFee(pe.Payload)
-	} else if pe.EntryType == entryTypeCancelFee {
+	case entryTypeCancelFee:
 		return fm.integrateEntryCancelFee(pe.Payload)
+	case entryTypeUpdateFee:
+		return fm.integrateEntryUpdateFee(pe.Payload)
 	}
-	return errors.New("unrecoginzed entry type")
+	return errUnrecognizedEntryType
 }
 
 // integrateEntryAddFee will integrate an add fee entry and integrate it into
@@ -132,5 +175,21 @@ func (fm *FeeManager) integrateEntryCancelFee(payload [persistEntryPayloadSize]b
 		return errors.AddContext(err, "could not unmarshal cancel fee entry payload")
 	}
 	delete(fm.fees, ecf.FeeUID)
+	return nil
+}
+
+// integrateEntryUpdateFee will integrate an update fee entry and integrate it
+// into the fee manager.
+func (fm *FeeManager) integrateEntryUpdateFee(payload [persistEntryPayloadSize]byte) error {
+	var euf entryupdateFee
+	err := encoding.Unmarshal(payload[:], &euf)
+	if err != nil {
+		return errors.AddContext(err, "could not unmarshal update fee entry payload")
+	}
+	fee, ok := fm.fees[euf.FeeUID]
+	if !ok {
+		return errors.New("Fee Update found for non existent or cancelled fee")
+	}
+	fee.PayoutHeight = euf.PayoutHeight
 	return nil
 }
