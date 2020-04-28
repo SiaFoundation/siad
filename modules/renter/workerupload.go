@@ -100,7 +100,7 @@ func (w *worker) managedDropUploadChunks() {
 
 	for i := 0; i < len(chunksToDrop); i++ {
 		w.managedDropChunk(chunksToDrop[i])
-		w.renter.log.Debugln("dropping chunk because the worker is dropping all chunks", w.staticHostPubKey)
+		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunksToDrop[i].index, chunksToDrop[i].staticSiaPath)
 	}
 }
 
@@ -307,7 +307,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		w.uploadConsecutiveFailures++
 		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
-		w.renter.log.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v", w.staticHostPubKey, failures, uc.id)
+		w.renter.repairLog.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s", w.staticHostPubKey, failures, uc.index, uc.staticSiaPath)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.

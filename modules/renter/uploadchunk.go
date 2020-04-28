@@ -186,9 +186,11 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		workers = append(workers, worker)
 	}
 	r.staticWorkerPool.mu.RUnlock()
+	r.repairLog.Debugf("Distributed chunk %v of %s to %v workers", uc.index, uc.staticSiaPath, len(workers))
 	for _, worker := range workers {
 		worker.callQueueUploadChunk(uc)
 	}
+	r.managedCleanUpUploadChunk(uc)
 }
 
 // padAndEncryptPiece will add padding to a piece and then encrypt it.
@@ -306,6 +308,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	err := r.tg.Add()
 	if err != nil {
+		r.repairLog.Printf("Aborting chunk %v of %s because the threadgroup is closed", chunk.index, chunk.staticSiaPath)
 		return
 	}
 	defer r.tg.Done()
