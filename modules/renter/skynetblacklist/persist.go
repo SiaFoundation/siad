@@ -110,7 +110,7 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(sb.Filepath(), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(sb.FilePath(), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -177,7 +177,7 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 		}
 	}
 
-	filepath := sb.Filepath()
+	filepath := sb.FilePath()
 	// Truncate the file to remove any corrupted data that may have been added.
 	err := os.Truncate(filepath, sb.persistLength)
 	if err != nil {
@@ -220,7 +220,7 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 // load loads the persisted blacklist from disk
 func (sb *SkynetBlacklist) load() error {
 	// Open File
-	filepath := sb.Filepath()
+	filepath := sb.FilePath()
 	f, err := os.Open(filepath)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
@@ -301,7 +301,7 @@ func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
 	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
 }
 
-// Filepath returns the filepath of the persist file.
-func (sb *SkynetBlacklist) Filepath() string {
+// FilePath returns the filepath of the persist file.
+func (sb *SkynetBlacklist) FilePath() string {
 	return filepath.Join(sb.staticPersistDir, persistFile)
 }

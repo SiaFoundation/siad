@@ -29,7 +29,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	// Initialize the persistence of the blacklist
 	err := sb.callInitPersist()
 	if err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", sb.Filepath()))
+		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", sb.FilePath()))
 	}
 
 	return sb, nil
@@ -57,5 +57,5 @@ func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 // UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
 func (sb *SkynetBlacklist) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
 	err := sb.callUpdateAndAppend(additions, removals)
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.Filepath()))
+	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.FilePath()))
 }

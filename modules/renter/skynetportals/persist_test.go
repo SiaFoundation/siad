@@ -47,8 +47,8 @@ func TestPersist(t *testing.T) {
 	}
 
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
-	if filename != sp.Filepath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sp.Filepath())
+	if filename != sp.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
 	}
 
 	// There should be no portals in the list
@@ -180,8 +180,8 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
-	if filename != sp.Filepath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sp.Filepath())
+	if filename != sp.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
 	}
 
 	// There should be no portals in the list

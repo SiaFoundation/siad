@@ -47,8 +47,8 @@ func TestPersist(t *testing.T) {
 	}
 
 	filename := filepath.Join(sb.staticPersistDir, persistFile)
-	if filename != sb.Filepath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sb.Filepath())
+	if filename != sb.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sb.FilePath())
 	}
 
 	// There should be no skylinks in the blacklist
@@ -167,8 +167,8 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	filename := filepath.Join(sb.staticPersistDir, persistFile)
-	if filename != sb.Filepath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sb.Filepath())
+	if filename != sb.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sb.FilePath())
 	}
 
 	// There should be no skylinks in the blacklist

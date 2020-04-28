@@ -34,7 +34,7 @@ func New(persistDir string) (*SkynetPortals, error) {
 	// Initialize the persistence of the portals list
 	err := sp.callInitPersist()
 	if err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet portal list persistence at '%v'", sp.Filepath()))
+		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet portal list persistence at '%v'", sp.FilePath()))
 	}
 
 	return sp, nil
@@ -58,5 +58,5 @@ func (sp *SkynetPortals) Portals() []modules.SkynetPortal {
 // UpdateSkynetPortals updates the list of known Skynet portals.
 func (sp *SkynetPortals) UpdateSkynetPortals(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
 	err := sp.callUpdateAndAppend(additions, removals)
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.Filepath()))
+	return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.FilePath()))
 }
