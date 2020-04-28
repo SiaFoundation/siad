@@ -110,16 +110,16 @@ var (
 	// its prices to the renter.
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
-		Dev:      1 * time.Minute,
-		Testing:  5 * time.Second,
+		Dev:      5 * time.Minute,
+		Testing:  15 * time.Second,
 	}).(time.Duration)
 
 	// pruneExpiredRPCPriceTableFrequency is the frequency at which the host
 	// checks if it can expire price tables that have an expiry in the past.
 	pruneExpiredRPCPriceTableFrequency = build.Select(build.Var{
 		Standard: 15 * time.Minute,
-		Dev:      5 * time.Minute,
-		Testing:  10 * time.Second,
+		Dev:      10 * time.Minute,
+		Testing:  30 * time.Second,
 	}).(time.Duration)
 )
 
@@ -229,8 +229,9 @@ func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTabl
 	return
 }
 
-// managedUpdate overwrites the current price table with the one that's given
-func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
+// managedSetCurrent overwrites the current price table with the one that's
+// given
+func (hp *hostPrices) managedSetCurrent(pt modules.RPCPriceTable) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 	hp.current = pt
@@ -398,7 +399,7 @@ func (h *Host) managedUpdatePriceTable() {
 	fastrand.Read(priceTable.UID[:])
 
 	// update the pricetable
-	h.staticPriceTables.managedUpdate(priceTable)
+	h.staticPriceTables.managedSetCurrent(priceTable)
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
@@ -686,7 +687,7 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 
 	// The locked storage collateral was altered, we potentially want to
 	// unregister the insufficient collateral budget alert
-	h.TryUnregisterInsufficientCollateralBudgetAlert()
+	h.tryUnregisterInsufficientCollateralBudgetAlert()
 
 	err = h.saveSync()
 	if err != nil {

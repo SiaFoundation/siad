@@ -11,6 +11,16 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
+var (
+	// ErrPriceTableNotFound is returned when the price table for a certain UID
+	// can not be found in the tracked price tables
+	ErrPriceTableNotFound = errors.New("Price table not found, it might be expired")
+
+	// ErrPriceTableExpired is returned when the specified price table has
+	// expired
+	ErrPriceTableExpired = errors.New("Price table requested is expired")
+)
+
 // managedRPCUpdatePriceTable returns a copy of the host's current rpc price
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
