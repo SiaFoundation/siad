@@ -107,6 +107,11 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
+	// ProvidePayment takes a stream and various payment details and handles the
+	// payment by sending and processing payment request and response objects.
+	// Returns an error in case of failure.
+	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error
+
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
 
@@ -463,6 +468,23 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 		offline[pkString] = r.hostContractor.IsOffline(contract.HostPublicKey)
 	}
 	return offline, goodForRenew, contracts
+}
+
+// managedNewStream returns a new stream to the host with given public key. Note
+// this is a utility function and should not be called in a high performance
+// environment because it performs a db lookup.
+func (r *Renter) managedNewStream(hostKey types.SiaPublicKey) (siamux.Stream, error) {
+	entry, found, err := r.hostDB.Host(hostKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to fetch host from hostDB")
+	}
+	if !found {
+		return nil, errors.New("Host not found in hostDB")
+	}
+
+	hostMuxAddress := fmt.Sprintf("%s:%s", entry.NetAddress.Host(), entry.HostExternalSettings.SiaMuxPort)
+
+	return r.staticMux.NewStream(modules.HostSiaMuxSubscriberName, hostMuxAddress, modules.SiaPKToMuxPK(hostKey))
 }
 
 // managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the

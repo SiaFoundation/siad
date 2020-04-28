@@ -5,10 +5,12 @@ package renter
 
 import (
 	"encoding/json"
+	"io"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -41,17 +43,26 @@ func (r *Renter) newRPCClient(he modules.HostDBEntry, ra modules.AccountID, bh t
 }
 
 // ExecuteProgram performs the ExecuteProgramRPC on the host
-func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) ([]modules.RPCExecuteProgramResponse, error) {
+func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []modules.RPCExecuteProgramResponse, outputs [][]byte, err error) {
+	// close the stream
+	defer func() {
+		cErr := stream.Close()
+		if cErr != nil {
+			err = errors.Compose(err, cErr)
+			responses = nil
+		}
+	}()
+
 	// write the specifier
-	err := modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// send price table uid
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// prepare the request.
@@ -65,52 +76,114 @@ func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Str
 	// TODO: NTH cost := program.EstimateCost(data, dataLen)
 	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCUpdatePriceTable, cost, c.staticRefundAccount, c.managedBlockHeight())
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// send the execute program request.
 	err = modules.RPCWrite(stream, epr)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// send the programData.
 	_, err = stream.Write(data)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// read the responses.
-	responses := make([]modules.RPCExecuteProgramResponse, len(epr.Program))
+	responses = make([]modules.RPCExecuteProgramResponse, len(epr.Program))
+	outputs = make([][]byte, len(epr.Program))
 	for i := range responses {
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
-			return nil, err
+			return
 		}
+
+		// Read the output data.
+		outputLen := responses[i].OutputLength
+		outputs[i] = make([]byte, outputLen, outputLen)
+		_, err = io.ReadFull(stream, outputs[i])
+		if err != nil {
+		}
+
+		// If the response contains an error we are done.
 		if responses[i].Error != nil {
-			return nil, responses[i].Error
+			return
 		}
 	}
+	return
+}
 
-	return responses, nil
+// FundAccount will call the fundAccountRPC on the host and if successful will
+// deposit the given amount into the specified ephemeral account.
+func (c *rpcClient) FundAccount(pp modules.PaymentProvider, stream siamux.Stream, pt modules.RPCPriceTable, id modules.AccountID, amount types.Currency) (resp modules.FundAccountResponse, err error) {
+	// close the stream
+	defer func() {
+		cErr := stream.Close()
+		if cErr != nil {
+			err = errors.Compose(err, cErr)
+			resp = modules.FundAccountResponse{}
+		}
+	}()
+
+	// write the specifier
+	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	if err != nil {
+		return
+	}
+
+	// send price table uid
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return
+	}
+
+	// send fund account request
+	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: id})
+	if err != nil {
+		return
+	}
+
+	// provide payment
+	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, c.managedBlockHeight())
+	if err != nil {
+		return
+	}
+
+	// receive FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	return
 }
 
 // UpdatePriceTable performs the UpdatePriceTableRPC on the host.
-func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.Stream) (*modules.RPCPriceTable, error) {
+func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.Stream) (pt modules.RPCPriceTable, err error) {
+	// close the stream
+	defer func() {
+		cErr := stream.Close()
+		if cErr != nil {
+			err = errors.Compose(err, cErr)
+			pt = modules.RPCPriceTable{}
+		}
+	}()
+
 	// write the specifier
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// receive the price table
 	var uptr modules.RPCUpdatePriceTableResponse
-	if err := modules.RPCRead(stream, &uptr); err != nil {
-		return nil, err
+	err = modules.RPCRead(stream, &uptr)
+	if err != nil {
+		return
 	}
-	var pt modules.RPCPriceTable
-	if err := json.Unmarshal(uptr.PriceTableJSON, &pt); err != nil {
-		return nil, err
+
+	// decode the JSON
+	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
+	if err != nil {
+		return
 	}
 
 	// TODO: perform gouging check
@@ -118,48 +191,7 @@ func (c *rpcClient) UpdatePriceTable(pp modules.PaymentProvider, stream siamux.S
 
 	// provide payment
 	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, c.staticRefundAccount, c.managedBlockHeight())
-	if err != nil {
-		return nil, err
-	}
-
-	return &pt, nil
-}
-
-// FundAccount will call the fundAccountRPC on the host and if successful will
-// deposit the given amount into the specified ephemeral account.
-func (c *rpcClient) FundAccount(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, id modules.AccountID, amount types.Currency) (*modules.FundAccountResponse, error) {
-	// write the specifier
-	err := modules.RPCWrite(stream, modules.RPCFundAccount)
-	if err != nil {
-		return nil, err
-	}
-
-	// send price table uid
-	err = modules.RPCWrite(stream, pt.UID)
-	if err != nil {
-		return nil, err
-	}
-
-	// send fund account request
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: id})
-	if err != nil {
-		return nil, err
-	}
-
-	// provide payment
-	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, c.managedBlockHeight())
-	if err != nil {
-		return nil, err
-	}
-
-	// receive FundAccountResponse
-	var resp modules.FundAccountResponse
-	err = modules.RPCRead(stream, &resp)
-	if err != nil {
-		return nil, err
-	}
-
-	return &resp, nil
+	return
 }
 
 // UpdateBlockHeight is called by the renter when it processes a consensus
