@@ -38,7 +38,7 @@ var (
 // supplied timeout is <= 0 - use `StartUpdate` instead.
 func (rc *RefCounter) StartUpdateWithTimeout(timeout time.Duration) error {
 	if timeout <= 0 {
-		panic("non-positive timeout")
+		return errors.New("non-positive timeout")
 	} else {
 		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
 			return errTimeoutOnLock
