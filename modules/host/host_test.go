@@ -560,8 +560,6 @@ func (p *renterHostPair) executeProgram(pt *modules.RPCPriceTable, epr modules.R
 // NOTE the helper function callFundEphemeralAccount which ensures the price
 // table is always valid.
 func (p *renterHostPair) fundEphemeralAccount(pt *modules.RPCPriceTable, amount types.Currency) (modules.FundAccountResponse, error) {
-	funding := amount.Add(pt.FundAccountCost)
-
 	// create stream
 	stream := p.newStream()
 	defer stream.Close()
@@ -586,7 +584,7 @@ func (p *renterHostPair) fundEphemeralAccount(pt *modules.RPCPriceTable, amount 
 	}
 
 	// Pay by contract.
-	err = p.payByContract(stream, funding, modules.ZeroAccountID)
+	err = p.payByContract(stream, amount, modules.ZeroAccountID)
 	if err != nil {
 		return modules.FundAccountResponse{}, err
 	}
