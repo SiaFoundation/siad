@@ -329,7 +329,7 @@ func rentercmd() {
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 
 	// Print out file health summary for the renter
-	dirs := getDir(modules.RootSiaPath(), false, true)
+	dirs := getDir(modules.RootSiaPath(), true, true)
 	fmt.Println()
 	renterFileHealthSummary(dirs)
 }
@@ -393,13 +393,13 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirRootGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
+		return errors.AddContext(err, "unable to get root dir with RenterDirRootGet")
 	}
 
 	rc, err := httpClient.RenterDisabledContractsGet()
@@ -1715,7 +1715,13 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
+
 		// Try to delete file.
+		//
+		// In the case where the path points to a dir, this will fail and we
+		// silently move on to deleting it as a dir. This is more efficient than
+		// querying the renter first to see if it is a file or a dir, as that is
+		// guaranteed to always be two renter calls.
 		var errFile error
 		if renterDeleteRoot {
 			errFile = httpClient.RenterFileDeleteRootPost(siaPath)
@@ -1728,7 +1734,7 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
 			die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 		}
-		// Try to delete folder.
+		// Try to delete dir.
 		var errDir error
 		if renterDeleteRoot {
 			errDir = httpClient.RenterDirDeleteRootPost(siaPath)
@@ -1741,7 +1747,8 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 			die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
 		}
-		// Unknown file/folder.
+
+		// Unknown file/dir.
 		die(fmt.Sprintf("Unknown path '%v'", path))
 	}
 	return
@@ -1769,7 +1776,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
 	}
-	die(fmt.Sprintf("Unknown file '%v'", path))
+	die(fmt.Sprintf("Unknown path '%v'", path))
 }
 
 // renterfilesdownload downloads the file at the specified path from the Sia
