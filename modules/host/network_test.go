@@ -75,7 +75,12 @@ func TestHostWorkingStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// TODO: this causes an ndf, because it relies on the host tester starting up
 	// and fully returning faster than the first check, which isnt always the
@@ -125,7 +130,12 @@ func TestHostConnectabilityStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// TODO: this causes an ndf, because it relies on the host tester starting up
 	// and fully returning faster than the first check, which isnt always the
@@ -159,8 +169,12 @@ func TestUnrecognizedRPCID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ht := pair.ht
-	defer ht.Close()
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	stream := pair.newStream()
 
