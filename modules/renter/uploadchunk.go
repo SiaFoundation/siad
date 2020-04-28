@@ -209,6 +209,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
 		uc.mu.Unlock()
 		if onCooldown || !gfu || !candidateHost {
+			r.repairLog.Println(onCooldown, !gfu, !candidateHost)
 			continue
 		}
 		w.callQueueUploadChunk(uc)
