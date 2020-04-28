@@ -55,6 +55,17 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		// note we can not simply call the `Close` function on the
+		// renterHostPair because we are dealing with a custom host tester in
+		// which we injected the same host tester.
+		defer func() {
+			err := pair.staticRenterMux.Close()
+			if err != nil {
+				t.Error(err)
+			}
+		}()
+
 		// prefund the EAs
 		_, err = pair.callFundEphemeralAccount(funding)
 		if err != nil {
