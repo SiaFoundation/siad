@@ -76,11 +76,15 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		fcid := pair.staticFCID
 		readFullPrograms[fcid] = createRandomReadSectorProgram(pt, root, true)
 		readPartPrograms[fcid] = createRandomReadSectorProgram(pt, root, false)
-		hasSectorPrograms[fcid] = createRandomHasSectorProgram(pt, root)
+		hasSectorPrograms[fcid] = newRandomHasSectorProgram(pt, root)
 	}
 
 	// randomScenario is a helper function that randomly selects which program
 	// to execute, returns its cost and a function that tracks a successful call
+	//
+	// NOTE that the costs values are hardcoded and set to what they ought to be
+	// in order for the MDM to successfully execute the program. Values taken
+	// from rpcexecuteprogram_test.go.
 	randomScenario := func(pair *renterHostPair, stats *rpcStats) (program mdmProgram, cost types.Currency, track func()) {
 		pt := pair.PriceTable()
 		scenario := fastrand.Intn(3)
@@ -148,7 +152,10 @@ func TestRPCConcurrentCalls(t *testing.T) {
 				// try to recover from expired PT
 				if !recovered && (strings.Contains(err.Error(), ErrPriceTableExpired.Error()) || strings.Contains(err.Error(), ErrPriceTableNotFound.Error())) {
 					var payByFC bool
-					err = pair.updatePriceTable(false) // try using an EA
+					// try using an EA, but fall back to contract payment, this
+					// ensures the price table gets updated, and attempts to do
+					// it in the fastest way possible
+					err = pair.updatePriceTable(false)
 					if err != nil {
 						pair.updatePriceTable(true)
 						payByFC = true
@@ -236,10 +243,10 @@ func createRandomReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, 
 	}
 }
 
-// createRandomHasSectorProgram is a helper function that creates a random
-// sector on the host and returns a program that returns whether or not the host
-// has this sector.
-func createRandomHasSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash) mdmProgram {
+// newRandomHasSectorProgram is a helper function that creates a random sector
+// on the host and returns a program that returns whether or not the host has
+// this sector.
+func newRandomHasSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash) mdmProgram {
 	p, data, cost, _, _, _ := newHasSectorProgram(root, pt)
 	return mdmProgram{
 		program: p,
@@ -259,7 +266,7 @@ type rpcStats struct {
 	atomicExecuteHasSectorCalls          uint64
 }
 
-// trackPartialRead tracks an update price table call
+// trackUpdatePT tracks an update price table call
 func (rs *rpcStats) trackUpdatePT(payByFC bool) {
 	if payByFC {
 		atomic.AddUint64(&rs.atomicUpdatePTCallsFC, 1)
@@ -268,12 +275,13 @@ func (rs *rpcStats) trackUpdatePT(payByFC bool) {
 	}
 }
 
-// trackPartialRead tracks a fund ephemeral account call
+// trackFundEA tracks a fund ephemeral account call
 func (rs *rpcStats) trackFundEA() {
 	atomic.AddUint64(&rs.atomicFundAccountCalls, 1)
 }
 
-// trackPartialRead tracks a sector read
+// trackReadSector tracks an execute MDM program call with a read sector program
+// it tracks a full read or partial read depending on the given 'full' parameter
 func (rs *rpcStats) trackReadSector(full bool) {
 	if full {
 		atomic.AddUint64(&rs.atomicExecuteProgramFullReadCalls, 1)
@@ -282,12 +290,12 @@ func (rs *rpcStats) trackReadSector(full bool) {
 	}
 }
 
-// trackHasSector tracks a sector lookup
+// trackHasSector tracks an execute MDM program call with a has sector program
 func (rs *rpcStats) trackHasSector() {
 	atomic.AddUint64(&rs.atomicExecuteHasSectorCalls, 1)
 }
 
-// String prints a string representation of the RPC statistics
+// String prints a string representation of the RPC stats object
 func (rs *rpcStats) String() string {
 	numPTFC := atomic.LoadUint64(&rs.atomicUpdatePTCallsFC)
 	numPTEA := atomic.LoadUint64(&rs.atomicUpdatePTCallsEA)

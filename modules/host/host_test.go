@@ -372,8 +372,13 @@ func (p *renterHostPair) Close() error {
 // FetchPriceTable returns the latest price table, if that price table is
 // expired it will fetch a new one from the host.
 func (p *renterHostPair) FetchPriceTable() (*modules.RPCPriceTable, error) {
+	// fetch a new pricetable if it's about to expire, rather than the second it
+	// expires. This ensures calls performed immediately after `FetchPriceTable`
+	// is called are set to succeed.
+	var expiryBuffer int64 = 3
+
 	pt := p.PriceTable()
-	if pt.Expiry <= time.Now().Unix()+3 {
+	if pt.Expiry <= time.Now().Unix()+expiryBuffer {
 		err := p.callUpdatePriceTable()
 		if err != nil {
 			return nil, err
@@ -436,10 +441,12 @@ type executeProgramResponse struct {
 	Output []byte
 }
 
-// callExecuteProgram executes an MDM program on the host using an EA payment
-// and returns the responses received by the host. A failure to execute an
-// instruction won't result in an error. Instead the returned responses need to
-// be inspected for that depending on the testcase.
+// callExecuteProgram wraps executeProgram and will thus execute an MDM program
+// on the host using an EA payment and returns the responses received by the
+// host. A failure to execute an instruction won't result in an error. Instead
+// the returned responses need to be inspected for that depending on the
+// testcase. It calls executeProgram with a price table we fetch, this ensures
+// the price table is not expired.
 func (p *renterHostPair) callExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
 	// fetch a price table
 	pt, err := p.FetchPriceTable()
@@ -449,8 +456,10 @@ func (p *renterHostPair) callExecuteProgram(epr modules.RPCExecuteProgramRequest
 	return p.executeProgram(pt, epr, programData, budget)
 }
 
-// callFundEphemeralAccount will deposit the given amount in the pair's
-// ephemeral account using the pair's file contract to provide payment
+// callFundEphemeralAccount wraps fundEphemeralAccount and will thus deposit the
+// given amount in the pair's ephemeral account. It will do so by first fetching
+// the price table, which ensures the fund ephemeral account call is performed
+// using a price table that is not expired.
 func (p *renterHostPair) callFundEphemeralAccount(amount types.Currency) (modules.FundAccountResponse, error) {
 	// fetch a price table
 	pt, err := p.FetchPriceTable()
@@ -460,8 +469,10 @@ func (p *renterHostPair) callFundEphemeralAccount(amount types.Currency) (module
 	return p.fundEphemeralAccount(pt, amount)
 }
 
-// callUpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the
-// price table on the pair
+// callUpdatePriceTable wraps updatePriceTable and will thus update the pairs
+// RPC price table. It calls updatePriceTable with 'payByFC' set to true. This
+// ensures the call has most chances of succeeding (seeing as there is no need
+// for the pair's EA to be funded).
 func (p *renterHostPair) callUpdatePriceTable() error {
 	return p.updatePriceTable(true)
 }
