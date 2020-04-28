@@ -1,11 +1,13 @@
 package main
 
 import (
+	"math"
 	"math/big"
 	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestParseFileSize probes the parseFilesize function
@@ -254,6 +256,7 @@ func TestParsePercentages(t *testing.T) {
 		{[]float64{100}, []float64{100}},
 	}
 
+	// Test set cases to ensure known edge cases are always handled
 	for _, test := range tests {
 		res := parsePercentages(test.in)
 		for i, v := range res {
@@ -264,4 +267,60 @@ func TestParsePercentages(t *testing.T) {
 			}
 		}
 	}
+
+	// For test-long test additional random cases
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Test Random Edge Cases
+	for i := 0; i < 1000; i++ {
+		values := parsePercentages(randomPercentages())
+		// Since we can't know what the exact output should be, verify that the
+		// values add up to 100 and that none of the values have a non zero
+		// remainder
+		var total float64
+		for _, v := range values {
+			_, r := math.Modf(v)
+			if r != 0 {
+				t.Fatal("Found non zero remainder")
+			}
+			total += v
+		}
+		if total != float64(100) {
+			t.Fatal("Values should add up to 100 but added up to", total)
+		}
+	}
+}
+
+// randomPercentages creates a slice of pseudo random size, up to 500 elements,
+// with random elements that add to 100.
+//
+// NOTE: this function does not explicitly check that all the elements strictly
+// add up to 100 due to potential significant digit rounding errors. It was
+// common to see the elements add up to 100.00000000000001.
+func randomPercentages() []float64 {
+	var p []float64
+
+	remainder := float64(100)
+	for i := 0; i < 500; i++ {
+		n := float64(fastrand.Intn(1000))
+		d := float64(fastrand.Intn(100000)) + n
+		val := n / d * 100
+		if remainder < val {
+			continue
+		}
+		remainder -= val
+		p = append(p, val)
+		if remainder == 0 {
+			break
+		}
+	}
+
+	// Check if we have a remainder to add
+	if remainder > 0 {
+		p = append(p, remainder)
+	}
+
+	return p
 }
