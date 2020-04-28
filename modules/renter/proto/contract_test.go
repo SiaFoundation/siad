@@ -358,9 +358,13 @@ func TestContractRefCounter(t *testing.T) {
 	// add a contract
 	initialHeader := contractHeader{
 		Transaction: types.Transaction{
-			FileContractRevisions: []types.FileContractRevision{
-				{NewRevisionNumber: 1},
-			},
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber:    1,
+				NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
 		},
 	}
 	initialRoots := []crypto.Hash{{1}}
@@ -379,9 +383,13 @@ func TestContractRefCounter(t *testing.T) {
 
 	// upload a new sector
 	txn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{
-			{NewRevisionNumber: 2},
-		},
+		FileContractRevisions: []types.FileContractRevision{{
+			NewRevisionNumber:    2,
+			NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+			UnlockConditions: types.UnlockConditions{
+				PublicKeys: []types.SiaPublicKey{{}, {}},
+			},
+		}},
 	}
 	revisedHeader := contractHeader{
 		Transaction:     txn,

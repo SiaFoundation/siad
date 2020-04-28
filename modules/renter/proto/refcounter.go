@@ -260,12 +260,14 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	if err = txn.SignalUpdatesApplied(); err != nil {
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
-	// Update the in-memory helper fields.
-	fi, err := os.Stat(rc.filepath)
-	if err != nil {
-		return errors.AddContext(err, "failed to read from disk after updates")
+	// Update the in-memory helper fields unless the refcounter is deleted.
+	if !rc.isDeleted {
+		fi, err := os.Stat(rc.filepath)
+		if err != nil {
+			return errors.AddContext(err, "failed to read from disk after updates")
+		}
+		rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
 	}
-	rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
 	return nil
 }
 
