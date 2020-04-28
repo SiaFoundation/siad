@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -290,11 +289,9 @@ func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
 	}
 	if version != metadataVersion {
 		// Convert versions to strings and strip newlines for displaying.
-		expected, _ := metadataVersion.MarshalText()
-		received, _ := version.MarshalText()
-		expectedStr := string(bytes.Trim(expected, "\x000"))
-		receivedStr := string(bytes.Trim(received, "\x000"))
-		return errors.AddContext(errWrongVersion, fmt.Sprintf("expected %v, received %v", strings.TrimSpace(expectedStr), strings.TrimSpace(receivedStr)))
+		expected := string(bytes.Split(metadataVersion[:], []byte{'\n'})[0])
+		received := string(bytes.Split(version[:], []byte{'\n'})[0])
+		return errors.AddContext(errWrongVersion, fmt.Sprintf("expected %v, received %v", expected, received))
 	}
 
 	// Unmarshal the length
