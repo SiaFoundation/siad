@@ -1,0 +1,1 @@
+- Allow for `wallet/verifypassword` endpoint to accept the primary seed as well as a password
