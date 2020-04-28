@@ -214,6 +214,7 @@ func (w *worker) threadedWorkLoop() {
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
 	var cacheUpdateTimer <-chan time.Time
+	cacheUpdateTimer = time.After(0) // Have the update timer fire immediately.
 	for {
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are
@@ -274,6 +275,8 @@ func (w *worker) threadedWorkLoop() {
 		// or until a kill or stop signal is received.
 		select {
 		case <-w.wakeChan:
+			continue
+		case <-cacheUpdateTimer:
 			continue
 		case <-w.killChan:
 			return
