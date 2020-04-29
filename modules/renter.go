@@ -303,6 +303,36 @@ type ContractUtility struct {
 	Locked bool
 }
 
+// Cmp compares two ContractUtility values. The return value follows the
+// convention of math/big.
+func (x ContractUtility) Cmp(y ContractUtility) int {
+	// BadContract Check
+	if x.BadContract && !y.BadContract {
+		return -1
+	}
+	if !x.BadContract && y.BadContract {
+		return 1
+	}
+
+	// GoodForRenew Check
+	if x.GoodForRenew && !y.GoodForRenew {
+		return 1
+	}
+	if !x.GoodForRenew && y.GoodForRenew {
+		return -1
+	}
+
+	// GoodForUpload Check
+	if x.GoodForUpload && !y.GoodForUpload {
+		return 1
+	}
+	if !x.GoodForUpload && y.GoodForUpload {
+		return -1
+	}
+
+	return 0
+}
+
 // ContractWatchStatus provides information about the status of a contract in
 // the renter's watchdog.
 type ContractWatchStatus struct {
