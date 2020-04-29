@@ -64,7 +64,7 @@ func (wp *workerPool) callUpdate() {
 		if !exists {
 			wp.renter.log.Printf("the utility is not presenting itself as something that exists")
 		}
-		if !utility.GoodForUpload {
+		if contract.Utility.GoodForUpload && !utility.GoodForUpload {
 			wp.renter.log.Printf("the contractor is providing the wrong utility for a pubkey...")
 		}
 	}

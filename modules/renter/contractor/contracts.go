@@ -75,38 +75,18 @@ func (c *Contractor) managedUpdatePubKeyToContractIDMap() {
 
 // updatePubKeyToContractIDMap updates the pubkeysToContractID map
 func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContract, bh types.BlockHeight) {
-	// Sanity check - figure out how many unique GFU contracts exist in this
-	// list.
-	uniqueGFU := make(map[string]struct{})
+	// Reset the pubkey to contract id map, also create a map from each
+	// contract's fcid to the contract itself.
+	c.pubKeysToContractID = make(map[string]types.FileContractID)
 	contractMap := make(map[string]modules.RenterContract)
 	for i := 0; i < len(contracts); i++ {
 		contractMap[contracts[i].ID.String()] = contracts[i]
-		if contracts[i].Utility.GoodForUpload {
-			uniqueGFU[contracts[i].HostPublicKey.String()] = struct{}{}
-		}
 	}
-	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
-	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
-	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
-	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
-	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
-	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
 
-	// Reset the map, also handles initialization
-	c.pubKeysToContractID = make(map[string]types.FileContractID)
-
-	// Try adding each contract to the map.
+	// Try adding each contract to the map. The contracts with better utility
+	// will be favored.
 	for i := 0; i < len(contracts); i++ {
 		c.tryAddContractToPubKeyMap(contracts[i], contractMap)
-	}
-
-	// Count the GFU contracts in the thing.
-	for pk, _ := range c.pubKeysToContractID {
-		_, exists := uniqueGFU[pk]
-		contract, _ := contractMap[pk]
-		if exists && !contract.Utility.GoodForUpload || !exists && contract.Utility.GoodForUpload {
-			c.log.Printf("the GFU thing has a mismatch... right in the builder function %v :: %v", exists, contract.Utility.GoodForUpload)
-		}
 	}
 }
 
