@@ -81,6 +81,8 @@ func (na NetAddress) IsLocal() bool {
 		"10.0.0.0/8",
 		"172.16.0.0/12",
 		"192.168.0.0/16",
+		"100.64.0.0/10",
+		"169.254.0.0/16",
 		"fd00::/8",
 	}
 	for _, cidr := range localCIDRs {

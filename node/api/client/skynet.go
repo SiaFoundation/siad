@@ -16,6 +16,17 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
+func (c *Client) RenterSkyfileGet(siaPath modules.SiaPath, root bool) (rf api.RenterFile, err error) {
+	if !root {
+		siaPath, err = modules.SkynetFolder.Join(siaPath.String())
+		if err != nil {
+			return
+		}
+	}
+	return c.RenterFileRootGet(siaPath)
+}
+
 // SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
 // file.
 func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {

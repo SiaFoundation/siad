@@ -206,7 +206,10 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
-	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_RDWR, modules.DefaultFilePerm)
+	// We allow the creation of the file here because of the case where we got
+	// interrupted during the creation of the refcounter after writing the
+	// header update to the Wal but before applying it.
+	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_CREATE|os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
