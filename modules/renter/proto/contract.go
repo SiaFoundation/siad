@@ -686,7 +686,7 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
-func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCounterPath string, walTxns []*writeaheadlog.Transaction) (err error) {
+func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountFileName string, walTxns []*writeaheadlog.Transaction) (err error) {
 	headerFile, err := os.OpenFile(headerFileName, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return err
@@ -743,10 +743,10 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCounte
 	}
 	rc := &RefCounter{}
 	if build.Release == "testing" {
-		// load the reference counter or create one if it doesn't exist
-		rc, err = LoadRefCounter(refCounterPath, cs.wal)
+		// load the reference counter or create a new one if it doesn't exist
+		rc, err = LoadRefCounter(refCountFileName, cs.wal)
 		if errors.Contains(err, ErrRefCounterNotExist) {
-			rc, err = NewRefCounter(refCounterPath, uint64(merkleRoots.numMerkleRoots), cs.wal)
+			rc, err = NewRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.wal)
 		}
 		if err != nil {
 			return err

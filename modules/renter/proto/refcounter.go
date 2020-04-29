@@ -369,7 +369,7 @@ func (rc *RefCounter) SetCount(secIdx uint64, c uint16) (writeaheadlog.Update, e
 		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
 	// this allows the client to set multiple new counts in random order
-	if secIdx > rc.numSectors {
+	if secIdx >= rc.numSectors {
 		rc.numSectors = secIdx + 1
 	}
 	rc.newSectorCounts[secIdx] = c
@@ -471,36 +471,9 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 	return binary.LittleEndian.Uint16(b[:]), nil
 }
 
-// applyDeleteUpdate parses and applies a Delete update.
-func applyDeleteUpdate(update writeaheadlog.Update) error {
-	if update.Name != UpdateNameDelete {
-		return fmt.Errorf("applyDeleteUpdate called on update of type %v", update.Name)
-	}
-	// Remove the file and ignore the NotExist error
-	if err := os.Remove(string(update.Instructions)); !os.IsNotExist(err) {
-		return err
-	}
-	return nil
-}
-
-// applyTruncateUpdate parses and applies a Truncate update.
-func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
-	if u.Name != UpdateNameTruncate {
-		return fmt.Errorf("applyAppendTruncate called on update of type %v", u.Name)
-	}
-	// Decode update.
-	_, newNumSec, err := readTruncateUpdate(u)
-	if err != nil {
-		return err
-	}
-	// Truncate the file to the needed size.
-	return f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2)
-}
-
 // applyUpdates takes a list of WAL updates and applies them.
 func applyUpdates(f modules.File, updates ...writeaheadlog.Update) (err error) {
 	for _, update := range updates {
-		var err error
 		switch update.Name {
 		case UpdateNameDelete:
 			err = applyDeleteUpdate(update)
@@ -518,21 +491,6 @@ func applyUpdates(f modules.File, updates ...writeaheadlog.Update) (err error) {
 	return f.Sync()
 }
 
-// applyWriteAtUpdate parses and applies a WriteAt update.
-func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
-	if u.Name != UpdateNameWriteAt {
-		return fmt.Errorf("applyAppendWriteAt called on update of type %v", u.Name)
-	}
-	// Decode update.
-	_, secIdx, value, err := readWriteAtUpdate(u)
-
-	// Write the value to disk.
-	var b u16
-	binary.LittleEndian.PutUint16(b[:], value)
-	_, err = f.WriteAt(b[:], int64(offset(secIdx)))
-	return err
-}
-
 // createDeleteUpdate is a helper function which creates a writeaheadlog update
 // for deleting a given refcounter file.
 func createDeleteUpdate(path string) writeaheadlog.Update {
@@ -540,6 +498,18 @@ func createDeleteUpdate(path string) writeaheadlog.Update {
 		Name:         UpdateNameDelete,
 		Instructions: []byte(path),
 	}
+}
+
+// applyDeleteUpdate parses and applies a Delete update.
+func applyDeleteUpdate(update writeaheadlog.Update) error {
+	if update.Name != UpdateNameDelete {
+		return fmt.Errorf("applyDeleteUpdate called on update of type %v", update.Name)
+	}
+	// Remove the file and ignore the NotExist error
+	if err := os.Remove(string(update.Instructions)); !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // createTruncateUpdate is a helper function which creates a writeaheadlog
@@ -554,6 +524,20 @@ func createTruncateUpdate(path string, newNumSec uint64) writeaheadlog.Update {
 	}
 }
 
+// applyTruncateUpdate parses and applies a Truncate update.
+func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
+	if u.Name != UpdateNameTruncate {
+		return fmt.Errorf("applyAppendTruncate called on update of type %v", u.Name)
+	}
+	// Decode update.
+	_, newNumSec, err := readTruncateUpdate(u)
+	if err != nil {
+		return err
+	}
+	// Truncate the file to the needed size.
+	return f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2)
+}
+
 // createWriteAtUpdate is a helper function which creates a writeaheadlog
 // update for swapping the values of two positions in the file.
 func createWriteAtUpdate(path string, secIdx uint64, value uint16) writeaheadlog.Update {
@@ -565,6 +549,24 @@ func createWriteAtUpdate(path string, secIdx uint64, value uint16) writeaheadlog
 		Name:         UpdateNameWriteAt,
 		Instructions: b,
 	}
+}
+
+// applyWriteAtUpdate parses and applies a WriteAt update.
+func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
+	if u.Name != UpdateNameWriteAt {
+		return fmt.Errorf("applyAppendWriteAt called on update of type %v", u.Name)
+	}
+	// Decode update.
+	_, secIdx, value, err := readWriteAtUpdate(u)
+	if err != nil {
+		return err
+	}
+
+	// Write the value to disk.
+	var b u16
+	binary.LittleEndian.PutUint16(b[:], value)
+	_, err = f.WriteAt(b[:], int64(offset(secIdx)))
+	return err
 }
 
 // deserializeHeader deserializes a header from []byte

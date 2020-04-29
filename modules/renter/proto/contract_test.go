@@ -2,6 +2,7 @@ package proto
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -377,8 +378,16 @@ func TestContractRefCounter(t *testing.T) {
 	if sc.rc == nil {
 		t.Fatal("RefCounter was not created with the contract.")
 	}
-	if sc.rc.numSectors != 1 {
-		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", 1, sc.rc.numSectors)
+	if sc.rc.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
+		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.rc.numSectors)
+	}
+	fi, err := os.Stat(sc.rc.filepath)
+	if err != nil {
+		t.Fatal("Failed to read refcounter file from disk:", err)
+	}
+	rcFileSize := RefCounterHeaderSize + int64(sc.merkleRoots.numMerkleRoots)*2
+	if fi.Size() != rcFileSize {
+		t.Fatalf("RefCounter file on disk has wrong size. Expected %d, got %d", rcFileSize, fi.Size())
 	}
 
 	// upload a new sector
@@ -424,7 +433,15 @@ func TestContractRefCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 	// verify that the refcounter increased with 1, as expected
-	if sc.rc.numSectors != 2 {
-		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", 2, sc.rc.numSectors)
+	if sc.rc.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
+		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.rc.numSectors)
+	}
+	fi, err = os.Stat(sc.rc.filepath)
+	if err != nil {
+		t.Fatal("Failed to read refcounter file from disk:", err)
+	}
+	rcFileSize = RefCounterHeaderSize + int64(sc.merkleRoots.numMerkleRoots)*2
+	if fi.Size() != rcFileSize {
+		t.Fatalf("RefCounter file on disk has wrong size. Expected %d, got %d", rcFileSize, fi.Size())
 	}
 }
