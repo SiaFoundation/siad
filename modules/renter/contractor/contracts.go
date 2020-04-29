@@ -59,15 +59,30 @@ func (c *Contractor) managedUpdatePubKeyToContractIDMap() {
 }
 
 // updatePubKeyToContractIDMap updates the pubkeysToContractID map
-func (c *Contractor) updatePubKeyToContractIDMap(staticContracts []modules.RenterContract, bh types.BlockHeight) {
+func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContract, bh types.BlockHeight) {
+	// Sanity check - figure out how many unique GFU contracts exist in this
+	// list.
+	uniqueGFU := make(map[string]struct{})
+	for _, contract := range contracts {
+		if contract.Utility.GoodForUpload {
+			uniqueGFU[contract.HostPublicKey.String()] = struct{}{}
+		}
+	}
+	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
+	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
+	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
+	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
+	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
+	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
+
 	// Reset the map, also handles initialization
 	c.pubKeysToContractID = make(map[string]types.FileContractID)
 
 	// Create a helper map for contract ID to contracts
 	contractMap := make(map[types.FileContractID]modules.RenterContract)
 
-	// Add all the staticContracts to the map
-	for _, contract := range staticContracts {
+	// Add all the contracts to the map
+	for _, contract := range contracts {
 		c.tryAddContractToPubKeyMap(contract, contractMap)
 	}
 
