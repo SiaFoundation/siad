@@ -210,18 +210,18 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		uc.mu.Lock()
 		_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
 		uc.mu.Unlock()
-		if onCooldown || !gfu || !candidateHost {
-			w.managedDropChunk(uc)
-			continue
-		}
-		w.callQueueUploadChunk(uc)
-		jobsDistributed++
 		if gfu {
 			gfus++
 		}
 		if gfu && !onCooldown {
 			gfusReady++
 		}
+		if onCooldown || !gfu || !candidateHost {
+			w.managedDropChunk(uc)
+			continue
+		}
+		w.callQueueUploadChunk(uc)
+		jobsDistributed++
 	}
 	uc.mu.Lock()
 	uc.chunkDistributionTime = time.Now()
