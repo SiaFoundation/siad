@@ -34,8 +34,8 @@ var (
 )
 
 // StartUpdateWithTimeout acquires a lock, ensuring the caller is the only one
-// currently allowed to perform updates on this refcounter file. Panics if the
-// supplied timeout is <= 0 - use `StartUpdate` instead.
+// currently allowed to perform updates on this refcounter file. Returns an
+// error if the supplied timeout is <= 0 - use `StartUpdate` instead.
 func (rc *RefCounter) StartUpdateWithTimeout(timeout time.Duration) error {
 	if timeout <= 0 {
 		return errors.New("non-positive timeout")
