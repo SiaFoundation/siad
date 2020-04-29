@@ -199,8 +199,6 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 
 	// Filter through the workers, ignoring any that are not good for upload,
 	// and ignoring any that are on upload cooldown.
-	gfus := 0
-	gfusReady := 0
 	jobsDistributed := 0
 	for _, w := range workers {
 		w.mu.Lock()
@@ -210,12 +208,6 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		uc.mu.Lock()
 		_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
 		uc.mu.Unlock()
-		if gfu {
-			gfus++
-		}
-		if gfu && !onCooldown {
-			gfusReady++
-		}
 		if onCooldown || !gfu || !candidateHost {
 			w.managedDropChunk(uc)
 			continue
@@ -226,9 +218,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	uc.mu.Lock()
 	uc.chunkDistributionTime = time.Now()
 	uc.mu.Unlock()
-	// TODO: gfus and gfusReady is not necessary once the /renter/workers
-	// endpoint + siac support is completed.
-	r.repairLog.Printf("Distributed chunk %v of %s to %v workers. %v GFU and %v GFU && !onCooldown", uc.index, uc.staticSiaPath, jobsDistributed, gfus, gfusReady)
+	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.index, uc.staticSiaPath, jobsDistributed)
 	r.managedCleanUpUploadChunk(uc)
 }
 
@@ -347,7 +337,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	err := r.tg.Add()
 	if err != nil {
-		r.repairLog.Printf("Aborting chunk %v of %s because the threadgroup is closed", chunk.index, chunk.staticSiaPath)
+		r.repairLog.Debugf("Aborting chunk %v of %s because the threadgroup is closed", chunk.index, chunk.staticSiaPath)
 		return
 	}
 	defer r.tg.Done()
