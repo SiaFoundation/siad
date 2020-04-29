@@ -4608,16 +4608,32 @@ func TestWorkerStatus(t *testing.T) {
 		if _, ok := contracts[worker.ContractID]; !ok {
 			t.Error("Worker Contract ID not found in Contract map", worker.ContractID)
 		}
-		if !worker.GoodForRenew || !worker.GoodForUpload {
-			t.Errorf("Worker for be GFR and GFU but got %v and %v", worker.GoodForRenew, worker.GoodForUpload)
+		cu := worker.ContractUtility
+		if !cu.GoodForUpload {
+			t.Error("Worker contract should be GFR")
+		}
+		if !cu.GoodForRenew {
+			t.Error("Worker contract should be GFR")
+		}
+		if cu.BadContract {
+			t.Error("Worker contract should not be marked as Bad")
+		}
+		if cu.LastOOSErr != 0 {
+			t.Error("Worker contract LastOOSErr should be 0")
+		}
+		if cu.Locked {
+			t.Error("Worker contract should not be locked")
+		}
+		if _, ok := pks[worker.HostPubKey.String()]; !ok {
+			t.Error("Worker PubKey not found in PubKey map", worker.HostPubKey)
 		}
 
 		// Download Field checks
 		if worker.DownloadOnCoolDown {
 			t.Error("Worker should not be on cool down")
 		}
-		if worker.DownloadQueue != 0 {
-			t.Error("Expected download queue to be empty but was", worker.DownloadQueue)
+		if worker.DownloadQueueSize != 0 {
+			t.Error("Expected download queue to be empty but was", worker.DownloadQueueSize)
 		}
 		if worker.DownloadTerminated {
 			t.Error("Worker should not be marked as DownloadTerminated")
@@ -4633,8 +4649,8 @@ func TestWorkerStatus(t *testing.T) {
 		if worker.UploadOnCoolDown {
 			t.Error("Worker should not be on cool down")
 		}
-		if worker.UploadQueue != 0 {
-			t.Error("Expected upload queue to be empty but was", worker.UploadQueue)
+		if worker.UploadQueueSize != 0 {
+			t.Error("Expected upload queue to be empty but was", worker.UploadQueueSize)
 		}
 		if worker.UploadTerminated {
 			t.Error("Worker should not be marked as UploadTerminated")
@@ -4652,16 +4668,11 @@ func TestWorkerStatus(t *testing.T) {
 		}
 
 		// Job Queues
-		if worker.BackupJobQueue != 0 {
-			t.Error("Expected backup queue to be empty but was", worker.BackupJobQueue)
+		if worker.BackupJobQueueSize != 0 {
+			t.Error("Expected backup queue to be empty but was", worker.BackupJobQueueSize)
 		}
-		if worker.DownloadRootJobQueue != 0 {
-			t.Error("Expected download by root queue to be empty but was", worker.DownloadRootJobQueue)
-		}
-
-		// Check PubKey
-		if _, ok := pks[worker.PubKey.String()]; !ok {
-			t.Error("Worker PubKey not found in PubKey map", worker.PubKey)
+		if worker.DownloadRootJobQueueSize != 0 {
+			t.Error("Expected download by root queue to be empty but was", worker.DownloadRootJobQueueSize)
 		}
 	}
 }

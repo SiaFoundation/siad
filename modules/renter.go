@@ -288,19 +288,19 @@ func (a Allowance) Active() bool {
 // ContractUtility contains metrics internal to the contractor that reflect the
 // utility of a given contract.
 type ContractUtility struct {
-	GoodForUpload bool
-	GoodForRenew  bool
+	GoodForUpload bool `json:"goodforupload"`
+	GoodForRenew  bool `json:"goodforrenew"`
 
 	// BadContract will be set to true if there's good reason to believe that
 	// the contract is unusable and will continue to be unusable. For example,
 	// if the host is claiming that the contract does not exist, the contract
 	// should be marked as bad.
-	BadContract bool
-	LastOOSErr  types.BlockHeight // OOS means Out Of Storage
+	BadContract bool              `json:"badcontract"`
+	LastOOSErr  types.BlockHeight `json:"lastooserr"` // OOS means Out Of Storage
 
 	// If a contract is locked, the utility should not be updated. 'Locked' is a
 	// value that gets persisted.
-	Locked bool
+	Locked bool `json:"locked"`
 }
 
 // ContractWatchStatus provides information about the status of a contract in
@@ -734,20 +734,20 @@ type (
 	// WorkerStatus contains information about the status of a worker
 	WorkerStatus struct {
 		// Worker contract information
-		ContractID    types.FileContractID `json:"contractid"`
-		GoodForRenew  bool                 `json:"goodforrenew"`
-		GoodForUpload bool                 `json:"goodforupload"`
+		ContractID      types.FileContractID `json:"contractid"`
+		ContractUtility ContractUtility      `json:"contractutility"`
+		HostPubKey      types.SiaPublicKey   `json:"hostpubkey"`
 
 		// Download status information
 		DownloadOnCoolDown bool `json:"downloadoncooldown"`
-		DownloadQueue      int  `json:"downloadqueue"`
+		DownloadQueueSize  int  `json:"downloadqueuesize"`
 		DownloadTerminated bool `json:"downloadterminated"`
 
 		// Upload status information
 		UploadCoolDownError error         `json:"uploadcooldownerror"`
 		UploadCoolDownTime  time.Duration `json:"uploadcooldowntime"`
 		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
-		UploadQueue         int           `json:"uploadqueue"`
+		UploadQueueSize     int           `json:"uploadqueuesize"`
 		UploadTerminated    bool          `json:"uploadterminated"`
 
 		// Ephemeral Account information
@@ -756,10 +756,8 @@ type (
 		FundAccountJobQueue int            `json:"fundaccountjobqueue"`
 
 		// Job Queues
-		BackupJobQueue       int `json:"backupjobqueue"`
-		DownloadRootJobQueue int `json:"downloadrootjobqueue"`
-
-		PubKey types.SiaPublicKey `json:"pubkey"`
+		BackupJobQueueSize       int `json:"backupjobqueuesize"`
+		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
 	}
 )
 

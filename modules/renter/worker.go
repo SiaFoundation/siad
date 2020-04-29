@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -96,6 +97,41 @@ type worker struct {
 	mu       sync.Mutex
 	renter   *Renter
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
+}
+
+// callStatus returns the status of the worker.
+func (w *worker) callStatus(contract modules.RenterContract) modules.WorkerStatus {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
+	downloadOnCoolDown := w.ownedOnDownloadCooldown()
+	return modules.WorkerStatus{
+		// Contract Information
+		ContractID:      contract.ID,
+		ContractUtility: contract.Utility,
+		HostPubKey:      w.staticHostPubKey,
+
+		// Download information
+		DownloadOnCoolDown: downloadOnCoolDown,
+		DownloadQueueSize:  len(w.downloadChunks),
+		DownloadTerminated: w.downloadTerminated,
+
+		// Upload information
+		UploadCoolDownError: w.uploadRecentFailureErr,
+		UploadCoolDownTime:  uploadCoolDownTime,
+		UploadOnCoolDown:    uploadOnCoolDown,
+		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadTerminated:    w.uploadTerminated,
+
+		// Ephemeral Account information
+		AvailableBalance:    w.staticAccount.AvailableBalance(),
+		BalanceTarget:       w.staticBalanceTarget,
+		FundAccountJobQueue: w.staticFundAccountJobQueue.callLen(),
+
+		// Job Queues
+		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.callLen(),
+		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.callLen(),
+	}
 }
 
 // managedBlockUntilReady will block until the worker has internet connectivity.

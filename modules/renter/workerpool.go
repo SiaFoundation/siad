@@ -56,45 +56,14 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 			// callUpdate will remove them from the workerPool
 			continue
 		}
-		worker.mu.Lock()
-		uploadOnCoolDown, uploadCoolDownTime := worker.onUploadCooldown()
-		downloadOnCoolDown := worker.ownedOnDownloadCooldown()
-		if downloadOnCoolDown {
+		ws := worker.callStatus(contract)
+		if ws.DownloadOnCoolDown {
 			totalDownloadCoolDown++
 		}
-		if uploadOnCoolDown {
+		if ws.UploadOnCoolDown {
 			totalUploadCoolDown++
 		}
-		workers = append(workers, modules.WorkerStatus{
-			// Contract Information
-			ContractID:    contract.ID,
-			GoodForRenew:  contract.Utility.GoodForRenew,
-			GoodForUpload: contract.Utility.GoodForUpload,
-
-			// Download information
-			DownloadOnCoolDown: downloadOnCoolDown,
-			DownloadQueue:      len(worker.downloadChunks),
-			DownloadTerminated: worker.downloadTerminated,
-
-			// Upload information
-			UploadCoolDownError: worker.uploadRecentFailureErr,
-			UploadCoolDownTime:  uploadCoolDownTime,
-			UploadOnCoolDown:    uploadOnCoolDown,
-			UploadQueue:         len(worker.unprocessedChunks),
-			UploadTerminated:    worker.uploadTerminated,
-
-			// Ephemeral Account information
-			AvailableBalance:    worker.staticAccount.AvailableBalance(),
-			BalanceTarget:       worker.staticBalanceTarget,
-			FundAccountJobQueue: worker.staticFundAccountJobQueue.callLen(),
-
-			// Job Queues
-			BackupJobQueue:       worker.staticFetchBackupsJobQueue.callLen(),
-			DownloadRootJobQueue: worker.staticJobQueueDownloadByRoot.callLen(),
-
-			PubKey: worker.staticHostPubKey,
-		})
-		worker.mu.Unlock()
+		workers = append(workers, ws)
 	}
 	return modules.WorkerPoolStatus{
 		NumWorkers:            len(wp.workers),
