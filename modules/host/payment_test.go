@@ -779,7 +779,7 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 func newPayByEphemeralAccountRequest(account modules.AccountID, expiry types.BlockHeight, amount types.Currency, sk crypto.SecretKey) modules.PayByEphemeralAccountRequest {
 	// generate a nonce
 	var nonce [modules.WithdrawalNonceSize]byte
-	copy(nonce[:], fastrand.Bytes(len(nonce)))
+	fastrand.Read(nonce[:])
 
 	// create a new WithdrawalMessage
 	wm := modules.WithdrawalMessage{

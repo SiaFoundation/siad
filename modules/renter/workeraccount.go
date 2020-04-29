@@ -113,7 +113,7 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 // and a WithdrawalMessage.
 func (a *account) createWithdrawalMessage(amount types.Currency, expiry types.BlockHeight) modules.WithdrawalMessage {
 	var nonce [modules.WithdrawalNonceSize]byte
-	copy(nonce[:], fastrand.Bytes(len(nonce)))
+	fastrand.Read(nonce[:])
 	return modules.WithdrawalMessage{
 		Account: a.staticID,
 		Expiry:  expiry,

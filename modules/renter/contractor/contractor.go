@@ -27,10 +27,9 @@ var (
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
 
-	errHostNotFound              = errors.New("host not found")
-	errContractNotFound          = errors.New("contract not found")
-	errContractInsufficientFunds = errors.New("contract has insufficient funds")
-	errRefundAccountInvalid      = errors.New("invalid refund account")
+	errHostNotFound         = errors.New("host not found")
+	errContractNotFound     = errors.New("contract not found")
+	errRefundAccountInvalid = errors.New("invalid refund account")
 
 	// COMPATv1.0.4-lts
 	// metricsContractID identifies a special contract that contains aggregate
@@ -218,12 +217,6 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	}
 	defer c.staticContracts.Return(sc)
 
-	// verify the contract has enough funds
-	metadata := sc.Metadata()
-	if metadata.RenterFunds.Cmp(amount) < 0 {
-		return errContractInsufficientFunds
-	}
-
 	// create a new revision
 	current := sc.LastRevision()
 	rev, err := current.PaymentRevision(amount)
@@ -232,14 +225,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	}
 
 	// create transaction containing the revision
-	signedTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{rev},
-		TransactionSignatures: []types.TransactionSignature{{
-			ParentID:       crypto.Hash(rev.ParentID),
-			CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
-			PublicKeyIndex: 0,
-		}},
-	}
+	signedTxn := rev.ToTransaction()
 	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
@@ -256,7 +242,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	}
 
 	// send PayByContractRequest
-	err = modules.RPCWrite(stream, createPayBycontractRequest(rev, sig, refundAccount))
+	err = modules.RPCWrite(stream, newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		return err
 	}
@@ -269,9 +255,9 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 
 	// verify the host's signature
 	hash := crypto.HashAll(rev)
-	var pk crypto.PublicKey
-	copy(pk[:], metadata.HostPublicKey.Key)
-	if err := crypto.VerifyHash(hash, pk, payByResponse.Signature); err != nil {
+	hpk := sc.Metadata().HostPublicKey
+	err = crypto.VerifyHash(hash, hpk.ToPublicKey(), payByResponse.Signature)
+	if err != nil {
 		return errors.New("could not verify host's signature")
 	}
 
@@ -602,9 +588,9 @@ func (c *Contractor) managedSynced() bool {
 	return false
 }
 
-// createPayBycontractRequest is a helper function that takes a revision,
+// newPayByContractRequest is a helper function that takes a revision,
 // signature and refund account and creates a PayByContractRequest object.
-func createPayBycontractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
+func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
 	req := modules.PayByContractRequest{
 		ContractID:           rev.ID(),
 		NewRevisionNumber:    rev.NewRevisionNumber,

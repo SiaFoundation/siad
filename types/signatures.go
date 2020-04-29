@@ -9,7 +9,9 @@ package types
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 )
@@ -158,6 +160,16 @@ func Ed25519PublicKey(pk crypto.PublicKey) SiaPublicKey {
 // Equals compares two SiaPublicKey types for equality
 func (x SiaPublicKey) Equals(y SiaPublicKey) bool {
 	return x.Algorithm == y.Algorithm && bytes.Equal(x.Key, y.Key)
+}
+
+// ToPublicKey converts the SiaPublicKey into a crypto.PublicKey
+func (x SiaPublicKey) ToPublicKey() (pk crypto.PublicKey) {
+	// sanity check key length
+	if len(pk) != len(x.Key) {
+		build.Critical(fmt.Sprintf("Could not convert SiaPublicKey to crypto.PublicKey, incorrect key length %v != %v", len(x.Key), len(pk)))
+	}
+	copy(pk[:], x.Key[:])
+	return
 }
 
 // UnlockHash calculates the root hash of a Merkle tree of the
