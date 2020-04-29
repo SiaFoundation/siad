@@ -54,48 +54,6 @@ func (wp *workerPool) callUpdate() {
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
-	uniqueGFU := make(map[string]struct{})
-	for _, contract := range contractSlice {
-		if contract.Utility.GoodForUpload {
-			uniqueGFU[contract.HostPublicKey.String()] = struct{}{}
-		}
-		// Get the utility of this pubkey as reported by the contractor.
-		utility, exists := wp.renter.hostContractor.ContractUtility(contract.HostPublicKey)
-		if !exists {
-			wp.renter.log.Printf("the utility is not presenting itself as something that exists")
-		}
-		if contract.Utility.GoodForUpload && !utility.GoodForUpload {
-			wp.renter.log.Printf("the contractor is providing the wrong utility for a pubkey...")
-		}
-	}
-	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
-	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
-	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
-	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
-	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
-	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
-	defer func() {
-		// Count the number of GFU workers as reported by the contractor utility
-		// function.
-		wp.mu.Lock()
-		wpks := make([]types.SiaPublicKey, 0, len(wp.workers))
-		for _, worker := range wp.workers {
-			wpks = append(wpks, worker.staticHostPubKey)
-		}
-		wp.mu.Unlock()
-
-		totalGFU := 0
-		for _, wpk := range wpks {
-			utility, exists := wp.renter.hostContractor.ContractUtility(wpk)
-			if utility.GoodForUpload && exists {
-				totalGFU++
-			}
-		}
-		wp.renter.log.Printf("Outside of the worker pool, using ContractUtility, %v GFU workers found", totalGFU)
-		wp.renter.log.Printf("Outside of the worker pool, using ContractUtility, %v GFU workers found", totalGFU)
-		wp.renter.log.Printf("Outside of the worker pool, using ContractUtility, %v GFU workers found", totalGFU)
-	}()
-
 	// Lock the worker pool for the duration of updating its fields.
 	wp.mu.Lock()
 	defer wp.mu.Unlock()
@@ -157,15 +115,6 @@ func (wp *workerPool) callUpdate() {
 			worker.mu.Unlock()
 		}
 	}
-
-	// Loop through and figure out if any of our workers are missing.
-	for id, _ := range uniqueGFU {
-		_, exists := wp.workers[id]
-		if !exists {
-			wp.renter.log.Println("Worker pool DOES NOT have a unique GFU worker in it")
-		}
-	}
-
 	wp.renter.log.Debugf("worker pool has %v workers, %v are on cooldown", len(wp.workers), totalCoolDown)
 }
 
