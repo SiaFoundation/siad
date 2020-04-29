@@ -63,9 +63,11 @@ func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContr
 	// Sanity check - figure out how many unique GFU contracts exist in this
 	// list.
 	uniqueGFU := make(map[string]struct{})
-	for _, contract := range contracts {
-		if contract.Utility.GoodForUpload {
-			uniqueGFU[contract.HostPublicKey.String()] = struct{}{}
+	contractMap := make(map[types.FileContractID]modules.RenterContract)
+	for i := 0; i < len(contracts); i++ {
+		contractMap[contracts[i].ID] = contracts[i]
+		if contracts[i].Utility.GoodForUpload {
+			uniqueGFU[contracts[i].HostPublicKey.String()] = struct{}{}
 		}
 	}
 	c.log.Printf("Contractor has %v unique GFU contracts found", len(uniqueGFU))
@@ -78,21 +80,9 @@ func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContr
 	// Reset the map, also handles initialization
 	c.pubKeysToContractID = make(map[string]types.FileContractID)
 
-	// Create a helper map for contract ID to contracts
-	contractMap := make(map[types.FileContractID]modules.RenterContract)
-
-	// Add all the contracts to the map
-	for _, contract := range contracts {
-		c.tryAddContractToPubKeyMap(contract, contractMap)
-	}
-
-	// Check if there are any contracts in oldContracts that should be added
-	for _, contract := range c.oldContracts {
-		// For oldContracts, we only care about contracts that have not expired
-		if contract.EndHeight >= bh {
-			continue
-		}
-		c.tryAddContractToPubKeyMap(contract, contractMap)
+	// Try adding each contract to the map.
+	for i := 0; i < len(contracts); i++ {
+		c.tryAddContractToPubKeyMap(contracts[i], contractMap)
 	}
 }
 
@@ -105,40 +95,45 @@ func (c *Contractor) tryAddContractToPubKeyMap(contract modules.RenterContract, 
 	if !ok {
 		// If the pubkey isn't in the map yet then add it
 		c.pubKeysToContractID[pk] = contract.ID
-		contractMap[contract.ID] = contract
 		return
 	}
 
-	// The PubKey is already in the map, determine which contract should
-	// stay in the PubKey Map
-	// Grab the contract that is currently in the PubKey map
+	// Compare the new contract to the existing contract, keep the better
+	// contract.
 	fc, ok := contractMap[fcid]
 	if !ok {
 		build.Critical("Developer error, contract ID not found in contractMap")
 		return
 	}
 
-	// If the end height of the contract in the map is greater than the
-	// current contract then the map has the right contract
-	if fc.EndHeight > contract.EndHeight {
-		return
-	} else if contract.EndHeight > fc.EndHeight {
-		// If the end height of the current contract is greater than the
-		// contract in the map then we want to update the contractID
+	// Compare the utility of the new contract to the existing contract.
+	if contract.Utility.Cmp(fc.Utility) > 0 {
 		c.pubKeysToContractID[pk] = contract.ID
-		contractMap[contract.ID] = contract
-		return
 	}
 
-	// If the end height are the same then we want to go with the contract
-	// with the best utility
-	if contract.Utility.Cmp(fc.Utility) != 1 {
-		// The contract in the make has an equal or better utility so just leave
-		// it
-		return
-	}
-	c.pubKeysToContractID[pk] = contract.ID
-	contractMap[contract.ID] = contract
+	/*
+		// If the end height of the contract in the map is greater than the
+		// current contract then the map has the right contract
+		if fc.EndHeight > contract.EndHeight {
+			return
+		} else if contract.EndHeight > fc.EndHeight {
+			// If the end height of the current contract is greater than the
+			// contract in the map then we want to update the contractID
+			c.pubKeysToContractID[pk] = contract.ID
+			contractMap[contract.ID] = contract
+			return
+		}
+
+		// If the end height are the same then we want to go with the contract
+		// with the best utility
+		if contract.Utility.Cmp(fc.Utility) != 1 {
+			// The contract in the make has an equal or better utility so just leave
+			// it
+			return
+		}
+		c.pubKeysToContractID[pk] = contract.ID
+		contractMap[contract.ID] = contract
+	*/
 }
 
 // ContractByPublicKey returns the contract with the key specified, if it
