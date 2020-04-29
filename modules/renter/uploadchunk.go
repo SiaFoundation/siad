@@ -607,15 +607,17 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		uc.chunkCompleteTime = time.Now()
 
 		// Create profile string.
-		failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
-		for _, ft := range uc.chunkFailedProcessTimes {
-			failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
+		if build.DEBUG {
+			failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
+			for _, ft := range uc.chunkFailedProcessTimes {
+				failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
+			}
+			successTimes := make([]int, 0, len(uc.chunkSuccessProcessTimes))
+			for _, st := range uc.chunkSuccessProcessTimes {
+				successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
+			}
+			r.repairLog.Debugf("\n\tChunk Created: %v\n\tChunk Popped: %v\n\tChunk Distributed: %v\n\tChunk Available: %v\n\tChunk Complete: %v\n\tFail Times: %v\n\tSuccess Times: %v", int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
 		}
-		successTimes := make([]int, 0, len(uc.chunkSuccessProcessTimes))
-		for _, st := range uc.chunkSuccessProcessTimes {
-			successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
-		}
-		r.repairLog.Printf("\n\tChunk Created: %v\n\tChunk Popped: %v\n\tChunk Distributed: %v\n\tChunk Available: %v\n\tChunk Complete: %v\n\tFail Times: %v\n\tSuccess Times: %v", int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
