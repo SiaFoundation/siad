@@ -18,7 +18,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // newModules initializes the modules needed to test creating a new contractor
@@ -460,28 +459,12 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	newStream := func() siamux.Stream {
-		stream, err := mux.NewStream(modules.HostSiaMuxSubscriberName, mux.Address().String(), mux.PublicKey())
-		if err != nil {
-			t.Fatal(err)
-		}
-		return stream
-	}
-
-	// create a refund account
-	_, pk := crypto.GenerateKeyPair()
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	var aid modules.AccountID
-	aid.FromSPK(spk)
-
-	// create a testing trio
+	// create a testing trio with our mux injected
 	h, c, _, err := newCustomTestingTrio(t.Name(), mux)
 	if err != nil {
 		t.Fatal(err)
 	}
+	hpk := h.PublicKey()
 
 	// set an allowance and wait for contracts
 	err = c.SetAllowance(modules.DefaultAllowance)
@@ -495,28 +478,28 @@ func TestPayment(t *testing.T) {
 		return nil
 	})
 
-	// check we have a contract with the host
-	hpk := h.PublicKey()
+
+	// create a refund account
+	aid, _ := modules.NewAccountID()
+
+	// backup the amount renter funds
 	contract, ok := c.ContractByPublicKey(hpk)
 	if !ok {
 		t.Fatal("No contract with host")
 	}
-
-	// create its crypto pubkey for later use
-	var hcpk crypto.PublicKey
-	copy(hcpk[:], hpk.Key[:])
-
-	// store how much money's in the contract
 	initial := contract.RenterFunds
 
-	// write the rpc id, we are using the update price table RPC
-	stream := newStream()
+	// write the rpc id
+	stream, err := modules.NewHostStream(mux, h)
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// read the updated RPC price table
+	// read the updated response
 	var update modules.RPCUpdatePriceTableResponse
 	err = modules.RPCRead(stream, &update)
 	if err != nil {
@@ -537,15 +520,18 @@ func TestPayment(t *testing.T) {
 	}
 
 	// verify the contract was updated
-	expected := initial.Sub(pt.UpdatePriceTableCost)
 	contract, _ = c.ContractByPublicKey(hpk)
 	remaining := contract.RenterFunds
+	expected := initial.Sub(pt.UpdatePriceTableCost)
 	if !remaining.Equals(expected) {
 		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
 	}
 
 	// write the rpc id
-	stream = newStream()
+	stream, err = modules.NewHostStream(mux, h)
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
 		t.Fatal(err)
@@ -583,7 +569,7 @@ func TestPayment(t *testing.T) {
 
 	// verify the receipt
 	receipt := resp.Receipt
-	err = crypto.VerifyHash(crypto.HashAll(receipt), hcpk, resp.Signature)
+	err = crypto.VerifyHash(crypto.HashAll(receipt), hpk.ToPublicKey(), resp.Signature)
 	if err != nil {
 		t.Fatal(err)
 	}

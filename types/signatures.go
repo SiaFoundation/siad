@@ -168,7 +168,7 @@ func (x SiaPublicKey) ToPublicKey() (pk crypto.PublicKey) {
 	if len(pk) != len(x.Key) {
 		build.Critical(fmt.Sprintf("Could not convert SiaPublicKey to crypto.PublicKey, incorrect key length %v != %v", len(x.Key), len(pk)))
 	}
-	copy(pk[:], x.Key[:])
+	copy(pk[:], x.Key)
 	return
 }
 
