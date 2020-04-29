@@ -47,11 +47,25 @@ func (wp *workerPool) callWorker(hostPubKey types.SiaPublicKey) (*worker, error)
 // worker pool to match, creating new workers and killing existing workers as
 // necessary.
 func (wp *workerPool) callUpdate() {
+	wp.renter.log.Println("Updating worker pool")
 	contractSlice := wp.renter.hostContractor.Contracts()
 	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
+
+	uniqueGFU := make(map[string]struct{})
+	for _, contract := range contractSlice {
+		if contract.Utility.GoodForUpload {
+			uniqueGFU[contract.HostPublicKey.String()] = struct{}{}
+		}
+	}
+	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
+	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
+	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
+	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
+	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
+	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
 
 	// Lock the worker pool for the duration of updating its fields.
 	wp.mu.Lock()
@@ -114,6 +128,15 @@ func (wp *workerPool) callUpdate() {
 			worker.mu.Unlock()
 		}
 	}
+
+	// Loop through and figure out if any of our workers are missing.
+	for id, _ := range uniqueGFU {
+		_, exists := wp.workers[id]
+		if !exists {
+			wp.renter.log.Println("Worker pool DOES NOT have a unique GFU worker in it")
+		}
+	}
+
 	wp.renter.log.Debugf("worker pool has %v workers, %v are on cooldown", len(wp.workers), totalCoolDown)
 }
 

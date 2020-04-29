@@ -367,7 +367,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 	}
 
 	// Update the pubkeyToContractID map
-	c.updatePubKeyToContractIDMap(c.staticContracts.ViewAll(), c.cs.Height())
+	c.managedUpdatePubKeyToContractIDMap()
 
 	// Unsubscribe from the consensus set upon shutdown.
 	c.tg.OnStop(func() {
