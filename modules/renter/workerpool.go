@@ -47,7 +47,6 @@ func (wp *workerPool) callWorker(hostPubKey types.SiaPublicKey) (*worker, error)
 // worker pool to match, creating new workers and killing existing workers as
 // necessary.
 func (wp *workerPool) callUpdate() {
-	wp.renter.log.Println("Updating worker pool")
 	contractSlice := wp.renter.hostContractor.Contracts()
 	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
