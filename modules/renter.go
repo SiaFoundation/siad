@@ -315,11 +315,11 @@ func (x ContractUtility) Cmp(y ContractUtility) int {
 	}
 
 	// GoodForRenew Check
-	if x.GoodForRenew && !y.GoodForRenew {
-		return 1
-	}
 	if !x.GoodForRenew && y.GoodForRenew {
 		return -1
+	}
+	if x.GoodForRenew && !y.GoodForRenew {
+		return 1
 	}
 
 	// GoodForUpload Check

@@ -116,47 +116,47 @@ func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContr
 func (c *Contractor) tryAddContractToPubKeyMap(contract modules.RenterContract, contractMap map[string]modules.RenterContract) {
 	pk := contract.HostPublicKey.String()
 	fcid, ok := c.pubKeysToContractID[pk]
-	if !ok {
+	if !ok || contract.Utility.GoodForUpload {
 		// If the pubkey isn't in the map yet then add it
 		c.pubKeysToContractID[pk] = contract.ID
 		return
 	}
 
-	// Compare the new contract to the existing contract, keep the better
-	// contract.
-	fc, ok := contractMap[fcid.String()]
-	if !ok {
-		build.Critical("Developer error, contract ID not found in contractMap")
-		return
-	}
-
-	// Compare the utility of the new contract to the existing contract.
-	if contract.Utility.Cmp(fc.Utility) > 0 {
-		c.pubKeysToContractID[pk] = contract.ID
-	}
-
 	/*
-		// If the end height of the contract in the map is greater than the
-		// current contract then the map has the right contract
-		if fc.EndHeight > contract.EndHeight {
+		// Compare the new contract to the existing contract, keep the better
+		// contract.
+		fc, ok := contractMap[fcid.String()]
+		if !ok {
+			build.Critical("Developer error, contract ID not found in contractMap")
 			return
-		} else if contract.EndHeight > fc.EndHeight {
-			// If the end height of the current contract is greater than the
-			// contract in the map then we want to update the contractID
+		}
+
+		// Compare the utility of the new contract to the existing contract.
+		if contract.Utility.GoodForUpload {
+			c.pubKeysToContractID[pk] = contract.ID
+		}
+
+			// If the end height of the contract in the map is greater than the
+			// current contract then the map has the right contract
+			if fc.EndHeight > contract.EndHeight {
+				return
+			} else if contract.EndHeight > fc.EndHeight {
+				// If the end height of the current contract is greater than the
+				// contract in the map then we want to update the contractID
+				c.pubKeysToContractID[pk] = contract.ID
+				contractMap[contract.ID] = contract
+				return
+			}
+
+			// If the end height are the same then we want to go with the contract
+			// with the best utility
+			if contract.Utility.Cmp(fc.Utility) != 1 {
+				// The contract in the make has an equal or better utility so just leave
+				// it
+				return
+			}
 			c.pubKeysToContractID[pk] = contract.ID
 			contractMap[contract.ID] = contract
-			return
-		}
-
-		// If the end height are the same then we want to go with the contract
-		// with the best utility
-		if contract.Utility.Cmp(fc.Utility) != 1 {
-			// The contract in the make has an equal or better utility so just leave
-			// it
-			return
-		}
-		c.pubKeysToContractID[pk] = contract.ID
-		contractMap[contract.ID] = contract
 	*/
 }
 
