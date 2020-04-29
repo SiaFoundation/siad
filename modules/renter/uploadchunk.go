@@ -606,7 +606,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		uc.released = true
 		uc.chunkCompleteTime = time.Now()
 
-		// Create profile string.
+		// Create a log message with all of the timings of the chunk uploading.
 		if build.DEBUG {
 			failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
 			for _, ft := range uc.chunkFailedProcessTimes {
