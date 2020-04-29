@@ -19,7 +19,7 @@ import (
 // withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
 // remains spendable after it has been created. Together with the current block
 // height at time of creation, this period makes up the WithdrawalMessage's
-// expiry block height.
+// expiry height.
 const withdrawalValidityPeriod = 6
 
 // account represents a renter's ephemeral account on a host.
@@ -36,21 +36,9 @@ type account struct {
 	c  hostContractor
 }
 
-// openAccount returns an account for the given host. In the case it does
-// not exist yet, it gets created. Every time a new account is created, a new
-// keypair is used.
-func openAccount(hostKey types.SiaPublicKey) *account {
-	// generate a new key pair
-	sk, pk := crypto.GenerateKeyPair()
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-
-	var aid modules.AccountID
-	aid.FromSPK(spk)
-
-	// create the account
+// newAccount returns an new account object for the given host.
+func newAccount(hostKey types.SiaPublicKey) *account {
+	aid, sk := modules.NewAccountID()
 	return &account{
 		staticID:        aid,
 		staticHostKey:   hostKey,
@@ -82,7 +70,7 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	// TODO (follow-up !4256) cover with test yet
 
 	// create a withdrawal message
-	msg := a.createWithdrawalMessage(amount, blockHeight+withdrawalValidityPeriod)
+	msg := newWithdrawalMessage(a.staticID, amount, blockHeight)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
 	// send PaymentRequest
@@ -109,13 +97,14 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	return nil
 }
 
-// createWithdrawalMessage is a helper function that takes a set of parameters
-// and a WithdrawalMessage.
-func (a *account) createWithdrawalMessage(amount types.Currency, expiry types.BlockHeight) modules.WithdrawalMessage {
+// newWithdrawalMessage is a helper function that takes a set of parameters and
+// a returns a new WithdrawalMessage.
+func newWithdrawalMessage(id modules.AccountID, amount types.Currency, blockHeight types.BlockHeight) modules.WithdrawalMessage {
+	expiry := blockHeight + withdrawalValidityPeriod
 	var nonce [modules.WithdrawalNonceSize]byte
 	fastrand.Read(nonce[:])
 	return modules.WithdrawalMessage{
-		Account: a.staticID,
+		Account: id,
 		Expiry:  expiry,
 		Amount:  amount,
 		Nonce:   nonce,
