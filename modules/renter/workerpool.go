@@ -59,6 +59,14 @@ func (wp *workerPool) callUpdate() {
 		if contract.Utility.GoodForUpload {
 			uniqueGFU[contract.HostPublicKey.String()] = struct{}{}
 		}
+		// Get the utility of this pubkey as reported by the contractor.
+		utility, exists := wp.renter.hostContractor.ContractUtility(contract.HostPublicKey)
+		if !exists {
+			wp.renter.log.Printf("the utility is not presenting itself as something that exists")
+		}
+		if !utility.GoodForUpload {
+			wp.renter.log.Printf("the contractor is providing the wrong utility for a pubkey...")
+		}
 	}
 	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
 	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
