@@ -115,7 +115,7 @@ func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContr
 // each pubKey will be added
 func (c *Contractor) tryAddContractToPubKeyMap(contract modules.RenterContract, contractMap map[string]modules.RenterContract) {
 	pk := contract.HostPublicKey.String()
-	fcid, ok := c.pubKeysToContractID[pk]
+	_, ok := c.pubKeysToContractID[pk]
 	if !ok || contract.Utility.GoodForUpload {
 		// If the pubkey isn't in the map yet then add it
 		c.pubKeysToContractID[pk] = contract.ID
