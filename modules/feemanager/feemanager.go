@@ -176,13 +176,13 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 		Recurring:          recurring,
 		Timestamp:          time.Now().Unix(),
 		TransactionCreated: false,
-		UID:                uniqueID(),
+		FeeUID:             uniqueID(),
 	}
 
 	// Add the fee. Don't need to check for existence because we just generated
 	// a unique ID.
 	fm.mu.Lock()
-	fm.fees[fee.UID] = &fee
+	fm.fees[fee.FeeUID] = &fee
 	fm.mu.Unlock()
 
 	// Persist the fee.
@@ -190,7 +190,7 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 	if err != nil {
 		return "", errors.AddContext(err, "unable to persist the new fee")
 	}
-	return fee.UID, nil
+	return fee.FeeUID, nil
 }
 
 // CancelFee cancels a fee by removing it from the FeeManager's map
@@ -242,6 +242,18 @@ func (fm *FeeManager) PaidFees() ([]modules.AppFee, error) {
 	return paidFees, nil
 }
 
+// PayoutHeight returns the nextPayoutHeight of the FeeManager
+func (fm *FeeManager) PayoutHeight() (types.BlockHeight, error) {
+	if err := fm.staticCommon.staticTG.Add(); err != nil {
+		return 0, err
+	}
+	defer fm.staticCommon.staticTG.Done()
+
+	fm.staticCommon.staticPersist.mu.Lock()
+	defer fm.staticCommon.staticPersist.mu.Unlock()
+	return fm.staticCommon.staticPersist.nextPayoutHeight, nil
+}
+
 // PendingFees returns all the pending fees that are being tracked by the
 // FeeManager
 func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
@@ -263,20 +275,4 @@ func (fm *FeeManager) PendingFees() ([]modules.AppFee, error) {
 	sort.Sort(modules.AppFeeByTimestamp(pendingFees))
 
 	return pendingFees, nil
-}
-
-// Settings returns the settings of the FeeManager
-func (fm *FeeManager) Settings() (modules.FeeManagerSettings, error) {
-	if err := fm.staticCommon.staticTG.Add(); err != nil {
-		return modules.FeeManagerSettings{}, err
-	}
-	defer fm.staticCommon.staticTG.Done()
-
-	fm.staticCommon.staticPersist.mu.Lock()
-	nextPayoutHeight := fm.staticCommon.staticPersist.nextPayoutHeight
-	fm.staticCommon.staticPersist.mu.Unlock()
-
-	return modules.FeeManagerSettings{
-		PayoutHeight: nextPayoutHeight,
-	}, nil
 }

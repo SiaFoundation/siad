@@ -36,7 +36,7 @@ func TestFeeManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nexPayoutHeight := fmg.Settings.PayoutHeight
+	nexPayoutHeight := fmg.PayoutHeight
 	if nexPayoutHeight == 0 {
 		t.Fatalf("PayoutHeight is still 0")
 	}
@@ -104,12 +104,12 @@ func TestFeeManager(t *testing.T) {
 	if fee.TransactionCreated {
 		t.Error("TransactionCreated should be false")
 	}
-	if fee.UID != fmap.FeeUID {
-		t.Errorf("Expected UID to be %v but was %v", fmap.FeeUID, fee.UID)
+	if fee.FeeUID != fmap.FeeUID {
+		t.Errorf("Expected UID to be %v but was %v", fmap.FeeUID, fee.FeeUID)
 	}
 
 	// Cancel Fee
-	err = fm.FeeManagerCancelPost(fee.UID)
+	err = fm.FeeManagerCancelPost(fee.FeeUID)
 	if err != nil {
 		t.Fatal(err)
 	}

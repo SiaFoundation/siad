@@ -53,7 +53,7 @@ func randomFee() modules.AppFee {
 		Recurring:          fastrand.Intn(2) == 0,
 		Timestamp:          time.Now().Unix(),
 		TransactionCreated: fastrand.Intn(2) == 0,
-		UID:                uniqueID(),
+		FeeUID:             uniqueID(),
 	}
 }
 

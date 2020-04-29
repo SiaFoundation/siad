@@ -31,6 +31,9 @@ type (
 		// AppUID is a unique Application ID that the fee is for
 		AppUID AppUID `json:"appuid"`
 
+		// FeeUID is a unique identifier for the Fee
+		FeeUID FeeUID `json:"feeuid"`
+
 		// PaymentCompleted indicates whether the payment for this fee has
 		// appeared on-chain.
 		PaymentCompleted bool `json:"paymentcompleted"`
@@ -52,16 +55,6 @@ type (
 		// TransactionCreated indicates whether the transaction for this fee has
 		// been created and sent to the Sia network for processing.
 		TransactionCreated bool `json:"transactioncreated"`
-
-		// UID is a unique identifier for the Fee
-		UID FeeUID `json:"uid"`
-	}
-
-	// FeeManagerSettings are the set of FeeManager fields that are important
-	// externally
-	FeeManagerSettings struct {
-		// PayoutHeight is the blockheight at which the next payout will occur
-		PayoutHeight types.BlockHeight `json:"payoutheight"`
 	}
 
 	// FeeManager manages fees for applications
@@ -80,12 +73,12 @@ type (
 		// FeeManager
 		PaidFees() ([]AppFee, error)
 
+		// PayoutHeight returns the nextPayoutHeight of the FeeManager
+		PayoutHeight() (types.BlockHeight, error)
+
 		// PendingFees returns all the pending fees that are being tracked by the
 		// FeeManager
 		PendingFees() ([]AppFee, error)
-
-		// Settings returns the settings of the FeeManager
-		Settings() (FeeManagerSettings, error)
 	}
 )
 

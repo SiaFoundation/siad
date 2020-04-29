@@ -10,8 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestIntegrateEntry tests the integrateEntry method of the FeeManager
-func TestIntegrateEntry(t *testing.T) {
+// TestApplyEntry tests the applyEntry method of the FeeManager
+func TestApplyEntry(t *testing.T) {
 	t.Parallel()
 	// Create minimum FeeManager
 	fm := &FeeManager{
@@ -24,15 +24,15 @@ func TestIntegrateEntry(t *testing.T) {
 	}
 	copy(entry.Payload[:], fastrand.Bytes(persistEntrySize))
 	encodedEntry := encoding.Marshal(entry)
-	err := fm.integrateEntry(encodedEntry[:])
+	err := fm.applyEntry(encodedEntry[:])
 	if err != errUnrecognizedEntryType {
 		t.Fatalf("Expected error to be %v but was %v", errUnrecognizedEntryType, err)
 	}
 
 	// Test random data cases
-	err = fm.integrateEntry(fastrand.Bytes(100)[:])
+	err = fm.applyEntry(fastrand.Bytes(100)[:])
 	if err == nil {
-		t.Fatal("Shouldn't be able to integrate random data")
+		t.Fatal("Shouldn't be able to apply random data")
 	}
 
 	// Create Fee
@@ -45,14 +45,14 @@ func TestIntegrateEntry(t *testing.T) {
 		Recurring:          fastrand.Intn(2) == 0,
 		Timestamp:          time.Now().Unix(),
 		TransactionCreated: fastrand.Intn(2) == 0,
-		UID:                uniqueID(),
+		FeeUID:             uniqueID(),
 	}
 
 	// Call createAddFeeEntry
 	pe := createAddFeeEntry(fee)
 
-	// Call integrateEntry
-	err = fm.integrateEntry(pe[:])
+	// Call applyEntry
+	err = fm.applyEntry(pe[:])
 	if err != nil {
 		t.Error(err)
 	}
@@ -63,10 +63,10 @@ func TestIntegrateEntry(t *testing.T) {
 	}
 
 	// Since the PayoutHeight was set to 0 this fee would need to be updated.
-	// Set the payoutheight and reintegrate
+	// Set the payoutheight and reapply
 	payoutHeight := types.BlockHeight(fastrand.Uint64n(100))
-	pe = createUpdateFeeEntry(fee.UID, payoutHeight)
-	err = fm.integrateEntry(pe[:])
+	pe = createUpdateFeeEntry(fee.FeeUID, payoutHeight)
+	err = fm.applyEntry(pe[:])
 	if err != nil {
 		t.Error(err)
 	}
@@ -76,7 +76,7 @@ func TestIntegrateEntry(t *testing.T) {
 	if len(fm.fees) != 1 {
 		t.Errorf("Expected 1 fee in FeeManager, found %v", len(fm.fees))
 	}
-	mapFee, ok := fm.fees[fee.UID]
+	mapFee, ok := fm.fees[fee.FeeUID]
 	if !ok {
 		t.Fatal("Fee not found in map")
 	}
@@ -85,10 +85,10 @@ func TestIntegrateEntry(t *testing.T) {
 	}
 
 	// createCancelFeeEntry
-	pe = createCancelFeeEntry(fee.UID)
+	pe = createCancelFeeEntry(fee.FeeUID)
 
-	// Call integrateEntry
-	err = fm.integrateEntry(pe[:])
+	// Call applyEntry
+	err = fm.applyEntry(pe[:])
 	if err != nil {
 		t.Error(err)
 	}

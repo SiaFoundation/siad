@@ -72,7 +72,7 @@ func TestFeeManagerBasic(t *testing.T) {
 		if af.TransactionCreated {
 			t.Fatal("TransactionCreated should be false")
 		}
-		if af.UID == "" {
+		if af.FeeUID == "" {
 			t.Fatal("FeeUID is blank")
 		}
 	}
@@ -109,7 +109,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	feeCheck(pf)
 
 	// Cancel the fee.
-	err = fm.CancelFee(pf.UID)
+	err = fm.CancelFee(pf.FeeUID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestFeeManagerBasic(t *testing.T) {
 	}
 	// Cancel all of the fees.
 	for _, fee := range pendingFees {
-		err = fm.CancelFee(fee.UID)
+		err = fm.CancelFee(fee.FeeUID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -288,11 +288,11 @@ func TestFeeManagerSyncCoordinator(t *testing.T) {
 			recentTime = fee.Timestamp
 
 			// Check that this fee is not already in the feeMap.
-			_, exists := feeMap[fee.UID]
+			_, exists := feeMap[fee.FeeUID]
 			if exists {
 				t.Error("double fee")
 			}
-			feeMap[fee.UID] = struct{}{}
+			feeMap[fee.FeeUID] = struct{}{}
 		}
 		// Check that every fee in our uid list appears in the fee map.
 		var totalFees int

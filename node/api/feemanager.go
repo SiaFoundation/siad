@@ -5,14 +5,14 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 type (
 	// FeeManagerGET is the object returned as a response to a GET request to
 	// /feemanager
 	FeeManagerGET struct {
-		// Settings are the current settings of the FeeManager
-		Settings modules.FeeManagerSettings `json:"settings"`
+		PayoutHeight types.BlockHeight `json:"payoutheight"`
 	}
 
 	// FeeManagerAddFeePOST is the object returned as a response to a POST
@@ -39,13 +39,13 @@ type (
 
 // feemanagerHandlerGET handles API calls to /feemanager
 func (api *API) feemanagerHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	settings, err := api.feemanager.Settings()
+	payoutheight, err := api.feemanager.PayoutHeight()
 	if err != nil {
-		WriteError(w, Error{"could not get the settings of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"could not get the payoutHeight of the FeeManager: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteJSON(w, FeeManagerGET{
-		Settings: settings,
+		PayoutHeight: payoutheight,
 	})
 }
 

@@ -26,8 +26,8 @@ var (
 	entryTypeCancelFee = types.NewSpecifier("cancel fee")
 	entryTypeUpdateFee = types.NewSpecifier("update fee")
 
-	// errUnrecognizedEntryType is returned if the FeeManager tries to integrate
-	// an unrecognized entry type
+	// errUnrecognizedEntryType is returned if the FeeManager tries to apply an
+	// unrecognized entry type
 	errUnrecognizedEntryType = errors.New("unrecognized entry type")
 )
 
@@ -135,9 +135,8 @@ func createUpdateFeeEntry(feeUID modules.FeeUID, payoutHeight types.BlockHeight)
 	return
 }
 
-// integrateEntry will integrate a provided entry and integrate it into the fee
-// manager.
-func (fm *FeeManager) integrateEntry(entry []byte) error {
+// applyEntry will apply the provided entry to the fee manager.
+func (fm *FeeManager) applyEntry(entry []byte) error {
 	var pe persistEntry
 	err := encoding.Unmarshal(entry, &pe)
 	if err != nil {
@@ -145,30 +144,28 @@ func (fm *FeeManager) integrateEntry(entry []byte) error {
 	}
 	switch pe.EntryType {
 	case entryTypeAddFee:
-		return fm.integrateEntryAddFee(pe.Payload)
+		return fm.applyEntryAddFee(pe.Payload)
 	case entryTypeCancelFee:
-		return fm.integrateEntryCancelFee(pe.Payload)
+		return fm.applyEntryCancelFee(pe.Payload)
 	case entryTypeUpdateFee:
-		return fm.integrateEntryUpdateFee(pe.Payload)
+		return fm.applyEntryUpdateFee(pe.Payload)
 	}
 	return errUnrecognizedEntryType
 }
 
-// integrateEntryAddFee will integrate an add fee entry and integrate it into
-// the fee manager.
-func (fm *FeeManager) integrateEntryAddFee(payload [persistEntryPayloadSize]byte) error {
+// applyEntryAddFee will apply an add fee entry to the fee manager.
+func (fm *FeeManager) applyEntryAddFee(payload [persistEntryPayloadSize]byte) error {
 	var eaf entryAddFee
 	err := encoding.Unmarshal(payload[:], &eaf)
 	if err != nil {
 		return errors.AddContext(err, "could not unmarshal add fee entry payload")
 	}
-	fm.fees[eaf.Fee.UID] = &eaf.Fee
+	fm.fees[eaf.Fee.FeeUID] = &eaf.Fee
 	return nil
 }
 
-// integrateEntryCancelFee will integrate a cancel fee entry and integrate it
-// into the fee manager.
-func (fm *FeeManager) integrateEntryCancelFee(payload [persistEntryPayloadSize]byte) error {
+// applyEntryCancelFee will apply a cancel fee entry to the fee manager.
+func (fm *FeeManager) applyEntryCancelFee(payload [persistEntryPayloadSize]byte) error {
 	var ecf entryCancelFee
 	err := encoding.Unmarshal(payload[:], &ecf)
 	if err != nil {
@@ -178,9 +175,8 @@ func (fm *FeeManager) integrateEntryCancelFee(payload [persistEntryPayloadSize]b
 	return nil
 }
 
-// integrateEntryUpdateFee will integrate an update fee entry and integrate it
-// into the fee manager.
-func (fm *FeeManager) integrateEntryUpdateFee(payload [persistEntryPayloadSize]byte) error {
+// applyEntryUpdateFee will apply an update fee entry to the fee manager.
+func (fm *FeeManager) applyEntryUpdateFee(payload [persistEntryPayloadSize]byte) error {
 	var euf entryupdateFee
 	err := encoding.Unmarshal(payload[:], &euf)
 	if err != nil {

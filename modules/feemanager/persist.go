@@ -194,8 +194,8 @@ func (fm *FeeManager) callInitPersist() error {
 		return errors.AddContext(err, "unable to read the synced portion of persist file")
 	}
 	for i := 0; i < len(entryBytes); i += persistEntrySize {
-		// Integrate this entry.
-		err = fm.integrateEntry(entryBytes[i : i+persistEntrySize])
+		// apply this entry.
+		err = fm.applyEntry(entryBytes[i : i+persistEntrySize])
 		if err != nil {
 			return errors.AddContext(err, "parsing a persist entry failed")
 		}

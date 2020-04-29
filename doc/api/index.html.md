@@ -1,4 +1,4 @@
----
+apply
 title: Sia API Documentation
 
 language_tabs: # must be one of https://git.io/vQNgJ
@@ -736,14 +736,9 @@ returns information about the feemanager.
 
 ```go
 {
-  "settings": {
-    "payoutheight":249854 // blockheight
-  },
+  "payoutheight":249854 // blockheight
 }
 ```
-
-**settings** | FeeManagerSettings  
-List of current settings of the FeeManager.
 
 **payoutheight** | blockheight  
 Height at which the FeeManager will payout the pending fees.
@@ -826,12 +821,12 @@ returns the paid fees that the feemanager managed.
       "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
       "amount":             "1000",  // hastings
       "appuid":             "okapp", // string
+      "feeuid":             "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
       "paymentcompleted":   true,    // bool
       "payoutheight":       12345,   // types.BlockHeight
       "recurring":          false,   // bool
       "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
       "transactioncreated": true,    // bool
-      "uid":                "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
     }
   ]
 }

@@ -92,7 +92,7 @@ func (fm *FeeManager) threadedProcessFees() {
 
 			// Grab the UIDs of any fees that need to be updated
 			if fee.PayoutHeight == 0 {
-				feesToUpdate = append(feesToUpdate, fee.UID)
+				feesToUpdate = append(feesToUpdate, fee.FeeUID)
 				continue
 			}
 
