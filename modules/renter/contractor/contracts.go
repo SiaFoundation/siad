@@ -59,7 +59,7 @@ func (c *Contractor) managedUpdatePubKeyToContractIDMap() {
 
 	// Count the GFU contracts in the thing.
 	totalGFU := 0
-	for pk, _ := range c.pubKeysToContractID {
+	for pk := range c.pubKeysToContractID {
 		var hpk types.SiaPublicKey
 		err := hpk.LoadString(pk)
 		if err != nil {
