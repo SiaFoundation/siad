@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/errors"
@@ -366,14 +365,10 @@ func main() {
 		siaDir = build.SiaDir()
 	}
 
-	// Check for Critical Alerts
+	// Check for CriticalAlerts
 	alerts, err := httpClient.DaemonAlertsGet()
 	if err == nil {
-		for _, a := range alerts.Alerts {
-			if a.Severity != modules.SeverityCritical {
-				continue
-			}
-			numCriticalAlerts++
+		for _, a := range alerts.CriticalAlerts {
 			fmt.Printf(`------------------
   Module:   %s
   Severity: %s
@@ -381,6 +376,8 @@ func main() {
   Cause:    %s
 `, a.Module, a.Severity.String(), a.Msg, a.Cause)
 		}
+		// set global variable
+		numCriticalAlerts = len(alerts.CriticalAlerts)
 		if numCriticalAlerts > 0 {
 			fmt.Println("------------------")
 			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", numCriticalAlerts)

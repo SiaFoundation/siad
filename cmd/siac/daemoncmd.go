@@ -70,7 +70,7 @@ func alertscmd() {
 		fmt.Println("There are no alerts registered.")
 		return
 	}
-	if len(al.Alerts) == numCriticalAlerts {
+	if len(al.Alerts) == len(al.CriticalAlerts) {
 		// Return since critical alerts are already displayed
 		return
 	}

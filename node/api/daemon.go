@@ -65,7 +65,10 @@ type (
 	// DaemonAlertsGet contains information about currently registered alerts
 	// across all loaded modules.
 	DaemonAlertsGet struct {
-		Alerts []modules.Alert `json:"alerts"`
+		Alerts         []modules.Alert `json:"alerts"`
+		CriticalAlerts []modules.Alert `json:"criticalalerts"`
+		ErrorAlerts    []modules.Alert `json:"erroralerts"`
+		WarningAlerts  []modules.Alert `json:"warningalerts"`
 	}
 
 	// DaemonVersionGet contains information about the running daemon's version.
@@ -337,7 +340,10 @@ func (api *API) daemonAlertsHandlerGET(w http.ResponseWriter, _ *http.Request, _
 	// Sort alerts by severity. Critical first, then Error and finally Warning.
 	alerts := append(crit, append(err, warn...)...)
 	WriteJSON(w, DaemonAlertsGet{
-		Alerts: alerts,
+		Alerts:         alerts,
+		CriticalAlerts: crit,
+		ErrorAlerts:    err,
+		WarningAlerts:  warn,
 	})
 }
 
