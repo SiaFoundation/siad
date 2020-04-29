@@ -199,28 +199,36 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 
 	// Filter through the workers, ignoring any that are not good for upload,
 	// and ignoring any that are on upload cooldown.
+	gfus := 0
+	gfusReady := 0
 	jobsDistributed := 0
 	for _, w := range workers {
 		w.mu.Lock()
-		// onCooldown, _ := w.onUploadCooldown()
+		onCooldown, _ := w.onUploadCooldown()
 		gfu := w.cachedContractUtility.GoodForUpload
 		w.mu.Unlock()
-		// uc.mu.Lock()
-		// _, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
-		// uc.mu.Unlock()
-		// if onCooldown || !gfu || !candidateHost {
-		if !gfu {
-			// r.repairLog.Println(onCooldown, !gfu, !candidateHost)
+		uc.mu.Lock()
+		_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
+		uc.mu.Unlock()
+		if onCooldown || !gfu || !candidateHost {
 			w.managedDropChunk(uc)
 			continue
 		}
 		w.callQueueUploadChunk(uc)
 		jobsDistributed++
+		if gfu {
+			gfus++
+		}
+		if gfu && !onCooldown {
+			gfusReady++
+		}
 	}
 	uc.mu.Lock()
 	uc.chunkDistributionTime = time.Now()
 	uc.mu.Unlock()
-	r.repairLog.Printf("Distributed chunk %v of %s to %v workers", uc.index, uc.staticSiaPath, jobsDistributed)
+	// TODO: gfus and gfusReady is not necessary once the /renter/workers
+	// endpoint + siac support is completed.
+	r.repairLog.Printf("Distributed chunk %v of %s to %v workers. %v GFU and %v GFU && !onCooldown", uc.index, uc.staticSiaPath, jobsDistributed, gfus, gfusReady)
 	r.managedCleanUpUploadChunk(uc)
 }
 
