@@ -107,11 +107,11 @@ type (
 	}
 )
 
-// externWritePersistHeader will write the persist header to the first 512 bytes
-// of 'fh' using a WriteAt call. The extern limits this function to being called
-// by the syncing thread, and there can only be one syncing thread running at a
+// writePersistHeader will write the persist header to the first 512 bytes of
+// 'fh' using a WriteAt call. The extern limits this function to being called by
+// the syncing thread, and there can only be one syncing thread running at a
 // time.
-func externWritePersistHeader(fh *os.File, latestSyncedOffset uint64, nextPayoutHeight types.BlockHeight) error {
+func writePersistHeader(fh *os.File, latestSyncedOffset uint64, nextPayoutHeight types.BlockHeight) error {
 	encodedHeader := encoding.Marshal(PersistHeader{
 		Metadata: persist.Metadata{
 			Header:  MetadataHeader,
@@ -315,7 +315,7 @@ func (sc *syncCoordinator) managedSyncPersistLoop() {
 		// latestSyncedOffset. Note that new writes may have happened since
 		// calling Sync, but we have saved the value from before syncing, so
 		// this is safe.
-		err = externWritePersistHeader(ps.persistFile, latestOffset, nextPayoutHeight)
+		err = writePersistHeader(ps.persistFile, latestOffset, nextPayoutHeight)
 		if err != nil {
 			ps.staticCommon.staticLog.Critical("Unable to write persist file header:", err)
 		}
