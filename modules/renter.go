@@ -303,8 +303,9 @@ type ContractUtility struct {
 	Locked bool
 }
 
-// Cmp compares two ContractUtility values. The return value follows the
-// convention of math/big.
+// Cmp compares two ContractUtility values. If x has better utility, a value >0
+// will be returned. If y has better utility, a value <0 will be returned. If
+// the utility of the two contracts is equivalent, 0 will be returned.
 func (x ContractUtility) Cmp(y ContractUtility) int {
 	// BadContract Check
 	if x.BadContract && !y.BadContract {
@@ -313,7 +314,6 @@ func (x ContractUtility) Cmp(y ContractUtility) int {
 	if !x.BadContract && y.BadContract {
 		return 1
 	}
-
 	// GoodForRenew Check
 	if !x.GoodForRenew && y.GoodForRenew {
 		return -1
@@ -321,13 +321,12 @@ func (x ContractUtility) Cmp(y ContractUtility) int {
 	if x.GoodForRenew && !y.GoodForRenew {
 		return 1
 	}
-
 	// GoodForUpload Check
-	if x.GoodForUpload && !y.GoodForUpload {
-		return 1
-	}
 	if !x.GoodForUpload && y.GoodForUpload {
 		return -1
+	}
+	if x.GoodForUpload && !y.GoodForUpload {
+		return 1
 	}
 
 	return 0
