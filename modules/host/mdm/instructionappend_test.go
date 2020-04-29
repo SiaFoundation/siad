@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // newAppendInstruction is a convenience method for creating a single
@@ -32,12 +31,11 @@ func newAppendProgram(sectorData []byte, merkleProof bool, pt modules.RPCPriceTa
 	return instructions, sectorData, cost, refund, collateral, memory
 }
 
-// TestInstructionAppend tests executing a program with a single
+// TestInstructionSingleAppend tests executing a program with a single
 // AppendInstruction.
 func TestInstructionSingleAppend(t *testing.T) {
 	host := newTestHost()
-	// Give the contract a length of 2, enough for 2 programs.
-	so := newTestStorageObligation(types.BlockHeight(2), true)
+	so := newTestStorageObligation(true)
 	mdm := New(host)
 	defer mdm.Stop()
 
@@ -45,11 +43,11 @@ func TestInstructionSingleAppend(t *testing.T) {
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
-	duration := so.expirationHeight - host.BlockHeight()
+	duration := types.BlockHeight(2)
 	instructions, programData, cost, refund, collateral, usedMemory := newAppendProgram(appendData1, true, pt, duration)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, duration, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,12 +112,12 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	duration = so.expirationHeight - host.BlockHeight()
+	duration = types.BlockHeight(1)
 	instructions, programData, cost, refund, collateral, usedMemory = newAppendProgram(appendData2, true, pt, duration)
 	dataLen = uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, duration, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,18 +183,5 @@ func TestInstructionSingleAppend(t *testing.T) {
 	}
 	if so.sectorRoots[1] != appendDataRoot2 {
 		t.Fatal("sectorRoots contains wrong root")
-	}
-
-	// Try executing another append program. The append should fail because of
-	// an expired contract.
-	appendData3 := randomSectorData()
-	dataLen = uint64(len(appendData3))
-	i := NewAppendInstruction(0, true)
-	instructions = []modules.Instruction{i}
-	cost = modules.MDMInitCost(pt, dataLen, 1)
-	collateral = types.ZeroCurrency
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(appendData3))
-	if !errors.Contains(err, ErrExpiredContract) {
-		t.Fatalf("expected expired contract error, got %v", err)
 	}
 }

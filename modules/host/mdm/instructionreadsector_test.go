@@ -48,15 +48,16 @@ func TestInstructionReadSector(t *testing.T) {
 	pt := newTestPriceTable()
 	readLen := modules.SectorSize
 	// Execute it.
-	so := newTestStorageObligation(types.BlockHeight(1), true)
+	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(10)
 	instructions, programData, cost, refund, collateral, usedMemory := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
+	duration := types.BlockHeight(0)
 	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, duration, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestInstructionReadSector(t *testing.T) {
 	r = bytes.NewReader(programData)
 	dataLen = uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, r)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, duration, dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}

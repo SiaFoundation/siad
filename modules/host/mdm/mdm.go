@@ -18,9 +18,6 @@ type StorageObligation interface {
 type StorageObligationSnapshot interface {
 	// ContractSize returns the current contract size of the storage obligation.
 	ContractSize() uint64
-	// ExpirationHeight returns the block height at which the current contract
-	// expires.
-	ExpirationHeight() types.BlockHeight
 	// MerkleRoot returns the filecontract's current root.
 	MerkleRoot() crypto.Hash
 	// SectorRoots returns the roots of the storage obligation.
@@ -32,7 +29,6 @@ type StorageObligationSnapshot interface {
 type Host interface {
 	BlockHeight() types.BlockHeight
 	HasSector(crypto.Hash) bool
-	IncrementHeight()
 	ReadSector(sectorRoot crypto.Hash) ([]byte, error)
 }
 

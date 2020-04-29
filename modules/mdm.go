@@ -95,8 +95,8 @@ func MDMAppendCost(pt RPCPriceTable, duration types.BlockHeight) (types.Currency
 	writeCost := pt.WriteLengthCost.Mul64(SectorSize).Add(pt.WriteBaseCost)
 	storeCost := pt.WriteStoreCost.Mul64(SectorSize) // potential refund
 	// Cost of storing for the duration. Not factored into refunds since we
-	// don't have partial refunds.
-	storeLengthCost := pt.StoreLengthCost.Mul64(uint64(duration))
+	// don't know ahead of time the duration of storage before the refund.
+	storeLengthCost := pt.StoreLengthCost.Mul64(SectorSize).Mul64(uint64(duration))
 	return writeCost.Add(storeCost).Add(storeLengthCost), storeCost
 }
 

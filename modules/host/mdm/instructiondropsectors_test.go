@@ -48,7 +48,7 @@ func newDropSectorsInstruction(programData []byte, dataOffset, numSectorsDropped
 // DropSectors instructions.
 func TestInstructionAppendAndDropSectors(t *testing.T) {
 	host := newTestHost()
-	so := newTestStorageObligation(types.BlockHeight(2), true)
+	so := newTestStorageObligation(true)
 	mdm := New(host)
 	defer mdm.Stop()
 
@@ -60,7 +60,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	dataLen := numAppend*instrLenAppend + numDropSectors*instrLenDropSectors
 	programData := make([]byte, dataLen)
 	pt := newTestPriceTable()
-	duration := so.expirationHeight - host.BlockHeight()
+	duration := types.BlockHeight(2)
 	initCost := modules.MDMInitCost(pt, dataLen, numInstructions)
 
 	instruction1, cost, refund, collateral, memory, time := newAppendInstruction(false, 0, pt, duration)
@@ -170,7 +170,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Execute the program.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, duration, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -96,12 +96,7 @@ func (i *instructionAppend) Collateral() types.Currency {
 
 // Cost returns the Cost of this append instruction.
 func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
-	// TODO: This should get the current block height instead of a static one.
-	// Other programs may have been finalized before this point.
-	if i.staticState.expirationHeight <= i.staticState.blockHeight {
-		return types.ZeroCurrency, types.ZeroCurrency, ErrExpiredContract
-	}
-	duration := i.staticState.expirationHeight - i.staticState.blockHeight
+	duration := i.staticState.staticRemainingDuration
 	cost, refund := modules.MDMAppendCost(i.staticState.priceTable, duration)
 	return cost, refund, nil
 }

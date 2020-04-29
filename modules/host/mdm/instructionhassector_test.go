@@ -47,14 +47,15 @@ func TestInstructionHasSector(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create a program to check for a sector on the host.
-	so := newTestStorageObligation(types.BlockHeight(1), true)
+	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
+	duration := types.BlockHeight(0)
 	instructions, programData, cost, refund, collateral, usedMemory := newHasSectorProgram(sectorRoot, pt)
 	dataLen := uint64(len(programData))
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, so, duration, dataLen, bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}
