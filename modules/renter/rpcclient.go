@@ -3,9 +3,6 @@ package renter
 // TODO: the rpcclient code can be merged into the worker code, it is mostly
 // static except for the blockheight which is passed by the worker anyway
 
-// TODO: once the RPC client is hooked up to the worker, we will be able to
-// cover the functionaliaty of the RPC client
-
 import (
 	"encoding/json"
 	"io"
@@ -31,17 +28,15 @@ type rpcClient struct {
 	blockHeight types.BlockHeight
 
 	mu sync.Mutex
-	r  *Renter
 }
 
 // newRPCClient returns a new RPC client.
-func (r *Renter) newRPCClient(hostEntry modules.HostDBEntry, refundAccount modules.AccountID, blockHeight types.BlockHeight) *rpcClient {
+func newRPCClient(hostEntry modules.HostDBEntry, refundAccount modules.AccountID, blockHeight types.BlockHeight) *rpcClient {
 	return &rpcClient{
 		staticHostAddress:   string(hostEntry.NetAddress),
 		staticHostKey:       hostEntry.PublicKey,
 		staticRefundAccount: refundAccount,
 		blockHeight:         blockHeight,
-		r:                   r,
 	}
 }
 

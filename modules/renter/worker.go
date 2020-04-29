@@ -276,20 +276,20 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 		return nil, errors.New("host does not exist")
 	}
 
-	// TODO: use the host's external settings settings to calc. an appropriate
-	// balance target
+	// TODO: set the balance target to 1SC and a check that verifies it makes
+	// sense in function of the amount of MDM programs it can run with that
+	// amount of money
 
 	// TODO: enable the account refiller by setting a balance target greater
 	// than the zero currency. It is important this remains zero for as long as
 	// the FundEphemeralAccountRPC is not merged. Before it is enabled we also
 	// need a cooldown in case the RPC fails, to ensure we don't keep enqueueing
-	// refill jobs.
-	balanceTarget := types.ZeroCurrency
+	// refill jobs
 
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
 	account := newAccount(hostPubKey)
-	rpcClient := r.newRPCClient(host, account.staticID, bh)
+	rpcClient := newRPCClient(host, account.staticID, bh)
 
 	return &worker{
 		staticHostPubKey:     hostPubKey,
@@ -297,7 +297,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 		staticHostMuxAddress: hostMuxAddress,
 
 		staticAccount:       account,
-		staticBalanceTarget: balanceTarget,
+		staticBalanceTarget: types.ZeroCurrency,
 		staticRPCClient:     rpcClient,
 
 		killChan: make(chan struct{}),
