@@ -63,11 +63,14 @@ func marshalSia(w io.Writer, merkleRoot crypto.Hash, blacklisted bool) error {
 }
 
 // unmarshalBlacklist unmarshals the sia encoded blacklist
-func unmarshalBlacklist(r io.Reader, numMerkleRoots int64) (map[crypto.Hash]struct{}, error) {
-	// Unmarshal numLinks blacklisted links one by one
+func unmarshalBlacklist(r io.Reader) (map[crypto.Hash]struct{}, error) {
 	blacklist := make(map[crypto.Hash]struct{})
-	for i := int64(0); i < numMerkleRoots; i++ {
+	// Unmarshal blacklisted links one by one until EOF.
+	for {
 		merkleRoot, blacklisted, err := unmarshalSia(r)
+		if errors.Contains(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -106,7 +109,7 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(sb.FilePath(), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -173,8 +176,14 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 		}
 	}
 
+	filepath := sb.FilePath()
+	// Truncate the file to remove any corrupted data that may have been added.
+	err := os.Truncate(filepath, sb.persistLength)
+	if err != nil {
+		return err
+	}
 	// Open file
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR, modules.DefaultFilePerm)
+	f, err := os.OpenFile(filepath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -210,7 +219,8 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 // load loads the persisted blacklist from disk
 func (sb *SkynetBlacklist) load() error {
 	// Open File
-	f, err := os.Open(filepath.Join(sb.staticPersistDir, persistFile))
+	filepath := sb.FilePath()
+	f, err := os.Open(filepath)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return err
@@ -229,19 +239,24 @@ func (sb *SkynetBlacklist) load() error {
 		return errors.AddContext(err, "unable to unmarshal metadata bytes")
 	}
 
-	// Check if there is a persisted blacklist after the metatdata
+	// Check if there is a persisted blacklist after the metadata
 	goodBytes := sb.persistLength - metadataPageSize
 	if goodBytes <= 0 {
 		return nil
 	}
 
+	// Truncate the file to remove any corrupted data that may have been added.
+	err = os.Truncate(filepath, sb.persistLength)
+	if err != nil {
+		return err
+	}
 	// Seek to the start of the persisted blacklist
 	_, err = f.Seek(metadataPageSize, 0)
 	if err != nil {
 		return errors.AddContext(err, "unable to seek to start of persisted blacklist")
 	}
 	// Decode persist links
-	blacklist, err := unmarshalBlacklist(f, goodBytes/persistMerkleRootSize)
+	blacklist, err := unmarshalBlacklist(f)
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal persistLinks")
 	}
@@ -273,9 +288,17 @@ func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
 		return errors.AddContext(err, "unable to unmarshal version")
 	}
 	if version != metadataVersion {
-		return errWrongVersion
+		// Convert versions to strings and strip newlines for displaying.
+		expected := string(bytes.Split(metadataVersion[:], []byte{'\n'})[0])
+		received := string(bytes.Split(version[:], []byte{'\n'})[0])
+		return errors.AddContext(errWrongVersion, fmt.Sprintf("expected %v, received %v", expected, received))
 	}
 
 	// Unmarshal the length
 	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
+}
+
+// FilePath returns the filepath of the persist file.
+func (sb *SkynetBlacklist) FilePath() string {
+	return filepath.Join(sb.staticPersistDir, persistFile)
 }

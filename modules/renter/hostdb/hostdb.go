@@ -227,7 +227,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	// Create the logger.
-	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.staticLog"))
+	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.log"))
 	if err != nil {
 		return nil, err
 	}
