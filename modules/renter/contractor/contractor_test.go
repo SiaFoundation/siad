@@ -478,7 +478,6 @@ func TestPayment(t *testing.T) {
 		return nil
 	})
 
-
 	// create a refund account
 	aid, _ := modules.NewAccountID()
 
