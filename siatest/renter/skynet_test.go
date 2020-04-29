@@ -69,8 +69,8 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers}, // Run last since it adds a renter with no workers
 	}
 
 	// Run tests
@@ -1723,7 +1723,12 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r := nodes[0]
-	defer tg.RemoveNode(r)
+	defer func() {
+		err = tg.RemoveNode(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Since the renter doesn't have an allowance, we know the renter doesn't
 	// have any contracts and therefore the worker pool will be empty. Confirm
@@ -2068,15 +2073,8 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create a skyfile
-	siaPath := modules.RandomSiaPath()
-	skylink, _, err := r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
-		SiaPath:             siaPath,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testSkynetDryRun",
-			Mode:     0640,
-		},
-	})
+	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testRenameFile", 100, false)
+	siaPath := sup.SiaPath
 	if err != nil {
 		t.Fatal(err)
 	}
