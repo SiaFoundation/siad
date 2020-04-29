@@ -627,7 +627,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		for _, st := range uc.chunkSuccessProcessTimes {
 			successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
 		}
-		r.repairLog.Printf("\tChunk Created: %v\n\tChunk Popped: %v\n\tChunk Distributed: %v\n\tChunk Available: %v\n\tChunk Complete: %v\n\tFail Times: %v\n\tSuccess Times: %v", int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
+		r.repairLog.Printf("\n\tChunk Created: %v\n\tChunk Popped: %v\n\tChunk Distributed: %v\n\tChunk Available: %v\n\tChunk Complete: %v\n\tFail Times: %v\n\tSuccess Times: %v", int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
