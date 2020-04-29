@@ -1,0 +1,2 @@
+- Add support for unpinning directories from Skynet.
+- Add support for unpinning multiple files in a single command.

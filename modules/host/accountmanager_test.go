@@ -34,6 +34,12 @@ func TestAccountCallDeposit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -66,6 +72,12 @@ func TestAccountMaxBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -96,6 +108,12 @@ func TestAccountCallWithdraw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -174,6 +192,12 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare a new account
@@ -198,6 +222,12 @@ func TestAccountExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -240,6 +270,12 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -278,6 +314,12 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -311,6 +353,12 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -354,6 +402,12 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account and fund it
@@ -393,6 +447,12 @@ func TestAccountRiskBenchmark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// These atomics cause the test to stop, if we encounter errors we want to
@@ -592,6 +652,12 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	var atomicWithdrawalErrs uint64
@@ -691,6 +757,12 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Grab some settings
@@ -762,6 +834,12 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -851,6 +929,12 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	his := ht.host.InternalSettings()
@@ -925,6 +1009,12 @@ func TestAccountIndexRecycling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	numAcc := 100
@@ -1037,6 +1127,12 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account

@@ -23,7 +23,12 @@ func TestHostPersistCompat100(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// Close the host and then swap out the persist file for the one that is
 	// being used for testing.
@@ -42,6 +47,12 @@ func TestHostPersistCompat100(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := mux.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// Reload the host
 	h, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
