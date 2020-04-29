@@ -1,4 +1,4 @@
-apply
+---
 title: Sia API Documentation
 
 language_tabs: # must be one of https://git.io/vQNgJ
