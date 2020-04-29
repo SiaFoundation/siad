@@ -105,7 +105,7 @@ func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContr
 		_, exists := uniqueGFU[pk]
 		contract, _ := contractMap[pk]
 		if exists && !contract.Utility.GoodForUpload || !exists && contract.Utility.GoodForUpload {
-			c.log.Printf("the GFU thing has a mismatch... right in the builder function")
+			c.log.Printf("the GFU thing has a mismatch... right in the builder function %v :: %v", exists, contract.Utility.GoodForUpload)
 		}
 	}
 }

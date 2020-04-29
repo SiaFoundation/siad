@@ -77,6 +77,23 @@ func (wp *workerPool) callUpdate() {
 	defer func() {
 		// Count the number of GFU workers as reported by the contractor utility
 		// function.
+		wp.mu.Lock()
+		wpks := make([]types.SiaPublicKey, 0, len(wp.workers))
+		for _, worker := range wp.workers {
+			wpks = append(wpks, worker.staticHostPubKey)
+		}
+		wp.mu.Unlock()
+
+		totalGFU := 0
+		for _, wpk := range workers {
+			utility, exists := wp.renter.hostContractor.ContractUtility(wpk)
+			if utility.GoodForUpload && exists {
+				totalGFU++
+			}
+		}
+		wp.renter.log.Printf("Outside of the worker pool, using ContractUtility, %v GFU workers found", totalGFU)
+		wp.renter.log.Printf("Outside of the worker pool, using ContractUtility, %v GFU workers found", totalGFU)
+		wp.renter.log.Printf("Outside of the worker pool, using ContractUtility, %v GFU workers found", totalGFU)
 	}()
 
 	// Lock the worker pool for the duration of updating its fields.
