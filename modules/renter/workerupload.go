@@ -117,25 +117,28 @@ func (w *worker) managedKillUploading() {
 
 // callQueueUploadChunk will take a chunk and add it to the worker's repair
 // stack.
-func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) {
+func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 	// Check that the worker is allowed to be uploading before grabbing the
 	// worker lock.
-	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)
-	goodForUpload := exists && utility.GoodForUpload
+	uc.mu.Lock()
+	_, candidateHost := uc.unusedHosts[w.staticHostPubKeyStr]
+	uc.mu.Unlock()
 	w.mu.Lock()
+	goodForUpload := w.cachedContractUtility.GoodForUpload
 	onCooldown, _ := w.onUploadCooldown()
 	uploadTerminated := w.uploadTerminated
-	if !goodForUpload || uploadTerminated || onCooldown {
+	if !goodForUpload || uploadTerminated || onCooldown || !candidateHost {
 		// The worker should not be uploading, remove the chunk.
 		w.mu.Unlock()
 		w.managedDropChunk(uc)
-		return
+		return false
 	}
 	w.unprocessedChunks = append(w.unprocessedChunks, uc)
 	w.mu.Unlock()
 
 	// Send a signal informing the work thread that there is work.
 	w.staticWake()
+	return true
 }
 
 // managedPerformUploadChunkJob will perform some upload work and return 'false'

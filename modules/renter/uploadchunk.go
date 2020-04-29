@@ -201,19 +201,9 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// and ignoring any that are on upload cooldown.
 	jobsDistributed := 0
 	for _, w := range workers {
-		w.mu.Lock()
-		onCooldown, _ := w.onUploadCooldown()
-		gfu := w.cachedContractUtility.GoodForUpload
-		w.mu.Unlock()
-		uc.mu.Lock()
-		_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
-		uc.mu.Unlock()
-		if onCooldown || !gfu || !candidateHost {
-			w.managedDropChunk(uc)
-			continue
+		if w.callQueueUploadChunk(uc) {
+			jobsDistributed++
 		}
-		w.callQueueUploadChunk(uc)
-		jobsDistributed++
 	}
 	uc.mu.Lock()
 	uc.chunkDistributionTime = time.Now()
