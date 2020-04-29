@@ -288,7 +288,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
-	account := openAccount(hostPubKey)
+	account := newAccount(hostPubKey)
 	rpcClient := r.newRPCClient(host, account.staticID, bh)
 
 	return &worker{

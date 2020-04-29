@@ -42,8 +42,15 @@ func (r *Renter) newRPCClient(he modules.HostDBEntry, ra modules.AccountID, bh t
 	}
 }
 
+// programResponse is a helper struct that wraps the RPCExecuteProgramResponse
+// alongside the data output
+type programResponse struct {
+	modules.RPCExecuteProgramResponse
+	Output []byte
+}
+
 // ExecuteProgram performs the ExecuteProgramRPC on the host
-func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []modules.RPCExecuteProgramResponse, outputs [][]byte, err error) {
+func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
 	// close the stream
 	defer func() {
 		cErr := stream.Close()
@@ -73,7 +80,6 @@ func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Str
 	}
 
 	// provide payment
-	// TODO: NTH cost := program.EstimateCost(data, dataLen)
 	err = pp.ProvidePayment(stream, c.staticHostKey, modules.RPCUpdatePriceTable, cost, c.staticRefundAccount, c.managedBlockHeight())
 	if err != nil {
 		return
@@ -92,8 +98,7 @@ func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Str
 	}
 
 	// read the responses.
-	responses = make([]modules.RPCExecuteProgramResponse, len(epr.Program))
-	outputs = make([][]byte, len(epr.Program))
+	responses = make([]programResponse, len(epr.Program))
 	for i := range responses {
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
@@ -102,8 +107,8 @@ func (c *rpcClient) ExecuteProgram(pp modules.PaymentProvider, stream siamux.Str
 
 		// Read the output data.
 		outputLen := responses[i].OutputLength
-		outputs[i] = make([]byte, outputLen, outputLen)
-		_, err = io.ReadFull(stream, outputs[i])
+		responses[i].Output = make([]byte, outputLen, outputLen)
+		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
 		}
 

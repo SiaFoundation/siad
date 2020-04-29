@@ -149,6 +149,18 @@ type (
 	}
 )
 
+// NewAccountID is a helper function that creates a new account ID from a
+// randomly generate key pair
+func NewAccountID() (id AccountID, sk crypto.SecretKey) {
+	var pk crypto.PublicKey
+	sk, pk = crypto.GenerateKeyPair()
+	id.FromSPK(types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	})
+	return
+}
+
 // FromSPK creates an AccountID from a SiaPublicKey. This assumes that the
 // provided key is valid and won't perform additional checks.
 func (aid *AccountID) FromSPK(spk types.SiaPublicKey) {
