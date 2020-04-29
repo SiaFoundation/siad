@@ -50,7 +50,6 @@ func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb m
 	badScore := !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0
 	if deadScore || (badScore && !paymentContract) {
 		// Log if the utility has changed.
-		/* - cleanup to temporarily remove logspam while debugging
 		if u.GoodForUpload || u.GoodForRenew {
 			c.log.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
 			c.log.Println("Min Score:", minScoreGFR)
@@ -66,7 +65,6 @@ func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb m
 			c.log.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
 			c.log.Println("Version Adjustment:    ", sb.VersionAdjustment)
 		}
-		*/
 		u.GoodForUpload = false
 		u.GoodForRenew = false
 

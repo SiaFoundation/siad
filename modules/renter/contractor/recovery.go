@@ -215,10 +215,10 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	defer c.mu.Unlock()
 	_, exists := c.pubKeysToContractID[contract.HostPublicKey.String()]
 	if exists {
-		// NOTE There is a chance that this happens if c.recoverableContracts
+		// NOTE: There is a chance that this happens if c.recoverableContracts
 		// contains multiple recoverable contracts for a single host. In that
 		// case we don't update the mapping and let managedCheckForDuplicates
-		// and managedCheckForDuplicates handle that later.
+		// handle that later.
 		return errors.New("can't recover contract with a host that we already have a contract with")
 	}
 	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
