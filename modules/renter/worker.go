@@ -38,7 +38,7 @@ import (
 var (
 	// cachedContractUtilityTimeout specifies how long the cached contract
 	// utility is valid for the worker.
-	cachedContractUtilityTimeout = build.Select(build.Var{
+	workerCacheTimeout = build.Select(build.Var{
 		Dev:      time.Second * 5,
 		Standard: time.Minute * 10,
 		Testing:  time.Second,
@@ -157,7 +157,7 @@ func (w *worker) managedUpdateCache() (<-chan time.Time, bool) {
 		return nil, false
 	}
 	w.cachedContractUtility = utility
-	return time.After(cachedContractUtilityTimeout), true
+	return time.After(workerCacheTimeout), true
 }
 
 // staticKilled is a convenience function to determine if a worker has been
@@ -204,6 +204,13 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
+	// Kick things off by updating the worker cache.
+	cacheUpdateTimer, exists := w.managedUpdateCache()
+	if !exists {
+		w.renter.log.Println("Worker is being insta-killed because the cache update could not locate utility for the worker")
+		return
+	}
+
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
 	// work is attempted, the loop resets to check for higher priority work
@@ -213,8 +220,6 @@ func (w *worker) threadedWorkLoop() {
 	// 'workAttempted' indicates that there was a job to perform, and that a
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
-	var cacheUpdateTimer <-chan time.Time
-	cacheUpdateTimer = time.After(0) // Have the update timer fire immediately.
 	for {
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are

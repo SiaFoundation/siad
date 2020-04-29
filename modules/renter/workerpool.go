@@ -85,7 +85,7 @@ func (wp *workerPool) callUpdate() {
 		wp.mu.Unlock()
 
 		totalGFU := 0
-		for _, wpk := range workers {
+		for _, wpk := range wpks {
 			utility, exists := wp.renter.hostContractor.ContractUtility(wpk)
 			if utility.GoodForUpload && exists {
 				totalGFU++
