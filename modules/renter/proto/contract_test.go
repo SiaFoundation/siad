@@ -120,6 +120,9 @@ func TestContractUncommittedTxn(t *testing.T) {
 	} else if !reflect.DeepEqual(merkleRoots, initialRoots) {
 		t.Fatal("Merkle roots should match initial Merkle roots")
 	}
+	if sc.rc.numSectors != uint64(len(initialRoots)) {
+		t.Fatalf("RefCounter's numSectors should match the initial Merkle roots. Expected %d, got %d.", len(initialRoots), sc.rc.numSectors)
+	}
 
 	// apply the uncommitted transaction
 	err = sc.managedCommitTxns()
@@ -139,6 +142,9 @@ func TestContractUncommittedTxn(t *testing.T) {
 		t.Fatal("contractHeader should match revised contractHeader", sc.header, revisedHeader)
 	} else if !reflect.DeepEqual(merkleRoots, revisedRoots) {
 		t.Fatal("Merkle roots should match revised Merkle roots")
+	}
+	if sc.rc.numSectors != uint64(len(revisedRoots)) {
+		t.Fatalf("RefCounter's numSectors should match the revised Merkle roots. Expected %d, got %d.", len(initialRoots), sc.rc.numSectors)
 	}
 }
 
