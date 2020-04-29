@@ -40,7 +40,7 @@ var (
 	// utility is valid for the worker.
 	workerCacheTimeout = build.Select(build.Var{
 		Dev:      time.Second * 5,
-		Standard: time.Minute * 10,
+		Standard: time.Minute,
 		Testing:  time.Second,
 	}).(time.Duration)
 )
