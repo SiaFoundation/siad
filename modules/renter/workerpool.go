@@ -74,6 +74,10 @@ func (wp *workerPool) callUpdate() {
 	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
 	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
 	wp.renter.log.Printf("Worker pool has %v contracts, %v unique GFU", len(contractSlice), len(uniqueGFU))
+	defer func() {
+		// Count the number of GFU workers as reported by the contractor utility
+		// function.
+	}()
 
 	// Lock the worker pool for the duration of updating its fields.
 	wp.mu.Lock()
