@@ -16,8 +16,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
 var (
@@ -544,6 +546,22 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 
 		Reader: source,
 	}
+
+	if skykeyName != "" && skykeyID != "" {
+		die("Can only use either skykeyname or skykeyid flag, not both.")
+	}
+	// Set Encrypt param to true if a skykey ID or name is set.
+	if skykeyName != "" {
+		sup.SkykeyName = skykeyName
+	} else if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err := ID.FromString(skykeyID)
+		if err != nil {
+			die("Unable to parse skykey ID")
+		}
+		sup.SkykeyID = ID
+	}
+
 	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
