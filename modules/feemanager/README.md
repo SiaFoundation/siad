@@ -34,8 +34,8 @@ FeeManager's state, such as the current fees being managed.
   - `CancelFee` cancels a fee 
   - `Close` closes the FeeManager
   - `PaidFees` returns a list of fees that have been paid out by the FeeManager
+  - `PayoutHeight` returns the `PayoutHeight` of the FeeManager 
   - `PendingFees` returns a list of pending fees being managed by the FeeManager
-  - `Settings` returns the settings of the FeeManager 
 
 **Outbound Complexities**
   - The persist subsystem's `callInitPersist` method is called from
