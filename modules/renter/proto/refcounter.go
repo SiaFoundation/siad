@@ -98,7 +98,8 @@ type (
 		// are allowed to be created and applied
 		isUpdateInProgress bool
 		// newSectorCounts holds the new values of sector counters during an
-		// update session, so we can use them even before they are store on disk
+		// update session, so we can use them even before they are stored on
+		// disk
 		newSectorCounts map[uint64]uint16
 		// muUpdates controls who can create and apply updates
 		muUpdate siasync.TryMutex
@@ -226,12 +227,20 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point, the changes to be made are written to the disk.
+	// This means that we need to panic in case applying the updates fails in
+	// order to avoid data corruption.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
-	if err := applyUpdates(f, updates...); err != nil {
+	if err = applyUpdates(f, updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
-	if err := txn.SignalUpdatesApplied(); err != nil {
+	if err = txn.SignalUpdatesApplied(); err != nil {
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
