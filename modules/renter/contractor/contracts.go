@@ -51,15 +51,13 @@ func (c *Contractor) managedContractUtility(id types.FileContractID) (modules.Co
 func (c *Contractor) managedUpdatePubKeyToContractIDMap() {
 	// Grab the current contracts and the blockheight
 	contracts := c.staticContracts.ViewAll()
-	bh := c.cs.Height()
-
 	c.mu.Lock()
-	c.updatePubKeyToContractIDMap(contracts, bh)
+	c.updatePubKeyToContractIDMap(contracts)
 	c.mu.Unlock()
 }
 
 // updatePubKeyToContractIDMap updates the pubkeysToContractID map
-func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContract, bh types.BlockHeight) {
+func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContract) {
 	// Reset the pubkey to contract id map, also create a map from each
 	// contract's fcid to the contract itself.
 	c.pubKeysToContractID = make(map[string]types.FileContractID)
@@ -79,14 +77,27 @@ func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContr
 // pubKeysToContractID map. The most recent contract with the best utility for
 // each pubKey will be added
 func (c *Contractor) tryAddContractToPubKeyMap(newContract modules.RenterContract, contractMap map[string]modules.RenterContract) {
-	// Check if the pubkey for the new contract is in the map already. If not,
-	// add the contract and quit.
+	// Ignore any contracts that have been renewed.
+	_, exists := c.renewedTo[newContract.ID]
+	if exists {
+		return
+	}
 	pk := newContract.HostPublicKey.String()
-	existingFcid, ok := c.pubKeysToContractID[pk]
-	if !ok {
+
+	// If there is not existing contract in the map for this pubkey, add it.
+	existingFcid, exists := c.pubKeysToContractID[pk]
+	if !exists {
 		c.pubKeysToContractID[pk] = newContract.ID
 		return
 	}
+	// Debugging, the contractor should not have multiple contract tips for the
+	// same contract.
+	//
+	// NOTE: If the code is clean/correct, this statement should never be
+	// reached. the rest of this function is unneeded and the contractMap does
+	// not need to be built. This code is left because of a low confidence in
+	// the fidelity of the renewedTo and renewedFrom fields in the contractor.
+	c.log.Debugln("Contractor has multiple contracts that don't form a renewedTo line for the same host")
 
 	// Grab the existing contract.
 	existingContract, ok := contractMap[existingFcid.String()]
