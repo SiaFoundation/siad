@@ -277,7 +277,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	// Grab chunk stuck status
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
-	if uuc.chunkCreationTime == (time.Time{}) {
+	if uuc.chunkCreationTime.IsZero() {
 		uuc.chunkCreationTime = time.Now()
 	}
 	uuc.mu.Unlock()
