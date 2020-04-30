@@ -442,6 +442,7 @@ func (w *Wallet) Reset() error {
 	if w.subscribed {
 		w.cs.Unsubscribe(w)
 		w.tpool.Unsubscribe(w)
+		w.subscribed = false
 	}
 
 	err := dbReset(w.dbTx)
@@ -455,7 +456,6 @@ func (w *Wallet) Reset() error {
 	w.unconfirmedProcessedTransactions = []modules.ProcessedTransaction{}
 	w.unlocked = false
 	w.encrypted = false
-	w.subscribed = false
 
 	return nil
 }
