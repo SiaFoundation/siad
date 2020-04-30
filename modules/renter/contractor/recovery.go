@@ -218,7 +218,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		// NOTE: There is a chance that this happens if c.recoverableContracts
 		// contains multiple recoverable contracts for a single host. In that
 		// case we don't update the mapping and let managedCheckForDuplicates
-		// handle that later.
+		// and managedUpdatePubKeyToContractIDMap handle that later.
 		return errors.New("can't recover contract with a host that we already have a contract with")
 	}
 	c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
