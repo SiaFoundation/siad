@@ -47,6 +47,9 @@ func TestPersist(t *testing.T) {
 	}
 
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
+	if filename != sp.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
+	}
 
 	// There should be no portals in the list
 	if len(sp.portals) != 0 {
@@ -161,7 +164,7 @@ func TestPersist(t *testing.T) {
 	}
 }
 
-// TestPersistCorruption tests the persistence of the Skynet blacklist when
+// TestPersistCorruption tests the persistence of the Skynet portal list when
 // corruption occurs.
 func TestPersistCorruption(t *testing.T) {
 	if testing.Short() {
@@ -169,7 +172,7 @@ func TestPersistCorruption(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create a new SkynetBlacklist
+	// Create a new SkynetPortalList
 	testdir := testDir(t.Name())
 	sp, err := New(testdir)
 	if err != nil {
@@ -177,6 +180,9 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
+	if filename != sp.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
+	}
 
 	// There should be no portals in the list
 	if len(sp.portals) != 0 {
@@ -485,7 +491,7 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = sp.unmarshalMetadata(mdBytes)
-	if err != errWrongVersion {
+	if !errors.Contains(err, errWrongVersion) {
 		t.Fatalf("Expected %v got %v", errWrongVersion, err)
 	}
 
