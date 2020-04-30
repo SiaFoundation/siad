@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"strings"
@@ -83,11 +84,9 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		sectorRoots[pair.staticFCID] = root
 	}
 
-	// start the timer
-	finishedChan := make(chan struct{})
-	time.AfterFunc(timeout, func() {
-		close(finishedChan)
-	})
+	// create a context using our timeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	// collect rpc stats
 	stats := &rpcStats{}
@@ -99,7 +98,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 		// set of errors which are expected to happen, if we can recover from
 		// them, the test should not be considered as failed
 		recoverChan := make(chan error)
-		go recoverFromError(t, p, stats, recoverChan, finishedChan)
+		go recoverFromError(ctx, t, p, stats, recoverChan, cancel)
 
 		wg.Add(numThreads)
 		for i := 0; i < numThreads; i++ {
@@ -108,7 +107,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 			LOOP:
 				for {
 					select {
-					case <-finishedChan:
+					case <-ctx.Done():
 						break LOOP
 					default:
 					}
@@ -133,7 +132,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 			}(p, recoverChan)
 		}
 	}
-	<-finishedChan
+	<-ctx.Done()
 	wg.Wait()
 
 	t.Logf("In %.f seconds, on %d cores across %d threads, the following RPCs completed: %s\n", timeout.Seconds(), runtime.NumCPU(), numThreads, stats.String())
@@ -176,13 +175,13 @@ func randomMDMProgram(pair *renterHostPair, sectorRoot crypto.Hash) (program tes
 // are sent. These errors occurred by executing RPC calls on the pair, and they
 // might be expected errors from which we want to recover. Examples of such
 // errors are expired price tables, or out of balance errors.
-func recoverFromError(t *testing.T, pair *renterHostPair, stats *rpcStats, errChan chan error, finishedChan chan struct{}) {
+func recoverFromError(ctx context.Context, t *testing.T, pair *renterHostPair, stats *rpcStats, errChan chan error, cancel context.CancelFunc) {
 	his := pair.ht.host.InternalSettings()
 	funding := his.MaxEphemeralAccountBalance.Div64(1e5)
 
 	for err := range errChan {
 		select {
-		case <-finishedChan:
+		case <-ctx.Done():
 			continue
 		default:
 		}
@@ -217,6 +216,7 @@ func recoverFromError(t *testing.T, pair *renterHostPair, stats *rpcStats, errCh
 
 		if err != nil {
 			t.Error(err)
+			cancel()
 		}
 	}
 }
