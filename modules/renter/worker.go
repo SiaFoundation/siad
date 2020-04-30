@@ -101,10 +101,10 @@ type worker struct {
 
 // callStatus returns the status of the worker.
 func (w *worker) callStatus(contract modules.RenterContract) modules.WorkerStatus {
+	downloadOnCoolDown := w.ownedOnDownloadCooldown()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
-	downloadOnCoolDown := w.ownedOnDownloadCooldown()
 	return modules.WorkerStatus{
 		// Contract Information
 		ContractID:      contract.ID,
