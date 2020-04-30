@@ -124,9 +124,9 @@ func (w *worker) callStatus(contract modules.RenterContract) modules.WorkerStatu
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance:    w.staticAccount.AvailableBalance(),
-		BalanceTarget:       w.staticBalanceTarget,
-		FundAccountJobQueue: w.staticFundAccountJobQueue.callLen(),
+		AvailableBalance:        w.staticAccount.AvailableBalance(),
+		BalanceTarget:           w.staticBalanceTarget,
+		FundAccountJobQueueSize: w.staticFundAccountJobQueue.callLen(),
 
 		// Job Queues
 		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.callLen(),

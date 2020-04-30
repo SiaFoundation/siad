@@ -751,9 +751,9 @@ type (
 		UploadTerminated    bool          `json:"uploadterminated"`
 
 		// Ephemeral Account information
-		AvailableBalance    types.Currency `json:"availablebalance"`
-		BalanceTarget       types.Currency `json:"balancetarget"`
-		FundAccountJobQueue int            `json:"fundaccountjobqueue"`
+		AvailableBalance        types.Currency `json:"availablebalance"`
+		BalanceTarget           types.Currency `json:"balancetarget"`
+		FundAccountJobQueueSize int            `json:"fundaccountjobqueuesize"`
 
 		// Job Queues
 		BackupJobQueueSize       int `json:"backupjobqueuesize"`
