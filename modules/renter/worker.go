@@ -148,7 +148,7 @@ func (w *worker) managedBlockUntilReady() bool {
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the
 // worker should exit.
-func (w *worker) managedUpdateCache() (<-chan time.Time, bool) {
+func (w *worker) managedUpdateCache() (chan struct{}, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -157,7 +157,12 @@ func (w *worker) managedUpdateCache() (<-chan time.Time, bool) {
 		return nil, false
 	}
 	w.cachedContractUtility = utility
-	return time.After(workerCacheTimeout), true
+	c := make(chan struct{})
+	go func() {
+		<-time.After(workerCacheTimeout)
+		close(c)
+	}()
+	return c, true
 }
 
 // staticKilled is a convenience function to determine if a worker has been
