@@ -430,7 +430,8 @@ curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
 ```
 
 Returns the alerts of the Sia instance sorted by severity from highest to
-lowest.
+lowest and alerts sorted by category in criticalallerts, erroralerts and
+warningalerts.
 
 ### JSON Response
 > JSON Response Example
@@ -442,9 +443,33 @@ lowest.
       "cause": "wallet is locked",
       "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
       "module": "contractor",
-      "severity": "warning",
+      "severity": "warning"
     }
   ],
+  "criticalalerts": [
+    {
+      "cause": "cause of a critical alert",
+      "msg": "a critical issue has happened",
+      "module": "contractor",
+      "severity": "critical"
+    }
+  ],
+  "erroralerts": [
+    {
+      "cause": "cause of an error alert",
+      "msg": "an error alert has happened",
+      "module": "contractor",
+      "severity": "error"
+    }
+  ],
+  "warningalerts": [
+    {
+      "cause": "cause of a warning alert",
+      "msg": "a warning alert has happened",
+      "module": "contractor",
+      "severity": "warning"
+    }
+  ]
 }
 ```
 **cause** | string  
