@@ -365,7 +365,7 @@ func main() {
 		siaDir = build.SiaDir()
 	}
 
-	// Check for CriticalAlerts
+	// Check for Critical Alerts
 	alerts, err := httpClient.DaemonAlertsGet()
 	if err == nil {
 		for _, a := range alerts.CriticalAlerts {

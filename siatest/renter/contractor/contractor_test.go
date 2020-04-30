@@ -71,7 +71,6 @@ func TestContractorOne(t *testing.T) {
 	subTests := []test{
 		{"TestContractFunding", testContractFunding},
 		{"TestContractorIncompleteMaintenanceAlert", testContractorIncompleteMaintenanceAlert},
-		{"TestContractorPreregisteredAlerts", testContractorPreregisteredAlerts},
 	}
 
 	// Run tests
@@ -189,33 +188,6 @@ func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGrou
 		}
 		return nil
 	})
-}
-
-// testContractorPreregisteredAlerts tests that preregistered alerts are
-// returned correctly.
-func testContractorPreregisteredAlerts(t *testing.T, tg *siatest.TestGroup) {
-	// The renter shouldn't have any alerts apart from the pre-registered
-	// testing alerts.
-	r := tg.Renters()[0]
-	dag, err := r.DaemonAlertsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(dag.Alerts) != 12 {
-		t.Fatal("number of alerts is not 12")
-	}
-
-	if len(dag.CriticalAlerts) != 4 {
-		t.Fatal("number of critical alerts is not 4")
-	}
-
-	if len(dag.ErrorAlerts) != 4 {
-		t.Fatal("number of error alerts is not 4")
-	}
-
-	if len(dag.WarningAlerts) != 4 {
-		t.Fatal("number of warning alerts is not 4")
-	}
 }
 
 // TestRemoveRecoverableContracts makes sure that recoverable contracts which
