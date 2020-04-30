@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"bytes"
 	"context"
 	"testing"
 
@@ -12,15 +11,11 @@ import (
 // newReadSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, ProgramData, Costs, Costs, error) {
-	b := newProgramBuilder(pt, uint64(crypto.HashSize)+2*8, 1)
-	err := b.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
-	if err != nil {
-		return nil, nil, Costs{}, Costs{}, err
-	}
-	costs1 := b.Costs
-	instructions, programData, finalCosts, err := b.Finish()
-	return instructions, programData, costs1, finalCosts, err
+func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, RunningProgramValues, ProgramValues, error) {
+	b := newProgramBuilder()
+	b.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
+	program, runningValues, finalValues, err := b.Finalize(pt)
+	return program, runningValues[1], finalValues, err
 }
 
 // TestInstructionReadSector tests executing a program with a single
@@ -36,17 +31,15 @@ func TestInstructionReadSector(t *testing.T) {
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
 	root := so.sectorRoots[0]
-	instructions, programData, costs1, finalCosts, err := newReadSectorProgram(readLen, 0, root, true, pt)
+	program, runningValues, finalValues, err := newReadSectorProgram(readLen, 0, root, true, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := bytes.NewReader(programData)
-	dataLen := uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
-	// Verify the costs.
-	err = testCompareProgramCosts(pt, instructions, finalCosts, programData)
+	// Verify the values.
+	err = testCompareProgramValues(pt, program, finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,12 +57,12 @@ func TestInstructionReadSector(t *testing.T) {
 				Proof:         []crypto.Hash{},
 				Output:        outputData,
 			},
-			costs1,
+			runningValues,
 		},
 	}
 
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, finalCosts.ExecutionCost, finalCosts.Collateral, so, dataLen, r)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,15 +82,13 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, programData, costs1, finalCosts, err = newReadSectorProgram(length, offset, so.sectorRoots[0], true, pt)
+	program, runningValues, finalValues, err = newReadSectorProgram(length, offset, so.sectorRoots[0], true, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r = bytes.NewReader(programData)
-	dataLen = uint64(len(programData))
 
-	// Verify the costs.
-	err = testCompareProgramCosts(pt, instructions, finalCosts, programData)
+	// Verify the values.
+	err = testCompareProgramValues(pt, program, finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,12 +106,12 @@ func TestInstructionReadSector(t *testing.T) {
 				Proof:         proof,
 				Output:        outputData,
 			},
-			costs1,
+			runningValues,
 		},
 	}
 
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, finalCosts.ExecutionCost, finalCosts.Collateral, so, dataLen, r)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}

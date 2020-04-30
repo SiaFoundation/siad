@@ -1,8 +1,10 @@
 package modules
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
 
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -14,10 +16,16 @@ type (
 		Specifier InstructionSpecifier
 		Args      []byte
 	}
-	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
-	Program []Instruction
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
+	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
+	Program struct {
+		Instructions []Instruction
+		Data         io.Reader
+		DataLen      uint64
+	}
+	// ProgramData contains the raw byte data for the program.
+	ProgramData []byte
 )
 
 const (
@@ -91,6 +99,14 @@ var (
 	// instruction.
 	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
 )
+
+// NewProgram returns a new empty program.
+func NewProgram() Program {
+	return Program{
+		Instructions: make([]Instruction, 0),
+		Data:         bytes.NewReader(make(ProgramData, 0)),
+	}
+}
 
 // RPCHasSectorInstruction creates an Instruction from arguments.
 func RPCHasSectorInstruction(merkleRootOffset uint64) Instruction {
@@ -241,7 +257,7 @@ func MDMReadCollateral() types.Currency {
 
 // ReadOnly returns true if the program consists of no write instructions.
 func (p Program) ReadOnly() bool {
-	for _, instruction := range p {
+	for _, instruction := range p.Instructions {
 		switch instruction.Specifier {
 		case SpecifierAppend:
 			return false

@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -39,19 +38,14 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Construct the program.
 
-	numAppend, instrLenAppend := uint64(3), modules.SectorSize
-	numDropSectors, instrLenDropSectors := uint64(3), uint64(8)
-	numInstructions := numAppend + numDropSectors
-	dataLen := numAppend*instrLenAppend + numDropSectors*instrLenDropSectors
 	pt := newTestPriceTable()
-	b := newProgramBuilder(pt, dataLen, numInstructions)
+	b := newProgramBuilder()
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	err := b.AddAppendInstruction(sectorData1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	costs1 := b.Costs
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
@@ -59,7 +53,6 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	costs2 := b.Costs
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
@@ -67,36 +60,26 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	costs3 := b.Costs
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
-	err = b.AddDropSectorsInstruction(0, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	costs4 := b.Costs
+	b.AddDropSectorsInstruction(0, true)
 
 	// Drop one sector.
-	err = b.AddDropSectorsInstruction(1, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	costs5 := b.Costs
+	b.AddDropSectorsInstruction(1, true)
 
 	// Drop two remaining sectors.
-	err = b.AddDropSectorsInstruction(2, true)
+	b.AddDropSectorsInstruction(2, true)
+
+	program, runningValues, finalValues, err := b.Finalize(pt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	costs6 := b.Costs
-
-	instructions, programData, finalCosts, err := b.Finish()
-	if err != nil {
-		t.Fatal(err)
+	if len(runningValues) != len(program.Instructions)+1 {
+		t.Fatalf("expected %v running values, got %v", len(program.Instructions), len(runningValues))
 	}
 
-	err = testCompareProgramCosts(pt, instructions, finalCosts, programData)
+	err = testCompareProgramValues(pt, program, finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +92,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots1),
 				Proof:         []crypto.Hash{},
 			},
-			costs1,
+			runningValues[1],
 		},
 		{
 			output{
@@ -117,7 +100,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
 				Proof:         []crypto.Hash{},
 			},
-			costs2,
+			runningValues[2],
 		},
 		{
 			output{
@@ -125,7 +108,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
 				Proof:         []crypto.Hash{},
 			},
-			costs3,
+			runningValues[3],
 		},
 		// 0 sectors dropped.
 		{
@@ -134,7 +117,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
 				Proof:         []crypto.Hash{},
 			},
-			costs4,
+			runningValues[4],
 		},
 		// 1 sector dropped.
 		{
@@ -143,7 +126,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
 				Proof:         []crypto.Hash{cachedMerkleRoot(merkleRoots2)},
 			},
-			costs5,
+			runningValues[5],
 		},
 		// 2 remaining sectors dropped.
 		{
@@ -152,13 +135,13 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{}),
 				Proof:         []crypto.Hash{},
 			},
-			costs6,
+			runningValues[6],
 		},
 	}
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, finalCosts.ExecutionCost, finalCosts.Collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}

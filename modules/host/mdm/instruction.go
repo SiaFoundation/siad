@@ -21,34 +21,39 @@ type instruction interface {
 	// sticks around beyond the scope of the instruction until the program gets
 	// committed/canceled.
 	Memory() uint64
+	// ReadOnly indicates whether or not the instruction is just readonly. A
+	// readonly instruction doesn't cause the contract's merkle root to change
+	// and can therefore be executed parallel to other readonly instructions.
+	ReadOnly() bool
 	// Time returns the amount of time the execution of the instruction takes.
 	Time() (uint64, error)
 }
 
-// instructionCosts returns all costs for the instruction.
-func instructionCosts(i instruction) (Costs, error) {
-	costs := Costs{}
+// instructionValues returns all values for the instruction.
+func instructionValues(i instruction) (InstructionValues, error) {
+	values := InstructionValues{}
 	var err error
-	costs.ExecutionCost, costs.Refund, err = i.Cost()
+	values.ExecutionCost, values.Refund, err = i.Cost()
 	if err != nil {
-		return Costs{}, err
+		return InstructionValues{}, err
 	}
-	costs.Collateral = i.Collateral()
-	costs.Memory = i.Memory()
-	costs.Time, err = i.Time()
+	values.Collateral = i.Collateral()
+	values.Memory = i.Memory()
+	values.Time, err = i.Time()
 	if err != nil {
-		return Costs{}, err
+		return InstructionValues{}, err
 	}
-	return costs, nil
+	values.ReadOnly = i.ReadOnly()
+	return values, nil
 }
 
 // Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
 	output
 
-	// Costs contains the associated costs for the output including execution
-	// cost, potential refund and additional collateral.
-	Costs Costs
+	// RunningValues contains the running program values for the output
+	// including execution cost, potential refund and additional collateral.
+	RunningValues RunningProgramValues
 }
 
 // output is the type returned by all instructions when being executed.

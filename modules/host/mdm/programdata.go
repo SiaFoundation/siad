@@ -10,16 +10,14 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
-
-// ProgramData contains the raw byte data for the program.
-type ProgramData []byte
 
 // programData is a buffer for the program data. It will read packets from r and
 // append them to data.
 type programData struct {
 	// data contains the already received data.
-	data ProgramData
+	data modules.ProgramData
 
 	// staticLength is the expected length of the program data. This is the
 	// amount of data that was paid for and not more than that will be read from

@@ -68,6 +68,11 @@ func (i *instructionHasSector) Memory() uint64 {
 	return modules.MDMHasSectorMemory()
 }
 
+// ReadOnly for the 'HasSector' instruction is 'true'.
+func (i *instructionHasSector) ReadOnly() bool {
+	return true
+}
+
 // Execute executes the 'HasSector' instruction.
 func (i *instructionHasSector) Execute(prevOutput output) output {
 	// Fetch the operands.

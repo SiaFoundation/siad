@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"bytes"
 	"context"
 	"testing"
 
@@ -12,15 +11,11 @@ import (
 // newHasSectorProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (modules.Program, ProgramData, Costs, Costs, error) {
-	b := newProgramBuilder(pt, uint64(crypto.HashSize), 1)
-	err := b.AddHasSectorInstruction(merkleRoot)
-	if err != nil {
-		return nil, nil, Costs{}, Costs{}, err
-	}
-	costs1 := b.Costs
-	instructions, programData, finalCosts, err := b.Finish()
-	return instructions, programData, costs1, finalCosts, err
+func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) (modules.Program, RunningProgramValues, ProgramValues, error) {
+	b := newProgramBuilder()
+	b.AddHasSectorInstruction(merkleRoot)
+	program, runningValues, finalValues, err := b.Finalize(pt)
+	return program, runningValues[1], finalValues, err
 }
 
 // TestInstructionHasSector tests executing a program with a single
@@ -41,16 +36,15 @@ func TestInstructionHasSector(t *testing.T) {
 	so.sectorRoots = randomSectorRoots(1)
 	sectorRoot = so.sectorRoots[0]
 	pt := newTestPriceTable()
-	instructions, programData, costs1, finalCosts, err := newHasSectorProgram(sectorRoot, pt)
+	program, runningValues, finalValues, err := newHasSectorProgram(sectorRoot, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dataLen := uint64(len(programData))
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
-	// Verify the costs.
-	err = testCompareProgramCosts(pt, instructions, finalCosts, programData)
+	// Verify the values.
+	err = testCompareProgramValues(pt, program, finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,12 +58,12 @@ func TestInstructionHasSector(t *testing.T) {
 				Proof:         []crypto.Hash{},
 				Output:        []byte{1},
 			},
-			costs1,
+			runningValues,
 		},
 	}
 
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, finalCosts.ExecutionCost, finalCosts.Collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}

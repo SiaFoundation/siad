@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -11,142 +12,113 @@ import (
 // programBuilder is a helper used for constructing programs one instruction at
 // a time.
 type programBuilder struct {
-	// Costs contains the current running costs in the builder.
-	Costs Costs
-
-	pt              *modules.RPCPriceTable
-	programData     ProgramData
-	programDataLen  uint64
-	dataOffset      uint64 // the data offset for the next instruction
-	instructions    modules.Program
-	numInstructions uint64 // set when creating the builder
+	dataBuf      *bytes.Buffer
+	dataOffset   uint64 // the data offset for the next instruction
+	instructions []modules.Instruction
 }
 
 // newProgramBuilder creates a new programBuilder.
-func newProgramBuilder(pt *modules.RPCPriceTable, dataLen, numInstructions uint64) programBuilder {
+func newProgramBuilder() programBuilder {
 	return programBuilder{
-		Costs: InitialProgramCosts(pt, dataLen, numInstructions),
-
-		pt:              pt,
-		programData:     make(ProgramData, dataLen),
-		programDataLen:  dataLen,
-		dataOffset:      0,
-		instructions:    make(modules.Program, 0, numInstructions),
-		numInstructions: numInstructions,
+		dataBuf:      new(bytes.Buffer),
+		dataOffset:   0,
+		instructions: make([]modules.Instruction, 0),
 	}
 }
 
 // AddAppendInstruction adds an append instruction to the builder, updating its
 // internal state.
-func (b *programBuilder) AddAppendInstruction(data ProgramData, merkleProof bool) error {
+func (b *programBuilder) AddAppendInstruction(data modules.ProgramData, merkleProof bool) error {
 	if uint64(len(data)) != modules.SectorSize {
 		return fmt.Errorf("expected length of data to be the size of a sector %v, was %v", modules.SectorSize, len(data))
 	}
-	offsetIncrement := modules.SectorSize
-	if b.dataOffset+offsetIncrement > b.programDataLen {
-		return fmt.Errorf("cannot add append instruction, the length of the program data would surpass the provided length %v", b.programDataLen)
-	}
 
-	i := NewAppendInstruction(b.dataOffset, merkleProof)
+	i := NewAppendInstruction(uint64(b.dataBuf.Len()), merkleProof)
 	b.instructions = append(b.instructions, i)
 	// Update the program data.
-	copy(b.programData[b.dataOffset:b.dataOffset+modules.SectorSize], data)
-	b.dataOffset += offsetIncrement
-	// Get costs for an append instruction.
-	executionCost, refund := modules.MDMAppendCost(b.pt)
-	costs := Costs{executionCost, refund, modules.MDMAppendCollateral(b.pt), modules.MDMAppendMemory(), modules.MDMTimeAppend}
-	// Update costs.
-	b.UpdateCosts(costs)
+	binary.Write(b.dataBuf, binary.LittleEndian, data)
 
 	return nil
 }
 
 // AddDropSectorsInstruction adds a dropsectors instruction to the builder,
 // updating its internal state.
-func (b *programBuilder) AddDropSectorsInstruction(numSectors uint64, merkleProof bool) error {
-	offsetIncrement := uint64(8)
-	if b.dataOffset+offsetIncrement > b.programDataLen {
-		return fmt.Errorf("cannot add dropsectors instruction, the length of the program data would surpass the provided length %v", b.programDataLen)
-	}
-
-	i := NewDropSectorsInstruction(b.dataOffset, merkleProof)
+func (b *programBuilder) AddDropSectorsInstruction(numSectors uint64, merkleProof bool) {
+	i := NewDropSectorsInstruction(uint64(b.dataBuf.Len()), merkleProof)
 	b.instructions = append(b.instructions, i)
 	// Update the program data.
-	binary.LittleEndian.PutUint64(b.programData[b.dataOffset:b.dataOffset+8], numSectors)
-	b.dataOffset += offsetIncrement
-	// Get costs for a dropsectors instruction.
-	executionCost, refund := modules.MDMDropSectorsCost(b.pt, numSectors)
-	costs := Costs{executionCost, refund, modules.MDMDropSectorsCollateral(), modules.MDMDropSectorsMemory(), modules.MDMDropSectorsTime(numSectors)}
-	// Update costs.
-	b.UpdateCosts(costs)
-
-	return nil
+	binary.Write(b.dataBuf, binary.LittleEndian, numSectors)
 }
 
 // AddHasSectorInstruction adds a hassector instruction to the builder, updating
 // its internal state.
-func (b *programBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) error {
-	offsetIncrement := uint64(crypto.HashSize)
-	if b.dataOffset+offsetIncrement > b.programDataLen {
-		return fmt.Errorf("cannot add hassector instruction, the length of the program data would surpass the provided length %v", b.programDataLen)
-	}
-
-	i := NewHasSectorInstruction(b.dataOffset)
+func (b *programBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
+	i := NewHasSectorInstruction(uint64(b.dataBuf.Len()))
 	b.instructions = append(b.instructions, i)
 	// Update the program data.
-	copy(b.programData[b.dataOffset:b.dataOffset+crypto.HashSize], merkleRoot[:])
-	b.dataOffset += offsetIncrement
-	// Get costs for a hassector instruction.
-	executionCost, refund := modules.MDMHasSectorCost(b.pt)
-	costs := Costs{executionCost, refund, modules.MDMHasSectorCollateral(), modules.MDMHasSectorMemory(), modules.MDMTimeHasSector}
-	// Update costs.
-	b.UpdateCosts(costs)
-
-	return nil
+	binary.Write(b.dataBuf, binary.LittleEndian, merkleRoot[:])
 }
 
 // AddReadSectorInstruction adds a readsector instruction to the builder,
 // updating its internal state.
-func (b *programBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) error {
-	offsetIncrement := uint64(2*8 + crypto.HashSize)
-	if b.dataOffset+offsetIncrement > b.programDataLen {
-		return fmt.Errorf("cannot add readsector instruction, the length of the program data would surpass the provided length %v", b.programDataLen)
-	}
-
-	i := NewReadSectorInstruction(b.dataOffset, b.dataOffset+8, b.dataOffset+16, merkleProof)
+func (b *programBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
+	dataOffset := uint64(b.dataBuf.Len())
+	i := NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
 	b.instructions = append(b.instructions, i)
 	// Update the program data.
-	binary.LittleEndian.PutUint64(b.programData[b.dataOffset:b.dataOffset+8], length)
-	binary.LittleEndian.PutUint64(b.programData[b.dataOffset+8:b.dataOffset+16], offset)
-	copy(b.programData[b.dataOffset+16:b.dataOffset+16+crypto.HashSize], merkleRoot[:])
-	b.dataOffset += offsetIncrement
-	// Get costs for a readsector instruction.
-	executionCost, refund := modules.MDMReadCost(b.pt, length)
-	costs := Costs{executionCost, refund, modules.MDMReadCollateral(), modules.MDMReadMemory(), modules.MDMTimeReadSector}
-	// Update costs.
-	b.UpdateCosts(costs)
-
-	return nil
+	binary.Write(b.dataBuf, binary.LittleEndian, length)
+	binary.Write(b.dataBuf, binary.LittleEndian, offset)
+	binary.Write(b.dataBuf, binary.LittleEndian, merkleRoot[:])
 }
 
-// UpdateCosts updates the running costs for the program.
-func (b *programBuilder) UpdateCosts(newCosts Costs) {
-	b.Costs = b.Costs.Update(b.pt, newCosts)
-}
+// Finalize finishes building the program and returns the final state including
+// the instruction list, values for every step, final values and program data.
+func (b *programBuilder) Finalize(pt *modules.RPCPriceTable) (modules.Program, []RunningProgramValues, ProgramValues, error) {
+	programData := b.dataBuf.Bytes()
+	dataLen := uint64(len(programData))
 
-// Finish finishes building the program and returns the final state including
-// the instruction list, program data and final costs.
-func (b *programBuilder) Finish() (modules.Program, ProgramData, Costs, error) {
-	// The number of instructions specified should equal the number added.
-	if uint64(len(b.instructions)) != b.numInstructions {
-		return nil, nil, Costs{}, fmt.Errorf("expected %v instructions, received %v", b.numInstructions, len(b.instructions))
+	// Store intermediate values for every instruction plus the initial program
+	// state.
+	allRunningValues := make([]RunningProgramValues, 0, len(b.instructions)+1)
+
+	// Get the initial program values.
+	runningValues := initialProgramValues(pt, dataLen, uint64(len(b.instructions)))
+	allRunningValues = append(allRunningValues, runningValues)
+
+	// Iterate over instructions, adding their costs and saving running costs.
+	for _, i := range b.instructions {
+		var values InstructionValues
+		switch i.Specifier {
+		case modules.SpecifierAppend:
+			executionCost, refund := modules.MDMAppendCost(pt)
+			values = InstructionValues{executionCost, refund, modules.MDMAppendCollateral(pt), modules.MDMAppendMemory(), modules.MDMTimeAppend, false}
+		case modules.SpecifierDropSectors:
+			numSectorsOffset := binary.LittleEndian.Uint64(i.Args[:8])
+			numSectors := binary.LittleEndian.Uint64(programData[numSectorsOffset : numSectorsOffset+8])
+			executionCost, refund := modules.MDMDropSectorsCost(pt, numSectors)
+			values = InstructionValues{executionCost, refund, modules.MDMDropSectorsCollateral(), modules.MDMDropSectorsMemory(), modules.MDMDropSectorsTime(numSectors), false}
+		case modules.SpecifierHasSector:
+			executionCost, refund := modules.MDMHasSectorCost(pt)
+			values = InstructionValues{executionCost, refund, modules.MDMHasSectorCollateral(), modules.MDMHasSectorMemory(), modules.MDMTimeHasSector, true}
+		case modules.SpecifierReadSector:
+			lengthOffset := binary.LittleEndian.Uint64(i.Args[16:24])
+			length := binary.LittleEndian.Uint64(programData[lengthOffset : lengthOffset+8])
+			executionCost, refund := modules.MDMReadCost(pt, length)
+			values = InstructionValues{executionCost, refund, modules.MDMReadCollateral(), modules.MDMReadMemory(), modules.MDMTimeReadSector, true}
+		default:
+			return modules.Program{}, nil, ProgramValues{}, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
+		}
+		runningValues.addValues(pt, values)
+		allRunningValues = append(allRunningValues, runningValues)
 	}
-	// The data length specified should equal the amount added.
-	if b.dataOffset != b.programDataLen {
-		return nil, nil, Costs{}, fmt.Errorf("expected %v bytes of data, received %v", b.programDataLen, b.dataOffset)
+
+	// Finalize the program costs.
+	finalValues := runningValues.finalizeProgramValues(pt)
+
+	program := modules.Program{
+		Instructions: b.instructions,
+		Data:         bytes.NewReader(programData),
+		DataLen:      dataLen,
 	}
-
-	b.Costs = b.Costs.FinalizeProgramCosts(b.pt)
-
-	return b.instructions, b.programData, b.Costs, nil
+	return program, allRunningValues, finalValues, nil
 }

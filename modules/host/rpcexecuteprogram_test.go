@@ -102,7 +102,7 @@ func (rhp *renterHostPair) executeProgram(epr modules.RPCExecuteProgramRequest, 
 
 	// Read the responses.
 	var resp modules.RPCExecuteProgramResponse
-	for range epr.Program {
+	for range epr.Instructions {
 		// Read the response.
 		err = modules.RPCRead(stream, &resp)
 		if err != nil {
@@ -168,7 +168,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    rhp.fcid, // TODO: leave this empty since it's not required for a readonly program.
-		Program:           program,
+		Instructions:      program,
 		ProgramDataLength: uint64(len(data)),
 	}
 

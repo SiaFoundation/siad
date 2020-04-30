@@ -9,15 +9,15 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// testCompareProgramCosts compares the costs of a program calculated during a
-// test with the expected costs returned from EstimateProgramCosts.
-func testCompareProgramCosts(pt *modules.RPCPriceTable, p modules.Program, costs Costs, programData ProgramData) error {
-	expectedCosts, err := EstimateProgramCosts(p, pt, uint64(len(programData)), bytes.NewReader(programData))
+// testCompareProgramValues compares the values of a program calculated during a
+// test with the expected values returned from testProgramValues.
+func testCompareProgramValues(pt *modules.RPCPriceTable, p modules.Program, values ProgramValues) error {
+	expectedValues, err := testProgramValues(p, pt)
 	if err != nil {
 		return err
 	}
-	if !costs.Equals(expectedCosts) {
-		return fmt.Errorf("expected program costs %v, got %v", expectedCosts.HumanString(), costs.HumanString())
+	if !values.Equals(expectedValues) {
+		return fmt.Errorf("expected program values %v, got %v", expectedValues.HumanString(), values.HumanString())
 	}
 	return nil
 }
@@ -60,9 +60,9 @@ func testCompareOutputs(actualOutputs <-chan Output, expectedOutputs []Output) (
 			return Output{}, fmt.Errorf("expected output data %v, got %v", expectedOutput.Output, output.Output)
 		}
 
-		// Check costs.
-		if !output.Costs.Equals(expectedOutput.Costs) {
-			return Output{}, fmt.Errorf("expected output costs %v, got %v", output.Costs.HumanString(), expectedOutput.Costs.HumanString())
+		// Check values.
+		if !output.RunningValues.Equals(expectedOutput.RunningValues) {
+			return Output{}, fmt.Errorf("expected output values %v, got %v", output.RunningValues.HumanString(), expectedOutput.RunningValues.HumanString())
 		}
 
 		numOutputs++

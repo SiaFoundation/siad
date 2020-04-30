@@ -54,10 +54,15 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Extract the arguments.
-	fcid, program, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
+	fcid, instructions, dataLength := epr.FileContractID, epr.Instructions, epr.ProgramDataLength
 
 	// If the program isn't readonly we need to acquire a lock on the storage
 	// obligation.
+	program := modules.Program{
+		Instructions: instructions,
+		Data:         stream,
+		DataLen:      dataLength,
+	}
 	readonly := program.ReadOnly()
 	if !readonly {
 		h.managedLockStorageObligation(fcid)
@@ -85,7 +90,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Execute the program.
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, amountPaid, collateralBudget, sos, dataLength, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, amountPaid, collateralBudget, sos)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
@@ -105,23 +110,23 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 		// Prepare the RPC response.
 		resp := modules.RPCExecuteProgramResponse{
-			AdditionalCollateral: output.Costs.Collateral,
+			AdditionalCollateral: output.RunningValues.Collateral,
 			Error:                output.Error,
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
 			Output:               output.Output,
-			PotentialRefund:      output.Costs.Refund,
+			PotentialRefund:      output.RunningValues.Refund,
 			Proof:                output.Proof,
-			TotalCost:            output.Costs.ExecutionCost,
+			TotalCost:            output.RunningValues.ExecutionCost,
 		}
 		// Update cost and refund.
-		if output.Costs.ExecutionCost.Cmp(output.Costs.Refund) < 0 {
+		if output.RunningValues.ExecutionCost.Cmp(output.RunningValues.Refund) < 0 {
 			err = errors.New("executionCost can never be smaller than the refund")
 			build.Critical(err)
 			return err
 		}
-		cost = output.Costs.ExecutionCost
-		refund = amountPaid.Add(output.Costs.Refund).Sub(cost)
+		cost = output.RunningValues.ExecutionCost
+		refund = amountPaid.Add(output.RunningValues.Refund).Sub(cost)
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 		// Send the response to the peer.

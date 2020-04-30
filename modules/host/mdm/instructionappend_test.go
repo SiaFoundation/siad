@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"bytes"
 	"context"
 	"testing"
 
@@ -12,15 +11,14 @@ import (
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
-func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, ProgramData, Costs, Costs, error) {
-	b := newProgramBuilder(pt, uint64(len(sectorData)), 1)
+func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, RunningProgramValues, ProgramValues, error) {
+	b := newProgramBuilder()
 	err := b.AddAppendInstruction(sectorData, merkleProof)
 	if err != nil {
-		return nil, nil, Costs{}, Costs{}, err
+		return modules.Program{}, RunningProgramValues{}, ProgramValues{}, err
 	}
-	costs1 := b.Costs
-	instructions, programData, finalCosts, err := b.Finish()
-	return instructions, programData, costs1, finalCosts, err
+	program, runningValues, finalValues, err := b.Finalize(pt)
+	return program, runningValues[1], finalValues, err
 }
 
 // TestInstructionSingleAppend tests executing a program with a single
@@ -34,14 +32,13 @@ func TestInstructionSingleAppend(t *testing.T) {
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
-	instructions, programData, costs1, finalCosts, err := newAppendProgram(appendData1, true, pt)
+	program, runningValues, finalValues, err := newAppendProgram(appendData1, true, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dataLen := uint64(len(programData))
 
-	// Verify the costs.
-	err = testCompareProgramCosts(pt, instructions, finalCosts, programData)
+	// Verify the values.
+	err = testCompareProgramValues(pt, program, finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,15 +51,18 @@ func TestInstructionSingleAppend(t *testing.T) {
 				NewMerkleRoot: crypto.MerkleRoot(appendData1),
 				Proof:         []crypto.Hash{},
 			},
-			costs1,
+			runningValues,
 		},
 	}
 
 	// Execute it.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, finalCosts.ExecutionCost, finalCosts.Collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if finalize == nil {
+		t.Fatal("could not retrieve finalize function")
 	}
 
 	// Check outputs.
@@ -99,15 +99,13 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	instructions, programData, costs2, finalCosts, err := newAppendProgram(appendData2, true, pt)
+	program, runningValues, finalValues, err = newAppendProgram(appendData2, true, pt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	programData = appendData2
-	dataLen = uint64(len(programData))
 	ics := so.ContractSize()
 
-	err = testCompareProgramCosts(pt, instructions, finalCosts, programData)
+	err = testCompareProgramValues(pt, program, finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,12 +118,12 @@ func TestInstructionSingleAppend(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}),
 				Proof:         []crypto.Hash{appendDataRoot1},
 			},
-			costs2,
+			runningValues,
 		},
 	}
 
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, finalCosts.ExecutionCost, finalCosts.Collateral, so, dataLen, bytes.NewReader(programData))
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}
