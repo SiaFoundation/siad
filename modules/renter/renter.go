@@ -107,10 +107,7 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
-	// ProvidePayment takes a stream and various payment details and handles the
-	// payment by sending and processing payment request and response objects.
-	// Returns an error in case of failure.
-	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error
+	modules.PaymentProvider
 
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
