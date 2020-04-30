@@ -306,6 +306,12 @@ type ContractUtility struct {
 // Cmp compares two ContractUtility values. If x has better utility, a value >0
 // will be returned. If y has better utility, a value <0 will be returned. If
 // the utility of the two contracts is equivalent, 0 will be returned.
+//
+// Contracts are compared by the BadContract, GoodForRenew, and GoodForUpload
+// fields. When comparing, BadContract status takes priority over GoodForRenew
+// status, which takes priority over GoodForUpload status. Cmp will always favor
+// the most useful contract - !BadContract > BadContract, GoodForRenew >
+// !GoodForRenew, GoodForUpload > !GoodForUpload.
 func (x ContractUtility) Cmp(y ContractUtility) int {
 	// BadContract Check
 	if x.BadContract && !y.BadContract {
