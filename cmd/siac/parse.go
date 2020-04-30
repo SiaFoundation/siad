@@ -380,21 +380,30 @@ func fmtDuration(dur time.Duration) string {
 // percentages that add up to 100. They will be returned in the same order that
 // they were provided
 func parsePercentages(values []float64) []float64 {
-	// Create a map to track information of the values in the slice and
-	// calculate the subTotal of the floor values
-	type info struct {
-		index    int
-		floorVal float64
+	// Create a slice of percentInfo to track information of the values in the
+	// slice and calculate the subTotal of the floor values
+	type percentInfo struct {
+		index       int
+		floorVal    float64
+		originalVal float64
 	}
-	m := make(map[float64]*info)
+	var percentages []*percentInfo
 	var subTotal float64
 	for i, v := range values {
 		fv := math.Floor(v)
-		m[v] = &info{
-			index:    i,
-			floorVal: fv,
-		}
+		percentages = append(percentages, &percentInfo{
+			index:       i,
+			floorVal:    fv,
+			originalVal: v,
+		})
 		subTotal += fv
+	}
+
+	// Sanity check and regression check that all values were added. Fine to
+	// continue through in production as result will only be a minor UX
+	// descrepency
+	if len(percentages) != len(values) {
+		build.Critical("Not all values added to percentage slice; potential duplicate value error")
 	}
 
 	// Determine the difference to 100 from the subTotal of the floor values
@@ -408,30 +417,25 @@ func parsePercentages(values []float64) []float64 {
 	}
 
 	// Sort the slice based on the size of the decimal value
-	sort.Slice(values, func(i, j int) bool {
-		_, a := math.Modf(values[i])
-		_, b := math.Modf(values[j])
+	sort.Slice(percentages, func(i, j int) bool {
+		_, a := math.Modf(percentages[i].originalVal)
+		_, b := math.Modf(percentages[j].originalVal)
 		return a > b
 	})
 
 	// Divide the diff amongst the floor values from largest decimal value to
 	// the smallest to decide which values get rounded up.
-	for _, v := range values {
+	for _, pi := range percentages {
 		if diff <= 0 {
 			break
 		}
-		info, ok := m[v]
-		if !ok {
-			build.Critical("value not found in map, this should not happen")
-			continue
-		}
-		info.floorVal++
+		pi.floorVal++
 		diff--
 	}
 
 	// Reorder the slice and return
-	for _, v := range m {
-		values[v.index] = v.floorVal
+	for _, pi := range percentages {
+		values[pi.index] = pi.floorVal
 	}
 
 	return values
