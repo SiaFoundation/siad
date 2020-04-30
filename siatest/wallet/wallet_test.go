@@ -865,6 +865,19 @@ func TestWalletVerifyPassword(t *testing.T) {
 		t.Error("Password should not be valid")
 	}
 
+	// Verify that the Primary Seed will return valid
+	wsg, err := wallet.WalletSeedsGet()
+	if err != nil {
+		t.Error(err)
+	}
+	wvpg, err = wallet.WalletVerifyPasswordGet(wsg.PrimarySeed)
+	if err != nil {
+		t.Error(err)
+	}
+	if !wvpg.Valid {
+		t.Error("Primary Seed should be valid")
+	}
+
 	// Reinit the wallet by using a specific password.
 	seed := modules.Seed{}
 	fastrand.Read(seed[:])

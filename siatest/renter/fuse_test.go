@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
@@ -43,11 +43,8 @@ func siaPathToFusePath(sp modules.SiaPath, fuseRoot modules.SiaPath, mountpoint 
 
 // TestFuse tests the renter's Fuse filesystem support. This test is only run on Linux.
 func TestFuse(t *testing.T) {
-	if testing.Short() {
+	if !build.VLONG {
 		t.SkipNow()
-	}
-	if runtime.GOOS != "linux" {
-		t.Skip("Skipping Fuse test on non-Linux OS")
 	}
 	t.Parallel()
 

@@ -136,6 +136,37 @@ type SafeContract struct {
 	revisionMu sync.Mutex
 }
 
+// CommitPaymentIntent will commit the intent to pay a host for an rpc by
+// committing the signed txn in the contract's header.
+func (c *SafeContract) CommitPaymentIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency, rpc types.Specifier) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// construct new header
+	newHeader := c.header
+	newHeader.Transaction = signedTxn
+
+	// TODO update contract header to support 'FundAccountSpending' or
+	// 'UnknownSpending', depending on the RPC
+
+	if err := c.applySetHeader(newHeader); err != nil {
+		return err
+	}
+	if err := c.headerFile.Sync(); err != nil {
+		return err
+	}
+	if err := t.SignalUpdatesApplied(); err != nil {
+		return err
+	}
+	c.unappliedTxns = nil
+	return nil
+}
+
+// LastRevision returns the most recent revision
+func (c *SafeContract) LastRevision() types.FileContractRevision {
+	return c.header.LastRevision()
+}
+
 // Metadata returns the metadata of a renter contract
 func (c *SafeContract) Metadata() modules.RenterContract {
 	c.mu.Lock()
@@ -157,6 +188,37 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 		SiafundFee:       h.SiafundFee,
 		Utility:          h.Utility,
 	}
+}
+
+// RecordPaymentIntent will records the changes we are about to make to the
+// revision in order to pay a host for an RPC.
+func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*writeaheadlog.Transaction, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	newHeader := c.header
+	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
+	newHeader.Transaction.TransactionSignatures = nil
+
+	// TODO update contract header to support 'FundAccountSpending' or
+	// 'UnknownSpending', depending on the RPC
+
+	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+		c.makeUpdateSetHeader(newHeader),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := <-t.SignalSetupComplete(); err != nil {
+		return nil, err
+	}
+	c.unappliedTxns = append(c.unappliedTxns, t)
+	return t, nil
+}
+
+// Sign will sign the given hash using the safecontract's secret key
+func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
+	return crypto.SignHash(hash, c.header.SecretKey)
 }
 
 // UpdateUtility updates the utility field of a contract.
