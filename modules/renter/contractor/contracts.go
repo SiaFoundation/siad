@@ -56,21 +56,6 @@ func (c *Contractor) managedUpdatePubKeyToContractIDMap() {
 	c.mu.Lock()
 	c.updatePubKeyToContractIDMap(contracts, bh)
 	c.mu.Unlock()
-
-	// Count the GFU contracts in the thing.
-	totalGFU := 0
-	for pk := range c.pubKeysToContractID {
-		var hpk types.SiaPublicKey
-		err := hpk.LoadString(pk)
-		if err != nil {
-			build.Critical("ur dumb")
-		}
-		utility, exists := c.ContractUtility(hpk)
-		if exists && utility.GoodForUpload {
-			totalGFU++
-		}
-	}
-	c.log.Printf("Contractor is reporting %v total GFU when using the ContractUtility lookup", totalGFU)
 }
 
 // updatePubKeyToContractIDMap updates the pubkeysToContractID map
