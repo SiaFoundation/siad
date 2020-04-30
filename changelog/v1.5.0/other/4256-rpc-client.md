@@ -1,0 +1,1 @@
+- add RPC client to the Renter
