@@ -143,24 +143,24 @@ func TestRPCConcurrentCalls(t *testing.T) {
 // It returns either a full sector read, partial sector read or has sector
 // program. Alongside the program and cost it returns a function that updates
 // the appropriate RPC tracker in the stats object.
-func randomMDMProgram(pair *renterHostPair, sectorRoot crypto.Hash) (program mdmProgram, cost types.Currency, updateStats func(stats *rpcStats)) {
+func randomMDMProgram(pair *renterHostPair, sectorRoot crypto.Hash) (program testMDMProgram, cost types.Currency, updateStats func(stats *rpcStats)) {
 	pt := pair.PriceTable()
 	var expectedDLBandwidth uint64
 	var expectedULBandwidth uint64
 
 	switch fastrand.Intn(3) {
 	case 0:
-		program = newRandomReadSectorProgram(pt, sectorRoot, true)
+		program = newTestReadSectorProgram(pt, sectorRoot, true)
 		expectedDLBandwidth = 10220
 		expectedULBandwidth = 18980
 		updateStats = func(stats *rpcStats) { stats.trackReadSector(true) }
 	case 1:
-		program = newRandomReadSectorProgram(pt, sectorRoot, false)
+		program = newTestReadSectorProgram(pt, sectorRoot, false)
 		expectedDLBandwidth = 10220
 		expectedULBandwidth = 18980
 		updateStats = func(stats *rpcStats) { stats.trackReadSector(false) }
 	case 2:
-		program = newRandomHasSectorProgram(pt, sectorRoot)
+		program = newTestHasSectorProgram(pt, sectorRoot)
 		expectedDLBandwidth = 7300
 		expectedULBandwidth = 18980
 		updateStats = func(stats *rpcStats) { stats.trackHasSector() }
@@ -189,7 +189,7 @@ func recoverFromError(t *testing.T, pair *renterHostPair, stats *rpcStats, errCh
 
 		// try to recover from insufficient balance
 		var recovered bool
-		if !recovered && strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
+		if strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
 			_, err = pair.FundEphemeralAccount(funding, false)
 			stats.trackFundEA()
 			recovered = err == nil
@@ -203,7 +203,7 @@ func recoverFromError(t *testing.T, pair *renterHostPair, stats *rpcStats, errCh
 			// it in the fastest way possible
 			err = pair.UpdatePriceTable(false)
 			if err != nil {
-				pair.UpdatePriceTable(true)
+				err = pair.UpdatePriceTable(true)
 				payByFC = true
 			}
 			stats.trackUpdatePT(payByFC)
@@ -221,42 +221,39 @@ func recoverFromError(t *testing.T, pair *renterHostPair, stats *rpcStats, errCh
 	}
 }
 
-// mdmProgram is a helper struct that contains all necessary details to execute
-// an MDM program to read a full (or partial) sector from the host
-type mdmProgram struct {
+// testMDMProgram is a helper struct that contains all necessary details to
+// execute an MDM program to read a full (or partial) sector from the host
+type testMDMProgram struct {
 	program modules.Program
 	data    []byte
 	cost    types.Currency
 }
 
-// newRandomReadSectorProgram is a helper function that creates a program to
+// newTestReadSectorProgram is a helper function that creates a program to
 // read data from the host. If full is set to true, the program will perform a
 // full sector read, if it is false we return a program that reads a random
 // couple of segments at random offset.
-func newRandomReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full bool) mdmProgram {
+func newTestReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full bool) testMDMProgram {
 	var offset uint64
-	var length uint64
-	if full {
-		offset = 0
-		length = modules.SectorSize
-	} else {
-		offset = uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
+	length := modules.SectorSize
+	if !full {
+		offset = fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize
 		length = uint64(crypto.SegmentSize) * (fastrand.Uint64n(5) + 1)
 	}
 	p, data, cost, _, _, _ := newReadSectorProgram(length, offset, root, pt)
-	return mdmProgram{
+	return testMDMProgram{
 		program: p,
 		data:    data,
 		cost:    cost,
 	}
 }
 
-// newRandomHasSectorProgram is a helper function that creates a random sector
+// newTestHasSectorProgram is a helper function that creates a random sector
 // on the host and returns a program that returns whether or not the host has
 // this sector.
-func newRandomHasSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash) mdmProgram {
+func newTestHasSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash) testMDMProgram {
 	p, data, cost, _, _, _ := newHasSectorProgram(root, pt)
-	return mdmProgram{
+	return testMDMProgram{
 		program: p,
 		data:    data,
 		cost:    cost,
