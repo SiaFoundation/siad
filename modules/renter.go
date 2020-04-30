@@ -303,41 +303,6 @@ type ContractUtility struct {
 	Locked bool
 }
 
-// Cmp compares two ContractUtility values. If x has better utility, a value >0
-// will be returned. If y has better utility, a value <0 will be returned. If
-// the utility of the two contracts is equivalent, 0 will be returned.
-//
-// Contracts are compared by the BadContract, GoodForRenew, and GoodForUpload
-// fields. When comparing, BadContract status takes priority over GoodForRenew
-// status, which takes priority over GoodForUpload status. Cmp will always favor
-// the most useful contract - !BadContract > BadContract, GoodForRenew >
-// !GoodForRenew, GoodForUpload > !GoodForUpload.
-func (x ContractUtility) Cmp(y ContractUtility) int {
-	// BadContract Check
-	if x.BadContract && !y.BadContract {
-		return -1
-	}
-	if !x.BadContract && y.BadContract {
-		return 1
-	}
-	// GoodForRenew Check
-	if !x.GoodForRenew && y.GoodForRenew {
-		return -1
-	}
-	if x.GoodForRenew && !y.GoodForRenew {
-		return 1
-	}
-	// GoodForUpload Check
-	if !x.GoodForUpload && y.GoodForUpload {
-		return -1
-	}
-	if x.GoodForUpload && !y.GoodForUpload {
-		return 1
-	}
-
-	return 0
-}
-
 // ContractWatchStatus provides information about the status of a contract in
 // the renter's watchdog.
 type ContractWatchStatus struct {

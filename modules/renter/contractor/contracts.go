@@ -58,25 +58,38 @@ func (c *Contractor) managedUpdatePubKeyToContractIDMap() {
 
 // updatePubKeyToContractIDMap updates the pubkeysToContractID map
 func (c *Contractor) updatePubKeyToContractIDMap(contracts []modules.RenterContract) {
+	// Sanity check - there should be an equal number of GFU contracts in each
+	// the ViewAll set of contracts, and also in the pubKeyToContractID map.
+	uniqueGFU := make(map[string]types.FileContractID)
+
 	// Reset the pubkey to contract id map, also create a map from each
-	// contract's fcid to the contract itself.
+	// contract's fcid to the contract itself, then try adding each contract to
+	// the map. The most recent contract for each host will be favored as the
+	// contract in the map.
 	c.pubKeysToContractID = make(map[string]types.FileContractID)
-	contractMap := make(map[string]modules.RenterContract)
 	for i := 0; i < len(contracts); i++ {
-		contractMap[contracts[i].ID.String()] = contracts[i]
+		c.tryAddContractToPubKeyMap(contracts[i])
+
+		// Fill out the uniqueGFU map, tracking every contract that is marked as
+		// GoodForUpload.
+		if contracts[i].Utility.GoodForUpload {
+			uniqueGFU[contracts[i].HostPublicKey.String()] = contracts[i].ID
+		}
 	}
 
-	// Try adding each contract to the map. The contracts with better utility
-	// will be favored.
-	for i := 0; i < len(contracts); i++ {
-		c.tryAddContractToPubKeyMap(contracts[i], contractMap)
+	// Every contract that appears in the uniqueGFU map should also appear in
+	// the pubKeysToContractID map.
+	for pk, fcid := range uniqueGFU {
+		if c.pubKeysToContractID[pk] != fcid {
+			build.Critical("Contractor is not correctly mapping from pubkey to contract id, missing GFU contracts")
+		}
 	}
 }
 
 // tryAddContractToPubKeyMap will try and add the contract to the
 // pubKeysToContractID map. The most recent contract with the best utility for
 // each pubKey will be added
-func (c *Contractor) tryAddContractToPubKeyMap(newContract modules.RenterContract, contractMap map[string]modules.RenterContract) {
+func (c *Contractor) tryAddContractToPubKeyMap(newContract modules.RenterContract) {
 	// Ignore any contracts that have been renewed.
 	_, exists := c.renewedTo[newContract.ID]
 	if exists {
@@ -85,32 +98,13 @@ func (c *Contractor) tryAddContractToPubKeyMap(newContract modules.RenterContrac
 	pk := newContract.HostPublicKey.String()
 
 	// If there is not existing contract in the map for this pubkey, add it.
-	existingFcid, exists := c.pubKeysToContractID[pk]
-	if !exists {
-		c.pubKeysToContractID[pk] = newContract.ID
-		return
+	_, exists = c.pubKeysToContractID[pk]
+	if exists {
+		// Sanity check - the contractor should not have multiple contract tips for the
+		// same contract.
+		c.log.Critical("Contractor has multiple contracts that don't form a renewedTo line for the same host")
 	}
-	// Debugging, the contractor should not have multiple contract tips for the
-	// same contract.
-	//
-	// NOTE: If the code is clean/correct, this statement should never be
-	// reached. the rest of this function is unneeded and the contractMap does
-	// not need to be built. This code is left because of a low confidence in
-	// the fidelity of the renewedTo and renewedFrom fields in the contractor.
-	c.log.Debugln("Contractor has multiple contracts that don't form a renewedTo line for the same host")
-
-	// Grab the existing contract.
-	existingContract, ok := contractMap[existingFcid.String()]
-	if !ok {
-		build.Critical("Developer error, contract ID not found in contractMap")
-		return
-	}
-
-	// If the new contract has better utility, replace the existing contract
-	// with the new contract.
-	if newContract.Utility.Cmp(existingContract.Utility) > 0 {
-		c.pubKeysToContractID[pk] = newContract.ID
-	}
+	c.pubKeysToContractID[pk] = newContract.ID
 }
 
 // ContractByPublicKey returns the contract with the key specified, if it
