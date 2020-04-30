@@ -264,6 +264,13 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Long:  "View the list of files currently uploading.",
 		Run:   wrap(renteruploadscmd),
 	}
+
+	renterWorkersCmd = &cobra.Command{
+		Use:   "workers",
+		Short: "View the Renter's workers",
+		Long:  "View the status of the Renter's workers",
+		Run:   wrap(renterworkerscmd),
+	}
 )
 
 // abs returns the absolute representation of a path.
@@ -2530,4 +2537,93 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
 	}
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
+}
+
+// renterworkerscmd is the handler for the comand `siac renter workers`.
+// It lists the Renter's workers.
+func renterworkerscmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get contracts:", err)
+	}
+
+	// Print Worker Pool Summary
+	fmt.Printf(`Worker Pool Summary
+  Total Workers:                %v
+  Workers On Download Cooldown: %v
+  Workers On Upload Cooldown:   %v
+
+`, rw.NumWorkers, rw.TotalDownloadCoolDown, rw.TotalUploadCoolDown)
+
+	// Split Workers into GoodForUpload and !GoodForUpload
+	var goodForUpload, notGoodForUpload []modules.WorkerStatus
+	for _, worker := range rw.Workers {
+		if worker.ContractUtility.GoodForUpload {
+			goodForUpload = append(goodForUpload, worker)
+			continue
+		}
+		notGoodForUpload = append(notGoodForUpload, worker)
+	}
+
+	// List out GoorForUpload workers
+	fmt.Println("GoodForUpload Workers:")
+	if len(goodForUpload) == 0 {
+		fmt.Println("  No GoodForUpload workers.")
+	} else {
+		writeWorkers(goodForUpload)
+	}
+
+	// List out !GoorForUpload workers
+	fmt.Println("\nNot GoodForUpload Workers:")
+	if len(notGoodForUpload) == 0 {
+		fmt.Println("  All workers are GoodForUpload.")
+	} else {
+		writeWorkers(notGoodForUpload)
+	}
+}
+
+// writeWorkers is a helper function to display workers
+func writeWorkers(workers []modules.WorkerStatus) {
+	fmt.Println("  Number of Workers:", len(workers))
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
+	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
+	uploadInfo := "\tUpload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
+	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
+	jobInfo := "\tBackup Queue\tDownload By Root Queue"
+	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+eaInfo+jobInfo)
+	for _, worker := range workers {
+		// Contract Info
+		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
+			worker.ContractID,
+			worker.HostPubKey.String(),
+			worker.ContractUtility.GoodForRenew,
+			worker.ContractUtility.GoodForUpload)
+
+		// Download Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v",
+			worker.DownloadOnCoolDown,
+			worker.DownloadQueueSize,
+			worker.DownloadTerminated)
+
+		// Upload Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v",
+			worker.UploadCoolDownError,
+			worker.UploadCoolDownTime,
+			worker.UploadOnCoolDown,
+			worker.UploadQueueSize,
+			worker.UploadTerminated)
+
+		// EA Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v",
+			worker.AvailableBalance,
+			worker.BalanceTarget,
+			worker.FundAccountJobQueueSize)
+
+		// Job Info
+		fmt.Fprintf(w, "\t%v\t%v\n",
+			worker.BackupJobQueueSize,
+			worker.DownloadRootJobQueueSize)
+	}
+	w.Flush()
 }
