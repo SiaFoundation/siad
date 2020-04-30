@@ -290,7 +290,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
-		staticAccount:       openAccount(hostPubKey, r.hostContractor),
+		staticAccount:       newAccount(hostPubKey),
 		staticBalanceTarget: balanceTarget,
 
 		killChan: make(chan struct{}),

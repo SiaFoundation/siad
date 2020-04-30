@@ -348,6 +348,89 @@ func TestContractSetInsertInterrupted(t *testing.T) {
 	}
 }
 
+// TestContractCommitAndRecordPaymentIntent verifies the functionality of the
+// RecordPaymentIntent and CommitPaymentIntent methods on the SafeContract
+func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	blockHeight := types.BlockHeight(fastrand.Intn(100))
+
+	// create contract set
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add a contract
+	initialHeader := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber: 1,
+				NewValidProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.ZeroCurrency},
+				},
+				NewMissedProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.ZeroCurrency},
+					{Value: types.ZeroCurrency},
+				},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	contract, err := cs.managedInsertContract(initialHeader, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := cs.mustAcquire(t, contract.ID)
+
+	// create a payment revision
+	curr := sc.LastRevision()
+	amount := types.NewCurrency64(fastrand.Uint64n(100))
+	rev, err := curr.PaymentRevision(amount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// record the payment intent
+	rpc := modules.RPCExecuteProgram
+	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc)
+	if err != nil {
+		t.Fatal("Failed to record payment intent")
+	}
+
+	// create transaction containing the revision
+	signedTxn := rev.ToTransaction()
+	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+	if err != nil {
+		t.Fatal("Failed to commit payment intent")
+	}
+
+	// reload the contract set
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc = cs.mustAcquire(t, contract.ID)
+
+	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
+		t.Fatal("Unexpected revision number after reloading the contract set")
+	}
+
+	// TODO: extend this test when we add the spending metrics to the header
+}
+
 // TestContractRefCounter checks if RefCounter behaves as expected when called
 // from Contract
 func TestContractRefCounter(t *testing.T) {

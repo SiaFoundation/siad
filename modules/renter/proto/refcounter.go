@@ -7,7 +7,6 @@ import (
 	"os"
 	"sync"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -239,16 +238,6 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	// order to avoid data corruption.
 	defer func() {
 		if err != nil {
-			// Before panicking, restore the previous in-mem data, so in case we
-			// recover from the panic we'll have valid in-mem data.
-			rc.isDeleted = false
-			rc.newSectorCounts = make(map[uint64]uint16)
-			fi, e := os.Stat(rc.filepath)
-			if e != nil {
-				build.Critical("Failed to read refcounter stats from disk on panic, cannot restore the valid number of sectors in memory.")
-			} else {
-				rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
-			}
 			panic(err)
 		}
 	}()

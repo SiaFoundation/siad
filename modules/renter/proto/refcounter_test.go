@@ -34,15 +34,14 @@ var (
 )
 
 // StartUpdateWithTimeout acquires a lock, ensuring the caller is the only one
-// currently allowed to perform updates on this refcounter file. Panics if the
-// supplied timeout is <= 0 - use `StartUpdate` instead.
+// currently allowed to perform updates on this refcounter file. Returns an
+// error if the supplied timeout is <= 0 - use `StartUpdate` instead.
 func (rc *RefCounter) StartUpdateWithTimeout(timeout time.Duration) error {
 	if timeout <= 0 {
-		panic("non-positive timeout")
-	} else {
-		if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
-			return errTimeoutOnLock
-		}
+		return errors.New("non-positive timeout")
+	}
+	if ok := rc.muUpdate.TryLockTimed(timeout); !ok {
+		return errTimeoutOnLock
 	}
 	return rc.managedStartUpdate()
 }
@@ -181,7 +180,6 @@ func TestRefCounterCreateAndApplyTransaction(t *testing.T) {
 		t.Fatal("Failed to create an append update", err)
 	}
 	updates = append(updates, u)
-	expectNumSec := numSec + 1
 	u, err = rc.Increment(0)
 	if err != nil {
 		t.Fatal("Failed to create an increment update", err)
@@ -208,13 +206,6 @@ func TestRefCounterCreateAndApplyTransaction(t *testing.T) {
 		// recover from a panic
 		if r := recover(); r == nil {
 			t.Fatal("Did not panic on an invalid update")
-		}
-		// make sure the number of sectors in memory is the expected one
-		if rc.numSectors != expectNumSec {
-			t.Fatalf("Wrong number of sectors in memory after a panic. Expected %d, got %d", expectNumSec, rc.numSectors)
-		}
-		if len(rc.newSectorCounts) != 0 {
-			t.Fatal("Failed to drop the in-mem cache of new sector counts")
 		}
 	}()
 
