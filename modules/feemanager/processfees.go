@@ -55,17 +55,22 @@ func (fm *FeeManager) createdAndPersistTransaction(feeUIDs []modules.FeeUID, out
 		return errors.AddContext(err, "unable to build transaction for fee")
 	}
 
-	// Handle the transaction if there is an error with persistence
-	defer func() {
-		if err != nil {
-			// TODO - we probably need to double spend the transaction here since
-			// otherwise we run the risk of double charging for fees
-		}
-	}()
-
 	// From SendSiacoinsMulti, the transaction that was just created is the
 	// first transaction in the slice of transactions returned.
 	txn := txns[len(txns)-1]
+	txnID := txn.ID()
+
+	// Once the transaction is created, we want to submit it to the watchdog.
+	// Then the watchdog can handle any transaction related clean up.
+	fm.staticCommon.staticWatchdog.callMonitorTransaction(feeUIDs, txn)
+
+	// Handle the transaction if there is an error with persistence
+	defer func() error {
+		if err != nil {
+			return errors.Compose(err, fm.callDropTransaction(txnID))
+		}
+		return nil
+	}()
 
 	// Persist the transaction
 	err = fm.staticCommon.staticPersist.callPersistTransaction(txn)
@@ -74,7 +79,6 @@ func (fm *FeeManager) createdAndPersistTransaction(feeUIDs []modules.FeeUID, out
 	}
 
 	// Persist the transaction created events.
-	txnID := txn.ID()
 	err = fm.staticCommon.staticPersist.callPersistTxnCreated(feeUIDs, txnID)
 	if err != nil {
 		return errors.AddContext(err, "unable to persist the transaction created event")
@@ -138,25 +142,24 @@ func (fm *FeeManager) managedProcessFees(feeUIDs []modules.FeeUID) error {
 
 	// Create and persist the transaction
 	err := fm.createdAndPersistTransaction(feeUIDs, outputs)
-	if err != nil {
-		// Revert in memory changes
-		fm.mu.Lock()
-		defer fm.mu.Unlock()
-		for _, feeUID := range feeUIDs {
-			fee, ok := fm.fees[feeUID]
-			if !ok {
-				// Fees should not be able to be canceled with the
-				// TransactionCreated Flag set to True
-				build.Critical(fmt.Errorf("fee %v not found after TransactionCreate set to true", feeUID))
-				continue
-			}
-			fee.TransactionCreated = false
-		}
-		return errors.AddContext(err, "unable to create and perist transaction")
+	if err == nil {
+		return nil
 	}
 
-	// TODO - send txn to the watchdog
-	return nil
+	// Revert in memory changes
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	for _, feeUID := range feeUIDs {
+		fee, ok := fm.fees[feeUID]
+		if !ok {
+			// Fees should not be able to be canceled with the
+			// TransactionCreated Flag set to True
+			build.Critical(fmt.Errorf("fee %v not found after TransactionCreate set to true", feeUID))
+			continue
+		}
+		fee.TransactionCreated = false
+	}
+	return errors.AddContext(err, "unable to create and persist transaction")
 }
 
 // threadedProcessFees is a background thread that handles processing the

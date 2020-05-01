@@ -23,6 +23,7 @@ var (
 	// Nil dependency errors.
 	errNilCS     = errors.New("cannot create FeeManager with nil consensus set")
 	errNilDeps   = errors.New("cannot create FeeManager with nil dependencies")
+	errNilTpool  = errors.New("cannot create FeeManager with nil tpool")
 	errNilWallet = errors.New("cannot create FeeManager with nil wallet")
 
 	// Enforce that FeeManager satisfies the modules.FeeManager interface.
@@ -60,10 +61,12 @@ type (
 	feeManagerCommon struct {
 		// Dependencies
 		staticCS     modules.ConsensusSet
+		staticTpool  modules.TransactionPool
 		staticWallet modules.Wallet
 
 		// Subsystems
-		staticPersist *persistSubsystem
+		staticPersist  *persistSubsystem
+		staticWatchdog *watchdog
 
 		// Utilities
 		staticDeps modules.Dependencies
@@ -73,18 +76,21 @@ type (
 )
 
 // New creates a new FeeManager.
-func New(cs modules.ConsensusSet, w modules.Wallet, persistDir string) (*FeeManager, error) {
-	return NewCustomFeeManager(cs, w, persistDir, modules.ProdDependencies)
+func New(cs modules.ConsensusSet, tp modules.TransactionPool, w modules.Wallet, persistDir string) (*FeeManager, error) {
+	return NewCustomFeeManager(cs, tp, w, persistDir, modules.ProdDependencies)
 }
 
 // NewCustomFeeManager creates a new FeeManager using custom dependencies.
-func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir string, deps modules.Dependencies) (*FeeManager, error) {
+func NewCustomFeeManager(cs modules.ConsensusSet, tp modules.TransactionPool, w modules.Wallet, persistDir string, deps modules.Dependencies) (*FeeManager, error) {
 	// Check for nil inputs
 	if cs == nil {
 		return nil, errNilCS
 	}
 	if deps == nil {
 		return nil, errNilDeps
+	}
+	if tp == nil {
+		return nil, errNilTpool
 	}
 	if w == nil {
 		return nil, errNilWallet
@@ -99,6 +105,7 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 	// Create the common struct.
 	common := &feeManagerCommon{
 		staticCS:     cs,
+		staticTpool:  tp,
 		staticWallet: w,
 
 		staticDeps: deps,
@@ -121,6 +128,14 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 		staticCommon: common,
 	}
 	ps.staticSyncCoordinator = sc
+	// Create the watchdog
+	wd := &watchdog{
+		feeUIDToTxnID: make(map[modules.FeeUID]types.TransactionID),
+		partialTxns:   make(map[types.TransactionID]partialTransactions),
+		txns:          make(map[types.TransactionID]trackedTransaction),
+		staticCommon:  common,
+	}
+	common.staticWatchdog = wd
 
 	// Initialize the logger.
 	common.staticLog, err = persist.NewFileLogger(filepath.Join(ps.staticPersistDir, logFile))
@@ -138,8 +153,9 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 		return nil, errors.AddContext(err, "unable to initialize the FeeManager's persistence")
 	}
 
-	// Launch background thread to process fees.
+	// Launch background threads
 	go fm.threadedProcessFees()
+	go fm.threadedCheckTransactions()
 
 	return fm, nil
 }
@@ -222,6 +238,11 @@ func (fm *FeeManager) CancelFee(feeUID modules.FeeUID) error {
 	if fee.TransactionCreated {
 		fm.mu.Unlock()
 		return errors.New("Cannot cancel a fee if the transaction has already been created")
+	}
+	_, tracked := fm.staticCommon.staticWatchdog.callFeeTracked(feeUID)
+	if tracked {
+		fm.mu.Unlock()
+		return errors.New("Cannot cancel a fee that is being tracked by the watchdog")
 	}
 
 	// Erase the fee from memory.

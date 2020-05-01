@@ -18,8 +18,14 @@ func TestApplyEntry(t *testing.T) {
 	t.Parallel()
 	// Create minimum FeeManager
 	fm := &FeeManager{
-		fees:         make(map[modules.FeeUID]*modules.AppFee),
-		staticCommon: &feeManagerCommon{},
+		fees: make(map[modules.FeeUID]*modules.AppFee),
+		staticCommon: &feeManagerCommon{
+			staticWatchdog: &watchdog{
+				feeUIDToTxnID: make(map[modules.FeeUID]types.TransactionID),
+				partialTxns:   make(map[types.TransactionID]partialTransactions),
+				txns:          make(map[types.TransactionID]trackedTransaction),
+			},
+		},
 	}
 
 	// Test bad specifier case
@@ -52,36 +58,14 @@ func TestApplyEntry(t *testing.T) {
 		FeeUID:             uniqueID(),
 	}
 
-	testApplyEntryFeemanager(t, fm, fee)
-}
-
-// testApplyEntryFeemanager handles testing the apply entry calls that are
-// focused on updates to the FeeManager
-func testApplyEntryFeemanager(t *testing.T, fm *FeeManager, fee modules.AppFee) {
 	// Check Add Entry
-	err := checkApplyAddEntry(fm, fee)
+	err = checkApplyAddEntry(fm, fee)
 	if err != nil {
 		t.Error(err)
 	}
 
 	// Check Update Entry
 	err = checkApplyUpdateEntry(fm, fee.FeeUID)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// Check Transaction Entry. Create transaction with arbitrary data to test
-	// transactions of varying size
-	txn := types.Transaction{}
-	txn.ArbitraryData = [][]byte{fastrand.Bytes(fastrand.Intn(2 * persistTransactionSize))}
-	err = checkApplyTransactionEntry(fm, txn)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// Check Txn Created Entry
-	txnID := txn.ID()
-	err = checkApplyTxnCreatedEntry(fm, fee.FeeUID, txnID)
 	if err != nil {
 		t.Error(err)
 	}
@@ -131,51 +115,6 @@ func checkApplyCancelEntry(fm *FeeManager, feeUID modules.FeeUID) error {
 	return nil
 }
 
-// checkApplyTransactionEntry is a helper for creating and applying a
-// TransactionEntry to the FeeManager and checking the result.
-func checkApplyTransactionEntry(fm *FeeManager, txn types.Transaction) error {
-	pes, err := createTransactionEntrys(txn)
-	if err != nil {
-		return errors.AddContext(err, "unable to create transaction entries")
-	}
-
-	// Call applyEntry
-	for _, pe := range pes {
-		err := fm.applyEntry(pe[:])
-		if err != nil {
-			return err
-		}
-	}
-
-	// TODO - Transaction should be in the watchdog
-	return nil
-}
-
-// checkApplyTxnCreatedEntry is a helper for creating and applying a
-// TxnCreatedEntry to the FeeManager and checking the result.
-func checkApplyTxnCreatedEntry(fm *FeeManager, feeUID modules.FeeUID, txnID types.TransactionID) error {
-	// createTxnCreatedEntry with 1 feeUID should only create 1 persist entry
-	pes, _ := createTxnCreatedEntrys([]modules.FeeUID{feeUID}, txnID)
-	pe := pes[0]
-
-	// Call applyEntry
-	err := fm.applyEntry(pe[:])
-	if err != nil {
-		return err
-	}
-
-	// Fee in FeeManager App should show that the transaction was created
-	mapFee, ok := fm.fees[feeUID]
-	if !ok {
-		return errors.New("Fee not found in map")
-	}
-	if !mapFee.TransactionCreated {
-		return errors.New("Expected TransactionCreate to be true")
-	}
-
-	return nil
-}
-
 // checkApplyUpdateEntry is a helper for creating and applying an UpdateFeeEntry
 // to the FeeManager and checking the result.
 func checkApplyUpdateEntry(fm *FeeManager, feeUID modules.FeeUID) error {
@@ -222,6 +161,8 @@ func TestPersistEntryPayloadSize(t *testing.T) {
 		_ = createCancelFeeEntry(uniqueID())
 		feeUIDs = append(feeUIDs, uniqueID())
 		_, _ = createTxnCreatedEntrys(feeUIDs, txnID)
+		_, _ = createTxnConfirmedEntrys(feeUIDs, txnID)
+		_, _ = createTxnDroppedEntrys(feeUIDs, txnID)
 		_ = createUpdateFeeEntry(uniqueID(), types.BlockHeight(fastrand.Uint64n(1e9)))
 	}
 }

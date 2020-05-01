@@ -225,12 +225,22 @@ func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
 func (ps *persistSubsystem) callPersistTransaction(txn types.Transaction) error {
 	entrys, err := createTransactionEntrys(txn)
 	if err != nil {
-		return errors.AddContext(err, "unable to create transaction entries")
+		return errors.AddContext(err, "unable to create transaction entrys")
 	}
 	return ps.managedAppendEntrys(entrys)
 }
 
-// callPersistTxnCreated will persist a transaction created entry to the persist
+// callPersistTxnConfirmed will persist transaction confirmed entrys to the
+// persist file.
+func (ps *persistSubsystem) callPersistTxnConfirmed(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
+	entrys, err := createTxnConfirmedEntrys(feeUIDs, txnID)
+	if err != nil {
+		return errors.AddContext(err, "unable to create transaction confirmed entrys")
+	}
+	return ps.managedAppendEntrys(entrys)
+}
+
+// callPersistTxnCreated will persist transaction created entrys to the persist
 // file.
 func (ps *persistSubsystem) callPersistTxnCreated(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
 	entrys, err := createTxnCreatedEntrys(feeUIDs, txnID)
@@ -240,7 +250,17 @@ func (ps *persistSubsystem) callPersistTxnCreated(feeUIDs []modules.FeeUID, txnI
 	return ps.managedAppendEntrys(entrys)
 }
 
-// managedAppendEntriy will take a slice of new encoded entries and append them
+// callPersistTxnDropped will persist transaction dropped entrys to the persist
+// file.
+func (ps *persistSubsystem) callPersistTxnDropped(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
+	entrys, err := createTxnDroppedEntrys(feeUIDs, txnID)
+	if err != nil {
+		return errors.AddContext(err, "unable to create transaction dropped entrys")
+	}
+	return ps.managedAppendEntrys(entrys)
+}
+
+// managedAppendEntrys will take a slice of new encoded entries and append them
 // to the persist file.
 func (ps *persistSubsystem) managedAppendEntrys(entrys [][persistEntrySize]byte) error {
 	var entriesBytes []byte

@@ -407,7 +407,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading feemanager...\n", i, numModules)
-		return feemanager.NewCustomFeeManager(cs, w, filepath.Join(dir, modules.FeeManagerDir), feeManagerDeps)
+		return feemanager.NewCustomFeeManager(cs, tp, w, filepath.Join(dir, modules.FeeManagerDir), feeManagerDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create feemanager"))

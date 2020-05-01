@@ -205,6 +205,16 @@ func TestFeeManagerProcessFee(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify the fee is now a pending fee
+	fmpending, err := fm.FeeManagerPendingFeesGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fmpending.PendingFees) != 1 {
+		t.Fatal("Expected 1 pending fee got", len(fmpending.PendingFees))
+	}
+	fee := fmpending.PendingFees[0]
+
 	// Get the FeeManager
 	fmg, err := fm.FeeManagerGet()
 	if err != nil {
@@ -268,6 +278,31 @@ func TestFeeManagerProcessFee(t *testing.T) {
 		}
 		if fmwg.ConfirmedSiacoinBalance.Cmp(fmExpected) >= 0 {
 			return fmt.Errorf("Incorrect FeeManager wallet balance; expected less than %v, got %v", fmExpected.HumanString(), fmwg.ConfirmedSiacoinBalance.HumanString())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the Fees now show as paid
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		fmpending, err = fm.FeeManagerPendingFeesGet()
+		if err != nil {
+			return err
+		}
+		if len(fmpending.PendingFees) != 0 {
+			return fmt.Errorf("FeeManager Still has pending fees %v", fmpending)
+		}
+		fmpaid, err := fm.FeeManagerPaidFeesGet()
+		if err != nil {
+			return err
+		}
+		if len(fmpaid.PaidFees) != 1 {
+			return fmt.Errorf("FeeManager should have one paid fee but has %v", len(fmpaid.PaidFees))
+		}
+		if fmpaid.PaidFees[0].FeeUID != fee.FeeUID {
+			return fmt.Errorf("Expected FeeUID of %v but got %v", fee.FeeUID, fmpaid.PaidFees[0].FeeUID)
 		}
 		return nil
 	})
