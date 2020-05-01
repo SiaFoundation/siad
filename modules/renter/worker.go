@@ -270,14 +270,31 @@ func (w *worker) threadedWorkLoop() {
 			continue
 		}
 
-		// Block until new work is received via the upload or download channels,
-		// or until a kill or stop signal is received.
+		// Create a timer and a drain function for the timer.
+		cacheUpdateTimer := time.NewTimer(workerCacheUpdateFrequency)
+		drainCacheTimer := func() {
+			if !cacheUpdateTimer.Stop() {
+				<-cacheUpdateTimer.C
+			}
+		}
+
+		// Block until:
+		//    + New work has been submitted
+		//    + The cache timer fires
+		//    + The worker is killed
+		//    + The renter is stopped
 		select {
 		case <-w.wakeChan:
+			drainCacheTimer()
+			continue
+		case <-cacheUpdateTimer.C:
+			drainCacheTimer()
 			continue
 		case <-w.killChan:
+			drainCacheTimer()
 			return
 		case <-w.renter.tg.StopChan():
+			drainCacheTimer()
 			return
 		}
 	}
