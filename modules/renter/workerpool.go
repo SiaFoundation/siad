@@ -37,39 +37,34 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 		wp.callUpdate()
 	}
 
-	// Grab the contracts and create a map
-	contractSlice := wp.renter.hostContractor.Contracts()
-	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
-	for _, contract := range contractSlice {
-		contractMap[contract.HostPublicKey.String()] = contract
-	}
-
+	// Fetch the list of workers from the worker pool.
 	wp.mu.Lock()
-	defer wp.mu.Unlock()
+	workers := make([]*worker, len(wp.workers))
+	for _, w := range wp.workers {
+		workers = append(workers, w)
+	}
+	wp.mu.Unlock()
 
 	var totalDownloadCoolDown, totalUploadCoolDown int
-	var workers []modules.WorkerStatus
-	for id, worker := range wp.workers {
-		contract, exists := contractMap[id]
-		if !exists {
-			// Skip any workers that don't have contracts as the next call to
-			// callUpdate will remove them from the workerPool
-			continue
-		}
-		ws := worker.callStatus(contract)
-		if ws.DownloadOnCoolDown {
+	var statuss []modules.WorkerStatus // Plural of status is statuss, deal with it.
+	for _, w := range workers {
+		// Get the status of the worker.
+		w.mu.Lock()
+		status := w.status()
+		w.mu.Unlock()
+		if status.DownloadOnCoolDown {
 			totalDownloadCoolDown++
 		}
-		if ws.UploadOnCoolDown {
+		if status.UploadOnCoolDown {
 			totalUploadCoolDown++
 		}
-		workers = append(workers, ws)
+		statuss = append(statuss, status)
 	}
 	return modules.WorkerPoolStatus{
 		NumWorkers:            len(wp.workers),
 		TotalDownloadCoolDown: totalDownloadCoolDown,
 		TotalUploadCoolDown:   totalUploadCoolDown,
-		Workers:               workers,
+		Workers:               statuss,
 	}
 }
 
