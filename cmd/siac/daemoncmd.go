@@ -74,8 +74,36 @@ func alertscmd() {
 		// Return since critical alerts are already displayed
 		return
 	}
-	printAlerts(al.ErrorAlerts, modules.SeverityError)
-	printAlerts(al.WarningAlerts, modules.SeverityWarning)
+	
+	// Print Error alerts
+	const maxAlerts = 1000
+	remainingAlerts := maxAlerts - len(al.CriticalAlerts)
+	if remainingAlerts <= 0 {
+		fmt.Println("Only first", maxAlerts, "alerts printed")
+		return
+	}
+	alertsToPrint := remainingAlerts
+	if alertsToPrint > len(al.ErrorAlerts) {
+		alertsToPrint = len(al.ErrorAlerts)
+	}
+	printAlerts(al.ErrorAlerts[:alertsToPrint], modules.SeverityError)
+
+	// Print Warning alerts
+	remainingAlerts -= len(al.ErrorAlerts)
+	if remainingAlerts <= 0 {
+		fmt.Println("Only first", maxAlerts, "alerts printed")
+		return
+	}
+	alertsToPrint = remainingAlerts
+	if alertsToPrint > len(al.WarningAlerts) {
+		alertsToPrint = len(al.WarningAlerts)
+	}
+	printAlerts(al.WarningAlerts[:alertsToPrint], modules.SeverityWarning)
+
+	// Print max alerts message
+	if len(al.CriticalAlerts) + len(al.ErrorAlerts) + len(al.WarningAlerts) > maxAlerts {
+		fmt.Println("Only first", maxAlerts, "alerts printed")
+	}
 }
 
 // version prints the version of siac and siad.
@@ -169,11 +197,7 @@ func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 
 func printAlerts(alerts []modules.Alert, as modules.AlertSeverity) {
 	fmt.Printf("\n  There are %v %s alerts\n", len(alerts), as.String())
-	for i, a := range alerts {
-		if i == 1000 {
-			fmt.Println("Only the first 1000 alerts are displayed in siac")
-			break
-		}
+	for _, a := range alerts {
 		fmt.Printf(`
 ------------------
   Module:   %s
