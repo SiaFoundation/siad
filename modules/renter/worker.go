@@ -36,9 +36,9 @@ import (
 )
 
 var (
-	// cachedContractUtilityTimeout specifies how long the cached contract
-	// utility is valid for the worker.
-	workerCacheTimeout = build.Select(build.Var{
+	// workerCacheUpdateFrequency specifies how much time must pass before the
+	// worker updates its cache.
+	workerCacheUpdateFrequency = build.Select(build.Var{
 		Dev:      time.Second * 5,
 		Standard: time.Minute,
 		Testing:  time.Second,
@@ -148,21 +148,16 @@ func (w *worker) managedBlockUntilReady() bool {
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the
 // worker should exit.
-func (w *worker) managedUpdateCache() (chan struct{}, bool) {
+func (w *worker) managedUpdateCache() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)
 	if !exists {
-		return nil, false
+		return false
 	}
 	w.cachedContractUtility = utility
-	c := make(chan struct{})
-	go func() {
-		<-time.After(workerCacheTimeout)
-		close(c)
-	}()
-	return c, true
+	return true
 }
 
 // staticKilled is a convenience function to determine if a worker has been
@@ -209,12 +204,12 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
-	// Kick things off by updating the worker cache.
-	cacheUpdateTimer, exists := w.managedUpdateCache()
-	if !exists {
+	// Fetch the cache for the worker before doing any work.
+	if !w.managedUpdateCache() {
 		w.renter.log.Println("Worker is being insta-killed because the cache update could not locate utility for the worker")
 		return
 	}
+	cacheUpdateTime := time.Now()
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -234,19 +229,13 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		// Check if the cache needs to be updated. cacheUpdateTimer is a channel
-		// that will fire when the current cache has expired. If the current
-		// cache has expired, update the cache.
-		select {
-		case <-cacheUpdateTimer:
-			var ok bool
-			cacheUpdateTimer, ok = w.managedUpdateCache()
-			if !ok {
-				// Could not update cache, kill worker.
+		// Check if the cache needs to be updated.
+		if time.Since(cacheUpdateTime) > workerCacheUpdateFrequency {
+			if !w.managedUpdateCache() {
 				w.renter.log.Debugln("worker is being killed because the cache could not be updated")
 				return
 			}
-		default:
+			cacheUpdateTime = time.Now()
 		}
 
 		// Check if the account needs to be refilled.
@@ -285,8 +274,6 @@ func (w *worker) threadedWorkLoop() {
 		// or until a kill or stop signal is received.
 		select {
 		case <-w.wakeChan:
-			continue
-		case <-cacheUpdateTimer:
 			continue
 		case <-w.killChan:
 			return
