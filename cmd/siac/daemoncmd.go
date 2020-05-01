@@ -74,7 +74,7 @@ func alertscmd() {
 		// Return since critical alerts are already displayed
 		return
 	}
-	
+
 	// Print Error alerts
 	const maxAlerts = 1000
 	remainingAlerts := maxAlerts - len(al.CriticalAlerts)
@@ -101,7 +101,7 @@ func alertscmd() {
 	printAlerts(al.WarningAlerts[:alertsToPrint], modules.SeverityWarning)
 
 	// Print max alerts message
-	if len(al.CriticalAlerts) + len(al.ErrorAlerts) + len(al.WarningAlerts) > maxAlerts {
+	if len(al.CriticalAlerts)+len(al.ErrorAlerts)+len(al.WarningAlerts) > maxAlerts {
 		fmt.Println("Only first", maxAlerts, "alerts printed")
 	}
 }
