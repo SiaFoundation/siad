@@ -209,7 +209,7 @@ func (w *worker) threadedWorkLoop() {
 		w.renter.log.Println("Worker is being insta-killed because the cache update could not locate utility for the worker")
 		return
 	}
-	cacheUpdateTime := time.Now()
+	lastCacheUpdate := time.Now()
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -230,12 +230,12 @@ func (w *worker) threadedWorkLoop() {
 		}
 
 		// Check if the cache needs to be updated.
-		if time.Since(cacheUpdateTime) > workerCacheUpdateFrequency {
+		if time.Since(lastCacheUpdate) > workerCacheUpdateFrequency {
 			if !w.managedUpdateCache() {
 				w.renter.log.Debugln("worker is being killed because the cache could not be updated")
 				return
 			}
-			cacheUpdateTime = time.Now()
+			lastCacheUpdate = time.Now()
 		}
 
 		// Check if the account needs to be refilled.
