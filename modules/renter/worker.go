@@ -288,7 +288,6 @@ func (w *worker) threadedWorkLoop() {
 			drainCacheTimer()
 			continue
 		case <-cacheUpdateTimer.C:
-			drainCacheTimer()
 			continue
 		case <-w.killChan:
 			drainCacheTimer()
