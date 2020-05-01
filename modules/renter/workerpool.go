@@ -53,6 +53,7 @@ func (wp *workerPool) callUpdate() {
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
+	// Open an account for every host
 	accountMap := make(map[string]*account)
 	for _, contract := range contractSlice {
 		accountMap[contract.HostPublicKey.String()] =
@@ -70,8 +71,16 @@ func (wp *workerPool) callUpdate() {
 			continue
 		}
 
+		// Fetch the account, we deal with the case where it does not exist
+		// however this should never happen as we have just opened them.
+		account, ok := accountMap[contract.HostPublicKey.String()]
+		if !ok {
+			wp.renter.log.Println((errors.New(fmt.Sprintf("could not open an account for host %v", contract.HostPublicKey))))
+			continue
+		}
+
 		// Create a new worker and add it to the map
-		w, err := wp.renter.newWorker(contract.HostPublicKey, accountMap[contract.HostPublicKey.String()])
+		w, err := wp.renter.newWorker(contract.HostPublicKey, account)
 		if err != nil {
 			wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
 			continue

@@ -135,9 +135,8 @@ func (a *account) toAccountPersistence() accountPersistence {
 	return ap
 }
 
-// update updates the account by writing the bytes to the persistence
-// file using writeAt. The account will get saved to disk when the renter is
-// closed gracefully.
+// update writes the account bytes to the persistence file using writeAt. The
+// account will get saved to disk when the renter is closed gracefully.
 func (a *account) update() error {
 	accBytes, err := a.toAccountPersistence().toBytes()
 	if err != nil {
