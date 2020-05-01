@@ -116,7 +116,7 @@ func TestPubkeysToContractIDMap(t *testing.T) {
 
 // TestTryAddContractToPubKeyMap tests the tryAddContractToPubKeyMap method
 func TestTryAddContractToPubKeyMap(t *testing.T) {
-	// Create minimum Contractour
+	// Create minimum Contractor
 	c := &Contractor{
 		renewedTo:           make(map[types.FileContractID]types.FileContractID),
 		pubKeysToContractID: make(map[string]types.FileContractID),
