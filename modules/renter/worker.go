@@ -101,7 +101,7 @@ func (w *worker) status() modules.WorkerStatus {
 		// Contract Information
 		//
 		// TODO: Put the utility here after !4415 is merged.
-		HostPubKey:      w.staticHostPubKey,
+		HostPubKey: w.staticHostPubKey,
 
 		// Download information
 		DownloadOnCoolDown: downloadOnCoolDown,
