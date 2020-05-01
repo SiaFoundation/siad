@@ -246,7 +246,7 @@ func (w *worker) scheduleRefillAccount() {
 
 	// Fetch the account's available balance and skip if it's above the
 	// threshold
-	balance := w.staticAccount.AvailableBalance()
+	balance := w.staticAccount.managedAvailableBalance()
 	if balance.Cmp(threshold) >= 0 {
 		return
 	}
@@ -261,7 +261,7 @@ func (w *worker) scheduleRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, account *account) (*worker, error) {
 	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -290,7 +290,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
-		staticAccount:       newAccount(hostPubKey),
+		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
 		killChan: make(chan struct{}),

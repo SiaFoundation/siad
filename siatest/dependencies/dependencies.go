@@ -87,6 +87,12 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyInterruptAccountSaveOnShutdown will interrupt the account save
+	// when the renter shuts down.
+	DependencyInterruptAccountSaveOnShutdown struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyBlockResumeJobDownloadUntilTimeout blocks in
 	// managedResumeJobDownloadByRoot until the timeout for the download project
 	// is reached.
@@ -219,6 +225,11 @@ func (d *DependencyLowFundsRefreshFail) Disrupt(s string) bool {
 // Disrupt causes contract renewal to not clear the contents of a contract.
 func (d *DependencyRenewWithoutClear) Disrupt(s string) bool {
 	return s == "RenewWithoutClear"
+}
+
+// Disrupt causes contract renewal to not clear the contents of a contract.
+func (d *DependencyInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
+	return s == "InterruptAccountSaveOnShutdown"
 }
 
 // Disrupt causes contract renewal to not clear the contents of a contract.

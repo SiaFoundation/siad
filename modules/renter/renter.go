@@ -207,6 +207,10 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
+	// Account management.
+	accounts           map[string]*account
+	staticAccountsFile modules.File
+
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -904,6 +908,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
+		accounts: make(map[string]*account),
+
 		cs:                    cs,
 		deps:                  deps,
 		g:                     g,
@@ -954,6 +960,17 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		skykeyManDir = persistDir
 	}
 	r.staticSkykeyManager, err = skykey.NewSkykeyManager(skykeyManDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load the accounts.
+	err = r.managedLoadAccounts()
+	if err != nil {
+		return nil, err
+	}
+	// Save accounts on shutdown.
+	err = r.tg.OnStop(r.managedSaveAccounts)
 	if err != nil {
 		return nil, err
 	}

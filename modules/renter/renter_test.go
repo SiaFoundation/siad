@@ -143,6 +143,25 @@ func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
 	return path, nil
 }
 
+// reloadRenter closes the given renter and then re-adds it, effectively
+// reloading the renter.
+func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
+	err := r.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir))
+	if err := <-errChan; err != nil {
+		return nil, err
+	}
+	err = rt.addRenter(r)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // newRenterTester creates a ready-to-use renter tester with money in the
 // wallet.
 func newRenterTester(name string) (*renterTester, error) {

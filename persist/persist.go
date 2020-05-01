@@ -3,6 +3,7 @@ package persist
 import (
 	"bytes"
 	"encoding/base32"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -113,6 +114,8 @@ func VerifyMetadataHeader(r io.Reader, expected FixedMetadata) (FixedMetadata, e
 
 	// Verify metadata header and version
 	if !bytes.Equal(actual.Header[:], expected.Header[:]) {
+		fmt.Println("actual", string(actual.Header[:]))
+		fmt.Println("expected", string(expected.Header[:]))
 		return actual, ErrBadHeader
 	}
 	if !bytes.Equal(actual.Version[:], expected.Version[:]) {
