@@ -436,16 +436,16 @@ Returns the alerts of the Sia instance sorted by category.
  
 ```go
 {
-  "criticalalerts": [
-    {
-      "cause": "cause of a critical alert",
-      "msg": "a critical issue has happened",
-      "module": "contractor",
-      "severity": "critical"
-    }
-  ],
+  "criticalalerts": [],
   "erroralerts": [],
-  "warningalerts": []
+  "warningalerts": [
+    {
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ]
 }
 ```
 **cause** | string  
