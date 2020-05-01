@@ -11,6 +11,28 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestNewAccountID tests the NewAccountID utility method.
+func TestNewAccountID(t *testing.T) {
+	t.Parallel()
+	aid, sk := NewAccountID()
+
+	// verify it's not the zero account
+	if aid.IsZeroAccount() {
+		t.Fatal("NewAccountID should not return the ZeroAccount")
+	}
+
+	// verify the account ID is valid by converting it to a SiaPublicKey
+	_ = aid.SPK()
+
+	// verify we can use the secret key for signing and verification
+	hash := crypto.HashBytes(fastrand.Bytes(10))
+	signature := crypto.SignHash(hash, sk)
+	err := crypto.VerifyHash(hash, aid.PK(), signature)
+	if err != nil {
+		t.Fatal("The secret key does not correspond with the public key used to create the AccountID with")
+	}
+}
+
 // TestAccountID_FromSPK tests the FromSPK method.
 func TestAccountID_FromSPK(t *testing.T) {
 	t.Parallel()

@@ -14,6 +14,12 @@ var (
 	ErrDiskFault = errors.New("disk fault")
 )
 
+const (
+	// DisruptFaultyFile defines the disrupt signature with which we can check if an
+	// error was genuine or injected
+	DisruptFaultyFile = "faultyFile"
+)
+
 // scrambleData takes some data as input and replaces parts of it randomly with
 // random data
 func scrambleData(d []byte) []byte {
@@ -70,7 +76,7 @@ func (d *DependencyFaultyDisk) enable() {
 // don't panic when updates can't be applied but instead are able to handle the
 // error gracefully during testing.
 func (d *DependencyFaultyDisk) Disrupt(s string) bool {
-	return s == "faultyFile"
+	return s == DisruptFaultyFile
 }
 
 // tryFail will check if the disk has failed yet, and if not, it'll rng to see

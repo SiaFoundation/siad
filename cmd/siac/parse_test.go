@@ -274,7 +274,7 @@ func TestParsePercentages(t *testing.T) {
 	}
 
 	// Test Random Edge Cases
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10; i++ {
 		values := parsePercentages(randomPercentages())
 		// Since we can't know what the exact output should be, verify that the
 		// values add up to 100 and that none of the values have a non zero
@@ -283,11 +283,15 @@ func TestParsePercentages(t *testing.T) {
 		for _, v := range values {
 			_, r := math.Modf(v)
 			if r != 0 {
+				t.Log(values)
+				t.Log(v)
 				t.Fatal("Found non zero remainder")
 			}
 			total += v
 		}
 		if total != float64(100) {
+			t.Log(values)
+			t.Log(total)
 			t.Fatal("Values should add up to 100 but added up to", total)
 		}
 	}
@@ -307,7 +311,7 @@ func randomPercentages() []float64 {
 		n := float64(fastrand.Intn(1000))
 		d := float64(fastrand.Intn(100000)) + n
 		val := n / d * 100
-		if remainder < val {
+		if math.IsNaN(val) || remainder < val {
 			continue
 		}
 		remainder -= val
