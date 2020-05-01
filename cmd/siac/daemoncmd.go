@@ -74,26 +74,8 @@ func alertscmd() {
 		// Return since critical alerts are already displayed
 		return
 	}
-	fmt.Printf("\n  There are %v non Critical alerts\n", len(al.Alerts)-numCriticalAlerts)
-	alertCount := 0
-	for sev := 2; sev > 0; sev-- { // print the alerts in order of warning, error
-		for _, a := range al.Alerts {
-			if a.Severity == modules.AlertSeverity(sev) {
-				if alertCount > 1000 {
-					fmt.Println("Only the first 1000 alerts are displayed in siac")
-					return
-				}
-				alertCount++
-				fmt.Printf(`
-------------------
-  Module:   %s
-  Severity: %s
-  Message:  %s
-  Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
-			}
-		}
-	}
-	fmt.Printf("\n------------------\n\n")
+	printAlerts(al.ErrorAlerts, modules.SeverityError)
+	printAlerts(al.WarningAlerts, modules.SeverityWarning)
 }
 
 // version prints the version of siac and siad.
@@ -183,4 +165,21 @@ func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die("Could not set global ratelimit speed:", err)
 	}
 	fmt.Println("Set global maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
+}
+
+func printAlerts(alerts []modules.Alert, as modules.AlertSeverity) {
+	fmt.Printf("\n  There are %v %s alerts\n", len(alerts), as.String())
+	for i, a := range alerts {
+		if i == 1000 {
+			fmt.Println("Only the first 1000 alerts are displayed in siac")
+			break
+		}
+		fmt.Printf(`
+------------------
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+	}
+	fmt.Printf("\n------------------\n\n")
 }
