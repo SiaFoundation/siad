@@ -4541,8 +4541,6 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // TestWorkerStatus probes the WorkerPoolStatus
-//
-// TODO: Expand testing to force fields to be none default values
 func TestWorkerStatus(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
