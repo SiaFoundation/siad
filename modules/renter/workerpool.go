@@ -39,7 +39,7 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 
 	// Fetch the list of workers from the worker pool.
 	wp.mu.Lock()
-	workers := make([]*worker, len(wp.workers))
+	workers := make([]*worker, 0, len(wp.workers))
 	for _, w := range wp.workers {
 		workers = append(workers, w)
 	}
