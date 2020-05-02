@@ -11,8 +11,8 @@ type jobQueueDownloadByRoot struct {
 	mu    sync.Mutex
 }
 
-// callLen returns the length of the jobQueueDownloadByRoot queue
-func (queue *jobQueueDownloadByRoot) callLen() int {
+// managedLen returns the length of the jobQueueDownloadByRoot queue
+func (queue *jobQueueDownloadByRoot) managedLen() int {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	return len(queue.queue)

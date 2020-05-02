@@ -118,11 +118,11 @@ func (w *worker) status() modules.WorkerStatus {
 		// Ephemeral Account information
 		AvailableBalance:        w.staticAccount.AvailableBalance(),
 		BalanceTarget:           w.staticBalanceTarget,
-		FundAccountJobQueueSize: w.staticFundAccountJobQueue.callLen(),
+		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
 
 		// Job Queues
-		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.callLen(),
-		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.callLen(),
+		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
+		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
 	}
 }
 

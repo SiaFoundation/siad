@@ -41,8 +41,8 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
-// callLen returns the length of the fetchBackupsJobQueue queue
-func (queue *fetchBackupsJobQueue) callLen() int {
+// managedLen returns the length of the fetchBackupsJobQueue queue
+func (queue *fetchBackupsJobQueue) managedLen() int {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	return len(queue.queue)
