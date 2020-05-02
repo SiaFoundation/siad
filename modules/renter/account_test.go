@@ -288,7 +288,7 @@ func TestNewAccount(t *testing.T) {
 	if account.staticID.IsZeroAccount() {
 		t.Fatal("Invalid account ID")
 	}
-	if account.staticOffset != 0 {
+	if account.staticOffset == 0 {
 		t.Fatal("Invalid offset")
 	}
 	if !account.staticHostKey.Equals(hostKey) {
