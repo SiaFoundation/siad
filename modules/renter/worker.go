@@ -52,16 +52,9 @@ type worker struct {
 	staticHostPubKey    types.SiaPublicKey
 	staticHostPubKeyStr string
 
-	// Download variables that are not protected by a mutex, but also do not
-	// need to be protected by a mutex, as they are only accessed by the master
-	// thread for the worker.
-	//
-	// The 'owned' prefix here indicates that only the master thread for the
-	// object (in this case, 'threadedWorkLoop') is allowed to access these
-	// variables. Because only that thread is allowed to access the variables,
-	// that thread is able to access these variables without a mutex.
-	ownedDownloadConsecutiveFailures int       // How many failures in a row?
-	ownedDownloadRecentFailure       time.Time // How recent was the last failure?
+	// Download variables.
+	downloadConsecutiveFailures int       // How many failures in a row?
+	downloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
@@ -99,17 +92,16 @@ type worker struct {
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
 }
 
-// callStatus returns the status of the worker.
-func (w *worker) callStatus(contract modules.RenterContract) modules.WorkerStatus {
-	downloadOnCoolDown := w.ownedOnDownloadCooldown()
-	w.mu.Lock()
-	defer w.mu.Unlock()
+// status returns the status of the worker.
+func (w *worker) status() modules.WorkerStatus {
+	downloadOnCoolDown := w.onDownloadCooldown()
 	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
+
 	return modules.WorkerStatus{
 		// Contract Information
-		ContractID:      contract.ID,
-		ContractUtility: contract.Utility,
-		HostPubKey:      w.staticHostPubKey,
+		//
+		// TODO: Put the utility here after !4415 is merged.
+		HostPubKey: w.staticHostPubKey,
 
 		// Download information
 		DownloadOnCoolDown: downloadOnCoolDown,
@@ -126,11 +118,11 @@ func (w *worker) callStatus(contract modules.RenterContract) modules.WorkerStatu
 		// Ephemeral Account information
 		AvailableBalance:        w.staticAccount.AvailableBalance(),
 		BalanceTarget:           w.staticBalanceTarget,
-		FundAccountJobQueueSize: w.staticFundAccountJobQueue.callLen(),
+		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
 
 		// Job Queues
-		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.callLen(),
-		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.callLen(),
+		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
+		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
 	}
 }
 

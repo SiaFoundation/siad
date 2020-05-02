@@ -28,8 +28,8 @@ type fundAccountJobResult struct {
 	err    error
 }
 
-// callLen returns the length of the fundAccountJobQueue queue
-func (queue *fundAccountJobQueue) callLen() int {
+// managedLen returns the length of the fundAccountJobQueue queue
+func (queue *fundAccountJobQueue) managedLen() int {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	return len(queue.queue)
