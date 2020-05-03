@@ -73,12 +73,16 @@ type Contractor struct {
 	// is unlocked.
 	recentRecoveryChange modules.ConsensusChangeID
 
-	downloaders         map[types.FileContractID]*hostDownloader
-	editors             map[types.FileContractID]*hostEditor
-	sessions            map[types.FileContractID]*hostSession
-	numFailedRenews     map[types.FileContractID]types.BlockHeight
+	downloaders     map[types.FileContractID]*hostDownloader
+	editors         map[types.FileContractID]*hostEditor
+	sessions        map[types.FileContractID]*hostSession
+	numFailedRenews map[types.FileContractID]types.BlockHeight
+	renewing        map[types.FileContractID]bool // prevent revising during renewal
+
+	// pubKeysToContractID is a map of host pubkeys to the latest contract ID
+	// that is formed with the host. The contract also has to have an end height
+	// in the future
 	pubKeysToContractID map[string]types.FileContractID
-	renewing            map[types.FileContractID]bool // prevent revising during renewal
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
@@ -419,7 +423,6 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
 		doubleSpentContracts: make(map[types.FileContractID]types.BlockHeight),
 		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
-		pubKeysToContractID:  make(map[string]types.FileContractID),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
@@ -443,13 +446,8 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		return nil, err
 	}
 
-	// Initialize the contractIDToPubKey map
-	for _, contract := range c.oldContracts {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	}
-	for _, contract := range c.staticContracts.ViewAll() {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	}
+	// Update the pubkeyToContractID map
+	c.managedUpdatePubKeyToContractIDMap()
 
 	// Unsubscribe from the consensus set upon shutdown.
 	c.tg.OnStop(func() {

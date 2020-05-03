@@ -1324,26 +1324,36 @@ func (api *API) renterRecoveryScanHandlerGET(w http.ResponseWriter, req *http.Re
 // renterRenameHandler handles the API call to rename a file entry in the
 // renter.
 func (api *API) renterRenameHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	newSiaPathStr := req.FormValue("newsiapath")
+	// Parse the siaPath and the newSiaPath
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	newSiaPath, err := modules.NewSiaPath(newSiaPathStr)
+	newSiaPath, err := modules.NewSiaPath(req.FormValue("newsiapath"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
+
+	// Determine whether the user is requesting a user siapath, or a root siapath.
+	root, err := isCalledWithRootFlag(req)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	newSiaPath, err = rebaseInputSiaPath(newSiaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	// Rebase the user's input to the user folder if the user is requesting a user siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+		newSiaPath, err = rebaseInputSiaPath(newSiaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 	err = api.renter.RenameFile(siaPath, newSiaPath)
 	if err != nil {

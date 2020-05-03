@@ -28,9 +28,21 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
+)
+
+var (
+	// workerCacheUpdateFrequency specifies how much time must pass before the
+	// worker updates its cache.
+	workerCacheUpdateFrequency = build.Select(build.Var{
+		Dev:      time.Second * 5,
+		Standard: time.Minute,
+		Testing:  time.Second,
+	}).(time.Duration)
 )
 
 // A worker listens for work on a certain host.
@@ -52,15 +64,17 @@ type worker struct {
 	staticHostPubKey    types.SiaPublicKey
 	staticHostPubKeyStr string
 
-	// Download variables.
-	downloadConsecutiveFailures int       // How many failures in a row?
-	downloadRecentFailure       time.Time // How recent was the last failure?
+	// Cached value for the contract utility, updated infrequently.
+	cachedContractID      types.FileContractID
+	cachedContractUtility modules.ContractUtility
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
-	downloadMu         sync.Mutex
-	downloadTerminated bool // Has downloading been terminated for this worker?
+	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+	downloadMu                  sync.Mutex
+	downloadTerminated          bool      // Has downloading been terminated for this worker?
+	downloadConsecutiveFailures int       // How many failures in a row?
+	downloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
@@ -99,9 +113,9 @@ func (w *worker) status() modules.WorkerStatus {
 
 	return modules.WorkerStatus{
 		// Contract Information
-		//
-		// TODO: Put the utility here after !4415 is merged.
-		HostPubKey: w.staticHostPubKey,
+		ContractID:      w.cachedContractID,
+		ContractUtility: w.cachedContractUtility,
+		HostPubKey:      w.staticHostPubKey,
 
 		// Download information
 		DownloadOnCoolDown: downloadOnCoolDown,
@@ -155,6 +169,24 @@ func (w *worker) managedBlockUntilReady() bool {
 	return true
 }
 
+// managedUpdateCache will check how recently each of the cached values of the
+// worker has been updated and update anything that is not recent enough.
+//
+// 'false' will be returned if the cache cannot be updated, signaling that the
+// worker should exit.
+func (w *worker) managedUpdateCache() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
+	if !exists {
+		return false
+	}
+	w.cachedContractID = renterContract.ID
+	w.cachedContractUtility = renterContract.Utility
+	return true
+}
+
 // staticKilled is a convenience function to determine if a worker has been
 // killed or not.
 func (w *worker) staticKilled() bool {
@@ -199,6 +231,13 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
+	// Fetch the cache for the worker before doing any work.
+	if !w.managedUpdateCache() {
+		w.renter.log.Println("Worker is being insta-killed because the cache update could not locate utility for the worker")
+		return
+	}
+	lastCacheUpdate := time.Now()
+
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
 	// work is attempted, the loop resets to check for higher priority work
@@ -215,6 +254,15 @@ func (w *worker) threadedWorkLoop() {
 		// worker should exit.
 		if !w.managedBlockUntilReady() {
 			return
+		}
+
+		// Check if the cache needs to be updated.
+		if time.Since(lastCacheUpdate) > workerCacheUpdateFrequency {
+			if !w.managedUpdateCache() {
+				w.renter.log.Debugln("worker is being killed because the cache could not be updated")
+				return
+			}
+			lastCacheUpdate = time.Now()
 		}
 
 		// Check if the account needs to be refilled.
@@ -249,14 +297,30 @@ func (w *worker) threadedWorkLoop() {
 			continue
 		}
 
-		// Block until new work is received via the upload or download channels,
-		// or until a kill or stop signal is received.
+		// Create a timer and a drain function for the timer.
+		cacheUpdateTimer := time.NewTimer(workerCacheUpdateFrequency)
+		drainCacheTimer := func() {
+			if !cacheUpdateTimer.Stop() {
+				<-cacheUpdateTimer.C
+			}
+		}
+
+		// Block until:
+		//    + New work has been submitted
+		//    + The cache timer fires
+		//    + The worker is killed
+		//    + The renter is stopped
 		select {
 		case <-w.wakeChan:
+			drainCacheTimer()
+			continue
+		case <-cacheUpdateTimer.C:
 			continue
 		case <-w.killChan:
+			drainCacheTimer()
 			return
 		case <-w.renter.tg.StopChan():
+			drainCacheTimer()
 			return
 		}
 	}
