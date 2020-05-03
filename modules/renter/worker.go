@@ -65,14 +65,14 @@ type worker struct {
 	staticHostPubKeyStr string
 
 	// Cached value for the contract utility, updated infrequently.
-	cachedContractID types.FileContractID
+	cachedContractID      types.FileContractID
 	cachedContractUtility modules.ContractUtility
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
-	downloadMu         sync.Mutex
-	downloadTerminated bool // Has downloading been terminated for this worker?
+	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+	downloadMu                  sync.Mutex
+	downloadTerminated          bool      // Has downloading been terminated for this worker?
 	downloadConsecutiveFailures int       // How many failures in a row?
 	downloadRecentFailure       time.Time // How recent was the last failure?
 
@@ -113,9 +113,9 @@ func (w *worker) status() modules.WorkerStatus {
 
 	return modules.WorkerStatus{
 		// Contract Information
-		ContractID: w.cachedContractID,
+		ContractID:      w.cachedContractID,
 		ContractUtility: w.cachedContractUtility,
-		HostPubKey: w.staticHostPubKey,
+		HostPubKey:      w.staticHostPubKey,
 
 		// Download information
 		DownloadOnCoolDown: downloadOnCoolDown,
