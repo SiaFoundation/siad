@@ -488,10 +488,11 @@ func (c *Client) RenterRateLimitPost(readBPS, writeBPS int64) (err error) {
 }
 
 // RenterRenamePost uses the /renter/rename/:siapath endpoint to rename a file.
-func (c *Client) RenterRenamePost(siaPathOld, siaPathNew modules.SiaPath) (err error) {
+func (c *Client) RenterRenamePost(siaPathOld, siaPathNew modules.SiaPath, root bool) (err error) {
 	spo := escapeSiaPath(siaPathOld)
 	values := url.Values{}
-	values.Set("newsiapath", fmt.Sprintf("/%s", siaPathNew.String()))
+	values.Set("newsiapath", fmt.Sprint(siaPathNew.String()))
+	values.Set("root", fmt.Sprint(root))
 	err = c.post(fmt.Sprintf("/renter/rename/%s", spo), values.Encode(), nil)
 	return
 }

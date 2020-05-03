@@ -277,6 +277,9 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	// Grab chunk stuck status
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
+	if uuc.chunkCreationTime.IsZero() {
+		uuc.chunkCreationTime = time.Now()
+	}
 	uuc.mu.Unlock()
 
 	// Check if chunk is in any of the heap maps
@@ -1240,6 +1243,9 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		// Perform the work. managedPrepareNextChunk will block until
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
+		nextChunk.mu.Lock()
+		nextChunk.chunkPoppedFromHeapTime = time.Now()
+		nextChunk.mu.Unlock()
 		err := r.managedPrepareNextChunk(nextChunk, hosts)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate

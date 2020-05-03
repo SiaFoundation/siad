@@ -3651,10 +3651,10 @@ only the entry in the renter. Will return an error if the target is a folder.
 Path to the file in the renter on the network.
 
 ### OPTIONAL
- **root** | bool
- Whether or not to treat the siapath as being relative to the user's home
- directory. If this field is not set, the siapath will be interpreted as
- relative to 'home/user/'.  
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as relative
+to 'home/user/'.
 
 ### Response
 
@@ -3901,7 +3901,11 @@ that have already been scanned.
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2" "localhost:9980/renter/rename/myfile"
+
+curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2&root=true" "localhost:9980/renter/rename/myfile"
 ```
+
+change the siaPath for a file that is being managed by the renter.
 
 ### Path Parameters
 ### REQUIRED
@@ -3912,6 +3916,12 @@ Path to the file in the renter on the network.
 ### REQUIRED
 **newsiapath** | string  
 New location of the file in the renter on the network.  
+
+### OPTIONAL
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.
 
 ### Response
 

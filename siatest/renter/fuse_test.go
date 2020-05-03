@@ -685,7 +685,7 @@ func TestFuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.RenterRenamePost(customFileSiaPath, customFileRenamedSiaPath)
+	err = r.RenterRenamePost(customFileSiaPath, customFileRenamedSiaPath, false)
 	if err != nil {
 		t.Fatal(err)
 	}

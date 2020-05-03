@@ -1,0 +1,3 @@
++ workers now more consistently use the most recent contract
++ improved performance logging in repair.log, especially in debug mode
++ general upload performance improvements (minor)
