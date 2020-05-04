@@ -89,6 +89,8 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	}
 
 	// receive PayByEphemeralAccountResponse
+	//
+	// TODO: this should not be blocking! handle in a separate goroutine
 	var payByResponse modules.PayByEphemeralAccountResponse
 	err = modules.RPCRead(stream, &payByResponse)
 	if err != nil {

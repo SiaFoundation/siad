@@ -25,13 +25,16 @@ package renter
 // up any queued jobs after a worker has been killed.
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -89,7 +92,6 @@ type worker struct {
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
 	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-	staticFundAccountJobQueue    fundAccountJobQueue
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -105,9 +107,10 @@ type worker struct {
 	staticAccount       *account
 	staticBalanceTarget types.Currency
 
-	// Every worker has an RPC client it uses to interact with the host. The RPC
-	// client is capable of performing all RPCs on the host.
-	staticRPCClient *rpcClient
+	// The current block height is cached on the client and gets updated by the
+	// renter when the consensus changes. This to avoid fetching the block
+	// height from the renter on every RPC call.
+	cachedBlockHeight types.BlockHeight
 
 	// Utilities.
 	//
@@ -207,7 +210,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
-	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
 	// Fetch the cache for the worker before doing any work.
@@ -247,14 +249,8 @@ func (w *worker) threadedWorkLoop() {
 		// Check if the account needs to be refilled.
 		w.scheduleRefillAccount()
 
-		// Perform any job to fund the account
-		workAttempted := w.managedPerformFundAcountJob()
-		if workAttempted {
-			continue
-		}
-
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted = w.managedPerformFetchBackupsJob()
+		workAttempted := w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
@@ -322,17 +318,12 @@ func (w *worker) scheduleRefillAccount() {
 		return
 	}
 
-	// If it's below the threshold, calculate the refill amount and enqueue a
-	// new fund account job
-	refill := w.staticBalanceTarget.Sub(balance)
-	_ = w.callQueueFundAccount(refill)
-
+	// TODO: manually perform the refill
 	// TODO: handle result chan
-	// TODO: add cooldown in case of failure
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.BlockHeight) (*worker, error) {
 	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -354,7 +345,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
 	account := newAccount(hostPubKey)
-	rpcClient := newRPCClient(host, account.staticID, bh)
 
 	return &worker{
 		staticHostPubKey:     hostPubKey,
@@ -363,7 +353,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 
 		staticAccount:       account,
 		staticBalanceTarget: types.ZeroCurrency,
-		staticRPCClient:     rpcClient,
+
+		cachedBlockHeight: blockHeight,
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
@@ -371,9 +362,205 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, bh types.BlockHeight) 
 	}, nil
 }
 
-// UpdateBlockHeight is called by the renter when it processes a consensus
-// change. The worker forwards this to the RPC client to ensure it has the
-// latest block height. This eliminates lock contention on the renter.
-func (w *worker) UpdateBlockHeight(blockHeight types.BlockHeight) {
-	w.staticRPCClient.UpdateBlockHeight(blockHeight)
+// threadedUpdateBlockheightOnWorkers is called on consensus change and updates
+// the (cached) blockheight on every individual worker.
+func (r *Renter) threadedUpdateBlockheightOnWorkers() {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
+
+	// grab the current block height and have all workers cache it
+	blockHeight := r.cs.Height()
+	for _, worker := range r.staticWorkerPool.managedWorkers() {
+		worker.managedUpdateBlockHeight(blockHeight)
+	}
+}
+
+// programResponse is a helper struct that wraps the RPCExecuteProgramResponse
+// alongside the data output
+type programResponse struct {
+	modules.RPCExecuteProgramResponse
+	Output []byte
+}
+
+// managedExecuteProgram performs the ExecuteProgramRPC on the host
+func (w *worker) managedExecuteProgram(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
+	// grab some variables from the worker
+	w.mu.Lock()
+	hostKey := w.staticHostPubKey
+	refundAccountID := w.staticAccount.staticID
+	blockHeight := w.cachedBlockHeight
+	w.mu.Unlock()
+
+	// close the stream
+	defer func() {
+		cErr := stream.Close()
+		if cErr != nil {
+			err = errors.Compose(err, cErr)
+			responses = nil
+		}
+	}()
+
+	// write the specifier
+	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	if err != nil {
+		return
+	}
+
+	// send price table uid
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return
+	}
+
+	// prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    fcid,
+		Program:           p,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// provide payment
+	err = pp.ProvidePayment(stream, hostKey, modules.RPCUpdatePriceTable, cost, refundAccountID, blockHeight)
+	if err != nil {
+		return
+	}
+
+	// send the execute program request.
+	err = modules.RPCWrite(stream, epr)
+	if err != nil {
+		return
+	}
+
+	// send the programData.
+	_, err = stream.Write(data)
+	if err != nil {
+		return
+	}
+
+	// read the responses.
+	responses = make([]programResponse, len(epr.Program))
+	for i := range responses {
+		err = modules.RPCRead(stream, &responses[i])
+		if err != nil {
+			return
+		}
+
+		// Read the output data.
+		outputLen := responses[i].OutputLength
+		responses[i].Output = make([]byte, outputLen, outputLen)
+		_, err = io.ReadFull(stream, responses[i].Output)
+		if err != nil {
+		}
+
+		// If the response contains an error we are done.
+		if responses[i].Error != nil {
+			return
+		}
+	}
+	return
+}
+
+// managedFundAccount will call the fundAccountRPC on the host and if successful
+// will deposit the given amount into the specified ephemeral account.
+func (w *worker) managedFundAccount(pp modules.PaymentProvider, stream siamux.Stream, pt modules.RPCPriceTable, id modules.AccountID, amount types.Currency) (resp modules.FundAccountResponse, err error) {
+	// grab some variables from the worker
+	w.mu.Lock()
+	hostKey := w.staticHostPubKey
+	blockHeight := w.cachedBlockHeight
+	w.mu.Unlock()
+
+	// close the stream
+	defer func() {
+		cErr := stream.Close()
+		if cErr != nil {
+			err = errors.Compose(err, cErr)
+			resp = modules.FundAccountResponse{}
+		}
+	}()
+
+	// write the specifier
+	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	if err != nil {
+		return
+	}
+
+	// send price table uid
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return
+	}
+
+	// send fund account request
+	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: id})
+	if err != nil {
+		return
+	}
+
+	// provide payment
+	err = pp.ProvidePayment(stream, hostKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, blockHeight)
+	if err != nil {
+		return
+	}
+
+	// receive FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	return
+}
+
+// managedUpdateBlockHeight is called by the renter when it processes a
+// consensus change. The worker forwards this to the RPC client to ensure it has
+// the latest block height. This eliminates lock contention on the renter.
+func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.cachedBlockHeight = blockHeight
+}
+
+// managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
+func (w *worker) managedUpdatePriceTable(pp modules.PaymentProvider, stream siamux.Stream) (pt modules.RPCPriceTable, err error) {
+	// grab some variables from the worker
+	w.mu.Lock()
+	hostKey := w.staticHostPubKey
+	refundAccountID := w.staticAccount.staticID
+	blockHeight := w.cachedBlockHeight
+	w.mu.Unlock()
+
+	// close the stream
+	defer func() {
+		cErr := stream.Close()
+		if cErr != nil {
+			err = errors.Compose(err, cErr)
+			pt = modules.RPCPriceTable{}
+		}
+	}()
+
+	// write the specifier
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		return
+	}
+
+	// receive the price table
+	var uptr modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &uptr)
+	if err != nil {
+		return
+	}
+
+	// decode the JSON
+	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
+	if err != nil {
+		return
+	}
+
+	// TODO: perform gouging check
+
+	// TODO: (follow-up) this should negatively affect the host's score
+
+	// provide payment
+	err = pp.ProvidePayment(stream, hostKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, refundAccountID, blockHeight)
+	return
 }
