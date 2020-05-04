@@ -366,7 +366,6 @@ func (w *worker) threadedUpdatePriceTable() {
 		w.mu.Lock()
 		expiry := w.priceTable.Expiry
 		w.mu.Unlock()
-	
 		if expiry <= time.Now().Unix() {
 			// this can only happen in the extreme case where acquiring the lock
 			// took as long as the entire expiry window
@@ -375,6 +374,7 @@ func (w *worker) threadedUpdatePriceTable() {
 		} else {
 			frequency = time.Duration((expiry - time.Now().Unix()) / 2)
 		}
+	}
 }
 
 // managedTryRefillAccount will check if the account needs to be refilled
