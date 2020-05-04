@@ -343,7 +343,8 @@ func (w *worker) threadedUpdatePriceTable() {
 	w.mu.Lock()
 	expiry := w.priceTable.Expiry
 	if expiry > time.Now().Unix() {
-		frequency = time.Duration((expiry - time.Now().Unix()) / 2)
+		duration := (expiry - time.Now().Unix()) / 2
+		frequency = time.Duration(duration) * time.Second
 	}
 	w.mu.Unlock()
 
@@ -377,7 +378,8 @@ func (w *worker) threadedUpdatePriceTable() {
 			build.Critical("The recently updated price table has already expired, this should never happen")
 			frequency = time.Duration(0) // update immediately
 		} else {
-			frequency = time.Duration((expiry - time.Now().Unix()) / 2)
+			duration := (expiry - time.Now().Unix()) / 2
+			frequency = time.Duration(duration) * time.Second
 		}
 	}
 }
