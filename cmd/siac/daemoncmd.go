@@ -195,6 +195,8 @@ func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 	fmt.Println("Set global maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
 }
 
+// printAlerts is a helper function to print details of a slice of alerts
+// with given severity description to command line
 func printAlerts(alerts []modules.Alert, as modules.AlertSeverity) {
 	fmt.Printf("\n  There are %v %s alerts\n", len(alerts), as.String())
 	for _, a := range alerts {
