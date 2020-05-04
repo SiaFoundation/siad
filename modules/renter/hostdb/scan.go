@@ -248,7 +248,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		// passed since the previous scan.
 		newTimestamp := time.Now()
 		prevTimestamp := newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Timestamp
-		if newTimestamp.After(prevTimestamp.Add(60 * time.Minute) {
+		if newTimestamp.After(prevTimestamp.Add(60 * time.Minute)) {
 			if newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Success && netErr != nil {
 				hdb.staticLog.Printf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
 			}
