@@ -189,14 +189,14 @@ func downloadFileSet(dir modules.SiaPath, expectedFetchSize uint64, threads uint
 			// Figure out the skylink for the file.
 			rf, err := c.RenterFileRootGet(siaPath)
 			if err != nil {
-				fmt.Println("Error geting file info:", err)
+				fmt.Println("Error getting file info:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Get a reader / stream for the download.
 			reader, err := c.SkynetSkylinkReaderGet(rf.File.Skylinks[0])
 			if err != nil {
-				fmt.Println("Error geting skylink reader:", err)
+				fmt.Println("Error getting skylink reader:", err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
