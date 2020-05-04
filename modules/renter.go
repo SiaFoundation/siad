@@ -744,7 +744,7 @@ type (
 		DownloadTerminated bool `json:"downloadterminated"`
 
 		// Upload status information
-		UploadCoolDownError error         `json:"uploadcooldownerror"`
+		UploadCoolDownError string        `json:"uploadcooldownerror"`
 		UploadCoolDownTime  time.Duration `json:"uploadcooldowntime"`
 		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
 		UploadQueueSize     int           `json:"uploadqueuesize"`

@@ -4638,7 +4638,7 @@ func TestWorkerStatus(t *testing.T) {
 		}
 
 		// Upload Field checks
-		if worker.UploadCoolDownError != nil {
+		if worker.UploadCoolDownError != "" {
 			t.Error("Cool down error should be nil but was", worker.UploadCoolDownError)
 		}
 		if worker.UploadCoolDownTime.Nanoseconds() >= 0 {
