@@ -211,6 +211,13 @@ worker pool. `callUpdate` will create new workers for any new contracts, will
 update workers for any contracts that changed, and will kill workers for any
 contracts that are no longer useful.
 
+There is also a function `callWorkers` which can be used to fetch the list of
+workers from the worker pool. It should be noted that it is not safe to lock the
+worker pool, iterate through the workers, and then call locking functions on the
+workers. The worker pool must be unlocked if the workers are going to be
+acquiring locks. Which means functions that loop over the list of workers must
+fetch that list separately.
+
 ##### Inbound Complexities
 
  - `callUpdate` should be called on the worker pool any time that that the set
