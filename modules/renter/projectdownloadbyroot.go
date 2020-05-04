@@ -328,7 +328,6 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		staticStartupCompleted: false,
 	}
 	for _, w := range workers {
-		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 		w.callQueueJobDownloadByRoot(jdbr)
 	}
 
