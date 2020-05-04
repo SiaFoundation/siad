@@ -109,13 +109,9 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 	// (no need to sanity check - the implementation of 'Sub' does this for us)
 	a.pendingDeposits = a.pendingDeposits.Sub(amount)
 
-	// reflect the successful deposit in the balance field, if the pending delta
-	// is zero we update the account on disk.
+	// reflect the successful deposit in the balance field
 	if success {
 		a.balance = a.balance.Add(amount)
-		if a.pendingDeposits.Add(a.pendingWithdrawals).IsZero() {
-			a.update() // TODO handle error, add logger?
-		}
 	}
 }
 
@@ -130,13 +126,9 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	// (no need to sanity check - the implementation of 'Sub' does this for us)
 	a.pendingWithdrawals = a.pendingWithdrawals.Sub(amount)
 
-	// reflect the successful withdrawal in the balance field, if the pending
-	// delta is zero we update the account on disk.
+	// reflect the successful withdrawal in the balance field
 	if success {
 		a.balance = a.balance.Sub(amount)
-		if a.pendingDeposits.Add(a.pendingWithdrawals).IsZero() {
-			a.update() // TODO handle error, add logger?
-		}
 	}
 }
 
@@ -154,12 +146,6 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 	a.staticMu.Lock()
 	defer a.staticMu.Unlock()
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
-}
-
-// update writes the account bytes to the persistence file using writeAt. The
-// account will get saved to disk when the renter is closed gracefully.
-func (a *account) update() error {
-	return nil // TODO: merge 'account-persistence' (keeping diff small)
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
