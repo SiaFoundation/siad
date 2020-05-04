@@ -970,9 +970,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 	// Save accounts on shutdown.
-	err = r.tg.OnStop(r.managedSaveAccounts)
-	if err != nil {
-		return nil, err
+	if !r.deps.Disrupt("InterruptAccountSaveOnShutdown") {
+		err = r.tg.OnStop(r.managedSaveAccounts)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Spin up background threads which are not depending on the renter being

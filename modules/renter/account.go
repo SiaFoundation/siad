@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -40,32 +39,53 @@ var (
 	// accountsFilename is the filename of the file that holds the accounts
 	accountsFilename = "accounts.dat"
 
-	// accountsMetadata contains the header and version specifiers that identify
-	// the accounts persist file.
-	accountsMetadata = persist.FixedMetadata{
-		Header:  types.NewSpecifier("Accounts\n"),
-		Version: types.NewSpecifier("v1.5.0\n"),
-	}
+	// metadataHeader is the header of the metadata for the persistence file
+	metadataHeader = types.NewSpecifier("Accounts\n")
+
+	// metadataVersion is the version of the persistence file
+	metadataVersion = types.NewSpecifier("v1.5.0\n")
+
+	// metadataSize is the size of the metadata header in bytes
+	metadataSize = 2*types.SpecifierLen + 1
 
 	// Metadata validation errors
 	errWrongHeader  = errors.New("wrong header")
 	errWrongVersion = errors.New("wrong version")
 )
 
-// account represents a renter's ephemeral account on a host.
-type account struct {
-	staticID        modules.AccountID
-	staticHostKey   types.SiaPublicKey
-	staticOffset    int64
-	staticSecretKey crypto.SecretKey
+type (
+	// accountsMetadata is the metadata of the accounts persist file
+	accountsMetadata struct {
+		Header  types.Specifier
+		Version types.Specifier
+		Clean   bool
+	}
 
-	balance       types.Currency
-	pendingFunds  types.Currency
-	pendingSpends types.Currency
+	// account represents a renter's ephemeral account on a host.
+	account struct {
+		staticID        modules.AccountID
+		staticHostKey   types.SiaPublicKey
+		staticOffset    int64
+		staticSecretKey crypto.SecretKey
 
-	staticPersistence modules.File
-	staticMu          sync.RWMutex
-}
+		balance       types.Currency
+		pendingFunds  types.Currency
+		pendingSpends types.Currency
+
+		staticPersistence modules.File
+		staticMu          sync.RWMutex
+	}
+
+	// accountPersistence is the account's persistence object which holds all
+	// data that will get written to disk.
+	accountPersistence struct {
+		AccountID modules.AccountID
+		Balance   types.Currency
+		HostKey   types.SiaPublicKey
+		SecretKey crypto.SecretKey
+		Checksum  crypto.Hash
+	}
+)
 
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
@@ -127,23 +147,8 @@ func (a *account) toAccountPersistence() accountPersistence {
 		HostKey:   a.staticHostKey,
 		SecretKey: a.staticSecretKey,
 	}
-	// clean is set to false by default as a safety precaution, only a graceful
-	// shutdown will save it as true on disk
-	ap.Clean = false
-
 	ap.Checksum = ap.checksum()
 	return ap
-}
-
-// update writes the account bytes to the persistence file using writeAt. The
-// account will get saved to disk when the renter is closed gracefully.
-func (a *account) update() error {
-	accBytes, err := a.toAccountPersistence().toBytes()
-	if err != nil {
-		return err
-	}
-	_, err = a.staticPersistence.WriteAt(accBytes, a.staticOffset)
-	return err
 }
 
 // managedLoadAccounts loads the accounts from the persistence file onto the
@@ -159,24 +164,43 @@ func (r *Renter) managedLoadAccounts() error {
 		return errors.AddContext(err, "Failed to open accounts persist file")
 	}
 
-	// if it did not exist before opening, write the metadata
+	// read the metadata
+	var metadata accountsMetadata
 	if os.IsNotExist(statErr) {
-		_, err = file.Write(encoding.Marshal(accountsMetadata))
+		metadata = accountsMetadata{
+			Header:  metadataHeader,
+			Version: metadataVersion,
+			Clean:   true,
+		}
 	} else {
-		_, err = persist.VerifyMetadataHeader(file, accountsMetadata)
-	}
-	if err != nil {
-		return errors.AddContext(err, "Failed to verify accounts metadata")
+		buffer := make([]byte, metadataSize)
+		_, err := io.ReadFull(file, buffer)
+		if err != nil {
+			return errors.AddContext(err, "Failed to read accounts metadata")
+		}
+		encoding.Unmarshal(buffer, &metadata)
 	}
 
-	// the initial offset should start after the metadata + the required padding
-	// to ensure accounts align, which is equal to 'accountSize'. We add a
-	// sanity check here to ensure the metadata never grows larger than a single
-	// account size
-	initialOffset := int64(accountSize)
-	if persist.FixedMetadataSize > accountSize {
+	// validate the metadata
+	if metadata.Header != metadataHeader {
+		return errors.AddContext(errWrongHeader, "Failed to verify accounts metadata")
+	}
+	if metadata.Version != metadataVersion {
+		return errors.AddContext(errWrongVersion, "Failed to verify accounts metadata")
+	}
+
+	// truncate the file if it was not properly saved
+	if !metadata.Clean {
+		err = file.Truncate(int64(metadataSize))
+		return errors.AddContext(err, "Failed to truncate the accounts persistence file")
+	}
+
+	// sanity check the account size is larger than the metadata size, before
+	// setting the initial offset to be equal to the size of a single account
+	if metadataSize > accountSize {
 		build.Critical("Metadata size is larger than account size, this means the initial offset is too small")
 	}
+	initialOffset := int64(accountSize)
 
 	// seek to the initial offset
 	_, err = file.Seek(initialOffset, io.SeekStart)
@@ -208,10 +232,6 @@ func (r *Renter) managedLoadAccounts() error {
 			r.log.Println("ERROR:", errors.New("Account ignored because checksum did not match"))
 			continue
 		}
-		if !accountData.Clean {
-			r.log.Println("ERROR:", errors.New("Account ignored after unclean shutdown"))
-			continue
-		}
 
 		acc := &account{
 			staticID:          accountData.AccountID,
@@ -223,6 +243,14 @@ func (r *Renter) managedLoadAccounts() error {
 		}
 		accounts[acc.staticHostKey.String()] = acc
 		nextOffset += accountSize
+	}
+
+	// update the metadata header to mark it as dirty
+	metadata.Clean = false
+	file.WriteAt(encoding.Marshal(metadata), 0)
+	err = file.Sync()
+	if err != nil {
+		return errors.AddContext(err, "Failed to sync accounts file")
 	}
 
 	id := r.mu.Lock()
@@ -250,10 +278,6 @@ func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
 // managedSaveAccounts is called on shutdown and ensures the account data is
 // properly persisted to disk
 func (r *Renter) managedSaveAccounts() error {
-	if r.deps.Disrupt("InterruptAccountSaveOnShutdown") {
-		return nil
-	}
-
 	// grab the accounts
 	id := r.mu.RLock()
 	accounts := r.accounts
@@ -263,7 +287,6 @@ func (r *Renter) managedSaveAccounts() error {
 	for _, account := range accounts {
 		account.staticMu.Lock()
 		accountData := account.toAccountPersistence()
-		accountData.Clean = true // mark as clean
 		account.staticMu.Unlock()
 
 		bytes, err := accountData.toBytes()
@@ -278,12 +301,22 @@ func (r *Renter) managedSaveAccounts() error {
 		}
 	}
 
-	// sync and close the persist file
-	err := r.staticAccountsFile.Sync()
-	if err != nil {
-		return err
+	// update the metadata and mark the file as clean
+	metadata := accountsMetadata{
+		Header:  metadataHeader,
+		Version: metadataVersion,
+		Clean:   true,
 	}
-	return r.staticAccountsFile.Close()
+	_, err := r.staticAccountsFile.WriteAt(encoding.Marshal(metadata), 0)
+	if err != nil {
+		return errors.AddContext(err, "Failed to update accounts file metadata")
+	}
+
+	// sync and close the persist file
+	return errors.Compose(
+		r.staticAccountsFile.Sync(),
+		r.staticAccountsFile.Close(),
+	)
 }
 
 // newAccount returns an new account object for the given host.
@@ -298,17 +331,6 @@ func (r *Renter) newAccount(hostKey types.SiaPublicKey) *account {
 		staticPersistence: r.staticAccountsFile,
 		staticSecretKey:   sk,
 	}
-}
-
-// accountPersistence is the account's persistence object which holds all data
-// that will get written to disk.
-type accountPersistence struct {
-	AccountID modules.AccountID
-	Balance   types.Currency
-	HostKey   types.SiaPublicKey
-	SecretKey crypto.SecretKey
-	Clean     bool
-	Checksum  crypto.Hash
 }
 
 // checksum returns the checksum of the accountPeristence object
@@ -339,6 +361,26 @@ func (ap accountPersistence) toBytes() ([]byte, error) {
 func (ap accountPersistence) verifyChecksum(checksum crypto.Hash) bool {
 	expected := ap.checksum()
 	return bytes.Equal(expected[:], checksum[:])
+}
+
+// MarshalSia implements the SiaMarshaler interface.
+func (am accountsMetadata) MarshalSia(w io.Writer) error {
+	e := encoding.NewEncoder(w)
+	e.Write(am.Header[:])
+	e.Write(am.Version[:])
+	e.WriteBool(am.Clean)
+	return e.Err()
+}
+
+// UnmarshalSia implements the SiaMarshaler interface.
+func (am *accountsMetadata) UnmarshalSia(r io.Reader) error {
+	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
+	d.ReadFull(am.Header[:])
+	d.ReadFull(am.Version[:])
+	buf := make([]byte, 1)
+	d.ReadFull(buf)
+	am.Clean = buf[0] == 1
+	return d.Err()
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and

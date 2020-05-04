@@ -35,7 +35,7 @@ func TestAccountReload(t *testing.T) {
 		t.Fatal("Accounts persistence file not set on the Renter after startup")
 	}
 
-	// create a number accounts and reload the renter
+	// create a number of test accounts and reload the renter
 	accounts := createRandomTestAccountsOnRenter(r)
 	r, err = rt.reloadRenter(r)
 	if err != nil {
@@ -57,17 +57,18 @@ func TestAccountReload(t *testing.T) {
 	}
 }
 
-// TestAccountReloadUncleanShutdown verifies accounts that do not have the
-// 'clean' flag set to true are not reloaded after a renter experienced an
-// unclean shutdown.
+// TestAccountReloadUncleanShutdown verifies that accounts are dropped if the
+// accounts persist file was not marked as 'clean' on shutdown.
 func TestAccountReloadUncleanShutdown(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// create a renter
-	rt, err := newRenterTester(t.Name())
+	// create a renter tester with a dependency that interrupts the
+	// accounts save on shutdown of the renter
+	deps := &dependencies.DependencyInterruptAccountSaveOnShutdown{}
+	rt, err := newRenterTesterWithDependency(t.Name(), deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,16 +76,13 @@ func TestAccountReloadUncleanShutdown(t *testing.T) {
 	r := rt.renter
 
 	// create a number accounts
-	accounts := createRandomTestAccountsOnRenter(r)
+	createRandomTestAccountsOnRenter(r)
 
-	// manually close the renter (this ensures the accounts are properly saved)
+	// reload the renter manually
 	err = r.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// reload a renter with a dependency that interrupts the save on shutdown
-	deps := &dependencies.DependencyInterruptAccountSaveOnShutdown{}
 	r, err = newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), deps)
 	if err != nil {
 		t.Fatal(err)
@@ -94,59 +92,13 @@ func TestAccountReloadUncleanShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// verify the accounts got reloaded
+	// verify the renter was reloaded without a single account
 	id := r.mu.Lock()
 	reloaded := r.accounts
 	r.mu.Unlock(id)
-	if len(reloaded) != len(accounts) {
-		t.Fatalf("Unexpected amount of accounts reloaded, %v != %v", len(reloaded), len(accounts))
-	}
 
-	// randomly update a number of accounts, this writes them to disk and sets
-	// 'clean' to false, if the renter is not shutdown cleanly, these accounts
-	// will not get reloaded
-	dirty := make(map[modules.AccountID]bool)
-	for _, account := range reloaded {
-		if fastrand.Intn(2) == 0 {
-			func() {
-				account.staticMu.Lock()
-				defer account.staticMu.Unlock()
-
-				err = account.update()
-				if err != nil {
-					t.Fatal(err)
-				}
-				dirty[account.staticID] = true
-			}()
-		}
-	}
-
-	// reload the renter
-	r, err = rt.reloadRenter(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify only the 'clean' accounts got reloaded properly
-	id = r.mu.Lock()
-	reloaded = r.accounts
-	r.mu.Unlock(id)
-
-	expected := len(accounts) - len(dirty)
-	if len(reloaded) != expected {
-		t.Fatalf("Unexpected amount of accounts, %v != %v", len(reloaded), expected)
-	}
-	for _, account := range accounts {
-		reloaded := r.managedOpenAccount(account.staticHostKey)
-		if dirty[account.staticID] {
-			if account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
-				t.Fatal("Unexpected account ID, expected a new account")
-			}
-		} else {
-			if !account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
-				t.Fatal("Unexpected account ID, expected a reloaded account")
-			}
-		}
+	if len(reloaded) != 0 {
+		t.Fatal("Unexpected amount of accounts after reload")
 	}
 }
 
@@ -221,6 +173,8 @@ func TestAccountReloadSkipCorrupted(t *testing.T) {
 // TestAccountPersistenceToBytes verifies the functionality of the `toBytes`
 // method on the accountPersistence object
 func TestAccountPersistenceToBytes(t *testing.T) {
+	t.Parallel()
+
 	ap := createRandomTestAccountPersistence()
 	apBytes, err := ap.toBytes()
 	if err != nil {
@@ -245,6 +199,8 @@ func TestAccountPersistenceToBytes(t *testing.T) {
 // TestAccountPersistenceVerifyChecksum verifies the functionality of the
 // 'checksum' and 'verifyChecksum' methods on the account persistence object
 func TestAccountPersistenceVerifyChecksum(t *testing.T) {
+	t.Parallel()
+
 	ap := createRandomTestAccountPersistence()
 	checksum := ap.checksum()
 	if !ap.verifyChecksum(checksum) {
@@ -256,11 +212,47 @@ func TestAccountPersistenceVerifyChecksum(t *testing.T) {
 	}
 }
 
+// TestAccountMetadataMarhsaling verifies the behaviour of the Marshal interface
+// on the accountsMetadata
+func TestAccountMetadataMarhsaling(t *testing.T) {
+	t.Parallel()
+
+	// create random metadata
+	var am accountsMetadata
+	fastrand.Read(am.Header[:])
+	fastrand.Read(am.Version[:])
+	am.Clean = fastrand.Intn(2) == 0
+
+	// marshal it into bytes and verify the length
+	mdBytes := encoding.Marshal(am)
+	if len(mdBytes) != metadataSize {
+		t.Fatalf("Unexpected metadata size, %v != %v", len(mdBytes), metadataSize)
+	}
+
+	// unmarshal and verify the unmarshaled object
+	var uMar accountsMetadata
+	err := encoding.Unmarshal(mdBytes, &uMar)
+	if err != nil {
+		t.Fatal("Failed to unmarshal metadata bytes", err)
+	}
+	if uMar.Header != am.Header {
+		t.Fatal("Unexpected header")
+	}
+	if uMar.Version != am.Version {
+		t.Fatal("Unexpected version")
+	}
+	if uMar.Clean != am.Clean {
+		t.Fatal("Unexpected clean flag")
+	}
+}
+
 // TestNewAccount verifies newAccount returns a valid account object
 func TestNewAccount(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -362,7 +354,6 @@ func createRandomTestAccountPersistence() accountPersistence {
 		Balance:   types.NewCurrency64(fastrand.Uint64n(1e3)),
 		HostKey:   types.SiaPublicKey{},
 		SecretKey: sk,
-		Clean:     fastrand.Intn(2) == 0,
 		Checksum:  checksum,
 	}
 	return ap
