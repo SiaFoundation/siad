@@ -337,17 +337,36 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
+	fullHealth, greater75, greater50, greater25, greater0, unrecoverable, err := filePercentageBreakdown(dirs)
+	if err != nil {
+		die(err)
+	}
+
+	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
+	percentages = parsePercentages(percentages)
+
+	fmt.Printf(`File Health Summary:
+  %% At 100%%:            %v%%
+  %% Between 75%% - 100%%: %v%%
+  %% Between 50%% - 75%%:  %v%%
+  %% Between 25%% - 50%%:  %v%%
+  %% Between 0%% - 25%%:   %v%%
+  %% Unrecoverable:      %v%%
+`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
+}
+
+// filePercentageBreakdown returns a percentage breakdown of the renter's files'
+// healths
+func filePercentageBreakdown(dirs []directoryInfo) (float64, float64, float64, float64, float64, float64, error) {
 	// Check for nil input
 	if len(dirs) == 0 {
-		fmt.Println("No Directories Found")
-		return
+		return 0, 0, 0, 0, 0, 0, errors.New("No Directories Found")
 	}
 
 	// Check for no files uploaded
 	total := float64(dirs[0].dir.AggregateNumFiles)
 	if total == 0 {
-		fmt.Println("No Files Uploaded")
-		return
+		return 0, 0, 0, 0, 0, 0, errors.New("No Files Uploaded")
 	}
 
 	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
@@ -362,7 +381,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 				greater50++
 			case file.MaxHealthPercent > 25:
 				greater25++
-			case file.MaxHealthPercent > 0:
+			case file.MaxHealthPercent > 0 || file.OnDisk:
 				greater0++
 			default:
 				unrecoverable++
@@ -377,17 +396,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 	greater0 = 100 * greater0 / total
 	unrecoverable = 100 * unrecoverable / total
 
-	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
-	percentages = parsePercentages(percentages)
-
-	fmt.Printf(`File Health Summary:
-  %% At 100%%:            %v%%
-  %% Between 75%% - 100%%: %v%%
-  %% Between 50%% - 75%%:  %v%%
-  %% Between 25%% - 50%%:  %v%%
-  %% Between 0%% - 25%%:   %v%%
-  %% Unrecoverable:      %v%%
-`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
+	return fullHealth, greater75, greater50, greater25, greater0, unrecoverable, nil
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
