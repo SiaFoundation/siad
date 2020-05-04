@@ -118,7 +118,7 @@ func (wp *workerPool) callUpdate() {
 }
 
 // managedWorkers will safely grab the list of workers in the worker pool. This
-// function must used instead of accessing the worker map directly in any
+// function must be used instead of accessing the worker map directly in any
 // situation where the workers are being used as opposed to just counted,
 // because it is not safe to use the workers while the worker pool is locked.
 func (wp *workerPool) managedWorkers() []*worker {
