@@ -321,18 +321,17 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		wp.mu.RUnlock()
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
-	workers := make([]*worker, 0, len(wp.workers))
-	for _, w := range wp.workers {
-		workers = append(workers, w)
+	workers := wp.callWorkers()
+	for _, w := range workers {
 		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 	}
-	wp.mu.RUnlock()
 	// Queue the jobs in the workers.
 	jdbr := jobDownloadByRoot{
 		staticProject:          pdbr,
 		staticStartupCompleted: false,
 	}
 	for _, w := range workers {
+		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 		w.callQueueJobDownloadByRoot(jdbr)
 	}
 
