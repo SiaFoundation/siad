@@ -14,9 +14,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestAccountReload verifies accounts are properly saved and loaded onto the
+// TestAccountSave verifies accounts are properly saved and loaded onto the
 // renter when it goes through a graceful shutdown and reboot.
-func TestAccountReload(t *testing.T) {
+func TestAccountSave(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -57,9 +57,9 @@ func TestAccountReload(t *testing.T) {
 	}
 }
 
-// TestAccountReloadUncleanShutdown verifies that accounts are dropped if the
-// accounts persist file was not marked as 'clean' on shutdown.
-func TestAccountReloadUncleanShutdown(t *testing.T) {
+// TestAccountUncleanShutdown verifies that accounts are dropped if the accounts
+// persist file was not marked as 'clean' on shutdown.
+func TestAccountUncleanShutdown(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -102,9 +102,8 @@ func TestAccountReloadUncleanShutdown(t *testing.T) {
 	}
 }
 
-// TestAccountReloadSkipCorrupted verifies accounts that are corrupted are not
-// reloaded after a renter experienced an unclean shutdown.
-func TestAccountReloadSkipCorrupted(t *testing.T) {
+// TestAccountCorrupted verifies accounts that are corrupted are not reloaded
+func TestAccountCorrupted(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}

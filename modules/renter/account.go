@@ -17,13 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// TODO: for now the account is a separate object that sits as first class
-// object on the worker, most probably though this will move as to not have two
-// separate mutex domains.
-
-// TODO: use same secret key for all accounts the renter has on host (?) add it
-// to renter's persistence and save the secret key in the account persistence
-
 const (
 	// accountSize is the fixed account size in bytes
 	accountSize = 1 << 8 // 256 bytes
@@ -36,17 +29,13 @@ const (
 )
 
 var (
-	// accountsFilename is the filename of the file that holds the accounts
+	// accountsFilename is the filename of the accounts persistence file
 	accountsFilename = "accounts.dat"
 
-	// metadataHeader is the header of the metadata for the persistence file
-	metadataHeader = types.NewSpecifier("Accounts\n")
-
-	// metadataVersion is the version of the persistence file
+	// Metadata
+	metadataHeader  = types.NewSpecifier("Accounts\n")
 	metadataVersion = types.NewSpecifier("v1.5.0\n")
-
-	// metadataSize is the size of the metadata header in bytes
-	metadataSize = 2*types.SpecifierLen + 1
+	metadataSize    = 2*types.SpecifierLen + 1
 
 	// Metadata validation errors
 	errWrongHeader  = errors.New("wrong header")
@@ -77,7 +66,7 @@ type (
 	}
 
 	// accountPersistence is the account's persistence object which holds all
-	// data that will get written to disk.
+	// data that gets persisted for a single account.
 	accountPersistence struct {
 		AccountID modules.AccountID
 		Balance   types.Currency
@@ -117,6 +106,8 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	}
 
 	// receive PayByEphemeralAccountResponse
+	//
+	// TODO: this should not be blocking! handle in a separate goroutine
 	var payByResponse modules.PayByEphemeralAccountResponse
 	err = modules.RPCRead(stream, &payByResponse)
 	if err != nil {
@@ -176,9 +167,12 @@ func (r *Renter) managedLoadAccounts() error {
 		buffer := make([]byte, metadataSize)
 		_, err := io.ReadFull(file, buffer)
 		if err != nil {
-			return errors.AddContext(err, "Failed to read accounts metadata")
+			return errors.AddContext(err, "Failed to read metadata from accounts file")
 		}
-		encoding.Unmarshal(buffer, &metadata)
+		err = encoding.Unmarshal(buffer, &metadata)
+		if err != nil {
+			return errors.AddContext(err, "Failed to decode metadata from accounts file")
+		}
 	}
 
 	// validate the metadata
@@ -195,8 +189,8 @@ func (r *Renter) managedLoadAccounts() error {
 		return errors.AddContext(err, "Failed to truncate the accounts persistence file")
 	}
 
-	// sanity check the account size is larger than the metadata size, before
-	// setting the initial offset to be equal to the size of a single account
+	// sanity check that the account size is larger than the metadata size,
+	// before setting the initial offset
 	if metadataSize > accountSize {
 		build.Critical("Metadata size is larger than account size, this means the initial offset is too small")
 	}
@@ -205,7 +199,7 @@ func (r *Renter) managedLoadAccounts() error {
 	// seek to the initial offset
 	_, err = file.Seek(initialOffset, io.SeekStart)
 	if err != nil {
-		return errors.AddContext(err, "Failed seek in accounts file")
+		return errors.AddContext(err, "Failed to seek to initial offset in accounts file")
 	}
 
 	// read the raw account data and decode them into accounts
@@ -245,14 +239,19 @@ func (r *Renter) managedLoadAccounts() error {
 		nextOffset += accountSize
 	}
 
-	// update the metadata header to mark it as dirty
+	// mark the metadata as 'dirty' and update the metadata on disk - this
+	// ensures only after a successful shutdown, accounts are reloaded from disk
 	metadata.Clean = false
-	file.WriteAt(encoding.Marshal(metadata), 0)
+	_, err = file.WriteAt(encoding.Marshal(metadata), 0)
+	if err != nil {
+		return errors.AddContext(err, "Failed to write metadata to accounts file")
+	}
 	err = file.Sync()
 	if err != nil {
 		return errors.AddContext(err, "Failed to sync accounts file")
 	}
 
+	// load the accounts on to the renter
 	id := r.mu.Lock()
 	r.accounts = accounts
 	r.staticAccountsFile = file
@@ -260,7 +259,7 @@ func (r *Renter) managedLoadAccounts() error {
 	return nil
 }
 
-// managedOpenAccount returns an account for the given host key. If it does not
+// managedOpenAccount returns an account for the given host. If it does not
 // exist already one is created.
 func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
 	id := r.mu.Lock()
@@ -322,8 +321,11 @@ func (r *Renter) managedSaveAccounts() error {
 // newAccount returns an new account object for the given host.
 func (r *Renter) newAccount(hostKey types.SiaPublicKey) *account {
 	aid, sk := modules.NewAccountID()
-	numAccounts := len(r.accounts)
-	offset := (numAccounts + 1) * accountSize // we increment to account for the metadata
+
+	// calculate the account's offset
+	metadataPadding := accountSize - metadataSize
+	offset := metadataSize + metadataPadding + (len(r.accounts) * accountSize)
+
 	return &account{
 		staticID:          aid,
 		staticHostKey:     hostKey,
