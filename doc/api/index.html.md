@@ -4189,7 +4189,7 @@ returns the the status of all the workers in the renter's workerpool.
       "downloadqueuesize":  0,     // int
       "downloadterminated": false, // boolean
       
-      "uploadcooldownerror": null,                 // error
+      "uploadcooldownerror": "",                   // string
       "uploadcooldowntime":  -9223372036854775808, // time.Duration
       "uploadoncooldown":    false,                // boolean
       "uploadqueuesize":     0,                    // int

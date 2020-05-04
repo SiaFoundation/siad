@@ -111,6 +111,11 @@ func (w *worker) status() modules.WorkerStatus {
 	downloadOnCoolDown := w.onDownloadCooldown()
 	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
 
+	var uploadCoolDownErr string
+	if w.uploadRecentFailureErr != nil {
+		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
+	}
+
 	return modules.WorkerStatus{
 		// Contract Information
 		ContractID:      w.cachedContractID,
@@ -123,7 +128,7 @@ func (w *worker) status() modules.WorkerStatus {
 		DownloadTerminated: w.downloadTerminated,
 
 		// Upload information
-		UploadCoolDownError: w.uploadRecentFailureErr,
+		UploadCoolDownError: uploadCoolDownErr,
 		UploadCoolDownTime:  uploadCoolDownTime,
 		UploadOnCoolDown:    uploadOnCoolDown,
 		UploadQueueSize:     len(w.unprocessedChunks),
