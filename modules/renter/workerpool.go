@@ -53,7 +53,13 @@ func (wp *workerPool) callUpdate() {
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
+	// Prepare some variables which we'll need to create new workers
 	blockHeight := wp.renter.cs.Height()
+	accountMap := make(map[string]*account)
+	for _, contract := range contractSlice {
+		accountMap[contract.HostPublicKey.String()] =
+			wp.renter.managedOpenAccount(contract.HostPublicKey)
+	}
 
 	// Lock the worker pool for the duration of updating its fields.
 	wp.mu.Lock()
@@ -67,7 +73,7 @@ func (wp *workerPool) callUpdate() {
 		}
 
 		// Create a new worker and add it to the map
-		w, err := wp.renter.newWorker(contract.HostPublicKey, blockHeight)
+		w, err := wp.renter.newWorker(contract.HostPublicKey, blockHeight, accountMap[contract.HostPublicKey.String()])
 		if err != nil {
 			wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
 			continue

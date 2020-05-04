@@ -28,11 +28,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/siamux"
 
@@ -68,6 +70,7 @@ type worker struct {
 	staticHostPubKey     types.SiaPublicKey
 	staticHostPubKeyStr  string
 	staticHostMuxAddress string
+	staticHostVersion    string
 
 	// Cached value for the contract utility, updated infrequently.
 	cachedContractUtility modules.ContractUtility
@@ -111,6 +114,8 @@ type worker struct {
 	// renter when the consensus changes. This to avoid fetching the block
 	// height from the renter on every RPC call.
 	cachedBlockHeight types.BlockHeight
+
+	cachedPriceTable modules.RPCPriceTable
 
 	// Utilities.
 	//
@@ -193,7 +198,7 @@ func (w *worker) staticWake() {
 // priority queue for the various types of work. It is possible for continuous
 // requests for one type of work to drown out a worker's ability to perform
 // other types of work.
-//
+//sssssssssssssassssssssssss
 // If no work is found, the worker will sleep until woken up. Because each
 // iteration is stateless, it may be possible to reduce the goroutine count in
 // Sia by spinning down the worker / expiring the thread when there is no work,
@@ -202,7 +207,7 @@ func (w *worker) staticWake() {
 // the worker has because the worker object will be kept in memory via the
 // worker map.
 func (w *worker) threadedWorkLoop() {
-	// Ensure that all queued jobs are gracefully cleaned up when the worker is
+	// Ensure that al, l queued jobs are gracefully cleaned up when the worker is
 	// shut down.
 	//
 	// TODO: Need to write testing around these kill functions and ensure they
@@ -218,6 +223,25 @@ func (w *worker) threadedWorkLoop() {
 		return
 	}
 	lastCacheUpdate := time.Now()
+
+	// Fetch the host's most recent price table
+	if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+		// update the price table using FC payments to initialize the price
+		// table, regardless whether or not the EA has sufficient balance
+		err := w.managedUpdatePriceTable(w.renter.hostContractor)
+		if err != nil {
+			w.renter.log.Println("Worker is being insta-killed because it could not get the host's pricing", err)
+			return
+		}
+
+		w.mu.Lock()
+		pt := w.cachedPriceTable
+		w.mu.Unlock()
+
+		// update the price table
+		updateFrequency := (pt.Expiry - time.Now().Unix()) / 2
+		go w.threadedUpdatePriceTable(time.Duration(updateFrequency))
+	}
 
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
@@ -247,7 +271,7 @@ func (w *worker) threadedWorkLoop() {
 		}
 
 		// Check if the account needs to be refilled.
-		w.scheduleRefillAccount()
+		w.managedTryRefillAccount()
 
 		// Perform any job to fetch the list of backups from the host.
 		workAttempted := w.managedPerformFetchBackupsJob()
@@ -301,29 +325,52 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
-// scheduleRefillAccount will check if the account needs to be refilled,
-// and will schedule a fund account job if so. This is called every time the
-// worker spends from the account.
-func (w *worker) scheduleRefillAccount() {
-	// Calculate the threshold, if the account's available balance is below this
-	// threshold, we want to trigger a refill. We only refill if we drop below a
-	// threshold because we want to avoid refilling every time we drop 1 hasting
-	// below the target.
-	threshold := w.staticBalanceTarget.Div64(2)
-
-	// Fetch the account's available balance and skip if it's above the
-	// threshold
-	balance := w.staticAccount.AvailableBalance()
-	if balance.Cmp(threshold) >= 0 {
+// threadedUpdatePriceTable fetches the host's recent pricing by updating the
+// price table.
+func (w *worker) threadedUpdatePriceTable(frequency time.Duration) {
+	err := w.renter.tg.Add()
+	if err != nil {
 		return
 	}
+	defer w.renter.tg.Done()
 
-	// TODO: manually perform the refill
-	// TODO: handle result chan
+	for {
+		select {
+		case <-w.killChan:
+			return
+		case <-w.renter.tg.StopChan():
+			return
+		case <-time.After(frequency):
+		}
+
+		// update the price table, pay using the EA if possible, however we fall
+		// back to FC payment if necessary
+		err := w.managedUpdatePriceTable(w.staticAccount)
+		if err != nil && strings.Contains(err.Error(), host.ErrBalanceInsufficient.Error()) {
+			err = w.managedUpdatePriceTable(w.renter.hostContractor)
+		}
+		if err != nil {
+			w.renter.log.Println("Failed to update the host's pricing", err)
+			continue
+		}
+	}
+}
+
+// managedTryRefillAccount will check if the account needs to be refilled
+func (w *worker) managedTryRefillAccount() {
+	// calculate the threshold at which we want to trigger an account refill,
+	// set it to half the target to ensure a sane amount of refills occur
+	threshold := w.staticBalanceTarget.Div64(2)
+
+	// the refill amount equals the threshold as we do not want to exceed the
+	// balance target by refilling (seeing as the balance target is hardcoded to
+	// be the default max ephemeral account balance)
+	amount := threshold
+	w.staticAccount.managedTryRefill(threshold, amount, w.managedFundAccount)
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.BlockHeight) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.BlockHeight, account *account) (*worker, error) {
 	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -332,9 +379,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 		return nil, errors.New("host does not exist")
 	}
 
-	// TODO: set the balance target to 1SC and a check that verifies it makes
-	// sense in function of the amount of MDM programs it can run with that
-	// amount of money
+	// set the balance target to 1SC
+	//
+	// TODO: check that verifies it makes sense in function of the amount of MDM
+	// programs it can run with that amount of money
+	balanceTarget := types.SiacoinPrecision
 
 	// TODO: enable the account refiller by setting a balance target greater
 	// than the zero currency. It is important this remains zero for as long as
@@ -344,15 +393,14 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
-	account := newAccount(hostPubKey)
-
 	return &worker{
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
 		staticHostMuxAddress: hostMuxAddress,
+		staticHostVersion:    host.Version,
 
 		staticAccount:       account,
-		staticBalanceTarget: types.ZeroCurrency,
+		staticBalanceTarget: balanceTarget,
 
 		cachedBlockHeight: blockHeight,
 
@@ -386,22 +434,24 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(pp modules.PaymentProvider, stream siamux.Stream, pt *modules.RPCPriceTable, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
-	// grab some variables from the worker
-	w.mu.Lock()
-	hostKey := w.staticHostPubKey
-	refundAccountID := w.staticAccount.staticID
-	blockHeight := w.cachedBlockHeight
-	w.mu.Unlock()
-
-	// close the stream
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
+	// create a new stream
+	stream, err := w.newStream()
+	if err != nil {
+		err = errors.AddContext(err, "Unable to create a new stream")
+		return
+	}
 	defer func() {
-		cErr := stream.Close()
-		if cErr != nil {
-			err = errors.Compose(err, cErr)
-			responses = nil
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
 		}
 	}()
+
+	// grab some variables from the worker
+	w.mu.Lock()
+	bh := w.cachedBlockHeight
+	pt := w.cachedPriceTable
+	w.mu.Unlock()
 
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
@@ -423,7 +473,7 @@ func (w *worker) managedExecuteProgram(pp modules.PaymentProvider, stream siamux
 	}
 
 	// provide payment
-	err = pp.ProvidePayment(stream, hostKey, modules.RPCUpdatePriceTable, cost, refundAccountID, blockHeight)
+	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
 	if err != nil {
 		return
 	}
@@ -464,20 +514,30 @@ func (w *worker) managedExecuteProgram(pp modules.PaymentProvider, stream siamux
 }
 
 // managedFundAccount will call the fundAccountRPC on the host and if successful
-// will deposit the given amount into the specified ephemeral account.
-func (w *worker) managedFundAccount(pp modules.PaymentProvider, stream siamux.Stream, pt modules.RPCPriceTable, id modules.AccountID, amount types.Currency) (resp modules.FundAccountResponse, err error) {
+// will deposit the given amount into the worker's ephemeral account.
+func (w *worker) managedFundAccount(amount types.Currency) (err error) {
+	// create a new stream
+	stream, err := w.newStream()
+	if err != nil {
+		err = errors.AddContext(err, "Unable to create a new stream")
+		return
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
 	// grab some variables from the worker
 	w.mu.Lock()
-	hostKey := w.staticHostPubKey
-	blockHeight := w.cachedBlockHeight
+	bh := w.cachedBlockHeight
+	pt := w.cachedPriceTable
 	w.mu.Unlock()
 
 	// close the stream
 	defer func() {
-		cErr := stream.Close()
-		if cErr != nil {
-			err = errors.Compose(err, cErr)
-			resp = modules.FundAccountResponse{}
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
 		}
 	}()
 
@@ -494,18 +554,20 @@ func (w *worker) managedFundAccount(pp modules.PaymentProvider, stream siamux.St
 	}
 
 	// send fund account request
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: id})
+	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
 		return
 	}
 
 	// provide payment
-	err = pp.ProvidePayment(stream, hostKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, blockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, bh)
 	if err != nil {
 		return
 	}
 
 	// receive FundAccountResponse
+	// TODO figure out how to handle the response
+	var resp modules.FundAccountResponse
 	err = modules.RPCRead(stream, &resp)
 	return
 }
@@ -520,40 +582,41 @@ func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
 }
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
-func (w *worker) managedUpdatePriceTable(pp modules.PaymentProvider, stream siamux.Stream) (pt modules.RPCPriceTable, err error) {
-	// grab some variables from the worker
-	w.mu.Lock()
-	hostKey := w.staticHostPubKey
-	refundAccountID := w.staticAccount.staticID
-	blockHeight := w.cachedBlockHeight
-	w.mu.Unlock()
-
-	// close the stream
+func (w *worker) managedUpdatePriceTable(pp modules.PaymentProvider) error {
+	// create a new stream
+	stream, err := w.newStream()
+	if err != nil {
+		return errors.AddContext(err, "Unable to create a new stream")
+	}
 	defer func() {
-		cErr := stream.Close()
-		if cErr != nil {
-			err = errors.Compose(err, cErr)
-			pt = modules.RPCPriceTable{}
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
 		}
 	}()
+
+	// grab some variables from the worker
+	w.mu.Lock()
+	bh := w.cachedBlockHeight
+	w.mu.Unlock()
 
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
-		return
+		return err
 	}
 
 	// receive the price table
 	var uptr modules.RPCUpdatePriceTableResponse
 	err = modules.RPCRead(stream, &uptr)
 	if err != nil {
-		return
+		return err
 	}
 
 	// decode the JSON
+	var pt modules.RPCPriceTable
 	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
 	if err != nil {
-		return
+		return err
 	}
 
 	// TODO: perform gouging check
@@ -561,6 +624,19 @@ func (w *worker) managedUpdatePriceTable(pp modules.PaymentProvider, stream siam
 	// TODO: (follow-up) this should negatively affect the host's score
 
 	// provide payment
-	err = pp.ProvidePayment(stream, hostKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, refundAccountID, blockHeight)
-	return
+	err = pp.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, bh)
+	if err != nil {
+		return err
+	}
+
+	// update the price table
+	w.mu.Lock()
+	w.cachedPriceTable = pt
+	w.mu.Unlock()
+	return nil
+}
+
+// newStream returns a new stream to the worker's host
+func (w *worker) newStream() (siamux.Stream, error) {
+	return w.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, modules.SiaPKToMuxPK(w.staticHostPubKey))
 }
