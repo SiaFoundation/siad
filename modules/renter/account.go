@@ -117,21 +117,20 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 // given threshold, if that is the case it calls the given 'refill' function
 // with given amount to trigger a refill.
 //
-// NOTE: it is important the refill and the increase of the 'pendingDeposit'
-// happens atomically. This to ensure only one refill is done when consulting
-// the account's available balance.
+// NOTE: it is important that 'pendingDeposits' is updated atomically when we
+// execute the refill. This to ensure only one refill is triggered when the
+// balance drops below the threshold.
 func (a *account) managedTryRefill(threshold, amount types.Currency, refill func(types.Currency) error) {
 	a.staticMu.Lock()
 	defer a.staticMu.Unlock()
 
-	var available types.Currency
+	// check if the available balance is more than the threshold, if that's the
+	// case we can return early
 	total := a.balance.Add(a.pendingDeposits)
 	if a.pendingWithdrawals.Cmp(total) < 0 {
-		available = total.Sub(a.pendingWithdrawals)
-	}
-
-	if available.Cmp(threshold) >= 0 {
-		return
+		if total.Sub(a.pendingWithdrawals).Cmp(threshold) >= 0 {
+			return
+		}
 	}
 
 	// perform the refill in a separate goroutine
@@ -139,6 +138,7 @@ func (a *account) managedTryRefill(threshold, amount types.Currency, refill func
 	go func() {
 		err := refill(amount)
 		a.managedCommitDeposit(amount, err == nil)
+		// TODO: handle the error better
 	}()
 }
 

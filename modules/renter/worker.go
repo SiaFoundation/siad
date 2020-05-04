@@ -115,7 +115,8 @@ type worker struct {
 	// height from the renter on every RPC call.
 	cachedBlockHeight types.BlockHeight
 
-	cachedPriceTable modules.RPCPriceTable
+	// priceTable holds the most recent host prices
+	priceTable modules.RPCPriceTable
 
 	// Utilities.
 	//
@@ -198,7 +199,7 @@ func (w *worker) staticWake() {
 // priority queue for the various types of work. It is possible for continuous
 // requests for one type of work to drown out a worker's ability to perform
 // other types of work.
-//sssssssssssssassssssssssss
+//
 // If no work is found, the worker will sleep until woken up. Because each
 // iteration is stateless, it may be possible to reduce the goroutine count in
 // Sia by spinning down the worker / expiring the thread when there is no work,
@@ -207,7 +208,7 @@ func (w *worker) staticWake() {
 // the worker has because the worker object will be kept in memory via the
 // worker map.
 func (w *worker) threadedWorkLoop() {
-	// Ensure that al, l queued jobs are gracefully cleaned up when the worker is
+	// Ensure that all queued jobs are gracefully cleaned up when the worker is
 	// shut down.
 	//
 	// TODO: Need to write testing around these kill functions and ensure they
@@ -234,13 +235,8 @@ func (w *worker) threadedWorkLoop() {
 			return
 		}
 
-		w.mu.Lock()
-		pt := w.cachedPriceTable
-		w.mu.Unlock()
-
-		// update the price table
-		updateFrequency := (pt.Expiry - time.Now().Unix()) / 2
-		go w.threadedUpdatePriceTable(time.Duration(updateFrequency))
+		// schedule periodic price table updates
+		go w.threadedUpdatePriceTable()
 	}
 
 	// Primary work loop. There are several types of jobs that the worker can
@@ -271,7 +267,9 @@ func (w *worker) threadedWorkLoop() {
 		}
 
 		// Check if the account needs to be refilled.
-		w.managedTryRefillAccount()
+		if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+			w.managedTryRefillAccount()
+		}
 
 		// Perform any job to fetch the list of backups from the host.
 		workAttempted := w.managedPerformFetchBackupsJob()
@@ -327,12 +325,21 @@ func (w *worker) threadedWorkLoop() {
 
 // threadedUpdatePriceTable fetches the host's recent pricing by updating the
 // price table.
-func (w *worker) threadedUpdatePriceTable(frequency time.Duration) {
+func (w *worker) threadedUpdatePriceTable() {
 	err := w.renter.tg.Add()
 	if err != nil {
 		return
 	}
 	defer w.renter.tg.Done()
+
+	// calculate the frequency (check for underflow just to be safe)
+	w.mu.Lock()
+	var frequency time.Duration
+	expiry := w.priceTable.Expiry
+	if expiry > time.Now().Unix() {
+		frequency = time.Duration((expiry - time.Now().Unix()) / 2)
+	}
+	w.mu.Unlock()
 
 	for {
 		select {
@@ -343,16 +350,28 @@ func (w *worker) threadedUpdatePriceTable(frequency time.Duration) {
 		case <-time.After(frequency):
 		}
 
-		// update the price table, pay using the EA if possible, however we fall
-		// back to FC payment if necessary
+		// update the price table
 		err := w.managedUpdatePriceTable(w.staticAccount)
 		if err != nil && strings.Contains(err.Error(), host.ErrBalanceInsufficient.Error()) {
+			// fall back to payByFC if the EA balance is insufficient
 			err = w.managedUpdatePriceTable(w.renter.hostContractor)
 		}
 		if err != nil {
 			w.renter.log.Println("Failed to update the host's pricing", err)
 			continue
 		}
+
+		// recalculate the frequency (Expiry window might have shortened)
+		w.mu.Lock()
+		expiry := w.priceTable.Expiry
+		if expiry <= time.Now().Unix() {
+			// this should never happen because the expiry will have been
+			// validated by managedUpdatePriceTable
+			frequency = time.Duration(0)
+		} else {
+			frequency = time.Duration((expiry - time.Now().Unix()) / 2)
+		}
+		w.mu.Unlock()
 	}
 }
 
@@ -365,8 +384,14 @@ func (w *worker) managedTryRefillAccount() {
 	// the refill amount equals the threshold as we do not want to exceed the
 	// balance target by refilling (seeing as the balance target is hardcoded to
 	// be the default max ephemeral account balance)
-	amount := threshold
-	w.staticAccount.managedTryRefill(threshold, amount, w.managedFundAccount)
+	refill := threshold
+	w.staticAccount.managedTryRefill(threshold, refill, func(amount types.Currency) error {
+		// we can ignore the receipt
+		_, err := w.managedFundAccount(amount)
+		return err
+	})
+
+	// TODO: needs cooldown of sorts if refills keep failing
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
@@ -381,16 +406,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 
 	// set the balance target to 1SC
 	//
-	// TODO: check that verifies it makes sense in function of the amount of MDM
-	// programs it can run with that amount of money
+	// TODO: check that the balance target  makes sense in function of the
+	// amount of MDM programs it can run with that amount of money
 	balanceTarget := types.SiacoinPrecision
 
-	// TODO: enable the account refiller by setting a balance target greater
-	// than the zero currency. It is important this remains zero for as long as
-	// the FundEphemeralAccountRPC is not merged. Before it is enabled we also
-	// need a cooldown in case the RPC fails, to ensure we don't keep enqueueing
-	// refill jobs
-
+	// calculate the host's mux address
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
 	return &worker{
@@ -434,12 +454,11 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) ([]programResponse, error) {
 	// create a new stream
-	stream, err := w.newStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
-		err = errors.AddContext(err, "Unable to create a new stream")
-		return
+		return nil, errors.AddContext(err, "Unable to create a new stream")
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -450,19 +469,19 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// grab some variables from the worker
 	w.mu.Lock()
 	bh := w.cachedBlockHeight
-	pt := w.cachedPriceTable
+	pt := w.priceTable
 	w.mu.Unlock()
 
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// send price table uid
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// prepare the request.
@@ -475,27 +494,27 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// provide payment
 	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// send the execute program request.
 	err = modules.RPCWrite(stream, epr)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// send the programData.
 	_, err = stream.Write(data)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// read the responses.
-	responses = make([]programResponse, len(epr.Program))
+	responses := make([]programResponse, len(epr.Program))
 	for i := range responses {
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
-			return
+			return nil, err
 		}
 
 		// Read the output data.
@@ -503,24 +522,24 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		responses[i].Output = make([]byte, outputLen, outputLen)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
+			return nil, err
 		}
 
 		// If the response contains an error we are done.
 		if responses[i].Error != nil {
-			return
+			break
 		}
 	}
-	return
+	return responses, nil
 }
 
 // managedFundAccount will call the fundAccountRPC on the host and if successful
 // will deposit the given amount into the worker's ephemeral account.
-func (w *worker) managedFundAccount(amount types.Currency) (err error) {
+func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountResponse, error) {
 	// create a new stream
-	stream, err := w.newStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
-		err = errors.AddContext(err, "Unable to create a new stream")
-		return
+		return modules.FundAccountResponse{}, errors.AddContext(err, "Unable to create a new stream")
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -531,7 +550,7 @@ func (w *worker) managedFundAccount(amount types.Currency) (err error) {
 	// grab some variables from the worker
 	w.mu.Lock()
 	bh := w.cachedBlockHeight
-	pt := w.cachedPriceTable
+	pt := w.priceTable
 	w.mu.Unlock()
 
 	// close the stream
@@ -544,37 +563,40 @@ func (w *worker) managedFundAccount(amount types.Currency) (err error) {
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
-		return
+		return modules.FundAccountResponse{}, err
 	}
 
 	// send price table uid
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return
+		return modules.FundAccountResponse{}, err
 	}
 
 	// send fund account request
 	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
-		return
+		return modules.FundAccountResponse{}, err
 	}
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, bh)
 	if err != nil {
-		return
+		return modules.FundAccountResponse{}, err
 	}
 
 	// receive FundAccountResponse
-	// TODO figure out how to handle the response
 	var resp modules.FundAccountResponse
 	err = modules.RPCRead(stream, &resp)
-	return
+	if err != nil {
+		return modules.FundAccountResponse{}, err
+	}
+
+	return resp, nil
 }
 
 // managedUpdateBlockHeight is called by the renter when it processes a
-// consensus change. The worker forwards this to the RPC client to ensure it has
-// the latest block height. This eliminates lock contention on the renter.
+// consensus change. We keep a cached block height on the worker to avoid having
+// to fetch it from consensus for every rpc.
 func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -584,7 +606,7 @@ func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) managedUpdatePriceTable(pp modules.PaymentProvider) error {
 	// create a new stream
-	stream, err := w.newStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
 		return errors.AddContext(err, "Unable to create a new stream")
 	}
@@ -619,8 +641,7 @@ func (w *worker) managedUpdatePriceTable(pp modules.PaymentProvider) error {
 		return err
 	}
 
-	// TODO: perform gouging check
-
+	// TODO: (follow-up) perform gouging check
 	// TODO: (follow-up) this should negatively affect the host's score
 
 	// provide payment
@@ -631,12 +652,12 @@ func (w *worker) managedUpdatePriceTable(pp modules.PaymentProvider) error {
 
 	// update the price table
 	w.mu.Lock()
-	w.cachedPriceTable = pt
+	w.priceTable = pt
 	w.mu.Unlock()
 	return nil
 }
 
-// newStream returns a new stream to the worker's host
-func (w *worker) newStream() (siamux.Stream, error) {
+// staticNewStream returns a new stream to the worker's host
+func (w *worker) staticNewStream() (siamux.Stream, error) {
 	return w.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, modules.SiaPKToMuxPK(w.staticHostPubKey))
 }
