@@ -117,6 +117,20 @@ func (wp *workerPool) callUpdate() {
 	wp.renter.log.Debugf("worker pool has %v workers, %v are on cooldown", len(wp.workers), totalCoolDown)
 }
 
+// managedWorkers will safely grab the list of workers in the worker pool. This
+// function must used instead of accessing the worker map directly in any
+// situation where the workers are being used as opposed to just counted,
+// because it is not safe to use the workers while the worker pool is locked.
+func (wp *workerPool) managedWorkers() []*worker {
+	wp.mu.RLock()
+	workers := make([]*worker, 0, len(wp.workers))
+	for _, worker := range wp.workers {
+		workers = append(workers, worker)
+	}
+	wp.mu.RUnlock()
+	return workers
+}
+
 // newWorkerPool will initialize and return a worker pool.
 func (r *Renter) newWorkerPool() *workerPool {
 	wp := &workerPool{
