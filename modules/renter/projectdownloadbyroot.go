@@ -315,13 +315,10 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	// first, and then the job can be queued because cleanup of the project
 	// assumes that no more workers will be added to the project once the first
 	// worker has begun work.
-	wp := r.staticWorkerPool
-	wp.mu.RLock()
-	if len(wp.workers) == 0 {
-		wp.mu.RUnlock()
+	workers := r.staticWorkerPool.callWorkers()
+	if len(workers) == 0 {
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
-	workers := wp.callWorkers()
 	for _, w := range workers {
 		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
 	}
