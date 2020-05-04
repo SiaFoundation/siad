@@ -231,6 +231,7 @@ func (w *worker) threadedWorkLoop() {
 		// table, regardless whether or not the EA has sufficient balance
 		err := w.managedUpdatePriceTable(w.renter.hostContractor)
 		if err != nil {
+			// TODO: add retry mechanism
 			w.renter.log.Println("Worker is being insta-killed because it could not get the host's pricing", err)
 			return
 		}
@@ -332,7 +333,7 @@ func (w *worker) threadedUpdatePriceTable() {
 	}
 	defer w.renter.tg.Done()
 
-	// calculate the frequency (check for underflow just to be safe)
+	// calculate the frequency (trigger update immediately if expired already)
 	w.mu.Lock()
 	var frequency time.Duration
 	expiry := w.priceTable.Expiry
@@ -361,18 +362,19 @@ func (w *worker) threadedUpdatePriceTable() {
 			continue
 		}
 
-		// recalculate the frequency (Expiry window might have shortened)
+		// recalculate the frequency (host might've set a shorter expiry window)
 		w.mu.Lock()
 		expiry := w.priceTable.Expiry
+		w.mu.Unlock()
+	
 		if expiry <= time.Now().Unix() {
-			// this should never happen because the expiry will have been
-			// validated by managedUpdatePriceTable
-			frequency = time.Duration(0)
+			// this can only happen in the extreme case where acquiring the lock
+			// took as long as the entire expiry window
+			build.Critical("The recently updated price table has already expired, this should never happen")
+			frequency = time.Duration(0) // update immediately
 		} else {
 			frequency = time.Duration((expiry - time.Now().Unix()) / 2)
 		}
-		w.mu.Unlock()
-	}
 }
 
 // managedTryRefillAccount will check if the account needs to be refilled

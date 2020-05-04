@@ -138,7 +138,7 @@ func (a *account) managedTryRefill(threshold, amount types.Currency, refill func
 	go func() {
 		err := refill(amount)
 		a.managedCommitDeposit(amount, err == nil)
-		// TODO: handle the error better
+		// TODO: handle the error, needs cool-down of sorts
 	}()
 }
 
