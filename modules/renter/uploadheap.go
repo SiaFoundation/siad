@@ -288,10 +288,11 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
 	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
 	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
 
 	// If the added chunk has a sourceReader and the existing one doesn't, replace
 	// them.
-	if uuc.sourceReader != nil && (existsUnstuckHeap || existsRepairing || existsStuckHeap) {
+	if uuc.sourceReader != nil && exists {
 		// Get the existing chunk.
 		var existingUUC *unfinishedUploadChunk
 		if existsStuckHeap {
@@ -316,8 +317,8 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	}
 
 	// Check if the chunk can be added to the heap
-	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
-	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
+	canAddStuckChunk := chunkStuck && !exists && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
+	canAddUnstuckChunk := !chunkStuck && !exists
 	if canAddStuckChunk {
 		uh.stuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
