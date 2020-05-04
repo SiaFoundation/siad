@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -41,18 +40,6 @@ const (
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 )
-
-// The SkynetPerformanceStats are stateful and tracked globally, bound by a
-// mutex.
-var (
-	skynetPerformanceStats   *SkynetPerformanceStats
-	skynetPerformanceStatsMu sync.Mutex
-)
-
-// Initialize the global performance tracking.
-func init() {
-	skynetPerformanceStats = NewSkynetPerformanceStats()
-}
 
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
@@ -530,12 +517,6 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Start the timer for the performance measurement.
 	startTime := time.Now()
-	isErr := true
-	defer func() {
-		if isErr {
-			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
-		}
-	}()
 
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
@@ -712,13 +693,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		// Determine whether the file is large or not, and update the
 		// appropriate bucket.
-		isErr = false
 		file, err := api.renter.File(lup.SiaPath)
-		if err != nil || file.Filesize <= 4e6 {
+		if err == nil && file.Filesize <= 4e6 {
 			skynetPerformanceStatsMu.Lock()
 			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
 			skynetPerformanceStatsMu.Unlock()
-		} else {
+		} else if err == nil {
 			skynetPerformanceStatsMu.Lock()
 			skynetPerformanceStats.UploadLarge.AddRequest(time.Since(startTime))
 			skynetPerformanceStatsMu.Unlock()
@@ -751,7 +731,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// No more errors, add metrics for the upload time. A convert is a 4MB
 	// upload.
-	isErr = false
 	skynetPerformanceStatsMu.Lock()
 	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
 	skynetPerformanceStatsMu.Unlock()
