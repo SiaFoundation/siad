@@ -270,11 +270,11 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	// hostdb. Only delete if there have been enough scans over a long enough
 	// period to be confident that the host really is offline for good, and if we
 	// don't have any contracts with that host.
-	_, haveContractWithHost := hdb.knownContracts[entry.PublicKey.String()]
+	_, haveContractWithHost := hdb.knownContracts[newEntry.PublicKey.String()]
 	downPastMaxDowntime := time.Since(newEntry.ScanHistory[0].Timestamp) > maxHostDowntime && !recentUptime
 	if !haveContractWithHost && downPastMaxDowntime && len(newEntry.ScanHistory) >= minScans {
 		if newEntry.HistoricUptime > 0 {
-			hdb.staticLog.Printf("Removing host with historic uptime from hostdb. Recent downtime timestamp is %v. Hostdb knows about %v contracts.", newEntry.ScanHistory[0].Timestamp, len(hdb.knownContracts))
+			hdb.staticLog.Printf("Removing %v with historic uptime from hostdb. Recent downtime timestamp is %v. Hostdb knows about %v contracts.", newEntry.PublicKey.String() newEntry.ScanHistory[0].Timestamp, len(hdb.knownContracts))
 		}
 		// Remove the host from the hostdb.
 		err := hdb.remove(newEntry.PublicKey)
