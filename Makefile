@@ -23,6 +23,7 @@ pkgs = ./build \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
 	./cmd/siad \
+	./cmd/skynet-test \
 	./compatibility \
 	./crypto \
 	./encoding \
@@ -84,7 +85,7 @@ run = .
 
 # util-pkgs determine the set of packages that are built when running
 # 'make utils'
-util-pkgs = ./cmd/sia-node-scanner
+util-pkgs = ./cmd/sia-node-scanner ./cmd/skynet-test
 
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.
@@ -151,6 +152,8 @@ release:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-race:
 	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+release-util:
+	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs) $(util-pkgs)
 
 # clean removes all directories that get automatically created during
 # development.
