@@ -38,15 +38,10 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 	}
 
 	// Fetch the list of workers from the worker pool.
-	wp.mu.Lock()
-	workers := make([]*worker, 0, len(wp.workers))
-	for _, w := range wp.workers {
-		workers = append(workers, w)
-	}
-	wp.mu.Unlock()
 
 	var totalDownloadCoolDown, totalUploadCoolDown int
 	var statuss []modules.WorkerStatus // Plural of status is statuss, deal with it.
+	workers := wp.managedWorkers()
 	for _, w := range workers {
 		// Get the status of the worker.
 		w.mu.Lock()
