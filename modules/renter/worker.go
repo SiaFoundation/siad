@@ -333,9 +333,14 @@ func (w *worker) threadedUpdatePriceTable() {
 	}
 	defer w.renter.tg.Done()
 
-	// calculate the frequency (trigger update immediately if expired already)
-	w.mu.Lock()
+	// calculate the frequency with which we update the price table, this
+	// frequency is subject to change as the host might set a smaller expiry
+	// window all of a sudden
 	var frequency time.Duration
+
+	// set the frequency to half the expiry window (trigger update immediately
+	// if expired already)
+	w.mu.Lock()
 	expiry := w.priceTable.Expiry
 	if expiry > time.Now().Unix() {
 		frequency = time.Duration((expiry - time.Now().Unix()) / 2)
@@ -362,7 +367,7 @@ func (w *worker) threadedUpdatePriceTable() {
 			continue
 		}
 
-		// recalculate the frequency (host might've set a shorter expiry window)
+		// recalculate the frequency
 		w.mu.Lock()
 		expiry := w.priceTable.Expiry
 		w.mu.Unlock()
