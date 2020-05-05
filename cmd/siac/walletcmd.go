@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"os"
 	"strconv"
@@ -595,7 +594,7 @@ func walletsigncmdoffline(txn *types.Transaction, toSign []crypto.Hash) {
 // wallettransactionscmd lists all of the transactions related to the wallet,
 // providing a net flow of siacoins and siafunds for each.
 func wallettransactionscmd() {
-	wtg, err := httpClient.WalletTransactionsGet(0, math.MaxInt64)
+	wtg, err := httpClient.WalletTransactionsGet(types.BlockHeight(walletStartHeight), types.BlockHeight(walletEndHeight))
 	if err != nil {
 		die("Could not fetch transaction history:", err)
 	}
