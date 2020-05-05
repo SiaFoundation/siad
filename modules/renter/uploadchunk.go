@@ -328,7 +328,6 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	err := r.tg.Add()
 	if err != nil {
-		r.repairLog.Debugf("Aborting chunk %v of %s because the threadgroup is closed", chunk.index, chunk.staticSiaPath)
 		return
 	}
 	defer r.tg.Done()
