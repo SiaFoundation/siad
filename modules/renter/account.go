@@ -114,32 +114,28 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 }
 
 // managedTryRefill will check if the available balance is below the
-// given threshold, if that is the case it calls the given 'refill' function
-// with given amount to trigger a refill.
-//
-// NOTE: it is important that 'pendingDeposits' is updated atomically when we
-// execute the refill. This to ensure only one refill is triggered when the
-// balance drops below the threshold.
-func (a *account) managedTryRefill(threshold, amount types.Currency, refill func(types.Currency) error) {
+// given threshold, if that is the case it flips the 'refilling' flag to ensure
+// the same account is not being refilled twice
+func (a *account) managedTryRefill(threshold, refillAmount types.Currency) bool {
 	a.staticMu.Lock()
 	defer a.staticMu.Unlock()
 
-	// check if the available balance is more than the threshold, if that's the
-	// case we can return early
+	var available types.Currency
 	total := a.balance.Add(a.pendingDeposits)
 	if a.pendingWithdrawals.Cmp(total) < 0 {
-		if total.Sub(a.pendingWithdrawals).Cmp(threshold) >= 0 {
-			return
-		}
+		available = total.Sub(a.pendingWithdrawals)
 	}
 
-	// perform the refill in a separate goroutine
-	a.pendingDeposits = a.pendingDeposits.Add(amount)
-	go func() {
-		err := refill(amount)
-		a.managedCommitDeposit(amount, err == nil)
-		// TODO: handle the error, needs cool-down of sorts
-	}()
+	// if the available balance exceeds the threshold we do not need a refill
+	if available.Cmp(threshold) >= 0 {
+		return false
+	}
+
+	// add the refill amount to the pending deposits, this ensures consecutive
+	// calls to managedTryRefill will not try to refill as the available balance
+	// now exceeds the threshold
+	a.pendingDeposits = a.pendingDeposits.Add(refillAmount)
+	return true
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and

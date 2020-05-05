@@ -72,8 +72,17 @@ func (wp *workerPool) callUpdate() {
 			continue
 		}
 
+		// Get the account from the account map, we handle the case where it
+		// does not exist even though we have just prepared them so this should
+		// never happen.
+		account, ok := accountMap[contract.HostPublicKey.String()]
+		if !ok {
+			wp.renter.log.Println(fmt.Errorf("could not create a new worker for host %v, account not found", contract.HostPublicKey))
+			continue
+		}
+
 		// Create a new worker and add it to the map
-		w, err := wp.renter.newWorker(contract.HostPublicKey, blockHeight, accountMap[contract.HostPublicKey.String()])
+		w, err := wp.renter.newWorker(contract.HostPublicKey, blockHeight, account)
 		if err != nil {
 			wp.renter.log.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
 			continue

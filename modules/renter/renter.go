@@ -776,7 +776,7 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	r.mu.Unlock(id)
 
 	if cc.Synced {
-		go r.threadedUpdateBlockheightOnWorkers()
+		go r.threadedUpdateBlockHeightOnWorkers()
 	}
 }
 
