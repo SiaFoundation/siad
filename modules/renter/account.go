@@ -138,6 +138,14 @@ func (a *account) managedTrackDeposit(amount types.Currency) {
 	a.pendingDeposits = a.pendingDeposits.Add(amount)
 }
 
+// managedTrackWithdrawal keeps track of pending withdrawals by adding the given
+// amount to the 'pendingWithdrawals' field.
+func (a *account) managedTrackWithdrawal(amount types.Currency) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
+	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
+}
+
 // managedTryRefill will check if the available balance is below the
 // given threshold, if that is the case it flips the 'refilling' flag to ensure
 // the same account is not being refilled twice
@@ -161,14 +169,6 @@ func (a *account) managedTryRefill(threshold, refillAmount types.Currency) bool 
 	// now exceeds the threshold
 	a.pendingDeposits = a.pendingDeposits.Add(refillAmount)
 	return true
-}
-
-// managedTrackWithdrawal keeps track of pending withdrawals by adding the given
-// amount to the 'pendingWithdrawals' field.
-func (a *account) managedTrackWithdrawal(amount types.Currency) {
-	a.staticMu.Lock()
-	defer a.staticMu.Unlock()
-	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
