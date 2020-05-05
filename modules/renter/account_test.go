@@ -27,7 +27,12 @@ func TestAccountSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		err := rt.Close()
+		if err != nil {
+			t.Log(err)
+		}
+	}()
 	r := rt.renter
 
 	// verify accounts file was loaded and set
@@ -65,40 +70,64 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	}
 	t.Parallel()
 
-	// create a renter tester with a dependency that interrupts the
-	// accounts save on shutdown of the renter
-	deps := &dependencies.DependencyInterruptAccountSaveOnShutdown{}
-	rt, err := newRenterTesterWithDependency(t.Name(), deps)
+	// create a renter tester
+	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		err := rt.Close()
+		if err != nil {
+			t.Log(err)
+		}
+	}()
 	r := rt.renter
 
 	// create a number accounts
-	createRandomTestAccountsOnRenter(r)
+	accounts := createRandomTestAccountsOnRenter(r)
+	for _, account := range accounts {
+		account.staticMu.Lock()
+		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
+		account.staticMu.Unlock()
+	}
 
-	// reload the renter manually
-	err = r.Close()
+	// close the renter and reload it with a dependency that interrupts the
+	// accounts save on shutdown
+	deps := &dependencies.DependencyInterruptAccountSaveOnShutdown{}
+	r, err = rt.reloadRenterWithDependency(r, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err = newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), deps)
-	if err != nil {
-		t.Fatal(err)
+
+	// verify the accounts were saved on disk
+	for _, account := range accounts {
+		reloaded := r.managedOpenAccount(account.staticHostKey)
+		if !reloaded.staticID.SPK().Equals(account.staticID.SPK()) {
+			t.Fatal("Unexpected reloaded account ID")
+		}
+		if !reloaded.balance.Equals(account.balance) {
+			t.Log(reloaded.balance)
+			t.Log(account.balance)
+			t.Fatal("Unexpected account balance after reload")
+		}
 	}
-	err = rt.addRenter(r)
+
+	// reload it to trigger the unclean shutdown
+	r, err = rt.reloadRenter(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify the renter was reloaded without a single account
-	id := r.mu.Lock()
-	reloaded := r.accounts
-	r.mu.Unlock(id)
-
-	if len(reloaded) != 0 {
-		t.Fatal("Unexpected amount of accounts after reload")
+	// verify the accounts were reloaded but the balances were cleared due to
+	// the unclean shutdown
+	for _, account := range accounts {
+		reloaded := r.managedOpenAccount(account.staticHostKey)
+		if !account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
+			t.Fatal("Unexpected reloaded account ID")
+		}
+		if !reloaded.balance.IsZero() {
+			t.Fatal("Unexpected reloaded account balance")
+		}
 	}
 }
 
@@ -162,10 +191,19 @@ func TestAccountCorrupted(t *testing.T) {
 	if len(reloaded) != expected {
 		t.Fatalf("Unexpected amount of accounts, %v != %v", len(reloaded), expected)
 	}
+
+	var maxOffset int64
 	for _, account := range reloaded {
 		if account.staticID.SPK().Equals(corrupted.staticID.SPK()) {
 			t.Fatal("Corrupted account was not properly skipped")
 		}
+		if account.staticOffset > maxOffset {
+			maxOffset = account.staticOffset
+		}
+	}
+
+	if maxOffset >= int64(len(reloaded)+1)*accountSize {
+		t.Fatal("Unexpected max offset, corrupted account offset was not properly filled by the next valid account")
 	}
 }
 
@@ -284,9 +322,6 @@ func TestNewAccount(t *testing.T) {
 	}
 	if !account.staticHostKey.Equals(hostKey) {
 		t.Fatal("Invalid host key")
-	}
-	if account.staticPersistence == nil {
-		t.Fatal("Invalid persistence")
 	}
 
 	// validate the account id is built using a valid SiaPublicKey and the

@@ -35,7 +35,7 @@ var (
 	// Metadata
 	metadataHeader  = types.NewSpecifier("Accounts\n")
 	metadataVersion = types.NewSpecifier("v1.5.0\n")
-	metadataSize    = 2*types.SpecifierLen + 1
+	metadataSize    = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
 
 	// Metadata validation errors
 	errWrongHeader  = errors.New("wrong header")
@@ -61,8 +61,7 @@ type (
 		pendingFunds  types.Currency
 		pendingSpends types.Currency
 
-		staticPersistence modules.File
-		staticMu          sync.RWMutex
+		staticMu sync.RWMutex
 	}
 
 	// accountPersistence is the account's persistence object which holds all
@@ -105,7 +104,7 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 
 	// receive PayByEphemeralAccountResponse
 	//
-	// TODO: this should not be blocking! handle in a separate goroutine
+	// TODO: this should not be blocking! handle as a callback
 	var payByResponse modules.PayByEphemeralAccountResponse
 	err = modules.RPCRead(stream, &payByResponse)
 	if err != nil {
@@ -181,12 +180,6 @@ func (r *Renter) managedLoadAccounts() error {
 		return errors.AddContext(errWrongVersion, "Failed to verify accounts metadata")
 	}
 
-	// truncate the file if it was not properly saved
-	if !metadata.Clean {
-		err = file.Truncate(int64(metadataSize))
-		return errors.AddContext(err, "Failed to truncate the accounts persistence file")
-	}
-
 	// sanity check that the account size is larger than the metadata size,
 	// before setting the initial offset
 	if metadataSize > accountSize {
@@ -194,18 +187,13 @@ func (r *Renter) managedLoadAccounts() error {
 	}
 	initialOffset := int64(accountSize)
 
-	// seek to the initial offset
-	_, err = file.Seek(initialOffset, io.SeekStart)
-	if err != nil {
-		return errors.AddContext(err, "Failed to seek to initial offset in accounts file")
-	}
-
 	// read the raw account data and decode them into accounts
 	accounts := make(map[string]*account)
-	nextOffset := initialOffset
-	for {
+
+	accountOffset := initialOffset
+	for offset := initialOffset; ; offset += accountSize {
 		accountBytes := make([]byte, accountSize, accountSize)
-		_, err = file.Read(accountBytes)
+		_, err = file.ReadAt(accountBytes, offset)
 		if err == io.EOF {
 			break
 		}
@@ -226,15 +214,19 @@ func (r *Renter) managedLoadAccounts() error {
 		}
 
 		acc := &account{
-			staticID:          accountData.AccountID,
-			staticHostKey:     accountData.HostKey,
-			staticOffset:      nextOffset,
-			staticPersistence: file,
-			staticSecretKey:   accountData.SecretKey,
-			balance:           accountData.Balance,
+			staticID:        accountData.AccountID,
+			staticHostKey:   accountData.HostKey,
+			staticOffset:    accountOffset,
+			staticSecretKey: accountData.SecretKey,
+			balance:         accountData.Balance,
+		}
+
+		// reset the account balances after an unclean shutdown
+		if !metadata.Clean {
+			acc.balance = types.ZeroCurrency
 		}
 		accounts[acc.staticHostKey.String()] = acc
-		nextOffset += accountSize
+		accountOffset += accountSize
 	}
 
 	// mark the metadata as 'dirty' and update the metadata on disk - this
@@ -318,19 +310,28 @@ func (r *Renter) managedSaveAccounts() error {
 
 // newAccount returns an new account object for the given host.
 func (r *Renter) newAccount(hostKey types.SiaPublicKey) *account {
-	aid, sk := modules.NewAccountID()
-
 	// calculate the account's offset
 	metadataPadding := accountSize - metadataSize
 	offset := metadataSize + metadataPadding + (len(r.accounts) * accountSize)
 
-	return &account{
-		staticID:          aid,
-		staticHostKey:     hostKey,
-		staticOffset:      int64(offset),
-		staticPersistence: r.staticAccountsFile,
-		staticSecretKey:   sk,
+	// create the account
+	aid, sk := modules.NewAccountID()
+	acc := &account{
+		staticID:        aid,
+		staticHostKey:   hostKey,
+		staticOffset:    int64(offset),
+		staticSecretKey: sk,
 	}
+
+	// save to disk
+	accBytes := encoding.Marshal(acc)
+	_, err1 := r.staticAccountsFile.WriteAt(accBytes, acc.staticOffset)
+	err2 := r.staticAccountsFile.Sync()
+	if err := errors.Compose(err1, err2); err != nil {
+		r.log.Println("ERROR: failed to save new account", err)
+	}
+
+	return acc
 }
 
 // checksum returns the checksum of the accountPeristence object
@@ -361,26 +362,6 @@ func (ap accountPersistence) toBytes() ([]byte, error) {
 func (ap accountPersistence) verifyChecksum(checksum crypto.Hash) bool {
 	expected := ap.checksum()
 	return bytes.Equal(expected[:], checksum[:])
-}
-
-// MarshalSia implements the SiaMarshaler interface.
-func (am accountsMetadata) MarshalSia(w io.Writer) error {
-	e := encoding.NewEncoder(w)
-	e.Write(am.Header[:])
-	e.Write(am.Version[:])
-	e.WriteBool(am.Clean)
-	return e.Err()
-}
-
-// UnmarshalSia implements the SiaMarshaler interface.
-func (am *accountsMetadata) UnmarshalSia(r io.Reader) error {
-	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	d.ReadFull(am.Header[:])
-	d.ReadFull(am.Version[:])
-	buf := make([]byte, 1)
-	d.ReadFull(buf)
-	am.Clean = buf[0] == 1
-	return d.Err()
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
