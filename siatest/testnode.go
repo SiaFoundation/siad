@@ -152,6 +152,9 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 
 	// Create client
 	c, err := client.New(s.APIAddress())
+	if err != nil {
+		t.Fatal(err)
+	}
 	c.UserAgent = userAgent
 	c.Password = password
 
