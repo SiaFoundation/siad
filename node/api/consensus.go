@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 
@@ -10,6 +11,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -294,4 +297,47 @@ func (api *API) consensusValidateTransactionsetHandler(w http.ResponseWriter, re
 		return
 	}
 	WriteSuccess(w)
+}
+
+// consensusSubscribeHandler handles the API calls to the /consensus/subscribe
+// endpoint.
+func (api *API) consensusSubscribeHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	var ccid modules.ConsensusChangeID
+	if err := (*crypto.Hash)(&ccid).LoadString(ps.ByName("id")); err != nil {
+		WriteError(w, Error{"could not decode ID: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// create subscriber and start processing changes in a goroutine
+	errCh := make(chan error, 1)
+	ccs := newConsensusChangeStreamer(w)
+	go func() {
+		errCh <- api.cs.ConsensusSetSubscribe(ccs, ccid, req.Context().Done())
+		api.cs.Unsubscribe(ccs)
+	}()
+	// TODO: stop when any one of these conditions is met:
+	// - subscriber is fully up-to-date
+	// - the HTTP request was cancelled
+	// - 100 changes have been processed (?)
+	// - >10 MB has been written (?)
+	// - 10 seconds have elapsed (?)
+	err := <-errCh
+	if err != nil {
+		// TODO: we can't call WriteError here; the client is expecting binary.
+		return
+	}
+}
+
+type consensusChangeStreamer struct {
+	e *encoding.Encoder
+}
+
+func (ccs consensusChangeStreamer) ProcessConsensusChange(cc modules.ConsensusChange) {
+	ccs.e.Encode(cc)
+}
+
+func newConsensusChangeStreamer(w io.Writer) consensusChangeStreamer {
+	return consensusChangeStreamer{
+		e: encoding.NewEncoder(w),
+	}
 }

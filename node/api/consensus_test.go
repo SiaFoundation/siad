@@ -2,8 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -91,5 +95,57 @@ func TestConsensusValidateTransactionSet(t *testing.T) {
 	defer resp.Body.Close()
 	if !non2xx(resp.StatusCode) {
 		t.Fatal("expected validation error")
+	}
+}
+
+// TestIntegrationConsensusSubscribe probes the /consensus/subscribe endpoint.
+func TestIntegrationConsensusSubscribe(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	st, err := createServerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.server.panicClose()
+
+	ccid := modules.ConsensusChangeBeginning
+	resp, err := HttpGET("http://" + st.server.listener.Addr().String() + "/consensus/subscribe/" + ccid.String())
+	if err != nil {
+		t.Fatal("unable to make an http request", err)
+	}
+	defer resp.Body.Close()
+	if non2xx(resp.StatusCode) {
+		t.Fatal(decodeError(resp))
+	}
+	dec := encoding.NewDecoder(resp.Body, 1e6)
+	var cc modules.ConsensusChange
+	var ids []modules.ConsensusChangeID
+	for {
+		if err := dec.Decode(&cc); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, cc.ID)
+	}
+
+	// try subscribing from height 3
+	resp, err = HttpGET("http://" + st.server.listener.Addr().String() + "/consensus/subscribe/" + ids[2].String())
+	if err != nil {
+		t.Fatal("unable to make an http request", err)
+	}
+	defer resp.Body.Close()
+	if non2xx(resp.StatusCode) {
+		t.Fatal(decodeError(resp))
+	}
+	dec = encoding.NewDecoder(resp.Body, 1e6)
+	for {
+		if err := dec.Decode(&cc); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
