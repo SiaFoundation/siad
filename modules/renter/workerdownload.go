@@ -121,7 +121,7 @@ func (w *worker) managedPerformDownloadChunkJob() bool {
 	//
 	// If 'nil' is returned, it is either because the worker has been removed
 	// from the chunk entirely, or because the worker has been put on standby.
-	udc = w.ownedProcessDownloadChunk(udc)
+	udc = w.managedProcessDownloadChunk(udc)
 	if udc == nil {
 		return true
 	}
@@ -263,23 +263,26 @@ func (udc *unfinishedDownloadChunk) managedUnregisterWorker(w *worker) {
 	udc.mu.Unlock()
 }
 
-// ownedOnDownloadCooldown returns true if the worker is on cooldown from failed
-// downloads. This function should only be called by the master worker thread,
-// and does not require any mutexes.
-func (w *worker) ownedOnDownloadCooldown() bool {
+// onDownloadCooldown returns true if the worker is on cooldown from failed
+// downloads.
+func (w *worker) onDownloadCooldown() bool {
 	requiredCooldown := downloadFailureCooldown
-	for i := 0; i < w.ownedDownloadConsecutiveFailures && i < maxConsecutivePenalty; i++ {
+	for i := 0; i < w.downloadConsecutiveFailures && i < maxConsecutivePenalty; i++ {
 		requiredCooldown *= 2
 	}
-	return time.Now().Before(w.ownedDownloadRecentFailure.Add(requiredCooldown))
+	return time.Now().Before(w.downloadRecentFailure.Add(requiredCooldown))
 }
 
-// ownedProcessDownloadChunk will take a potential download chunk, figure out if
-// there is work to do, and then perform any registration or processing with the
-// chunk before returning the chunk to the caller.
+// managedProcessDownloadChunk will take a potential download chunk, figure out
+// if there is work to do, and then perform any registration or processing with
+// the chunk before returning the chunk to the caller.
 //
 // If no immediate action is required, 'nil' will be returned.
-func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfinishedDownloadChunk {
+func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfinishedDownloadChunk {
+	w.mu.Lock()
+	onCooldown := w.onDownloadCooldown()
+	w.mu.Unlock()
+
 	// Determine whether the worker needs to drop the chunk. If so, remove the
 	// worker and return nil. Worker only needs to be removed if worker is being
 	// dropped.
@@ -288,7 +291,7 @@ func (w *worker) ownedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfini
 	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
 	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
-	if chunkComplete || chunkFailed || w.ownedOnDownloadCooldown() || !workerHasPiece || pieceCompleted {
+	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted {
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
 		return nil

@@ -288,19 +288,19 @@ func (a Allowance) Active() bool {
 // ContractUtility contains metrics internal to the contractor that reflect the
 // utility of a given contract.
 type ContractUtility struct {
-	GoodForUpload bool
-	GoodForRenew  bool
+	GoodForUpload bool `json:"goodforupload"`
+	GoodForRenew  bool `json:"goodforrenew"`
 
 	// BadContract will be set to true if there's good reason to believe that
 	// the contract is unusable and will continue to be unusable. For example,
 	// if the host is claiming that the contract does not exist, the contract
 	// should be marked as bad.
-	BadContract bool
-	LastOOSErr  types.BlockHeight // OOS means Out Of Storage
+	BadContract bool              `json:"badcontract"`
+	LastOOSErr  types.BlockHeight `json:"lastooserr"` // OOS means Out Of Storage
 
 	// If a contract is locked, the utility should not be updated. 'Locked' is a
 	// value that gets persisted.
-	Locked bool
+	Locked bool `json:"locked"`
 }
 
 // ContractWatchStatus provides information about the status of a contract in
@@ -721,6 +721,46 @@ type UploadedBackup struct {
 	UploadProgress float64
 }
 
+type (
+	// WorkerPoolStatus contains information about the status of the workerPool
+	// and the workers
+	WorkerPoolStatus struct {
+		NumWorkers            int            `json:"numworkers"`
+		TotalDownloadCoolDown int            `json:"totaldownloadcooldown"`
+		TotalUploadCoolDown   int            `json:"totaluploadcooldown"`
+		Workers               []WorkerStatus `json:"workers"`
+	}
+
+	// WorkerStatus contains information about the status of a worker
+	WorkerStatus struct {
+		// Worker contract information
+		ContractID      types.FileContractID `json:"contractid"`
+		ContractUtility ContractUtility      `json:"contractutility"`
+		HostPubKey      types.SiaPublicKey   `json:"hostpubkey"`
+
+		// Download status information
+		DownloadOnCoolDown bool `json:"downloadoncooldown"`
+		DownloadQueueSize  int  `json:"downloadqueuesize"`
+		DownloadTerminated bool `json:"downloadterminated"`
+
+		// Upload status information
+		UploadCoolDownError string        `json:"uploadcooldownerror"`
+		UploadCoolDownTime  time.Duration `json:"uploadcooldowntime"`
+		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
+		UploadQueueSize     int           `json:"uploadqueuesize"`
+		UploadTerminated    bool          `json:"uploadterminated"`
+
+		// Ephemeral Account information
+		AvailableBalance        types.Currency `json:"availablebalance"`
+		BalanceTarget           types.Currency `json:"balancetarget"`
+		FundAccountJobQueueSize int            `json:"fundaccountjobqueuesize"`
+
+		// Job Queues
+		BackupJobQueueSize       int `json:"backupjobqueuesize"`
+		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
+	}
+)
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -974,6 +1014,9 @@ type Renter interface {
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
+
+	// WorkerPoolStatus returns the current status of the Renter's worker pool
+	WorkerPoolStatus() (WorkerPoolStatus, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which
