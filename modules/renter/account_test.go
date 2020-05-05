@@ -39,10 +39,13 @@ func TestNewAccount(t *testing.T) {
 	// going to validate has an offset different from 0
 	tmpKey := hostKey
 	fastrand.Read(tmpKey.Key[:4])
-	_ = r.newAccount(tmpKey)
+	r.newAccount(tmpKey)
 
 	// create a new account object
-	account := r.newAccount(hostKey)
+	account, err := r.newAccount(hostKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// validate the account object
 	if account.staticID.IsZeroAccount() {
@@ -134,7 +137,10 @@ func TestAccountSave(t *testing.T) {
 		t.Fatalf("Unexpected amount of accounts, %v != %v", len(reloaded), len(accounts))
 	}
 	for _, account := range accounts {
-		reloaded := r.managedOpenAccount(account.staticHostKey)
+		reloaded, err := r.managedOpenAccount(account.staticHostKey)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
 			t.Fatal("Unexpected account ID")
 		}
@@ -180,7 +186,10 @@ func TestAccountUncleanShutdown(t *testing.T) {
 
 	// verify the accounts were saved on disk
 	for _, account := range accounts {
-		reloaded := r.managedOpenAccount(account.staticHostKey)
+		reloaded, err := r.managedOpenAccount(account.staticHostKey)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !reloaded.staticID.SPK().Equals(account.staticID.SPK()) {
 			t.Fatal("Unexpected reloaded account ID")
 		}
@@ -200,7 +209,10 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	// verify the accounts were reloaded but the balances were cleared due to
 	// the unclean shutdown
 	for _, account := range accounts {
-		reloaded := r.managedOpenAccount(account.staticHostKey)
+		reloaded, err := r.managedOpenAccount(account.staticHostKey)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
 			t.Fatal("Unexpected reloaded account ID")
 		}
@@ -292,7 +304,7 @@ func TestAccountPersistenceToBytes(t *testing.T) {
 	t.Parallel()
 
 	ap := createRandomTestAccountPersistence()
-	apBytes := ap.toBytes()
+	apBytes := ap.bytes()
 
 	var uMar accountPersistence
 	err := encoding.Unmarshal(apBytes, &uMar)
@@ -300,7 +312,7 @@ func TestAccountPersistenceToBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uMarBytes := uMar.toBytes()
+	uMarBytes := uMar.bytes()
 	if !bytes.Equal(apBytes, uMarBytes) {
 		t.Fatal("Account persistence object not equal after unmarshaling the account persistence bytes")
 	}
@@ -365,7 +377,10 @@ func createRandomTestAccountsOnRenter(r *Renter) []*account {
 			Algorithm: types.SignatureEd25519,
 			Key:       fastrand.Bytes(crypto.PublicKeySize),
 		}
-		account := r.managedOpenAccount(hostKey)
+		account, err := r.managedOpenAccount(hostKey)
+		if err != nil {
+			panic(err)
+		}
 		accounts = append(accounts, account)
 	}
 	return accounts

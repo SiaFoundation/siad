@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -91,24 +90,26 @@ func (a *account) managedAvailableBalance() types.Currency {
 
 // managedOpenAccount returns an account for the given host. If it does not
 // exist already one is created.
-func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
+func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) (*account, error) {
 	id := r.mu.Lock()
 	defer r.mu.Unlock(id)
 
 	acc, ok := r.accounts[hostKey.String()]
 	if ok {
-		return acc
+		return acc, nil
 	}
-	acc = r.newAccount(hostKey)
+	acc, err := r.newAccount(hostKey)
+	if err != nil {
+		return nil, err
+	}
 	r.accounts[hostKey.String()] = acc
-	return acc
+	return acc, nil
 }
 
 // newAccount returns a new account object for the given host.
-func (r *Renter) newAccount(hostKey types.SiaPublicKey) *account {
+func (r *Renter) newAccount(hostKey types.SiaPublicKey) (*account, error) {
 	// calculate the account's offset
-	metadataPadding := accountSize - metadataSize
-	offset := metadataSize + metadataPadding + (len(r.accounts) * accountSize)
+	offset := (len(r.accounts) + 1) * accountSize // +1 for metadata
 
 	// create the account
 	aid, sk := modules.NewAccountID()
@@ -119,15 +120,14 @@ func (r *Renter) newAccount(hostKey types.SiaPublicKey) *account {
 		staticSecretKey: sk,
 	}
 
-	// save to disk
-	accBytes := encoding.Marshal(acc)
-	_, err1 := r.staticAccountsFile.WriteAt(accBytes, acc.staticOffset)
-	err2 := r.staticAccountsFile.Sync()
-	if err := errors.Compose(err1, err2); err != nil {
-		r.log.Println("ERROR: failed to save new account", err)
+	if err := errors.Compose(
+		acc.managedPersist(r.staticAccountsFile),
+		r.staticAccountsFile.Sync(),
+	); err != nil {
+		return nil, err
 	}
 
-	return acc
+	return acc, nil
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and

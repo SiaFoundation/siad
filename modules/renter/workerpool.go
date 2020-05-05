@@ -56,8 +56,12 @@ func (wp *workerPool) callUpdate() {
 	// Open an account for every host
 	accountMap := make(map[string]*account)
 	for _, contract := range contractSlice {
-		accountMap[contract.HostPublicKey.String()] =
-			wp.renter.managedOpenAccount(contract.HostPublicKey)
+		account, err := wp.renter.managedOpenAccount(contract.HostPublicKey)
+		if err != nil {
+			wp.renter.log.Println((errors.New(fmt.Sprintf("could not open an account for host %v", contract.HostPublicKey))))
+			continue
+		}
+		accountMap[contract.HostPublicKey.String()] = account
 	}
 
 	// Lock the worker pool for the duration of updating its fields.

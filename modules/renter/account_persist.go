@@ -52,6 +52,19 @@ type (
 	}
 )
 
+// managedPersist will write the account bytes to the given file at the
+// account's offset
+func (a *account) managedPersist(file modules.File) error {
+	a.staticMu.Lock()
+	accountData := a.toAccountPersistence()
+	accountOffset := a.staticOffset
+	a.staticMu.Unlock()
+
+	// write to disk
+	_, err := file.WriteAt(accountData.bytes(), accountOffset)
+	return err
+}
+
 // toAccountPersistence returns the account's persistence object
 func (a *account) toAccountPersistence() accountPersistence {
 	ap := accountPersistence{
@@ -64,37 +77,80 @@ func (a *account) toAccountPersistence() accountPersistence {
 	return ap
 }
 
-// managedLoadAccounts loads the accounts from the persistence file onto the
-// Renter object.
-func (r *Renter) managedLoadAccounts() error {
-	// fetch the fileInfo before opening the file
-	path := filepath.Join(r.persistDir, accountsFilename)
+// readAccountAt tries to read an account object from the account persist file
+// at the given offset
+func (r *Renter) readAccountAt(offset int64) (*account, error) {
+	// read account bytes
+	accountBytes := make([]byte, accountSize, accountSize)
+	_, err := r.staticAccountsFile.ReadAt(accountBytes, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// decode the account
+	var accountData accountPersistence
+	err = encoding.Unmarshal(accountBytes, &accountData)
+	if err != nil {
+		return nil, errors.New("Failed to unmarshal account")
+	}
+
+	// verify the checksum
+	if !accountData.verifyChecksum(accountData.Checksum) {
+		return nil, errors.New("Account ignored because checksum did not match")
+
+	}
+
+	return &account{
+		staticID:        accountData.AccountID,
+		staticHostKey:   accountData.HostKey,
+		staticOffset:    offset,
+		staticSecretKey: accountData.SecretKey,
+		balance:         accountData.Balance,
+	}, nil
+}
+
+// managedOpenAccountsFile opens the accounts file at the given path. If the
+// file does not exist, it will create it and write the accountsMetadat header.
+func (r *Renter) managedOpenAccountsFile(path string) error {
+	// fetch the file info
 	_, statErr := os.Stat(path)
 
 	// open the file, create it if it does not exist yet
 	file, err := r.deps.OpenFile(path, os.O_RDWR|os.O_CREATE, defaultFilePerm)
 	if err != nil {
-		return errors.AddContext(err, "Failed to open accounts persist file")
+		return err
 	}
 
-	// read the metadata
-	var metadata accountsMetadata
+	// set it on the renter
+	id := r.mu.Lock()
+	r.staticAccountsFile = file
+	r.mu.Unlock(id)
+
+	// if the file is newly created, write the header
 	if os.IsNotExist(statErr) {
-		metadata = accountsMetadata{
+		return r.managedUpdateMetadata(accountsMetadata{
 			Header:  metadataHeader,
 			Version: metadataVersion,
 			Clean:   true,
-		}
-	} else {
-		buffer := make([]byte, metadataSize)
-		_, err := io.ReadFull(file, buffer)
-		if err != nil {
-			return errors.AddContext(err, "Failed to read metadata from accounts file")
-		}
-		err = encoding.Unmarshal(buffer, &metadata)
-		if err != nil {
-			return errors.AddContext(err, "Failed to decode metadata from accounts file")
-		}
+		})
+	}
+	return nil
+}
+
+// managedLoadAccounts loads the accounts from the persistence file onto the
+// Renter object.
+func (r *Renter) managedLoadAccounts() error {
+	// open accounts file
+	path := filepath.Join(r.persistDir, accountsFilename)
+	err := r.managedOpenAccountsFile(path)
+	if err != nil {
+		return errors.AddContext(err, "Failed to open accounts file")
+	}
+
+	// read the metadata
+	metadata, err := r.managedLoadMetadata()
+	if err != nil {
+		return errors.AddContext(err, "Failed to load the accounts metadata")
 	}
 
 	// validate the metadata
@@ -108,60 +164,39 @@ func (r *Renter) managedLoadAccounts() error {
 	// sanity check that the account size is larger than the metadata size,
 	// before setting the initial offset
 	if metadataSize > accountSize {
-		build.Critical("Metadata size is larger than account size, this means the initial offset is too small")
+		err = errors.New("Metadata size is larger than account size, this means the initial offset is too small")
+		build.Critical(err)
+		return err
 	}
 	initialOffset := int64(accountSize)
 
 	// read the raw account data and decode them into accounts
 	accounts := make(map[string]*account)
-
 	accountOffset := initialOffset
 	for offset := initialOffset; ; offset += accountSize {
-		accountBytes := make([]byte, accountSize, accountSize)
-		_, err = file.ReadAt(accountBytes, offset)
-		if err == io.EOF {
-			break
-		}
+		// read the account at offset
+		acc, err := r.readAccountAt(accountOffset)
 		if err != nil {
-			r.log.Println("ERROR:", errors.AddContext(err, "Failed to read account data"))
+			r.log.Println("ERROR: could not load account", err)
 			continue
 		}
-
-		var accountData accountPersistence
-		err = encoding.Unmarshal(accountBytes, &accountData)
-		if err != nil {
-			r.log.Println("ERROR:", errors.AddContext(err, "Failed to unmarshal account"))
-			continue
-		}
-		if !accountData.verifyChecksum(accountData.Checksum) {
-			r.log.Println("ERROR:", errors.New("Account ignored because checksum did not match"))
-			continue
-		}
-
-		acc := &account{
-			staticID:        accountData.AccountID,
-			staticHostKey:   accountData.HostKey,
-			staticOffset:    accountOffset,
-			staticSecretKey: accountData.SecretKey,
-			balance:         accountData.Balance,
-		}
+		accountOffset += accountSize
 
 		// reset the account balances after an unclean shutdown
 		if !metadata.Clean {
 			acc.balance = types.ZeroCurrency
 		}
 		accounts[acc.staticHostKey.String()] = acc
-		accountOffset += accountSize
 	}
 
 	// mark the metadata as 'dirty' and update the metadata on disk - this
 	// ensures only after a successful shutdown, accounts are reloaded from disk
 	metadata.Clean = false
-	_, err = file.WriteAt(encoding.Marshal(metadata), 0)
+	err = r.managedUpdateMetadata(metadata)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write metadata to accounts file")
 	}
-	err = file.Sync()
+	err = r.staticAccountsFile.Sync()
 	if err != nil {
 		return errors.AddContext(err, "Failed to sync accounts file")
 	}
@@ -169,9 +204,27 @@ func (r *Renter) managedLoadAccounts() error {
 	// load the accounts on to the renter
 	id := r.mu.Lock()
 	r.accounts = accounts
-	r.staticAccountsFile = file
 	r.mu.Unlock(id)
 	return nil
+}
+
+// managedLoadMetadata loads the metadata from the accounts file.
+func (r *Renter) managedLoadMetadata() (accountsMetadata, error) {
+	var metadata accountsMetadata
+
+	// read matadata bytes
+	buffer := make([]byte, metadataSize)
+	_, err := io.ReadFull(r.staticAccountsFile, buffer)
+	if err != nil {
+		return metadata, errors.AddContext(err, "Failed to read metadata from accounts file")
+	}
+
+	// unmarshal into accountsMetadata
+	err = encoding.Unmarshal(buffer, &metadata)
+	if err != nil {
+		return metadata, errors.AddContext(err, "Failed to decode metadata from accounts file")
+	}
+	return metadata, nil
 }
 
 // managedSaveAccounts is called on shutdown and ensures the account data is
@@ -184,25 +237,25 @@ func (r *Renter) managedSaveAccounts() error {
 
 	// save the account data to disk
 	for _, account := range accounts {
-		account.staticMu.Lock()
-		accountData := account.toAccountPersistence()
-		account.staticMu.Unlock()
-
-		bytes := accountData.toBytes()
-		_, err := r.staticAccountsFile.WriteAt(bytes, account.staticOffset)
+		err := account.managedPersist(r.staticAccountsFile)
 		if err != nil {
 			r.log.Println("ERROR:", err)
 			continue
 		}
 	}
 
+	// sync before updating the header
+	err := r.staticAccountsFile.Sync()
+	if err != nil {
+		return errors.AddContext(err, "Failed to sync accounts file")
+	}
+
 	// update the metadata and mark the file as clean
-	metadata := accountsMetadata{
+	err = r.managedUpdateMetadata(accountsMetadata{
 		Header:  metadataHeader,
 		Version: metadataVersion,
 		Clean:   true,
-	}
-	_, err := r.staticAccountsFile.WriteAt(encoding.Marshal(metadata), 0)
+	})
 	if err != nil {
 		return errors.AddContext(err, "Failed to update accounts file metadata")
 	}
@@ -212,6 +265,12 @@ func (r *Renter) managedSaveAccounts() error {
 		r.staticAccountsFile.Sync(),
 		r.staticAccountsFile.Close(),
 	)
+}
+
+// managedUpdateMetadata writes the given metadata to the accounts file.
+func (r *Renter) managedUpdateMetadata(am accountsMetadata) error {
+	_, err := r.staticAccountsFile.WriteAt(encoding.Marshal(am), 0)
+	return err
 }
 
 // checksum returns the checksum of the accountPeristence object
@@ -224,9 +283,9 @@ func (ap accountPersistence) checksum() crypto.Hash {
 	)
 }
 
-// toBytes is a helper method on the persistence object that marshals the object
+// bytes is a helper method on the persistence object that marshals the object
 // into a byte slice and performs a sanity check on the length
-func (ap accountPersistence) toBytes() []byte {
+func (ap accountPersistence) bytes() []byte {
 	apMar := encoding.Marshal(ap)
 	if len(apMar) > accountSize {
 		build.Critical("marshaled object is larger than expected size")
