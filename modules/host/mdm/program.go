@@ -240,7 +240,7 @@ func (p *program) managedFinalize(so StorageObligation) error {
 		return errors.Compose(p.outputErr, errors.New("can't call finalize on program that was aborted due to an error"))
 	}
 	// Compute the memory cost of finalizing the program.
-	memoryCost := p.staticProgramState.priceTable.MemoryTimeCost.Mul64(p.usedMemory * modules.MDMTimeCommit)
+	memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, modules.MDMTimeCommit)
 	err := p.addCost(memoryCost)
 	if err != nil {
 		return err

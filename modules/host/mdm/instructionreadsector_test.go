@@ -3,38 +3,12 @@ package mdm
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
-
-// newReadSectorInstruction is a convenience method for creating a single
-// 'ReadSector' instruction.
-func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
-	i := NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
-	cost, refund := modules.MDMReadCost(pt, length)
-	collateral := modules.MDMReadCollateral()
-	return i, cost, refund, collateral, modules.MDMReadMemory(), modules.MDMTimeReadSector
-}
-
-// newReadSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
-	data := make([]byte, 8+8+crypto.HashSize)
-	binary.LittleEndian.PutUint64(data[:8], length)
-	binary.LittleEndian.PutUint64(data[8:16], offset)
-	copy(data[16:], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	i, cost, refund, collateral, memory, time := newReadSectorInstruction(length, true, 0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
-	instructions := []modules.Instruction{i}
-	return instructions, data, cost, refund, collateral, memory
-}
 
 // TestInstructionReadSector tests executing a program with a single
 // ReadSectorInstruction.
@@ -43,15 +17,20 @@ func TestInstructionReadSector(t *testing.T) {
 	mdm := New(host)
 	defer mdm.Stop()
 
-	// Create a program to read a full sector from the host.
+	// Prepare a priceTable.
 	pt := newTestPriceTable()
-	readLen := modules.SectorSize
-	// Execute it.
+	// Prepare storage obligation.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
-	instructions, programData, cost, refund, collateral, _ := newReadSectorProgram(readLen, 0, so.sectorRoots[0], pt)
+	// Use a builder to build the program.
+	readLen := modules.SectorSize
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
+	instructions, programData := pb.Program()
+	cost, refund, collateral := pb.Cost(true)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
+
 	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
@@ -105,7 +84,11 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	instructions, programData, cost, refund, collateral, _ = newReadSectorProgram(length, offset, so.sectorRoots[0], pt)
+	// Use a builder to build the program.
+	pb = modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
+	instructions, programData = pb.Program()
+	cost, refund, collateral = pb.Cost(true)
 	r = bytes.NewReader(programData)
 	dataLen = uint64(len(programData))
 	// Execute it.
@@ -176,9 +159,14 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	// Create a program to read a full sector from the host.
 	pt := newTestPriceTable()
 	readLen := modules.SectorSize
+
 	// Execute it.
 	so := newTestStorageObligation(true)
-	instructions, programData, cost, refund, collateral, _ := newReadSectorProgram(readLen, 0, sectorRoot, pt)
+	// Use a builder to build the program.
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
+	instructions, programData := pb.Program()
+	cost, refund, collateral := pb.Cost(true)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
 	// Execute it.

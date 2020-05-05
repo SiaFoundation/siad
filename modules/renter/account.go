@@ -113,6 +113,31 @@ func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
 	}
 }
 
+// managedCommitWithdrawal commits a pending withdrawal, either after success or
+// failure. Depending on the outcome the given amount will be deducted from the
+// balance or not. If the pending delta is zero, and we altered the account
+// balance, we update the account.
+func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
+
+	// (no need to sanity check - the implementation of 'Sub' does this for us)
+	a.pendingWithdrawals = a.pendingWithdrawals.Sub(amount)
+
+	// reflect the successful withdrawal in the balance field
+	if success {
+		a.balance = a.balance.Sub(amount)
+	}
+}
+
+// managedTrackDeposit keeps track of pending deposits by adding the given
+// amount to the 'pendingDeposits' field.
+func (a *account) managedTrackDeposit(amount types.Currency) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
+	a.pendingDeposits = a.pendingDeposits.Add(amount)
+}
+
 // managedTryRefill will check if the available balance is below the
 // given threshold, if that is the case it flips the 'refilling' flag to ensure
 // the same account is not being refilled twice
@@ -136,6 +161,14 @@ func (a *account) managedTryRefill(threshold, refillAmount types.Currency) bool 
 	// now exceeds the threshold
 	a.pendingDeposits = a.pendingDeposits.Add(refillAmount)
 	return true
+}
+
+// managedTrackWithdrawal keeps track of pending withdrawals by adding the given
+// amount to the 'pendingWithdrawals' field.
+func (a *account) managedTrackWithdrawal(amount types.Currency) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
+	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and
