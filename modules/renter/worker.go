@@ -135,7 +135,7 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance:        w.staticAccount.AvailableBalance(),
+		AvailableBalance:        w.staticAccount.managedAvailableBalance(),
 		BalanceTarget:           w.staticBalanceTarget,
 		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
 
