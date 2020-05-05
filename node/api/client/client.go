@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -49,11 +51,19 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 	return uc.get(resource, obj)
 }
 
-// New creates a new Client using the provided address.
-func New(address string) *Client {
-	return &Client{
-		Address: address,
+// New creates a new Client using the provided address. The password will be set
+// using build.APIPasssword and the user agent will be set to "Sia-Agent". Both
+// can be changed manually by the caller after the client is returned.
+func New(address string) (*Client, error) {
+	pw, err := build.APIPassword()
+	if err != nil {
+		return nil, errors.AddContext(err, "could not locate api password")
 	}
+	return &Client{
+		Address:   address,
+		Password:  pw,
+		UserAgent: "Sia-Agent",
+	}, nil
 }
 
 // NewRequest constructs a request to the siad HTTP API, setting the correct
