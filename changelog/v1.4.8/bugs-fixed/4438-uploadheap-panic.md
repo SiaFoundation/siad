@@ -1,0 +1,1 @@
+- Fix panic condition in Renter's `uploadheap` due to change in chunk's stuck status

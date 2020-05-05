@@ -680,3 +680,62 @@ func TestUploadHeapPauseChan(t *testing.T) {
 	uh.managedResume()
 	uh.managedResume()
 }
+
+// TestChunkSwitchStuckStatus is a regression test that confirms the upload heap
+// won't panic due to a chunk's stuck status changing while it is in the heap
+// and being added twice
+func TestChunkSwitchStuckStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create minimum chunk
+	chunk := &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: siafile.SiafileUID("chunk"),
+			index:   0,
+		},
+	}
+	// push chunk to heap
+	if !rt.renter.uploadHeap.managedPush(chunk) {
+		t.Fatal("unable to push chunk", chunk)
+	}
+	if rt.renter.uploadHeap.managedLen() != 1 {
+		t.Error("Expected only 1 chunk in heap")
+	}
+
+	// Mark chunk as stuck and push again
+	//
+	// Regression check 1: previously this second push call would succeed and
+	// the length of the heap would be 2
+	chunk.stuck = true
+	if rt.renter.uploadHeap.managedPush(chunk) {
+		t.Error("should not be able to push chunk again")
+	}
+	if rt.renter.uploadHeap.managedLen() != 1 {
+		t.Error("Expected only 1 chunk in heap")
+	}
+
+	// Pop the chunk
+	chunk = rt.renter.uploadHeap.managedPop()
+	if chunk == nil {
+		t.Fatal("Nil chunk popped")
+	}
+
+	// A second pop call should not panic
+	//
+	// Regression check 2: previously this would trigger the build.Critical that
+	// the popped chunk was already in the repair map
+	chunk = rt.renter.uploadHeap.managedPop()
+	if chunk != nil {
+		t.Fatal("Expected nil chunk")
+	}
+}
