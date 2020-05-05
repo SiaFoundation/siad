@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -1996,7 +1995,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected 0 skykeys")
 	}
 
-	sk, err := r.SkykeyCreateKeyPost("testkey1", crypto.TypeXChaCha20)
+	sk, err := r.SkykeyCreateKeyPost("testkey1", skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2023,7 +2022,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create a testkey from a hard-coded skykey string.
-	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	testSkykeyString := "skykey:AbAc7Uz4NxBrVIzR2lY-LsVs3VWsuCA0D01jxYjaHdRwrfVUuo8DutiGD7OF1B1b3P1olWPXZO1X?name=hardcodedtestkey"
 	var testSkykey skykey.Skykey
 	err = testSkykey.FromString(testSkykeyString)
 	if err != nil {
@@ -2084,7 +2083,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	// Create a bunch of skykeys and check that they all get returned.
 	nKeys := 10
 	for i := 0; i < nKeys; i++ {
-		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), crypto.TypeXChaCha20)
+		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), skykey.TypePublicID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2230,7 +2229,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup) {
 	// Note we must create a new reader in the params!
 	sup.Reader = bytes.NewReader(data)
 
-	_, err = r.SkykeyCreateKeyPost(encKeyName, crypto.TypeXChaCha20)
+	_, err = r.SkykeyCreateKeyPost(encKeyName, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2325,7 +2324,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
 		SkykeyName: encKeyName,
 	}
 
-	_, err = r.SkykeyCreateKeyPost(encKeyName, crypto.TypeXChaCha20)
+	_, err = r.SkykeyCreateKeyPost(encKeyName, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}

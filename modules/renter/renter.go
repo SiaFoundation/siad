@@ -37,7 +37,6 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -824,12 +823,12 @@ func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
 }
 
 // CreateSkykey creates a new Skykey with the given name and ciphertype.
-func (r *Renter) CreateSkykey(name string, ct crypto.CipherType) (skykey.Skykey, error) {
+func (r *Renter) CreateSkykey(name string, skType skykey.SkykeyType) (skykey.Skykey, error) {
 	if err := r.tg.Add(); err != nil {
 		return skykey.Skykey{}, err
 	}
 	defer r.tg.Done()
-	return r.staticSkykeyManager.CreateKey(name, ct)
+	return r.staticSkykeyManager.CreateKey(name, skType)
 }
 
 // SkykeyByID gets the Skykey with the given ID from the renter's skykey

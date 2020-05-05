@@ -15,6 +15,9 @@ var (
 	// wallet operations like encrypting the wallet files.
 	TypeDefaultWallet = TypeTwofish
 
+	// TypeInvalid represents an invalid type which cannot be used for any
+	// meaningful purpose.
+	TypeInvalid = CipherType{0, 0, 0, 0, 0, 0, 0, 0}
 	// TypePlain means no encryption is used.
 	TypePlain = CipherType{0, 0, 0, 0, 0, 0, 0, 1}
 	// TypeTwofish is the type for the Twofish-GCM encryption.

@@ -969,8 +969,8 @@ type Renter interface {
 	// AddSkykey adds the skykey to the renter's skykey manager.
 	AddSkykey(skykey.Skykey) error
 
-	// CreateSkykey creates a new Skykey with the given name and ciphertype.
-	CreateSkykey(string, crypto.CipherType) (skykey.Skykey, error)
+	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
+	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
 
 	// SkykeyByName gets the Skykey with the given name from the renter's skykey
 	// manager if it exists.
